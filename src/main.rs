@@ -9,6 +9,7 @@ mod hotreload;
 mod hyprland_ipc;
 mod platform;
 mod surface;
+mod test;
 mod ui;
 mod window;
 

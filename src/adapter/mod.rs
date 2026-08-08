@@ -1,2 +1,2 @@
-mod slint;
-mod wayland;
+pub mod slint;
+pub mod wayland;
