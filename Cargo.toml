@@ -1,0 +1,28 @@
+[package]
+name = "corona"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+calloop = "0.14.4"
+calloop-wayland-source = "0.4.1"
+glutin = { version = "0.32.3", default-features = false, features = ["wayland"] }
+hyprland = "0.3.13"
+notify = { version = "8.2.0", optional = true }
+raw-window-handle = "0.6.2"
+slint = { version = "1.17.1", default-features = false, features = ["renderer-femtovg", "compat-1-2"] }
+slint-interpreter = { version = "1.17.1", default-features = false, features = ["compat-1-2"], optional = true }
+smithay-client-toolkit = "=0.20.0"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+wayland-client = { version = "0.31.15", features = ["system"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+xkbcommon = { version = "0.9.0", features = ["wayland"] }
+zbus = "5.18.0"
+
+[features]
+hot-reload = ["dep:slint-interpreter", "dep:notify"]
+
+[build-dependencies]
+slint-build = "1.17.1"
