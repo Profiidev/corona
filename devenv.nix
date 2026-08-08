@@ -15,6 +15,7 @@ let
     # slint lsp
     libinput
     libgbm
+    freetype
   ];
 in
 {

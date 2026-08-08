@@ -14,12 +14,6 @@ use calloop::timer::{TimeoutAction, Timer};
 use hyprland::dispatch::{Dispatch as HyprDispatch, DispatchType, WorkspaceIdentifierWithSpecial};
 use slint::platform::WindowAdapter as _;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
-use smithay_client_toolkit::delegate_compositor;
-use smithay_client_toolkit::delegate_layer;
-use smithay_client_toolkit::delegate_output;
-use smithay_client_toolkit::delegate_pointer;
-use smithay_client_toolkit::delegate_registry;
-use smithay_client_toolkit::delegate_seat;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::registry_handlers;
@@ -29,6 +23,7 @@ use smithay_client_toolkit::shell::WaylandSurface as _;
 use smithay_client_toolkit::shell::wlr_layer::{
   Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
+use smithay_client_toolkit::{delegate_dispatch2, delegate_registry};
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::{wl_output, wl_pointer, wl_seat, wl_surface};
 use wayland_client::{Connection, Proxy as _, QueueHandle};
@@ -896,12 +891,8 @@ impl slint::platform::Platform for PlatformWrapper {
   }
 }
 
-delegate_compositor!(AppState);
-delegate_output!(AppState);
-delegate_layer!(AppState);
 delegate_registry!(AppState);
-delegate_seat!(AppState);
-delegate_pointer!(AppState);
+delegate_dispatch2!(AppState);
 
 impl ProvidesRegistryState for AppState {
   fn registry(&mut self) -> &mut RegistryState {

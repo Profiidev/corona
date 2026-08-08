@@ -1,3 +1,4 @@
+mod adapter;
 mod app;
 mod bar_ui;
 mod dbus;
