@@ -16,7 +16,7 @@ use wayland_client::{
   protocol::wl_output::WlOutput,
 };
 
-use crate::state::Corona;
+use crate::Corona;
 
 pub struct WaylandAdapter {
   conn: Connection,

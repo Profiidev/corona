@@ -1,8 +1,4 @@
-use crate::state::Corona;
-
-mod adapter;
-mod event;
-mod state;
+use corona::Corona;
 
 fn main() {
   tracing_subscriber::fmt::init();
