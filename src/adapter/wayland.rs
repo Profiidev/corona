@@ -1,3 +1,4 @@
+use calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
   compositor::CompositorState,
   output::OutputState,
@@ -10,7 +11,7 @@ use smithay_client_toolkit::{
 };
 use wayland_client::{
   ConnectError, Connection, EventQueue, Proxy, QueueHandle,
-  backend::ObjectId,
+  backend::{ObjectId, WaylandError},
   globals::{BindError, GlobalError, registry_queue_init},
   protocol::wl_output::WlOutput,
 };
@@ -19,7 +20,7 @@ use crate::state::Corona;
 
 pub struct WaylandAdapter {
   conn: Connection,
-  event_queue: EventQueue<Corona>,
+  event_queue: Option<EventQueue<Corona>>,
   queue_handle: QueueHandle<Corona>,
   compositor: CompositorState,
   layer_shell: LayerShell,
@@ -38,6 +39,8 @@ pub enum WaylandAdapterError {
   CompositorBindError(#[source] BindError),
   #[error("zwlr_layer_shell_v1 not available: {0}")]
   LayerShellBindError(#[source] BindError),
+  #[error("failed to flush Wayland connection: {0}")]
+  FlushError(#[source] WaylandError),
 }
 
 pub struct LayerSurfaceSpec<'a> {
@@ -69,7 +72,7 @@ impl WaylandAdapter {
 
     Ok(Self {
       conn,
-      event_queue,
+      event_queue: Some(event_queue),
       queue_handle: qh,
       compositor,
       layer_shell,
@@ -95,6 +98,17 @@ impl WaylandAdapter {
     layer_surface.set_keyboard_interactivity(spec.keyboard_interactivity);
     layer_surface.wl_surface().commit();
     layer_surface
+  }
+
+  pub fn flush(&mut self) -> Result<(), WaylandAdapterError> {
+    self.conn.flush().map_err(WaylandAdapterError::FlushError)
+  }
+
+  pub fn event_source(&mut self) -> Option<WaylandSource<Corona>> {
+    Some(WaylandSource::new(
+      self.conn.clone(),
+      self.event_queue.take()?,
+    ))
   }
 
   pub fn display_id(&self) -> ObjectId {
