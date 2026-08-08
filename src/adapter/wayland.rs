@@ -1,36 +1,26 @@
 use smithay_client_toolkit::{
   compositor::CompositorState,
-  globals::GlobalData,
-  output::{OutputData, OutputState},
-  reexports::protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::ZwlrLayerShellV1,
+  output::OutputState,
   registry::RegistryState,
-  seat::{SeatData, SeatState},
-  shell::wlr_layer::{LayerShell, LayerShellHandler},
-};
-use wayland_client::{
-  ConnectError, Connection, Dispatch, EventQueue,
-  globals::{BindError, GlobalError, GlobalListContents, registry_queue_init},
-  protocol::{
-    wl_compositor::WlCompositor, wl_output::WlOutput, wl_registry::WlRegistry, wl_seat::WlSeat,
+  seat::SeatState,
+  shell::{
+    WaylandSurface,
+    wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
   },
 };
-use wayland_protocols::xdg::xdg_output::zv1::client::{
-  zxdg_output_manager_v1::ZxdgOutputManagerV1, zxdg_output_v1::ZxdgOutputV1,
+use wayland_client::{
+  ConnectError, Connection, EventQueue, Proxy, QueueHandle,
+  backend::ObjectId,
+  globals::{BindError, GlobalError, registry_queue_init},
+  protocol::wl_output::WlOutput,
 };
 
-pub struct WaylandAdapter<S>
-where
-  S: Dispatch<WlRegistry, GlobalListContents>,
-  S: Dispatch<WlCompositor, GlobalData>,
-  S: Dispatch<ZwlrLayerShellV1, GlobalData> + LayerShellHandler,
-  S: Dispatch<WlOutput, OutputData>
-    + Dispatch<ZxdgOutputManagerV1, GlobalData>
-    + Dispatch<ZxdgOutputV1, OutputData>,
-  S: Dispatch<WlSeat, SeatData>,
-  S: 'static,
-{
+use crate::state::Corona;
+
+pub struct WaylandAdapter {
   conn: Connection,
-  event_queue: EventQueue<S>,
+  event_queue: EventQueue<Corona>,
+  queue_handle: QueueHandle<Corona>,
   compositor: CompositorState,
   layer_shell: LayerShell,
   output_state: OutputState,
@@ -50,21 +40,22 @@ pub enum WaylandAdapterError {
   LayerShellBindError(#[source] BindError),
 }
 
-impl<S> WaylandAdapter<S>
-where
-  S: Dispatch<WlRegistry, GlobalListContents>,
-  S: Dispatch<WlCompositor, GlobalData>,
-  S: Dispatch<ZwlrLayerShellV1, GlobalData> + LayerShellHandler,
-  S: Dispatch<WlOutput, OutputData>
-    + Dispatch<ZxdgOutputManagerV1, GlobalData>
-    + Dispatch<ZxdgOutputV1, OutputData>,
-  S: Dispatch<WlSeat, SeatData>,
-  S: 'static,
-{
+pub struct LayerSurfaceSpec<'a> {
+  pub namespace: String,
+  pub layer: Layer,
+  pub output: Option<&'a WlOutput>,
+  pub anchor: Anchor,
+  pub width: u32,
+  pub height: u32,
+  pub exclusive_zone: i32,
+  pub keyboard_interactivity: KeyboardInteractivity,
+}
+
+impl WaylandAdapter {
   pub fn init() -> Result<Self, WaylandAdapterError> {
     let conn = Connection::connect_to_env().map_err(WaylandAdapterError::CompositorConnection)?;
     let (globals, event_queue) =
-      registry_queue_init::<S>(&conn).map_err(WaylandAdapterError::RegistryQueueInit)?;
+      registry_queue_init::<Corona>(&conn).map_err(WaylandAdapterError::RegistryQueueInit)?;
     let qh = event_queue.handle();
 
     let compositor =
@@ -79,12 +70,35 @@ where
     Ok(Self {
       conn,
       event_queue,
+      queue_handle: qh,
       compositor,
       layer_shell,
       output_state,
       seat_state,
       registry_state,
     })
+  }
+
+  pub fn create_layer_surface(&self, spec: LayerSurfaceSpec) -> LayerSurface {
+    let wl_surface = self.compositor.create_surface(&self.queue_handle);
+    let layer_surface = self.layer_shell.create_layer_surface(
+      &self.queue_handle,
+      wl_surface,
+      spec.layer,
+      Some(spec.namespace),
+      spec.output,
+    );
+
+    layer_surface.set_anchor(spec.anchor);
+    layer_surface.set_size(spec.width, spec.height);
+    layer_surface.set_exclusive_zone(spec.exclusive_zone);
+    layer_surface.set_keyboard_interactivity(spec.keyboard_interactivity);
+    layer_surface.wl_surface().commit();
+    layer_surface
+  }
+
+  pub fn display_id(&self) -> ObjectId {
+    self.conn.display().id()
   }
 
   pub fn output_state_mut(&mut self) -> &mut OutputState {

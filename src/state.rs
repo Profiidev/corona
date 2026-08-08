@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use anyhow::Result;
 use smithay_client_toolkit::{
   compositor::CompositorHandler,
@@ -7,7 +9,7 @@ use smithay_client_toolkit::{
   registry_handlers,
   seat::{
     Capability, SeatHandler, SeatState,
-    keyboard::{KeyEvent, KeyboardHandler, Modifiers, RawModifiers},
+    keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
     pointer::{PointerEvent, PointerHandler},
   },
   shell::wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
@@ -16,20 +18,26 @@ use wayland_client::{
   Connection, QueueHandle,
   protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
 };
-use xkbcommon::xkb::Keysym;
 
-use crate::adapter::{slint::SlintCustomPlatform, wayland::WaylandAdapter};
+use crate::adapter::{gpu::GpuContext, slint::SlintCustomPlatform, wayland::WaylandAdapter};
 
 pub struct Corona {
-  wayland: WaylandAdapter<Self>,
+  wayland: WaylandAdapter,
+  gpu: Rc<GpuContext>,
+  platform: Rc<SlintCustomPlatform>,
 }
 
 impl Corona {
   pub fn init() -> Result<Self> {
-    let wayland = WaylandAdapter::<Self>::init()?;
-    let platform = SlintCustomPlatform::init()?;
+    let wayland = WaylandAdapter::init()?;
+    let gpu = GpuContext::init(wayland.display_id())?;
+    let platform = SlintCustomPlatform::init(gpu.clone())?;
 
-    Ok(Self { wayland })
+    Ok(Self {
+      wayland,
+      gpu,
+      platform,
+    })
   }
 }
 

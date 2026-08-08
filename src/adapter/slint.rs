@@ -9,12 +9,15 @@ use slint::{
     Platform, Renderer, WindowAdapter, WindowEvent, femtovg_renderer::FemtoVGWGPURenderer,
   },
 };
+use smithay_client_toolkit::shell::{WaylandSurface, wlr_layer::LayerSurface};
+use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
-use crate::gpu::GpuContext;
+use crate::adapter::gpu::GpuContext;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Vec<Rc<SlintWindow>>>,
+  gpu: Rc<GpuContext>,
 }
 
 struct SlintCustomPlatformPointer(Rc<SlintCustomPlatform>);
@@ -23,12 +26,17 @@ struct SlintCustomPlatformPointer(Rc<SlintCustomPlatform>);
 pub enum SlintCustomPlatformError {
   #[error("slint::platform::set_platform() already called")]
   PlatformAlreadySet,
+  #[error("GPU error: {0}")]
+  Gpu(#[from] crate::adapter::gpu::GpuError),
+  #[error("failed to create FemtoVGWGPURenderer: {0}")]
+  FemtoVGWGPURenderer(#[from] PlatformError),
 }
 
 impl SlintCustomPlatform {
-  pub fn init() -> Result<Rc<Self>, SlintCustomPlatformError> {
+  pub fn init(gpu: Rc<GpuContext>) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
       pending: RefCell::new(Vec::new()),
+      gpu,
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
@@ -37,8 +45,23 @@ impl SlintCustomPlatform {
     Ok(platform)
   }
 
-  fn add_window(&self, window: Rc<SlintWindow>) {
+  fn create_window(
+    &self,
+    layer_surface: LayerSurface,
+    width: u32,
+    height: u32,
+  ) -> Result<(), SlintCustomPlatformError> {
+    let wgpu_surface = self
+      .gpu
+      .create_surface(&layer_surface.wl_surface().id(), width, height)?;
+    let window = SlintWindow::new(
+      self.gpu.clone(),
+      wgpu_surface,
+      PhysicalSize::new(width, height),
+    )?;
+
     self.pending.borrow_mut().push(window);
+    Ok(())
   }
 }
 
@@ -69,11 +92,11 @@ struct SlintWindow {
 }
 
 impl SlintWindow {
-  pub fn new(
+  fn new(
     gpu: Rc<GpuContext>,
     surface: wgpu::Surface<'static>,
     initial_size: PhysicalSize,
-  ) -> Result<Rc<Self>, slint::PlatformError> {
+  ) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let renderer =
       FemtoVGWGPURenderer::new(gpu.instance.clone(), gpu.device.clone(), gpu.queue.clone())?;
 
@@ -91,7 +114,7 @@ impl SlintWindow {
     }))
   }
 
-  pub fn set_physical_size(&self, size: PhysicalSize) {
+  fn set_physical_size(&self, size: PhysicalSize) {
     self.size.set(size);
     if let Err(e) = self
       .gpu
@@ -105,7 +128,7 @@ impl SlintWindow {
     self.dirty.set(true);
   }
 
-  pub fn render_if_dirty(&self) -> Result<(), slint::PlatformError> {
+  fn render_if_dirty(&self) -> Result<(), slint::PlatformError> {
     if !self.dirty.replace(false) {
       return Ok(());
     }
