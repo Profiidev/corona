@@ -16,7 +16,7 @@ use wgpu::CurrentSurfaceTexture;
 use crate::adapter::gpu::GpuContext;
 
 pub struct SlintCustomPlatform {
-  pending: RefCell<Vec<Rc<SlintWindow>>>,
+  pending: RefCell<Option<Rc<SlintWindow>>>,
   gpu: Rc<GpuContext>,
 }
 
@@ -30,12 +30,16 @@ pub enum SlintCustomPlatformError {
   Gpu(#[from] crate::adapter::gpu::GpuError),
   #[error("failed to create FemtoVGWGPURenderer: {0}")]
   FemtoVGWGPURenderer(#[from] PlatformError),
+  #[error(
+    "a window is already pending creation. You need to create the Slint component for the previous window before creating a new one."
+  )]
+  WindowAlreadyPending,
 }
 
 impl SlintCustomPlatform {
   pub fn init(gpu: Rc<GpuContext>) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
-      pending: RefCell::new(Vec::new()),
+      pending: RefCell::new(None),
       gpu,
     });
 
@@ -51,6 +55,10 @@ impl SlintCustomPlatform {
     width: u32,
     height: u32,
   ) -> Result<Rc<SlintWindow>, SlintCustomPlatformError> {
+    if self.pending.borrow().as_ref().is_some() {
+      return Err(SlintCustomPlatformError::WindowAlreadyPending);
+    }
+
     let wgpu_surface = self
       .gpu
       .create_surface(&layer_surface.wl_surface().id(), width, height)?;
@@ -60,7 +68,7 @@ impl SlintCustomPlatform {
       PhysicalSize::new(width, height),
     )?;
 
-    self.pending.borrow_mut().push(window.clone());
+    self.pending.borrow_mut().replace(window.clone());
     Ok(window)
   }
 }
@@ -70,7 +78,7 @@ impl Platform for SlintCustomPlatform {
     self
       .pending
       .borrow_mut()
-      .pop()
+      .take()
       .map(|w| w as Rc<dyn WindowAdapter>)
       .ok_or(PlatformError::NoPlatform)
   }

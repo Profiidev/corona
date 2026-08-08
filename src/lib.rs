@@ -18,6 +18,7 @@ use crate::{
 mod adapter;
 mod error;
 mod event;
+mod ui;
 mod wayland;
 mod widgets;
 
