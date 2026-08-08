@@ -36,8 +36,18 @@ impl LayerShellHandler for Corona {
           return;
         }
       };
+      let Ok(component) = (pending.init)().map_err(|e| {
+        error!(
+          "Failed to initialize Slint component for layer surface {}: {}",
+          id, e
+        );
+      }) else {
+        return;
+      };
 
-      self.widgets.create_widget(id, window, pending.kind);
+      self
+        .widgets
+        .create_widget(id, window, pending.kind, component);
     } else {
       self.widgets.resize_widget(id, width, height);
     }

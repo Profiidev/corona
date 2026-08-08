@@ -50,7 +50,10 @@ impl Corona {
 
   pub fn run(&mut self) -> Result<(), CoronaError> {
     for output in self.wayland.output_state().outputs() {
-      self.create_bar(&output);
+      self.create_bar(&output, || {
+        let component = ui::bar::Bar::new()?;
+        Ok(Box::new(component))
+      });
     }
 
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;

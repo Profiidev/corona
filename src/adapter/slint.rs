@@ -64,6 +64,7 @@ impl SlintCustomPlatform {
       .create_surface(&layer_surface.wl_surface().id(), width, height)?;
     let window = SlintWindow::new(
       self.gpu.clone(),
+      layer_surface,
       wgpu_surface,
       PhysicalSize::new(width, height),
     )?;
@@ -97,11 +98,14 @@ pub struct SlintWindow {
   gpu: Rc<GpuContext>,
   dirty: Cell<bool>,
   size: Cell<PhysicalSize>,
+  #[allow(dead_code)]
+  layer_surface: LayerSurface,
 }
 
 impl SlintWindow {
   fn new(
     gpu: Rc<GpuContext>,
+    layer_surface: LayerSurface,
     surface: wgpu::Surface<'static>,
     initial_size: PhysicalSize,
   ) -> Result<Rc<Self>, SlintCustomPlatformError> {
@@ -118,6 +122,7 @@ impl SlintWindow {
         gpu,
         dirty: Cell::new(false),
         size: Cell::new(initial_size),
+        layer_surface,
       }
     }))
   }
