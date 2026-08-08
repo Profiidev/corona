@@ -12,18 +12,21 @@ use crate::{
   adapter::{gpu::GpuContext, slint::SlintCustomPlatform, wayland::WaylandAdapter},
   error::CoronaError,
   event::{event::ShellEvent, event_loop::EventLoop},
+  widgets::Widgets,
 };
 
 mod adapter;
 mod error;
 mod event;
 mod wayland;
+mod widgets;
 
 pub struct Corona {
   wayland: WaylandAdapter,
   gpu: Rc<GpuContext>,
   platform: Rc<SlintCustomPlatform>,
   event_loop: Option<EventLoop>,
+  widgets: Widgets,
   exit_requested: bool,
 }
 
@@ -39,11 +42,16 @@ impl Corona {
       gpu,
       platform,
       event_loop: Some(event_loop),
+      widgets: Widgets::new(),
       exit_requested: false,
     })
   }
 
   pub fn run(&mut self) -> Result<(), CoronaError> {
+    for output in self.wayland.output_state().outputs() {
+      self.create_bar(&output);
+    }
+
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
 
     while !self.exit_requested {
@@ -55,17 +63,16 @@ impl Corona {
     Ok(())
   }
 
-  pub fn handle_shell_event(&mut self, event: ShellEvent) {
+  fn handle_shell_event(&mut self, _event: ShellEvent) {
     // TODO
   }
 
-  pub fn tick_clock(&mut self) {
+  fn tick_clock(&mut self) {
     // TODO
   }
 
-  fn render_if_dirty(&mut self) -> Result<(), CoronaError> {
-    // TODO
-    Ok(())
+  fn render_if_dirty(&self) -> Result<(), CoronaError> {
+    self.widgets.render_if_dirty()
   }
 }
 

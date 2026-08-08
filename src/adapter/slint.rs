@@ -45,12 +45,12 @@ impl SlintCustomPlatform {
     Ok(platform)
   }
 
-  fn create_window(
+  pub fn create_window(
     &self,
     layer_surface: LayerSurface,
     width: u32,
     height: u32,
-  ) -> Result<(), SlintCustomPlatformError> {
+  ) -> Result<Rc<SlintWindow>, SlintCustomPlatformError> {
     let wgpu_surface = self
       .gpu
       .create_surface(&layer_surface.wl_surface().id(), width, height)?;
@@ -60,8 +60,8 @@ impl SlintCustomPlatform {
       PhysicalSize::new(width, height),
     )?;
 
-    self.pending.borrow_mut().push(window);
-    Ok(())
+    self.pending.borrow_mut().push(window.clone());
+    Ok(window)
   }
 }
 
@@ -82,7 +82,7 @@ impl Platform for SlintCustomPlatformPointer {
   }
 }
 
-struct SlintWindow {
+pub struct SlintWindow {
   window: Window,
   renderer: FemtoVGWGPURenderer,
   surface: wgpu::Surface<'static>,
@@ -114,7 +114,7 @@ impl SlintWindow {
     }))
   }
 
-  fn set_physical_size(&self, size: PhysicalSize) {
+  pub fn set_physical_size(&self, size: PhysicalSize) {
     self.size.set(size);
     if let Err(e) = self
       .gpu
@@ -128,7 +128,7 @@ impl SlintWindow {
     self.dirty.set(true);
   }
 
-  fn render_if_dirty(&self) -> Result<(), slint::PlatformError> {
+  pub fn render_if_dirty(&self) -> Result<(), SlintCustomPlatformError> {
     if !self.dirty.replace(false) {
       return Ok(());
     }

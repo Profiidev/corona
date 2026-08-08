@@ -115,6 +115,10 @@ impl WaylandAdapter {
     self.conn.display().id()
   }
 
+  pub fn output_state(&self) -> &OutputState {
+    &self.output_state
+  }
+
   pub fn output_state_mut(&mut self) -> &mut OutputState {
     &mut self.output_state
   }
