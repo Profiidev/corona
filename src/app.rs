@@ -29,8 +29,8 @@ use wayland_client::protocol::{wl_output, wl_pointer, wl_seat, wl_surface};
 use wayland_client::{Connection, Proxy as _, QueueHandle};
 
 use crate::bar_ui::BarUi;
-use crate::egl::{RenderContextFactory, RenderContextManager};
 use crate::events::{ShellEvent, ShellSender, WorkspaceInfo};
+use crate::gpu::GpuContext;
 use crate::platform::CoronaPlatform;
 use crate::surface::{SurfaceSpec, build_window, spawn_layer_surface};
 use crate::ui;
@@ -90,7 +90,7 @@ pub struct AppState {
   layer_shell: LayerShell,
   qh: QueueHandle<Self>,
   loop_handle: LoopHandle<'static, Self>,
-  render_factory: Rc<RenderContextFactory>,
+  gpu: Rc<GpuContext>,
   platform: Rc<CoronaPlatform>,
   /// Clone of the same channel main.rs feeds Hyprland/D-Bus/hot-reload events through — handed
   /// to UI click callbacks so they can route "close this notification"-style actions back into
@@ -129,8 +129,7 @@ impl AppState {
     let output_state = OutputState::new(globals, qh);
     let seat_state = SeatState::new(globals, qh);
 
-    let render_manager = RenderContextManager::new(&conn.display().id())?;
-    let render_factory = RenderContextFactory::new(render_manager);
+    let gpu = GpuContext::new(conn.display().id())?;
 
     let platform = CoronaPlatform::new();
     slint::platform::set_platform(Box::new(PlatformWrapper(Rc::clone(&platform))))
@@ -144,7 +143,7 @@ impl AppState {
       layer_shell,
       qh: qh.clone(),
       loop_handle,
-      render_factory,
+      gpu,
       platform,
       shell_tx,
       pointer: None,
@@ -515,7 +514,7 @@ impl AppState {
         PendingKind::Bar(output_id) => {
           if let Some(layer_surface) = self.bars.get(&output_id).map(|b| b.layer_surface.clone()) {
             let window = build_window(
-              &self.render_factory,
+              &self.gpu,
               &layer_surface,
               &self.platform,
               width,
@@ -536,7 +535,7 @@ impl AppState {
         PendingKind::Notification(id) => {
           if let Some(n) = self.notifications.get_mut(&id) {
             let window = build_window(
-              &self.render_factory,
+              &self.gpu,
               &n.layer_surface,
               &self.platform,
               width,
@@ -558,7 +557,7 @@ impl AppState {
         PendingKind::Osd => {
           if let Some(o) = &mut self.osd {
             let window = build_window(
-              &self.render_factory,
+              &self.gpu,
               &o.layer_surface,
               &self.platform,
               width,
@@ -574,7 +573,7 @@ impl AppState {
         PendingKind::Calendar => {
           if let Some(c) = &mut self.calendar {
             let window = build_window(
-              &self.render_factory,
+              &self.gpu,
               &c.layer_surface,
               &self.platform,
               width,

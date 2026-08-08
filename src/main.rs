@@ -2,8 +2,8 @@ mod adapter;
 mod app;
 mod bar_ui;
 mod dbus;
-mod egl;
 mod events;
+mod gpu;
 #[cfg(feature = "hot-reload")]
 mod hotreload;
 mod hyprland_ipc;

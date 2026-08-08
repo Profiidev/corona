@@ -1,7 +1,7 @@
 //! Shared layer-surface creation helper — the two-phase "create surface, wait for the
-//! compositor's first configure, then build the EGL window" dance is identical for the bar,
-//! notifications, the OSD, and the calendar; only the anchor/size/layer and which UI ends up on
-//! it differ.
+//! compositor's first configure, then build the wgpu-backed window" dance is identical for the
+//! bar, notifications, the OSD, and the calendar; only the anchor/size/layer and which UI ends up
+//! on it differ.
 
 use anyhow::{Context, Result};
 use smithay_client_toolkit::compositor::CompositorState;
@@ -13,7 +13,7 @@ use wayland_client::protocol::wl_output;
 use wayland_client::{Proxy as _, QueueHandle};
 
 use crate::app::AppState;
-use crate::egl::RenderContextFactory;
+use crate::gpu::GpuContext;
 use crate::platform::CoronaPlatform;
 use crate::window::CoronaWindow;
 
@@ -55,19 +55,20 @@ pub fn spawn_layer_surface(
   layer_surface
 }
 
-/// Builds the EGL context + `CoronaWindow` for a surface once its real size is known (first
-/// `configure`), and registers it with the platform so the next component `::new()` picks it up.
+/// Builds the wgpu surface + `CoronaWindow` for a layer surface once its real size is known
+/// (first `configure`), and registers it with the platform so the next component `::new()` picks
+/// it up.
 pub fn build_window(
-  render_factory: &RenderContextFactory,
+  gpu: &std::rc::Rc<GpuContext>,
   layer_surface: &LayerSurface,
   platform: &CoronaPlatform,
   width: u32,
   height: u32,
 ) -> Result<std::rc::Rc<CoronaWindow>> {
-  let context = render_factory
-    .create_context(&layer_surface.wl_surface().id(), width, height)
-    .context("failed to create EGL context")?;
-  let window = CoronaWindow::new(context, slint::PhysicalSize::new(width, height))
+  let wgpu_surface = gpu
+    .create_surface(&layer_surface.wl_surface().id(), width, height)
+    .context("failed to create wgpu surface")?;
+  let window = CoronaWindow::new(std::rc::Rc::clone(gpu), wgpu_surface, slint::PhysicalSize::new(width, height))
     .map_err(|e| anyhow::anyhow!("failed to create Slint window adapter: {e}"))?;
   platform.add_window(std::rc::Rc::clone(&window));
   Ok(window)

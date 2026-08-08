@@ -10,7 +10,7 @@ let
     # slint runtime
     wayland
     fontconfig
-    libglvnd
+    vulkan-loader
 
     # slint lsp
     libinput

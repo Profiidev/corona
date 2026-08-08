@@ -2,10 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use slint::{
   PhysicalSize, PlatformError,
-  platform::{Platform, WindowAdapter, femtovg_renderer::FemtoVGRenderer},
+  platform::{Platform, WindowAdapter},
 };
-
-use crate::egl::EGLContext;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Vec<Rc<SlintWindow>>>,
@@ -30,13 +28,3 @@ impl Platform for SlintCustomPlatform {
 }
 
 struct SlintWindow {}
-
-impl SlintWindow {
-  pub fn new(
-    context: EGLContext,
-    initial_size: PhysicalSize,
-  ) -> Result<Rc<Self>, slint::PlatformError> {
-    let renderer = FemtoVGRenderer::new(context)?;
-    unimplemented!()
-  }
-}

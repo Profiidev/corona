@@ -1,0 +1,7 @@
+[package]
+name = "wgpu-core-deps-emscripten"
+version = "29.0.0"
+edition = "2021"
+
+[features]
+gles = []

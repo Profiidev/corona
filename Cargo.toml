@@ -8,13 +8,13 @@ anyhow = "1.0.104"
 calloop = "0.14.4"
 calloop-wayland-source = "0.4.1"
 chrono = "0.4.45"
-glutin = { version = "0.32.3", default-features = false, features = ["wayland"] }
 hyprland = "0.4.0-beta.3"
 notify = { version = "8.2.0", optional = true }
 raw-window-handle = "0.6.2"
 slint = { version = "1.17.1", default-features = false, features = [
-  "renderer-femtovg",
   "compat-1-2",
+  "renderer-femtovg-wgpu",
+  "unstable-wgpu-29",
 ] }
 slint-interpreter = { version = "1.17.1", default-features = false, features = [
   "compat-1-2",
@@ -26,6 +26,7 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 wayland-client = { version = "0.31.15", features = ["system"] }
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wgpu = { version = "29.0.4", default-features = false, features = ["vulkan"] }
 xkbcommon = { version = "0.9.0", features = ["wayland"] }
 zbus = "5.18.0"
 
@@ -34,3 +35,8 @@ hot-reload = ["dep:slint-interpreter", "dep:notify"]
 
 [build-dependencies]
 slint-build = "1.17.1"
+
+# TODO remove after upgrading to wgpu 30
+[patch.crates-io]
+wgpu-core-deps-apple = { path = "vendor-stubs/wgpu-core-deps-apple" }
+wgpu-core-deps-emscripten = { path = "vendor-stubs/wgpu-core-deps-emscripten" }
