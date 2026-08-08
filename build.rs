@@ -1,3 +1,6 @@
 fn main() {
-    slint_build::compile("ui/bar.slint").expect("failed to compile ui/bar.slint");
+  for file in ["bar", "notification", "osd", "calendar"] {
+    slint_build::compile(format!("ui/{file}.slint"))
+      .unwrap_or_else(|e| panic!("failed to compile ui/{file}.slint: {e}"));
+  }
 }

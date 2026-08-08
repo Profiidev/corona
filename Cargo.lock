@@ -251,6 +251,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -662,12 +684,6 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
-
-[[package]]
-name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -743,6 +759,7 @@ dependencies = [
  "anyhow",
  "calloop 0.14.4",
  "calloop-wayland-source",
+ "chrono",
  "glutin",
  "hyprland",
  "notify",
@@ -751,6 +768,7 @@ dependencies = [
  "slint-build",
  "slint-interpreter",
  "smithay-client-toolkit",
+ "spin_on",
  "tracing",
  "tracing-subscriber",
  "wayland-client",
@@ -834,19 +852,6 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "derive_more"
-version = "0.99.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6edb4b64a43d977b8e99788fe3a04d483834fba1215a7e02caa415b626497f7f"
-dependencies = [
- "convert_case 0.4.0",
- "proc-macro2",
- "quote",
- "rustc_version",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "derive_more"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d751e9e49156b02b44f9c1815bcb94b984cdcc4396ecc32521c739452808b134"
@@ -860,7 +865,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case 0.10.0",
+ "convert_case",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -914,12 +919,6 @@ checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
  "libloading",
 ]
-
-[[package]]
-name = "doc-comment"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "780955b8b195a21ab8e4ac6b60dd1dbdcec1dc6c51c0617964b08c81785e12c9"
 
 [[package]]
 name = "downcast-rs"
@@ -1638,33 +1637,29 @@ checksum = "48ce8546b993eaf241d69ded33b1be6d205dd9857ec879d9d18bd05d3676e144"
 
 [[package]]
 name = "hyprland"
-version = "0.3.13"
+version = "0.4.0-beta.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f87a8f1cc065d451894dd3916c0bc3fcf9b67b276126c05f27b1db912688dde8"
+checksum = "62fc24052f578592af91e5c60da1893ba6aea266b6ab86ffb72a644cf213fea9"
 dependencies = [
- "async-trait",
- "derive_more 0.99.20",
- "doc-comment",
- "futures",
- "hex",
+ "async-stream",
+ "derive_more",
+ "either",
+ "futures-lite",
  "hyprland-macros",
- "lazy_static",
- "num-traits",
- "paste",
- "regex",
+ "pastey",
  "serde",
  "serde_json",
  "serde_repr",
- "strum 0.26.3",
  "tokio",
 ]
 
 [[package]]
 name = "hyprland-macros"
-version = "0.3.4"
+version = "0.4.0-beta.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c941d3d52e979612af8cb94e8de49000c7fada2014a7791d173ab41339f4e4eb"
+checksum = "31157e6ccefbad4b0cd7e549db6696691a70c11b108f26bf6bf76eef26af8c10"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn 2.0.119",
 ]
@@ -1729,7 +1724,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "copypasta",
- "derive_more 2.1.1",
+ "derive_more",
  "futures",
  "glutin",
  "glutin-winit",
@@ -1749,7 +1744,7 @@ dependencies = [
  "raw-window-handle",
  "scoped-tls-hkt",
  "scopeguard",
- "strum 0.28.0",
+ "strum",
  "vtable",
  "wasm-bindgen",
  "web-sys",
@@ -1765,7 +1760,7 @@ version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52e63f8ea55ba21e44567ae67d2b01a4f5d09bb1fab693b1e6c79d96bef9e456"
 dependencies = [
- "derive_more 2.1.1",
+ "derive_more",
  "fontique",
  "htmlparser",
  "icu_decimal",
@@ -1785,7 +1780,7 @@ dependencies = [
  "annotate-snippets",
  "by_address",
  "data-url",
- "derive_more 2.1.1",
+ "derive_more",
  "i-slint-common",
  "icu_normalizer",
  "image",
@@ -1802,7 +1797,7 @@ dependencies = [
  "rspolib",
  "skrifa 0.42.1",
  "smol_str 0.3.6",
- "strum 0.28.0",
+ "strum",
  "swash",
  "typed-index-collections",
  "unicode-segmentation",
@@ -1821,7 +1816,7 @@ dependencies = [
  "chrono",
  "clru",
  "const-field-offset",
- "derive_more 2.1.1",
+ "derive_more",
  "euclid",
  "i-slint-common",
  "i-slint-core-macros",
@@ -1846,7 +1841,7 @@ dependencies = [
  "scopeguard",
  "skrifa 0.42.1",
  "slab",
- "strum 0.28.0",
+ "strum",
  "swash",
  "sys-locale",
  "taffy",
@@ -1879,7 +1874,7 @@ checksum = "78d0d99a18d66738b684758fe8460743a0aa0f64a96e05940942231a340085b1"
 dependencies = [
  "cfg-if",
  "const-field-offset",
- "derive_more 2.1.1",
+ "derive_more",
  "femtovg",
  "glow",
  "i-slint-common",
@@ -1904,7 +1899,7 @@ dependencies = [
  "cfg_aliases",
  "clru",
  "const-field-offset",
- "derive_more 2.1.1",
+ "derive_more",
  "glow",
  "glutin",
  "i-slint-common",
@@ -1938,7 +1933,7 @@ checksum = "73496f164f8e471877c35e0fadb996dcc674922712abd9c2be2cbe80c58859bd"
 dependencies = [
  "bytemuck",
  "clru",
- "derive_more 2.1.1",
+ "derive_more",
  "euclid",
  "i-slint-common",
  "i-slint-core",
@@ -2552,15 +2547,6 @@ name = "litemap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
-
-[[package]]
-name = "lock_api"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
-dependencies = [
- "scopeguard",
-]
 
 [[package]]
 name = "log"
@@ -3326,29 +3312,6 @@ name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
-
-[[package]]
-name = "parking_lot"
-version = "0.12.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
-dependencies = [
- "lock_api",
- "parking_lot_core",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.9.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
-dependencies = [
- "cfg-if",
- "libc",
- "redox_syscall 0.5.18",
- "smallvec",
- "windows-link",
-]
 
 [[package]]
 name = "parlance"
@@ -4267,7 +4230,7 @@ version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76684c11441f775b10bbc7b0e6b3016a39f17efdd659ffca112f17cfd6bdaed1"
 dependencies = [
- "derive_more 2.1.1",
+ "derive_more",
  "fontique",
  "i-slint-compiler",
  "spin_on",
@@ -4280,7 +4243,7 @@ version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8257365c3bd2cdfd5cc80a3b8b0afc8b5c35e22cebb7a447d80ea805374f5e4c"
 dependencies = [
- "derive_more 2.1.1",
+ "derive_more",
  "generativity",
  "i-slint-backend-selector",
  "i-slint-backend-winit",
@@ -4452,33 +4415,11 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
-dependencies = [
- "strum_macros 0.26.4",
-]
-
-[[package]]
-name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
- "strum_macros 0.28.0",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.26.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.119",
+ "strum_macros",
 ]
 
 [[package]]
@@ -4725,9 +4666,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
- "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

@@ -1,0 +1,35 @@
+// ponytail: date text only, no month grid/navigation yet — add a Repeater-based day grid once
+// pointer input exists to click through months.
+export component Calendar inherits Window {
+    in property <string> weekday;
+    in property <string> date;
+    in property <string> time;
+    callback closed();
+
+    Rectangle {
+        background: #1e1e2eee;
+        border-radius: 8px;
+
+        TouchArea {
+            // Click anywhere to dismiss — no month grid/navigation yet (see note below).
+            clicked => { root.closed(); }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 6px;
+            alignment: center;
+            Text {
+                text: time;
+                font-size: 28px;
+                color: #cdd6f4;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: weekday + ", " + date;
+                color: #bac2de;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
