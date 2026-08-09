@@ -45,9 +45,7 @@ impl LayerShellHandler for Corona {
         return;
       };
 
-      self
-        .widgets
-        .create_widget(id, window, pending.kind, component);
+      self.widgets.create_widget(id, window, component);
     } else {
       self.widgets.resize_widget(id, width, height);
     }

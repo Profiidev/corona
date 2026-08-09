@@ -8,41 +8,36 @@ use crate::{
   adapter::slint::SlintWindow,
   error::CoronaError,
   widgets::{
-    bar::Bar,
     init::{SlintComponent, SlintComponentInit},
+    widget::Widget,
   },
 };
 
-mod bar;
 mod handler;
 pub mod init;
+mod widget;
 
 pub struct Widgets {
-  bars: HashMap<ObjectId, Bar>,
+  live: HashMap<ObjectId, Widget>,
   pending: HashMap<ObjectId, PendingWidget>,
 }
 
 struct PendingWidget {
   layer_surface: LayerSurface,
-  kind: WidgetKind,
   init: Box<dyn SlintComponentInit>,
-}
-
-enum WidgetKind {
-  Bar,
 }
 
 impl Widgets {
   pub fn new() -> Self {
     Self {
-      bars: HashMap::new(),
+      live: HashMap::new(),
       pending: HashMap::new(),
     }
   }
 
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {
-    for bar in self.bars.values() {
-      bar.window.render_if_dirty()?;
+    for widget in self.live.values() {
+      widget.window.render_if_dirty()?;
     }
 
     Ok(())
@@ -52,19 +47,14 @@ impl Widgets {
     &mut self,
     id: ObjectId,
     window: Rc<SlintWindow>,
-    kind: WidgetKind,
     component: Box<dyn SlintComponent>,
   ) {
-    match kind {
-      WidgetKind::Bar => {
-        self.bars.insert(id, Bar { window, component });
-      }
-    }
+    self.live.insert(id, Widget { window, component });
   }
 
   fn resize_widget(&mut self, id: ObjectId, width: u32, height: u32) {
-    if let Some(bar) = self.bars.get_mut(&id) {
-      bar
+    if let Some(widget) = self.live.get_mut(&id) {
+      widget
         .window
         .set_physical_size(PhysicalSize::new(width, height));
     }

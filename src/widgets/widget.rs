@@ -11,18 +11,18 @@ use crate::{
   Corona,
   adapter::{slint::SlintWindow, wayland::LayerSurfaceSpec},
   widgets::{
-    PendingWidget, WidgetKind,
+    PendingWidget,
     init::{IntoSlintInit, SlintComponent},
   },
 };
 
-pub struct Bar {
+pub struct Widget {
   pub(super) window: Rc<SlintWindow>,
   pub(super) component: Box<dyn SlintComponent>,
 }
 
 impl Corona {
-  pub fn create_bar<C>(&mut self, output: &WlOutput, init: impl IntoSlintInit<C>) {
+  pub fn create_widget<C>(&mut self, output: &WlOutput, init: impl IntoSlintInit<C>) {
     let surface = self.wayland.create_layer_surface(LayerSurfaceSpec {
       namespace: "corona-bar".into(),
       layer: Layer::Top,
@@ -38,7 +38,6 @@ impl Corona {
       surface.wl_surface().id(),
       PendingWidget {
         layer_surface: surface,
-        kind: WidgetKind::Bar,
         init: Box::new(init.into_init()),
       },
     );
