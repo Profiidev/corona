@@ -4,6 +4,8 @@ use std::{
   rc::{Rc, Weak},
 };
 
+#[cfg(feature = "hot-reload")]
+use slint::{EventLoopError, platform::EventLoopProxy};
 use slint::{
   PhysicalSize, PlatformError, Window, WindowSize,
   platform::{
@@ -14,11 +16,44 @@ use smithay_client_toolkit::shell::{WaylandSurface, wlr_layer::LayerSurface};
 use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
+#[cfg(feature = "hot-reload")]
+use crate::Corona;
 use crate::adapter::gpu::GpuContext;
+
+#[cfg(feature = "hot-reload")]
+pub type SlintOnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send>;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
   gpu: Weak<GpuContext>,
+  #[cfg(feature = "hot-reload")]
+  loop_tx: calloop::channel::Sender<SlintOnLoopEvent>,
+  #[cfg(feature = "hot-reload")]
+  loop_rx: RefCell<Option<calloop::channel::Channel<SlintOnLoopEvent>>>,
+}
+
+#[cfg(feature = "hot-reload")]
+struct SlintEventLoopProxy(calloop::channel::Sender<SlintOnLoopEvent>);
+
+#[cfg(feature = "hot-reload")]
+impl EventLoopProxy for SlintEventLoopProxy {
+  fn quit_event_loop(&self) -> Result<(), EventLoopError> {
+    self
+      .0
+      .send(Box::new(|state| {
+        state.exit_requested = true;
+      }))
+      .map_err(|_| EventLoopError::EventLoopTerminated)
+  }
+
+  fn invoke_from_event_loop(&self, event: Box<dyn FnOnce() + Send>) -> Result<(), EventLoopError> {
+    self
+      .0
+      .send(Box::new(|_| {
+        event();
+      }))
+      .map_err(|_| EventLoopError::EventLoopTerminated)
+  }
 }
 
 struct SlintCustomPlatformPointer(Rc<SlintCustomPlatform>);
@@ -41,9 +76,15 @@ pub enum SlintCustomPlatformError {
 
 impl SlintCustomPlatform {
   pub fn init(gpu: Rc<GpuContext>) -> Result<Rc<Self>, SlintCustomPlatformError> {
+    #[cfg(feature = "hot-reload")]
+    let (loop_tx, loop_rx) = calloop::channel::channel::<SlintOnLoopEvent>();
     let platform = Rc::new(Self {
       pending: RefCell::new(None),
       gpu: Rc::downgrade(&gpu),
+      #[cfg(feature = "hot-reload")]
+      loop_tx,
+      #[cfg(feature = "hot-reload")]
+      loop_rx: RefCell::new(Some(loop_rx)),
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
@@ -71,6 +112,11 @@ impl SlintCustomPlatform {
 
     Ok(window)
   }
+
+  #[cfg(feature = "hot-reload")]
+  pub fn event_source(&self) -> Option<calloop::channel::Channel<SlintOnLoopEvent>> {
+    self.loop_rx.take()
+  }
 }
 
 impl Platform for SlintCustomPlatform {
@@ -82,11 +128,21 @@ impl Platform for SlintCustomPlatform {
       .map(|w| w as Rc<dyn WindowAdapter>)
       .ok_or(PlatformError::NoPlatform)
   }
+
+  #[cfg(feature = "hot-reload")]
+  fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
+    Some(Box::new(SlintEventLoopProxy(self.loop_tx.clone())))
+  }
 }
 
 impl Platform for SlintCustomPlatformPointer {
   fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
     self.0.create_window_adapter()
+  }
+
+  #[cfg(feature = "hot-reload")]
+  fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
+    self.0.new_event_loop_proxy()
   }
 }
 

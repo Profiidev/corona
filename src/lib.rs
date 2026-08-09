@@ -36,7 +36,11 @@ impl Corona {
     let mut wayland = WaylandAdapter::init()?;
     let gpu = GpuContext::init(&wayland)?;
     let platform = SlintCustomPlatform::init(gpu.clone())?;
-    let event_loop = EventLoop::init(&mut wayland)?;
+    let event_loop = EventLoop::init(
+      &mut wayland,
+      #[cfg(feature = "hot-reload")]
+      &platform,
+    )?;
 
     Ok(Self {
       wayland,
@@ -50,7 +54,7 @@ impl Corona {
 
   pub fn run(mut self) -> Result<(), CoronaError> {
     for output in self.wayland.output_state().outputs() {
-      self.create_widget(&output, |c: &mut ui::bar::Bar| {});
+      self.create_widget(&output, |_c: &mut ui::bar::Bar| {});
     }
 
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;

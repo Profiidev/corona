@@ -25,6 +25,9 @@ wgpu = { version = "29.0.4", default-features = false, features = ["vulkan"] }
 [build-dependencies]
 slint-build = "1.17.1"
 
+[features]
+hot-reload = ["slint/live-preview"]
+
 # TODO remove after upgrading to wgpu 30
 [patch.crates-io]
 wgpu-core-deps-apple = { path = "vendor-stubs/wgpu-core-deps-apple" }

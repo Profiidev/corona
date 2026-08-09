@@ -5,6 +5,8 @@ use calloop::{
   timer::{TimeoutAction, Timer},
 };
 
+#[cfg(feature = "hot-reload")]
+use crate::adapter::slint::SlintCustomPlatform;
 use crate::{Corona, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
 
 pub struct EventLoop {
@@ -17,10 +19,15 @@ pub enum EventLoopError {
   Calloop(#[from] calloop::Error),
   #[error("Wayland EventSource already taken")]
   WaylandEventSourceTaken,
+  #[error("Slint event loop already taken")]
+  SlintEventLoopTaken,
 }
 
 impl EventLoop {
-  pub fn init(wayland: &mut WaylandAdapter) -> Result<Self, EventLoopError> {
+  pub fn init(
+    wayland: &mut WaylandAdapter,
+    #[cfg(feature = "hot-reload")] platform: &SlintCustomPlatform,
+  ) -> Result<Self, EventLoopError> {
     let calloop = calloop::EventLoop::<'static, Corona>::try_new()?;
     let (tx, rx) = calloop::channel::channel::<ShellEvent>();
 
@@ -38,6 +45,21 @@ impl EventLoop {
         }
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
+
+    #[cfg(feature = "hot-reload")]
+    {
+      let source = platform
+        .event_source()
+        .ok_or(EventLoopError::SlintEventLoopTaken)?;
+      calloop
+        .handle()
+        .insert_source(source, |event, _, state: &mut Corona| {
+          if let Event::Msg(f) = event {
+            f(state);
+          }
+        })
+        .map_err(|e| EventLoopError::Calloop(e.error))?;
+    }
 
     let clock_timer = Timer::from_duration(Duration::from_secs(1));
     calloop
