@@ -1,5 +1,6 @@
 use std::{
   cell::{Cell, RefCell},
+  mem::ManuallyDrop,
   rc::{Rc, Weak},
 };
 
@@ -59,17 +60,9 @@ impl SlintCustomPlatform {
       return Err(SlintCustomPlatformError::WindowAlreadyPending);
     }
 
-    let wgpu_surface = self
-      .gpu
-      .create_surface(&layer_surface.wl_surface().id(), width, height)?;
-    let window = SlintWindow::new(
-      self.gpu.clone(),
-      layer_surface,
-      wgpu_surface,
-      PhysicalSize::new(width, height),
-    )?;
-
+    let window = SlintWindow::new(self.gpu.clone(), layer_surface, width, height)?;
     self.pending.borrow_mut().replace(window.clone());
+
     Ok(window)
   }
 }
@@ -92,23 +85,23 @@ impl Platform for SlintCustomPlatformPointer {
 }
 
 pub struct SlintWindow {
-  window: Window,
-  renderer: FemtoVGWGPURenderer,
-  surface: wgpu::Surface<'static>,
+  window: ManuallyDrop<Window>,
+  renderer: ManuallyDrop<FemtoVGWGPURenderer>,
+  surface: ManuallyDrop<wgpu::Surface<'static>>,
   gpu: Rc<GpuContext>,
   dirty: Cell<bool>,
   size: Cell<PhysicalSize>,
-  #[allow(dead_code)]
-  layer_surface: LayerSurface,
+  layer_surface: ManuallyDrop<LayerSurface>,
 }
 
 impl SlintWindow {
   fn new(
     gpu: Rc<GpuContext>,
     layer_surface: LayerSurface,
-    surface: wgpu::Surface<'static>,
-    initial_size: PhysicalSize,
+    width: u32,
+    height: u32,
   ) -> Result<Rc<Self>, SlintCustomPlatformError> {
+    let surface = gpu.create_surface(&layer_surface.wl_surface().id(), width, height)?;
     let renderer =
       FemtoVGWGPURenderer::new(gpu.instance.clone(), gpu.device.clone(), gpu.queue.clone())?;
 
@@ -116,13 +109,13 @@ impl SlintWindow {
       let window = Window::new(Weak::clone(weak_self) as Weak<dyn WindowAdapter>);
 
       Self {
-        window,
-        renderer,
-        surface,
+        window: ManuallyDrop::new(window),
+        renderer: ManuallyDrop::new(renderer),
+        surface: ManuallyDrop::new(surface),
         gpu,
         dirty: Cell::new(false),
-        size: Cell::new(initial_size),
-        layer_surface,
+        size: Cell::new(PhysicalSize::new(width, height)),
+        layer_surface: ManuallyDrop::new(layer_surface),
       }
     }))
   }
@@ -208,7 +201,7 @@ impl WindowAdapter for SlintWindow {
   }
 
   fn renderer(&self) -> &dyn Renderer {
-    &self.renderer
+    &*self.renderer
   }
 
   fn size(&self) -> PhysicalSize {
@@ -222,5 +215,16 @@ impl WindowAdapter for SlintWindow {
 
   fn request_redraw(&self) {
     self.dirty.set(true);
+  }
+}
+
+impl Drop for SlintWindow {
+  fn drop(&mut self) {
+    unsafe {
+      ManuallyDrop::drop(&mut self.window);
+      ManuallyDrop::drop(&mut self.renderer);
+      ManuallyDrop::drop(&mut self.surface);
+      ManuallyDrop::drop(&mut self.layer_surface);
+    }
   }
 }

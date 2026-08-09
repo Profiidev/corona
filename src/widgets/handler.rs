@@ -8,8 +8,9 @@ use wayland_client::{Connection, Proxy, QueueHandle};
 use crate::Corona;
 
 impl LayerShellHandler for Corona {
-  fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
-    // TODO
+  fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
+    let id = layer.wl_surface().id();
+    self.widgets.destroy_widget(id);
   }
 
   fn configure(

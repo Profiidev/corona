@@ -18,7 +18,7 @@ pub mod init;
 mod widget;
 
 pub struct Widgets {
-  live: HashMap<ObjectId, Widget>,
+  active: HashMap<ObjectId, Widget>,
   pending: HashMap<ObjectId, PendingWidget>,
 }
 
@@ -30,13 +30,13 @@ struct PendingWidget {
 impl Widgets {
   pub fn new() -> Self {
     Self {
-      live: HashMap::new(),
+      active: HashMap::new(),
       pending: HashMap::new(),
     }
   }
 
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {
-    for widget in self.live.values() {
+    for widget in self.active.values() {
       widget.window.render_if_dirty()?;
     }
 
@@ -49,14 +49,18 @@ impl Widgets {
     window: Rc<SlintWindow>,
     component: Box<dyn SlintComponent>,
   ) {
-    self.live.insert(id, Widget { window, component });
+    self.active.insert(id, Widget::new(window, component));
   }
 
   fn resize_widget(&mut self, id: ObjectId, width: u32, height: u32) {
-    if let Some(widget) = self.live.get_mut(&id) {
+    if let Some(widget) = self.active.get_mut(&id) {
       widget
         .window
         .set_physical_size(PhysicalSize::new(width, height));
     }
+  }
+
+  fn destroy_widget(&mut self, id: ObjectId) {
+    self.active.remove(&id);
   }
 }
