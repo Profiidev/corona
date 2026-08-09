@@ -1,15 +1,21 @@
 use std::{collections::HashMap, rc::Rc};
 
-use slint::{PhysicalSize, PlatformError};
+use slint::PhysicalSize;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use wayland_client::backend::ObjectId;
 
 use crate::{
-  adapter::slint::SlintWindow, error::CoronaError, ui::SlintComponent, widgets::bar::Bar,
+  adapter::slint::SlintWindow,
+  error::CoronaError,
+  widgets::{
+    bar::Bar,
+    init::{SlintComponent, SlintComponentInit},
+  },
 };
 
 mod bar;
 mod handler;
+pub mod init;
 
 pub struct Widgets {
   bars: HashMap<ObjectId, Bar>,
@@ -19,7 +25,7 @@ pub struct Widgets {
 struct PendingWidget {
   layer_surface: LayerSurface,
   kind: WidgetKind,
-  init: Box<dyn FnOnce() -> Result<Box<dyn SlintComponent>, PlatformError>>,
+  init: Box<dyn SlintComponentInit>,
 }
 
 enum WidgetKind {

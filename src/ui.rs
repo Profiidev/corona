@@ -5,13 +5,15 @@ macro_rules! slint_components {
         include!(concat!(env!("OUT_DIR"), "/", stringify!($name), ".rs"));
 
         $(
-          impl super::SlintComponent for $component {}
+          impl crate::widgets::init::SlintComponent for $component {
+            fn new() -> Result<Self, slint::PlatformError> {
+              Self::new()
+            }
+          }
         )*
       }
     )*
   };
 }
-
-pub trait SlintComponent {}
 
 slint_components!(bar(Bar));

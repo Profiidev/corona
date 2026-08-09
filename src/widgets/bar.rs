@@ -10,8 +10,10 @@ use wayland_client::{Proxy, protocol::wl_output::WlOutput};
 use crate::{
   Corona,
   adapter::{slint::SlintWindow, wayland::LayerSurfaceSpec},
-  ui::SlintComponent,
-  widgets::{PendingWidget, WidgetKind},
+  widgets::{
+    PendingWidget, WidgetKind,
+    init::{IntoSlintInit, SlintComponent},
+  },
 };
 
 pub struct Bar {
@@ -20,11 +22,7 @@ pub struct Bar {
 }
 
 impl Corona {
-  pub fn create_bar(
-    &mut self,
-    output: &WlOutput,
-    init: impl FnOnce() -> Result<Box<dyn SlintComponent>, PlatformError> + 'static,
-  ) {
+  pub fn create_bar<C>(&mut self, output: &WlOutput, init: impl IntoSlintInit<C>) {
     let surface = self.wayland.create_layer_surface(LayerSurfaceSpec {
       namespace: "corona-bar".into(),
       layer: Layer::Top,
@@ -41,7 +39,7 @@ impl Corona {
       PendingWidget {
         layer_surface: surface,
         kind: WidgetKind::Bar,
-        init: Box::new(init),
+        init: Box::new(init.into_init()),
       },
     );
   }

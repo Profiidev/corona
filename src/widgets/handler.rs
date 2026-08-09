@@ -25,7 +25,7 @@ impl LayerShellHandler for Corona {
     let width = width.max(1);
     let height = height.max(1);
 
-    if let Some(pending) = self.widgets.pending.remove(&id) {
+    if let Some(mut pending) = self.widgets.pending.remove(&id) {
       let window = match self
         .platform
         .create_window(pending.layer_surface, width, height)
@@ -36,7 +36,7 @@ impl LayerShellHandler for Corona {
           return;
         }
       };
-      let Ok(component) = (pending.init)().map_err(|e| {
+      let Ok(component) = pending.init.init().map_err(|e| {
         error!(
           "Failed to initialize Slint component for layer surface {}: {}",
           id, e
