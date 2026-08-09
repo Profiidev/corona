@@ -18,7 +18,7 @@ use crate::adapter::gpu::GpuContext;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
-  gpu: Rc<GpuContext>,
+  gpu: Weak<GpuContext>,
 }
 
 struct SlintCustomPlatformPointer(Rc<SlintCustomPlatform>);
@@ -35,13 +35,15 @@ pub enum SlintCustomPlatformError {
     "a window is already pending creation. You need to create the Slint component for the previous window before creating a new one."
   )]
   WindowAlreadyPending,
+  #[error("GPU context is no longer available")]
+  GpuNotAvailable,
 }
 
 impl SlintCustomPlatform {
   pub fn init(gpu: Rc<GpuContext>) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
       pending: RefCell::new(None),
-      gpu,
+      gpu: Rc::downgrade(&gpu),
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
@@ -60,7 +62,11 @@ impl SlintCustomPlatform {
       return Err(SlintCustomPlatformError::WindowAlreadyPending);
     }
 
-    let window = SlintWindow::new(self.gpu.clone(), layer_surface, width, height)?;
+    let Some(gpu) = self.gpu.upgrade() else {
+      return Err(SlintCustomPlatformError::GpuNotAvailable);
+    };
+
+    let window = SlintWindow::new(gpu, layer_surface, width, height)?;
     self.pending.borrow_mut().replace(window.clone());
 
     Ok(window)

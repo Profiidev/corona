@@ -48,7 +48,7 @@ impl Corona {
     })
   }
 
-  pub fn run(&mut self) -> Result<(), CoronaError> {
+  pub fn run(mut self) -> Result<(), CoronaError> {
     for output in self.wayland.output_state().outputs() {
       self.create_widget(&output, |c: &mut ui::bar::Bar| {});
     }
@@ -56,12 +56,30 @@ impl Corona {
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
 
     while !self.exit_requested {
-      event_loop.dispatch(self)?;
+      event_loop.dispatch(&mut self)?;
       slint::platform::update_timers_and_animations();
       self.render_if_dirty()?;
       self.wayland.flush()?;
     }
+
+    drop(event_loop);
+    self.destroy();
+
     Ok(())
+  }
+
+  fn destroy(self) {
+    drop(self.widgets);
+    drop(self.platform);
+
+    if Rc::try_unwrap(self.gpu).is_err() {
+      tracing::warn!("GpuContext is still referenced elsewhere, cannot destroy");
+    }
+
+    if let Err(e) = self.wayland.flush() {
+      tracing::error!("Failed to flush Wayland connection during shutdown: {}", e);
+    }
+    drop(self.wayland);
   }
 
   fn handle_shell_event(&mut self, _event: ShellEvent) {

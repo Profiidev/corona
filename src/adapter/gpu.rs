@@ -11,11 +11,12 @@ use wgpu::{
 
 use crate::adapter::wayland::WaylandAdapter;
 
+/// Field order is important for drop order
 pub struct GpuContext {
-  pub instance: Instance,
-  adapter: Adapter,
-  pub device: Device,
   pub queue: Queue,
+  pub device: Device,
+  adapter: Adapter,
+  pub instance: Instance,
   display_handle: RawDisplayHandle,
 }
 

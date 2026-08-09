@@ -100,7 +100,7 @@ impl WaylandAdapter {
     layer_surface
   }
 
-  pub fn flush(&mut self) -> Result<(), WaylandAdapterError> {
+  pub fn flush(&self) -> Result<(), WaylandAdapterError> {
     self.conn.flush().map_err(WaylandAdapterError::FlushError)
   }
 
