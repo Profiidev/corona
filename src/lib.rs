@@ -16,11 +16,11 @@ use crate::{
 };
 
 mod adapter;
+mod api;
 mod error;
 mod event;
-mod ui;
 mod wayland;
-mod widgets;
+pub mod widgets;
 
 pub struct Corona {
   wayland: WaylandAdapter,
@@ -53,10 +53,6 @@ impl Corona {
   }
 
   pub fn run(mut self) -> Result<(), CoronaError> {
-    for output in self.wayland.output_state().outputs() {
-      self.create_widget(&output, |_c: &mut ui::bar::Bar| {});
-    }
-
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
 
     while !self.exit_requested {

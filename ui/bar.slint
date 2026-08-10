@@ -1,52 +1,11 @@
-export struct WorkspaceItem {
-    id: int,
-    name: string,
-    active: bool,
-}
-
+import { Button } from "std-widgets.slint";
 export component Bar inherits Window {
-    in property <[WorkspaceItem]> workspaces;
-    in property <string> active-window-title;
-    in property <string> clock;
-    callback workspace-clicked(int);
+  callback clicked();
 
-    background: #1e1e2eee;
-
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        alignment: space-between;
-
-        HorizontalLayout {
-            spacing: 6px;
-            alignment: start;
-            for ws in workspaces: Rectangle {
-                width: 24px;
-                background: area.has-hover ? #45475a : (ws.active ? #89b4fa : #313244);
-                border-radius: 4px;
-                Text {
-                    text: ws.name;
-                    color: ws.active ? #1e1e2e : #cdd6f4;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                area := TouchArea {
-                    clicked => { root.workspace-clicked(ws.id); }
-                }
-            }
-        }
-
-        Text {
-            text: active-window-title;
-            color: #cdd6f4;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-
-        Text {
-            text: clock;
-            color: #cdd6f4;
-            vertical-alignment: center;
-        }
+  Button {
+    text: "Click Me";
+    clicked => {
+      clicked();
     }
+  }
 }

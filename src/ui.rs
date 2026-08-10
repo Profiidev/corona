@@ -5,7 +5,7 @@ macro_rules! slint_components {
         include!(concat!(env!("OUT_DIR"), "/", stringify!($name), ".rs"));
 
         $(
-          impl crate::widgets::init::SlintComponent for $component {
+          impl corona::widgets::init::SlintComponent for $component {
             fn new() -> Result<Self, slint::PlatformError> {
               Self::new()
             }

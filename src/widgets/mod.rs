@@ -17,7 +17,7 @@ mod handler;
 pub mod init;
 mod widget;
 
-pub struct Widgets {
+pub(crate) struct Widgets {
   active: HashMap<ObjectId, Widget>,
   pending: HashMap<ObjectId, PendingWidget>,
 }
