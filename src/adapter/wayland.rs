@@ -3,7 +3,7 @@ use smithay_client_toolkit::{
   compositor::CompositorState,
   output::OutputState,
   registry::RegistryState,
-  seat::SeatState,
+  seat::{Capability, SeatState},
   shell::{
     WaylandSurface,
     wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
@@ -13,7 +13,9 @@ use wayland_client::{
   ConnectError, Connection, EventQueue, Proxy, QueueHandle,
   backend::{ObjectId, WaylandError},
   globals::{BindError, GlobalError, registry_queue_init},
-  protocol::wl_output::WlOutput,
+  protocol::{
+    wl_keyboard::WlKeyboard, wl_output::WlOutput, wl_pointer::WlPointer, wl_seat::WlSeat,
+  },
 };
 
 use crate::Corona;
@@ -27,6 +29,8 @@ pub struct WaylandAdapter {
   output_state: OutputState,
   seat_state: SeatState,
   registry_state: RegistryState,
+  keyboard: Option<WlKeyboard>,
+  pointer: Option<WlPointer>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,7 +83,37 @@ impl WaylandAdapter {
       output_state,
       seat_state,
       registry_state,
+      keyboard: None,
+      pointer: None,
     })
+  }
+
+  pub fn set_capability(&mut self, seat: &WlSeat, capability: Capability, available: bool) {
+    match (capability, available) {
+      (Capability::Keyboard, true) if self.keyboard.is_none() => {
+        match self.seat_state.get_keyboard(&self.queue_handle, seat, None) {
+          Ok(keyboard) => self.keyboard = Some(keyboard),
+          Err(e) => tracing::warn!("failed to bind keyboard: {e}"),
+        }
+      }
+      (Capability::Pointer, true) if self.pointer.is_none() => {
+        match self.seat_state.get_pointer(&self.queue_handle, seat) {
+          Ok(pointer) => self.pointer = Some(pointer),
+          Err(e) => tracing::warn!("failed to bind pointer: {e}"),
+        }
+      }
+      (Capability::Keyboard, false) => {
+        if let Some(keyboard) = self.keyboard.take() {
+          keyboard.release();
+        }
+      }
+      (Capability::Pointer, false) => {
+        if let Some(pointer) = self.pointer.take() {
+          pointer.release();
+        }
+      }
+      _ => {}
+    }
   }
 
   pub fn create_layer_surface(&self, spec: LayerSurfaceSpec) -> LayerSurface {

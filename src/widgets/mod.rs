@@ -20,6 +20,8 @@ mod widget;
 pub(crate) struct Widgets {
   active: HashMap<ObjectId, Widget>,
   pending: HashMap<ObjectId, PendingWidget>,
+  /// Surface that currently holds the keyboard focus, if any.
+  pub(crate) focus: Option<ObjectId>,
 }
 
 struct PendingWidget {
@@ -32,7 +34,12 @@ impl Widgets {
     Self {
       active: HashMap::new(),
       pending: HashMap::new(),
+      focus: None,
     }
+  }
+
+  pub(crate) fn window(&self, id: &ObjectId) -> Option<&Rc<SlintWindow>> {
+    self.active.get(id).map(|widget| &widget.window)
   }
 
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {

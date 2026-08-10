@@ -182,6 +182,10 @@ impl SlintWindow {
     }))
   }
 
+  pub fn dispatch(&self, event: WindowEvent) {
+    self.window.dispatch_event(event);
+  }
+
   pub fn set_physical_size(&self, size: PhysicalSize) {
     self.size.set(size);
     if let Err(e) = self
