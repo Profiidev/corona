@@ -1,10 +1,9 @@
-use smithay_client_toolkit::shell::{
-  WaylandSurface,
-  wlr_layer::{Anchor, KeyboardInteractivity, Layer},
-};
+use smithay_client_toolkit::shell::WaylandSurface;
 use wayland_client::{Proxy, backend::ObjectId, protocol::wl_output::WlOutput};
 
 use crate::{Corona, adapter::wayland::LayerSurfaceSpec, widgets::init::IntoSlintInit};
+
+pub use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WidgetHandle(ObjectId);

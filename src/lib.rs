@@ -19,6 +19,8 @@ use crate::{
   widgets::Widgets,
 };
 
+pub use slint;
+
 mod adapter;
 pub mod api;
 mod error;

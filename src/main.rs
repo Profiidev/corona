@@ -1,8 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
-use corona::{Corona, api::widget::WidgetHandle};
-use slint::ComponentHandle;
-use smithay_client_toolkit::shell::wlr_layer::Anchor;
+use corona::{
+  Corona,
+  api::widget::{Anchor, WidgetHandle},
+  slint::ComponentHandle,
+};
 
 mod ui;
 
