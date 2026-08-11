@@ -28,7 +28,9 @@ impl Dbus {
       .serve_at(PATH, notifications)?
       .build()?;
 
-    conn.request_name(NAME)?;
+    if let Err(e) = conn.request_name(NAME) {
+      tracing::warn!("Failed to request name {}: {}", NAME, e);
+    }
 
     Ok(Self(conn))
   }

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use calloop::{
   channel::Event,
@@ -34,6 +34,15 @@ pub enum EventLoopError {
   WaylandEventSourceTaken,
   #[error("Slint event loop already taken")]
   SlintEventLoopTaken,
+}
+
+fn until_next_second() -> Duration {
+  let subsec = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .subsec_nanos() as u64;
+  // 1ms skew do prevent double trigger
+  Duration::from_nanos(1_000_000_000 - subsec) + Duration::from_millis(1)
 }
 
 impl EventLoop {
@@ -80,12 +89,12 @@ impl EventLoop {
       slint_tx
     };
 
-    let clock_timer = Timer::from_duration(Duration::from_secs(1));
+    let clock_timer = Timer::from_duration(until_next_second());
     calloop
       .handle()
       .insert_source(clock_timer, |_, _, state: &mut Corona| {
         state.handle_shell_event(ShellEvent::Tick);
-        TimeoutAction::ToDuration(Duration::from_secs(1))
+        TimeoutAction::ToDuration(until_next_second())
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
 
@@ -122,6 +131,22 @@ impl EventLoop {
     LoopHandle {
       handle: self.calloop.handle(),
       loop_tx: self.loop_tx.clone(),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn lands_after_a_second_boundary() {
+    for _ in 0..100 {
+      let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+      let target = now + until_next_second();
+      assert_eq!(target.as_secs(), now.as_secs() + 1);
+      assert!(target.subsec_nanos() < 2_000_000, "{target:?}");
+      std::thread::sleep(Duration::from_millis(7));
     }
   }
 }
