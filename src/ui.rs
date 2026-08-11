@@ -16,4 +16,4 @@ macro_rules! slint_components {
   };
 }
 
-slint_components!(bar(Bar));
+slint_components!(bar(Bar), panel(Panel));

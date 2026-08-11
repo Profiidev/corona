@@ -1,9 +1,9 @@
 use wayland_client::protocol::wl_output::WlOutput;
 
-use crate::{Corona, adapter::slint::SlintOnLoopEvent};
+use crate::{Corona, event::event_loop::OnLoopEvent};
 
 #[derive(Clone)]
-pub struct CoronaHandle(calloop::channel::Sender<SlintOnLoopEvent>);
+pub struct CoronaHandle(calloop::channel::Sender<OnLoopEvent>);
 
 impl Corona {
   pub fn outputs(&self) -> Vec<WlOutput> {
@@ -16,7 +16,7 @@ impl Corona {
 }
 
 impl CoronaHandle {
-  pub fn defer(&self, f: impl FnOnce(&mut Corona) + Send + 'static) {
+  pub fn defer(&self, f: impl FnOnce(&mut Corona) + 'static) {
     if self.0.send(Box::new(f)).is_err() {
       tracing::warn!("event loop already terminated, cannot defer event");
     }

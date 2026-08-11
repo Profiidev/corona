@@ -17,7 +17,7 @@ pub struct LoopHandle {
   pub loop_tx: calloop::channel::Sender<OnLoopEvent>,
 }
 
-pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send>;
+pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + 'static>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EventLoopError {

@@ -15,12 +15,9 @@ use smithay_client_toolkit::shell::{WaylandSurface, wlr_layer::LayerSurface};
 use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
-use crate::Corona;
 use crate::adapter::gpu::GpuContext;
 #[cfg(feature = "hot-reload")]
 use crate::event::event_loop::EventLoop;
-
-pub type SlintOnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send>;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
