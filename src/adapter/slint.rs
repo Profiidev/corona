@@ -17,7 +17,7 @@ use wgpu::CurrentSurfaceTexture;
 
 use crate::adapter::gpu::GpuContext;
 #[cfg(feature = "hot-reload")]
-use crate::event::event_loop::EventLoop;
+use crate::event::event_loop::{EventLoop, SlintOnLoopEvent};
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
@@ -78,7 +78,7 @@ impl SlintCustomPlatform {
       pending: RefCell::new(None),
       gpu: Rc::downgrade(&gpu),
       #[cfg(feature = "hot-reload")]
-      proxy: SlintEventLoopProxy(event_loop.handle().loop_tx.clone()),
+      proxy: SlintEventLoopProxy(event_loop.slint_sender()),
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
