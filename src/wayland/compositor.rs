@@ -34,7 +34,7 @@ impl CompositorHandler for Corona {
     _surface: &wl_surface::WlSurface,
     _time: u32,
   ) {
-    // TODO
+    // currently not needed
   }
 
   fn surface_enter(
@@ -44,7 +44,7 @@ impl CompositorHandler for Corona {
     _surface: &wl_surface::WlSurface,
     _output: &wl_output::WlOutput,
   ) {
-    // TODO
+    // currently not needed
   }
 
   fn surface_leave(
@@ -54,6 +54,6 @@ impl CompositorHandler for Corona {
     _surface: &wl_surface::WlSurface,
     _output: &wl_output::WlOutput,
   ) {
-    // TODO
+    // currently not needed
   }
 }

@@ -84,7 +84,6 @@ impl KeyboardHandler for Corona {
     _raw_modifiers: RawModifiers,
     _layout: u32,
   ) {
-    // TODO ?
   }
 }
 

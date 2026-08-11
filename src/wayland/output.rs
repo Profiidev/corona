@@ -1,7 +1,7 @@
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use wayland_client::{Connection, QueueHandle, protocol::wl_output};
 
-use crate::Corona;
+use crate::{Corona, api::event::ShellEvent};
 
 impl OutputHandler for Corona {
   fn output_state(&mut self) -> &mut OutputState {
@@ -12,26 +12,26 @@ impl OutputHandler for Corona {
     &mut self,
     _conn: &Connection,
     _qh: &QueueHandle<Self>,
-    _output: wl_output::WlOutput,
+    output: wl_output::WlOutput,
   ) {
-    // TODO
+    self.handle_shell_event(ShellEvent::NewOutput(output));
   }
 
   fn update_output(
     &mut self,
     _conn: &Connection,
     _qh: &QueueHandle<Self>,
-    _output: wl_output::WlOutput,
+    output: wl_output::WlOutput,
   ) {
-    // TODO
+    self.handle_shell_event(ShellEvent::UpdateOutput(output));
   }
 
   fn output_destroyed(
     &mut self,
     _conn: &Connection,
     _qh: &QueueHandle<Self>,
-    _output: wl_output::WlOutput,
+    output: wl_output::WlOutput,
   ) {
-    // TODO
+    self.handle_shell_event(ShellEvent::DestroyOutput(output));
   }
 }

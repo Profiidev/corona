@@ -1,3 +1,5 @@
+use wayland_client::protocol::wl_output::WlOutput;
+
 #[derive(Clone)]
 pub enum ShellEvent {
   // general
@@ -13,4 +15,8 @@ pub enum ShellEvent {
     timeout_ms: i32,
   },
   CloseNotification(u32),
+  // outputs
+  NewOutput(WlOutput),
+  UpdateOutput(WlOutput),
+  DestroyOutput(WlOutput),
 }
