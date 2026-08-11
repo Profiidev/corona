@@ -1,26 +1,10 @@
-use std::rc::Rc;
-
 use smithay_client_toolkit::shell::{
   WaylandSurface,
   wlr_layer::{Anchor, KeyboardInteractivity, Layer},
 };
 use wayland_client::{Proxy, backend::ObjectId, protocol::wl_output::WlOutput};
 
-use crate::{
-  Corona,
-  adapter::{slint::SlintWindow, wayland::LayerSurfaceSpec},
-  widgets::{
-    PendingWidget,
-    init::{IntoSlintInit, SlintComponent},
-  },
-};
-
-// field order is important for drop order
-pub struct Widget {
-  #[allow(dead_code)]
-  component: Box<dyn SlintComponent>,
-  pub(super) window: Rc<SlintWindow>,
-}
+use crate::{Corona, adapter::wayland::LayerSurfaceSpec, widgets::init::IntoSlintInit};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WidgetHandle(ObjectId);
@@ -42,12 +26,6 @@ pub enum WidgetError {
   InvalidWidth,
   #[error("Height must be greater than 0 when not anchoring to both top and bottom")]
   InvalidHeight,
-}
-
-impl Widget {
-  pub fn new(window: Rc<SlintWindow>, component: Box<dyn SlintComponent>) -> Self {
-    Self { window, component }
-  }
 }
 
 impl Corona {
@@ -130,14 +108,10 @@ impl WidgetBuilder<'_> {
     });
     let id = objects.layer_surface.wl_surface().id();
 
-    self.corona.widgets.pending.insert(
-      id.clone(),
-      PendingWidget {
-        objects,
-        init: Box::new(init.into_init()),
-        scale: 1.0,
-      },
-    );
+    self
+      .corona
+      .widgets
+      .create_pending_widget(id.clone(), objects, Box::new(init.into_init()), 1.0);
 
     Ok(WidgetHandle(id))
   }

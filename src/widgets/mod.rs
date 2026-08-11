@@ -5,22 +5,24 @@ use wayland_client::backend::ObjectId;
 use crate::{
   adapter::{slint::SlintWindow, wayland::LayerSurfaceObjects},
   error::CoronaError,
-  widgets::{
-    init::{SlintComponent, SlintComponentInit},
-    widget::Widget,
-  },
+  widgets::init::{SlintComponent, SlintComponentInit},
 };
 
 mod handler;
 pub mod init;
-mod widget;
-pub use widget::{WidgetBuilder, WidgetError, WidgetHandle};
 
 pub(crate) struct Widgets {
   active: HashMap<ObjectId, Widget>,
   pending: HashMap<ObjectId, PendingWidget>,
   /// Surface that currently holds the keyboard focus, if any.
   pub(crate) focus: Option<ObjectId>,
+}
+
+// field order is important for drop order
+pub struct Widget {
+  #[allow(dead_code)]
+  component: Box<dyn SlintComponent>,
+  pub(super) window: Rc<SlintWindow>,
 }
 
 struct PendingWidget {
@@ -87,7 +89,30 @@ impl Widgets {
     }
   }
 
-  fn destroy_widget(&mut self, id: ObjectId) {
+  pub fn create_pending_widget(
+    &mut self,
+    id: ObjectId,
+    objects: LayerSurfaceObjects,
+    init: Box<dyn SlintComponentInit>,
+    scale: f64,
+  ) {
+    self.pending.insert(
+      id,
+      PendingWidget {
+        objects,
+        init,
+        scale,
+      },
+    );
+  }
+
+  pub fn destroy_widget(&mut self, id: ObjectId) {
     self.active.remove(&id);
+  }
+}
+
+impl Widget {
+  pub fn new(window: Rc<SlintWindow>, component: Box<dyn SlintComponent>) -> Self {
+    Self { window, component }
   }
 }

@@ -2,6 +2,8 @@ use wayland_client::protocol::wl_output::WlOutput;
 
 use crate::{Corona, event::event_loop::OnLoopEvent};
 
+pub mod widget;
+
 #[derive(Clone)]
 pub struct CoronaHandle(calloop::channel::Sender<OnLoopEvent>);
 
