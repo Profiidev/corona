@@ -2,6 +2,7 @@ use wayland_client::protocol::wl_output::WlOutput;
 
 use crate::{Corona, event::event_loop::OnLoopEvent};
 
+pub mod event;
 pub mod widget;
 
 #[derive(Clone)]

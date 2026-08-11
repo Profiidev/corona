@@ -84,7 +84,7 @@ impl EventLoop {
     calloop
       .handle()
       .insert_source(clock_timer, |_, _, state: &mut Corona| {
-        state.tick_clock();
+        state.handle_shell_event(ShellEvent::Tick);
         TimeoutAction::ToDuration(Duration::from_secs(1))
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;

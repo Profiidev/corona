@@ -1,4 +1,8 @@
+#[derive(Clone)]
 pub enum ShellEvent {
+  // general
+  Tick,
+  // notifications
   NewNotification {
     id: u32,
     app_name: String,

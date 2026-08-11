@@ -41,7 +41,7 @@ impl Dbus {
     self.emit(|e| zbus::block_on(Notifications::notification_closed(e, id, reason as u32)));
   }
 
-  pub fn action_invoked(&self, id: u32, action_key: &str) {
+  pub fn notification_action(&self, id: u32, action_key: &str) {
     self.emit(|e| zbus::block_on(Notifications::action_invoked(e, id, action_key)));
   }
 

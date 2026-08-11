@@ -33,6 +33,7 @@ pub struct Corona {
   event_loop: Option<EventLoop>,
   loop_handle: LoopHandle,
   dbus: Dbus,
+  event_listeners: Vec<Box<dyn FnMut(ShellEvent)>>,
   widgets: Widgets,
   exit_requested: bool,
 }
@@ -55,6 +56,7 @@ impl Corona {
       platform,
       loop_handle: event_loop.handle(),
       dbus,
+      event_listeners: Vec::new(),
       event_loop: Some(event_loop),
       widgets: Widgets::new(),
       exit_requested: false,
@@ -99,12 +101,10 @@ impl Corona {
     drop(self.wayland);
   }
 
-  fn handle_shell_event(&mut self, _event: ShellEvent) {
-    // TODO
-  }
-
-  fn tick_clock(&mut self) {
-    // TODO
+  fn handle_shell_event(&mut self, event: ShellEvent) {
+    for listener in &mut self.event_listeners {
+      listener(event.clone())
+    }
   }
 
   fn render_if_dirty(&self) -> Result<(), CoronaError> {
