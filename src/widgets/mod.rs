@@ -16,6 +16,7 @@ use crate::{
 mod handler;
 pub mod init;
 mod widget;
+pub use widget::{WidgetBuilder, WidgetError, WidgetHandle};
 
 pub(crate) struct Widgets {
   active: HashMap<ObjectId, Widget>,
@@ -63,7 +64,14 @@ impl Widgets {
     window: Rc<SlintWindow>,
     component: Box<dyn SlintComponent>,
   ) {
-    self.active.insert(id, Widget::new(window, component));
+    let widget = Widget::new(window, component);
+
+    // do an initial paint to ensure the widget is visible immediately
+    if let Err(e) = widget.window.render_if_dirty() {
+      tracing::warn!("failed to paint new widget {}: {}", id, e);
+    }
+
+    self.active.insert(id, widget);
   }
 
   fn resize_widget(&mut self, id: ObjectId, width: u32, height: u32) {
