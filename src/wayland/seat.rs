@@ -19,7 +19,7 @@ impl SeatHandler for Corona {
   ) {
     self
       .wayland
-      .set_capability(&seat, capability, true, &self.loop_handle);
+      .set_capability(&seat, capability, true, &self.loop_handle.handle);
   }
 
   fn remove_capability(
@@ -31,7 +31,7 @@ impl SeatHandler for Corona {
   ) {
     self
       .wayland
-      .set_capability(&seat, capability, false, &self.loop_handle);
+      .set_capability(&seat, capability, false, &self.loop_handle.handle);
   }
 
   fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}

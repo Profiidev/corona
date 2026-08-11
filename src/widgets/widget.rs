@@ -1,4 +1,4 @@
-use std::{mem::ManuallyDrop, rc::Rc};
+use std::rc::Rc;
 
 use smithay_client_toolkit::shell::{
   WaylandSurface,
@@ -15,9 +15,11 @@ use crate::{
   },
 };
 
+// field order is important for drop order
 pub struct Widget {
+  #[allow(dead_code)]
+  component: Box<dyn SlintComponent>,
   pub(super) window: Rc<SlintWindow>,
-  component: ManuallyDrop<Box<dyn SlintComponent>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -25,10 +27,7 @@ pub struct WidgetHandle(ObjectId);
 
 impl Widget {
   pub fn new(window: Rc<SlintWindow>, component: Box<dyn SlintComponent>) -> Self {
-    Self {
-      window,
-      component: ManuallyDrop::new(component),
-    }
+    Self { window, component }
   }
 }
 
@@ -63,11 +62,5 @@ impl Corona {
 
   pub fn destroy_widget(&mut self, handle: WidgetHandle) {
     self.widgets.destroy_widget(handle.0);
-  }
-}
-
-impl Drop for Widget {
-  fn drop(&mut self) {
-    unsafe { ManuallyDrop::drop(&mut self.component) };
   }
 }

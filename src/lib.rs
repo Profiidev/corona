@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use calloop::LoopHandle;
 use smithay_client_toolkit::{
   delegate_dispatch2, delegate_registry,
   output::OutputState,
@@ -12,12 +11,15 @@ use smithay_client_toolkit::{
 use crate::{
   adapter::{gpu::GpuContext, slint::SlintCustomPlatform, wayland::WaylandAdapter},
   error::CoronaError,
-  event::{event::ShellEvent, event_loop::EventLoop},
+  event::{
+    event::ShellEvent,
+    event_loop::{EventLoop, LoopHandle},
+  },
   widgets::Widgets,
 };
 
 mod adapter;
-mod api;
+pub mod api;
 mod error;
 mod event;
 mod wayland;
@@ -28,7 +30,7 @@ pub struct Corona {
   gpu: Rc<GpuContext>,
   platform: Rc<SlintCustomPlatform>,
   event_loop: Option<EventLoop>,
-  loop_handle: LoopHandle<'static, Self>,
+  loop_handle: LoopHandle,
   widgets: Widgets,
   exit_requested: bool,
 }
@@ -37,11 +39,11 @@ impl Corona {
   pub fn init() -> Result<Self, CoronaError> {
     let mut wayland = WaylandAdapter::init()?;
     let gpu = GpuContext::init(&wayland)?;
-    let platform = SlintCustomPlatform::init(gpu.clone())?;
-    let event_loop = EventLoop::init(
-      &mut wayland,
+    let event_loop = EventLoop::init(&mut wayland)?;
+    let platform = SlintCustomPlatform::init(
+      gpu.clone(),
       #[cfg(feature = "hot-reload")]
-      &platform,
+      &event_loop,
     )?;
 
     Ok(Self {

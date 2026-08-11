@@ -1,6 +1,5 @@
 use std::{
   cell::{Cell, RefCell},
-  mem::ManuallyDrop,
   rc::{Rc, Weak},
 };
 
@@ -16,23 +15,22 @@ use smithay_client_toolkit::shell::{WaylandSurface, wlr_layer::LayerSurface};
 use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
-#[cfg(feature = "hot-reload")]
 use crate::Corona;
 use crate::adapter::gpu::GpuContext;
-
 #[cfg(feature = "hot-reload")]
+use crate::event::event_loop::EventLoop;
+
 pub type SlintOnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send>;
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
   gpu: Weak<GpuContext>,
   #[cfg(feature = "hot-reload")]
-  loop_tx: calloop::channel::Sender<SlintOnLoopEvent>,
-  #[cfg(feature = "hot-reload")]
-  loop_rx: RefCell<Option<calloop::channel::Channel<SlintOnLoopEvent>>>,
+  proxy: SlintEventLoopProxy,
 }
 
 #[cfg(feature = "hot-reload")]
+#[derive(Clone)]
 struct SlintEventLoopProxy(calloop::channel::Sender<SlintOnLoopEvent>);
 
 #[cfg(feature = "hot-reload")]
@@ -75,16 +73,15 @@ pub enum SlintCustomPlatformError {
 }
 
 impl SlintCustomPlatform {
-  pub fn init(gpu: Rc<GpuContext>) -> Result<Rc<Self>, SlintCustomPlatformError> {
-    #[cfg(feature = "hot-reload")]
-    let (loop_tx, loop_rx) = calloop::channel::channel::<SlintOnLoopEvent>();
+  pub fn init(
+    gpu: Rc<GpuContext>,
+    #[cfg(feature = "hot-reload")] event_loop: &EventLoop,
+  ) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
       pending: RefCell::new(None),
       gpu: Rc::downgrade(&gpu),
       #[cfg(feature = "hot-reload")]
-      loop_tx,
-      #[cfg(feature = "hot-reload")]
-      loop_rx: RefCell::new(Some(loop_rx)),
+      proxy: SlintEventLoopProxy(event_loop.handle().loop_tx.clone()),
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
@@ -112,11 +109,6 @@ impl SlintCustomPlatform {
 
     Ok(window)
   }
-
-  #[cfg(feature = "hot-reload")]
-  pub fn event_source(&self) -> Option<calloop::channel::Channel<SlintOnLoopEvent>> {
-    self.loop_rx.take()
-  }
 }
 
 impl Platform for SlintCustomPlatform {
@@ -131,7 +123,7 @@ impl Platform for SlintCustomPlatform {
 
   #[cfg(feature = "hot-reload")]
   fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
-    Some(Box::new(SlintEventLoopProxy(self.loop_tx.clone())))
+    Some(Box::new(self.proxy.clone()))
   }
 }
 
@@ -146,14 +138,16 @@ impl Platform for SlintCustomPlatformPointer {
   }
 }
 
+// field order is important for drop order
 pub struct SlintWindow {
-  window: ManuallyDrop<Window>,
-  renderer: ManuallyDrop<FemtoVGWGPURenderer>,
-  surface: ManuallyDrop<wgpu::Surface<'static>>,
+  window: Window,
+  renderer: FemtoVGWGPURenderer,
+  surface: wgpu::Surface<'static>,
+  #[allow(dead_code)]
+  layer_surface: LayerSurface,
   gpu: Rc<GpuContext>,
   dirty: Cell<bool>,
   size: Cell<PhysicalSize>,
-  layer_surface: ManuallyDrop<LayerSurface>,
 }
 
 impl SlintWindow {
@@ -171,13 +165,13 @@ impl SlintWindow {
       let window = Window::new(Weak::clone(weak_self) as Weak<dyn WindowAdapter>);
 
       Self {
-        window: ManuallyDrop::new(window),
-        renderer: ManuallyDrop::new(renderer),
-        surface: ManuallyDrop::new(surface),
+        window,
+        renderer,
+        surface,
+        layer_surface,
         gpu,
         dirty: Cell::new(false),
         size: Cell::new(PhysicalSize::new(width, height)),
-        layer_surface: ManuallyDrop::new(layer_surface),
       }
     }))
   }
@@ -267,7 +261,7 @@ impl WindowAdapter for SlintWindow {
   }
 
   fn renderer(&self) -> &dyn Renderer {
-    &*self.renderer
+    &self.renderer
   }
 
   fn size(&self) -> PhysicalSize {
@@ -281,16 +275,5 @@ impl WindowAdapter for SlintWindow {
 
   fn request_redraw(&self) {
     self.dirty.set(true);
-  }
-}
-
-impl Drop for SlintWindow {
-  fn drop(&mut self) {
-    unsafe {
-      ManuallyDrop::drop(&mut self.window);
-      ManuallyDrop::drop(&mut self.renderer);
-      ManuallyDrop::drop(&mut self.surface);
-      ManuallyDrop::drop(&mut self.layer_surface);
-    }
   }
 }

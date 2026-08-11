@@ -5,13 +5,19 @@ use calloop::{
   timer::{TimeoutAction, Timer},
 };
 
-#[cfg(feature = "hot-reload")]
-use crate::adapter::slint::SlintCustomPlatform;
 use crate::{Corona, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
 
 pub struct EventLoop {
   calloop: calloop::EventLoop<'static, Corona>,
+  loop_tx: calloop::channel::Sender<OnLoopEvent>,
 }
+
+pub struct LoopHandle {
+  pub handle: calloop::LoopHandle<'static, Corona>,
+  pub loop_tx: calloop::channel::Sender<OnLoopEvent>,
+}
+
+pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EventLoopError {
@@ -24,10 +30,7 @@ pub enum EventLoopError {
 }
 
 impl EventLoop {
-  pub fn init(
-    wayland: &mut WaylandAdapter,
-    #[cfg(feature = "hot-reload")] platform: &SlintCustomPlatform,
-  ) -> Result<Self, EventLoopError> {
+  pub fn init(wayland: &mut WaylandAdapter) -> Result<Self, EventLoopError> {
     let calloop = calloop::EventLoop::<'static, Corona>::try_new()?;
     let (tx, rx) = calloop::channel::channel::<ShellEvent>();
 
@@ -46,20 +49,15 @@ impl EventLoop {
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
 
-    #[cfg(feature = "hot-reload")]
-    {
-      let source = platform
-        .event_source()
-        .ok_or(EventLoopError::SlintEventLoopTaken)?;
-      calloop
-        .handle()
-        .insert_source(source, |event, _, state: &mut Corona| {
-          if let Event::Msg(f) = event {
-            f(state);
-          }
-        })
-        .map_err(|e| EventLoopError::Calloop(e.error))?;
-    }
+    let (loop_tx, loop_rx) = calloop::channel::channel::<OnLoopEvent>();
+    calloop
+      .handle()
+      .insert_source(loop_rx, |event, _, state: &mut Corona| {
+        if let Event::Msg(f) = event {
+          f(state);
+        }
+      })
+      .map_err(|e| EventLoopError::Calloop(e.error))?;
 
     let clock_timer = Timer::from_duration(Duration::from_secs(1));
     calloop
@@ -73,7 +71,7 @@ impl EventLoop {
     // TODO add additional event source for Hyprland IPC, D-Bus, hot-reload watcher, etc.
     let _ = tx;
 
-    Ok(Self { calloop })
+    Ok(Self { calloop, loop_tx })
   }
 
   pub fn dispatch(&mut self, state: &mut Corona) -> Result<(), EventLoopError> {
@@ -83,7 +81,10 @@ impl EventLoop {
       .map_err(EventLoopError::Calloop)
   }
 
-  pub fn handle(&self) -> calloop::LoopHandle<'static, Corona> {
-    self.calloop.handle()
+  pub fn handle(&self) -> LoopHandle {
+    LoopHandle {
+      handle: self.calloop.handle(),
+      loop_tx: self.loop_tx.clone(),
+    }
   }
 }
