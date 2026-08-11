@@ -14,7 +14,7 @@ impl CompositorHandler for Corona {
     _surface: &wl_surface::WlSurface,
     _new_factor: i32,
   ) {
-    // TODO
+    // handled by wp_fractional_scale_v1
   }
 
   fn transform_changed(
@@ -24,7 +24,7 @@ impl CompositorHandler for Corona {
     _surface: &wl_surface::WlSurface,
     _new_transform: wl_output::Transform,
   ) {
-    // TODO
+    // handled by wp_fractional_scale_v1
   }
 
   fn frame(

@@ -11,11 +11,11 @@ use slint::{
     Platform, Renderer, WindowAdapter, WindowEvent, femtovg_renderer::FemtoVGWGPURenderer,
   },
 };
-use smithay_client_toolkit::shell::{WaylandSurface, wlr_layer::LayerSurface};
+use smithay_client_toolkit::shell::WaylandSurface;
 use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
-use crate::adapter::gpu::GpuContext;
+use crate::adapter::{gpu::GpuContext, wayland::LayerSurfaceObjects};
 #[cfg(feature = "hot-reload")]
 use crate::event::event_loop::{EventLoop, SlintOnLoopEvent};
 
@@ -89,9 +89,10 @@ impl SlintCustomPlatform {
 
   pub fn create_window(
     &self,
-    layer_surface: LayerSurface,
+    objects: LayerSurfaceObjects,
     width: u32,
     height: u32,
+    scale: f64,
   ) -> Result<Rc<SlintWindow>, SlintCustomPlatformError> {
     if self.pending.borrow().as_ref().is_some() {
       return Err(SlintCustomPlatformError::WindowAlreadyPending);
@@ -101,7 +102,7 @@ impl SlintCustomPlatform {
       return Err(SlintCustomPlatformError::GpuNotAvailable);
     };
 
-    let window = SlintWindow::new(gpu, layer_surface, width, height)?;
+    let window = SlintWindow::new(gpu, objects, width, height, scale)?;
     self.pending.borrow_mut().replace(window.clone());
 
     Ok(window)
@@ -140,35 +141,63 @@ pub struct SlintWindow {
   window: Window,
   renderer: FemtoVGWGPURenderer,
   surface: wgpu::Surface<'static>,
-  #[allow(dead_code)]
-  layer_surface: LayerSurface,
+  objects: LayerSurfaceObjects,
   gpu: Rc<GpuContext>,
   dirty: Cell<bool>,
+  /// Size of the wgpu surface, in physical pixels: `round(logical * scale)`.
   size: Cell<PhysicalSize>,
+  /// Size the compositor laid out, in logical pixels. Without scale applied.
+  logical: Cell<(u32, u32)>,
+  scale: Cell<f64>,
 }
 
 impl SlintWindow {
   fn new(
     gpu: Rc<GpuContext>,
-    layer_surface: LayerSurface,
+    objects: LayerSurfaceObjects,
     width: u32,
     height: u32,
+    scale: f64,
   ) -> Result<Rc<Self>, SlintCustomPlatformError> {
-    let surface = gpu.create_surface(&layer_surface.wl_surface().id(), width, height)?;
+    let (physical_width, physical_height) = physical_size(width, height, scale);
+    objects
+      .viewport
+      .set_destination(width as i32, height as i32);
+
+    let surface = gpu.create_surface(
+      &objects.layer_surface.wl_surface().id(),
+      physical_width,
+      physical_height,
+    )?;
+    tracing::debug!(
+      "new window: scale {} logical {}x{} physical {}x{}",
+      scale,
+      width,
+      height,
+      physical_width,
+      physical_height
+    );
+
     let renderer =
       FemtoVGWGPURenderer::new(gpu.instance.clone(), gpu.device.clone(), gpu.queue.clone())?;
 
     Ok(Rc::new_cyclic(|weak_self| {
       let window = Window::new(Weak::clone(weak_self) as Weak<dyn WindowAdapter>);
 
+      window.dispatch_event(WindowEvent::ScaleFactorChanged {
+        scale_factor: scale as f32,
+      });
+
       Self {
         window,
         renderer,
         surface,
-        layer_surface,
+        objects,
         gpu,
         dirty: Cell::new(false),
-        size: Cell::new(PhysicalSize::new(width, height)),
+        size: Cell::new(PhysicalSize::new(physical_width, physical_height)),
+        logical: Cell::new((width, height)),
+        scale: Cell::new(scale),
       }
     }))
   }
@@ -177,14 +206,52 @@ impl SlintWindow {
     self.window.dispatch_event(event);
   }
 
-  pub fn set_physical_size(&self, size: PhysicalSize) {
+  pub fn set_logical_size(&self, width: u32, height: u32) {
+    if self.logical.replace((width, height)) == (width, height) {
+      return;
+    }
+    self.apply_geometry(false);
+  }
+
+  pub fn set_scale(&self, scale: f64) {
+    if self.scale.replace(scale) == scale {
+      return;
+    }
+    self.apply_geometry(true);
+  }
+
+  fn apply_geometry(&self, scale_changed: bool) {
+    let (logical_width, logical_height) = self.logical.get();
+    let scale = self.scale.get();
+
+    let (width, height) = physical_size(logical_width, logical_height, scale);
+    let size = PhysicalSize::new(width, height);
+
     self.size.set(size);
-    if let Err(e) = self
-      .gpu
-      .configure_surface(&self.surface, size.width, size.height)
-    {
+    tracing::debug!(
+      "geometry: scale {} logical {}x{} physical {}x{}",
+      scale,
+      logical_width,
+      logical_height,
+      width,
+      height
+    );
+
+    self
+      .objects
+      .viewport
+      .set_destination(logical_width as i32, logical_height as i32);
+
+    if let Err(e) = self.gpu.configure_surface(&self.surface, width, height) {
       tracing::warn!("failed to reconfigure wgpu surface: {e:#}");
     }
+
+    if scale_changed {
+      self.window.dispatch_event(WindowEvent::ScaleFactorChanged {
+        scale_factor: scale as f32,
+      });
+    }
+
     self.window.dispatch_event(WindowEvent::Resized {
       size: size.to_logical(self.window.scale_factor()),
     });
@@ -274,11 +341,15 @@ impl WindowAdapter for SlintWindow {
   }
 
   fn set_size(&self, _size: WindowSize) {
-    // The compositor (not the app) owns our size via layer-shell configure; ignore requests
-    // from Slint itself (e.g. layout-driven resize) — set_physical_size is the real path in.
+    // set from the compositor via layer shell configuration
   }
 
   fn request_redraw(&self) {
     self.dirty.set(true);
   }
+}
+
+fn physical_size(width: u32, height: u32, scale: f64) -> (u32, u32) {
+  let px = |v: u32| ((v as f64 * scale).round() as u32).max(1);
+  (px(width), px(height))
 }

@@ -29,7 +29,7 @@ impl LayerShellHandler for Corona {
     if let Some(mut pending) = self.widgets.pending.remove(&id) {
       let window = match self
         .platform
-        .create_window(pending.layer_surface, width, height)
+        .create_window(pending.objects, width, height, pending.scale)
       {
         Ok(window) => window,
         Err(e) => {

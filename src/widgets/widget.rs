@@ -118,7 +118,7 @@ impl WidgetBuilder<'_> {
       return Err(WidgetError::InvalidHeight);
     }
 
-    let surface = self.corona.wayland.create_layer_surface(LayerSurfaceSpec {
+    let objects = self.corona.wayland.create_layer_surface(LayerSurfaceSpec {
       namespace: self.namespace,
       layer: self.layer,
       anchor: self.anchor,
@@ -128,13 +128,14 @@ impl WidgetBuilder<'_> {
       output: Some(output),
       keyboard_interactivity: self.keyboard_interactivity,
     });
-    let id = surface.wl_surface().id();
+    let id = objects.layer_surface.wl_surface().id();
 
     self.corona.widgets.pending.insert(
       id.clone(),
       PendingWidget {
-        layer_surface: surface,
+        objects,
         init: Box::new(init.into_init()),
+        scale: 1.0,
       },
     );
 

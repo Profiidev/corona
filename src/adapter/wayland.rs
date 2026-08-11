@@ -1,6 +1,9 @@
+use std::mem::ManuallyDrop;
+
 use calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
   compositor::CompositorState,
+  globals::GlobalData,
   output::OutputState,
   registry::RegistryState,
   seat::{Capability, SeatState},
@@ -15,13 +18,23 @@ use wayland_client::{
   globals::{BindError, GlobalError, registry_queue_init},
   protocol::{
     wl_keyboard::WlKeyboard, wl_output::WlOutput, wl_pointer::WlPointer, wl_seat::WlSeat,
+    wl_surface::WlSurface,
   },
+};
+use wayland_protocols::wp::{
+  fractional_scale::v1::client::{
+    wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+    wp_fractional_scale_v1::WpFractionalScaleV1,
+  },
+  viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
 };
 
 use crate::Corona;
 
 pub struct WaylandAdapter {
   conn: Connection,
+  viewporter: WpViewporter,
+  fractional_scale: WpFractionalScaleManagerV1,
   event_queue: Option<EventQueue<Corona>>,
   queue_handle: QueueHandle<Corona>,
   compositor: CompositorState,
@@ -43,8 +56,19 @@ pub enum WaylandAdapterError {
   CompositorBindError(#[source] BindError),
   #[error("zwlr_layer_shell_v1 not available: {0}")]
   LayerShellBindError(#[source] BindError),
+  #[error("wp_viewporter not available, cannot scale widgets to the output: {0}")]
+  ViewporterBindError(#[source] BindError),
+  #[error("wp_fractional_scale_manager_v1 not available, cannot scale widgets to the output: {0}")]
+  FractionalScaleBindError(#[source] BindError),
   #[error("failed to flush Wayland connection: {0}")]
   FlushError(#[source] WaylandError),
+}
+
+pub struct LayerSurfaceObjects {
+  pub layer_surface: ManuallyDrop<LayerSurface>,
+  pub wl_surface: WlSurface,
+  pub viewport: WpViewport,
+  pub fractional_scale: WpFractionalScaleV1,
 }
 
 pub struct LayerSurfaceSpec<'a> {
@@ -69,6 +93,12 @@ impl WaylandAdapter {
       CompositorState::bind(&globals, &qh).map_err(WaylandAdapterError::CompositorBindError)?;
     let layer_shell =
       LayerShell::bind(&globals, &qh).map_err(WaylandAdapterError::LayerShellBindError)?;
+    let viewporter = globals
+      .bind::<WpViewporter, _, _>(&qh, 1..=1, GlobalData)
+      .map_err(WaylandAdapterError::ViewporterBindError)?;
+    let fractional_scale = globals
+      .bind::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, GlobalData)
+      .map_err(WaylandAdapterError::FractionalScaleBindError)?;
 
     let output_state = OutputState::new(&globals, &qh);
     let seat_state = SeatState::new(&globals, &qh);
@@ -76,6 +106,8 @@ impl WaylandAdapter {
 
     Ok(Self {
       conn,
+      viewporter,
+      fractional_scale,
       event_queue: Some(event_queue),
       queue_handle: qh,
       compositor,
@@ -130,11 +162,20 @@ impl WaylandAdapter {
     }
   }
 
-  pub fn create_layer_surface(&self, spec: LayerSurfaceSpec) -> LayerSurface {
+  pub fn create_layer_surface(&self, spec: LayerSurfaceSpec) -> LayerSurfaceObjects {
     let wl_surface = self.compositor.create_surface(&self.queue_handle);
+    let viewport = self
+      .viewporter
+      .get_viewport(&wl_surface, &self.queue_handle, GlobalData);
+    let fractional_scale = self.fractional_scale.get_fractional_scale(
+      &wl_surface,
+      &self.queue_handle,
+      wl_surface.clone(),
+    );
+
     let layer_surface = self.layer_shell.create_layer_surface(
       &self.queue_handle,
-      wl_surface,
+      wl_surface.clone(),
       spec.layer,
       Some(spec.namespace),
       spec.output,
@@ -145,7 +186,13 @@ impl WaylandAdapter {
     layer_surface.set_exclusive_zone(spec.exclusive_zone);
     layer_surface.set_keyboard_interactivity(spec.keyboard_interactivity);
     layer_surface.wl_surface().commit();
-    layer_surface
+
+    LayerSurfaceObjects {
+      layer_surface: ManuallyDrop::new(layer_surface),
+      viewport,
+      fractional_scale,
+      wl_surface,
+    }
   }
 
   pub fn flush(&self) -> Result<(), WaylandAdapterError> {
@@ -177,5 +224,16 @@ impl WaylandAdapter {
 
   pub fn registry_state_mut(&mut self) -> &mut RegistryState {
     &mut self.registry_state
+  }
+}
+
+impl Drop for LayerSurfaceObjects {
+  fn drop(&mut self) {
+    unsafe {
+      ManuallyDrop::drop(&mut self.layer_surface);
+    }
+    self.viewport.destroy();
+    self.fractional_scale.destroy();
+    self.wl_surface.destroy();
   }
 }

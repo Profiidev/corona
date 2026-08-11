@@ -1,11 +1,9 @@
 use std::{collections::HashMap, rc::Rc};
 
-use slint::PhysicalSize;
-use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use wayland_client::backend::ObjectId;
 
 use crate::{
-  adapter::slint::SlintWindow,
+  adapter::{slint::SlintWindow, wayland::LayerSurfaceObjects},
   error::CoronaError,
   widgets::{
     init::{SlintComponent, SlintComponentInit},
@@ -26,8 +24,9 @@ pub(crate) struct Widgets {
 }
 
 struct PendingWidget {
-  layer_surface: LayerSurface,
+  objects: LayerSurfaceObjects,
   init: Box<dyn SlintComponentInit>,
+  scale: f64,
 }
 
 impl Widgets {
@@ -41,6 +40,14 @@ impl Widgets {
 
   pub(crate) fn window(&self, id: &ObjectId) -> Option<&Rc<SlintWindow>> {
     self.active.get(id).map(|widget| &widget.window)
+  }
+
+  pub fn set_scale(&mut self, id: &ObjectId, scale: f64) {
+    if let Some(pending) = self.pending.get_mut(id) {
+      pending.scale = scale;
+    } else if let Some(widget) = self.active.get(id) {
+      widget.window.set_scale(scale);
+    }
   }
 
   pub fn has_active_animations(&self) -> bool {
@@ -76,9 +83,7 @@ impl Widgets {
 
   fn resize_widget(&mut self, id: ObjectId, width: u32, height: u32) {
     if let Some(widget) = self.active.get_mut(&id) {
-      widget
-        .window
-        .set_physical_size(PhysicalSize::new(width, height));
+      widget.window.set_logical_size(width, height);
     }
   }
 
