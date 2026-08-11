@@ -52,11 +52,17 @@ impl Widgets {
     }
   }
 
-  pub fn has_active_animations(&self) -> bool {
+  pub fn needs_render(&self) -> bool {
     self
       .active
       .values()
-      .any(|widget| widget.window.has_active_animations())
+      .any(|widget| widget.window.needs_render())
+  }
+
+  pub fn frame_done(&self, id: &ObjectId) {
+    if let Some(widget) = self.active.get(id) {
+      widget.window.frame_done();
+    }
   }
 
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {

@@ -11,20 +11,18 @@ pub struct EventLoop {
   calloop: calloop::EventLoop<'static, Corona>,
   event_tx: ShellSender,
   loop_tx: calloop::channel::Sender<OnLoopEvent>,
-  #[cfg(feature = "hot-reload")]
-  slint_tx: calloop::channel::Sender<SlintOnLoopEvent>,
+  send_tx: calloop::channel::Sender<SendLoopEvent>,
 }
 
 pub struct LoopHandle {
   pub handle: calloop::LoopHandle<'static, Corona>,
   pub loop_tx: calloop::channel::Sender<OnLoopEvent>,
+  pub send_tx: calloop::channel::Sender<SendLoopEvent>,
 }
 
 pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + 'static>;
 pub type ShellSender = calloop::channel::Sender<ShellEvent>;
-
-#[cfg(feature = "hot-reload")]
-pub type SlintOnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send + 'static>;
+pub type SendLoopEvent = Box<dyn FnOnce(&mut Corona) + Send + 'static>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EventLoopError {
@@ -75,19 +73,15 @@ impl EventLoop {
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
 
-    #[cfg(feature = "hot-reload")]
-    let slint_tx = {
-      let (slint_tx, slint_rx) = calloop::channel::channel::<SlintOnLoopEvent>();
-      calloop
-        .handle()
-        .insert_source(slint_rx, |event, _, state: &mut Corona| {
-          if let Event::Msg(f) = event {
-            f(state);
-          }
-        })
-        .map_err(|e| EventLoopError::Calloop(e.error))?;
-      slint_tx
-    };
+    let (send_tx, send_rx) = calloop::channel::channel::<SendLoopEvent>();
+    calloop
+      .handle()
+      .insert_source(send_rx, |event, _, state: &mut Corona| {
+        if let Event::Msg(f) = event {
+          f(state);
+        }
+      })
+      .map_err(|e| EventLoopError::Calloop(e.error))?;
 
     let clock_timer = Timer::from_duration(until_next_second());
     calloop
@@ -102,14 +96,12 @@ impl EventLoop {
       calloop,
       loop_tx,
       event_tx: tx,
-      #[cfg(feature = "hot-reload")]
-      slint_tx,
+      send_tx,
     })
   }
 
-  #[cfg(feature = "hot-reload")]
-  pub fn slint_sender(&self) -> calloop::channel::Sender<SlintOnLoopEvent> {
-    self.slint_tx.clone()
+  pub fn send_sender(&self) -> calloop::channel::Sender<SendLoopEvent> {
+    self.send_tx.clone()
   }
 
   pub fn dispatch(
@@ -131,6 +123,7 @@ impl EventLoop {
     LoopHandle {
       handle: self.calloop.handle(),
       loop_tx: self.loop_tx.clone(),
+      send_tx: self.send_tx.clone(),
     }
   }
 }

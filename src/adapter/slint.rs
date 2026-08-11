@@ -3,34 +3,31 @@ use std::{
   rc::{Rc, Weak},
 };
 
-#[cfg(feature = "hot-reload")]
-use slint::{EventLoopError, platform::EventLoopProxy};
 use slint::{
-  PhysicalSize, PlatformError, Window, WindowSize,
+  EventLoopError, PhysicalSize, PlatformError, Window, WindowSize,
   platform::{
-    Platform, Renderer, WindowAdapter, WindowEvent, femtovg_renderer::FemtoVGWGPURenderer,
+    EventLoopProxy, Platform, Renderer, WindowAdapter, WindowEvent,
+    femtovg_renderer::FemtoVGWGPURenderer,
   },
 };
-use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::{compositor::FrameCallbackData, shell::WaylandSurface};
 use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
-use crate::adapter::{gpu::GpuContext, wayland::LayerSurfaceObjects};
-#[cfg(feature = "hot-reload")]
-use crate::event::event_loop::{EventLoop, SlintOnLoopEvent};
+use crate::{
+  adapter::{gpu::GpuContext, wayland::LayerSurfaceObjects},
+  event::event_loop::{EventLoop, SendLoopEvent},
+};
 
 pub struct SlintCustomPlatform {
   pending: RefCell<Option<Rc<SlintWindow>>>,
   gpu: Weak<GpuContext>,
-  #[cfg(feature = "hot-reload")]
   proxy: SlintEventLoopProxy,
 }
 
-#[cfg(feature = "hot-reload")]
 #[derive(Clone)]
-struct SlintEventLoopProxy(calloop::channel::Sender<SlintOnLoopEvent>);
+struct SlintEventLoopProxy(calloop::channel::Sender<SendLoopEvent>);
 
-#[cfg(feature = "hot-reload")]
 impl EventLoopProxy for SlintEventLoopProxy {
   fn quit_event_loop(&self) -> Result<(), EventLoopError> {
     self
@@ -72,13 +69,12 @@ pub enum SlintCustomPlatformError {
 impl SlintCustomPlatform {
   pub fn init(
     gpu: Rc<GpuContext>,
-    #[cfg(feature = "hot-reload")] event_loop: &EventLoop,
+    event_loop: &EventLoop,
   ) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
       pending: RefCell::new(None),
       gpu: Rc::downgrade(&gpu),
-      #[cfg(feature = "hot-reload")]
-      proxy: SlintEventLoopProxy(event_loop.slint_sender()),
+      proxy: SlintEventLoopProxy(event_loop.send_sender()),
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
@@ -119,7 +115,6 @@ impl Platform for SlintCustomPlatform {
       .ok_or(PlatformError::NoPlatform)
   }
 
-  #[cfg(feature = "hot-reload")]
   fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
     Some(Box::new(self.proxy.clone()))
   }
@@ -130,7 +125,6 @@ impl Platform for SlintCustomPlatformPointer {
     self.0.create_window_adapter()
   }
 
-  #[cfg(feature = "hot-reload")]
   fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
     self.0.new_event_loop_proxy()
   }
@@ -144,6 +138,8 @@ pub struct SlintWindow {
   objects: LayerSurfaceObjects,
   gpu: Rc<GpuContext>,
   dirty: Cell<bool>,
+  /// True if  waiting for callback from compositor to draw next frame
+  frame_pending: Cell<bool>,
   /// Size of the wgpu surface, in physical pixels: `round(logical * scale)`.
   size: Cell<PhysicalSize>,
   /// Size the compositor laid out, in logical pixels. Without scale applied.
@@ -195,6 +191,7 @@ impl SlintWindow {
         objects,
         gpu,
         dirty: Cell::new(false),
+        frame_pending: Cell::new(false),
         size: Cell::new(PhysicalSize::new(physical_width, physical_height)),
         logical: Cell::new((width, height)),
         scale: Cell::new(scale),
@@ -262,9 +259,21 @@ impl SlintWindow {
     self.window.has_active_animations()
   }
 
+  pub fn frame_done(&self) {
+    self.frame_pending.set(false);
+  }
+
+  pub fn needs_render(&self) -> bool {
+    (self.dirty.get() || self.has_active_animations()) && !self.frame_pending.get()
+  }
+
   pub fn render_if_dirty(&self) -> Result<(), SlintCustomPlatformError> {
     if self.has_active_animations() {
       self.dirty.set(true);
+    }
+
+    if self.frame_pending.get() {
+      return Ok(());
     }
 
     if !self.dirty.replace(false) {
@@ -288,6 +297,13 @@ impl SlintWindow {
       texture.texture.height(),
       texture.texture.format(),
     )?;
+
+    self.objects.wl_surface.frame(
+      &self.objects.qh,
+      FrameCallbackData(self.objects.wl_surface.clone()),
+    );
+    self.frame_pending.set(true);
+
     texture.present();
 
     Ok(())

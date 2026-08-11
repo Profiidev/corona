@@ -69,6 +69,7 @@ pub struct LayerSurfaceObjects {
   pub wl_surface: WlSurface,
   pub viewport: WpViewport,
   pub fractional_scale: WpFractionalScaleV1,
+  pub qh: QueueHandle<Corona>,
 }
 
 pub struct LayerSurfaceSpec<'a> {
@@ -192,6 +193,7 @@ impl WaylandAdapter {
       viewport,
       fractional_scale,
       wl_surface,
+      qh: self.queue_handle.clone(),
     }
   }
 

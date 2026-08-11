@@ -45,11 +45,7 @@ impl Corona {
     let mut wayland = WaylandAdapter::init()?;
     let gpu = GpuContext::init(&wayland)?;
     let event_loop = EventLoop::init(&mut wayland)?;
-    let platform = SlintCustomPlatform::init(
-      gpu.clone(),
-      #[cfg(feature = "hot-reload")]
-      &event_loop,
-    )?;
+    let platform = SlintCustomPlatform::init(gpu.clone(), &event_loop)?;
     let dbus = Dbus::init(event_loop.event_sender())?;
 
     Ok(Self {
@@ -69,7 +65,7 @@ impl Corona {
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
 
     while !self.exit_requested {
-      let timeout = if self.widgets.has_active_animations() {
+      let timeout = if self.widgets.needs_render() {
         Some(Duration::ZERO)
       } else {
         slint::platform::duration_until_next_timer_update()

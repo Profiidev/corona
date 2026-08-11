@@ -1,6 +1,6 @@
 use smithay_client_toolkit::compositor::CompositorHandler;
 use wayland_client::{
-  Connection, QueueHandle,
+  Connection, Proxy, QueueHandle,
   protocol::{wl_output, wl_surface},
 };
 
@@ -31,10 +31,10 @@ impl CompositorHandler for Corona {
     &mut self,
     _conn: &Connection,
     _qh: &QueueHandle<Self>,
-    _surface: &wl_surface::WlSurface,
+    surface: &wl_surface::WlSurface,
     _time: u32,
   ) {
-    // currently not needed
+    self.widgets.frame_done(&surface.id());
   }
 
   fn surface_enter(

@@ -132,3 +132,29 @@ impl Notifications {
     )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Emitting runs on the event loop thread, so it must not be a round trip.
+  #[test]
+  fn emitting_a_signal_does_not_block() {
+    let (tx, _rx) = calloop::channel::channel();
+    let Ok(dbus) = Dbus::init(tx) else {
+      return; // no session bus (CI)
+    };
+    dbus.notification_closed(1, CloseReason::Dismissed);
+
+    let start = std::time::Instant::now();
+    for id in 0..1000 {
+      dbus.notification_closed(id, CloseReason::Dismissed);
+    }
+
+    let per = start.elapsed() / 1000;
+    assert!(
+      per < std::time::Duration::from_millis(1),
+      "{per:?} per emit"
+    );
+  }
+}
