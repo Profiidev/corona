@@ -12,6 +12,7 @@ use crate::{
   adapter::{gpu::GpuContext, slint::SlintCustomPlatform, wayland::WaylandAdapter},
   error::CoronaError,
   event::{
+    dbus::Dbus,
     event::ShellEvent,
     event_loop::{EventLoop, LoopHandle},
   },
@@ -31,6 +32,7 @@ pub struct Corona {
   platform: Rc<SlintCustomPlatform>,
   event_loop: Option<EventLoop>,
   loop_handle: LoopHandle,
+  dbus: Dbus,
   widgets: Widgets,
   exit_requested: bool,
 }
@@ -45,12 +47,14 @@ impl Corona {
       #[cfg(feature = "hot-reload")]
       &event_loop,
     )?;
+    let dbus = Dbus::init(event_loop.event_sender())?;
 
     Ok(Self {
       wayland,
       gpu,
       platform,
       loop_handle: event_loop.handle(),
+      dbus,
       event_loop: Some(event_loop),
       widgets: Widgets::new(),
       exit_requested: false,
@@ -80,6 +84,8 @@ impl Corona {
   }
 
   fn destroy(self) {
+    self.dbus.destroy();
+
     drop(self.widgets);
     drop(self.platform);
 

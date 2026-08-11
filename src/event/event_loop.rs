@@ -9,6 +9,7 @@ use crate::{Corona, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
 
 pub struct EventLoop {
   calloop: calloop::EventLoop<'static, Corona>,
+  event_tx: ShellSender,
   loop_tx: calloop::channel::Sender<OnLoopEvent>,
   #[cfg(feature = "hot-reload")]
   slint_tx: calloop::channel::Sender<SlintOnLoopEvent>,
@@ -20,6 +21,7 @@ pub struct LoopHandle {
 }
 
 pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + 'static>;
+pub type ShellSender = calloop::channel::Sender<ShellEvent>;
 
 #[cfg(feature = "hot-reload")]
 pub type SlintOnLoopEvent = Box<dyn FnOnce(&mut Corona) + Send + 'static>;
@@ -87,12 +89,10 @@ impl EventLoop {
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
 
-    // TODO add additional event source for Hyprland IPC, D-Bus, hot-reload watcher, etc.
-    let _ = tx;
-
     Ok(Self {
       calloop,
       loop_tx,
+      event_tx: tx,
       #[cfg(feature = "hot-reload")]
       slint_tx,
     })
@@ -112,6 +112,10 @@ impl EventLoop {
       .calloop
       .dispatch(timeout, state)
       .map_err(EventLoopError::Calloop)
+  }
+
+  pub fn event_sender(&self) -> ShellSender {
+    self.event_tx.clone()
   }
 
   pub fn handle(&self) -> LoopHandle {

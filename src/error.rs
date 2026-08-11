@@ -13,6 +13,8 @@ pub enum CoronaError {
   SlintPlatformError(#[from] SlintCustomPlatformError),
   #[error("Slint platform error: {0}")]
   EventLoopError(#[from] EventLoopError),
+  #[error("DBus error: {0}")]
+  DbusError(#[from] zbus::Error),
   #[error("Event loop already taken")]
   EventLoopTaken,
 }
