@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use calloop::LoopHandle;
 use smithay_client_toolkit::{
   delegate_dispatch2, delegate_registry,
   output::OutputState,
@@ -27,6 +28,7 @@ pub struct Corona {
   gpu: Rc<GpuContext>,
   platform: Rc<SlintCustomPlatform>,
   event_loop: Option<EventLoop>,
+  loop_handle: LoopHandle<'static, Self>,
   widgets: Widgets,
   exit_requested: bool,
 }
@@ -46,6 +48,7 @@ impl Corona {
       wayland,
       gpu,
       platform,
+      loop_handle: event_loop.handle(),
       event_loop: Some(event_loop),
       widgets: Widgets::new(),
       exit_requested: false,

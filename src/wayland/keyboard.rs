@@ -1,6 +1,6 @@
 use slint::{SharedString, platform::WindowEvent};
 use smithay_client_toolkit::seat::keyboard::{
-  KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers,
+  KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers, repeat::RepeatCallback,
 };
 use wayland_client::{
   Connection, Proxy, QueueHandle,
@@ -89,6 +89,12 @@ impl KeyboardHandler for Corona {
 }
 
 impl Corona {
+  pub(crate) fn repeat_callback() -> RepeatCallback<Self> {
+    Box::new(|corona, _keyboard, event| {
+      corona.dispatch_key(|text| WindowEvent::KeyPressRepeated { text }, event);
+    })
+  }
+
   fn dispatch_key(&self, event: impl FnOnce(SharedString) -> WindowEvent, key: KeyEvent) {
     let Some(window) = self
       .widgets

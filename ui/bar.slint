@@ -1,11 +1,22 @@
 import { Button } from "std-widgets.slint";
 export component Bar inherits Window {
   callback clicked();
+  background: #ffffff;
 
+  HorizontalLayout {
+  alignment: space-between;
   Button {
     text: "Click Me";
+    width: 100px;
+
     clicked => {
       clicked();
     }
+  }
+
+  TextInput {
+  width: 200px;
+  color: #000000;
+  }
   }
 }

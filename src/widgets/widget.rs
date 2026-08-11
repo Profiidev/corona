@@ -46,7 +46,7 @@ impl Corona {
       height: 30,
       exclusive_zone: 30,
       output: Some(output),
-      keyboard_interactivity: KeyboardInteractivity::None,
+      keyboard_interactivity: KeyboardInteractivity::OnDemand,
     });
     let id = surface.wl_surface().id();
 

@@ -82,4 +82,8 @@ impl EventLoop {
       .dispatch(None, state)
       .map_err(EventLoopError::Calloop)
   }
+
+  pub fn handle(&self) -> calloop::LoopHandle<'static, Corona> {
+    self.calloop.handle()
+  }
 }

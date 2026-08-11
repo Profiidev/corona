@@ -88,10 +88,24 @@ impl WaylandAdapter {
     })
   }
 
-  pub fn set_capability(&mut self, seat: &WlSeat, capability: Capability, available: bool) {
+  pub fn set_capability(
+    &mut self,
+    seat: &WlSeat,
+    capability: Capability,
+    available: bool,
+    loop_handle: &calloop::LoopHandle<'static, Corona>,
+  ) {
     match (capability, available) {
       (Capability::Keyboard, true) if self.keyboard.is_none() => {
-        match self.seat_state.get_keyboard(&self.queue_handle, seat, None) {
+        let keyboard = self.seat_state.get_keyboard_with_repeat(
+          &self.queue_handle,
+          seat,
+          None,
+          loop_handle.clone(),
+          Corona::repeat_callback(),
+        );
+
+        match keyboard {
           Ok(keyboard) => self.keyboard = Some(keyboard),
           Err(e) => tracing::warn!("failed to bind keyboard: {e}"),
         }
