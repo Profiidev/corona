@@ -191,7 +191,15 @@ impl SlintWindow {
     self.dirty.set(true);
   }
 
+  pub fn has_active_animations(&self) -> bool {
+    self.window.has_active_animations()
+  }
+
   pub fn render_if_dirty(&self) -> Result<(), SlintCustomPlatformError> {
+    if self.has_active_animations() {
+      self.dirty.set(true);
+    }
+
     if !self.dirty.replace(false) {
       return Ok(());
     }

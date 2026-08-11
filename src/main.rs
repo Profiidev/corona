@@ -39,7 +39,7 @@ fn main() {
               .build(&wl_output, |p: &mut ui::panel::Panel| {
                 p.on_clicked(move || {
                   println!("Panel clicked");
-                })
+                });
               })
               .expect("Failed to create panel widget");
 

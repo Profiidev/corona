@@ -74,10 +74,14 @@ impl EventLoop {
     Ok(Self { calloop, loop_tx })
   }
 
-  pub fn dispatch(&mut self, state: &mut Corona) -> Result<(), EventLoopError> {
+  pub fn dispatch(
+    &mut self,
+    state: &mut Corona,
+    timeout: Option<Duration>,
+  ) -> Result<(), EventLoopError> {
     self
       .calloop
-      .dispatch(None, state)
+      .dispatch(timeout, state)
       .map_err(EventLoopError::Calloop)
   }
 

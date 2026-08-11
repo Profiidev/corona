@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
 use smithay_client_toolkit::{
   delegate_dispatch2, delegate_registry,
@@ -61,7 +61,13 @@ impl Corona {
     let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
 
     while !self.exit_requested {
-      event_loop.dispatch(&mut self)?;
+      let timeout = if self.widgets.has_active_animations() {
+        Some(Duration::ZERO)
+      } else {
+        slint::platform::duration_until_next_timer_update()
+      };
+
+      event_loop.dispatch(&mut self, timeout)?;
       slint::platform::update_timers_and_animations();
       self.render_if_dirty()?;
       self.wayland.flush()?;

@@ -1,22 +1,52 @@
 import { Button } from "std-widgets.slint";
+
 export component Panel inherits Window {
   callback clicked();
-  background: #ff0fff;
 
-  HorizontalLayout {
-    alignment: space-between;
-    Button {
-      text: "Click Me";
-      width: 100px;
+  background: transparent;
 
-      clicked => {
-        clicked();
-      }
+  private property <bool> expanded: false;
+
+  Timer {
+    interval: 1ms;
+    running: !root.expanded;
+    triggered => {
+      root.expanded = true;
+    }
+  }
+
+  Rectangle {
+    y: 0;
+    width: 100%;
+    height: root.expanded ? root.height : 0px;
+    background: #ff0fff;
+    clip: true;
+
+    animate height {
+      duration: 200ms;
+      easing: ease-out-quad;
     }
 
-    TextInput {
-      width: 200px;
-      color: #000000;
+    HorizontalLayout {
+      y: 0;
+      width: 100%;
+      height: root.height;
+      alignment: space-between;
+
+      Button {
+        text: "Click Me";
+        width: 100px;
+
+        clicked => {
+          root.expanded = !root.expanded;
+          clicked();
+        }
+      }
+
+      TextInput {
+        width: 200px;
+        color: #000000;
+      }
     }
   }
 }

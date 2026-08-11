@@ -42,6 +42,13 @@ impl Widgets {
     self.active.get(id).map(|widget| &widget.window)
   }
 
+  pub fn has_active_animations(&self) -> bool {
+    self
+      .active
+      .values()
+      .any(|widget| widget.window.has_active_animations())
+  }
+
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {
     for widget in self.active.values() {
       widget.window.render_if_dirty()?;

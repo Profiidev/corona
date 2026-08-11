@@ -93,9 +93,18 @@ impl GpuContext {
     width: u32,
     height: u32,
   ) -> Result<(), GpuError> {
-    let config = surface
+    let mut config = surface
       .get_default_config(&self.adapter, width.max(1), height.max(1))
       .ok_or(GpuError::SurfaceUnsupported)?;
+
+    let caps = surface.get_capabilities(&self.adapter);
+    if caps
+      .alpha_modes
+      .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+    {
+      config.alpha_mode = wgpu::CompositeAlphaMode::PreMultiplied;
+    }
+
     surface.configure(&self.device, &config);
 
     Ok(())
