@@ -47,6 +47,7 @@ impl Corona {
     let event_loop = EventLoop::init(&mut wayland)?;
     let platform = SlintCustomPlatform::init(gpu.clone(), &event_loop)?;
     let dbus = Dbus::init(event_loop.event_sender())?;
+    event::hyprland::spawn(event_loop.event_sender());
 
     Ok(Self {
       wayland,

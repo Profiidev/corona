@@ -1,5 +1,5 @@
 use crate::Corona;
-pub use crate::event::{dbus::CloseReason, event::ShellEvent};
+pub use crate::event::{dbus::CloseReason, event::*};
 
 impl Corona {
   pub fn signal_notification_closed(&self, id: u32, reason: CloseReason) {

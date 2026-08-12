@@ -4,7 +4,7 @@ use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
-use crate::event::event::ShellEvent;
+use crate::event::event::{NotificationEvent, ShellEvent};
 use crate::event::event_loop::ShellSender;
 
 const PATH: &str = "/org/freedesktop/Notifications";
@@ -88,21 +88,25 @@ impl Notifications {
       5000
     };
 
-    let _ = self.tx.send(ShellEvent::NewNotification {
-      id,
-      app_name,
-      summary,
-      body,
-      timeout_ms,
-      app_icon,
-      actions,
-    });
+    let _ = self
+      .tx
+      .send(ShellEvent::Notification(NotificationEvent::New {
+        id,
+        app_name,
+        summary,
+        body,
+        timeout_ms,
+        app_icon,
+        actions,
+      }));
 
     id
   }
 
   fn close_notification(&mut self, id: u32) {
-    let _ = self.tx.send(ShellEvent::CloseNotification(id));
+    let _ = self
+      .tx
+      .send(ShellEvent::Notification(NotificationEvent::Close(id)));
   }
 
   #[zbus(signal)]
