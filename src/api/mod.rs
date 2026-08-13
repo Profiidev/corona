@@ -6,6 +6,7 @@ use crate::{
 };
 
 pub mod event;
+pub mod hyprland;
 pub mod widget;
 
 #[derive(Clone)]
