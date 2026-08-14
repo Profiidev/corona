@@ -1,6 +1,9 @@
 import { Button } from "std-widgets.slint";
+
 export component Bar inherits Window {
   callback clicked();
+  in property <[string]> workspaces: [];
+
   background: #ffffff;
 
   HorizontalLayout {
@@ -12,6 +15,13 @@ export component Bar inherits Window {
     clicked => {
       clicked();
     }
+  }
+
+  HorizontalLayout {
+  for workspace[i] in workspaces: Button {
+    width: 20px;
+    text: workspace;
+  }
   }
 
   TextInput {

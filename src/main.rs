@@ -5,6 +5,7 @@ use corona::{
   api::widget::{Anchor, WidgetHandle},
   slint::ComponentHandle,
 };
+use slint::{ModelRc, ToSharedString, VecModel};
 
 mod ui;
 
@@ -32,6 +33,20 @@ fn main() {
       .height(30)
       .exclusive_zone(30)
       .build(&output, move |b: &mut ui::bar::Bar| {
+        let b_weak = b.as_weak();
+        handle.defer(move |f| {
+          let workspaces = ModelRc::new(VecModel::from(
+            f.workspace_list()
+              .unwrap()
+              .into_iter()
+              .map(|i| i.name.to_shared_string())
+              .collect::<Vec<_>>(),
+          ));
+          if let Some(b) = b_weak.upgrade() {
+            b.set_workspaces(workspaces);
+          }
+        });
+
         b.on_clicked(move || {
           let wl_output = wl_output.clone();
           let panel = panel.clone();
