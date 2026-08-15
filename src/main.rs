@@ -47,6 +47,16 @@ fn main() {
           }
         });
 
+        let handle_ = handle.clone();
+        b.on_workspaceClicked(move |workspace: slint::SharedString| {
+          let workspace = workspace.to_string();
+          handle_.clone().defer(move |corona| {
+            if let Err(e) = corona.dispatch_workspace(workspace) {
+              tracing::error!("Failed to dispatch workspace: {e}");
+            }
+          });
+        });
+
         b.on_clicked(move || {
           let wl_output = wl_output.clone();
           let panel = panel.clone();
