@@ -9,8 +9,6 @@ use wgpu::{
   Queue, RequestAdapterError, RequestAdapterOptions, RequestDeviceError,
 };
 
-use crate::adapter::wayland::WaylandAdapter;
-
 /// Field order is important for drop order
 pub struct GpuContext {
   pub queue: Queue,
@@ -37,7 +35,7 @@ pub enum GpuError {
 }
 
 impl GpuContext {
-  pub fn init(wayland: &WaylandAdapter) -> Result<Rc<Self>, GpuError> {
+  pub fn init(display_id: &ObjectId) -> Result<Rc<Self>, GpuError> {
     let instance = Instance::new(InstanceDescriptor {
       backends: Backends::VULKAN,
       ..InstanceDescriptor::new_without_display_handle()
@@ -62,7 +60,7 @@ impl GpuContext {
       adapter,
       device,
       queue,
-      display_handle: wayland_display_handle(&wayland.display_id())?,
+      display_handle: wayland_display_handle(display_id)?,
     }))
   }
 

@@ -43,7 +43,7 @@ impl Corona {
   }
 
   pub fn destroy_widget(&self, handle: WidgetHandle) {
-    self.widgets.destroy_widget(handle.0);
+    self.widgets().destroy_widget(handle.0);
   }
 }
 
@@ -96,22 +96,27 @@ impl WidgetBuilder {
       return Err(WidgetError::InvalidHeight);
     }
 
-    let objects = self.corona.wayland.create_layer_surface(LayerSurfaceSpec {
-      namespace: self.namespace,
-      layer: self.layer,
-      anchor: self.anchor,
-      width: self.width,
-      height: self.height,
-      exclusive_zone: self.exclusive_zone,
-      output: Some(output),
-      keyboard_interactivity: self.keyboard_interactivity,
-    });
+    let objects = self
+      .corona
+      .wayland()
+      .create_layer_surface(LayerSurfaceSpec {
+        namespace: self.namespace,
+        layer: self.layer,
+        anchor: self.anchor,
+        width: self.width,
+        height: self.height,
+        exclusive_zone: self.exclusive_zone,
+        output: Some(output),
+        keyboard_interactivity: self.keyboard_interactivity,
+      });
     let id = objects.layer_surface.wl_surface().id();
 
-    self
-      .corona
-      .widgets
-      .create_pending_widget(id.clone(), objects, Box::new(init.into_init()), 1.0);
+    self.corona.widgets().create_pending_widget(
+      id.clone(),
+      objects,
+      Box::new(init.into_init()),
+      1.0,
+    );
 
     Ok(WidgetHandle(id))
   }

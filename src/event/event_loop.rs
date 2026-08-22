@@ -5,7 +5,9 @@ use calloop::{
   timer::{TimeoutAction, Timer},
 };
 
-use crate::{Corona, Dispatcher, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
+use crate::{
+  Corona, adapter::wayland::WaylandAdapter, event::event::ShellEvent, wayland::Dispatcher,
+};
 
 pub struct EventLoop {
   calloop: calloop::EventLoop<'static, Dispatcher>,

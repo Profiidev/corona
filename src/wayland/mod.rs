@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use slint::{SharedString, platform::WindowEvent};
 use smithay_client_toolkit::{
   delegate_dispatch2, delegate_registry,
@@ -14,11 +16,14 @@ use wayland_client::{
   protocol::{wl_keyboard::WlKeyboard, wl_pointer::WlPointer, wl_seat::WlSeat},
 };
 
-use crate::{Corona, api::event::ShellEvent, wayland::keyboard::key_text};
+use crate::{
+  Corona, adapter::slint::SlintWindow, api::event::ShellEvent, wayland::keyboard::key_text,
+};
 
 mod compositor;
 mod fractional_scale;
 mod keyboard;
+mod layer_shell;
 mod output;
 mod pointer;
 mod seat;
@@ -33,34 +38,38 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
+  fn window_for(&self, id: &ObjectId) -> Option<Rc<SlintWindow>> {
+    self.corona.widgets().window(id)
+  }
+
   fn frame_done(&self, surface_id: &ObjectId) {
-    self.corona.widgets.frame_done(surface_id);
+    self.corona.widgets().frame_done(surface_id);
   }
 
   fn set_scale(&self, surface_id: &ObjectId, scale: f64) {
-    self.corona.widgets.set_scale(surface_id, scale);
+    self.corona.widgets().set_scale(surface_id, scale);
   }
 
   fn keyboard_enter(&self, id: ObjectId) {
-    if let Some(window) = self.corona.widgets.window(&id) {
+    if let Some(window) = self.window_for(&id) {
       window.dispatch(WindowEvent::WindowActiveChanged(true));
-      self.corona.widgets.set_focus(Some(id));
+      self.corona.widgets().set_focus(Some(id));
     }
   }
 
   fn keyboard_leave(&self, id: ObjectId) {
-    if let Some(window) = self.corona.widgets.window(&id) {
+    if let Some(window) = self.window_for(&id) {
       window.dispatch(WindowEvent::WindowActiveChanged(false));
     }
-    self.corona.widgets.set_focus(None);
+    self.corona.widgets().set_focus(None);
   }
 
   fn dispatch_key(&self, event: impl FnOnce(SharedString) -> WindowEvent, key: KeyEvent) {
     let Some(window) = self
       .corona
-      .widgets
+      .widgets()
       .focus()
-      .and_then(|id| self.corona.widgets.window(&id))
+      .and_then(|id| self.window_for(&id))
     else {
       return;
     };
@@ -82,11 +91,11 @@ impl Dispatcher {
   }
 
   fn set_capability(&mut self, seat: &WlSeat, capability: Capability, available: bool) {
-    let queue_handle = self.corona.wayland.queue_handle();
+    let queue_handle = self.corona.wayland().queue_handle();
 
     match (capability, available) {
       (Capability::Keyboard, true) if self.keyboard.is_none() => {
-        let loop_handle = self.corona.loop_handle.handle.clone();
+        let loop_handle = self.corona.loop_handle().handle.clone();
 
         let keyboard = self.seat_state.get_keyboard_with_repeat(
           queue_handle,

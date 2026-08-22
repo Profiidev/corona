@@ -1,5 +1,3 @@
-use wayland_client::protocol::wl_output::WlOutput;
-
 use crate::{Corona, event::event_loop::SendLoopEvent};
 
 pub mod event;
@@ -10,12 +8,8 @@ pub mod widget;
 pub struct CoronaRemote(calloop::channel::Sender<SendLoopEvent>);
 
 impl Corona {
-  pub fn outputs(&self) -> Vec<WlOutput> {
-    self.outputs.borrow().clone()
-  }
-
   pub fn remote(&self) -> CoronaRemote {
-    CoronaRemote(self.loop_handle.send_tx.clone())
+    CoronaRemote(self.loop_handle().send_tx.clone())
   }
 }
 

@@ -22,7 +22,7 @@ impl PointerHandler for Dispatcher {
     events: &[PointerEvent],
   ) {
     for event in events {
-      let Some(window) = self.corona.widgets.window(&event.surface.id()) else {
+      let Some(window) = self.window_for(&event.surface.id()) else {
         continue;
       };
 

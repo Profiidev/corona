@@ -1,15 +1,18 @@
 use std::{cell::RefCell, rc::Rc};
 
 use dashmap::DashMap;
+use tracing::error;
 use wayland_client::backend::ObjectId;
 
 use crate::{
-  adapter::{slint::SlintWindow, wayland::LayerSurfaceObjects},
+  adapter::{
+    slint::{SlintCustomPlatform, SlintWindow},
+    wayland::LayerSurfaceObjects,
+  },
   error::CoronaError,
   widgets::init::{SlintComponent, SlintComponentInit},
 };
 
-mod handler;
 pub mod init;
 
 pub(crate) struct Widgets {
@@ -26,10 +29,10 @@ pub struct Widget {
   pub(super) window: Rc<SlintWindow>,
 }
 
-struct PendingWidget {
-  objects: LayerSurfaceObjects,
-  init: Box<dyn SlintComponentInit>,
-  scale: f64,
+pub(crate) struct PendingWidget {
+  pub(crate) objects: LayerSurfaceObjects,
+  pub(crate) init: Box<dyn SlintComponentInit>,
+  pub(crate) scale: f64,
 }
 
 impl Widgets {
@@ -74,7 +77,7 @@ impl Widgets {
     Ok(())
   }
 
-  fn create_widget(
+  pub(crate) fn create_widget(
     &self,
     id: ObjectId,
     window: Rc<SlintWindow>,
@@ -90,10 +93,14 @@ impl Widgets {
     self.active.insert(id, widget);
   }
 
-  fn resize_widget(&self, id: ObjectId, width: u32, height: u32) {
+  pub(crate) fn resize_widget(&self, id: ObjectId, width: u32, height: u32) {
     if let Some(widget) = self.active.get(&id) {
       widget.window.set_logical_size(width, height);
     }
+  }
+
+  pub(crate) fn take_pending(&self, id: &ObjectId) -> Option<PendingWidget> {
+    self.pending.remove(id).map(|(_, pending)| pending)
   }
 
   pub fn create_pending_widget(
@@ -111,6 +118,36 @@ impl Widgets {
         scale,
       },
     );
+  }
+
+  pub fn finish_widget_configure(
+    &self,
+    platform: &SlintCustomPlatform,
+    id: ObjectId,
+    width: u32,
+    height: u32,
+  ) {
+    if let Some(mut pending) = self.take_pending(&id) {
+      let window = match platform.create_window(pending.objects, width, height, pending.scale) {
+        Ok(window) => window,
+        Err(e) => {
+          error!("Failed to create window for layer surface {}: {}", id, e);
+          return;
+        }
+      };
+      let Ok(component) = pending.init.init().map_err(|e| {
+        error!(
+          "Failed to initialize Slint component for layer surface {}: {}",
+          id, e
+        );
+      }) else {
+        return;
+      };
+
+      self.create_widget(id, window, component);
+    } else {
+      self.resize_widget(id, width, height);
+    }
   }
 
   pub fn destroy_widget(&self, id: ObjectId) {

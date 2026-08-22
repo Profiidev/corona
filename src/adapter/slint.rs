@@ -1,6 +1,10 @@
 use std::{
   cell::{Cell, RefCell},
   rc::{Rc, Weak},
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
 };
 
 use slint::{
@@ -27,21 +31,20 @@ pub struct SlintCustomPlatform {
 }
 
 #[derive(Clone)]
-struct SlintEventLoopProxy(calloop::channel::Sender<SendLoopEvent>);
+struct SlintEventLoopProxy {
+  send: calloop::channel::Sender<SendLoopEvent>,
+  exit_requested: Arc<AtomicBool>,
+}
 
 impl EventLoopProxy for SlintEventLoopProxy {
   fn quit_event_loop(&self) -> Result<(), EventLoopError> {
-    self
-      .0
-      .send(Box::new(|corona: &Corona| {
-        corona.set_exit_requested();
-      }))
-      .map_err(|_| EventLoopError::EventLoopTerminated)
+    self.exit_requested.store(true, Ordering::Relaxed);
+    Ok(())
   }
 
   fn invoke_from_event_loop(&self, event: Box<dyn FnOnce() + Send>) -> Result<(), EventLoopError> {
     self
-      .0
+      .send
       .send(Box::new(|_: &Corona| {
         event();
       }))
@@ -71,11 +74,15 @@ impl SlintCustomPlatform {
   pub fn init(
     gpu: Rc<GpuContext>,
     event_loop: &EventLoop,
+    exit_requested: Arc<AtomicBool>,
   ) -> Result<Rc<Self>, SlintCustomPlatformError> {
     let platform = Rc::new(Self {
       pending: RefCell::new(None),
       gpu: Rc::downgrade(&gpu),
-      proxy: SlintEventLoopProxy(event_loop.send_sender()),
+      proxy: SlintEventLoopProxy {
+        send: event_loop.send_sender(),
+        exit_requested,
+      },
     });
 
     slint::platform::set_platform(Box::new(SlintCustomPlatformPointer(platform.clone())))
