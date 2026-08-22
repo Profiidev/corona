@@ -10,7 +10,7 @@ impl Corona {
     self.dbus.notification_action(id, action);
   }
 
-  pub fn on_event<F: FnMut(ShellEvent) + 'static>(&mut self, f: F) {
-    self.event_listeners.push(Box::new(f));
+  pub fn on_event<F: Fn(ShellEvent) + 'static>(&self, f: F) {
+    self.event_listeners.borrow_mut().push(Box::new(f));
   }
 }

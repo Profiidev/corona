@@ -1,16 +1,12 @@
 { pkgs, lib, ... }:
 
 let
-  buildDeps = with pkgs; [
-    # slint build
-    libxkbcommon
-  ];
-
   runtimeDeps = with pkgs; [
     # slint runtime
     wayland
     fontconfig
     vulkan-loader
+    libxkbcommon
 
     # slint lsp
     libinput
@@ -19,7 +15,7 @@ let
   ];
 in
 {
-  packages = runtimeDeps ++ buildDeps;
+  packages = runtimeDeps;
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath runtimeDeps;
 }

@@ -8,12 +8,12 @@ use smithay_client_toolkit::seat::pointer::{
 };
 use wayland_client::{Connection, Proxy, QueueHandle, protocol::wl_pointer};
 
-use crate::Corona;
+use super::Dispatcher;
 
 /// Logical pixels a single wheel notch scrolls, matching Slint's own winit backend.
 const SCROLL_LINE_HEIGHT: f32 = 60.0;
 
-impl PointerHandler for Corona {
+impl PointerHandler for Dispatcher {
   fn pointer_frame(
     &mut self,
     _conn: &Connection,
@@ -22,7 +22,7 @@ impl PointerHandler for Corona {
     events: &[PointerEvent],
   ) {
     for event in events {
-      let Some(window) = self.widgets.window(&event.surface.id()) else {
+      let Some(window) = self.corona.widgets.window(&event.surface.id()) else {
         continue;
       };
 

@@ -5,12 +5,12 @@ use smithay_client_toolkit::shell::{
 use tracing::error;
 use wayland_client::{Connection, Proxy, QueueHandle};
 
-use crate::Corona;
+use crate::wayland::Dispatcher;
 
-impl LayerShellHandler for Corona {
+impl LayerShellHandler for Dispatcher {
   fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
     let id = layer.wl_surface().id();
-    self.widgets.destroy_widget(id);
+    self.corona.widgets.destroy_widget(id);
   }
 
   fn configure(
@@ -26,17 +26,19 @@ impl LayerShellHandler for Corona {
     let width = width.max(1);
     let height = height.max(1);
 
-    if let Some(mut pending) = self.widgets.pending.remove(&id) {
-      let window = match self
-        .platform
-        .create_window(pending.objects, width, height, pending.scale)
-      {
-        Ok(window) => window,
-        Err(e) => {
-          error!("Failed to create window for layer surface {}: {}", id, e);
-          return;
-        }
-      };
+    if let Some((_, mut pending)) = self.corona.widgets.pending.remove(&id) {
+      let window =
+        match self
+          .corona
+          .platform
+          .create_window(pending.objects, width, height, pending.scale)
+        {
+          Ok(window) => window,
+          Err(e) => {
+            error!("Failed to create window for layer surface {}: {}", id, e);
+            return;
+          }
+        };
       let Ok(component) = pending.init.init().map_err(|e| {
         error!(
           "Failed to initialize Slint component for layer surface {}: {}",
@@ -46,9 +48,9 @@ impl LayerShellHandler for Corona {
         return;
       };
 
-      self.widgets.create_widget(id, window, component);
+      self.corona.widgets.create_widget(id, window, component);
     } else {
-      self.widgets.resize_widget(id, width, height);
+      self.corona.widgets.resize_widget(id, width, height);
     }
   }
 }

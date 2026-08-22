@@ -9,8 +9,8 @@ pub use wayland_client::protocol::wl_output::WlOutput;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WidgetHandle(ObjectId);
 
-pub struct WidgetBuilder<'c> {
-  corona: &'c mut Corona,
+pub struct WidgetBuilder {
+  corona: Corona,
   namespace: String,
   layer: Layer,
   anchor: Anchor,
@@ -29,9 +29,9 @@ pub enum WidgetError {
 }
 
 impl Corona {
-  pub fn widget_builder<'c>(&'c mut self) -> WidgetBuilder<'c> {
+  pub fn widget_builder(&self) -> WidgetBuilder {
     WidgetBuilder {
-      corona: self,
+      corona: self.clone(),
       namespace: "default".into(),
       layer: Layer::Top,
       anchor: Anchor::empty(),
@@ -42,12 +42,12 @@ impl Corona {
     }
   }
 
-  pub fn destroy_widget(&mut self, handle: WidgetHandle) {
+  pub fn destroy_widget(&self, handle: WidgetHandle) {
     self.widgets.destroy_widget(handle.0);
   }
 }
 
-impl WidgetBuilder<'_> {
+impl WidgetBuilder {
   pub fn namespace(mut self, namespace: impl Into<String>) -> Self {
     self.namespace = namespace.into();
     self

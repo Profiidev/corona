@@ -6,7 +6,7 @@ use smithay_client_toolkit::{
   globals::GlobalData,
   output::OutputState,
   registry::RegistryState,
-  seat::{Capability, SeatState},
+  seat::SeatState,
   shell::{
     WaylandSurface,
     wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
@@ -16,10 +16,7 @@ use wayland_client::{
   ConnectError, Connection, EventQueue, Proxy, QueueHandle,
   backend::{ObjectId, WaylandError},
   globals::{BindError, GlobalError, registry_queue_init},
-  protocol::{
-    wl_keyboard::WlKeyboard, wl_output::WlOutput, wl_pointer::WlPointer, wl_seat::WlSeat,
-    wl_surface::WlSurface,
-  },
+  protocol::{wl_output::WlOutput, wl_surface::WlSurface},
 };
 use wayland_protocols::wp::{
   fractional_scale::v1::client::{
@@ -29,21 +26,16 @@ use wayland_protocols::wp::{
   viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
 };
 
-use crate::Corona;
+use crate::wayland::Dispatcher;
 
 pub struct WaylandAdapter {
   conn: Connection,
   viewporter: WpViewporter,
   fractional_scale: WpFractionalScaleManagerV1,
-  event_queue: Option<EventQueue<Corona>>,
-  queue_handle: QueueHandle<Corona>,
+  event_queue: Option<EventQueue<Dispatcher>>,
+  queue_handle: QueueHandle<Dispatcher>,
   compositor: CompositorState,
   layer_shell: LayerShell,
-  output_state: OutputState,
-  seat_state: SeatState,
-  registry_state: RegistryState,
-  keyboard: Option<WlKeyboard>,
-  pointer: Option<WlPointer>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,7 +61,7 @@ pub struct LayerSurfaceObjects {
   pub wl_surface: WlSurface,
   pub viewport: WpViewport,
   pub fractional_scale: WpFractionalScaleV1,
-  pub qh: QueueHandle<Corona>,
+  pub qh: QueueHandle<Dispatcher>,
 }
 
 pub struct LayerSurfaceSpec<'a> {
@@ -84,10 +76,10 @@ pub struct LayerSurfaceSpec<'a> {
 }
 
 impl WaylandAdapter {
-  pub fn init() -> Result<Self, WaylandAdapterError> {
+  pub fn init() -> Result<(Self, RegistryState, OutputState, SeatState), WaylandAdapterError> {
     let conn = Connection::connect_to_env().map_err(WaylandAdapterError::CompositorConnection)?;
     let (globals, event_queue) =
-      registry_queue_init::<Corona>(&conn).map_err(WaylandAdapterError::RegistryQueueInit)?;
+      registry_queue_init::<Dispatcher>(&conn).map_err(WaylandAdapterError::RegistryQueueInit)?;
     let qh = event_queue.handle();
 
     let compositor =
@@ -105,62 +97,24 @@ impl WaylandAdapter {
     let seat_state = SeatState::new(&globals, &qh);
     let registry_state = RegistryState::new(&globals);
 
-    Ok(Self {
-      conn,
-      viewporter,
-      fractional_scale,
-      event_queue: Some(event_queue),
-      queue_handle: qh,
-      compositor,
-      layer_shell,
+    Ok((
+      Self {
+        conn,
+        viewporter,
+        fractional_scale,
+        event_queue: Some(event_queue),
+        queue_handle: qh,
+        compositor,
+        layer_shell,
+      },
+      registry_state,
       output_state,
       seat_state,
-      registry_state,
-      keyboard: None,
-      pointer: None,
-    })
+    ))
   }
 
-  pub fn set_capability(
-    &mut self,
-    seat: &WlSeat,
-    capability: Capability,
-    available: bool,
-    loop_handle: &calloop::LoopHandle<'static, Corona>,
-  ) {
-    match (capability, available) {
-      (Capability::Keyboard, true) if self.keyboard.is_none() => {
-        let keyboard = self.seat_state.get_keyboard_with_repeat(
-          &self.queue_handle,
-          seat,
-          None,
-          loop_handle.clone(),
-          Corona::repeat_callback(),
-        );
-
-        match keyboard {
-          Ok(keyboard) => self.keyboard = Some(keyboard),
-          Err(e) => tracing::warn!("failed to bind keyboard: {e}"),
-        }
-      }
-      (Capability::Pointer, true) if self.pointer.is_none() => {
-        match self.seat_state.get_pointer(&self.queue_handle, seat) {
-          Ok(pointer) => self.pointer = Some(pointer),
-          Err(e) => tracing::warn!("failed to bind pointer: {e}"),
-        }
-      }
-      (Capability::Keyboard, false) => {
-        if let Some(keyboard) = self.keyboard.take() {
-          keyboard.release();
-        }
-      }
-      (Capability::Pointer, false) => {
-        if let Some(pointer) = self.pointer.take() {
-          pointer.release();
-        }
-      }
-      _ => {}
-    }
+  pub(crate) fn queue_handle(&self) -> &QueueHandle<Dispatcher> {
+    &self.queue_handle
   }
 
   pub fn create_layer_surface(&self, spec: LayerSurfaceSpec) -> LayerSurfaceObjects {
@@ -201,7 +155,7 @@ impl WaylandAdapter {
     self.conn.flush().map_err(WaylandAdapterError::FlushError)
   }
 
-  pub fn event_source(&mut self) -> Option<WaylandSource<Corona>> {
+  pub fn event_source(&mut self) -> Option<WaylandSource<Dispatcher>> {
     Some(WaylandSource::new(
       self.conn.clone(),
       self.event_queue.take()?,
@@ -210,22 +164,6 @@ impl WaylandAdapter {
 
   pub fn display_id(&self) -> ObjectId {
     self.conn.display().id()
-  }
-
-  pub fn output_state(&self) -> &OutputState {
-    &self.output_state
-  }
-
-  pub fn output_state_mut(&mut self) -> &mut OutputState {
-    &mut self.output_state
-  }
-
-  pub fn seat_state_mut(&mut self) -> &mut SeatState {
-    &mut self.seat_state
-  }
-
-  pub fn registry_state_mut(&mut self) -> &mut RegistryState {
-    &mut self.registry_state
   }
 }
 

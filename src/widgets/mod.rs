@@ -1,5 +1,6 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
+use dashmap::DashMap;
 use wayland_client::backend::ObjectId;
 
 use crate::{
@@ -12,10 +13,10 @@ mod handler;
 pub mod init;
 
 pub(crate) struct Widgets {
-  active: HashMap<ObjectId, Widget>,
-  pending: HashMap<ObjectId, PendingWidget>,
+  active: DashMap<ObjectId, Widget>,
+  pending: DashMap<ObjectId, PendingWidget>,
   /// Surface that currently holds the keyboard focus, if any.
-  pub(crate) focus: Option<ObjectId>,
+  focus: RefCell<Option<ObjectId>>,
 }
 
 // field order is important for drop order
@@ -34,18 +35,18 @@ struct PendingWidget {
 impl Widgets {
   pub fn new() -> Self {
     Self {
-      active: HashMap::new(),
-      pending: HashMap::new(),
-      focus: None,
+      active: DashMap::new(),
+      pending: DashMap::new(),
+      focus: RefCell::new(None),
     }
   }
 
-  pub(crate) fn window(&self, id: &ObjectId) -> Option<&Rc<SlintWindow>> {
-    self.active.get(id).map(|widget| &widget.window)
+  pub(crate) fn window(&self, id: &ObjectId) -> Option<Rc<SlintWindow>> {
+    self.active.get(id).map(|widget| widget.window.clone())
   }
 
-  pub fn set_scale(&mut self, id: &ObjectId, scale: f64) {
-    if let Some(pending) = self.pending.get_mut(id) {
+  pub fn set_scale(&self, id: &ObjectId, scale: f64) {
+    if let Some(mut pending) = self.pending.get_mut(id) {
       pending.scale = scale;
     } else if let Some(widget) = self.active.get(id) {
       widget.window.set_scale(scale);
@@ -55,7 +56,7 @@ impl Widgets {
   pub fn needs_render(&self) -> bool {
     self
       .active
-      .values()
+      .iter()
       .any(|widget| widget.window.needs_render())
   }
 
@@ -66,7 +67,7 @@ impl Widgets {
   }
 
   pub fn render_if_dirty(&self) -> Result<(), CoronaError> {
-    for widget in self.active.values() {
+    for widget in self.active.iter() {
       widget.window.render_if_dirty()?;
     }
 
@@ -74,7 +75,7 @@ impl Widgets {
   }
 
   fn create_widget(
-    &mut self,
+    &self,
     id: ObjectId,
     window: Rc<SlintWindow>,
     component: Box<dyn SlintComponent>,
@@ -89,14 +90,14 @@ impl Widgets {
     self.active.insert(id, widget);
   }
 
-  fn resize_widget(&mut self, id: ObjectId, width: u32, height: u32) {
-    if let Some(widget) = self.active.get_mut(&id) {
+  fn resize_widget(&self, id: ObjectId, width: u32, height: u32) {
+    if let Some(widget) = self.active.get(&id) {
       widget.window.set_logical_size(width, height);
     }
   }
 
   pub fn create_pending_widget(
-    &mut self,
+    &self,
     id: ObjectId,
     objects: LayerSurfaceObjects,
     init: Box<dyn SlintComponentInit>,
@@ -112,8 +113,16 @@ impl Widgets {
     );
   }
 
-  pub fn destroy_widget(&mut self, id: ObjectId) {
+  pub fn destroy_widget(&self, id: ObjectId) {
     self.active.remove(&id);
+  }
+
+  pub(crate) fn set_focus(&self, id: Option<ObjectId>) {
+    *self.focus.borrow_mut() = id;
+  }
+
+  pub(crate) fn focus(&self) -> Option<ObjectId> {
+    self.focus.borrow().clone()
   }
 }
 

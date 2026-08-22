@@ -5,24 +5,21 @@ use calloop::{
   timer::{TimeoutAction, Timer},
 };
 
-use crate::{Corona, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
+use crate::{Corona, Dispatcher, adapter::wayland::WaylandAdapter, event::event::ShellEvent};
 
 pub struct EventLoop {
-  calloop: calloop::EventLoop<'static, Corona>,
+  calloop: calloop::EventLoop<'static, Dispatcher>,
   event_tx: ShellSender,
-  loop_tx: calloop::channel::Sender<OnLoopEvent>,
   send_tx: calloop::channel::Sender<SendLoopEvent>,
 }
 
 pub struct LoopHandle {
-  pub handle: calloop::LoopHandle<'static, Corona>,
-  pub loop_tx: calloop::channel::Sender<OnLoopEvent>,
+  pub handle: calloop::LoopHandle<'static, Dispatcher>,
   pub send_tx: calloop::channel::Sender<SendLoopEvent>,
 }
 
-pub type OnLoopEvent = Box<dyn FnOnce(&mut Corona) + 'static>;
 pub type ShellSender = calloop::channel::Sender<ShellEvent>;
-pub type SendLoopEvent = Box<dyn FnOnce(&mut Corona) + Send + 'static>;
+pub type SendLoopEvent = Box<dyn FnOnce(&Corona) + Send + 'static>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EventLoopError {
@@ -45,7 +42,7 @@ fn until_next_second() -> Duration {
 
 impl EventLoop {
   pub fn init(wayland: &mut WaylandAdapter) -> Result<Self, EventLoopError> {
-    let calloop = calloop::EventLoop::<'static, Corona>::try_new()?;
+    let calloop = calloop::EventLoop::<'static, Dispatcher>::try_new()?;
     let (tx, rx) = calloop::channel::channel::<ShellEvent>();
 
     wayland
@@ -56,19 +53,9 @@ impl EventLoop {
 
     calloop
       .handle()
-      .insert_source(rx, |event, _, state: &mut Corona| {
+      .insert_source(rx, |event, _, state: &mut Dispatcher| {
         if let Event::Msg(event) = event {
-          state.handle_shell_event(event);
-        }
-      })
-      .map_err(|e| EventLoopError::Calloop(e.error))?;
-
-    let (loop_tx, loop_rx) = calloop::channel::channel::<OnLoopEvent>();
-    calloop
-      .handle()
-      .insert_source(loop_rx, |event, _, state: &mut Corona| {
-        if let Event::Msg(f) = event {
-          f(state);
+          state.corona.handle_shell_event(event);
         }
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
@@ -76,9 +63,9 @@ impl EventLoop {
     let (send_tx, send_rx) = calloop::channel::channel::<SendLoopEvent>();
     calloop
       .handle()
-      .insert_source(send_rx, |event, _, state: &mut Corona| {
+      .insert_source(send_rx, |event, _, state: &mut Dispatcher| {
         if let Event::Msg(f) = event {
-          f(state);
+          f(&state.corona);
         }
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
@@ -86,15 +73,14 @@ impl EventLoop {
     let clock_timer = Timer::from_duration(until_next_second());
     calloop
       .handle()
-      .insert_source(clock_timer, |_, _, state: &mut Corona| {
-        state.handle_shell_event(ShellEvent::Tick);
+      .insert_source(clock_timer, |_, _, state: &mut Dispatcher| {
+        state.corona.handle_shell_event(ShellEvent::Tick);
         TimeoutAction::ToDuration(until_next_second())
       })
       .map_err(|e| EventLoopError::Calloop(e.error))?;
 
     Ok(Self {
       calloop,
-      loop_tx,
       event_tx: tx,
       send_tx,
     })
@@ -106,7 +92,7 @@ impl EventLoop {
 
   pub fn dispatch(
     &mut self,
-    state: &mut Corona,
+    state: &mut Dispatcher,
     timeout: Option<Duration>,
   ) -> Result<(), EventLoopError> {
     self
@@ -122,7 +108,6 @@ impl EventLoop {
   pub fn handle(&self) -> LoopHandle {
     LoopHandle {
       handle: self.calloop.handle(),
-      loop_tx: self.loop_tx.clone(),
       send_tx: self.send_tx.clone(),
     }
   }

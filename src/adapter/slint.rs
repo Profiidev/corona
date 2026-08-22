@@ -15,6 +15,7 @@ use wayland_client::Proxy;
 use wgpu::CurrentSurfaceTexture;
 
 use crate::{
+  Corona,
   adapter::{gpu::GpuContext, wayland::LayerSurfaceObjects},
   event::event_loop::{EventLoop, SendLoopEvent},
 };
@@ -32,8 +33,8 @@ impl EventLoopProxy for SlintEventLoopProxy {
   fn quit_event_loop(&self) -> Result<(), EventLoopError> {
     self
       .0
-      .send(Box::new(|state| {
-        state.exit_requested = true;
+      .send(Box::new(|corona: &Corona| {
+        corona.set_exit_requested();
       }))
       .map_err(|_| EventLoopError::EventLoopTerminated)
   }
@@ -41,7 +42,7 @@ impl EventLoopProxy for SlintEventLoopProxy {
   fn invoke_from_event_loop(&self, event: Box<dyn FnOnce() + Send>) -> Result<(), EventLoopError> {
     self
       .0
-      .send(Box::new(|_| {
+      .send(Box::new(|_: &Corona| {
         event();
       }))
       .map_err(|_| EventLoopError::EventLoopTerminated)

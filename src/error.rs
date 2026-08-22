@@ -17,4 +17,6 @@ pub enum CoronaError {
   DbusError(#[from] zbus::Error),
   #[error("Event loop already taken")]
   EventLoopTaken,
+  #[error("Dispatcher already taken")]
+  DispatcherTaken,
 }

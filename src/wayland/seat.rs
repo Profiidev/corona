@@ -1,11 +1,11 @@
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use wayland_client::{Connection, QueueHandle, protocol::wl_seat};
 
-use crate::Corona;
+use super::Dispatcher;
 
-impl SeatHandler for Corona {
+impl SeatHandler for Dispatcher {
   fn seat_state(&mut self) -> &mut SeatState {
-    self.wayland.seat_state_mut()
+    &mut self.seat_state
   }
 
   fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
@@ -17,9 +17,7 @@ impl SeatHandler for Corona {
     seat: wl_seat::WlSeat,
     capability: Capability,
   ) {
-    self
-      .wayland
-      .set_capability(&seat, capability, true, &self.loop_handle.handle);
+    self.set_capability(&seat, capability, true);
   }
 
   fn remove_capability(
@@ -29,9 +27,7 @@ impl SeatHandler for Corona {
     seat: wl_seat::WlSeat,
     capability: Capability,
   ) {
-    self
-      .wayland
-      .set_capability(&seat, capability, false, &self.loop_handle.handle);
+    self.set_capability(&seat, capability, false);
   }
 
   fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}

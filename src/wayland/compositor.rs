@@ -4,9 +4,9 @@ use wayland_client::{
   protocol::{wl_output, wl_surface},
 };
 
-use crate::Corona;
+use super::Dispatcher;
 
-impl CompositorHandler for Corona {
+impl CompositorHandler for Dispatcher {
   fn scale_factor_changed(
     &mut self,
     _conn: &Connection,
@@ -34,7 +34,7 @@ impl CompositorHandler for Corona {
     surface: &wl_surface::WlSurface,
     _time: u32,
   ) {
-    self.widgets.frame_done(&surface.id());
+    self.frame_done(&surface.id());
   }
 
   fn surface_enter(

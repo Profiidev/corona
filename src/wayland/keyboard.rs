@@ -1,15 +1,15 @@
 use slint::{SharedString, platform::WindowEvent};
 use smithay_client_toolkit::seat::keyboard::{
-  KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers, repeat::RepeatCallback,
+  KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers,
 };
 use wayland_client::{
   Connection, Proxy, QueueHandle,
   protocol::{wl_keyboard, wl_surface},
 };
 
-use crate::Corona;
+use super::Dispatcher;
 
-impl KeyboardHandler for Corona {
+impl KeyboardHandler for Dispatcher {
   fn enter(
     &mut self,
     _: &Connection,
@@ -20,11 +20,7 @@ impl KeyboardHandler for Corona {
     _: &[u32],
     _keysyms: &[Keysym],
   ) {
-    let id = surface.id();
-    if let Some(window) = self.widgets.window(&id) {
-      window.dispatch(WindowEvent::WindowActiveChanged(true));
-      self.widgets.focus = Some(id);
-    }
+    self.keyboard_enter(surface.id());
   }
 
   fn leave(
@@ -35,10 +31,7 @@ impl KeyboardHandler for Corona {
     surface: &wl_surface::WlSurface,
     _: u32,
   ) {
-    if let Some(window) = self.widgets.window(&surface.id()) {
-      window.dispatch(WindowEvent::WindowActiveChanged(false));
-    }
-    self.widgets.focus = None;
+    self.keyboard_leave(surface.id());
   }
 
   fn press_key(
@@ -87,33 +80,9 @@ impl KeyboardHandler for Corona {
   }
 }
 
-impl Corona {
-  pub(crate) fn repeat_callback() -> RepeatCallback<Self> {
-    Box::new(|corona, _keyboard, event| {
-      corona.dispatch_key(|text| WindowEvent::KeyPressRepeated { text }, event);
-    })
-  }
-
-  fn dispatch_key(&self, event: impl FnOnce(SharedString) -> WindowEvent, key: KeyEvent) {
-    let Some(window) = self
-      .widgets
-      .focus
-      .as_ref()
-      .and_then(|id| self.widgets.window(id))
-    else {
-      return;
-    };
-    let Some(text) = key_text(&key) else {
-      return;
-    };
-
-    window.dispatch(event(text));
-  }
-}
-
 /// Map a key to the unicode representation Slint expects: a `Key` code for the special keys,
 /// the composed text otherwise.
-fn key_text(key: &KeyEvent) -> Option<SharedString> {
+pub fn key_text(key: &KeyEvent) -> Option<SharedString> {
   use slint::platform::Key;
 
   let special = match key.keysym {

@@ -18,12 +18,11 @@ struct PanelState {
 fn main() {
   tracing_subscriber::fmt::init();
 
-  let mut corona = Corona::init().expect("Failed to initialize Corona state");
-  let handle = corona.handle();
+  let corona = Corona::init().expect("Failed to initialize Corona state");
   let panel = Rc::new(RefCell::new(PanelState::default()));
 
   for output in corona.outputs() {
-    let handle = handle.clone();
+    let corona = corona.clone();
     let wl_output = output.clone();
     let panel = panel.clone();
 
@@ -33,77 +32,63 @@ fn main() {
       .height(30)
       .exclusive_zone(30)
       .build(&output, move |b: &mut ui::bar::Bar| {
-        let b_weak = b.as_weak();
-        handle.defer(move |f| {
-          let workspaces = ModelRc::new(VecModel::from(
-            f.workspace_list()
-              .unwrap()
-              .into_iter()
-              .map(|i| i.name.to_shared_string())
-              .collect::<Vec<_>>(),
-          ));
-          if let Some(b) = b_weak.upgrade() {
-            b.set_workspaces(workspaces);
+        let workspaces = ModelRc::new(VecModel::from(
+          corona
+            .workspace_list()
+            .unwrap()
+            .into_iter()
+            .map(|i| i.name.to_shared_string())
+            .collect::<Vec<_>>(),
+        ));
+        b.set_workspaces(workspaces);
+
+        let corona_ = corona.clone();
+        b.on_workspaceClicked(move |workspace: slint::SharedString| {
+          if let Err(e) = corona_.dispatch_workspace(workspace.to_string()) {
+            tracing::error!("Failed to dispatch workspace: {e}");
           }
         });
 
-        let handle_ = handle.clone();
-        b.on_workspaceClicked(move |workspace: slint::SharedString| {
-          let workspace = workspace.to_string();
-          handle_.clone().defer(move |corona| {
-            if let Err(e) = corona.dispatch_workspace(workspace) {
-              tracing::error!("Failed to dispatch workspace: {e}");
-            }
-          });
-        });
-
+        let corona = corona.clone();
         b.on_clicked(move || {
+          let open = panel
+            .borrow()
+            .component
+            .as_ref()
+            .and_then(|component| component.upgrade());
+
+          if let Some(component) = open {
+            component.invoke_toggle_open();
+            return;
+          }
+
           let wl_output = wl_output.clone();
-          let panel = panel.clone();
-          let handle = handle.clone();
+          let panel_for_widget = panel.clone();
+          let corona_for_widget = corona.clone();
 
-          handle.clone().defer(move |corona| {
-            let open = panel
-              .borrow()
-              .component
-              .as_ref()
-              .and_then(|component| component.upgrade());
+          let widget = corona
+            .widget_builder()
+            .width(200)
+            .height(200)
+            .anchor(Anchor::TOP | Anchor::LEFT)
+            .build(&wl_output, move |p: &mut ui::panel::Panel| {
+              panel_for_widget.borrow_mut().component = Some(p.as_weak());
 
-            if let Some(component) = open {
-              component.invoke_toggle_open();
-              return;
-            }
+              p.on_clicked(|| {
+                println!("Panel clicked");
+              });
 
-            let widget = corona
-              .widget_builder()
-              .width(200)
-              .height(200)
-              .anchor(Anchor::TOP | Anchor::LEFT)
-              .build(&wl_output, {
-                let panel = panel.clone();
-                move |p: &mut ui::panel::Panel| {
-                  panel.borrow_mut().component = Some(p.as_weak());
-
-                  p.on_clicked(|| {
-                    println!("Panel clicked");
-                  });
-
-                  p.on_closed(move || {
-                    let panel = panel.clone();
-                    handle.defer(move |corona| {
-                      let mut panel = panel.borrow_mut();
-                      panel.component = None;
-                      if let Some(widget) = panel.widget.take() {
-                        corona.destroy_widget(widget);
-                      }
-                    });
-                  });
+              p.on_closed(move || {
+                let mut panel = panel_for_widget.borrow_mut();
+                panel.component = None;
+                if let Some(widget) = panel.widget.take() {
+                  corona_for_widget.destroy_widget(widget);
                 }
-              })
-              .expect("Failed to create panel widget");
+              });
+            })
+            .expect("Failed to create panel widget");
 
-            panel.borrow_mut().widget = Some(widget);
-          });
+          panel.borrow_mut().widget = Some(widget);
         });
       })
       .expect("Failed to create widget");
