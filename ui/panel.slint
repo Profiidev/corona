@@ -1,10 +1,12 @@
-import { Button } from "std-widgets.slint";
+import { Button } from "components/button.slint";
 
 export component Panel inherits Window {
   in property <duration> anim-duration: 300ms;
 
   callback clicked();
   callback closed();
+
+  default-font-family: "Geist";
 
   private property <length> self_height: 0px;
   animate self_height {
