@@ -1,0 +1,95 @@
+import { Theme } from "../theme.slint";
+
+export component Switch {
+    in property <bool> enabled: true;
+    in property <string> text;
+    in-out property <bool> checked;
+    out property <bool> has-focus: i-focus-scope.has-focus;
+
+    callback toggled;
+
+    function toggle-checked() {
+        if (!root.enabled) {
+            return;
+        }
+        root.checked = !root.checked;
+        root.toggled();
+    }
+
+    min-width: max(36px, i-layout.min-width);
+    min-height: 20px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    forward-focus: i-focus-scope;
+
+    states [
+        disabled when !root.enabled : {
+            i-rail.opacity: 0.5;
+        }
+    ]
+
+    i-layout := HorizontalLayout {
+        spacing: Theme.space-2;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 36px;
+                height: 20px;
+
+                i-rail := Rectangle {
+                    border-radius: self.height / 2;
+                    background: root.checked ? Theme.primary : Theme.input;
+                    animate background, opacity { duration: 150ms; }
+                }
+
+                i-thumb := Rectangle {
+                    x: root.checked ? parent.width - self.width - 2px : 2px;
+                    y: (parent.height - self.height) / 2;
+                    width: 16px;
+                    height: self.width;
+                    border-radius: self.height / 2;
+                    background: Theme.background;
+                    animate x { duration: 150ms; }
+                }
+
+                if root.has-focus && root.enabled : Rectangle {
+                    x: -2px;
+                    y: -2px;
+                    width: parent.width + 4px;
+                    height: parent.height + 4px;
+                    border-radius: i-rail.border-radius + 2px;
+                    border-width: 2px;
+                    border-color: Theme.ring;
+                }
+            }
+        }
+
+        if root.text != "" : Text {
+            text: root.text;
+            color: Theme.foreground;
+            font-size: Theme.font-size-sm;
+            vertical-alignment: center;
+        }
+    }
+
+    i-touch-area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.toggle-checked(); }
+    }
+
+    i-focus-scope := FocusScope {
+        x: 0;
+        width: 0px;
+        enabled: root.enabled;
+
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.toggle-checked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}

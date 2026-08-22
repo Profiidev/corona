@@ -1,0 +1,28 @@
+import { Theme } from "../theme.slint";
+
+// Styled content for Slint's built-in `Tooltip` element, e.g.:
+//   Button { ... Tooltip { TooltipContent { text: "Copy"; } } }
+export component TooltipContent inherits Rectangle {
+    in property <string> text;
+
+    background: Theme.popover;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: #00000033;
+
+    HorizontalLayout {
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-2;
+        padding-top: Theme.space-1;
+        padding-bottom: Theme.space-1;
+
+        Text {
+            text: root.text;
+            color: Theme.popover-foreground;
+            font-size: Theme.font-size-xs;
+        }
+    }
+}

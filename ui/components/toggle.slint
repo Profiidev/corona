@@ -1,0 +1,90 @@
+import { Theme } from "../theme.slint";
+import { ButtonVariant, ButtonSize } from "./button.slint";
+
+// Momentary icon/text toggle button (e.g. a workspace or mute button) —
+// distinct from Switch, which is a settings on/off control.
+export component Toggle {
+    in property <string> text;
+    in property <ButtonVariant> variant: ButtonVariant.default;
+    in property <ButtonSize> size: ButtonSize.default;
+    in property <bool> enabled: true;
+    in-out property <bool> pressed;
+    out property <bool> has-focus: i-focus-scope.has-focus;
+
+    callback toggled;
+
+    min-width: max(i-layout.min-width, root.size == ButtonSize.icon ? root.height : 0px);
+    height: root.size == ButtonSize.sm ? 32px : root.size == ButtonSize.lg ? 40px : 36px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    forward-focus: i-focus-scope;
+
+    states [
+        disabled when !root.enabled : {
+            i-background.opacity: 0.5;
+        }
+        on when root.pressed : {
+            i-background.background: Theme.accent;
+            i-text.color: Theme.accent-foreground;
+        }
+        hover when i-touch-area.has-hover && !root.pressed : {
+            i-background.background: Theme.accent.transparentize(0.5);
+        }
+    ]
+
+    i-background := Rectangle {
+        border-radius: Theme.radius-md;
+        background: transparent;
+        border-width: root.variant == ButtonVariant.outline ? 1px : 0px;
+        border-color: Theme.border;
+        animate background, opacity { duration: 150ms; }
+
+        i-layout := HorizontalLayout {
+            padding-left: root.size == ButtonSize.sm ? 8px : 12px;
+            padding-right: root.size == ButtonSize.sm ? 8px : 12px;
+            alignment: center;
+
+            i-text := Text {
+                text: root.text;
+                color: Theme.foreground;
+                font-size: Theme.font-size-sm;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                animate color { duration: 150ms; }
+            }
+        }
+    }
+
+    i-touch-area := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.pressed = !root.pressed;
+            root.toggled();
+        }
+    }
+
+    i-focus-scope := FocusScope {
+        x: 0;
+        width: 0px;
+        enabled: root.enabled;
+
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                i-touch-area.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    if root.has-focus && root.enabled : Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: i-background.border-radius + 2px;
+        border-width: 2px;
+        border-color: Theme.ring;
+    }
+}

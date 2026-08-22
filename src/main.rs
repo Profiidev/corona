@@ -29,8 +29,8 @@ fn main() {
     corona
       .widget_builder()
       .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-      .height(30)
-      .exclusive_zone(30)
+      .height(50)
+      .exclusive_zone(50)
       .build(&output, move |b: &mut ui::bar::Bar| {
         let workspaces = ModelRc::new(VecModel::from(
           corona

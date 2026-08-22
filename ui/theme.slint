@@ -1,0 +1,44 @@
+// Design tokens shared by every component in ui/components/.
+// Mirrors the project's own shadcn theme:
+// https://github.com/Profiidev/web_oauth_template/blob/main/frontend/src/app.css
+
+export global Theme {
+    in property <bool> dark: true;
+
+    // surfaces & text
+    out property <color> background: root.dark ? oklch(0.141, 0.005, 285.823) : oklch(1, 0, 0);
+    out property <color> foreground: root.dark ? oklch(0.985, 0, 0) : oklch(0.141, 0.005, 285.823);
+    out property <color> card: root.dark ? oklch(0.21, 0.006, 285.885) : oklch(1, 0, 0);
+    out property <color> card-foreground: root.dark ? oklch(0.985, 0, 0) : oklch(0.141, 0.005, 285.823);
+    out property <color> popover: root.dark ? oklch(0.21, 0.006, 285.885) : oklch(1, 0, 0);
+    out property <color> popover-foreground: root.dark ? oklch(0.985, 0, 0) : oklch(0.141, 0.005, 285.823);
+    out property <color> primary: root.dark ? oklch(0.424, 0.199, 265.638) : oklch(0.488, 0.243, 264.376);
+    out property <color> primary-foreground: oklch(0.97, 0.014, 254.604);
+    out property <color> secondary: root.dark ? oklch(0.274, 0.006, 286.033) : oklch(0.967, 0.001, 286.375);
+    out property <color> secondary-foreground: root.dark ? oklch(0.985, 0, 0) : oklch(0.21, 0.006, 285.885);
+    out property <color> muted: root.dark ? oklch(0.274, 0.006, 286.033) : oklch(0.967, 0.001, 286.375);
+    out property <color> muted-foreground: root.dark ? oklch(0.705, 0.015, 286.067) : oklch(0.552, 0.016, 285.938);
+    out property <color> accent: root.dark ? oklch(0.274, 0.006, 286.033) : oklch(0.967, 0.001, 286.375);
+    out property <color> accent-foreground: root.dark ? oklch(0.985, 0, 0) : oklch(0.21, 0.006, 285.885);
+    out property <color> destructive: root.dark ? oklch(0.704, 0.191, 22.216) : oklch(0.577, 0.245, 27.325);
+    out property <color> destructive-foreground: oklch(1, 0, 0); // shadcn hardcodes text-white here, no CSS var for it
+    out property <color> border: root.dark ? oklch(1, 0, 0, 0.1) : oklch(0.92, 0.004, 286.32);
+    out property <color> input: root.dark ? oklch(1, 0, 0, 0.15) : oklch(0.92, 0.004, 286.32);
+    out property <color> ring: root.dark ? oklch(0.552, 0.016, 285.938) : oklch(0.705, 0.015, 286.067);
+
+    // radius scale: --radius: 0.625rem (10px @ 16px root), same calc() multipliers as app.css
+    out property <length> radius: 10px;
+    out property <length> radius-sm: root.radius * 0.6;
+    out property <length> radius-md: root.radius * 0.8;
+    out property <length> radius-lg: root.radius;
+    out property <length> radius-xl: root.radius * 1.4;
+
+    // spacing / type scale (only what the components below need)
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> font-size-xs: 12px;
+    out property <length> font-size-sm: 14px;
+    out property <length> font-size-base: 16px;
+}

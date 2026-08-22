@@ -1,0 +1,11 @@
+import { Theme } from "../theme.slint";
+
+export component Separator inherits Rectangle {
+    in property <Orientation> orientation: Orientation.horizontal;
+
+    background: Theme.border;
+    min-width: root.orientation == Orientation.horizontal ? 0px : 1px;
+    min-height: root.orientation == Orientation.horizontal ? 1px : 0px;
+    horizontal-stretch: root.orientation == Orientation.horizontal ? 1 : 0;
+    vertical-stretch: root.orientation == Orientation.horizontal ? 0 : 1;
+}

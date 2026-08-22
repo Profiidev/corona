@@ -1,0 +1,21 @@
+import { Theme } from "../theme.slint";
+
+export component Progress inherits Rectangle {
+    in property <float> value: 0; // 0.0 - 1.0
+    in property <bool> indeterminate: false;
+
+    height: 8px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    border-radius: self.height / 2;
+    background: Theme.secondary;
+    clip: true;
+
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: Theme.primary;
+        x: !root.indeterminate ? 0px : -parent.width + parent.width * mod(animation-tick(), 2s) / 1s;
+        width: !root.indeterminate ? parent.width * max(0, min(1, root.value)) : parent.width;
+        animate width { duration: 150ms; }
+    }
+}

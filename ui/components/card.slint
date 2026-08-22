@@ -1,0 +1,43 @@
+import { Theme } from "../theme.slint";
+
+// Multi-part container, mirroring shadcn's Card/CardHeader/CardTitle/... split.
+// Slint has no dotted-namespace import, so each part is its own exported component.
+
+export component CardRoot inherits Rectangle {
+    background: Theme.card;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 4px;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-color: #00000022;
+}
+
+export component CardHeader inherits VerticalLayout {
+    padding: Theme.space-4;
+    spacing: Theme.space-1;
+}
+
+export component CardTitle inherits Text {
+    color: Theme.card-foreground;
+    font-size: Theme.font-size-base;
+    font-weight: 600;
+}
+
+export component CardDescription inherits Text {
+    color: Theme.muted-foreground;
+    font-size: Theme.font-size-sm;
+    wrap: word-wrap;
+}
+
+export component CardContent inherits VerticalLayout {
+    padding: Theme.space-4;
+    padding-top: 0px;
+    spacing: Theme.space-2;
+}
+
+export component CardFooter inherits HorizontalLayout {
+    padding: Theme.space-4;
+    padding-top: 0px;
+    spacing: Theme.space-2;
+}

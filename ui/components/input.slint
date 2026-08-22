@@ -1,0 +1,48 @@
+import { Theme } from "../theme.slint";
+
+export component Input inherits Rectangle {
+    in-out property <string> text <=> i-input.text;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    out property <bool> has-focus: i-input.has-focus;
+
+    callback edited <=> i-input.edited;
+    callback accepted <=> i-input.accepted;
+
+    forward-focus: i-input;
+
+    height: 36px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    border-radius: Theme.radius-md;
+    background: Theme.background;
+    border-width: 1px;
+    border-color: root.has-focus ? Theme.ring : Theme.input;
+    opacity: root.enabled ? 1.0 : 0.5;
+    animate border-color { duration: 150ms; }
+
+    i-input := TextInput {
+        x: Theme.space-3;
+        width: parent.width - 2 * Theme.space-3;
+        height: 100%;
+        enabled: root.enabled;
+        read-only: root.read-only;
+        single-line: true;
+        color: Theme.foreground;
+        selection-background-color: Theme.primary;
+        selection-foreground-color: Theme.primary-foreground;
+        font-size: Theme.font-size-sm;
+        vertical-alignment: center;
+    }
+
+    if i-input.text == "" && !i-input.has-focus : Text {
+        x: i-input.x;
+        width: i-input.width;
+        height: 100%;
+        text: root.placeholder;
+        color: Theme.muted-foreground;
+        font-size: Theme.font-size-sm;
+        vertical-alignment: center;
+    }
+}
