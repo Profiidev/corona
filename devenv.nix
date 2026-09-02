@@ -2,20 +2,22 @@
 
 let
   buildDeps = with pkgs; [
-    # slint build
+    pkg-config
+    fontconfig
+    freetype
     libxkbcommon
+    # gpui-component always pulls gpui_platform/x11, so the X11 libs must link
+    # even though corona only ever opens Wayland layer-shell surfaces.
+    libxcb
   ];
 
   runtimeDeps = with pkgs; [
-    # slint runtime
     wayland
+    libxkbcommon
     fontconfig
-    vulkan-loader
-
-    # slint lsp
-    libinput
-    libgbm
     freetype
+    vulkan-loader
+    libxcb
   ];
 in
 {

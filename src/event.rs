@@ -1,16 +1,18 @@
-use wayland_client::protocol::wl_output::WlOutput;
-
 pub use hyprland::shared::{WorkspaceId, WorkspaceType};
 
-#[derive(Clone)]
+/// Channel the background listeners (Hyprland, D-Bus) push into. Drained by
+/// [`crate::Shell`] on GPUI's foreground executor.
+pub type ShellSender = smol::channel::Sender<ShellEvent>;
+
+#[derive(Clone, Debug)]
 pub enum ShellEvent {
+  /// Fires on every wall-clock second boundary.
   Tick,
   Notification(NotificationEvent),
-  Output(OutputEvent),
   Workspace(WorkspaceEvent),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum NotificationEvent {
   New {
     id: u32,
@@ -24,14 +26,7 @@ pub enum NotificationEvent {
   Close(u32),
 }
 
-#[derive(Clone)]
-pub enum OutputEvent {
-  New(WlOutput),
-  Update(WlOutput),
-  Destroy(WlOutput),
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WorkspaceEvent {
   Added {
     name: WorkspaceType,

@@ -4,8 +4,7 @@ use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
-use crate::event::event::{NotificationEvent, ShellEvent};
-use crate::event::event_loop::ShellSender;
+use crate::event::{NotificationEvent, ShellEvent, ShellSender};
 
 const PATH: &str = "/org/freedesktop/Notifications";
 const NAME: &str = "org.freedesktop.Notifications";
@@ -33,10 +32,6 @@ impl Dbus {
     }
 
     Ok(Self(conn))
-  }
-
-  pub fn destroy(self) {
-    self.0.graceful_shutdown();
   }
 
   pub fn notification_closed(&self, id: u32, reason: CloseReason) {
@@ -90,7 +85,7 @@ impl Notifications {
 
     let _ = self
       .tx
-      .send(ShellEvent::Notification(NotificationEvent::New {
+      .try_send(ShellEvent::Notification(NotificationEvent::New {
         id,
         app_name,
         summary,
@@ -106,7 +101,7 @@ impl Notifications {
   fn close_notification(&mut self, id: u32) {
     let _ = self
       .tx
-      .send(ShellEvent::Notification(NotificationEvent::Close(id)));
+      .try_send(ShellEvent::Notification(NotificationEvent::Close(id)));
   }
 
   #[zbus(signal)]
@@ -144,7 +139,7 @@ mod tests {
   /// Emitting runs on the event loop thread, so it must not be a round trip.
   #[test]
   fn emitting_a_signal_does_not_block() {
-    let (tx, _rx) = calloop::channel::channel();
+    let (tx, _rx) = smol::channel::unbounded();
     let Ok(dbus) = Dbus::init(tx) else {
       return; // no session bus (CI)
     };

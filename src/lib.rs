@@ -1,122 +1,145 @@
-use std::{rc::Rc, time::Duration};
+//! Corona: a Hyprland desktop shell built on GPUI-CE layer-shell windows.
+//!
+//! [`Shell`] is the single piece of shared state. It is a GPUI entity, not an
+//! `Rc<RefCell<_>>`: entity handles are `Send + Sync`, so they cross into
+//! background tasks, and `update` hands out `&mut Self` without borrow panics.
 
-use smithay_client_toolkit::{
-  delegate_dispatch2, delegate_registry,
-  output::OutputState,
-  registry::{ProvidesRegistryState, RegistryState},
-  registry_handlers,
-  seat::SeatState,
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::{
-  adapter::{gpu::GpuContext, slint::SlintCustomPlatform, wayland::WaylandAdapter},
-  error::CoronaError,
-  event::{
-    dbus::Dbus,
-    event::ShellEvent,
-    event_loop::{EventLoop, LoopHandle},
-  },
-  widgets::Widgets,
-};
+use gpui::{AppContext as _, Context, EventEmitter};
 
-pub use slint;
+use crate::{dbus::Dbus, event::ShellEvent};
 
-mod adapter;
-pub mod api;
-mod error;
-mod event;
-mod wayland;
-pub mod widgets;
+pub mod dbus;
+pub mod event;
+pub mod hypr;
 
-pub struct Corona {
-  wayland: WaylandAdapter,
-  gpu: Rc<GpuContext>,
-  platform: Rc<SlintCustomPlatform>,
-  event_loop: Option<EventLoop>,
-  loop_handle: LoopHandle,
-  dbus: Dbus,
-  event_listeners: Vec<Box<dyn FnMut(ShellEvent)>>,
-  widgets: Widgets,
-  exit_requested: bool,
+pub use dbus::CloseReason;
+
+pub struct Shell {
+  /// Hyprland workspace names, in Hyprland's own order.
+  pub workspaces: Vec<String>,
+  /// `None` when no session bus was reachable at startup.
+  dbus: Option<Dbus>,
 }
 
-impl Corona {
-  pub fn init() -> Result<Self, CoronaError> {
-    let mut wayland = WaylandAdapter::init()?;
-    let gpu = GpuContext::init(&wayland)?;
-    let event_loop = EventLoop::init(&mut wayland)?;
-    let platform = SlintCustomPlatform::init(gpu.clone(), &event_loop)?;
-    let dbus = Dbus::init(event_loop.event_sender())?;
-    event::hyprland::spawn(event_loop.event_sender());
+/// Subscribe with `cx.subscribe(&shell, ..)` to observe the raw event stream.
+impl EventEmitter<ShellEvent> for Shell {}
 
-    Ok(Self {
-      wayland,
-      gpu,
-      platform,
-      loop_handle: event_loop.handle(),
-      dbus,
-      event_listeners: Vec::new(),
-      event_loop: Some(event_loop),
-      widgets: Widgets::new(),
-      exit_requested: false,
+impl Shell {
+  pub fn new(cx: &mut Context<Self>) -> Self {
+    let (tx, rx) = smol::channel::unbounded::<ShellEvent>();
+
+    hypr::spawn_listener(tx.clone());
+
+    let dbus = match Dbus::init(tx) {
+      Ok(dbus) => Some(dbus),
+      Err(e) => {
+        tracing::warn!("notification server unavailable: {e:#}");
+        None
+      }
+    };
+
+    cx.spawn(async move |shell, cx| {
+      while let Ok(event) = rx.recv().await {
+        if shell
+          .update(cx, |shell, cx| shell.handle(event, cx))
+          .is_err()
+        {
+          break;
+        }
+      }
     })
-  }
+    .detach();
 
-  pub fn run(mut self) -> Result<(), CoronaError> {
-    let mut event_loop = self.event_loop.take().ok_or(CoronaError::EventLoopTaken)?;
+    cx.spawn(async move |shell, cx| {
+      loop {
+        cx.background_executor().timer(until_next_second()).await;
+        if shell
+          .update(cx, |shell, cx| shell.handle(ShellEvent::Tick, cx))
+          .is_err()
+        {
+          break;
+        }
+      }
+    })
+    .detach();
 
-    while !self.exit_requested {
-      let timeout = if self.widgets.needs_render() {
-        Some(Duration::ZERO)
-      } else {
-        slint::platform::duration_until_next_timer_update()
-      };
+    Self::refresh_workspaces(cx);
 
-      event_loop.dispatch(&mut self, timeout)?;
-      slint::platform::update_timers_and_animations();
-      self.render_if_dirty()?;
-      self.wayland.flush()?;
-    }
-
-    drop(event_loop);
-    self.destroy();
-
-    Ok(())
-  }
-
-  fn destroy(self) {
-    self.dbus.destroy();
-
-    drop(self.widgets);
-    drop(self.platform);
-
-    if Rc::try_unwrap(self.gpu).is_err() {
-      tracing::warn!("GpuContext is still referenced elsewhere, cannot destroy");
-    }
-
-    if let Err(e) = self.wayland.flush() {
-      tracing::error!("Failed to flush Wayland connection during shutdown: {}", e);
-    }
-    drop(self.wayland);
-  }
-
-  fn handle_shell_event(&mut self, event: ShellEvent) {
-    for listener in &mut self.event_listeners {
-      listener(event.clone())
+    Self {
+      workspaces: Vec::new(),
+      dbus,
     }
   }
 
-  fn render_if_dirty(&self) -> Result<(), CoronaError> {
-    self.widgets.render_if_dirty()
+  pub fn signal_notification_closed(&self, id: u32, reason: CloseReason) {
+    if let Some(dbus) = &self.dbus {
+      dbus.notification_closed(id, reason);
+    }
+  }
+
+  pub fn signal_notification_action(&self, id: u32, action: &str) {
+    if let Some(dbus) = &self.dbus {
+      dbus.notification_action(id, action);
+    }
+  }
+
+  fn handle(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
+    tracing::debug!("shell event: {event:?}");
+    // ponytail: any workspace change refetches the whole list. It is one cheap
+    // socket round trip; track incrementally only if it ever shows up in a profile.
+    if matches!(event, ShellEvent::Workspace(_)) {
+      Self::refresh_workspaces(cx);
+    }
+
+    cx.emit(event);
+    cx.notify();
+  }
+
+  fn refresh_workspaces(cx: &mut Context<Self>) {
+    cx.spawn(async move |shell, cx| {
+      let names = cx.background_spawn(async { hypr::workspace_names() }).await;
+
+      match names {
+        Ok(names) => {
+          let _ = shell.update(cx, |shell, cx| {
+            if shell.workspaces != names {
+              shell.workspaces = names;
+              cx.notify();
+            }
+          });
+        }
+        Err(e) => tracing::warn!("failed to list workspaces: {e:#}"),
+      }
+    })
+    .detach();
   }
 }
 
-delegate_dispatch2!(Corona);
-delegate_registry!(Corona);
+/// Time until the next wall-clock second boundary, so the clock ticks in step
+/// with the displayed time rather than drifting from process start.
+fn until_next_second() -> Duration {
+  let subsec = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .subsec_nanos() as u64;
+  // 1ms skew to prevent a double trigger
+  Duration::from_nanos(1_000_000_000 - subsec) + Duration::from_millis(1)
+}
 
-impl ProvidesRegistryState for Corona {
-  fn registry(&mut self) -> &mut RegistryState {
-    self.wayland.registry_state_mut()
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn lands_after_a_second_boundary() {
+    for _ in 0..100 {
+      let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+      let target = now + until_next_second();
+      assert_eq!(target.as_secs(), now.as_secs() + 1);
+      assert!(target.subsec_nanos() < 2_000_000, "{target:?}");
+      std::thread::sleep(Duration::from_millis(7));
+    }
   }
-  registry_handlers![OutputState, SeatState];
 }

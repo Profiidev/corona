@@ -1,9 +1,0 @@
-[package]
-name = "wgpu-core-deps-apple"
-version = "29.0.0"
-edition = "2021"
-
-[features]
-angle = []
-metal = []
-vulkan-portability = []

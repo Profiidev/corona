@@ -5,32 +5,20 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-calloop = "0.14.4"
-calloop-wayland-source = "0.4.1"
-hyprland = "0.4.0-beta.3"
-raw-window-handle = "0.6.2"
-slint = { version = "1.17.1", default-features = false, features = [
-  "compat-1-2",
-  "renderer-femtovg-wgpu",
-  "unstable-wgpu-29",
+gpui = { package = "gpui-ce", version = "0.2.2" }
+gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = [
+  "font-kit",
+  "wayland",
 ] }
-smithay-client-toolkit = "0.21.1"
-spin_on = "0.1.1"
+gpui-component = { package = "gpui_ce_components", version = "0.2.0" }
+hyprland = "0.4.0-beta.3"
+smol = "2.0"
 thiserror = "2.0.20"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
-wayland-client = { version = "0.31.15", features = ["system"] }
-wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
-wgpu = { version = "29.0.4", default-features = false, features = ["vulkan"] }
 zbus = "5.19.0"
 
-[build-dependencies]
-slint-build = "1.17.1"
-
-[features]
-hot-reload = ["slint/live-preview"]
-
-# TODO remove after upgrading to wgpu 30
-[patch.crates-io]
-wgpu-core-deps-apple = { path = "vendor-stubs/wgpu-core-deps-apple" }
-wgpu-core-deps-emscripten = { path = "vendor-stubs/wgpu-core-deps-emscripten" }
+# gpui is far too slow to animate at opt-level 0. Dependencies get optimised,
+# corona itself stays unoptimised so its rebuilds stay fast.
+[profile.dev.package."*"]
+opt-level = 2
