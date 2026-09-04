@@ -1,6 +1,7 @@
 use crate::bar::Bar;
 
 mod bar;
+mod panel;
 
 pub fn run() {
   let app = gpui_kit::application().with_assets(gpui_kit::assets::Assets);
