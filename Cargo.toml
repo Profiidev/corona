@@ -5,20 +5,5 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-gpui = { package = "gpui-ce", version = "0.2.2" }
-gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = [
-  "font-kit",
-  "wayland",
-] }
-gpui-component = { package = "gpui_ce_components", version = "0.2.0" }
-hyprland = "0.4.0-beta.3"
-smol = "2.0"
-thiserror = "2.0.20"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
+gpui-kit = "0.6.0"
 zbus = "5.19.0"
-
-# gpui is far too slow to animate at opt-level 0. Dependencies get optimised,
-# corona itself stays unoptimised so its rebuilds stay fast.
-[profile.dev.package."*"]
-opt-level = 2
