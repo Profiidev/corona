@@ -9,12 +9,10 @@ use crate::panel::anim::Anim;
 pub struct BasePanel {
   width: f32,
   height: f32,
-  notch: f32,
-  radius: f32,
-  height_anim: Anim,
   align: Align,
-  open: bool,
   children: Vec<AnyElement>,
+  height_anim: Anim,
+  open: bool,
   window: AnyWindowHandle,
   close: Option<Task<()>>,
 }
@@ -47,8 +45,6 @@ impl BasePanel {
     Self {
       width: 200.,
       height: 200.,
-      notch: 12.,
-      radius: 12.,
       height_anim: Anim::new(0., std::time::Duration::from_millis(300)),
       open: true,
       children: Vec::new(),
@@ -88,11 +84,15 @@ impl Render for BasePanel {
     window: &mut gpui_kit::Window,
     cx: &mut gpui_kit::prelude::Context<Self>,
   ) -> impl gpui_kit::prelude::IntoElement {
-    let bg = cx.theme().tokens.status_bar;
-    let bn = if !matches!(self.align, Align::Relative(_)) {
-      self.notch
+    let theme = cx.theme();
+    let bg = theme.tokens.status_bar;
+    let br = theme.radius_2xl().as_f32();
+    let (bn, nl, nr) = if self.align == Align::Left {
+      (br, 0., 1.)
+    } else if self.align == Align::Right {
+      (br, 1., 0.)
     } else {
-      0.
+      (0., 1., 1.)
     };
 
     self
@@ -120,19 +120,11 @@ impl Render for BasePanel {
             Align::Relative(x) => d.left(px(x - self.width / 2.)),
             Align::Right => d.right_0(),
           })
-          .w(px(
-            self.width
-              + self.notch
-                * if let Align::Relative(_) = self.align {
-                  2.
-                } else {
-                  1.
-                },
-          ))
+          .w(px(self.width + br * (nl + nr)))
           .h(px(h))
           .child(
             canvas(|_, _, _| (), {
-              let n = px(self.notch);
+              let n = px(br);
               let align = self.align;
               move |bounds, _, window, _| {
                 if let Some(path) = panel_path(bounds, n, align) {
@@ -147,8 +139,8 @@ impl Render for BasePanel {
           .child(
             div()
               .absolute()
-              .left(px(self.notch))
-              .right(px(self.notch))
+              .left(px(br * nl))
+              .right(px(br * nr))
               .bottom_0()
               .children(std::mem::take(&mut self.children)),
           ),
