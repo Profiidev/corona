@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  App, AppContext, Bounds, Entity, Global, Size, Styled, WindowBackgroundAppearance, WindowBounds,
-  WindowKind, WindowOptions,
+  App, AppContext, Bounds, Entity, Global, Size, Styled, WeakEntity, WindowBackgroundAppearance,
+  WindowBounds, WindowKind, WindowOptions,
   component::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -15,7 +15,7 @@ mod anim;
 mod base;
 
 pub struct PanelState {
-  panels: HashMap<String, Entity<BasePanel>>,
+  panels: HashMap<String, WeakEntity<BasePanel>>,
 }
 
 impl Global for PanelState {}
@@ -27,8 +27,12 @@ impl PanelState {
     });
   }
 
+  fn get(name: &str, cx: &App) -> Option<Entity<BasePanel>> {
+    cx.global::<PanelState>().panels.get(name)?.upgrade()
+  }
+
   pub fn open(name: String, cx: &mut App) -> Result<()> {
-    if let Some(panel) = cx.global::<PanelState>().panels.get(&name).cloned() {
+    if let Some(panel) = Self::get(&name, cx) {
       panel.update(cx, |panel, cx| panel.open(cx));
       return Ok(());
     }
@@ -62,7 +66,7 @@ impl PanelState {
       |window, cx| {
         let view = cx.new(|_| BasePanel::new(window.window_handle()));
         let state = cx.global_mut::<PanelState>();
-        state.panels.insert(name, view.clone());
+        state.panels.insert(name, view.downgrade());
 
         cx.new(|cx| {
           Root::new(view, window, cx)
@@ -76,16 +80,12 @@ impl PanelState {
   }
 
   pub fn close(name: &str, cx: &mut App) {
-    if let Some(panel) = cx.global::<PanelState>().panels.get(name).cloned() {
+    if let Some(panel) = Self::get(name, cx) {
       panel.update(cx, |panel, cx| panel.close(cx));
     }
   }
 
   pub fn is_open(name: &str, cx: &mut App) -> bool {
-    if let Some(panel) = cx.global::<PanelState>().panels.get(name) {
-      panel.read_with(cx, |panel, _| panel.is_open())
-    } else {
-      false
-    }
+    Self::get(name, cx).is_some_and(|panel| panel.read(cx).is_open())
   }
 }
