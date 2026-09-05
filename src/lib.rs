@@ -12,6 +12,7 @@ pub fn run() {
     gpui_kit::init(cx);
     config::load(cx).expect("Failed to load config");
     theme::load(cx).expect("Failed to load themes");
+    panel::PanelState::init(cx);
 
     Bar::create(cx).expect("Failed to create bar window");
   });

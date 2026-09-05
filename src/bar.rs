@@ -7,7 +7,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::panel::Panel;
+use crate::panel::PanelState;
 
 pub struct Bar;
 
@@ -42,11 +42,15 @@ impl Bar {
 }
 
 impl Render for Bar {
-  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
     StatusBar::new()
       .size_full()
-      .child(Button::new("id").label("label").on_click(|_, _, app| {
-        Panel::create(app).expect("failed to open panel");
+      .child(Button::new("id").label("label").on_click(|_, _, cx| {
+        if PanelState::is_open("test", cx) {
+          PanelState::close("test", cx);
+        } else {
+          PanelState::open("test".into(), cx).expect("failed to open panel");
+        }
       }))
   }
 }
