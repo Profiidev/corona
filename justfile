@@ -82,13 +82,14 @@ nested-kill:
   # The expanded path only ever reaches pkill's own argv, and pkill never matches
   # itself — so this cannot take down the shell running it.
   conf="$(cat /tmp/corona-nested.conf-path 2>/dev/null)"
-  if [ -z "$conf" ] || ! pkill -f "$conf"; then
+  if [ -z "$conf" ]; then
     echo "no nested session running"
     exit 0
   fi
-  # The watchdog and the compositor it supervises die at their own pace, so give
-  # them a moment and then insist.
-  sleep 2
-  pkill -9 -f "$conf" 2>/dev/null || true
+  # The watchdog goes first and hard: start-hyprland restarts the compositor it
+  # supervises, so killing them together just spawns a fresh one.
+  pkill -9 -f "start-hyprland -- -c $conf" 2>/dev/null || true
+  sleep 1
+  pkill -9 -f "Hyprland .*-c $conf" 2>/dev/null || true
   rm -f /tmp/corona-nested.conf-path
   echo "killed nested session"

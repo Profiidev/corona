@@ -33,25 +33,31 @@ impl Lock {
     }
 
     let locked = cx.lock_session();
-    cx.spawn(async move |cx| {
-      let result = async {
-        locked.await??;
-        cx.update(|cx| {
-          let windows = cx
-            .displays()
-            .into_iter()
-            .map(|display| Self::open(display.id(), cx))
-            .collect::<Result<Vec<_>>>()?;
-          cx.set_global(LockState { windows });
-          anyhow::Ok(())
-        })?;
-        anyhow::Ok(())
-      }
-      .await;
 
-      // A refused lock leaves nothing on screen, so say so rather than failing silently.
-      if let Err(e) = result {
-        eprintln!("failed to lock the session: {e:#}");
+    // The windows go up now, not after `locked` resolves: the compositor withholds that
+    // confirmation until a lock frame has been presented on every output, so waiting for
+    // it first just stalls until the compositor's timeout fires.
+    let windows = cx
+      .displays()
+      .into_iter()
+      .map(|display| Self::open(display.id(), cx))
+      .collect::<Result<Vec<_>>>();
+
+    match windows {
+      Ok(windows) => cx.set_global(LockState { windows }),
+      Err(e) => {
+        eprintln!("failed to cover the displays: {e:#}");
+        cx.unlock_session();
+        return;
+      }
+    }
+
+    cx.spawn(async move |cx| {
+      // Refused — another client holds the session, or the compositor said no. The
+      // surfaces are already up, so take them down again.
+      if let Err(e) = locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
+        eprintln!("session lock refused: {e:#}");
+        let _ = cx.update(Self::unlock);
       }
     })
     .detach();
