@@ -2,6 +2,7 @@ use crate::bar::Bar;
 
 mod bar;
 mod config;
+mod lock;
 mod panel;
 mod theme;
 

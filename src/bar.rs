@@ -9,7 +9,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::panel::PanelState;
+use crate::{lock::Lock, panel::PanelState};
 
 pub struct Bar;
 
@@ -75,6 +75,12 @@ impl Render for Bar {
                 .expect("failed to open panel");
             }
           }),
+      )
+      // Only here to exercise the session-lock patch; Escape unlocks, nothing is checked.
+      .child(
+        Button::new("lock")
+          .label("lock")
+          .on_click(|_, _, cx| Lock::lock(cx)),
       )
   }
 }
