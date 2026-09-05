@@ -45,7 +45,6 @@ impl Bar {
 
 impl Render for Bar {
   fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-    let button_bounds = Rc::new(Cell::new(Bounds::default()));
     let bar_bounds = Rc::new(Cell::new(Bounds::default()));
 
     StatusBar::new()
@@ -56,8 +55,10 @@ impl Render for Bar {
           bar_bounds.set(bounds);
         }
       })
-      .child(
-        Button::new("id")
+      .children((0..3).map(|i| {
+        let button_bounds = Rc::new(Cell::new(Bounds::default()));
+
+        Button::new(format!("Button {}", i + 1))
           .label("label")
           .on_prepaint({
             let button_bounds = button_bounds.clone();
@@ -65,23 +66,20 @@ impl Render for Bar {
               button_bounds.set(bounds);
             }
           })
-          .on_click(move |_, _, cx| {
-            let button_bounds = button_bounds.get();
-            let bar_bounds = bar_bounds.get();
-            if PanelState::is_open("test", cx) {
-              PanelState::close("test", cx);
-            } else {
-              PanelState::open("test".into(), button_bounds, bar_bounds, cx)
-                .expect("failed to open panel");
+          .when(i != 0, |b| b.ml_auto())
+          .on_click({
+            let bar_bounds = bar_bounds.clone();
+            move |_, _, cx| {
+              let button_bounds = button_bounds.get();
+              let bar_bounds = bar_bounds.get();
+              if PanelState::is_open("test", cx) {
+                PanelState::close("test", cx);
+              } else {
+                PanelState::open("test".into(), button_bounds, bar_bounds, cx)
+                  .expect("failed to open panel");
+              }
             }
-          }),
-      )
-      // Only here to exercise the session-lock patch; Escape unlocks, nothing is checked.
-      .child(
-        Button::new("lock")
-          .label("lock")
-          .ml_auto()
-          .on_click(|_, _, cx| Lock::lock(cx)),
-      )
+          })
+      }))
   }
 }
