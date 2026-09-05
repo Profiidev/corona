@@ -1,5 +1,5 @@
 use gpui_kit::{
-  App, AppContext, Bounds, Path, PathBuilder, Pixels, Render, Size, Window,
+  App, AppContext, Bounds, MouseButton, Path, PathBuilder, Pixels, Render, Size, Window,
   WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas,
   component::{ActiveTheme, button::Button, *},
   div,
@@ -13,6 +13,8 @@ use gpui_kit::{
 const NOTCH: Pixels = px(12.);
 /// Radius of the panel's own bottom corners.
 const RADIUS: Pixels = px(12.);
+const WIDTH: Pixels = px(200.);
+const HEIGHT: Pixels = px(200.);
 
 pub struct Panel;
 
@@ -43,7 +45,10 @@ impl Panel {
     cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP | Anchor::LEFT,
+          // Covers the whole output — including under the bar, which is what
+          // an exclusive zone of -1 asks for — so a click anywhere off the
+          // panel reaches this window and dismisses it.
+          anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
           exclusive_zone: None,
           exclusive_edge: None,
           margin: None,
@@ -54,11 +59,11 @@ impl Panel {
         window_background: WindowBackgroundAppearance::Transparent,
         app_id: Some("corona_bar".to_string()),
         titlebar: None,
+        // A zero size with opposite anchors means "fill"; a real size would be
+        // centered between them instead. The bar does the same for its width.
         window_bounds: Some(WindowBounds::Windowed(Bounds {
-          // Starts at the top of the screen so it can draw over the bar, and
-          // NOTCH wider on each side to make room for the flares.
           origin: point(px(0.), px(0.)),
-          size: Size::new(px(200.) + NOTCH * 2., px(200.)),
+          size: Size::new(px(0.), px(0.)),
         })),
         ..Default::default()
       },
@@ -79,28 +84,37 @@ impl Render for Panel {
     let bg = cx.theme().tokens.status_bar;
 
     div()
-      .relative()
       .size_full()
-      .child(
-        canvas(
-          |_, _, _| (),
-          move |bounds, _, window, _| {
-            if let Some(path) = panel_path(bounds) {
-              window.paint_path(path, bg);
-            }
-          },
-        )
-        .absolute()
-        .inset_0(),
-      )
+      .on_mouse_down(MouseButton::Left, |_, window, _| window.remove_window())
       .child(
         div()
+          // Swallows clicks so they don't reach the dismiss handler above.
+          .occlude()
           .absolute()
-          .left(NOTCH)
-          .right(NOTCH)
-          .bottom_0()
-          .p_3()
-          .child(Button::new("test").label("test")),
+          .left_0()
+          .w(WIDTH + NOTCH * 2.)
+          .h(HEIGHT)
+          .child(
+            canvas(
+              |_, _, _| (),
+              move |bounds, _, window, _| {
+                if let Some(path) = panel_path(bounds) {
+                  window.paint_path(path, bg);
+                }
+              },
+            )
+            .absolute()
+            .inset_0(),
+          )
+          .child(
+            div()
+              .absolute()
+              .left(NOTCH)
+              .right(NOTCH)
+              .bottom_0()
+              .p_3()
+              .child(Button::new("test").label("test")),
+          ),
       )
   }
 }
