@@ -80,6 +80,7 @@ impl Render for Bar {
       .child(
         Button::new("lock")
           .label("lock")
+          .ml_auto()
           .on_click(|_, _, cx| Lock::lock(cx)),
       )
   }

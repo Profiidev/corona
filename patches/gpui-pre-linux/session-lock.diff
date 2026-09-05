@@ -297,10 +297,9 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          }
      }
  
-@@ -425,6 +460,8 @@
-                 // cannot set window position of a layer surface
-                 layer_surface.set_size(width as u32, height as u32);
-             }
+@@ -425,5 +460,7 @@
+             // The layer-shell requested size is independent of the configured drawable size.
+             WaylandSurfaceState::LayerShell(_) => {}
 +            // A lock surface's size is the compositor's to decide.
 +            WaylandSurfaceState::SessionLock(_) => {}
              WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {

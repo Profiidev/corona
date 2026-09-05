@@ -57,7 +57,7 @@ impl Lock {
       // surfaces are already up, so take them down again.
       if let Err(e) = locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
         eprintln!("session lock refused: {e:#}");
-        let _ = cx.update(Self::unlock);
+        cx.update(Self::unlock);
       }
     })
     .detach();
