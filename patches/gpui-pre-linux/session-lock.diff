@@ -1,0 +1,394 @@
+diff --git a/crates/gpui_linux/src/linux/platform.rs b/crates/gpui_linux/src/linux/platform.rs
+--- a/crates/gpui_linux/src/linux/platform.rs
++++ b/crates/gpui_linux/src/linux/platform.rs
+@@ -80,6 +80,18 @@
+         handle: AnyWindowHandle,
+         options: WindowParams,
+     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
++
++    /// Locks the session; see [`gpui::Platform::lock_session`]. Wayland-only — X11 has
++    /// no equivalent protocol, so the default reports it as unsupported.
++    fn lock_session(&self) -> oneshot::Receiver<anyhow::Result<()>> {
++        let (tx, rx) = oneshot::channel();
++        tx.send(Err(gpui::session_lock::SessionLockNotSupportedError.into()))
++            .ok();
++        rx
++    }
++
++    /// Releases a lock taken with [`LinuxClient::lock_session`].
++    fn unlock_session(&self) {}
+     fn set_cursor_style(&self, style: CursorStyle);
+     fn hide_cursor_until_mouse_moves(&self) {}
+     fn is_cursor_visible(&self) -> bool {
+@@ -389,6 +401,14 @@
+         self.inner.open_window(handle, options)
+     }
+ 
++    fn lock_session(&self) -> oneshot::Receiver<anyhow::Result<()>> {
++        self.inner.lock_session()
++    }
++
++    fn unlock_session(&self) {
++        self.inner.unlock_session()
++    }
++
+     fn open_url(&self, url: &str) {
+         self.inner.open_uri(url);
+     }
+diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -37,6 +37,9 @@
+         wl_shm_pool, wl_surface, wl_touch,
+     },
+ };
++use wayland_protocols::ext::session_lock::v1::client::{
++    ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
++};
+ use wayland_protocols::wp::pointer_gestures::zv1::client::{
+     zwp_pointer_gesture_pinch_v1, zwp_pointer_gestures_v1,
+ };
+@@ -102,6 +105,7 @@
+     MouseUpEvent, NavigationDirection, Pixels, PlatformDisplay, PlatformInput,
+     PlatformKeyboardLayout, PlatformWindow, Point, ScrollDelta, ScrollWheelEvent, SharedString,
+     Size, TouchPhase, WindowButtonLayout, WindowKind, WindowParams, point, profiler, px, size,
++    session_lock::{SessionLockNotSupportedError, SessionLockRefusedError},
+ };
+ use gpui_wgpu::{CompositorGpuHint, GpuContext};
+ use wayland_protocols::wp::linux_dmabuf::zv1::client::{
+@@ -229,6 +233,7 @@
+         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
++    pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
+     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
+     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
+     pub gesture_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+@@ -249,6 +254,7 @@
+         let dialog_v = XdgWmDialogV1::interface().version;
+         Globals {
+             activation: globals.bind(&qh, 1..=1, ()).ok(),
++            session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
+             compositor: globals
+                 .bind(
+                     &qh,
+@@ -343,6 +349,13 @@
+     outputs: HashMap<ObjectId, Output>,
+     in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
+     wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
++    session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
++    /// Whether the compositor has sent `locked`. `unlock_and_destroy` before that is an
++    /// `invalid_unlock` protocol error — such a lock must be plainly destroyed instead.
++    session_locked: bool,
++    /// Resolved by the compositor's `locked` (or `finished`) event, which is the only
++    /// point at which a session-lock surface may be drawn.
++    session_lock_tx: Option<futures::channel::oneshot::Sender<anyhow::Result<()>>>,
+     keyboard_layout: LinuxKeyboardLayout,
+     keymap_state: Option<xkb::State>,
+     compose_state: Option<xkb::compose::State>,
+@@ -934,6 +947,9 @@
+             composing: false,
+             last_ime_cursor_rectangle: None,
+             outputs: HashMap::default(),
++            session_lock: None,
++            session_locked: false,
++            session_lock_tx: None,
+             in_progress_outputs,
+             wl_outputs,
+             windows: HashMap::default(),
+@@ -1069,6 +1085,41 @@
+         sources_rx
+     }
+ 
++    fn lock_session(&self) -> futures::channel::oneshot::Receiver<anyhow::Result<()>> {
++        let (tx, rx) = futures::channel::oneshot::channel();
++        let mut state = self.0.borrow_mut();
++
++        let Some(manager) = state.globals.session_lock_manager.clone() else {
++            tx.send(Err(SessionLockNotSupportedError.into())).ok();
++            return rx;
++        };
++        if state.session_lock.is_some() {
++            tx.send(Ok(())).ok();
++            return rx;
++        }
++
++        state.session_lock = Some(manager.lock(&state.globals.qh, ()));
++        state.session_lock_tx = Some(tx);
++        rx
++    }
++
++    fn unlock_session(&self) {
++        let mut state = self.0.borrow_mut();
++        if let Some(lock) = state.session_lock.take() {
++            if state.session_locked {
++                // The only way out: until this is sent the compositor keeps the session
++                // locked even if this process dies.
++                lock.unlock_and_destroy();
++            } else {
++                // Asking to unlock a lock that was never confirmed is an `invalid_unlock`
++                // protocol error; such a lock can only be destroyed.
++                lock.destroy();
++            }
++        }
++        state.session_locked = false;
++        state.session_lock_tx = None;
++    }
++
+     fn open_window(
+         &self,
+         handle: AnyWindowHandle,
+@@ -1124,6 +1175,7 @@
+             parent,
+             popup_grab,
+             target_output,
++            state.session_lock.as_ref(),
+         )?;
+ 
+         if window.0.toplevel().is_some() {
+@@ -1609,6 +1661,68 @@
+     }
+ }
+ 
++// The manager is a factory with no events of its own.
++delegate_noop!(WaylandClientStatePtr: ignore ext_session_lock_manager_v1::ExtSessionLockManagerV1);
++
++impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for WaylandClientStatePtr {
++    fn event(
++        this: &mut Self,
++        _: &ext_session_lock_v1::ExtSessionLockV1,
++        event: <ext_session_lock_v1::ExtSessionLockV1 as Proxy>::Event,
++        _: &(),
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        let client = this.get_client();
++        let mut state = client.borrow_mut();
++
++        match event {
++            // The session is now locked and every output is covered by our surfaces (or
++            // by the compositor's own blank, until we attach a buffer). Only now may
++            // anything be drawn.
++            ext_session_lock_v1::Event::Locked => {
++                state.session_locked = true;
++                if let Some(tx) = state.session_lock_tx.take() {
++                    tx.send(Ok(())).ok();
++                }
++            }
++            // Either the compositor refused the lock because another client holds the
++            // session, or it withdrew one it had granted. Nothing may be drawn, and the
++            // lock object must not be used again.
++            ext_session_lock_v1::Event::Finished => {
++                state.session_lock = None;
++                state.session_locked = false;
++                if let Some(tx) = state.session_lock_tx.take() {
++                    tx.send(Err(SessionLockRefusedError.into())).ok();
++                }
++            }
++            _ => {}
++        }
++    }
++}
++
++impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ObjectId>
++    for WaylandClientStatePtr
++{
++    fn event(
++        this: &mut Self,
++        _: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
++        event: <ext_session_lock_surface_v1::ExtSessionLockSurfaceV1 as Proxy>::Event,
++        surface_id: &ObjectId,
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        let client = this.get_client();
++        let mut state = client.borrow_mut();
++        let Some(window) = get_window(&mut state, surface_id) else {
++            return;
++        };
++
++        drop(state);
++        window.handle_session_lock_surface_event(event);
++    }
++}
++
+ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {
+     fn event(
+         this: &mut Self,
+diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -17,6 +17,9 @@
+     Proxy,
+     protocol::{wl_callback, wl_output, wl_seat, wl_surface},
+ };
++use wayland_protocols::ext::session_lock::v1::client::{
++    ext_session_lock_surface_v1, ext_session_lock_v1,
++};
+ use wayland_protocols::wp::viewporter::client::wp_viewport;
+ use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+ use wayland_protocols::xdg::shell::client::xdg_popup;
+@@ -137,6 +140,11 @@
+     Xdg(WaylandXdgSurfaceState),
+     LayerShell(WaylandLayerSurfaceState),
+     Popup(WaylandPopupSurfaceState),
++    SessionLock(WaylandSessionLockSurfaceState),
++}
++
++pub struct WaylandSessionLockSurfaceState {
++    lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
+ }
+ 
+ impl WaylandSurfaceState {
+@@ -147,6 +155,7 @@
+         parent: Option<WaylandWindowStatePtr>,
+         popup_grab: Option<(u32, wl_seat::WlSeat)>,
+         target_output: Option<wl_output::WlOutput>,
++        session_lock: Option<&ext_session_lock_v1::ExtSessionLockV1>,
+     ) -> anyhow::Result<Self> {
+         // For layer_shell windows, create a layer surface instead of an xdg surface
+         if let WindowKind::LayerShell(options) = &params.kind {
+@@ -195,6 +204,26 @@
+             }));
+         }
+ 
++        // A lock surface covers exactly one output and takes its size from the
++        // compositor, so there is no anchor, margin or exclusive zone to set.
++        if let WindowKind::SessionLock = &params.kind {
++            let Some(lock) = session_lock else {
++                anyhow::bail!(
++                    "a session-lock window needs an active lock — call `lock_session` \
++                     and wait for it to resolve first"
++                );
++            };
++            let Some(output) = target_output.as_ref() else {
++                anyhow::bail!("a session-lock window must name its output via `display_id`");
++            };
++
++            let lock_surface = lock.get_lock_surface(surface, output, &globals.qh, surface.id());
++
++            return Ok(WaylandSurfaceState::SessionLock(
++                WaylandSessionLockSurfaceState { lock_surface },
++            ));
++        }
++
+         if let WindowKind::AnchoredPopup(options) = &params.kind {
+             let Some(parent) = parent.as_ref() else {
+                 return Err(anyhow::anyhow!("popup parent window not found"));
+@@ -375,6 +404,12 @@
+             WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
+                 xdg_surface.ack_configure(serial);
+             }
++            WaylandSurfaceState::SessionLock(WaylandSessionLockSurfaceState {
++                lock_surface,
++                ..
++            }) => {
++                lock_surface.ack_configure(serial);
++            }
+         }
+     }
+ 
+@@ -402,7 +437,7 @@
+             WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
+                 Some(xdg_surface)
+             }
+-            WaylandSurfaceState::LayerShell(_) => None,
++            WaylandSurfaceState::LayerShell(_) | WaylandSurfaceState::SessionLock(_) => None,
+         }
+     }
+ 
+@@ -425,6 +460,8 @@
+                 // cannot set window position of a layer surface
+                 layer_surface.set_size(width as u32, height as u32);
+             }
++            // A lock surface's size is the compositor's to decide.
++            WaylandSurfaceState::SessionLock(_) => {}
+             WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
+                 xdg_surface.set_window_geometry(x, y, width, height);
+             }
+@@ -501,6 +538,14 @@
+ 
+     fn destroy(&mut self) {
+         match self {
++            // Destroying a lock surface leaves the output uncovered, which the compositor
++            // treats as a protocol error unless the whole lock is going away. Only ever
++            // reached on unlock or teardown.
++            WaylandSurfaceState::SessionLock(WaylandSessionLockSurfaceState {
++                lock_surface,
++            }) => {
++                lock_surface.destroy();
++            }
+             WaylandSurfaceState::Xdg(WaylandXdgSurfaceState {
+                 xdg_surface,
+                 toplevel,
+@@ -821,8 +866,10 @@
+         parent: Option<WaylandWindowStatePtr>,
+         popup_grab: Option<(u32, wl_seat::WlSeat)>,
+         target_output: Option<wl_output::WlOutput>,
++        session_lock: Option<&ext_session_lock_v1::ExtSessionLockV1>,
+     ) -> anyhow::Result<(Self, ObjectId)> {
+         let surface = globals.compositor.create_surface(&globals.qh, ());
++        let is_session_lock = matches!(params.kind, WindowKind::SessionLock);
+         let surface_state = WaylandSurfaceState::new(
+             &surface,
+             &globals,
+@@ -830,6 +877,7 @@
+             parent.clone(),
+             popup_grab,
+             target_output,
++            session_lock,
+         )?;
+ 
+         if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
+@@ -861,8 +909,12 @@
+             frame_ping,
+         });
+ 
+-        // Kick things off
+-        surface.commit();
++        // Kick things off. Not for a lock surface: the compositor configures it as soon
++        // as it is created, and any commit before that first ack_configure is a
++        // `commit_before_first_ack` protocol error.
++        if !is_session_lock {
++            surface.commit();
++        }
+ 
+         Ok((this, surface.id()))
+     }
+@@ -1321,6 +1373,36 @@
+         }
+     }
+ 
++    /// A lock surface must ack its configure and then commit a buffer at *exactly* the
++    /// size it was given; any other size is a protocol error and the compositor drops
++    /// the client, leaving its own blank screen in place.
++    pub fn handle_session_lock_surface_event(
++        &self,
++        event: ext_session_lock_surface_v1::Event,
++    ) {
++        let ext_session_lock_surface_v1::Event::Configure {
++            serial,
++            width,
++            height,
++        } = event
++        else {
++            return;
++        };
++
++        let mut state = self.state.borrow_mut();
++        state.in_progress_configure = Some(InProgressConfigure {
++            size: Some(size(px(width as f32), px(height as f32))),
++            fullscreen: false,
++            maximized: false,
++            resizing: false,
++            tiling: Tiling::default(),
++        });
++        drop(state);
++
++        // Same resize-then-ack path as an xdg_surface, which is all a lock surface needs.
++        self.handle_xdg_surface_event(xdg_surface::Event::Configure { serial });
++    }
++
+     // Returns `true` if the popup should be closed.
+     pub fn handle_popup_event(&self, event: xdg_popup::Event) -> bool {
+         match event {

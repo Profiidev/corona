@@ -1,0 +1,102 @@
+diff --git a/crates/gpui/src/app.rs b/crates/gpui/src/app.rs
+--- a/crates/gpui/src/app.rs
++++ b/crates/gpui/src/app.rs
+@@ -1340,6 +1340,21 @@
+         self.platform.screen_capture_sources()
+     }
+ 
++    /// Locks the session, so that the compositor shows only this application's
++    /// [`WindowKind::SessionLock`] windows until [`App::unlock_session`].
++    ///
++    /// Resolves once the compositor has confirmed the lock; open no session-lock window
++    /// before then. An error means the request was refused.
++    pub fn lock_session(&self) -> oneshot::Receiver<Result<()>> {
++        self.platform.lock_session()
++    }
++
++    /// Releases a lock taken with [`App::lock_session`]. The only way out — if the
++    /// process dies while locked, the session stays locked.
++    pub fn unlock_session(&self) {
++        self.platform.unlock_session()
++    }
++
+     /// Returns the display with the given ID, if one exists.
+     pub fn find_display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>> {
+         self.displays()
+diff --git a/crates/gpui/src/platform/session_lock.rs b/crates/gpui/src/platform/session_lock.rs
+--- a/crates/gpui/src/platform/session_lock.rs
++++ b/crates/gpui/src/platform/session_lock.rs
+@@ -0,0 +1,13 @@
++use thiserror::Error;
++
++/// An error indicating that an action failed because the compositor doesn't support the required
++/// ext_session_lock_v1 protocol.
++#[derive(Debug, Error)]
++#[error("Compositor doesn't support ext_session_lock_v1")]
++pub struct SessionLockNotSupportedError;
++
++/// An error indicating that the compositor refused the lock, which happens when another client
++/// already holds the session.
++#[derive(Debug, Error)]
++#[error("The compositor refused the session lock")]
++pub struct SessionLockRefusedError;
+diff --git a/crates/gpui/src/platform.rs b/crates/gpui/src/platform.rs
+--- a/crates/gpui/src/platform.rs
++++ b/crates/gpui/src/platform.rs
+@@ -6,6 +6,10 @@
+ #[expect(missing_docs)]
+ pub mod layer_shell;
+ 
++/// Types for locking the session, as a lock screen does.
++#[cfg(all(target_os = "linux", feature = "wayland"))]
++pub mod session_lock;
++
+ /// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
+ pub mod popup;
+ 
+@@ -165,6 +169,28 @@
+         options: WindowParams,
+     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
+ 
++    /// Locks the session, so that the compositor shows only this application's
++    /// [`WindowKind::SessionLock`] windows until [`Platform::unlock_session`].
++    ///
++    /// Resolves once the compositor has confirmed the lock. Nothing may be drawn before
++    /// then. An error means the request was refused — another client already holds the
++    /// session, or the platform has no such concept.
++    fn lock_session(&self) -> oneshot::Receiver<anyhow::Result<()>> {
++        let (tx, rx) = oneshot::channel();
++        tx.send(Err(anyhow::anyhow!(
++            "session lock is not supported on this platform"
++        )))
++        .ok();
++        rx
++    }
++
++    /// Releases a lock taken with [`Platform::lock_session`].
++    ///
++    /// This is the only way out. If the process dies while locked the session *stays*
++    /// locked, which is the point of the protocol but is worth knowing before testing a
++    /// lock screen on a machine you are sitting at.
++    fn unlock_session(&self) {}
++
+     /// Returns the appearance of the application's windows.
+     fn window_appearance(&self) -> WindowAppearance;
+ 
+@@ -2184,6 +2210,16 @@
+     #[cfg(all(target_os = "linux", feature = "wayland"))]
+     LayerShell(layer_shell::LayerShellOptions),
+ 
++    /// A window covering one output while the session is locked, as a lock screen does.
++    ///
++    /// Only valid between [`Platform::lock_session`] resolving and
++    /// [`Platform::unlock_session`], and the output comes from
++    /// [`WindowOptions::display_id`]. One is expected on *every* display, including any
++    /// that appears while locked — an uncovered output falls back to whatever blank the
++    /// compositor draws, which is not what the lock screen wanted to show.
++    #[cfg(all(target_os = "linux", feature = "wayland"))]
++    SessionLock,
++
+     /// A window that appears on top of its parent window and blocks interaction with it
+     /// until the modal window is closed
+     Dialog,
