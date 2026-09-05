@@ -12,3 +12,9 @@ gpui-kit = "0.6.0"
 include_dir = "0.7.4"
 serde = { version = "1.0.229", features = ["derive"] }
 zbus = "5.19.0"
+
+# PR 40139 (wl_touch support) applied on top of the published crate; zed's own
+# crates/gpui_linux can't be used directly, it needs the whole zed workspace.
+# Re-vendor with `just vendor-gpui`.
+[patch.crates-io]
+gpui-pre-linux = { path = "vendor/gpui-pre-linux" }

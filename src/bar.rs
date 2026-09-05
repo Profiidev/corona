@@ -1,3 +1,5 @@
+use std::{cell::Cell, rc::Rc};
+
 use gpui_kit::{
   App, Bounds, Size, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
   component::{button::Button, status_bar::StatusBar, *},
@@ -43,14 +45,36 @@ impl Bar {
 
 impl Render for Bar {
   fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    let button_bounds = Rc::new(Cell::new(Bounds::default()));
+    let bar_bounds = Rc::new(Cell::new(Bounds::default()));
+
     StatusBar::new()
       .size_full()
-      .child(Button::new("id").label("label").on_click(|_, _, cx| {
-        if PanelState::is_open("test", cx) {
-          PanelState::close("test", cx);
-        } else {
-          PanelState::open("test".into(), cx).expect("failed to open panel");
+      .on_prepaint({
+        let bar_bounds = bar_bounds.clone();
+        move |bounds, _, _| {
+          bar_bounds.set(bounds);
         }
-      }))
+      })
+      .child(
+        Button::new("id")
+          .label("label")
+          .on_prepaint({
+            let button_bounds = button_bounds.clone();
+            move |bounds, _, _| {
+              button_bounds.set(bounds);
+            }
+          })
+          .on_click(move |_, _, cx| {
+            let button_bounds = button_bounds.get();
+            let bar_bounds = bar_bounds.get();
+            if PanelState::is_open("test", cx) {
+              PanelState::close("test", cx);
+            } else {
+              PanelState::open("test".into(), button_bounds, bar_bounds, cx)
+                .expect("failed to open panel");
+            }
+          }),
+      )
   }
 }

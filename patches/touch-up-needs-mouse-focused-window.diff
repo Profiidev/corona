@@ -1,0 +1,12 @@
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -2947,6 +2947,9 @@
+                     state.touch_location = Some(position);
+ 
+                     if let Some(window) = get_window(&mut state, &surface.id()) {
++                        // wl_touch has no Enter event, so nothing else ever sets
++                        // this — and Up delivers its MouseUp through it.
++                        state.mouse_focused_window = Some(window.clone());
+                         state.mouse_location = Some(position);
+                         state.button_pressed = Some(MouseButton::Left);
+ 

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  App, AppContext, Bounds, Entity, Global, Size, Styled, WeakEntity, WindowBackgroundAppearance,
-  WindowBounds, WindowKind, WindowOptions,
+  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity,
+  WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
   component::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -31,7 +31,12 @@ impl PanelState {
     cx.global::<PanelState>().panels.get(name)?.upgrade()
   }
 
-  pub fn open(name: String, cx: &mut App) -> Result<()> {
+  pub fn open(
+    name: String,
+    button_bounds: Bounds<Pixels>,
+    bar_bounds: Bounds<Pixels>,
+    cx: &mut App,
+  ) -> Result<()> {
     if let Some(panel) = Self::get(&name, cx) {
       panel.update(cx, |panel, cx| panel.open(cx));
       return Ok(());

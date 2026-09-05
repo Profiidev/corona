@@ -11,10 +11,17 @@ pub struct BasePanel {
   notch: f32,
   radius: f32,
   height_anim: Anim,
+  //align: Align,
   open: bool,
   children: Vec<AnyElement>,
   window: AnyWindowHandle,
   close: Option<Task<()>>,
+}
+
+pub enum Align {
+  Left,
+  Relative(f32),
+  Right,
 }
 
 impl BasePanel {
