@@ -1,6 +1,7 @@
 use crate::bar::Bar;
 
 mod bar;
+mod config;
 mod panel;
 mod theme;
 
@@ -9,7 +10,8 @@ pub fn run() {
 
   app.run(move |cx| {
     gpui_kit::init(cx);
-    theme::load_themes(cx).expect("Failed to load themes");
+    config::load(cx).expect("Failed to load config");
+    theme::load(cx).expect("Failed to load themes");
 
     Bar::create(cx).expect("Failed to create bar window");
   });
