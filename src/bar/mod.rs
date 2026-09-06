@@ -1,49 +1,64 @@
 use std::{cell::Cell, rc::Rc};
 
 use gpui_kit::{
-  App, Bounds, Path, PathBuilder, Pixels, Size, Window, WindowBackgroundAppearance, WindowBounds,
+  App, Bounds, Path, PathBuilder, Pixels, Window, WindowBackgroundAppearance, WindowBounds,
   WindowKind, WindowOptions, canvas,
-  component::{ActiveTheme, button::Button, status_bar::StatusBar, *},
+  component::{ActiveTheme, button::Button, *},
   div,
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
   point,
   prelude::*,
   px,
 };
 
-use crate::panel::{ControlPanel, PanelState};
+use crate::{
+  APP_NAME,
+  bar::placement::PlacmentBounds,
+  panel::{ControlPanel, PanelState},
+};
+
+mod placement;
+
+pub use placement::Placement;
+
+const BAR_NAMESPACE: &str = "corona-bar";
 
 /// The bar proper. Its corner flares hang below this, over whatever is underneath.
 const HEIGHT: f32 = 30.;
 
-pub struct Bar;
+pub struct Bar {
+  placement: Placement,
+}
 
 impl Bar {
-  pub fn create(cx: &mut App) -> Result<gpui_kit::WindowHandle<Root>, anyhow::Error> {
+  pub fn create(
+    cx: &mut App,
+    placement: Placement,
+  ) -> Result<gpui_kit::WindowHandle<Root>, anyhow::Error> {
     let flare = cx.theme().radius_2xl().as_f32();
 
     cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
+          anchor: placement.anchor(),
           exclusive_zone: Some(px(HEIGHT)),
           exclusive_edge: None,
           margin: None,
           layer: Layer::Top,
-          namespace: "corona_bar".to_string(),
+          namespace: BAR_NAMESPACE.to_string(),
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
         }),
         window_background: WindowBackgroundAppearance::Transparent,
-        app_id: Some("corona_bar".to_string()),
+        app_id: Some(APP_NAME.to_string()),
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
           origin: point(px(0.), px(0.)),
-          size: Size::new(px(0.), px(HEIGHT + flare)),
+          size: placement.size(HEIGHT + flare, 0.),
         })),
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|_| Bar);
+        let view = cx.new(|_| Bar { placement });
         cx.new(|cx| {
           Root::new(view, window, cx)
             .bordered(false)
@@ -62,7 +77,9 @@ impl Render for Bar {
 
     window.set_input_region(Some(&[Bounds {
       origin: point(px(0.), px(0.)),
-      size: Size::new(window.viewport_size().width, px(HEIGHT)),
+      size: self
+        .placement
+        .size(HEIGHT, window.viewport_size().width.as_f32()),
     }]));
 
     let bar_bounds = Rc::new(Cell::new(Bounds::default()));
@@ -71,26 +88,32 @@ impl Render for Bar {
       .size_full()
       .relative()
       .child(
-        canvas(
-          |_, _, _| (),
+        canvas(|_, _, _| (), {
+          let placement = self.placement;
           move |bounds, _, window, _| {
-            if let Some(path) = bar_path(bounds, flare) {
+            if let Some(path) = bar_path(bounds, flare, placement) {
               window.paint_path(path, bg);
             }
-          },
-        )
+          }
+        })
         .absolute()
         .size_full()
         .inset_0(),
       )
       .child(
-        StatusBar::new()
+        div()
           .absolute()
-          .top_0()
-          .left_0()
-          .right_0()
-          .h(px(HEIGHT))
-          .border_0()
+          .flex()
+          .items_center()
+          .gap_2()
+          .when(self.placement != Placement::Bottom, |b| b.top_0())
+          .when(self.placement != Placement::Top, |b| b.bottom_0())
+          .when(self.placement != Placement::Left, |b| b.left_0())
+          .when(self.placement != Placement::Right, |b| b.right_0())
+          .when(self.placement.is_horizontal(), |b| {
+            b.flex_row().h(px(HEIGHT))
+          })
+          .when(self.placement.is_vertical(), |b| b.flex_col().w(px(HEIGHT)))
           .on_prepaint({
             let bar_bounds = bar_bounds.clone();
             move |bounds, _, _| {
@@ -98,17 +121,19 @@ impl Render for Bar {
             }
           })
           .children((0..3).map(|i| {
+            let placement = self.placement;
             let button_bounds = Rc::new(Cell::new(Bounds::default()));
 
             Button::new(format!("Button {}", i + 1))
-              .label("label")
+              .label("p")
               .on_prepaint({
                 let button_bounds = button_bounds.clone();
                 move |bounds, _, _| {
                   button_bounds.set(bounds);
                 }
               })
-              .when(i != 0, |b| b.ml_auto())
+              .when(i != 0 && placement.is_horizontal(), |b| b.ml_auto())
+              .when(i != 0 && placement.is_vertical(), |b| b.mt_auto())
               .on_click({
                 let bar_bounds = bar_bounds.clone();
                 move |_, _, cx| {
@@ -123,16 +148,20 @@ impl Render for Bar {
   }
 }
 
-fn bar_path(bounds: Bounds<Pixels>, n: Pixels) -> Option<Path<Pixels>> {
-  let (l, r, b, t) = (bounds.left(), bounds.right(), bounds.bottom(), bounds.top());
+fn bar_path(bounds: Bounds<Pixels>, n: Pixels, placement: Placement) -> Option<Path<Pixels>> {
+  let (len, depth) = bounds.extent_p(placement);
+  let at = |along, across| bounds.point_p(placement, along, across);
+  // Mirrored placements reverse the plane, so the arcs sweep the other way.
+  let sweep = placement.mirrored();
+  let z = px(0.);
 
   let mut p = PathBuilder::fill();
-  p.move_to(point(l, t));
-  p.line_to(point(r, t));
-  p.line_to(point(r, b));
-  p.arc_to(point(n, n), px(0.), false, false, point(r - n, b - n));
-  p.line_to(point(l + n, b - n));
-  p.arc_to(point(n, n), px(0.), false, false, point(l, b));
+  p.move_to(at(z, z));
+  p.line_to(at(len, z));
+  p.line_to(at(len, depth));
+  p.arc_to(point(n, n), px(0.), false, sweep, at(len - n, depth - n));
+  p.line_to(at(n, depth - n));
+  p.arc_to(point(n, n), px(0.), false, sweep, at(z, depth));
   p.close();
   p.build().ok()
 }
