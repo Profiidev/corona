@@ -160,7 +160,8 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
     0.
   };
 
-  let ny = px(nf.min((h - bnf) / 2.));
+  let nyf = nf.min((h - bnf) / 2.);
+  let (ny, ry) = (px(nyf), px((nf * nyf).sqrt()));
   let bn = px(bnf);
 
   let mut p = PathBuilder::fill();
@@ -168,9 +169,9 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
   p.line_to(point(r, t));
 
   if !matches!(align, Align::Right) {
-    p.arc_to(point(n, ny), px(0.), false, false, point(r - n, t + ny));
+    p.arc_to(point(n, ry), px(0.), false, false, point(r - n, t + ny));
     p.line_to(point(r - n, b - ny - bn));
-    p.arc_to(point(n, ny), px(0.), false, true, point(r - n - n, b - bn));
+    p.arc_to(point(n, ry), px(0.), false, true, point(r - n - n, b - bn));
   } else {
     p.line_to(point(r, b));
     p.arc_to(point(n, n), px(0.), false, false, point(r - n, b - bn));
@@ -178,9 +179,9 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
 
   if !matches!(align, Align::Left) {
     p.line_to(point(l + n + n, b - bn));
-    p.arc_to(point(n, ny), px(0.), false, true, point(l + n, b - ny - bn));
+    p.arc_to(point(n, ry), px(0.), false, true, point(l + n, b - ny - bn));
     p.line_to(point(l + n, t + ny));
-    p.arc_to(point(n, ny), px(0.), false, false, point(l, t));
+    p.arc_to(point(n, ry), px(0.), false, false, point(l, t));
   } else {
     p.line_to(point(l + n, b - bn));
     p.arc_to(point(n, n), px(0.), false, false, point(l, b));
