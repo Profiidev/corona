@@ -5,8 +5,8 @@ use gpui_kit::{
 };
 
 use crate::{
-  bar::{Placement, PlacementStyle, PlacmentBounds},
   config::ConfigProvider,
+  config::placement::{Placement, PlacementStyle, PlacmentBounds},
   panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
 

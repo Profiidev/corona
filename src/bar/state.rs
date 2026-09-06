@@ -1,15 +1,17 @@
 use anyhow::Result;
 use gpui_kit::{
   App, AppContext, Bounds, Global, Styled, WeakEntity, WindowBackgroundAppearance, WindowBounds,
-  WindowKind, WindowOptions,
+  WindowDecorations, WindowKind, WindowOptions,
   component::{ActiveTheme, Root},
   layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
 };
+use tracing::error;
 
 use crate::{
   APP_NAME,
-  bar::{BAR_NAMESPACE, Placement, base::Bar},
+  bar::{BAR_NAMESPACE, base::Bar},
+  config::{ConfigProvider, placement::Placement},
 };
 
 pub struct BarState {
@@ -21,6 +23,13 @@ impl Global for BarState {}
 impl BarState {
   pub fn init(cx: &mut gpui_kit::App) {
     cx.set_global(BarState { bars: Vec::new() });
+
+    let config = cx.config();
+    for bar in config.bars.clone() {
+      if let Err(e) = Self::create(cx, bar.placement, bar.height) {
+        error!("Failed to create bar: {}", e);
+      }
+    }
   }
 
   pub fn create(cx: &mut App, placement: Placement, height: f32) -> Result<()> {
@@ -37,6 +46,7 @@ impl BarState {
           namespace: BAR_NAMESPACE.to_string(),
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
         }),
+        window_decorations: Some(WindowDecorations::Client),
         window_background: WindowBackgroundAppearance::Transparent,
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,

@@ -1,5 +1,3 @@
-use crate::bar::Placement;
-
 mod bar;
 mod config;
 mod panel;
@@ -16,7 +14,5 @@ pub fn run() {
     theme::load(cx).expect("Failed to load themes");
     panel::PanelState::init(cx);
     bar::BarState::init(cx);
-
-    bar::BarState::create(cx, Placement::Top, 30.).expect("Failed to create bar window");
   });
 }

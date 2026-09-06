@@ -1282,6 +1282,8 @@ dependencies = [
  "gpui-kit",
  "include_dir",
  "serde",
+ "tracing",
+ "tracing-subscriber",
  "zbus",
 ]
 

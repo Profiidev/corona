@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 
 use crate::{
-  bar::placement::{Placement, PlacementStyle, PlacmentBounds},
+  config::placement::{Placement, PlacementStyle, PlacmentBounds},
   panel::{ControlPanel, PanelState},
 };
 

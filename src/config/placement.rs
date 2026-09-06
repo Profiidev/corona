@@ -1,6 +1,8 @@
 use gpui_kit::{Bounds, Pixels, Point, Size, Styled, layer_shell::Anchor, point, px};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Placement {
   Top,
   Bottom,

@@ -2,16 +2,12 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity,
-  WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
-  component::Root,
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px,
+  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions, component::Root, layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions}, point, px,
 };
 
 use crate::{
   APP_NAME,
-  bar::Placement,
+  config::placement::Placement,
   panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
 };
 
@@ -71,6 +67,7 @@ impl PanelState {
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
         }),
         window_background: WindowBackgroundAppearance::Transparent,
+        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,

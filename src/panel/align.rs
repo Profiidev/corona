@@ -1,7 +1,7 @@
 use gpui_kit::{App, Bounds, Pixels, component::ActiveTheme};
 
 use crate::{
-  bar::{Placement, PlacmentBounds},
+  config::placement::{Placement, PlacmentBounds},
   panel::style::PanelStyle,
 };
 
