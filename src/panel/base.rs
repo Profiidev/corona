@@ -156,9 +156,7 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
     0.
   };
 
-  // arcs attached to bar are squashed if the panel is too short, so that they don't overlap.
-  let squash = ((h - bnf) / (nf * 2.)).clamp(0., 1.);
-  let ny = px(nf * squash);
+  let ny = px(nf.min((h - bnf) / 2.));
   let bn = px(bnf);
 
   let mut p = PathBuilder::fill();
@@ -171,7 +169,7 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
     p.arc_to(point(n, ny), px(0.), false, true, point(r - n - n, b - bn));
   } else {
     p.line_to(point(r, b));
-    p.arc_to(point(n, ny), px(0.), false, false, point(r - n, b - bn));
+    p.arc_to(point(n, n), px(0.), false, false, point(r - n, b - bn));
   }
 
   if !matches!(align, Align::Left) {
@@ -181,7 +179,7 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
     p.arc_to(point(n, ny), px(0.), false, false, point(l, t));
   } else {
     p.line_to(point(l + n, b - bn));
-    p.arc_to(point(n, ny), px(0.), false, false, point(l, b));
+    p.arc_to(point(n, n), px(0.), false, false, point(l, b));
     p.line_to(point(l, t));
   }
 
