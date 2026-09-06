@@ -5,7 +5,7 @@ use crate::panel::variants::Panel;
 pub struct ControlPanel;
 
 impl Panel for ControlPanel {
-  const NAME: &'static str = "control-panel";
+  const NAME: &'static str = "control_panel";
   const WIDTH: f32 = 400.0;
   const HEIGHT: f32 = 600.0;
 }
