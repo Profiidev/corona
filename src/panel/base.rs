@@ -4,7 +4,10 @@ use gpui_kit::{
   prelude::FluentBuilder, px,
 };
 
-use crate::{config::ConfigProvider, panel::anim::Anim};
+use crate::{
+  config::ConfigProvider,
+  panel::{align::Align, anim::Anim, style::PanelStyle},
+};
 
 pub struct BasePanel {
   width: f32,
@@ -12,43 +15,26 @@ pub struct BasePanel {
   align: Align,
   children: Vec<AnyElement>,
   height_anim: Anim,
+  // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
   window: AnyWindowHandle,
   close: Option<Task<()>>,
 }
 
-#[derive(PartialEq, Clone, Copy)]
-pub enum Align {
-  Left,
-  Relative(f32),
-  Right,
-}
-
 impl BasePanel {
   pub fn new(
     window: AnyWindowHandle,
-    button_bounds: Bounds<Pixels>,
-    bar_bounds: Bounds<Pixels>,
+    width: f32,
+    height: f32,
+    align: Align,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
     let config = cx.config();
     let speed = config.animation_speed.to_duration();
 
-    let button_center = button_bounds.center().x.as_f32();
-    let total_width = bar_bounds.size.width.as_f32();
-    let half_width = 100. + 12.;
-
-    let align = if button_center < half_width {
-      Align::Left
-    } else if button_center > total_width - half_width {
-      Align::Right
-    } else {
-      Align::Relative(button_center)
-    };
-
     Self {
-      width: 200.,
-      height: 200.,
+      width,
+      height,
       height_anim: Anim::new(0., speed),
       open: true,
       children: Vec::new(),
@@ -80,6 +66,10 @@ impl BasePanel {
   pub fn is_open(&self) -> bool {
     self.open
   }
+
+  pub fn align(&self) -> Align {
+    self.align
+  }
 }
 
 impl Render for BasePanel {
@@ -90,7 +80,8 @@ impl Render for BasePanel {
   ) -> impl gpui_kit::prelude::IntoElement {
     let theme = cx.theme();
     let bg = theme.tokens.status_bar;
-    let br = theme.radius_2xl().as_f32();
+    let br = theme.panel_radius();
+
     let (bn, nl, nr) = if self.align == Align::Left {
       (br, 0., 1.)
     } else if self.align == Align::Right {

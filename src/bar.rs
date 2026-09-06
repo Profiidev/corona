@@ -114,12 +114,8 @@ impl Render for Bar {
                 move |_, _, cx| {
                   let button_bounds = button_bounds.get();
                   let bar_bounds = bar_bounds.get();
-                  if PanelState::is_open("test", cx) {
-                    PanelState::close("test", cx);
-                  } else {
-                    PanelState::open("test".into(), button_bounds, bar_bounds, cx)
-                      .expect("failed to open panel");
-                  }
+                  PanelState::toggle("test".into(), 200., 200., button_bounds, bar_bounds, cx)
+                    .expect("failed to open panel");
                 }
               })
           })),
