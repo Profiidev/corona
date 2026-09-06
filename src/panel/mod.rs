@@ -1,5 +1,4 @@
 mod align;
-mod anim;
 mod base;
 mod state;
 mod style;
@@ -9,3 +8,4 @@ pub use state::PanelState;
 pub use variants::control_panel::ControlPanel;
 
 const PANEL_NAME: &str = "corona-panel";
+const PANEL_OPEN_ANIMATION: &str = "corona-panel-open";

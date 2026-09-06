@@ -1,12 +1,17 @@
 use gpui_kit::{
   AnyView, AnyWindowHandle, AppContext, Bounds, Context, InteractiveElement, MouseButton,
-  ParentElement, Path, PathBuilder, Pixels, Render, Styled, Task, canvas, component::ActiveTheme,
-  div, point, prelude::FluentBuilder, px,
+  ParentElement, Path, PathBuilder, Pixels, Render, Styled, Task,
+  base::{Presence, Transition},
+  canvas,
+  component::ActiveTheme,
+  div, point,
+  prelude::FluentBuilder,
+  px,
 };
 
 use crate::{
   config::ConfigProvider,
-  panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
+  panel::{PANEL_OPEN_ANIMATION, align::Align, style::PanelStyle, variants::Panel},
 };
 
 pub struct BasePanel {
@@ -14,7 +19,6 @@ pub struct BasePanel {
   width: f32,
   height: f32,
   align: Align,
-  height_anim: Anim,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
   window: AnyWindowHandle,
@@ -28,15 +32,12 @@ impl BasePanel {
     align: Align,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
-    let config = cx.config();
-    let speed = config.animation_speed.to_duration();
     let panel = cx.new(|_| panel);
 
     Self {
       panel: panel.into(),
       width: P::WIDTH,
       height: P::HEIGHT,
-      height_anim: Anim::new(0., speed),
       open: true,
       window,
       close: None,
@@ -47,7 +48,7 @@ impl BasePanel {
   pub fn close(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = false;
 
-    let speed = self.height_anim.speed();
+    let speed = cx.config().animation_speed.to_duration();
     let window = self.window;
     self.close = Some(cx.spawn(async move |_, cx| {
       cx.background_executor().timer(speed).await;
@@ -90,14 +91,12 @@ impl Render for BasePanel {
       (0., 1., 1.)
     };
 
-    self
-      .height_anim
-      .retarget(if self.open { self.height + bn } else { 0. });
-
-    let (h, animating) = self.height_anim.value();
-    if animating {
-      window.request_animation_frame();
-    }
+    let speed = cx.config().animation_speed.to_duration();
+    let progress = Presence::new(PANEL_OPEN_ANIMATION, self.open)
+      .transition(Transition::new(speed))
+      .sample(window, cx)
+      .progress;
+    let h = (self.height + bn) * progress;
 
     div()
       .size_full()
