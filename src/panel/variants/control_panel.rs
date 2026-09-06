@@ -1,4 +1,4 @@
-use gpui_kit::{Context, IntoElement, Render, Window, text};
+use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, text};
 
 use crate::panel::variants::Panel;
 
@@ -12,6 +12,10 @@ impl Panel for ControlPanel {
 
 impl Render for ControlPanel {
   fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-    text!("test")
+    div()
+      .h_full()
+      .w(px(100.))
+      .bg(gpui_kit::black())
+      .child(text!("test"))
   }
 }

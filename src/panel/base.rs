@@ -136,7 +136,10 @@ impl Render for BasePanel {
               .absolute()
               .left(px(br * nl))
               .right(px(br * nr))
-              .bottom_0()
+              .top_0()
+              .w(px(self.width))
+              .h(px(h - bn))
+              .overflow_hidden()
               .child(self.panel.clone()),
           ),
       )
