@@ -4,7 +4,7 @@ use gpui_kit::{
   prelude::FluentBuilder, px,
 };
 
-use crate::panel::anim::Anim;
+use crate::{config::ConfigProvider, panel::anim::Anim};
 
 pub struct BasePanel {
   width: f32,
@@ -29,7 +29,11 @@ impl BasePanel {
     window: AnyWindowHandle,
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
+    cx: &mut Context<'_, BasePanel>,
   ) -> Self {
+    let config = cx.config();
+    let speed = config.animation_speed.to_duration();
+
     let button_center = button_bounds.center().x.as_f32();
     let total_width = bar_bounds.size.width.as_f32();
     let half_width = 100. + 12.;
@@ -45,7 +49,7 @@ impl BasePanel {
     Self {
       width: 200.,
       height: 200.,
-      height_anim: Anim::new(0., std::time::Duration::from_millis(300)),
+      height_anim: Anim::new(0., speed),
       open: true,
       children: Vec::new(),
       window,

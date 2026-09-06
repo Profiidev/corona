@@ -69,7 +69,8 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|_| BasePanel::new(window.window_handle(), button_bounds, bar_bounds));
+        let view =
+          cx.new(|cx| BasePanel::new(window.window_handle(), button_bounds, bar_bounds, cx));
         let state = cx.global_mut::<PanelState>();
         state.panels.insert(name, view.downgrade());
 

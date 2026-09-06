@@ -36,6 +36,16 @@ pub struct Config {
   pub animation_speed: AnimationSpeed,
 }
 
+pub trait ConfigProvider {
+  fn config(&self) -> &Config;
+}
+
+impl ConfigProvider for App {
+  fn config(&self) -> &Config {
+    self.global::<Config>()
+  }
+}
+
 impl Global for Config {}
 
 impl Default for Config {
@@ -56,7 +66,7 @@ pub enum AnimationSpeed {
 }
 
 impl AnimationSpeed {
-  pub fn to_duration(&self) -> Duration {
+  pub fn to_duration(self) -> Duration {
     match self {
       AnimationSpeed::Slow => Duration::from_millis(500),
       AnimationSpeed::Normal => Duration::from_millis(250),
