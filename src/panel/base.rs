@@ -1,12 +1,12 @@
 use gpui_kit::{
-  AnyView, AnyWindowHandle, AppContext, Bounds, Context, InteractiveElement, MouseButton,
-  ParentElement, Path, PathBuilder, Pixels, Render, Styled, Task,
-  base::{Presence, Transition},
+  AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
+  PathBuilder, Pixels, Render, Styled,
+  base::{Presence, PresencePhase, Transition},
   canvas,
   component::ActiveTheme,
   div, point,
   prelude::FluentBuilder,
-  px,
+  px, size,
 };
 
 use crate::{
@@ -21,17 +21,11 @@ pub struct BasePanel {
   align: Align,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
-  window: AnyWindowHandle,
-  close: Option<Task<()>>,
+  blocks_input: bool,
 }
 
 impl BasePanel {
-  pub fn new<P: Panel>(
-    window: AnyWindowHandle,
-    panel: P,
-    align: Align,
-    cx: &mut Context<'_, BasePanel>,
-  ) -> Self {
+  pub fn new<P: Panel>(panel: P, align: Align, cx: &mut Context<'_, BasePanel>) -> Self {
     let panel = cx.new(|_| panel);
 
     Self {
@@ -39,28 +33,18 @@ impl BasePanel {
       width: P::WIDTH,
       height: P::HEIGHT,
       open: true,
-      window,
-      close: None,
+      blocks_input: true,
       align,
     }
   }
 
   pub fn close(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = false;
-
-    let speed = cx.config().animation_speed.to_duration();
-    let window = self.window;
-    self.close = Some(cx.spawn(async move |_, cx| {
-      cx.background_executor().timer(speed).await;
-      let _ = window.update(cx, |_, window, _| window.remove_window());
-    }));
-
     cx.notify();
   }
 
   pub fn open(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = true;
-    self.close = None;
     cx.notify();
   }
 
@@ -92,11 +76,31 @@ impl Render for BasePanel {
     };
 
     let speed = cx.config().animation_speed.to_duration();
-    let progress = Presence::new(PANEL_OPEN_ANIMATION, self.open)
+    let sample = Presence::new(PANEL_OPEN_ANIMATION, self.open)
       .transition(Transition::new(speed))
-      .sample(window, cx)
-      .progress;
-    let h = (self.height + bn) * progress;
+      .sample(window, cx);
+    let h = (self.height + bn) * sample.progress;
+
+    if self.open {
+      if !self.blocks_input {
+        self.blocks_input = true;
+        window.set_input_region(None);
+      }
+    } else {
+      self.blocks_input = false;
+      let w = self.width;
+      let x = match self.align {
+        Align::Left => 0.,
+        Align::Relative(x) => x - self.width / 2.,
+        Align::Right => window.viewport_size().width.as_f32() - w,
+      };
+      let panel = Bounds::new(point(px(x), px(0.)), size(px(w), px(h - bn)));
+      window.set_input_region(Some(&[panel]));
+    }
+
+    if sample.phase == PresencePhase::Absent {
+      window.remove_window();
+    }
 
     div()
       .size_full()

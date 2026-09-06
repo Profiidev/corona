@@ -79,7 +79,7 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new(window.window_handle(), panel, align, cx));
+        let view = cx.new(|cx| BasePanel::new(panel, align, cx));
         let state = cx.global_mut::<PanelState>();
         state.panels.insert(P::NAME.to_string(), view.downgrade());
 
