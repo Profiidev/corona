@@ -1,10 +1,11 @@
 use gpui_kit::{
   AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
-  PathBuilder, Pixels, Render, Styled, canvas, component::ActiveTheme, div, point,
-  prelude::FluentBuilder, px, size,
+  PathBuilder, Pixels, Render, Styled, canvas, component::ActiveTheme, div, prelude::FluentBuilder,
+  px,
 };
 
 use crate::{
+  bar::{Placement, PlacementStyle, PlacmentBounds},
   config::ConfigProvider,
   panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
@@ -14,6 +15,7 @@ pub struct BasePanel {
   width: f32,
   height: f32,
   align: Align,
+  placement: Placement,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
   blocks_input: bool,
@@ -21,7 +23,12 @@ pub struct BasePanel {
 }
 
 impl BasePanel {
-  pub fn new<P: Panel>(panel: P, align: Align, cx: &mut Context<'_, BasePanel>) -> Self {
+  pub fn new<P: Panel>(
+    panel: P,
+    align: Align,
+    placement: Placement,
+    cx: &mut Context<'_, BasePanel>,
+  ) -> Self {
     let panel = cx.new(|_| panel);
 
     Self {
@@ -32,6 +39,7 @@ impl BasePanel {
       blocks_input: true,
       anim: Anim::new(0.),
       align,
+      placement,
     }
   }
 
@@ -91,13 +99,16 @@ impl Render for BasePanel {
       }
     } else {
       self.blocks_input = false;
-      let w = self.width;
-      let x = match self.align {
+      let viewport = window.viewport_size();
+      let along = match self.align {
         Align::Left => 0.,
         Align::Relative(x) => x - self.width / 2.,
-        Align::Right => window.viewport_size().width.as_f32() - w,
+        Align::Right if self.placement.is_horizontal() => viewport.width.as_f32() - self.width,
+        Align::Right => viewport.height.as_f32() - self.width,
       };
-      let panel = Bounds::new(point(px(x), px(0.)), size(px(w), px(h - bn)));
+      let panel = self
+        .placement
+        .rect(viewport, px(along), px(self.width), px(h - bn));
       window.set_input_region(Some(&[panel]));
     }
 
@@ -116,19 +127,20 @@ impl Render for BasePanel {
           // Swallows clicks so they don't reach the dismiss handler above.
           .occlude()
           .absolute()
+          .anchor_p(self.placement)
           .map(|d| match self.align {
-            Align::Left => d.left_0(),
-            Align::Relative(x) => d.left(px(x - self.width / 2.)),
-            Align::Right => d.right_0(),
+            Align::Left => d.along_start_p(self.placement),
+            Align::Relative(x) => d.along_p(self.placement, px(x - self.width / 2.)),
+            Align::Right => d.along_end_p(self.placement),
           })
-          .w(px(self.width + br * (nl + nr)))
-          .h(px(h))
+          .size_p(self.placement, px(self.width + br * (nl + nr)), px(h))
           .child(
             canvas(|_, _, _| (), {
               let n = px(br);
               let align = self.align;
+              let placement = self.placement;
               move |bounds, _, window, _| {
-                if let Some(path) = panel_path(bounds, n, align) {
+                if let Some(path) = panel_path(bounds, n, align, placement) {
                   window.paint_path(path, bg);
                 }
               }
@@ -140,11 +152,9 @@ impl Render for BasePanel {
           .child(
             div()
               .absolute()
-              .left(px(br * nl))
-              .right(px(br * nr))
-              .top_0()
-              .w(px(self.width))
-              .h(px(h - bn))
+              .anchor_p(self.placement)
+              .along_p(self.placement, px(br * nl))
+              .size_p(self.placement, px(self.width), px(h - bn))
               .overflow_hidden()
               .child(self.panel.clone()),
           ),
@@ -152,9 +162,20 @@ impl Render for BasePanel {
   }
 }
 
-fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pixels>> {
-  let (l, r, b, t) = (bounds.left(), bounds.right(), bounds.bottom(), bounds.top());
-  let (h, nf) = (bounds.size.height.as_f32(), n.as_f32());
+fn panel_path(
+  bounds: Bounds<Pixels>,
+  n: Pixels,
+  align: Align,
+  placement: Placement,
+) -> Option<Path<Pixels>> {
+  let (len, depth) = bounds.extent_p(placement);
+  let at = |along, across| bounds.point_p(placement, along, across);
+  // Mirrored placements reverse the plane, so every arc sweeps the other way.
+  let s = placement.mirrored();
+  // Radii are extents, so the axes swap but nothing offsets.
+  let r = |along, across| placement.vec(along, across);
+  let (h, nf) = (depth.as_f32(), n.as_f32());
+  let z = px(0.);
 
   // Space left for the notch on the side wall.
   let bnf = if !matches!(align, Align::Relative(_)) {
@@ -163,32 +184,31 @@ fn panel_path(bounds: Bounds<Pixels>, n: Pixels, align: Align) -> Option<Path<Pi
     0.
   };
 
-  let nyf = nf.min((h - bnf) / 2.);
-  let (ny, ry) = (px(nyf), px((nf * nyf).sqrt()));
+  let ny = px(nf.min((h - bnf) / 2.));
   let bn = px(bnf);
 
   let mut p = PathBuilder::fill();
-  p.move_to(point(l, t));
-  p.line_to(point(r, t));
+  p.move_to(at(z, z));
+  p.line_to(at(len, z));
 
   if !matches!(align, Align::Right) {
-    p.arc_to(point(n, ry), px(0.), false, false, point(r - n, t + ny));
-    p.line_to(point(r - n, b - ny - bn));
-    p.arc_to(point(n, ry), px(0.), false, true, point(r - n - n, b - bn));
+    p.arc_to(r(n, ny), px(0.), false, s, at(len - n, ny));
+    p.line_to(at(len - n, depth - ny - bn));
+    p.arc_to(r(n, ny), px(0.), false, !s, at(len - n - n, depth - bn));
   } else {
-    p.line_to(point(r, b));
-    p.arc_to(point(n, n), px(0.), false, false, point(r - n, b - bn));
+    p.line_to(at(len, depth));
+    p.arc_to(r(n, n), px(0.), false, s, at(len - n, depth - bn));
   }
 
   if !matches!(align, Align::Left) {
-    p.line_to(point(l + n + n, b - bn));
-    p.arc_to(point(n, ry), px(0.), false, true, point(l + n, b - ny - bn));
-    p.line_to(point(l + n, t + ny));
-    p.arc_to(point(n, ry), px(0.), false, false, point(l, t));
+    p.line_to(at(n + n, depth - bn));
+    p.arc_to(r(n, ny), px(0.), false, !s, at(n, depth - ny - bn));
+    p.line_to(at(n, ny));
+    p.arc_to(r(n, ny), px(0.), false, s, at(z, z));
   } else {
-    p.line_to(point(l + n, b - bn));
-    p.arc_to(point(n, n), px(0.), false, false, point(l, b));
-    p.line_to(point(l, t));
+    p.line_to(at(n, depth - bn));
+    p.arc_to(r(n, n), px(0.), false, s, at(z, depth));
+    p.line_to(at(z, z));
   }
 
   p.close();

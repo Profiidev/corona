@@ -11,6 +11,7 @@ use gpui_kit::{
 
 use crate::{
   APP_NAME,
+  bar::Placement,
   panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
 };
 
@@ -31,9 +32,10 @@ impl PanelState {
     panel: P,
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
+    placement: Placement,
     cx: &mut App,
   ) -> Result<()> {
-    let new_align = Align::from_bounds(button_bounds, bar_bounds, P::WIDTH, cx);
+    let new_align = Align::from_bounds(button_bounds, bar_bounds, P::WIDTH, placement, cx);
 
     if let Some(panel) = Self::get(P::NAME, cx) {
       let (align, open) = panel.read_with(cx, |p, _| (p.align(), p.is_open()));
@@ -53,10 +55,10 @@ impl PanelState {
       }
     }
 
-    Self::open_new::<P>(panel, new_align, cx)
+    Self::open_new::<P>(panel, new_align, placement, cx)
   }
 
-  fn open_new<P: Panel>(panel: P, align: Align, cx: &mut App) -> Result<()> {
+  fn open_new<P: Panel>(panel: P, align: Align, placement: Placement, cx: &mut App) -> Result<()> {
     cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
@@ -79,7 +81,7 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new(panel, align, cx));
+        let view = cx.new(|cx| BasePanel::new(panel, align, placement, cx));
         let state = cx.global_mut::<PanelState>();
         state.panels.insert(P::NAME.to_string(), view.downgrade());
 

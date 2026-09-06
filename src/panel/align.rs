@@ -1,6 +1,9 @@
 use gpui_kit::{App, Bounds, Pixels, component::ActiveTheme};
 
-use crate::panel::style::PanelStyle;
+use crate::{
+  bar::{Placement, PlacmentBounds},
+  panel::style::PanelStyle,
+};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Align {
@@ -14,13 +17,14 @@ impl Align {
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
     width: f32,
+    placement: Placement,
     cx: &mut App,
   ) -> Self {
     let theme = cx.theme();
     let notch = theme.panel_radius();
 
-    let button_center = button_bounds.center().x.as_f32();
-    let total_width = bar_bounds.size.width.as_f32();
+    let button_center = placement.along(button_bounds.center()).as_f32();
+    let total_width = bar_bounds.extent_p(placement).0.as_f32();
     let half_width = width / 2. + notch;
 
     if button_center < half_width {

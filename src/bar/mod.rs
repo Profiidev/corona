@@ -13,13 +13,12 @@ use gpui_kit::{
 
 use crate::{
   APP_NAME,
-  bar::placement::PlacmentBounds,
   panel::{ControlPanel, PanelState},
 };
 
 mod placement;
 
-pub use placement::Placement;
+pub use placement::{Placement, PlacementStyle, PlacmentBounds};
 
 const BAR_NAMESPACE: &str = "corona-bar";
 
@@ -75,12 +74,14 @@ impl Render for Bar {
     let bg = theme.tokens.status_bar;
     let flare = theme.radius_2xl();
 
-    window.set_input_region(Some(&[Bounds {
-      origin: point(px(0.), px(0.)),
-      size: self
-        .placement
-        .size(HEIGHT, window.viewport_size().width.as_f32()),
-    }]));
+    let viewport = window.viewport_size();
+    let len = self.placement.len(viewport);
+    window.set_input_region(Some(&[self.placement.rect(
+      viewport,
+      px(0.),
+      len,
+      px(HEIGHT),
+    )]));
 
     let bar_bounds = Rc::new(Cell::new(Bounds::default()));
 
@@ -106,10 +107,10 @@ impl Render for Bar {
           .flex()
           .items_center()
           .gap_2()
-          .when(self.placement != Placement::Bottom, |b| b.top_0())
-          .when(self.placement != Placement::Top, |b| b.bottom_0())
-          .when(self.placement != Placement::Left, |b| b.left_0())
-          .when(self.placement != Placement::Right, |b| b.right_0())
+          .anchor_p(self.placement)
+          .along_start_p(self.placement)
+          .along_end_p(self.placement)
+          .overflow_hidden()
           .when(self.placement.is_horizontal(), |b| {
             b.flex_row().h(px(HEIGHT))
           })
@@ -139,7 +140,7 @@ impl Render for Bar {
                 move |_, _, cx| {
                   let button_bounds = button_bounds.get();
                   let bar_bounds = bar_bounds.get();
-                  PanelState::toggle(ControlPanel, button_bounds, bar_bounds, cx)
+                  PanelState::toggle(ControlPanel, button_bounds, bar_bounds, placement, cx)
                     .expect("failed to open panel");
                 }
               })

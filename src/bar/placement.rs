@@ -1,4 +1,4 @@
-use gpui_kit::{Bounds, Pixels, Point, Size, layer_shell::Anchor, point, px};
+use gpui_kit::{Bounds, Pixels, Point, Size, Styled, layer_shell::Anchor, point, px};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Placement {
@@ -39,7 +39,104 @@ impl Placement {
   pub fn mirrored(&self) -> bool {
     matches!(self, Placement::Bottom | Placement::Left)
   }
+
+  /// Extents `along` and `across` the bar, as a window-space vector. Unlike
+  /// [`Self::point_p`] this maps a size rather than a position, so it only
+  /// swaps the axes and never offsets.
+  pub fn vec(&self, along: Pixels, across: Pixels) -> Point<Pixels> {
+    if self.is_horizontal() {
+      point(along, across)
+    } else {
+      point(across, along)
+    }
+  }
+
+  /// The extent of `size` on the axis the bar runs along.
+  pub fn len(&self, size: Size<Pixels>) -> Pixels {
+    if self.is_horizontal() {
+      size.width
+    } else {
+      size.height
+    }
+  }
+
+  /// The component of `at` on the axis the bar runs along.
+  pub fn along(&self, at: Point<Pixels>) -> Pixels {
+    if self.is_horizontal() { at.x } else { at.y }
+  }
+
+  /// A rect in window coordinates, `along` the bar from its start and `depth`
+  /// deep from the edge it is anchored to.
+  pub fn rect(
+    &self,
+    viewport: Size<Pixels>,
+    along: Pixels,
+    len: Pixels,
+    depth: Pixels,
+  ) -> Bounds<Pixels> {
+    let size = match self {
+      Placement::Top | Placement::Bottom => Size::new(len, depth),
+      Placement::Left | Placement::Right => Size::new(depth, len),
+    };
+    let origin = match self {
+      Placement::Top => point(along, px(0.)),
+      Placement::Bottom => point(along, viewport.height - depth),
+      Placement::Left => point(px(0.), along),
+      Placement::Right => point(viewport.width - depth, along),
+    };
+    Bounds::new(origin, size)
+  }
 }
+
+pub trait PlacementStyle: Styled + Sized {
+  /// Extent `along` the bar, and `across` from the edge it is anchored to.
+  fn size_p(self, p: Placement, along: Pixels, across: Pixels) -> Self {
+    if p.is_horizontal() {
+      self.w(along).h(across)
+    } else {
+      self.h(along).w(across)
+    }
+  }
+
+  /// Pins to the screen edge the bar is anchored to.
+  fn anchor_p(self, p: Placement) -> Self {
+    match p {
+      Placement::Top => self.top_0(),
+      Placement::Bottom => self.bottom_0(),
+      Placement::Left => self.left_0(),
+      Placement::Right => self.right_0(),
+    }
+  }
+
+  /// Offsets from the start of the bar's own axis.
+  fn along_p(self, p: Placement, along: Pixels) -> Self {
+    if p.is_horizontal() {
+      self.left(along)
+    } else {
+      self.top(along)
+    }
+  }
+
+  /// Pins to the start of the bar's own axis.
+  fn along_start_p(self, p: Placement) -> Self {
+    if p.is_horizontal() {
+      self.left_0()
+    } else {
+      self.top_0()
+    }
+  }
+
+  /// Pins to the end of the bar's own axis.
+  fn along_end_p(self, p: Placement) -> Self {
+    if p.is_horizontal() {
+      self.right_0()
+    } else {
+      self.bottom_0()
+    }
+  }
+}
+
+impl<T: Styled + Sized> PlacementStyle for T {}
 
 pub trait PlacmentBounds {
   /// A point `along` the bar from its start, and `across` from the screen edge
