@@ -19,6 +19,7 @@ pub struct BasePanel {
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
   blocks_input: bool,
+  removing: bool,
   anim: Anim,
 }
 
@@ -37,6 +38,7 @@ impl BasePanel {
       height: P::HEIGHT,
       open: true,
       blocks_input: true,
+      removing: false,
       anim: Anim::new(0.),
       align,
       placement,
@@ -112,8 +114,13 @@ impl Render for BasePanel {
       window.set_input_region(Some(&[panel]));
     }
 
-    if !self.open && progress == 0. {
-      window.remove_window();
+    if !self.open && progress == 0. && !self.removing {
+      self.removing = true;
+      let handle = window.window_handle();
+      cx.spawn(async move |_, cx| {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+      })
+      .detach();
     }
 
     div()
