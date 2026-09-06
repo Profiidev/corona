@@ -1,17 +1,12 @@
 use gpui_kit::{
   AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
-  PathBuilder, Pixels, Render, Styled,
-  base::{Presence, PresencePhase, Transition},
-  canvas,
-  component::ActiveTheme,
-  div, point,
-  prelude::FluentBuilder,
-  px, size,
+  PathBuilder, Pixels, Render, Styled, canvas, component::ActiveTheme, div, point,
+  prelude::FluentBuilder, px, size,
 };
 
 use crate::{
   config::ConfigProvider,
-  panel::{PANEL_OPEN_ANIMATION, align::Align, style::PanelStyle, variants::Panel},
+  panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
 
 pub struct BasePanel {
@@ -22,6 +17,7 @@ pub struct BasePanel {
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
   blocks_input: bool,
+  anim: Anim,
 }
 
 impl BasePanel {
@@ -34,6 +30,7 @@ impl BasePanel {
       height: P::HEIGHT,
       open: true,
       blocks_input: true,
+      anim: Anim::new(0.),
       align,
     }
   }
@@ -75,11 +72,17 @@ impl Render for BasePanel {
       (0., 1., 1.)
     };
 
-    let speed = cx.config().animation_speed.to_duration();
-    let sample = Presence::new(PANEL_OPEN_ANIMATION, self.open)
-      .transition(Transition::new(speed))
-      .sample(window, cx);
-    let h = (self.height + bn) * sample.progress;
+    let speed = if cx.reduce_motion() {
+      std::time::Duration::ZERO
+    } else {
+      cx.config().animation_speed.to_duration()
+    };
+    self.anim.retarget(if self.open { 1. } else { 0. }, speed);
+    let (progress, animating) = self.anim.value();
+    if animating {
+      window.request_animation_frame();
+    }
+    let h = (self.height + bn) * progress;
 
     if self.open {
       if !self.blocks_input {
@@ -98,7 +101,7 @@ impl Render for BasePanel {
       window.set_input_region(Some(&[panel]));
     }
 
-    if sample.phase == PresencePhase::Absent {
+    if !self.open && progress == 0. {
       window.remove_window();
     }
 
