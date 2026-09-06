@@ -11,7 +11,7 @@ use gpui_kit::{
 
 use crate::{
   APP_NAME,
-  panel::{align::Align, base::BasePanel},
+  panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
 };
 
 pub struct PanelState {
@@ -27,17 +27,15 @@ impl PanelState {
     });
   }
 
-  pub fn toggle(
-    name: String,
-    width: f32,
-    height: f32,
+  pub fn toggle<P: Panel>(
+    panel: P,
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
     cx: &mut App,
   ) -> Result<()> {
-    let new_align = Align::from_bounds(button_bounds, bar_bounds, width, cx);
+    let new_align = Align::from_bounds(button_bounds, bar_bounds, P::WIDTH, cx);
 
-    if let Some(panel) = Self::get(&name, cx) {
+    if let Some(panel) = Self::get(P::NAME, cx) {
       let (align, open) = panel.read_with(cx, |p, _| (p.align(), p.is_open()));
 
       match (align == new_align, open) {
@@ -55,10 +53,10 @@ impl PanelState {
       }
     }
 
-    Self::open_new(name, width, height, new_align, cx)
+    Self::open_new::<P>(panel, new_align, cx)
   }
 
-  fn open_new(name: String, width: f32, height: f32, align: Align, cx: &mut App) -> Result<()> {
+  fn open_new<P: Panel>(panel: P, align: Align, cx: &mut App) -> Result<()> {
     cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
@@ -67,7 +65,7 @@ impl PanelState {
           exclusive_edge: None,
           margin: None,
           layer: Layer::Overlay,
-          namespace: "corona_panel".to_string(),
+          namespace: PANEL_NAME.to_string(),
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
         }),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -81,9 +79,9 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new(window.window_handle(), width, height, align, cx));
+        let view = cx.new(|cx| BasePanel::new(window.window_handle(), panel, align, cx));
         let state = cx.global_mut::<PanelState>();
-        state.panels.insert(name, view.downgrade());
+        state.panels.insert(P::NAME.to_string(), view.downgrade());
 
         cx.new(|cx| {
           Root::new(view, window, cx)

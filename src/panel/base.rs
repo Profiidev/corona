@@ -1,19 +1,19 @@
 use gpui_kit::{
-  AnyElement, AnyWindowHandle, Bounds, Context, InteractiveElement, MouseButton, ParentElement,
-  Path, PathBuilder, Pixels, Render, Styled, Task, canvas, component::ActiveTheme, div, point,
-  prelude::FluentBuilder, px,
+  AnyView, AnyWindowHandle, AppContext, Bounds, Context, InteractiveElement, MouseButton,
+  ParentElement, Path, PathBuilder, Pixels, Render, Styled, Task, canvas, component::ActiveTheme,
+  div, point, prelude::FluentBuilder, px,
 };
 
 use crate::{
   config::ConfigProvider,
-  panel::{align::Align, anim::Anim, style::PanelStyle},
+  panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
 
 pub struct BasePanel {
+  panel: AnyView,
   width: f32,
   height: f32,
   align: Align,
-  children: Vec<AnyElement>,
   height_anim: Anim,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
@@ -22,22 +22,22 @@ pub struct BasePanel {
 }
 
 impl BasePanel {
-  pub fn new(
+  pub fn new<P: Panel>(
     window: AnyWindowHandle,
-    width: f32,
-    height: f32,
+    panel: P,
     align: Align,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
     let config = cx.config();
     let speed = config.animation_speed.to_duration();
+    let panel = cx.new(|_| panel);
 
     Self {
-      width,
-      height,
+      panel: panel.into(),
+      width: P::WIDTH,
+      height: P::HEIGHT,
       height_anim: Anim::new(0., speed),
       open: true,
-      children: Vec::new(),
       window,
       close: None,
       align,
@@ -137,15 +137,9 @@ impl Render for BasePanel {
               .left(px(br * nl))
               .right(px(br * nr))
               .bottom_0()
-              .children(std::mem::take(&mut self.children)),
+              .child(self.panel.clone()),
           ),
       )
-  }
-}
-
-impl ParentElement for BasePanel {
-  fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-    self.children.extend(elements);
   }
 }
 

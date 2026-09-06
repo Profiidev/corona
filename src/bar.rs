@@ -11,7 +11,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::panel::PanelState;
+use crate::panel::{ControlPanel, PanelState};
 
 /// The bar proper. Its corner flares hang below this, over whatever is underneath.
 const HEIGHT: f32 = 30.;
@@ -114,7 +114,7 @@ impl Render for Bar {
                 move |_, _, cx| {
                   let button_bounds = button_bounds.get();
                   let bar_bounds = bar_bounds.get();
-                  PanelState::toggle("test".into(), 200., 200., button_bounds, bar_bounds, cx)
+                  PanelState::toggle(ControlPanel, button_bounds, bar_bounds, cx)
                     .expect("failed to open panel");
                 }
               })
