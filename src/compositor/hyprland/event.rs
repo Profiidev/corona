@@ -68,7 +68,8 @@ impl Ipc {
       .context("Invalid hyprland event format")?;
 
     let events = match name {
-      "workspace" => {
+      "workspace" | "createworkspace" | "destroyworkspace" | "renameworkspace"
+      | "moveworkspace" => {
         let workspaces = self.list_workspaces()?;
         let active = self.active_workspace()?;
         vec![

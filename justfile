@@ -76,6 +76,31 @@ nested:
   # would discard the EXIT trap and leak the temp config.
   start-hyprland -- -c "$conf"
 
+# Run hyprctl against the nested session, e.g. `just nested-ctl -j monitors`.
+nested-ctl *args:
+  #!/usr/bin/env sh
+  set -e
+  # `|| true`, or `set -e` kills the script before the message below.
+  conf="$(cat /tmp/corona-nested.conf-path 2>/dev/null || true)"
+  if [ -z "$conf" ]; then
+    echo "no nested session running"
+    exit 1
+  fi
+  pid="$(pgrep -f "Hyprland .*-c $conf" | head -1 || true)"
+  if [ -z "$pid" ]; then
+    echo "nested session not running"
+    exit 1
+  fi
+  # The instance whose pid is the nested compositor's. `hyprctl -i` takes an
+  # index into this same list instead, and nothing promises the nested session
+  # keeps its place there.
+  sig="$(hyprctl instances | awk -v pid="$pid" '/^instance /{ s = $2 } /^\tpid: /{ if ($2 == pid) { sub(/:$/, "", s); print s; exit } }')"
+  if [ -z "$sig" ]; then
+    echo "nested session has no hyprland instance"
+    exit 1
+  fi
+  HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl {{args}}
+
 # Kill a nested session started by `just nested`.
 nested-kill:
   #!/usr/bin/env sh

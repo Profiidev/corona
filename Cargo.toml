@@ -17,6 +17,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
+uuid = { version = "1.26.0", features = ["v5"] }
 zbus = "5.19.0"
 
 # PR 40139 (wl_touch support) applied on top of the published crate

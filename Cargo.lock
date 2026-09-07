@@ -1299,6 +1299,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "zbus",
 ]
 
