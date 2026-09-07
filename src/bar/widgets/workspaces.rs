@@ -1,11 +1,6 @@
 use gpui_kit::{
-  Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  base::FocusableExt,
-  component::{
-    ActiveTheme, Sizable,
-    button::{Button, ButtonVariants},
-  },
-  div, px,
+  Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
+  Styled, Subscription, Window, component::ActiveTheme, div, px, relative,
 };
 
 use crate::{
@@ -54,24 +49,60 @@ impl Widget for Workspaces {
 
 impl Render for Workspaces {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let theme = cx.theme();
+
     div()
       .flex_bar(window, cx)
+      .gap_1()
       .children(self.workspaces.iter().map(|ws| {
-        Button::new(format!("workspace-{}", ws.id))
-          .label(ws.id.to_string())
-          .secondary()
-          .rounded_full()
-          .focus_ring(false)
-          .with_size(px(24.))
-          .h(px(24.))
-          .min_w(px(24.))
-          .cursor_pointer()
-          .on_click({
-            let id = ws.id;
-            move |_, window, cx| {
-              println!("Switching to workspace {}", id);
-            }
-          })
+        let border = if self.active == Some(ws.id) {
+          theme.tokens.primary
+        } else {
+          theme.tokens.secondary
+        };
+
+        div()
+          .relative()
+          .child(
+            div()
+              .id(("workspace", ws.id))
+              .flex()
+              .items_center()
+              .justify_center()
+              .h(px(24.))
+              .min_w(px(32.))
+              .rounded_full()
+              .border_2()
+              .border_color(border)
+              .bg(theme.tokens.button_hover)
+              .hover(|this| this.bg(theme.tokens.secondary))
+              .text_color(theme.tokens.secondary_foreground)
+              .cursor_pointer()
+              .on_click({
+                let id = ws.id;
+                move |_, _window, _cx| {
+                  println!("Switching to workspace {}", id);
+                }
+              }),
+          )
+          .child(
+            div()
+              .absolute()
+              .top(px(-2.))
+              .left(px(-2.))
+              .flex()
+              .items_center()
+              .justify_center()
+              .h(px(14.))
+              .min_w(px(14.))
+              .px_0p5()
+              .rounded_full()
+              .bg(border)
+              .text_size(px(10.))
+              .line_height(relative(1.))
+              .text_color(theme.tokens.primary_foreground)
+              .child(ws.name.clone()),
+          )
       }))
   }
 }

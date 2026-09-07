@@ -67,6 +67,7 @@ impl Bar {
       .inset_0()
       .flex()
       .items_center()
+      .gap_2()
       .when(self.placement.is_vertical(), |d| d.flex_col())
       .children(views.into_iter().map(|v| {
         let bounds = self.widget_bounds.entry(v.entity_id()).or_default().clone();
