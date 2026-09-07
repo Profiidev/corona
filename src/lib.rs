@@ -1,5 +1,6 @@
 mod assets;
 mod bar;
+mod compositor;
 mod config;
 mod panel;
 
@@ -12,6 +13,7 @@ pub fn run() {
     gpui_kit::init(cx);
     config::load(cx).expect("Failed to load config");
     assets::load(cx).expect("Failed to load themes");
+    compositor::init(cx).expect("Failed to init compositor");
     panel::PanelState::init(cx);
     bar::BarState::init(cx);
   });
