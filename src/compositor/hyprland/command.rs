@@ -1,4 +1,28 @@
-use std::fmt::Display;
+use std::{
+  fmt::Display,
+  io::{Read, Write},
+  os::unix::net::UnixStream,
+  path::PathBuf,
+};
+
+use anyhow::Result;
+
+use crate::compositor::hyprland::encoding::decode_ipc_response;
+
+#[derive(Clone)]
+pub struct Ipc {
+  pub cmd_socket: PathBuf,
+}
+
+impl Ipc {
+  pub(super) fn send_cmd(&self, cmd: &Command) -> Result<String> {
+    let mut socket = UnixStream::connect(&self.cmd_socket)?;
+    socket.write_all(cmd.to_string().as_bytes())?;
+    let mut res = Vec::new();
+    socket.read_to_end(&mut res)?;
+    Ok(decode_ipc_response(&res))
+  }
+}
 
 /// https://github.com/hyprland-community/hyprland-rs/blob/master/src/data/regular.rs
 pub struct Command {
@@ -28,7 +52,7 @@ impl Display for Command {
 #[macro_export]
 macro_rules! data_cmd {
   ($cmd:ident, $arg:literal, $output:ty, $parsed:ty, $convert:expr) => {
-    impl $crate::compositor::hyprland::Hyprland {
+    impl $crate::compositor::hyprland::command::Ipc {
       pub fn $cmd(&self) -> anyhow::Result<$parsed> {
         let cmd = $crate::compositor::hyprland::command::Command {
           command: $arg.to_string(),

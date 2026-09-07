@@ -2,6 +2,7 @@ mod assets;
 mod bar;
 mod compositor;
 mod config;
+mod error;
 mod panel;
 
 pub const APP_NAME: &str = "corona";

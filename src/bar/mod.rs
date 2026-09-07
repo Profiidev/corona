@@ -8,6 +8,7 @@ use crate::{
 
 pub mod base;
 mod state;
+mod style;
 mod widgets;
 
 pub use state::BarState;

@@ -1,18 +1,9 @@
-use std::{
-  io::{Read, Write},
-  os::unix::net::UnixStream,
-  path::{Path, PathBuf},
-  rc::Rc,
-};
+use std::path::Path;
 
 use anyhow::Result;
-use gpui_kit::App;
+use gpui_kit::{App, Entity};
 
-use crate::compositor::{
-  Compositor,
-  hyprland::{command::Command, encoding::decode_ipc_response},
-  types,
-};
+use crate::compositor::{Compositor, event::CompositorEventEmitter, hyprland::command::Ipc, types};
 
 mod command;
 mod encoding;
@@ -20,30 +11,28 @@ mod event;
 mod workspace;
 
 pub struct Hyprland {
-  cmd_socket: PathBuf,
+  ipc: Ipc,
+  events: Entity<CompositorEventEmitter>,
 }
 
 impl Hyprland {
-  pub fn init(cx: &mut App, socket_dir: &Path) -> Rc<Self> {
+  pub fn init(cx: &mut App, socket_dir: &Path) -> Self {
     let cmd_socket = socket_dir.join(".socket.sock");
+    let ipc = Ipc { cmd_socket };
+
     let event_path = socket_dir.join(".socket2.sock");
+    let events = Self::spawn_event_listener(cx, ipc.clone(), event_path);
 
-    let hypr = Rc::new(Hyprland { cmd_socket });
-    hypr.clone().spawn_event_listener(cx, event_path);
-    hypr
-  }
-
-  fn send_cmd(&self, cmd: &Command) -> Result<String> {
-    let mut socket = UnixStream::connect(&self.cmd_socket)?;
-    socket.write_all(cmd.to_string().as_bytes())?;
-    let mut res = Vec::new();
-    socket.read_to_end(&mut res)?;
-    Ok(decode_ipc_response(&res))
+    Hyprland { ipc, events }
   }
 }
 
 impl Compositor for Hyprland {
+  fn emitter(&self) -> &Entity<CompositorEventEmitter> {
+    &self.events
+  }
+
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-    self.get_workspaces()
+    self.ipc.get_workspaces()
   }
 }

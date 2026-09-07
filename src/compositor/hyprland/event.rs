@@ -2,21 +2,24 @@ use std::{
   io::{BufRead, BufReader},
   os::unix::net::UnixStream,
   path::PathBuf,
-  rc::Rc,
   thread,
 };
 
 use anyhow::{Context, Result};
-use gpui_kit::{App, AppContext};
+use gpui_kit::{App, AppContext, Entity};
 use tracing::{debug, warn};
 
 use crate::compositor::{
   event::{CompositorEvent, CompositorEventEmitter},
-  hyprland::Hyprland,
+  hyprland::{Hyprland, command::Ipc},
 };
 
 impl Hyprland {
-  pub fn spawn_event_listener(self: Rc<Self>, cx: &mut App, event_path: PathBuf) {
+  pub fn spawn_event_listener(
+    cx: &mut App,
+    ipc: Ipc,
+    event_path: PathBuf,
+  ) -> Entity<CompositorEventEmitter> {
     let (tx, rx) = async_channel::bounded(100);
 
     thread::spawn(move || {
@@ -41,7 +44,7 @@ impl Hyprland {
     cx.new(|cx| {
       cx.spawn(async move |this, cx| {
         while let Ok(line) = rx.recv().await {
-          match self.parse_event(&line) {
+          match ipc.parse_event(&line) {
             Ok(Some(event)) => {
               let _ = this.update(cx, |_, cx| cx.emit(event));
             }
@@ -53,9 +56,11 @@ impl Hyprland {
       .detach();
 
       CompositorEventEmitter
-    });
+    })
   }
+}
 
+impl Ipc {
   fn parse_event(&self, event: &str) -> Result<Option<CompositorEvent>> {
     let (name, _data) = event
       .split_once(">>")

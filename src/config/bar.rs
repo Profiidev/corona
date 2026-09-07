@@ -29,19 +29,7 @@ impl Default for BarConfig {
           widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
-        },
-        WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
-        },
-        WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
-        },
-        WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
-        },
-        WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
+          widget_type: WidgetType::Workspaces,
         },
       ],
       center_widgets: vec![WidgetConfig {
