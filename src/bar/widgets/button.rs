@@ -1,34 +1,31 @@
-use std::{cell::Cell, rc::Rc};
-
 use gpui_kit::{
-  Bounds, Context, IntoElement, Render, Styled, Window,
-  base::ElementExt,
-  component::{self, button::ButtonVariants},
+  Context, IntoElement, Render, Styled, Window,
+  base::FocusableExt,
+  component::{self, Sizable, button::ButtonVariants},
+  px,
 };
 
-use crate::{assets::icons::IconName, bar::toggle_panel, bar::widgets::Widget, panel::ControlPanel};
+use crate::{
+  assets::icons::IconName,
+  bar::{toggle_panel, widgets::Widget},
+  panel::ControlPanel,
+};
 
 pub struct Button;
 
 impl Widget for Button {}
 
 impl Render for Button {
-  fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-    let button_bounds = Rc::new(Cell::new(Bounds::default()));
-
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     component::button::Button::new("test-button")
       .secondary()
       .rounded_full()
+      .focus_ring(false)
+      .with_size(px(24.))
+      .cursor_pointer()
       .icon(IconName::Nixos)
-      .on_prepaint({
-        let button_bounds = button_bounds.clone();
-        move |bounds, _, _| {
-          button_bounds.set(bounds);
-        }
-      })
-      .on_click(move |_, window, cx| {
-        toggle_panel(ControlPanel, button_bounds.get(), window, cx)
-          .expect("Failed to toggle panel");
-      })
+      .on_click(cx.listener(|_, _, window, cx| {
+        toggle_panel(ControlPanel, window, cx).expect("Failed to toggle control panel");
+      }))
   }
 }

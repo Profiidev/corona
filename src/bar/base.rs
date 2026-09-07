@@ -1,7 +1,7 @@
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use gpui_kit::{
-  AnyView, Bounds, Div, Path, PathBuilder, Pixels, Window, canvas,
+  AnyView, Bounds, Div, EntityId, Path, PathBuilder, Pixels, Window, canvas,
   component::{ActiveTheme, *},
   div, point,
   prelude::*,
@@ -17,6 +17,7 @@ pub struct Bar {
   placement: Placement,
   height: f32,
   bounds: Rc<Cell<Bounds<Pixels>>>,
+  widget_bounds: HashMap<EntityId, Rc<Cell<Bounds<Pixels>>>>,
   start_widgets: Vec<AnyView>,
   center_widgets: Vec<AnyView>,
   end_widgets: Vec<AnyView>,
@@ -39,6 +40,7 @@ impl Bar {
       placement: config.placement,
       height: config.height,
       bounds: Rc::new(Cell::new(Bounds::default())),
+      widget_bounds: HashMap::new(),
       start_widgets,
       center_widgets,
       end_widgets,
@@ -47,8 +49,30 @@ impl Bar {
 }
 
 impl Bar {
-  pub fn geometry(&self) -> (Bounds<Pixels>, Placement) {
-    (self.bounds.get(), self.placement)
+  pub fn bounds(&self) -> Bounds<Pixels> {
+    self.bounds.get()
+  }
+
+  pub fn placement(&self) -> Placement {
+    self.placement
+  }
+
+  pub fn widget_bounds(&self, widget_id: EntityId) -> Option<Bounds<Pixels>> {
+    self.widget_bounds.get(&widget_id).map(|b| b.get())
+  }
+
+  fn widgets(&mut self, views: Vec<AnyView>) -> Div {
+    div()
+      .absolute()
+      .inset_0()
+      .flex()
+      .items_center()
+      .when(self.placement.is_vertical(), |d| d.flex_col())
+      .children(views.into_iter().map(|v| {
+        let bounds = self.widget_bounds.entry(v.entity_id()).or_default().clone();
+
+        div().on_prepaint(move |b, _, _| bounds.set(b)).child(v)
+      }))
   }
 }
 
@@ -103,21 +127,11 @@ impl Render for Bar {
               bar_bounds.set(bounds);
             }
           })
-          .child(widgets(self.start_widgets.clone(), self.placement).justify_start())
-          .child(widgets(self.center_widgets.clone(), self.placement).justify_center())
-          .child(widgets(self.end_widgets.clone(), self.placement).justify_end()),
+          .child(self.widgets(self.start_widgets.clone()).justify_start())
+          .child(self.widgets(self.center_widgets.clone()).justify_center())
+          .child(self.widgets(self.end_widgets.clone()).justify_end()),
       )
   }
-}
-
-fn widgets(views: Vec<AnyView>, p: Placement) -> Div {
-  div()
-    .absolute()
-    .inset_0()
-    .flex()
-    .items_center()
-    .when(p.is_vertical(), |d| d.flex_col())
-    .children(views)
 }
 
 fn bar_path(bounds: Bounds<Pixels>, n: Pixels, placement: Placement) -> Option<Path<Pixels>> {

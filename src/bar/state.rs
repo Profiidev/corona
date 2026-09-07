@@ -62,6 +62,7 @@ impl BarState {
       },
       |window, cx| {
         let view = cx.new(|cx| Bar::new(config, cx));
+
         let state = cx.global_mut::<BarState>();
         state
           .bars

@@ -1,7 +1,10 @@
-use anyhow::{Context, Result};
-use gpui_kit::{App, Bounds, Pixels, Window};
+use anyhow::{Context as _, Result};
+use gpui_kit::{Context, Window};
 
-use crate::panel::{Panel, PanelState};
+use crate::{
+  bar::widgets::Widget,
+  panel::{Panel, PanelState},
+};
 
 pub mod base;
 mod state;
@@ -12,14 +15,18 @@ pub use widgets::WidgetType;
 
 const BAR_NAMESPACE: &str = "corona_bar";
 
-pub fn toggle_panel<P: Panel>(
+pub fn toggle_panel<P: Panel, W: Widget>(
   panel: P,
-  widget: Bounds<Pixels>,
   window: &Window,
-  cx: &mut App,
+  cx: &mut Context<'_, W>,
 ) -> Result<()> {
-  let bar = BarState::get(window, cx).context("no bar in this window")?;
-  let (bounds, placement) = bar.read(cx).geometry();
+  let widget_id = cx.entity_id();
+  let bar = BarState::get(window, cx)
+    .context("no bar in this window")?
+    .read(cx);
+  let button_bounds = bar
+    .widget_bounds(widget_id)
+    .context("no bounds for this widget")?;
 
-  PanelState::toggle(panel, widget, bounds, placement, cx)
+  PanelState::toggle(panel, button_bounds, bar.bounds(), bar.placement(), cx)
 }
