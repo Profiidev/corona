@@ -56,7 +56,7 @@ impl Global for Config {}
 impl Default for Config {
   fn default() -> Self {
     Self {
-      theme: "macOS Classic Dark".to_string(),
+      theme: "shadcn Zinc Blue Dark".to_string(),
       animation_speed: Default::default(),
       bars: vec![Default::default()],
     }

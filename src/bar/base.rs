@@ -79,7 +79,7 @@ impl Bar {
 impl Render for Bar {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
-    let bg = theme.tokens.status_bar;
+    let bg = theme.tokens.background;
     let flare = theme.radius_2xl();
 
     let viewport = window.viewport_size();
@@ -109,6 +109,7 @@ impl Render for Bar {
       )
       .child(
         div()
+          .bg(bg)
           .absolute()
           .flex()
           .anchor_p(self.placement)

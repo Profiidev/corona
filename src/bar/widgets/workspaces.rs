@@ -2,7 +2,7 @@ use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   base::FocusableExt,
   component::{
-    Sizable,
+    ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
   },
   div, px,
@@ -24,15 +24,24 @@ pub struct Workspaces {
 impl Widget for Workspaces {
   fn init(cx: &mut Context<'_, Self>) -> Self {
     let compositor = cx.compositor();
-    let workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
+
+    let mut workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
+    workspaces.sort_by_key(|w| w.id);
+
     let active = compositor.active_workspace().log_err().map(|w| w.id).ok();
     let emitter = compositor.emitter().clone();
 
-    let subscription = cx.subscribe(&emitter, |this, _, e, cx| {
-      if let CompositorEvent::Workspace(workspaces) = e {
-        this.workspaces = workspaces.clone();
+    let subscription = cx.subscribe(&emitter, |this, _, e, cx| match e {
+      CompositorEvent::ActiveWorkspace(workspace) => {
+        this.active = Some(workspace.id);
         cx.notify();
       }
+      CompositorEvent::Workspace(workspaces) => {
+        this.workspaces = workspaces.clone();
+        this.workspaces.sort_by_key(|w| w.id);
+        cx.notify();
+      }
+      _ => {}
     });
 
     Workspaces {
