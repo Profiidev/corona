@@ -22,3 +22,10 @@ pub struct Monitor {
   pub disabled: bool,
   pub mirror_of: String,
 }
+
+pub struct Window {
+  pub monitor: u32,
+  pub workspace: u32,
+  pub class: String,
+  pub title: String,
+}

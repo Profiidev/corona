@@ -17,6 +17,9 @@ pub trait Compositor {
 
   fn list_monitors(&self) -> Result<Vec<types::Monitor>>;
   fn active_monitor(&self) -> Result<types::Monitor>;
+
+  fn list_windows(&self) -> Result<Vec<types::Window>>;
+  fn active_window(&self) -> Result<types::Window>;
 }
 
 pub struct CompositorRef(Rc<dyn Compositor>);

@@ -12,4 +12,6 @@ pub enum CompositorEvent {
   ActiveScratchpad(types::Monitor),
   Monitor(Vec<types::Monitor>),
   ActiveMonitor(types::Monitor),
+  Window(Vec<types::Window>),
+  ActiveWindow(types::Window),
 }

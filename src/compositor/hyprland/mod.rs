@@ -9,6 +9,7 @@ mod command;
 mod encoding;
 mod event;
 mod monitor;
+mod windows;
 mod workspace;
 
 pub struct Hyprland {
@@ -43,7 +44,6 @@ impl Compositor for Hyprland {
   fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
     self.ipc.list_monitors()
   }
-
   fn active_monitor(&self) -> Result<types::Monitor> {
     self
       .ipc
@@ -51,5 +51,12 @@ impl Compositor for Hyprland {
       .into_iter()
       .find(|m| m.focused && !m.disabled)
       .context("No active monitor found")
+  }
+
+  fn list_windows(&self) -> Result<Vec<types::Window>> {
+    self.ipc.list_windows()
+  }
+  fn active_window(&self) -> Result<types::Window> {
+    self.ipc.active_window()
   }
 }

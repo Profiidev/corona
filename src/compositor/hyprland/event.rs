@@ -77,6 +77,14 @@ impl Ipc {
           CompositorEvent::ActiveWorkspace(active),
         ]
       }
+      "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" => {
+        let windows = self.list_windows()?;
+        vec![CompositorEvent::Window(windows)]
+      }
+      "activewindow" => {
+        let window = self.active_window()?;
+        vec![CompositorEvent::ActiveWindow(window)]
+      }
       "focusedmon" => {
         let (monitor_name, _) = data
           .split_once(",")
