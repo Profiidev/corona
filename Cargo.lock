@@ -1287,6 +1287,7 @@ name = "corona"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "bitflags 2.13.1",
  "chardetng",
  "config",

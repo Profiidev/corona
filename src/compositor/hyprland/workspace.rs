@@ -2,7 +2,13 @@ use serde::Deserialize;
 
 use crate::{compositor::types, data_cmd};
 
-data_cmd!(get_workspaces, "workspaces", Vec<Workspace>);
+data_cmd!(
+  get_workspaces,
+  "workspaces",
+  Vec<Workspace>,
+  Vec<types::Workspace>,
+  |workspaces: Vec<Workspace>| { workspaces.into_iter().map(|w| w.into()).collect() }
+);
 
 #[derive(Debug, Deserialize)]
 pub struct Workspace {

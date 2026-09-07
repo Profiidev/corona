@@ -27,16 +27,16 @@ impl Display for Command {
 
 #[macro_export]
 macro_rules! data_cmd {
-  ($cmd:ident, $arg:literal, $output:ty) => {
+  ($cmd:ident, $arg:literal, $output:ty, $parsed:ty, $convert:expr) => {
     impl $crate::compositor::hyprland::Hyprland {
-      pub fn $cmd(&self) -> anyhow::Result<$output> {
+      pub fn $cmd(&self) -> anyhow::Result<$parsed> {
         let cmd = $crate::compositor::hyprland::command::Command {
           command: $arg.to_string(),
           flags: $crate::compositor::hyprland::command::CommandFlags::JSON,
         };
         let res = self.send_cmd(&cmd)?;
         let output: $output = serde_json::from_str(&res)?;
-        Ok(output)
+        Ok($convert(output))
       }
     }
   };

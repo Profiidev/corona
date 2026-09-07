@@ -5,6 +5,7 @@ use gpui_kit::{App, Global};
 
 use crate::compositor::{hyprland::Hyprland, types::Workspace};
 
+mod event;
 mod hyprland;
 mod types;
 
@@ -30,15 +31,10 @@ pub fn init(cx: &mut App) -> Result<()> {
   let compositor: Rc<dyn Compositor> =
     if let Ok(hypr_instance) = env::var("HYPRLAND_INSTANCE_SIGNATURE") {
       let socket_dir = Path::new(&runtime_dir).join("hypr").join(hypr_instance);
-      Rc::new(Hyprland::init(cx, &socket_dir))
+      Hyprland::init(cx, &socket_dir)
     } else {
       bail!("Current compositor is not supported")
     };
-
-  let res = compositor
-    .list_workspaces()
-    .context("Failed to list workspaces")?;
-  dbg!("Workspaces: {:?}", res);
 
   cx.set_global(CompositorRef(compositor));
 

@@ -2,6 +2,7 @@ use std::{
   io::{Read, Write},
   os::unix::net::UnixStream,
   path::{Path, PathBuf},
+  rc::Rc,
 };
 
 use anyhow::Result;
@@ -15,6 +16,7 @@ use crate::compositor::{
 
 mod command;
 mod encoding;
+mod event;
 mod workspace;
 
 pub struct Hyprland {
@@ -22,11 +24,13 @@ pub struct Hyprland {
 }
 
 impl Hyprland {
-  pub fn init(cx: &mut App, socket_dir: &Path) -> Self {
+  pub fn init(cx: &mut App, socket_dir: &Path) -> Rc<Self> {
     let cmd_socket = socket_dir.join(".socket.sock");
     let event_path = socket_dir.join(".socket2.sock");
 
-    Hyprland { cmd_socket }
+    let hypr = Rc::new(Hyprland { cmd_socket });
+    hypr.clone().spawn_event_listener(cx, event_path);
+    hypr
   }
 
   fn send_cmd(&self, cmd: &Command) -> Result<String> {
@@ -40,8 +44,6 @@ impl Hyprland {
 
 impl Compositor for Hyprland {
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-    let workspaces = self.get_workspaces()?;
-    let workspaces = workspaces.into_iter().map(Into::into).collect();
-    Ok(workspaces)
+    self.get_workspaces()
   }
 }
