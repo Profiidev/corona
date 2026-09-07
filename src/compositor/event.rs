@@ -13,5 +13,5 @@ pub enum CompositorEvent {
   Monitor(Vec<types::Monitor>),
   ActiveMonitor(types::Monitor),
   Window(Vec<types::Window>),
-  ActiveWindow(types::Window),
+  ActiveWindow(Option<types::Window>),
 }

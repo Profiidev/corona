@@ -7,6 +7,7 @@ use gpui_kit::{
   prelude::*,
   px,
 };
+use uuid::Uuid;
 
 use crate::config::{
   bar::{BarConfig, WidgetConfig},
@@ -24,11 +25,11 @@ pub struct Bar {
 }
 
 impl Bar {
-  pub fn new(config: BarConfig, cx: &mut Context<Bar>) -> Self {
+  pub fn new(config: BarConfig, cx: &mut Context<Bar>, display_id: Uuid) -> Self {
     let mut init_widgets = |widgets: Vec<WidgetConfig>| {
       widgets
         .into_iter()
-        .map(|w| w.widget_type.init(cx))
+        .map(|w| w.widget_type.init(cx, display_id))
         .collect::<Vec<_>>()
     };
 

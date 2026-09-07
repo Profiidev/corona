@@ -10,13 +10,22 @@ data_cmd!(
   |windows: Vec<Window>| { windows.into_iter().map(|m| m.into()).collect() }
 );
 
-data_cmd!(
-  active_window,
-  "activewindow",
-  Window,
-  types::Window,
-  |window: Window| { window.into() }
-);
+impl crate::compositor::hyprland::command::Ipc {
+  pub fn active_window(&self) -> anyhow::Result<Option<types::Window>> {
+    let cmd = crate::compositor::hyprland::command::Command {
+      command: "activewindow".to_string(),
+      flags: crate::compositor::hyprland::command::CommandFlags::JSON,
+    };
+    let res = self.send_cmd(&cmd)?;
+
+    let value: serde_json::Value = serde_json::from_str(&res)?;
+    if value.as_object().is_some_and(|window| window.is_empty()) {
+      return Ok(None);
+    }
+
+    Ok(Some(serde_json::from_value::<Window>(value)?.into()))
+  }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Window {

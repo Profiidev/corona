@@ -56,7 +56,7 @@ impl Compositor for Hyprland {
   fn list_windows(&self) -> Result<Vec<types::Window>> {
     self.ipc.list_windows()
   }
-  fn active_window(&self) -> Result<types::Window> {
+  fn active_window(&self) -> Result<Option<types::Window>> {
     self.ipc.active_window()
   }
 }

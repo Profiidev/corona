@@ -1,15 +1,27 @@
+use std::collections::HashMap;
+
 use gpui_kit::{
   Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-  Styled, Subscription, Window, component::ActiveTheme, div, px, relative,
+  Styled, Subscription, Window, component::ActiveTheme, div, img, prelude::FluentBuilder, px,
+  relative,
 };
+use uuid::Uuid;
 
 use crate::{
   bar::{style::BarStyle, widgets::Widget},
-  compositor::{CompositorExt, event::CompositorEvent, types::Workspace},
+  compositor::{
+    CompositorExt,
+    event::CompositorEvent,
+    types::{self, Workspace},
+  },
+  desktop_entry::icon_for_class_or_default,
   error::ErrorLogExt,
 };
 
+const ICON_SIZE: u16 = 18;
+
 pub struct Workspaces {
+  windows: HashMap<u32, Vec<types::Window>>,
   workspaces: Vec<Workspace>,
   active: Option<u32>,
   #[allow(dead_code)]
@@ -17,29 +29,60 @@ pub struct Workspaces {
 }
 
 impl Widget for Workspaces {
-  fn init(cx: &mut Context<'_, Self>) -> Self {
+  fn init(cx: &mut Context<'_, Self>, display_id: Uuid) -> Self {
     let compositor = cx.compositor();
 
     let mut workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
+    workspaces.retain(|w| w.display_id() == display_id);
     workspaces.sort_by_key(|w| w.id);
 
-    let active = compositor.active_workspace().log_err().map(|w| w.id).ok();
-    let emitter = compositor.emitter().clone();
+    let windows = compositor.list_windows().log_err().unwrap_or_default();
+    let mut windows_by_workspace: HashMap<u32, Vec<types::Window>> = HashMap::new();
+    for window in windows {
+      if workspaces.iter().all(|w| w.id != window.workspace) {
+        continue;
+      }
 
-    let subscription = cx.subscribe(&emitter, |this, _, e, cx| match e {
+      windows_by_workspace
+        .entry(window.workspace)
+        .or_default()
+        .push(window);
+    }
+
+    let active = compositor.active_workspace().log_err().map(|w| w.id).ok();
+
+    let emitter = compositor.emitter().clone();
+    let subscription = cx.subscribe(&emitter, move |this, _, e, cx| match e {
       CompositorEvent::ActiveWorkspace(workspace) => {
         this.active = Some(workspace.id);
         cx.notify();
       }
       CompositorEvent::Workspace(workspaces) => {
         this.workspaces = workspaces.clone();
+        this.workspaces.retain(|w| w.display_id() == display_id);
         this.workspaces.sort_by_key(|w| w.id);
+        cx.notify();
+      }
+      CompositorEvent::Window(windows) => {
+        this.windows.clear();
+        for window in windows.clone() {
+          if this.workspaces.iter().all(|w| w.id != window.workspace) {
+            continue;
+          }
+
+          this
+            .windows
+            .entry(window.workspace)
+            .or_default()
+            .push(window);
+        }
         cx.notify();
       }
       _ => {}
     });
 
     Workspaces {
+      windows: windows_by_workspace,
       workspaces,
       subscription,
       active,
@@ -67,6 +110,8 @@ impl Render for Workspaces {
             div()
               .id(("workspace", ws.id))
               .flex()
+              .gap_1()
+              .px_1()
               .items_center()
               .justify_center()
               .h(px(24.))
@@ -83,7 +128,30 @@ impl Render for Workspaces {
                 move |_, _window, _cx| {
                   println!("Switching to workspace {}", id);
                 }
-              }),
+              })
+              .children(self.windows.get(&ws.id).map_or(vec![], |windows| {
+                windows
+                  .iter()
+                  .map(|w| {
+                    let icon = icon_for_class_or_default(&w.class, ICON_SIZE);
+
+                    div()
+                      .flex()
+                      .items_center()
+                      .justify_center()
+                      .h(px(ICON_SIZE as f32))
+                      .w(px(ICON_SIZE as f32))
+                      .rounded_full()
+                      .map(|this| match icon {
+                        Some(path) => this.child(img(path).size_full()),
+                        None => this
+                          .text_size(px(10.))
+                          .line_height(relative(1.))
+                          .child(w.class.chars().next().unwrap_or('?').to_string()),
+                      })
+                  })
+                  .collect::<Vec<_>>()
+              })),
           )
           .child(
             div()

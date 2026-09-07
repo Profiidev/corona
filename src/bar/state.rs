@@ -3,7 +3,7 @@ use std::{
   time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Styled, Subscription,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
@@ -21,6 +21,7 @@ use crate::{
   compositor::{CompositorExt, event::CompositorEvent},
   config::{ConfigProvider, bar::BarConfig},
   error::ErrorLogExt,
+  utils::display_uuid,
 };
 
 const DISPLAY_WAIT_TICK: Duration = Duration::from_millis(16);
@@ -135,6 +136,13 @@ impl BarState {
 
   pub fn create(cx: &mut App, config: BarConfig, display_id: DisplayId) -> Result<AnyWindowHandle> {
     let flare = cx.theme().radius_2xl().as_f32();
+    // Resolved here, not in the widgets: a layer-shell window has no output
+    // until the compositor sends `wl_surface::enter`, so `window.display()` is
+    // still `None` while the widgets are being built.
+    let display_uuid = cx
+      .find_display(display_id)
+      .context("No display for the bar")?
+      .uuid()?;
 
     let handle = cx.open_window(
       WindowOptions {
@@ -159,7 +167,7 @@ impl BarState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| Bar::new(config, cx));
+        let view = cx.new(|cx| Bar::new(config, cx, display_uuid));
 
         let state = cx.global_mut::<BarState>();
         state
@@ -183,8 +191,4 @@ impl BarState {
       .get(&window.window_handle().window_id())?
       .upgrade()
   }
-}
-
-fn display_uuid(monitor: &str) -> Uuid {
-  Uuid::new_v5(&Uuid::NAMESPACE_DNS, monitor.as_bytes())
 }

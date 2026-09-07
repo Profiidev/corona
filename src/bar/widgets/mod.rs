@@ -1,15 +1,16 @@
 use gpui_kit::{AnyView, App, AppContext, Context, Render};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 mod button;
 mod control_panel;
 mod workspaces;
 
 pub trait Widget: Render {
-  fn init(cx: &mut Context<'_, Self>) -> Self;
+  fn init(cx: &mut Context<'_, Self>, display_id: Uuid) -> Self;
 
-  fn view(cx: &mut App) -> AnyView {
-    cx.new(Self::init).into()
+  fn view(cx: &mut App, display_id: Uuid) -> AnyView {
+    cx.new(|cx| Self::init(cx, display_id)).into()
   }
 }
 
@@ -21,10 +22,10 @@ pub enum WidgetType {
 }
 
 impl WidgetType {
-  pub fn init(&self, cx: &mut App) -> AnyView {
+  pub fn init(&self, cx: &mut App, display_id: Uuid) -> AnyView {
     match self {
-      WidgetType::ControlPanel => control_panel::ControlPanelButton::view(cx),
-      WidgetType::Workspaces => workspaces::Workspaces::view(cx),
+      WidgetType::ControlPanel => control_panel::ControlPanelButton::view(cx, display_id),
+      WidgetType::Workspaces => workspaces::Workspaces::view(cx, display_id),
     }
   }
 }

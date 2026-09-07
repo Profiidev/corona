@@ -54,7 +54,31 @@ fn icon_names() -> &'static HashMap<String, String> {
 fn icon_theme() -> &'static str {
   static THEME: OnceLock<String> = OnceLock::new();
 
-  THEME.get_or_init(|| freedesktop_icons::default_theme_gtk().unwrap_or_else(|| "hicolor".into()))
+  THEME.get_or_init(|| {
+    gtk_settings_icon_theme()
+      .or_else(freedesktop_icons::default_theme_gtk)
+      .unwrap_or_else(|| "hicolor".into())
+  })
+}
+
+fn gtk_settings_icon_theme() -> Option<String> {
+  let config = dirs::config_dir()?;
+
+  ["gtk-4.0", "gtk-3.0"].into_iter().find_map(|version| {
+    let settings = std::fs::read_to_string(config.join(version).join("settings.ini")).ok()?;
+    parse_icon_theme(&settings)
+  })
+}
+
+fn parse_icon_theme(settings: &str) -> Option<String> {
+  let value = settings
+    .lines()
+    .find_map(|line| line.trim().strip_prefix("gtk-icon-theme-name"))?
+    .split_once('=')?
+    .1;
+
+  let value = value.trim().trim_matches('"');
+  (!value.is_empty()).then(|| value.to_string())
 }
 
 /// `size` is a preference, not a filter: a theme that lacks it falls back to
@@ -92,6 +116,16 @@ pub fn icon_for_class_or_default(class: &str, size: u16) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn reads_the_icon_theme_from_gtk_settings() {
+    let settings = "[Settings]\ngtk-theme-name=adw-gtk3\ngtk-icon-theme-name=kora\n";
+    assert_eq!(parse_icon_theme(settings).as_deref(), Some("kora"));
+    assert_eq!(
+      parse_icon_theme("[Settings]\ngtk-theme-name=adw-gtk3\n"),
+      None
+    );
+  }
 
   #[test]
   fn unknown_class_has_no_entry_icon() {

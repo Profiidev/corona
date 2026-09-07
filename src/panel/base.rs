@@ -71,7 +71,7 @@ impl Render for BasePanel {
     cx: &mut gpui_kit::prelude::Context<Self>,
   ) -> impl gpui_kit::prelude::IntoElement {
     let theme = cx.theme();
-    let bg = theme.tokens.status_bar;
+    let bg = theme.tokens.background;
     let br = theme.panel_radius();
 
     let (bn, nl, nr) = if self.align == Align::Left {
@@ -159,6 +159,7 @@ impl Render for BasePanel {
           .child(
             div()
               .absolute()
+              .bg(gpui_kit::transparent_black())
               .anchor_p(self.placement)
               .along_p(self.placement, px(br * nl))
               .size_p(self.placement, px(self.width), px(h - bn))

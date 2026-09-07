@@ -5,6 +5,7 @@ mod config;
 mod desktop_entry;
 mod error;
 mod panel;
+mod utils;
 
 pub const APP_NAME: &str = "corona";
 
