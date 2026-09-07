@@ -2,6 +2,7 @@ mod assets;
 mod bar;
 mod compositor;
 mod config;
+mod desktop_entry;
 mod error;
 mod panel;
 
