@@ -29,5 +29,12 @@ pub fn toggle_panel<P: Panel, W: Widget>(
     .widget_bounds(widget_id)
     .context("no bounds for this widget")?;
 
-  PanelState::toggle(panel, button_bounds, bar.bounds(), bar.placement(), cx)
+  PanelState::toggle(
+    panel,
+    button_bounds,
+    bar.bounds(),
+    bar.placement(),
+    window,
+    cx,
+  )
 }

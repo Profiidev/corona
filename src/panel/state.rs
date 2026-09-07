@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity,
+  App, AppContext, Bounds, DisplayId, Entity, Global, Pixels, Size, Styled, WeakEntity, Window,
   WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   component::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct PanelState {
-  panels: HashMap<String, WeakEntity<BasePanel>>,
+  panels: HashMap<String, (Option<DisplayId>, WeakEntity<BasePanel>)>,
 }
 
 impl Global for PanelState {}
@@ -33,14 +33,16 @@ impl PanelState {
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
     placement: Placement,
+    window: &Window,
     cx: &mut App,
   ) -> Result<()> {
     let new_align = Align::from_bounds(button_bounds, bar_bounds, P::WIDTH, placement, cx);
+    let display_id = window.display(cx).map(|d| d.id());
 
-    if let Some(panel) = Self::get(P::NAME, cx) {
+    if let Some((display, panel)) = Self::get(P::NAME, cx) {
       let (align, open) = panel.read_with(cx, |p, _| (p.align(), p.is_open()));
 
-      match (align == new_align, open) {
+      match (align == new_align && display == display_id, open) {
         (true, true) => {
           panel.update(cx, |panel, cx| panel.close(cx));
           return Ok(());
@@ -55,10 +57,16 @@ impl PanelState {
       }
     }
 
-    Self::open_new::<P>(panel(), new_align, placement, cx)
+    Self::open_new::<P>(panel(), new_align, placement, display_id, cx)
   }
 
-  fn open_new<P: Panel>(panel: P, align: Align, placement: Placement, cx: &mut App) -> Result<()> {
+  fn open_new<P: Panel>(
+    panel: P,
+    align: Align,
+    placement: Placement,
+    display_id: Option<DisplayId>,
+    cx: &mut App,
+  ) -> Result<()> {
     cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
@@ -79,12 +87,15 @@ impl PanelState {
           origin: point(px(0.), px(0.)),
           size: Size::new(px(0.), px(0.)),
         })),
+        display_id,
         ..Default::default()
       },
       |window, cx| {
         let view = cx.new(|cx| BasePanel::new(panel, align, placement, cx));
         let state = cx.global_mut::<PanelState>();
-        state.panels.insert(P::NAME.to_string(), view.downgrade());
+        state
+          .panels
+          .insert(P::NAME.to_string(), (display_id, view.downgrade()));
 
         cx.new(|cx| {
           Root::new(view, window, cx)
@@ -97,7 +108,8 @@ impl PanelState {
     Ok(())
   }
 
-  fn get(name: &str, cx: &App) -> Option<Entity<BasePanel>> {
-    cx.global::<PanelState>().panels.get(name)?.upgrade()
+  fn get(name: &str, cx: &App) -> Option<(Option<DisplayId>, Entity<BasePanel>)> {
+    let (display, panel) = cx.global::<PanelState>().panels.get(name)?;
+    Some((*display, panel.upgrade()?))
   }
 }

@@ -78,8 +78,8 @@ impl Ipc {
         ]
       }
       "focusedmon" => {
-        let (_, monitor_name) = data
-          .split_once(">>")
+        let (monitor_name, _) = data
+          .split_once(",")
           .context("Invalid hyprland event format")?;
 
         let monitors = self.list_monitors()?;

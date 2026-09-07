@@ -32,12 +32,12 @@ nested:
   -- library path devenv sets has to be passed in or corona dies with NoWaylandLib.
   hl.env("LD_LIBRARY_PATH", "{{env('LD_LIBRARY_PATH', '')}}")
 
-  -- Fixed, so the nested screen is the same size every run and a lock screen
-  -- covering "every display" is a known quantity.
+  -- No pinned mode: the wayland backend's output then follows its host window,
+  -- so resizing the nested session's window resizes the screen inside it.
   hl.monitor({
       output = "",
-      mode = "1280x800@60",
-      position = "0x0",
+      mode = "preferred",
+      position = "auto",
       scale = "1",
   })
 
@@ -76,19 +76,20 @@ nested:
   # would discard the EXIT trap and leak the temp config.
   start-hyprland -- -c "$conf"
 
-# Run hyprctl against the nested session, e.g. `just nested-ctl -j monitors`.
-nested-ctl *args:
+# Print the nested session's HYPRLAND_INSTANCE_SIGNATURE.
+[private]
+nested-sig:
   #!/usr/bin/env sh
   set -e
   # `|| true`, or `set -e` kills the script before the message below.
   conf="$(cat /tmp/corona-nested.conf-path 2>/dev/null || true)"
   if [ -z "$conf" ]; then
-    echo "no nested session running"
+    echo "no nested session running" >&2
     exit 1
   fi
   pid="$(pgrep -f "Hyprland .*-c $conf" | head -1 || true)"
   if [ -z "$pid" ]; then
-    echo "nested session not running"
+    echo "nested session not running" >&2
     exit 1
   fi
   # The instance whose pid is the nested compositor's. `hyprctl -i` takes an
@@ -96,10 +97,39 @@ nested-ctl *args:
   # keeps its place there.
   sig="$(hyprctl instances | awk -v pid="$pid" '/^instance /{ s = $2 } /^\tpid: /{ if ($2 == pid) { sub(/:$/, "", s); print s; exit } }')"
   if [ -z "$sig" ]; then
-    echo "nested session has no hyprland instance"
+    echo "nested session has no hyprland instance" >&2
     exit 1
   fi
-  HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl {{args}}
+  echo "$sig"
+
+# Run hyprctl against the nested session, e.g. `just nested-ctl -j monitors`.
+nested-ctl *args:
+  #!/usr/bin/env sh
+  set -e
+  HYPRLAND_INSTANCE_SIGNATURE="$({{just_executable()}} nested-sig)" hyprctl {{args}}
+
+# Add a second output to the nested session, right of the first one.
+nested-monitor:
+  #!/usr/bin/env sh
+  set -e
+  export HYPRLAND_INSTANCE_SIGNATURE="$({{just_executable()}} nested-sig)"
+  before="$(hyprctl monitors | awk '/^Monitor /{ print $2 }')"
+  hyprctl output create wayland
+  # The output is announced asynchronously, so it is not in the list yet.
+  for _ in $(seq 20); do
+    name="$(hyprctl monitors | awk '/^Monitor /{ print $2 }' | grep -vxF "$before" | head -1 || true)"
+    [ -n "$name" ] && break
+    sleep 0.2
+  done
+  if [ -z "$name" ]; then
+    echo "no new output appeared"
+    exit 1
+  fi
+  # Lua, because `hyprctl keyword` answers "unknown request" on this Hyprland.
+  # `auto-right` and `preferred` both track the host windows as they are resized,
+  # where a pinned mode and an x offset would go stale on the first resize.
+  hyprctl eval "hl.monitor({ output = \"$name\", mode = \"preferred\", position = \"auto-right\", scale = 1 })"
+  echo "added $name right of the nested screen"
 
 # Kill a nested session started by `just nested`.
 nested-kill:
