@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use gpui_kit::{App, Entity};
 
 use crate::compositor::{Compositor, event::CompositorEventEmitter, hyprland::command::Ipc, types};
@@ -8,6 +8,7 @@ use crate::compositor::{Compositor, event::CompositorEventEmitter, hyprland::com
 mod command;
 mod encoding;
 mod event;
+mod monitor;
 mod workspace;
 
 pub struct Hyprland {
@@ -33,6 +34,22 @@ impl Compositor for Hyprland {
   }
 
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-    self.ipc.get_workspaces()
+    self.ipc.list_workspaces()
+  }
+  fn active_workspace(&self) -> Result<types::Workspace> {
+    self.ipc.active_workspace()
+  }
+
+  fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
+    self.ipc.list_monitors()
+  }
+
+  fn active_monitor(&self) -> Result<types::Monitor> {
+    self
+      .ipc
+      .list_monitors()?
+      .into_iter()
+      .find(|m| m.focused && !m.disabled)
+      .context("No active monitor found")
   }
 }

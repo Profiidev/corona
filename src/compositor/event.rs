@@ -7,5 +7,9 @@ pub struct CompositorEventEmitter;
 impl EventEmitter<CompositorEvent> for CompositorEventEmitter {}
 
 pub enum CompositorEvent {
-  WorkspaceChanged(Vec<types::Workspace>),
+  Workspace(Vec<types::Workspace>),
+  ActiveWorkspace(types::Workspace),
+  ActiveScratchpad(types::Monitor),
+  Monitor(Vec<types::Monitor>),
+  ActiveMonitor(types::Monitor),
 }

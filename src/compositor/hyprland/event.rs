@@ -45,11 +45,12 @@ impl Hyprland {
       cx.spawn(async move |this, cx| {
         while let Ok(line) = rx.recv().await {
           match ipc.parse_event(&line) {
-            Ok(Some(event)) => {
-              let _ = this.update(cx, |_, cx| cx.emit(event));
+            Ok(events) => {
+              for event in events {
+                let _ = this.update(cx, |_, cx| cx.emit(event));
+              }
             }
             Err(e) => warn!("Failed to parse hyprland event: {}", e),
-            _ => (),
           }
         }
       })
@@ -61,15 +62,53 @@ impl Hyprland {
 }
 
 impl Ipc {
-  fn parse_event(&self, event: &str) -> Result<Option<CompositorEvent>> {
-    let (name, _data) = event
+  fn parse_event(&self, event: &str) -> Result<Vec<CompositorEvent>> {
+    let (name, data) = event
       .split_once(">>")
       .context("Invalid hyprland event format")?;
 
-    let event = match name {
+    let events = match name {
       "workspace" => {
-        let workspaces = self.get_workspaces()?;
-        CompositorEvent::WorkspaceChanged(workspaces)
+        let workspaces = self.list_workspaces()?;
+        let active = self.active_workspace()?;
+        vec![
+          CompositorEvent::Workspace(workspaces),
+          CompositorEvent::ActiveWorkspace(active),
+        ]
+      }
+      "focusedmon" => {
+        let (_, monitor_name) = data
+          .split_once(">>")
+          .context("Invalid hyprland event format")?;
+
+        let monitors = self.list_monitors()?;
+        let monitor = monitors
+          .into_iter()
+          .find(|m| m.name == monitor_name)
+          .context("Monitor not found")?;
+
+        vec![
+          CompositorEvent::ActiveWorkspace(monitor.active_workspace.clone()),
+          CompositorEvent::ActiveScratchpad(monitor.clone()),
+          CompositorEvent::ActiveMonitor(monitor),
+        ]
+      }
+      "monitorremoved" | "monitoradded" => {
+        let monitors = self.list_monitors()?;
+        vec![CompositorEvent::Monitor(monitors)]
+      }
+      "activespecial" => {
+        let (_, monitor_name) = data
+          .split_once(">>")
+          .context("Invalid hyprland event format")?;
+
+        let monitors = self.list_monitors()?;
+        let monitor = monitors
+          .into_iter()
+          .find(|m| m.name == monitor_name)
+          .context("Monitor not found")?;
+
+        vec![CompositorEvent::ActiveScratchpad(monitor)]
       }
       _ => {
         debug!(
@@ -77,10 +116,10 @@ impl Ipc {
           event
         );
 
-        return Ok(None);
+        vec![]
       }
     };
 
-    Ok(Some(event))
+    Ok(events)
   }
 }

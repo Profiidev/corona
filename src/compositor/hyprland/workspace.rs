@@ -3,11 +3,19 @@ use serde::Deserialize;
 use crate::{compositor::types, data_cmd};
 
 data_cmd!(
-  get_workspaces,
+  list_workspaces,
   "workspaces",
   Vec<Workspace>,
   Vec<types::Workspace>,
   |workspaces: Vec<Workspace>| { workspaces.into_iter().map(|w| w.into()).collect() }
+);
+
+data_cmd!(
+  active_workspace,
+  "activeworkspace",
+  Workspace,
+  types::Workspace,
+  |workspace: Workspace| { workspace.into() }
 );
 
 #[derive(Debug, Deserialize)]

@@ -5,9 +5,7 @@ use gpui_kit::{
     Sizable,
     button::{Button, ButtonVariants},
   },
-  div,
-  prelude::FluentBuilder,
-  px,
+  div, px,
 };
 
 use crate::{
@@ -18,6 +16,7 @@ use crate::{
 
 pub struct Workspaces {
   workspaces: Vec<Workspace>,
+  active: Option<u32>,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -26,10 +25,11 @@ impl Widget for Workspaces {
   fn init(cx: &mut Context<'_, Self>) -> Self {
     let compositor = cx.compositor();
     let workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
+    let active = compositor.active_workspace().log_err().map(|w| w.id).ok();
     let emitter = compositor.emitter().clone();
 
     let subscription = cx.subscribe(&emitter, |this, _, e, cx| {
-      if let CompositorEvent::WorkspaceChanged(workspaces) = e {
+      if let CompositorEvent::Workspace(workspaces) = e {
         this.workspaces = workspaces.clone();
         cx.notify();
       }
@@ -38,6 +38,7 @@ impl Widget for Workspaces {
     Workspaces {
       workspaces,
       subscription,
+      active,
     }
   }
 }

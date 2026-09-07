@@ -13,6 +13,10 @@ pub trait Compositor {
   fn emitter(&self) -> &Entity<CompositorEventEmitter>;
 
   fn list_workspaces(&self) -> Result<Vec<Workspace>>;
+  fn active_workspace(&self) -> Result<Workspace>;
+
+  fn list_monitors(&self) -> Result<Vec<types::Monitor>>;
+  fn active_monitor(&self) -> Result<types::Monitor>;
 }
 
 pub struct CompositorRef(Rc<dyn Compositor>);
