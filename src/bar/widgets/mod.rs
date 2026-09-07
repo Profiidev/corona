@@ -2,13 +2,14 @@ use gpui_kit::{AnyView, App, AppContext, Render};
 use serde::{Deserialize, Serialize};
 
 mod button;
+mod control_panel;
 
 pub trait Widget: Render {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WidgetType {
-  Button,
+  ControlPanel,
 }
 
 impl WidgetType {
@@ -18,7 +19,7 @@ impl WidgetType {
 
   fn widget(&self) -> impl Widget {
     match self {
-      WidgetType::Button => button::Button,
+      WidgetType::ControlPanel => control_panel::ControlPanelButton,
     }
   }
 }

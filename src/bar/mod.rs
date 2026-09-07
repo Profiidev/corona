@@ -16,7 +16,7 @@ pub use widgets::WidgetType;
 const BAR_NAMESPACE: &str = "corona_bar";
 
 pub fn toggle_panel<P: Panel, W: Widget>(
-  panel: P,
+  panel: impl FnOnce() -> P,
   window: &Window,
   cx: &mut Context<'_, W>,
 ) -> Result<()> {

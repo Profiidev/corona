@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions, component::Root, layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions}, point, px,
+  App, AppContext, Bounds, Entity, Global, Pixels, Size, Styled, WeakEntity,
+  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  component::Root,
+  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  point, px,
 };
 
 use crate::{
@@ -25,7 +29,7 @@ impl PanelState {
   }
 
   pub fn toggle<P: Panel>(
-    panel: P,
+    panel: impl FnOnce() -> P,
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
     placement: Placement,
@@ -51,7 +55,7 @@ impl PanelState {
       }
     }
 
-    Self::open_new::<P>(panel, new_align, placement, cx)
+    Self::open_new::<P>(panel(), new_align, placement, cx)
   }
 
   fn open_new<P: Panel>(panel: P, align: Align, placement: Placement, cx: &mut App) -> Result<()> {

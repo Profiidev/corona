@@ -26,29 +26,29 @@ impl Default for BarConfig {
       height: 30.0,
       start_widgets: vec![
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
         WidgetConfig {
-          widget_type: WidgetType::Button,
+          widget_type: WidgetType::ControlPanel,
         },
       ],
       center_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::Button,
+        widget_type: WidgetType::ControlPanel,
       }],
       end_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::Button,
+        widget_type: WidgetType::ControlPanel,
       }],
     }
   }
