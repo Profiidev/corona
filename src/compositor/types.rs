@@ -41,8 +41,11 @@ impl Monitor {
 
 #[derive(Debug, Clone)]
 pub struct Window {
+  pub address: String,
   pub monitor: u32,
   pub workspace: u32,
   pub class: String,
   pub title: String,
+  pub x: i32,
+  pub y: i32,
 }

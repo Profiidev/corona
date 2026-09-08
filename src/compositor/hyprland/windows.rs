@@ -29,10 +29,12 @@ impl crate::compositor::hyprland::command::Ipc {
 
 #[derive(Debug, Deserialize)]
 pub struct Window {
+  pub address: String,
   pub monitor: u32,
   pub class: String,
   pub title: String,
   pub workspace: WindowWorkspace,
+  pub at: (i32, i32),
 }
 #[derive(Debug, Deserialize)]
 pub struct WindowWorkspace {
@@ -42,10 +44,13 @@ pub struct WindowWorkspace {
 impl From<Window> for types::Window {
   fn from(w: Window) -> Self {
     types::Window {
+      address: w.address,
       monitor: w.monitor,
       workspace: w.workspace.id,
       class: w.class,
       title: w.title,
+      x: w.at.0,
+      y: w.at.1,
     }
   }
 }
