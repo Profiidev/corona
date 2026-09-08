@@ -3,7 +3,9 @@ use std::{env, ops::Deref, path::Path, rc::Rc};
 use anyhow::{Context, Result, bail};
 use gpui_kit::{App, Entity, Global};
 
-use crate::compositor::{event::CompositorEventEmitter, hyprland::Hyprland, types::Workspace};
+use crate::integration::compositor::{
+  event::CompositorEventEmitter, hyprland::Hyprland, types::Workspace,
+};
 
 pub mod event;
 mod hyprland;

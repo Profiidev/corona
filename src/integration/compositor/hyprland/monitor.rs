@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{compositor::types, data_cmd};
+use crate::{data_cmd, integration::compositor::types};
 
 data_cmd!(
   list_monitors,

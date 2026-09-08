@@ -8,14 +8,16 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  ui::bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
-  compositor::{
-    CompositorExt,
-    event::CompositorEvent,
-    types::{self, Workspace},
-  },
-  desktop_entry::icon_for_class_or_default,
   error::ErrorLogExt,
+  integration::{
+    compositor::{
+      CompositorExt,
+      event::CompositorEvent,
+      types::{self, Workspace},
+    },
+    desktop::entry::icon_for_class_or_default,
+  },
+  ui::bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
 };
 
 const ICON_SIZE: u16 = 18;

@@ -3,7 +3,9 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use gpui_kit::{App, Entity};
 
-use crate::compositor::{Compositor, event::CompositorEventEmitter, hyprland::command::Ipc, types};
+use crate::integration::compositor::{
+  Compositor, event::CompositorEventEmitter, hyprland::command::Ipc, types,
+};
 
 mod command;
 mod encoding;

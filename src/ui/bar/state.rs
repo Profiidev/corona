@@ -17,11 +17,13 @@ use uuid::Uuid;
 
 use crate::{
   APP_NAME,
-  ui::bar::{BAR_NAMESPACE, base::Bar},
-  compositor::{CompositorExt, event::CompositorEvent},
   config::{ConfigProvider, bar::BarConfig, placement::Placement},
   error::ErrorLogExt,
-  utils::display_uuid,
+  integration::compositor::{CompositorExt, event::CompositorEvent},
+  ui::{
+    bar::{BAR_NAMESPACE, base::Bar},
+    utils::display_uuid,
+  },
 };
 
 const DISPLAY_WAIT_TICK: Duration = Duration::from_millis(16);

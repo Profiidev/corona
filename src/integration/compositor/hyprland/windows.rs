@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{compositor::types, data_cmd};
+use crate::{data_cmd, integration::compositor::types};
 
 data_cmd!(
   list_windows,
@@ -10,11 +10,11 @@ data_cmd!(
   |windows: Vec<Window>| { windows.into_iter().map(|m| m.into()).collect() }
 );
 
-impl crate::compositor::hyprland::command::Ipc {
+impl crate::integration::compositor::hyprland::command::Ipc {
   pub fn active_window(&self) -> anyhow::Result<Option<types::Window>> {
-    let cmd = crate::compositor::hyprland::command::Command {
+    let cmd = crate::integration::compositor::hyprland::command::Command {
       command: "activewindow".to_string(),
-      flags: crate::compositor::hyprland::command::CommandFlags::JSON,
+      flags: crate::integration::compositor::hyprland::command::CommandFlags::JSON,
     };
     let res = self.send_cmd(&cmd)?;
 

@@ -1,9 +1,7 @@
-mod compositor;
 mod config;
-mod desktop_entry;
 mod error;
+mod integration;
 mod ui;
-mod utils;
 
 pub const APP_NAME: &str = "corona";
 
@@ -13,7 +11,7 @@ pub fn run() {
   app.run(move |cx| {
     gpui_kit::init(cx);
     config::load(cx).expect("Failed to load config");
-    compositor::init(cx).expect("Failed to init compositor");
+    integration::init(cx).expect("Failed to init compositor");
     ui::init(cx);
   });
 }

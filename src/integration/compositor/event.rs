@@ -1,6 +1,6 @@
 use gpui_kit::EventEmitter;
 
-use crate::compositor::types;
+use crate::integration::compositor::types;
 
 pub struct CompositorEventEmitter;
 

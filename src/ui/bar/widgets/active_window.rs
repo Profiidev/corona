@@ -9,10 +9,12 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  compositor::{CompositorExt, event::CompositorEvent, types},
   config::ConfigProvider,
-  desktop_entry::icon_for_class_or_default,
   error::ErrorLogExt,
+  integration::{
+    compositor::{CompositorExt, event::CompositorEvent, types},
+    desktop::entry::icon_for_class_or_default,
+  },
   ui::bar::{anim::SizeAnimation, style::BarStyle, widgets::Widget},
 };
 

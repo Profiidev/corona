@@ -5,6 +5,7 @@ mod assets;
 mod bar;
 mod components;
 mod panel;
+pub mod utils;
 
 pub use assets::Assets;
 pub use bar::WidgetType;

@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::utils::display_uuid;
+use crate::ui::utils::display_uuid;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
