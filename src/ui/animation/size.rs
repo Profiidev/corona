@@ -23,6 +23,11 @@ impl SizeAnimation {
     }
   }
 
+  pub fn start(mut self, start: f32) -> Self {
+    self.current_target = start;
+    self
+  }
+
   fn duration(&self, cx: &App) -> Duration {
     self.duration.mul_f32(cx.config().animation_speed)
   }

@@ -2,21 +2,20 @@ use std::time::Duration;
 
 use gpui_kit::{
   AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ParentElement, Render,
-  StatefulInteractiveElement, Styled, Subscription, Window, component::ActiveTheme, div, img,
-  prelude::FluentBuilder, px, relative,
+  StatefulInteractiveElement, Styled, Subscription, Window, component::ActiveTheme, div, px,
 };
 use uuid::Uuid;
 
 use crate::{
   error::ErrorLogExt,
-  integration::{
-    compositor::{CompositorExt, event::CompositorEvent, types},
-    desktop::entry::icon_for_class_or_default,
-  },
+  integration::compositor::{CompositorExt, event::CompositorEvent, types},
   ui::{
     animation::size::SizeAnimation,
     bar::{style::BarStyle, widgets::Widget},
-    components::scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
+    components::{
+      scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
+      window_icon::WindowIcon,
+    },
   },
 };
 
@@ -40,6 +39,9 @@ impl Widget for ActiveWindow {
     let subscription = cx.subscribe(&emitter, move |this, _, e, cx| {
       if let CompositorEvent::ActiveWindow(window) = e {
         this.active = window.clone();
+        if window.is_none() {
+          this.scrolling.reset_hover(cx);
+        }
         cx.notify();
       }
     });
@@ -62,44 +64,21 @@ impl Render for ActiveWindow {
     };
 
     let theme = cx.theme();
-    let icon = icon_for_class_or_default(&active_window.class, ICON_SIZE);
 
     div()
       .id("active-window")
       .flex_bar(window, cx)
       .items_center()
       .justify_center()
-      .gap_1()
       .px_2()
       .h(px(24.))
       .min_w(px(36.))
       .rounded_full()
       .bg(theme.tokens.button_hover)
       .on_hover(self.scrolling.on_hover())
-      .child(
-        div()
-          .flex()
-          .items_center()
-          .justify_center()
-          .relative()
-          .h(px(ICON_SIZE as f32))
-          .w(px(ICON_SIZE as f32))
-          .rounded_full()
-          .map(|this| match icon {
-            Some(path) => this.child(img(path).size_full()),
-            None => this.text_size(px(10.)).line_height(relative(1.)).child(
-              active_window
-                .class
-                .chars()
-                .next()
-                .unwrap_or('?')
-                .to_string(),
-            ),
-          }),
-      )
+      .child(WindowIcon::new(active_window.class).size(ICON_SIZE))
       .child({
-        let title =
-          ScrollingText::new(self.scrolling.clone()).content(active_window.title.clone());
+        let title = ScrollingText::new(self.scrolling.clone()).content(active_window.title.clone());
 
         self.size.animate(
           "active-window-title",

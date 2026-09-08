@@ -11,7 +11,7 @@ use crate::config::ConfigProvider;
 const TITLE_SIZE: f32 = 12.;
 const TITLE_MAX_WIDTH: f32 = 100.;
 const FADE_WIDTH: f32 = 16.;
-const SCROLL_SPEED: f32 = 60.;
+const SCROLL_SPEED: f32 = 50.;
 const SCROLL_GAP: f32 = 32.;
 const SCROLL_RETURN: Duration = Duration::from_millis(250);
 
@@ -110,6 +110,7 @@ pub struct ScrollingTextState {
 
 pub trait ScrollingTextExt {
   fn on_hover(&self) -> impl Fn(&bool, &mut Window, &mut App) + 'static;
+  fn reset_hover(&self, cx: &mut App);
 }
 
 impl ScrollingTextExt for Entity<ScrollingTextState> {
@@ -148,6 +149,15 @@ impl ScrollingTextExt for Entity<ScrollingTextState> {
         cx.notify();
       });
     }
+  }
+
+  fn reset_hover(&self, cx: &mut App) {
+    self.update(cx, |s, _| {
+      s.hovered = false;
+      s.hover_at = None;
+      s.return_from = None;
+      s.shift = 0.;
+    });
   }
 }
 

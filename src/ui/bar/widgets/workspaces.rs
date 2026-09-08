@@ -1,25 +1,26 @@
 use std::{collections::HashMap, time::Duration};
 
 use gpui_kit::{
-  Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-  Styled, Subscription, Window, component::ActiveTheme, div, img, prelude::FluentBuilder, px,
-  relative,
+  Context, Div, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
+  Styled, Subscription, Window,
+  component::{ActiveTheme, Theme, ThemeToken},
+  div,
+  prelude::FluentBuilder,
+  px, relative,
 };
 use uuid::Uuid;
 
 use crate::{
   error::ErrorLogExt,
-  integration::{
-    compositor::{
-      CompositorExt,
-      event::CompositorEvent,
-      types::{self, Workspace},
-    },
-    desktop::entry::icon_for_class_or_default,
+  integration::compositor::{
+    CompositorExt,
+    event::CompositorEvent,
+    types::{self, Workspace},
   },
   ui::{
     animation::size::SizeAnimation,
     bar::{BarState, style::BarStyle, widgets::Widget},
+    components::window_icon::WindowIcon,
   },
 };
 
@@ -147,7 +148,7 @@ impl Render for Workspaces {
             div()
               .id(("workspace", ws.id))
               .flex_bar(window, cx)
-              .gap_0p5()
+              .gap(px(ICON_GAP))
               .items_center()
               .justify_center()
               .when_horizontal_else(
@@ -170,50 +171,16 @@ impl Render for Workspaces {
                 }
               })
               .child({
-                let icons = windows.get(&ws.id).map_or(vec![], |windows| {
-                  windows
-                    .iter()
-                    .map(|w| {
-                      let icon = icon_for_class_or_default(&w.class, ICON_SIZE);
-
-                      div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .relative()
-                        .h(px(ICON_SIZE as f32))
-                        .w(px(ICON_SIZE as f32))
-                        .rounded_full()
-                        .map(|this| match icon {
-                          Some(path) => this.child(img(path).size_full()),
-                          None => this
-                            .text_size(px(10.))
-                            .line_height(relative(1.))
-                            .child(w.class.chars().next().unwrap_or('?').to_string()),
-                        })
-                        .when(active_window.as_ref() == Some(&w.address), |d| {
-                          d.child(
-                            div()
-                              .absolute()
-                              .bottom_0()
-                              .rounded_full()
-                              .bg(theme.tokens.primary)
-                              .h(px(6.))
-                              .w(px(6.)),
-                          )
-                        })
-                    })
-                    .collect::<Vec<_>>()
-                });
+                let icons = workspace_windows(windows, active_window, ws, theme);
 
                 let target = match icons.len() as f32 {
-                  0. => 0.,
+                  0. => ICON_SIZE as f32,
                   count => count * ICON_SIZE as f32 + (count - 1.) * ICON_GAP,
                 };
 
                 pill_size
                   .entry(ws.id)
-                  .or_insert_with(|| SizeAnimation::new(WIDTH_CHANGE))
+                  .or_insert_with(|| SizeAnimation::new(WIDTH_CHANGE).start(ICON_SIZE as f32))
                   .animate(
                     "workspace-icons",
                     axis,
@@ -230,24 +197,55 @@ impl Render for Workspaces {
                   )
               }),
           )
-          .child(
-            div()
-              .absolute()
-              .top(px(-2.))
-              .left(px(-2.))
-              .flex()
-              .items_center()
-              .justify_center()
-              .h(px(14.))
-              .min_w(px(14.))
-              .px_0p5()
-              .rounded_full()
-              .bg(border)
-              .text_size(px(10.))
-              .line_height(relative(1.))
-              .text_color(theme.tokens.primary_foreground)
-              .child(ws.name.clone()),
-          )
+          .child(workspace_badge(border, theme, ws))
       }))
   }
+}
+
+fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
+  div()
+    .absolute()
+    .top(px(-2.))
+    .left(px(-2.))
+    .flex()
+    .items_center()
+    .justify_center()
+    .h(px(14.))
+    .min_w(px(14.))
+    .px_0p5()
+    .rounded_full()
+    .bg(border)
+    .text_size(px(10.))
+    .line_height(relative(1.))
+    .text_color(theme.tokens.primary_foreground)
+    .child(ws.name.clone())
+}
+
+fn workspace_windows(
+  windows: &HashMap<u32, Vec<types::Window>>,
+  active_window: &Option<String>,
+  ws: &Workspace,
+  theme: &Theme,
+) -> Vec<WindowIcon> {
+  windows.get(&ws.id).map_or(vec![], |windows| {
+    windows
+      .iter()
+      .map(|w| {
+        WindowIcon::new(&w.class).size(ICON_SIZE).when(
+          active_window.as_ref() == Some(&w.address),
+          |d| {
+            d.child(
+              div()
+                .absolute()
+                .bottom_0()
+                .rounded_full()
+                .bg(theme.tokens.primary)
+                .h(px(6.))
+                .w(px(6.)),
+            )
+          },
+        )
+      })
+      .collect::<Vec<_>>()
+  })
 }
