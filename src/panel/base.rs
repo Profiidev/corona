@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui_kit::{
   AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
   PathBuilder, Pixels, Render, Styled, canvas, component::ActiveTheme, div, prelude::FluentBuilder,
@@ -9,6 +11,8 @@ use crate::{
   config::placement::{Placement, PlacementStyle, PlacmentBounds},
   panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
+
+const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 
 pub struct BasePanel {
   panel: AnyView,
@@ -85,7 +89,8 @@ impl Render for BasePanel {
     let speed = if cx.reduce_motion() {
       std::time::Duration::ZERO
     } else {
-      cx.config().animation_speed.to_duration()
+      let config = cx.config();
+      PANEL_OPEN_SPEED.mul_f32(config.animation_speed)
     };
     self.anim.retarget(if self.open { 1. } else { 0. }, speed);
     let (progress, animating) = self.anim.value();

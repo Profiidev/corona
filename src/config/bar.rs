@@ -31,6 +31,9 @@ impl Default for BarConfig {
         WidgetConfig {
           widget_type: WidgetType::Workspaces,
         },
+        WidgetConfig {
+          widget_type: WidgetType::ActiveWindow,
+        },
       ],
       center_widgets: vec![WidgetConfig {
         widget_type: WidgetType::ControlPanel,

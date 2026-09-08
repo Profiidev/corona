@@ -157,6 +157,7 @@ impl BarState {
         }),
         window_decorations: Some(WindowDecorations::Client),
         window_background: WindowBackgroundAppearance::Transparent,
+        inactive_frame_interval: None,
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {

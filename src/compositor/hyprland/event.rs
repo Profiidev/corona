@@ -79,7 +79,12 @@ impl Ipc {
       }
       "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" => {
         let windows = self.list_windows()?;
-        vec![CompositorEvent::Window(windows)]
+        let window = self.active_window()?;
+
+        vec![
+          CompositorEvent::Window(windows),
+          CompositorEvent::ActiveWindow(window),
+        ]
       }
       "activewindow" => {
         let window = self.active_window()?;

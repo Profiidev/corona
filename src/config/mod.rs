@@ -2,9 +2,8 @@ use anyhow::{Context, Result};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{anim::AnimationSpeed, bar::BarConfig};
+use crate::config::bar::BarConfig;
 
-pub mod anim;
 pub mod bar;
 pub mod placement;
 
@@ -37,7 +36,7 @@ pub fn load(cx: &mut App) -> Result<()> {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
   pub theme: String,
-  pub animation_speed: AnimationSpeed,
+  pub animation_speed: f32,
   pub bars: Vec<BarConfig>,
 }
 
@@ -57,7 +56,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       theme: "shadcn Zinc Blue Dark".to_string(),
-      animation_speed: Default::default(),
+      animation_speed: 1.,
       bars: vec![Default::default()],
     }
   }
