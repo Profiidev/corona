@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::{
-  Animation, AnimationExt, AnyElement, Context, Empty, InteractiveElement, IntoElement,
+  Animation, AnimationExt, AnyElement, Axis, Context, Empty, InteractiveElement, IntoElement,
   ParentElement, Render, StatefulInteractiveElement, Styled, Subscription, Window,
   component::ActiveTheme, div, ease_out_quint, img, linear_color_stop, linear_gradient,
   prelude::FluentBuilder, px, relative,
@@ -9,7 +9,7 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  bar::{style::BarStyle, widgets::Widget},
+  bar::{anim::SizeAnimation, style::BarStyle, widgets::Widget},
   compositor::{CompositorExt, event::CompositorEvent, types},
   config::ConfigProvider,
   desktop_entry::icon_for_class_or_default,
@@ -35,12 +35,8 @@ pub struct ActiveWindow {
   return_from: Option<f32>,
   /// Distance of one marquee cycle, measured during the last render.
   shift: f32,
-  /// Title width the last render settled on.
-  width: f32,
-  /// Width the pill is growing or shrinking from, while that animation runs.
-  width_from: Option<f32>,
-  /// Bumped per width change so each transition gets its own animation state.
-  width_gen: usize,
+  /// Eases the pill between widths when the title length changes.
+  size: SizeAnimation,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -64,9 +60,7 @@ impl Widget for ActiveWindow {
       hover_at: None,
       return_from: None,
       shift: 0.,
-      width: 0.,
-      width_from: None,
-      width_gen: 0,
+      size: SizeAnimation::new(WIDTH_CHANGE),
       subscription,
     }
   }
@@ -97,23 +91,6 @@ impl ActiveWindow {
     };
 
     let target = f32::from(width).min(TITLE_MAX_WIDTH);
-    if (self.width - target).abs() > 0.5 {
-      self.width_from = Some(self.width);
-      self.width = target;
-      self.width_gen = self.width_gen.wrapping_add(1);
-      cx.spawn(async move |this, cx| {
-        cx.background_executor()
-          .timer(WIDTH_CHANGE.mul_f32(anim))
-          .await;
-        this
-          .update(cx, |this: &mut Self, cx| {
-            this.width_from = None;
-            cx.notify();
-          })
-          .ok();
-      })
-      .detach();
-    }
 
     let fade = theme.tokens.background.blend(*theme.tokens.button_hover);
     let fade_out = |angle: f32| {
@@ -159,20 +136,13 @@ impl ActiveWindow {
         (false, _) => track.into_any_element(),
       })
       .when(scrolling, |this| this.child(fade_out(270.).left_0()))
-      .when(overflowing || self.width_from.is_some(), |this| {
+      .when(overflowing || self.size.animating(cx), |this| {
         this.child(fade_out(90.).right_0())
       });
 
-    match self.width_from {
-      Some(from) => title
-        .with_animation(
-          ("active-window-width", self.width_gen),
-          Animation::new(WIDTH_CHANGE.mul_f32(anim)).with_easing(ease_out_quint()),
-          move |this, delta| this.w(px(from + (target - from) * delta)),
-        )
-        .into_any_element(),
-      None => title.w(px(target)).into_any_element(),
-    }
+    self
+      .size
+      .animate("active-window-title", Axis::Horizontal, target, cx, title)
   }
 }
 

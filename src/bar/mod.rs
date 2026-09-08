@@ -6,6 +6,7 @@ use crate::{
   panel::{Panel, PanelState},
 };
 
+pub mod anim;
 pub mod base;
 mod state;
 mod style;

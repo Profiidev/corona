@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use gpui_kit::{
   Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
@@ -8,7 +8,7 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  bar::{style::BarStyle, widgets::Widget},
+  bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
   compositor::{
     CompositorExt,
     event::CompositorEvent,
@@ -19,12 +19,16 @@ use crate::{
 };
 
 const ICON_SIZE: u16 = 18;
+const ICON_GAP: f32 = 2.;
+const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 
 pub struct Workspaces {
   windows: HashMap<u32, Vec<types::Window>>,
   workspaces: Vec<Workspace>,
   active_workspace: Option<u32>,
   active_window: Option<String>,
+  /// Per workspace: eases the pill between sizes as windows come and go.
+  pill_size: HashMap<u32, SizeAnimation>,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -104,6 +108,7 @@ impl Widget for Workspaces {
       subscription,
       active_workspace,
       active_window,
+      pill_size: HashMap::new(),
     }
   }
 }
@@ -111,12 +116,21 @@ impl Widget for Workspaces {
 impl Render for Workspaces {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
+    let axis = BarState::bar_axis(window, cx);
+    let Self {
+      windows,
+      workspaces,
+      active_workspace,
+      active_window,
+      pill_size,
+      ..
+    } = self;
 
     div()
       .flex_bar(window, cx)
       .gap_1()
-      .children(self.workspaces.iter().map(|ws| {
-        let border = if self.active_workspace == Some(ws.id) {
+      .children(workspaces.iter().map(|ws| {
+        let border = if *active_workspace == Some(ws.id) {
           theme.tokens.primary
         } else {
           theme.tokens.secondary
@@ -134,8 +148,8 @@ impl Render for Workspaces {
               .when_horizontal_else(
                 window,
                 cx,
-                |this| this.h(px(24.)).min_w(px(36.)).px_2(),
-                |this| this.w(px(24.)).min_h(px(36.)).py_2(),
+                |this| this.h(px(24.)).min_w(px(38.)).px_2(),
+                |this| this.w(px(24.)).min_h(px(38.)).py_2(),
               )
               .rounded_full()
               .border_2()
@@ -150,41 +164,66 @@ impl Render for Workspaces {
                   println!("Switching to workspace {}", id);
                 }
               })
-              .children(self.windows.get(&ws.id).map_or(vec![], |windows| {
-                windows
-                  .iter()
-                  .map(|w| {
-                    let icon = icon_for_class_or_default(&w.class, ICON_SIZE);
+              .child({
+                let icons = windows.get(&ws.id).map_or(vec![], |windows| {
+                  windows
+                    .iter()
+                    .map(|w| {
+                      let icon = icon_for_class_or_default(&w.class, ICON_SIZE);
 
-                    div()
-                      .flex()
-                      .items_center()
-                      .justify_center()
-                      .relative()
-                      .h(px(ICON_SIZE as f32))
-                      .w(px(ICON_SIZE as f32))
-                      .rounded_full()
-                      .map(|this| match icon {
-                        Some(path) => this.child(img(path).size_full()),
-                        None => this
-                          .text_size(px(10.))
-                          .line_height(relative(1.))
-                          .child(w.class.chars().next().unwrap_or('?').to_string()),
-                      })
-                      .when(self.active_window.as_ref() == Some(&w.address), |d| {
-                        d.child(
-                          div()
-                            .absolute()
-                            .bottom_0()
-                            .rounded_full()
-                            .bg(theme.tokens.primary)
-                            .h(px(6.))
-                            .w(px(6.)),
-                        )
-                      })
-                  })
-                  .collect::<Vec<_>>()
-              })),
+                      div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .relative()
+                        .h(px(ICON_SIZE as f32))
+                        .w(px(ICON_SIZE as f32))
+                        .rounded_full()
+                        .map(|this| match icon {
+                          Some(path) => this.child(img(path).size_full()),
+                          None => this
+                            .text_size(px(10.))
+                            .line_height(relative(1.))
+                            .child(w.class.chars().next().unwrap_or('?').to_string()),
+                        })
+                        .when(active_window.as_ref() == Some(&w.address), |d| {
+                          d.child(
+                            div()
+                              .absolute()
+                              .bottom_0()
+                              .rounded_full()
+                              .bg(theme.tokens.primary)
+                              .h(px(6.))
+                              .w(px(6.)),
+                          )
+                        })
+                    })
+                    .collect::<Vec<_>>()
+                });
+
+                let target = match icons.len() as f32 {
+                  0. => 0.,
+                  count => count * ICON_SIZE as f32 + (count - 1.) * ICON_GAP,
+                };
+
+                pill_size
+                  .entry(ws.id)
+                  .or_insert_with(|| SizeAnimation::new(WIDTH_CHANGE))
+                  .animate(
+                    "workspace-icons",
+                    axis,
+                    target,
+                    cx,
+                    div().flex_none().overflow_hidden().child(
+                      div()
+                        .flex_bar(window, cx)
+                        .flex_none()
+                        .gap(px(ICON_GAP))
+                        .items_center()
+                        .children(icons),
+                    ),
+                  )
+              }),
           )
           .child(
             div()

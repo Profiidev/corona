@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Styled, Subscription,
+  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, Global, Styled, Subscription,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
   WindowKind, WindowOptions,
   component::{ActiveTheme, Root},
@@ -19,7 +19,7 @@ use crate::{
   APP_NAME,
   bar::{BAR_NAMESPACE, base::Bar},
   compositor::{CompositorExt, event::CompositorEvent},
-  config::{ConfigProvider, bar::BarConfig},
+  config::{ConfigProvider, bar::BarConfig, placement::Placement},
   error::ErrorLogExt,
   utils::display_uuid,
 };
@@ -191,5 +191,17 @@ impl BarState {
       .bars
       .get(&window.window_handle().window_id())?
       .upgrade()
+  }
+
+  pub fn bar_axis(window: &Window, cx: &App) -> Axis {
+    let placement = Self::get(window, cx)
+      .map(|bar| bar.read(cx).placement())
+      .unwrap_or(Placement::Top);
+
+    if placement.is_horizontal() {
+      Axis::Horizontal
+    } else {
+      Axis::Vertical
+    }
   }
 }
