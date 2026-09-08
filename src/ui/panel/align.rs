@@ -2,7 +2,7 @@ use gpui_kit::{App, Bounds, Pixels, component::ActiveTheme};
 
 use crate::{
   config::placement::{Placement, PlacmentBounds},
-  panel::style::PanelStyle,
+  ui::panel::style::PanelStyle,
 };
 
 #[derive(PartialEq, Clone, Copy)]

@@ -9,7 +9,7 @@ use gpui_kit::{
 use crate::{
   config::ConfigProvider,
   config::placement::{Placement, PlacementStyle, PlacmentBounds},
-  panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
+  ui::panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
 };
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);

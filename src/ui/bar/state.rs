@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::{
   APP_NAME,
-  bar::{BAR_NAMESPACE, base::Bar},
+  ui::bar::{BAR_NAMESPACE, base::Bar},
   compositor::{CompositorExt, event::CompositorEvent},
   config::{ConfigProvider, bar::BarConfig, placement::Placement},
   error::ErrorLogExt,

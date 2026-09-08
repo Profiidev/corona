@@ -12,7 +12,7 @@ use gpui_kit::{
 use crate::{
   APP_NAME,
   config::placement::Placement,
-  panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
+  ui::panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
 };
 
 pub struct PanelState {

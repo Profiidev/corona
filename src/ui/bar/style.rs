@@ -1,6 +1,6 @@
 use gpui_kit::{App, Styled, Window, prelude::FluentBuilder};
 
-use crate::{bar::BarState, config::placement::Placement};
+use crate::{ui::bar::BarState, config::placement::Placement};
 
 pub trait BarStyle: Styled + FluentBuilder {
   fn with_placement(

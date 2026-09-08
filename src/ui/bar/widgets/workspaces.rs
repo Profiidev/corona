@@ -8,7 +8,7 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
+  ui::bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
   compositor::{
     CompositorExt,
     event::CompositorEvent,

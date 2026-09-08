@@ -6,8 +6,8 @@ use gpui_kit::{
 };
 
 use crate::{
-  bar::{toggle_panel, widgets::Widget},
-  panel::Panel,
+  ui::bar::{toggle_panel, widgets::Widget},
+  ui::panel::Panel,
 };
 
 #[derive(IntoElement)]

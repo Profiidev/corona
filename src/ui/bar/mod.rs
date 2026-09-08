@@ -2,8 +2,8 @@ use anyhow::{Context as _, Result};
 use gpui_kit::{Context, Window};
 
 use crate::{
-  bar::widgets::Widget,
-  panel::{Panel, PanelState},
+  ui::bar::widgets::Widget,
+  ui::panel::{Panel, PanelState},
 };
 
 pub mod anim;

@@ -9,11 +9,11 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  bar::{anim::SizeAnimation, style::BarStyle, widgets::Widget},
   compositor::{CompositorExt, event::CompositorEvent, types},
   config::ConfigProvider,
   desktop_entry::icon_for_class_or_default,
   error::ErrorLogExt,
+  ui::bar::{anim::SizeAnimation, style::BarStyle, widgets::Widget},
 };
 
 const ICON_SIZE: u16 = 18;

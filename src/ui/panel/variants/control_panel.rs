@@ -1,6 +1,6 @@
 use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, text};
 
-use crate::panel::variants::Panel;
+use crate::ui::panel::variants::Panel;
 
 pub struct ControlPanel;
 

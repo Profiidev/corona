@@ -1,7 +1,7 @@
 use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
-use crate::{
+use crate::ui::{
   assets::icons::IconName,
   bar::widgets::{Widget, button::Button},
   panel::ControlPanel,
