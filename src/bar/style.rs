@@ -16,15 +16,21 @@ pub trait BarStyle: Styled + FluentBuilder {
     self.map(|this| f(this, placement))
   }
 
+  fn when_horizontal_else(
+    self,
+    window: &Window,
+    cx: &App,
+    h: impl FnOnce(Self) -> Self,
+    v: impl FnOnce(Self) -> Self,
+  ) -> Self {
+    self.with_placement(window, cx, |this, p| {
+      if p.is_horizontal() { h(this) } else { v(this) }
+    })
+  }
+
   fn flex_bar(self, window: &Window, cx: &App) -> Self {
     self
-      .with_placement(window, cx, |this, p| {
-        if p.is_horizontal() {
-          this.flex_row()
-        } else {
-          this.flex_col()
-        }
-      })
+      .when_horizontal_else(window, cx, |this| this.flex_row(), |this| this.flex_col())
       .flex()
   }
 }

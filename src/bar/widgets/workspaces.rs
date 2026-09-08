@@ -127,13 +127,16 @@ impl Render for Workspaces {
           .child(
             div()
               .id(("workspace", ws.id))
-              .flex()
+              .flex_bar(window, cx)
               .gap_0p5()
-              .px_2()
               .items_center()
               .justify_center()
-              .h(px(24.))
-              .min_w(px(36.))
+              .when_horizontal_else(
+                window,
+                cx,
+                |this| this.h(px(24.)).min_w(px(36.)).px_2(),
+                |this| this.w(px(24.)).min_h(px(36.)).py_2(),
+              )
               .rounded_full()
               .border_2()
               .border_color(border)
