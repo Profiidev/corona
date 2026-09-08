@@ -2,14 +2,14 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::base::animation::{ease_in_cubic, ease_out_cubic};
 
-pub struct Anim {
+pub struct SmoothRetarget {
   from: f32,
   to: f32,
   start: Instant,
   dur: Duration,
 }
 
-impl Anim {
+impl SmoothRetarget {
   pub fn new(value: f32) -> Self {
     Self {
       from: value,

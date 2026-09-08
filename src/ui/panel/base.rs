@@ -7,9 +7,14 @@ use gpui_kit::{
 };
 
 use crate::{
-  config::ConfigProvider,
-  config::placement::{Placement, PlacementStyle, PlacmentBounds},
-  ui::panel::{align::Align, anim::Anim, style::PanelStyle, variants::Panel},
+  config::{
+    ConfigProvider,
+    placement::{Placement, PlacementStyle, PlacmentBounds},
+  },
+  ui::{
+    animation::smooth_retarget::SmoothRetarget,
+    panel::{align::Align, style::PanelStyle, variants::Panel},
+  },
 };
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
@@ -24,7 +29,7 @@ pub struct BasePanel {
   open: bool,
   blocks_input: bool,
   removing: bool,
-  anim: Anim,
+  anim: SmoothRetarget,
 }
 
 impl BasePanel {
@@ -43,7 +48,7 @@ impl BasePanel {
       open: true,
       blocks_input: true,
       removing: false,
-      anim: Anim::new(0.),
+      anim: SmoothRetarget::new(0.),
       align,
       placement,
     }

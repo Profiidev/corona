@@ -1,43 +1,31 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui_kit::{
-  Animation, AnimationExt, AnyElement, Axis, Context, Empty, InteractiveElement, IntoElement,
-  ParentElement, Render, StatefulInteractiveElement, Styled, Subscription, Window,
-  component::ActiveTheme, div, ease_out_quint, img, linear_color_stop, linear_gradient,
+  AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+  StatefulInteractiveElement, Styled, Subscription, Window, component::ActiveTheme, div, img,
   prelude::FluentBuilder, px, relative,
 };
 use uuid::Uuid;
 
 use crate::{
-  config::ConfigProvider,
   error::ErrorLogExt,
   integration::{
     compositor::{CompositorExt, event::CompositorEvent, types},
     desktop::entry::icon_for_class_or_default,
   },
-  ui::bar::{anim::SizeAnimation, style::BarStyle, widgets::Widget},
+  ui::{
+    animation::size::SizeAnimation,
+    bar::{style::BarStyle, widgets::Widget},
+    components::scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
+  },
 };
 
 const ICON_SIZE: u16 = 18;
-const TITLE_SIZE: f32 = 12.;
-const TITLE_MAX_WIDTH: f32 = 100.;
-const FADE_WIDTH: f32 = 16.;
-/// pixels per second.
-const SCROLL_SPEED: f32 = 60.;
-const SCROLL_GAP: f32 = 32.;
-const SCROLL_RETURN: Duration = Duration::from_millis(250);
 const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 
 pub struct ActiveWindow {
   active: Option<types::Window>,
-  hovered: bool,
-  /// When the current hover started
-  hover_at: Option<Instant>,
-  /// Marquee progress (0..1) the pointer left at, while easing back to 0.
-  return_from: Option<f32>,
-  /// Distance of one marquee cycle, measured during the last render.
-  shift: f32,
-  /// Eases the pill between widths when the title length changes.
+  scrolling: Entity<ScrollingTextState>,
   size: SizeAnimation,
   #[allow(dead_code)]
   subscription: Subscription,
@@ -56,95 +44,14 @@ impl Widget for ActiveWindow {
       }
     });
 
+    let scrolling = cx.new(|_| ScrollingTextState::default());
+
     ActiveWindow {
       active,
-      hovered: false,
-      hover_at: None,
-      return_from: None,
-      shift: 0.,
       size: SizeAnimation::new(WIDTH_CHANGE),
+      scrolling,
       subscription,
     }
-  }
-}
-
-impl ActiveWindow {
-  fn render_title(&mut self, title: &str, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-    let theme = cx.theme();
-    let config = cx.config();
-    let anim = config.animation_speed;
-
-    let font_size = px(TITLE_SIZE);
-    let text_style = window.text_style();
-    let width = window
-      .text_system()
-      .layout_line(title, font_size, &[text_style.to_run(title.len())], None)
-      .width;
-
-    let label = || {
-      div()
-        .flex_none()
-        .whitespace_nowrap()
-        .text_size(font_size)
-        .line_height(relative(1.))
-        .text_color(theme.tokens.secondary_foreground)
-        .w(width)
-        .child(title.to_string())
-    };
-
-    let target = f32::from(width).min(TITLE_MAX_WIDTH);
-
-    let fade = theme.tokens.background.blend(*theme.tokens.button_hover);
-    let fade_out = |angle: f32| {
-      div()
-        .absolute()
-        .top_0()
-        .bottom_0()
-        .w(px(FADE_WIDTH))
-        .bg(linear_gradient(
-          angle,
-          linear_color_stop(fade.alpha(0.), 0.),
-          linear_color_stop(fade, 1.),
-        ))
-    };
-
-    let shift = f32::from(width) + SCROLL_GAP;
-    self.shift = shift;
-    let overflowing = f32::from(width) > TITLE_MAX_WIDTH;
-    let scrolling = overflowing && (self.hovered || self.return_from.is_some());
-    let track = div().flex().flex_none().gap(px(SCROLL_GAP)).child(label());
-
-    let title = div()
-      .relative()
-      .flex_none()
-      .overflow_hidden()
-      .child(match (scrolling, self.return_from) {
-        (true, None) => track
-          .child(label())
-          .with_animation(
-            "active-window-scroll",
-            Animation::new(Duration::from_secs_f32(shift / SCROLL_SPEED)).repeat(),
-            move |this, delta| this.ml(px(-shift * delta)),
-          )
-          .into_any_element(),
-        (true, Some(from)) => track
-          .child(label())
-          .with_animation(
-            "active-window-return",
-            Animation::new(SCROLL_RETURN.mul_f32(anim)).with_easing(ease_out_quint()),
-            move |this, delta| this.ml(px(-shift * from * (1. - delta))),
-          )
-          .into_any_element(),
-        (false, _) => track.into_any_element(),
-      })
-      .when(scrolling, |this| this.child(fade_out(270.).left_0()))
-      .when(overflowing || self.size.animating(cx), |this| {
-        this.child(fade_out(90.).right_0())
-      });
-
-    self
-      .size
-      .animate("active-window-title", Axis::Horizontal, target, cx, title)
   }
 }
 
@@ -155,8 +62,6 @@ impl Render for ActiveWindow {
     };
 
     let theme = cx.theme();
-    let config = cx.config();
-    let anim = config.animation_speed;
     let icon = icon_for_class_or_default(&active_window.class, ICON_SIZE);
 
     div()
@@ -170,33 +75,7 @@ impl Render for ActiveWindow {
       .min_w(px(36.))
       .rounded_full()
       .bg(theme.tokens.button_hover)
-      .on_hover(cx.listener(move |this, hovered, _, cx| {
-        this.hovered = *hovered;
-        if *hovered {
-          this.hover_at = Some(Instant::now());
-          this.return_from = None;
-        } else {
-          let cycle = this.shift / SCROLL_SPEED;
-          let elapsed = this
-            .hover_at
-            .take()
-            .map_or(0., |t| t.elapsed().as_secs_f32());
-          this.return_from = (cycle > 0.).then(|| (elapsed / cycle).fract());
-          cx.spawn(async move |this, cx| {
-            cx.background_executor()
-              .timer(SCROLL_RETURN.mul_f32(anim))
-              .await;
-            this
-              .update(cx, |this: &mut Self, cx| {
-                this.return_from = None;
-                cx.notify();
-              })
-              .ok();
-          })
-          .detach();
-        }
-        cx.notify();
-      }))
+      .on_hover(self.scrolling.on_hover())
       .child(
         div()
           .flex()
@@ -218,7 +97,18 @@ impl Render for ActiveWindow {
             ),
           }),
       )
-      .child(self.render_title(&active_window.title, window, cx))
+      .child({
+        let title =
+          ScrollingText::new(self.scrolling.clone()).content(active_window.title.clone());
+
+        self.size.animate(
+          "active-window-title",
+          Axis::Horizontal,
+          title.width(window),
+          cx,
+          title,
+        )
+      })
       .into_any_element()
   }
 }

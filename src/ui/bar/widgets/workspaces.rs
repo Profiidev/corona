@@ -17,7 +17,10 @@ use crate::{
     },
     desktop::entry::icon_for_class_or_default,
   },
-  ui::bar::{BarState, anim::SizeAnimation, style::BarStyle, widgets::Widget},
+  ui::{
+    animation::size::SizeAnimation,
+    bar::{BarState, style::BarStyle, widgets::Widget},
+  },
 };
 
 const ICON_SIZE: u16 = 18;
