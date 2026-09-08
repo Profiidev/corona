@@ -208,7 +208,12 @@ impl RenderOnce for ScrollingText {
     let id = self.state.entity_id();
     let overflowing = f32::from(width) > self.max_width;
     let scrolling = overflowing && (state.hovered || state.return_from.is_some());
-    let track = div().flex().flex_none().gap(px(self.gap)).child(label());
+    let track = div()
+      .flex()
+      .flex_none()
+      .gap(px(self.gap))
+      .ml(px(self.fade_width / 2.5))
+      .child(label());
 
     div()
       .relative()
@@ -220,7 +225,10 @@ impl RenderOnce for ScrollingText {
           .with_animation(
             ("scrolling-text-scroll", id),
             Animation::new(Duration::from_secs_f32(shift / self.speed)).repeat(),
-            move |this, delta| this.ml(px(-shift * delta)),
+            {
+              let offset = self.fade_width / 2.5;
+              move |this, delta| this.ml(px(offset - shift * delta))
+            },
           )
           .into_any_element(),
         (true, Some(from)) => track
@@ -228,12 +236,15 @@ impl RenderOnce for ScrollingText {
           .with_animation(
             ("scrolling-text-return", id),
             Animation::new(self.return_duration.mul_f32(anim)).with_easing(ease_out_quint()),
-            move |this, delta| this.ml(px(-shift * from * (1. - delta))),
+            {
+              let offset = self.fade_width / 2.5;
+              move |this, delta| this.ml(px(offset - shift * from * (1. - delta)))
+            },
           )
           .into_any_element(),
         (false, _) => track.into_any_element(),
       })
-      .when(scrolling, |this| this.child(fade_out(270.).left_neg_0p5()))
+      .child(fade_out(270.).left_neg_0p5())
       .when(overflowing, |this| {
         this.child(fade_out(90.).right_neg_0p5())
       })
