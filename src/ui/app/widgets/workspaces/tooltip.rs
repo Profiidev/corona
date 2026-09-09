@@ -3,7 +3,7 @@ use gpui_kit::{
   Window, component::ActiveTheme, div, px, relative,
 };
 
-use crate::ui::tooltip::variants::Tooltip;
+use crate::ui::tooltip::Tooltip;
 
 const FONT_SIZE: f32 = 12.;
 const PADDING: f32 = 4.;

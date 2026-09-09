@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-  bar::widgets::Widget,
+  bar::Widget,
   panel::{Panel, PanelExt},
 };
 

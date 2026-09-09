@@ -2,9 +2,9 @@ use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
 use crate::ui::{
+  app::{panels::control_panel::panel::ControlPanel, widgets::button::Button},
   assets::icons::IconName,
-  bar::widgets::{Widget, button::Button},
-  panel::ControlPanel,
+  bar::Widget,
 };
 
 pub struct ControlPanelButton;

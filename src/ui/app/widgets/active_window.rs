@@ -11,7 +11,7 @@ use crate::{
   integration::compositor::{CompositorExt, event::CompositorEvent, types},
   ui::{
     animation::size::SizeAnimation,
-    bar::{style::BarStyle, widgets::Widget},
+    bar::{BarStyle, Widget},
     components::{
       scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
       window_icon::WindowIcon,

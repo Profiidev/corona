@@ -1,19 +1,9 @@
-use uuid::Uuid;
-
-use crate::ui::utils::display_uuid;
-
 #[derive(Debug, Clone)]
 pub struct Workspace {
   pub id: u32,
   pub name: String,
   pub monitor: String,
   pub monitor_id: u32,
-}
-
-impl Workspace {
-  pub fn display_id(&self) -> Uuid {
-    display_uuid(&self.monitor)
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -31,12 +21,6 @@ pub struct Monitor {
   pub focused: bool,
   pub disabled: bool,
   pub mirror_of: String,
-}
-
-impl Monitor {
-  pub fn display_id(&self) -> Uuid {
-    display_uuid(&self.name)
-  }
 }
 
 #[derive(Debug, Clone)]

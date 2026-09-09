@@ -73,31 +73,37 @@ impl ScrollingText {
     self
   }
 
+  #[allow(unused)]
   pub fn font_size(mut self, font_size: f32) -> Self {
     self.font_size = font_size;
     self
   }
 
+  #[allow(unused)]
   pub fn max_width(mut self, max_width: f32) -> Self {
     self.max_width = max_width;
     self
   }
 
+  #[allow(unused)]
   pub fn fade_width(mut self, fade_width: f32) -> Self {
     self.fade_width = fade_width;
     self
   }
 
+  #[allow(unused)]
   pub fn speed(mut self, speed: f32) -> Self {
     self.speed = speed;
     self
   }
 
+  #[allow(unused)]
   pub fn return_duration(mut self, return_duration: Duration) -> Self {
     self.return_duration = return_duration;
     self
   }
 
+  #[allow(unused)]
   pub fn gap(mut self, gap: f32) -> Self {
     self.gap = gap;
     self

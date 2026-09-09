@@ -20,9 +20,10 @@ use crate::{
   },
   ui::{
     animation::size::SizeAnimation,
-    bar::{BarState, style::BarStyle, widgets::Widget},
+    app::widgets::workspaces::tooltip::WindowTitle,
+    bar::{BarState, BarStyle, Widget},
     components::window_icon::WindowIcon,
-    tooltip::{TooltipExt, WindowTitle},
+    tooltip::TooltipExt,
   },
 };
 
