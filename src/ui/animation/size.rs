@@ -32,6 +32,11 @@ impl SizeAnimation {
     self.duration.mul_f32(cx.config().animation_speed)
   }
 
+  pub fn reset(&mut self) {
+    self.current_target = 0.0;
+    self.from = None;
+  }
+
   pub fn animate<E>(
     &mut self,
     id: &'static str,

@@ -40,6 +40,7 @@ impl Widget for ActiveWindow {
       if let CompositorEvent::ActiveWindow(window) = e {
         this.active = window.clone();
         if window.is_none() {
+          this.size.reset();
           this.scrolling.reset_hover(cx);
         }
         cx.notify();

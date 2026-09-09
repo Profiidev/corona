@@ -44,7 +44,12 @@ impl Hyprland {
     cx.new(|cx| {
       cx.spawn(async move |this, cx| {
         while let Ok(line) = rx.recv().await {
-          match ipc.parse_event(&line) {
+          let ipc = ipc.clone();
+          let parsed = cx
+            .background_spawn(async move { ipc.parse_event(&line) })
+            .await;
+
+          match parsed {
             Ok(events) => {
               for event in events {
                 let _ = this.update(cx, |_, cx| cx.emit(event));
