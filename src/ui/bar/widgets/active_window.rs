@@ -77,7 +77,7 @@ impl Render for ActiveWindow {
       .rounded_full()
       .bg(theme.tokens.button_hover)
       .on_hover(self.scrolling.on_hover())
-      .child(WindowIcon::new(active_window.class).size(ICON_SIZE))
+      .child(WindowIcon::new(active_window.class, active_window.address).size(ICON_SIZE))
       .child({
         let title = ScrollingText::new(self.scrolling.clone()).content(active_window.title.clone());
 

@@ -1,9 +1,10 @@
 use anyhow::{Context as _, Result};
-use gpui_kit::{Context, Window};
+use gpui_kit::{App, Bounds, Context, Pixels, Window};
 
 use crate::{
   ui::bar::widgets::Widget,
   ui::panel::{Panel, PanelState},
+  ui::tooltip::{Tooltip, TooltipState},
 };
 
 pub mod base;
@@ -37,4 +38,21 @@ pub fn toggle_panel<P: Panel, W: Widget>(
     window,
     cx,
   )
+}
+
+pub fn show_tooltip<T: Tooltip>(
+  tooltip: T,
+  anchor: Bounds<Pixels>,
+  window: &Window,
+  cx: &mut App,
+) -> Result<()> {
+  let bar = BarState::get(window, cx)
+    .context("no bar in this window")?
+    .read(cx);
+
+  TooltipState::show(tooltip, anchor, bar.bounds(), bar.placement(), window, cx)
+}
+
+pub fn hide_tooltip<T: Tooltip>(cx: &mut App) {
+  TooltipState::hide::<T>(cx);
 }

@@ -1,8 +1,9 @@
-use std::{collections::HashMap, time::Duration};
+use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 
 use gpui_kit::{
-  Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-  Render, Styled, Subscription, Window,
+  Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
+  Render, StatefulInteractiveElement, Styled, Subscription, Window,
+  base::ElementExt,
   component::{ActiveTheme, Theme, ThemeToken},
   div,
   prelude::FluentBuilder,
@@ -19,8 +20,9 @@ use crate::{
   },
   ui::{
     animation::size::SizeAnimation,
-    bar::{BarState, style::BarStyle, widgets::Widget},
+    bar::{BarState, hide_tooltip, show_tooltip, style::BarStyle, widgets::Widget},
     components::window_icon::WindowIcon,
+    tooltip::WindowTitle,
   },
 };
 
@@ -33,8 +35,8 @@ pub struct Workspaces {
   workspaces: Vec<Workspace>,
   active_workspace: Option<u32>,
   active_window: Option<String>,
-  /// Per workspace: eases the pill between sizes as windows come and go.
   pill_size: HashMap<u32, SizeAnimation>,
+  icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -115,6 +117,7 @@ impl Widget for Workspaces {
       active_workspace,
       active_window,
       pill_size: HashMap::new(),
+      icon_bounds: HashMap::new(),
     }
   }
 }
@@ -129,6 +132,7 @@ impl Render for Workspaces {
       active_workspace,
       active_window,
       pill_size,
+      icon_bounds,
       ..
     } = self;
 
@@ -171,7 +175,7 @@ impl Render for Workspaces {
                 }
               })
               .child({
-                let icons = workspace_windows(windows, active_window, ws, theme);
+                let icons = workspace_windows(windows, active_window, icon_bounds, ws, theme);
 
                 let target = match icons.len() as f32 {
                   0. => ICON_SIZE as f32,
@@ -224,6 +228,7 @@ fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
 fn workspace_windows(
   windows: &HashMap<u32, Vec<types::Window>>,
   active_window: &Option<String>,
+  icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   ws: &Workspace,
   theme: &Theme,
 ) -> Vec<WindowIcon> {
@@ -231,9 +236,11 @@ fn workspace_windows(
     windows
       .iter()
       .map(|w| {
-        WindowIcon::new(&w.class).size(ICON_SIZE).when(
-          active_window.as_ref() == Some(&w.address),
-          |d| {
+        let bounds = icon_bounds.entry(w.address.clone()).or_default().clone();
+
+        WindowIcon::new(&w.class, w.address.clone())
+          .size(ICON_SIZE)
+          .when(active_window.as_ref() == Some(&w.address), |d| {
             d.child(
               div()
                 .absolute()
@@ -243,8 +250,24 @@ fn workspace_windows(
                 .h(px(6.))
                 .w(px(6.)),
             )
-          },
-        )
+          })
+          .on_prepaint({
+            let bounds = bounds.clone();
+            move |b, _, _| bounds.set(b)
+          })
+          .on_hover({
+            let title = w.title.clone();
+            move |hovered, window, cx| {
+              if !*hovered {
+                hide_tooltip::<WindowTitle>(cx);
+                return;
+              }
+
+              show_tooltip(WindowTitle::new(title.clone()), bounds.get(), window, cx)
+                .log_err()
+                .ok();
+            }
+          })
       })
       .collect::<Vec<_>>()
   })

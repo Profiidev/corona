@@ -1,5 +1,6 @@
 use gpui_kit::{
-  AnyElement, App, IntoElement, ParentElement, RenderOnce, Styled, Window, div, img,
+  AnyElement, App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
+  Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, div, img,
   prelude::FluentBuilder, px, relative,
 };
 
@@ -9,14 +10,16 @@ const ICON_SIZE: u16 = 18;
 
 #[derive(IntoElement)]
 pub struct WindowIcon {
+  base: Stateful<Div>,
   class: String,
   size: u16,
   children: Vec<AnyElement>,
 }
 
 impl WindowIcon {
-  pub fn new(class: impl Into<String>) -> Self {
+  pub fn new(class: impl Into<String>, address: impl Into<ElementId>) -> Self {
     Self {
+      base: div().id(address),
       class: class.into(),
       size: ICON_SIZE,
       children: Vec::new(),
@@ -35,11 +38,26 @@ impl ParentElement for WindowIcon {
   }
 }
 
+impl InteractiveElement for WindowIcon {
+  fn interactivity(&mut self) -> &mut gpui_kit::Interactivity {
+    self.base.interactivity()
+  }
+}
+
+impl Styled for WindowIcon {
+  fn style(&mut self) -> &mut StyleRefinement {
+    self.base.style()
+  }
+}
+
+impl StatefulInteractiveElement for WindowIcon {}
+
 impl RenderOnce for WindowIcon {
   fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
     let icon = icon_for_class_or_default(&self.class, self.size);
 
-    div()
+    self
+      .base
       .flex()
       .items_center()
       .justify_center()
