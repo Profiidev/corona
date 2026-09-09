@@ -2,22 +2,30 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  AnyView, AnyWindowHandle, App, AppContext, Bounds, DisplayId, Global, Pixels, Size, Styled,
+  AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Styled,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
   WindowOptions,
   component::Root,
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px,
+  point,
+  popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupOptions},
+  px,
 };
 
 use crate::{
   APP_NAME,
   config::placement::Placement,
-  ui::tooltip::{TOOLTIP_NAME, align::Align, base::BaseTooltip, variants::Tooltip},
+  ui::tooltip::{
+    base::{BORDER, BaseTooltip},
+    variants::Tooltip,
+  },
 };
 
+const TOOLTIP_GAP: f32 = 4.;
+
 struct Entry {
-  display: Option<DisplayId>,
+  parent: AnyWindowHandle,
+  anchor: Bounds<Pixels>,
+  size: Size<Pixels>,
   handle: AnyWindowHandle,
   view: WeakEntity<BaseTooltip>,
 }
@@ -38,28 +46,38 @@ impl TooltipState {
   pub fn show<T: Tooltip>(
     tooltip: T,
     anchor: Bounds<Pixels>,
-    bar_bounds: Bounds<Pixels>,
     placement: Placement,
     window: &Window,
     cx: &mut App,
   ) -> Result<()> {
+    let parent = window.window_handle();
     let size = tooltip.size(window, cx);
-    let align = Align::from_bounds(anchor, bar_bounds, size, placement);
-    let display_id = window.display(cx).map(|d| d.id());
+    let size = Size::new(size.width + px(BORDER * 2.), size.height + px(BORDER * 2.));
     let tooltip = cx.new(|_| tooltip).into();
 
     if let Some(entry) = cx.global::<TooltipState>().tooltips.get(T::NAME)
       && let Some(view) = entry.view.upgrade()
     {
-      if entry.display == display_id {
-        view.update(cx, |this, cx| this.show(tooltip, align, size, cx));
+      if entry.parent == parent && entry.anchor == anchor {
+        let resize = entry.size != size;
+        let handle = entry.handle;
+
+        view.update(cx, |this, cx| this.show(tooltip, cx));
+
+        if resize {
+          let _ = handle.update(cx, |_, window, _| window.resize(size));
+          if let Some(entry) = cx.global_mut::<TooltipState>().tooltips.get_mut(T::NAME) {
+            entry.size = size
+          }
+        }
+
         return Ok(());
       }
 
       Self::hide::<T>(cx);
     }
 
-    Self::open_new::<T>(tooltip, align, size, placement, display_id, cx)
+    Self::open_new::<T>(tooltip, parent, anchor, size, placement, cx)
   }
 
   pub fn hide<T: Tooltip>(cx: &mut App) {
@@ -74,22 +92,35 @@ impl TooltipState {
 
   fn open_new<T: Tooltip>(
     tooltip: AnyView,
-    align: Align,
+    parent: AnyWindowHandle,
+    anchor: Bounds<Pixels>,
     size: Size<Pixels>,
     placement: Placement,
-    display_id: Option<DisplayId>,
     cx: &mut App,
   ) -> Result<()> {
+    let gap = px(TOOLTIP_GAP);
+    let (popup_anchor, gravity, offset) = match placement {
+      Placement::Top => (
+        PopupAnchor::Bottom,
+        PopupGravity::Bottom,
+        point(px(0.), gap),
+      ),
+      Placement::Bottom => (PopupAnchor::Top, PopupGravity::Top, point(px(0.), -gap)),
+      Placement::Left => (PopupAnchor::Right, PopupGravity::Right, point(gap, px(0.))),
+      Placement::Right => (PopupAnchor::Left, PopupGravity::Left, point(-gap, px(0.))),
+    };
+
     cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-          exclusive_zone: None,
-          exclusive_edge: None,
-          margin: None,
-          layer: Layer::Overlay,
-          namespace: TOOLTIP_NAME.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::None,
+        kind: WindowKind::AnchoredPopup(PopupOptions {
+          parent,
+          anchor_rect: anchor,
+          anchor: popup_anchor,
+          gravity,
+          constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
+            | PopupConstraintAdjustment::SLIDE_Y,
+          offset,
+          grab: false,
         }),
         window_background: WindowBackgroundAppearance::Transparent,
         window_decorations: Some(WindowDecorations::Client),
@@ -97,20 +128,21 @@ impl TooltipState {
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: point(px(0.), px(0.)),
-          size: Size::new(px(0.), px(0.)),
+          origin: Point::default(),
+          size,
         })),
-        display_id,
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|_| BaseTooltip::new(tooltip, align, size, placement));
+        let view = cx.new(|_| BaseTooltip::new(tooltip));
 
         let state = cx.global_mut::<TooltipState>();
         state.tooltips.insert(
           T::NAME,
           Entry {
-            display: display_id,
+            parent,
+            anchor,
+            size,
             handle: window.window_handle(),
             view: view.downgrade(),
           },

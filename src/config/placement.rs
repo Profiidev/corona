@@ -110,16 +110,6 @@ pub trait PlacementStyle: Styled + Sized {
     }
   }
 
-  /// Offsets from the screen edge the bar is anchored to.
-  fn across_p(self, p: Placement, across: Pixels) -> Self {
-    match p {
-      Placement::Top => self.top(across),
-      Placement::Bottom => self.bottom(across),
-      Placement::Left => self.left(across),
-      Placement::Right => self.right(across),
-    }
-  }
-
   /// Offsets from the start of the bar's own axis.
   fn along_p(self, p: Placement, along: Pixels) -> Self {
     if p.is_horizontal() {

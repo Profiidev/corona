@@ -50,7 +50,7 @@ pub fn show_tooltip<T: Tooltip>(
     .context("no bar in this window")?
     .read(cx);
 
-  TooltipState::show(tooltip, anchor, bar.bounds(), bar.placement(), window, cx)
+  TooltipState::show(tooltip, anchor, bar.placement(), window, cx)
 }
 
 pub fn hide_tooltip<T: Tooltip>(cx: &mut App) {
