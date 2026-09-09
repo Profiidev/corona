@@ -20,9 +20,9 @@ use crate::{
   },
   ui::{
     animation::size::SizeAnimation,
-    bar::{BarState, hide_tooltip, show_tooltip, style::BarStyle, widgets::Widget},
+    bar::{BarState, style::BarStyle, widgets::Widget},
     components::window_icon::WindowIcon,
-    tooltip::WindowTitle,
+    tooltip::{TooltipExt, WindowTitle},
   },
 };
 
@@ -89,7 +89,7 @@ impl Widget for Workspaces {
           && this.workspaces.iter().all(|w| w.id != tooltip.0)
         {
           this.current_tooltip = None;
-          hide_tooltip::<WindowTitle>(cx);
+          cx.hide_tooltip::<WindowTitle>();
         }
 
         cx.notify();
@@ -124,14 +124,14 @@ impl Widget for Workspaces {
           match (title, bounds) {
             (Some(title), Some(bounds)) => {
               let _ = handle.update(cx, |_, window, cx| {
-                show_tooltip(WindowTitle::new(title), bounds, window, cx)
+                cx.show_bar_tooltip(WindowTitle::new(title), bounds, window)
                   .log_err()
                   .ok();
               });
             }
             _ => {
               this.current_tooltip = None;
-              hide_tooltip::<WindowTitle>(cx);
+              cx.hide_tooltip::<WindowTitle>();
             }
           }
         }
@@ -299,11 +299,12 @@ fn workspace_windows(
             move |this, hovered: &bool, window, cx| {
               if !*hovered {
                 this.current_tooltip = None;
-                hide_tooltip::<WindowTitle>(cx);
+                cx.hide_tooltip::<WindowTitle>();
                 return;
               }
 
-              if show_tooltip(WindowTitle::new(title.clone()), bounds.get(), window, cx)
+              if cx
+                .show_bar_tooltip(WindowTitle::new(title.clone()), bounds.get(), window)
                 .log_err()
                 .is_ok()
               {

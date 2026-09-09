@@ -4,7 +4,7 @@ mod state;
 mod style;
 mod variants;
 
-pub use state::PanelState;
+pub use state::{PanelExt, PanelState};
 pub use variants::Panel;
 pub use variants::control_panel::ControlPanel;
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Styled,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
@@ -14,9 +14,12 @@ use gpui_kit::{
 use crate::{
   APP_NAME,
   config::placement::Placement,
-  ui::tooltip::{
-    base::{BORDER, BaseTooltip},
-    variants::Tooltip,
+  ui::{
+    bar::BarState,
+    tooltip::{
+      base::{BORDER, BaseTooltip},
+      variants::Tooltip,
+    },
   },
 };
 
@@ -157,5 +160,53 @@ impl TooltipState {
     )?;
 
     Ok(())
+  }
+}
+
+pub trait TooltipExt {
+  fn show_tooltip<T: Tooltip>(
+    &mut self,
+    tooltip: T,
+    anchor: Bounds<Pixels>,
+    placement: Placement,
+    window: &Window,
+  ) -> Result<()>;
+
+  fn show_bar_tooltip<T: Tooltip>(
+    &mut self,
+    tooltip: T,
+    anchor: Bounds<Pixels>,
+    window: &Window,
+  ) -> Result<()>;
+
+  fn hide_tooltip<T: Tooltip>(&mut self);
+}
+
+impl TooltipExt for App {
+  fn show_tooltip<T: Tooltip>(
+    &mut self,
+    tooltip: T,
+    anchor: Bounds<Pixels>,
+    placement: Placement,
+    window: &Window,
+  ) -> Result<()> {
+    TooltipState::show(tooltip, anchor, placement, window, self)
+  }
+
+  fn show_bar_tooltip<T: Tooltip>(
+    &mut self,
+    tooltip: T,
+    anchor: Bounds<Pixels>,
+    window: &Window,
+  ) -> Result<()> {
+    let bar = BarState::get(window, self)
+      .context("no bar in this window")?
+      .read(self);
+
+    self.show_tooltip(tooltip, anchor, bar.placement(), window)
+  }
+
+  fn hide_tooltip<T: Tooltip>(&mut self) {
+    TooltipState::hide::<T>(self);
   }
 }

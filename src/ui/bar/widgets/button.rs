@@ -5,9 +5,9 @@ use gpui_kit::{
   px,
 };
 
-use crate::{
-  ui::bar::{toggle_panel, widgets::Widget},
-  ui::panel::Panel,
+use crate::ui::{
+  bar::widgets::Widget,
+  panel::{Panel, PanelExt},
 };
 
 #[derive(IntoElement)]
@@ -49,7 +49,7 @@ impl<W: Widget, P: Panel, F: FnOnce() -> P + Clone + 'static> RenderOnce for But
         let panel = self.panel.clone();
         self
           .view
-          .update(cx, |_, cx| toggle_panel(panel, window, cx))
+          .update(cx, |_, cx| cx.toggle_panel(panel, window))
           .flatten()
           .expect("Failed to toggle control panel");
       })

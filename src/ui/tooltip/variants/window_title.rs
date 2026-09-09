@@ -46,7 +46,7 @@ impl WindowTitle {
       })
       .map(|size| {
         Size::new(
-          size.width + px(SLACK + PADDING * 2.),
+          size.width + px(SLACK + PADDING * 4.),
           size.height + px(PADDING * 2.),
         )
       })
@@ -68,7 +68,7 @@ impl Render for WindowTitle {
 
     div()
       .size_full()
-      .p(px(PADDING))
+      .p(px(PADDING * 2.))
       .flex()
       .items_center()
       .justify_center()

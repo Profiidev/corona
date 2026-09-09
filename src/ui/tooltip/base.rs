@@ -27,7 +27,7 @@ impl Render for BaseTooltip {
     div()
       .size_full()
       .bg(theme.tokens.background)
-      .rounded(theme.radius_lg)
+      .rounded(theme.radius_2xl() / 2.)
       .border_color(theme.tokens.button_hover)
       .border(px(BORDER))
       .overflow_hidden()

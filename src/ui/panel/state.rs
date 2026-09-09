@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use gpui_kit::{
-  App, AppContext, Bounds, DisplayId, Entity, Global, Pixels, Size, Styled, WeakEntity, Window,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  App, AppContext, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Styled, WeakEntity,
+  Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   component::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -12,7 +12,10 @@ use gpui_kit::{
 use crate::{
   APP_NAME,
   config::placement::Placement,
-  ui::panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
+  ui::{
+    bar::{BarState, Widget},
+    panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
+  },
 };
 
 pub struct PanelState {
@@ -111,5 +114,30 @@ impl PanelState {
   fn get(name: &str, cx: &App) -> Option<(Option<DisplayId>, Entity<BasePanel>)> {
     let (display, panel) = cx.global::<PanelState>().panels.get(name)?;
     Some((*display, panel.upgrade()?))
+  }
+}
+
+pub trait PanelExt {
+  fn toggle_panel<P: Panel>(&mut self, panel: impl FnOnce() -> P, window: &Window) -> Result<()>;
+}
+
+impl<W: Widget> PanelExt for Context<'_, W> {
+  fn toggle_panel<P: Panel>(&mut self, panel: impl FnOnce() -> P, window: &Window) -> Result<()> {
+    let widget_id = self.entity_id();
+    let bar = BarState::get(window, self)
+      .context("no bar in this window")?
+      .read(self);
+    let button_bounds = bar
+      .widget_bounds(widget_id)
+      .context("no bounds for this widget")?;
+
+    PanelState::toggle(
+      panel,
+      button_bounds,
+      bar.bounds(),
+      bar.placement(),
+      window,
+      self,
+    )
   }
 }
