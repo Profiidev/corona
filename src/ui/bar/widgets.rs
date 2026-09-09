@@ -8,4 +8,3 @@ pub trait Widget: Render {
     cx.new(|cx| Self::init(cx, display_id)).into()
   }
 }
-
