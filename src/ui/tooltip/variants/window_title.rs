@@ -44,7 +44,12 @@ impl WindowTitle {
           Size::new(size.width.max(line.width), size.height + line.height)
         })
       })
-      .map(|size| Size::new(size.width + px(SLACK), size.height))
+      .map(|size| {
+        Size::new(
+          size.width + px(SLACK + PADDING * 2.),
+          size.height + px(PADDING * 2.),
+        )
+      })
       .unwrap_or_default()
   }
 }
@@ -53,12 +58,7 @@ impl Tooltip for WindowTitle {
   const NAME: &'static str = "window_title";
 
   fn size(&self, window: &Window, cx: &App) -> Size<Pixels> {
-    let text = self.text_size(window, cx);
-
-    Size::new(
-      text.width + px(PADDING * 2.),
-      text.height + px(PADDING * 2.),
-    )
+    self.text_size(window, cx)
   }
 }
 

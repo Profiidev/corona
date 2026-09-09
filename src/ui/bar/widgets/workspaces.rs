@@ -1,8 +1,8 @@
 use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 
 use gpui_kit::{
-  Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
-  Render, StatefulInteractiveElement, Styled, Subscription, Window,
+  AnyWindowHandle, Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton,
+  ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Subscription, Window,
   base::ElementExt,
   component::{ActiveTheme, Theme, ThemeToken},
   div,
@@ -37,6 +37,7 @@ pub struct Workspaces {
   active_window: Option<String>,
   pill_size: HashMap<u32, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
+  current_tooltip: Option<(u32, String, AnyWindowHandle)>,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -83,10 +84,19 @@ impl Widget for Workspaces {
         this.workspaces = workspaces.clone();
         this.workspaces.retain(|w| w.display_id() == display_id);
         this.workspaces.sort_unstable_by_key(|w| w.id);
+
+        if let Some(tooltip) = &this.current_tooltip
+          && this.workspaces.iter().all(|w| w.id != tooltip.0)
+        {
+          this.current_tooltip = None;
+          hide_tooltip::<WindowTitle>(cx);
+        }
+
         cx.notify();
       }
       CompositorEvent::Window(windows) => {
         this.windows.clear();
+
         for window in windows.clone() {
           if this.workspaces.iter().all(|w| w.id != window.workspace) {
             continue;
@@ -98,9 +108,34 @@ impl Widget for Workspaces {
             .or_default()
             .push(window);
         }
+
         for windows in this.windows.values_mut() {
           windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
         }
+
+        if let Some((workspace, address, handle)) = this.current_tooltip.clone() {
+          let title = this
+            .windows
+            .get(&workspace)
+            .and_then(|windows| windows.iter().find(|w| w.address == address))
+            .map(|w| w.title.clone());
+          let bounds = this.icon_bounds.get(&address).map(|b| b.get());
+
+          match (title, bounds) {
+            (Some(title), Some(bounds)) => {
+              let _ = handle.update(cx, |_, window, cx| {
+                show_tooltip(WindowTitle::new(title), bounds, window, cx)
+                  .log_err()
+                  .ok();
+              });
+            }
+            _ => {
+              this.current_tooltip = None;
+              hide_tooltip::<WindowTitle>(cx);
+            }
+          }
+        }
+
         cx.notify();
       }
       CompositorEvent::ActiveWindow(window) => {
@@ -118,6 +153,7 @@ impl Widget for Workspaces {
       active_window,
       pill_size: HashMap::new(),
       icon_bounds: HashMap::new(),
+      current_tooltip: None,
     }
   }
 }
@@ -175,7 +211,7 @@ impl Render for Workspaces {
                 }
               })
               .child({
-                let icons = workspace_windows(windows, active_window, icon_bounds, ws, theme);
+                let icons = workspace_windows(windows, active_window, icon_bounds, ws, theme, cx);
 
                 let target = match icons.len() as f32 {
                   0. => ICON_SIZE as f32,
@@ -231,6 +267,7 @@ fn workspace_windows(
   icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   ws: &Workspace,
   theme: &Theme,
+  cx: &Context<'_, Workspaces>,
 ) -> Vec<WindowIcon> {
   windows.get(&ws.id).map_or(vec![], |windows| {
     windows
@@ -255,19 +292,25 @@ fn workspace_windows(
             let bounds = bounds.clone();
             move |b, _, _| bounds.set(b)
           })
-          .on_hover({
+          .on_hover(cx.listener({
             let title = w.title.clone();
-            move |hovered, window, cx| {
+            let id = ws.id;
+            let address = w.address.clone();
+            move |this, hovered: &bool, window, cx| {
               if !*hovered {
+                this.current_tooltip = None;
                 hide_tooltip::<WindowTitle>(cx);
                 return;
               }
 
-              show_tooltip(WindowTitle::new(title.clone()), bounds.get(), window, cx)
+              if show_tooltip(WindowTitle::new(title.clone()), bounds.get(), window, cx)
                 .log_err()
-                .ok();
+                .is_ok()
+              {
+                this.current_tooltip = Some((id, address.clone(), window.window_handle()));
+              }
             }
-          })
+          }))
       })
       .collect::<Vec<_>>()
   })

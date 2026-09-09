@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Global, Pixels, Size, Styled, WeakEntity,
-  Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  AnyView, AnyWindowHandle, App, AppContext, Bounds, DisplayId, Global, Pixels, Size, Styled,
+  WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
+  WindowOptions,
   component::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -45,22 +46,20 @@ impl TooltipState {
     let size = tooltip.size(window, cx);
     let align = Align::from_bounds(anchor, bar_bounds, size, placement);
     let display_id = window.display(cx).map(|d| d.id());
+    let tooltip = cx.new(|_| tooltip).into();
 
     if let Some(entry) = cx.global::<TooltipState>().tooltips.get(T::NAME)
       && let Some(view) = entry.view.upgrade()
     {
       if entry.display == display_id {
-        view.update(cx, |this, cx| {
-          let tooltip = cx.new(|_| tooltip).into();
-          this.show(tooltip, align, size, cx)
-        });
+        view.update(cx, |this, cx| this.show(tooltip, align, size, cx));
         return Ok(());
       }
 
       Self::hide::<T>(cx);
     }
 
-    Self::open_new(tooltip, align, size, placement, display_id, cx)
+    Self::open_new::<T>(tooltip, align, size, placement, display_id, cx)
   }
 
   pub fn hide<T: Tooltip>(cx: &mut App) {
@@ -74,7 +73,7 @@ impl TooltipState {
   }
 
   fn open_new<T: Tooltip>(
-    tooltip: T,
+    tooltip: AnyView,
     align: Align,
     size: Size<Pixels>,
     placement: Placement,
@@ -105,7 +104,6 @@ impl TooltipState {
         ..Default::default()
       },
       |window, cx| {
-        let tooltip = cx.new(|_| tooltip).into();
         let view = cx.new(|_| BaseTooltip::new(tooltip, align, size, placement));
 
         let state = cx.global_mut::<TooltipState>();
