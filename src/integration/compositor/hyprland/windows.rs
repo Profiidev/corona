@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
-use crate::{data_cmd, integration::compositor::types};
+use crate::{hypr_data_cmd, integration::compositor::types};
 
-data_cmd!(
+hypr_data_cmd!(
   list_windows,
   "clients",
   Vec<Window>,

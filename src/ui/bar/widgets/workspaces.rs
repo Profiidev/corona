@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::Duration};
 
 use gpui_kit::{
-  Context, Div, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-  Styled, Subscription, Window,
+  Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+  Render, Styled, Subscription, Window,
   component::{ActiveTheme, Theme, ThemeToken},
   div,
   prelude::FluentBuilder,
@@ -164,10 +164,10 @@ impl Render for Workspaces {
               .hover(|this| this.bg(theme.tokens.secondary))
               .text_color(theme.tokens.secondary_foreground)
               .cursor_pointer()
-              .on_click({
+              .on_mouse_down(MouseButton::Left, {
                 let id = ws.id;
-                move |_, _window, _cx| {
-                  println!("Switching to workspace {}", id);
+                move |_, _window, cx| {
+                  let _ = cx.compositor().focus_workspace(id).log_err();
                 }
               })
               .child({

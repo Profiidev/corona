@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
-use crate::{data_cmd, integration::compositor::types};
+use crate::{hypr_data_cmd, hypr_dsp, integration::compositor::types};
 
-data_cmd!(
+hypr_data_cmd!(
   list_workspaces,
   "workspaces",
   Vec<Workspace>,
@@ -10,7 +10,13 @@ data_cmd!(
   |workspaces: Vec<Workspace>| { workspaces.into_iter().map(|w| w.into()).collect() }
 );
 
-data_cmd!(
+hypr_dsp!(
+  focus_workspace,
+  "focus({{ workspace = {} }})",
+  workspace: u32
+);
+
+hypr_data_cmd!(
   active_workspace,
   "activeworkspace",
   Workspace,

@@ -22,6 +22,21 @@ impl Ipc {
     socket.read_to_end(&mut res)?;
     Ok(decode_ipc_response(&res))
   }
+
+  pub(super) fn eval(&self, lua: impl AsRef<str>) -> Result<String> {
+    self.send_cmd(&Command {
+      command: format!("eval {}", lua.as_ref()),
+      flags: CommandFlags::empty(),
+    })
+  }
+
+  pub(super) fn dsp(&self, call: impl AsRef<str>) -> Result<()> {
+    let res = self.eval(format!("hl.dispatch(hl.dsp.{})", call.as_ref()))?;
+    if res != "ok" {
+      anyhow::bail!("Hyprland dsp call failed: {}", res);
+    }
+    Ok(())
+  }
 }
 
 /// https://github.com/hyprland-community/hyprland-rs/blob/master/src/data/regular.rs
@@ -50,7 +65,7 @@ impl Display for Command {
 }
 
 #[macro_export]
-macro_rules! data_cmd {
+macro_rules! hypr_data_cmd {
   ($cmd:ident, $arg:literal, $output:ty, $parsed:ty, $convert:expr) => {
     impl $crate::integration::compositor::hyprland::command::Ipc {
       pub fn $cmd(&self) -> anyhow::Result<$parsed> {
@@ -61,6 +76,18 @@ macro_rules! data_cmd {
         let res = self.send_cmd(&cmd)?;
         let output: $output = serde_json::from_str(&res)?;
         Ok($convert(output))
+      }
+    }
+  };
+}
+
+#[macro_export]
+macro_rules! hypr_dsp {
+  ($cmd:ident, $arg:literal, $($var:ident: $type:ty),*) => {
+    impl $crate::integration::compositor::hyprland::command::Ipc {
+      pub fn $cmd(&self, $($var: $type),*) -> anyhow::Result<()> {
+        let call = format!($arg, $($var),*);
+        self.dsp(call)
       }
     }
   };
