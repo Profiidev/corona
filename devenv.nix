@@ -6,6 +6,8 @@ let
     fontconfig
     libxkbcommon
     libxcb
+    pipewire
+    rustPlatform.bindgenHook
   ];
 
   runtimeDeps = with pkgs; [
