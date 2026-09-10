@@ -1,4 +1,4 @@
-gpui_version := "0.3.3"
+gpui_version := "0.3.4"
 gpui_crates := "gpui-pre gpui-pre-linux"
 
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
