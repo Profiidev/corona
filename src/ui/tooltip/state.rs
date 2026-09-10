@@ -88,9 +88,15 @@ impl TooltipState {
       return;
     };
 
-    let _ = entry
-      .handle
-      .update(cx, |_, window, _| window.remove_window());
+    cx.spawn(async move |cx| {
+      cx.background_executor()
+        .timer(std::time::Duration::from_millis(1))
+        .await;
+      let _ = entry.handle.update(cx, |_, window, _| {
+        window.remove_window();
+      });
+    })
+    .detach();
   }
 
   fn open_new<T: Tooltip>(
