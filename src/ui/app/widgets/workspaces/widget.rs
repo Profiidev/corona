@@ -2,7 +2,7 @@ use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 
 use gpui_kit::{
   AnyWindowHandle, Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton,
-  ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Subscription, Window,
+  ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Subscription, Task, Window,
   base::ElementExt,
   component::{ActiveTheme, Theme, ThemeToken},
   div,
@@ -30,6 +30,7 @@ use crate::{
 const ICON_SIZE: u16 = 18;
 const ICON_GAP: f32 = 2.;
 const WIDTH_CHANGE: Duration = Duration::from_millis(400);
+const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 pub struct Workspaces {
   windows: HashMap<u32, Vec<types::Window>>,
@@ -39,6 +40,7 @@ pub struct Workspaces {
   pill_size: HashMap<u32, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   current_tooltip: Option<(u32, String, AnyWindowHandle)>,
+  current_hover: Option<Task<()>>,
   #[allow(dead_code)]
   subscription: Subscription,
 }
@@ -90,6 +92,7 @@ impl Widget for Workspaces {
           && this.workspaces.iter().all(|w| w.id != tooltip.0)
         {
           this.current_tooltip = None;
+          this.current_hover = None;
           cx.hide_tooltip::<WindowTitle>();
         }
 
@@ -132,6 +135,7 @@ impl Widget for Workspaces {
             }
             _ => {
               this.current_tooltip = None;
+              this.current_hover = None;
               cx.hide_tooltip::<WindowTitle>();
             }
           }
@@ -155,6 +159,7 @@ impl Widget for Workspaces {
       pill_size: HashMap::new(),
       icon_bounds: HashMap::new(),
       current_tooltip: None,
+      current_hover: None,
     }
   }
 }
@@ -300,17 +305,29 @@ fn workspace_windows(
             move |this, hovered: &bool, window, cx| {
               if !*hovered {
                 this.current_tooltip = None;
+                this.current_hover = None;
                 cx.hide_tooltip::<WindowTitle>();
                 return;
               }
 
-              if cx
-                .show_bar_tooltip(WindowTitle::new(title.clone()), bounds.get(), window)
-                .log_err()
-                .is_ok()
-              {
-                this.current_tooltip = Some((id, address.clone(), window.window_handle()));
-              }
+              this.current_hover = Some(cx.spawn_in(window, {
+                let address = address.clone();
+                let bounds = bounds.clone();
+                let title = title.clone();
+                async move |e, cx| {
+                  cx.background_executor().timer(TOOLTIP_DELAY).await;
+                  e.update_in(cx, |this, window, cx| {
+                    if cx
+                      .show_bar_tooltip(WindowTitle::new(title), bounds.get(), window)
+                      .log_err()
+                      .is_ok()
+                    {
+                      this.current_tooltip = Some((id, address, window.window_handle()));
+                    }
+                  })
+                  .ok();
+                }
+              }));
             }
           }))
       })
