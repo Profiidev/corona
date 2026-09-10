@@ -1,0 +1,39 @@
+Leaving a window does not move `mouse_position` — MouseExited carries the last
+position and `Window::dispatch_event` does not store it — so `mouse_hit_test`
+still resolves to whatever was under the pointer when it left. Every paint then
+re-syncs hover from that stale hit test and re-enters the hitbox one frame after
+the exit cleared it, so `on_hover` listeners and hover styles latch on forever.
+
+`Window::hovered` already tracks pointer enter/leave on the platforms that
+report it, so gate the hit test on it.
+
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -774,6 +774,13 @@
+         if window.last_input_was_keyboard() {
+             return false;
+         }
++        // A pointer that leaves the window does not update `mouse_position`, so without
++        // this every hitbox under the last position stays hovered after the pointer is
++        // gone. Only platforms that track pointer enter/leave can answer this.
++        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++        if !window.is_window_hovered() {
++            return false;
++        }
+         self.hit_test(window)
+     }
+ 
+@@ -789,6 +796,13 @@
+         if window.captured_hitbox == Some(self) {
+             return true;
+         }
++        // A pointer that leaves the window does not update `mouse_position`, so without
++        // this every hitbox under the last position stays hovered after the pointer is
++        // gone. Only platforms that track pointer enter/leave can answer this.
++        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++        if !window.is_window_hovered() {
++            return false;
++        }
+         self.hit_test(window)
+     }
+ 
