@@ -20,7 +20,7 @@ impl Hyprland {
     ipc: Ipc,
     event_path: PathBuf,
   ) -> Entity<CompositorEventEmitter> {
-    let (tx, rx) = async_channel::bounded(100);
+    let (tx, rx) = flume::bounded(100);
 
     thread::spawn(move || {
       loop {
@@ -34,7 +34,7 @@ impl Hyprland {
         };
 
         for line in BufReader::new(socket).lines().map_while(Result::ok) {
-          if tx.send_blocking(line).is_err() {
+          if tx.send(line).is_err() {
             break; // Channel closed, exit the loop
           }
         }
@@ -43,7 +43,7 @@ impl Hyprland {
 
     cx.new(|cx| {
       cx.spawn(async move |this, cx| {
-        while let Ok(line) = rx.recv().await {
+        while let Ok(line) = rx.recv_async().await {
           let ipc = ipc.clone();
           let parsed = cx
             .background_spawn(async move { ipc.parse_event(&line) })
