@@ -6,7 +6,7 @@ impl EventEmitter<PipewireEvent> for PipewireEventEmitter {}
 
 #[derive(Debug, Clone, Copy)]
 pub enum PipewireEvent {
-  AudioSinkAdded(u32),
-  AudioSinkChanged(u32),
-  AudioSinkRemoved(u32),
+  AudioNodeAdded(u32),
+  AudioNodeChanged(u32),
+  AudioNodeRemoved(u32),
 }

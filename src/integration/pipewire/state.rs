@@ -1,13 +1,12 @@
 use std::{str::FromStr, sync::Arc};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use dashmap::DashMap;
 use pipewire::spa::{
   pod::{Object, Value, ValueArray},
   sys,
   utils::dict::DictRef,
 };
-use tracing::warn;
 
 use crate::integration::pipewire::event::PipewireEvent;
 
@@ -20,7 +19,7 @@ impl PipewireState {
   pub fn new() -> Self {
     Self {
       audio: AudioState {
-        sinks: Arc::new(DashMap::new()),
+        nodes: Arc::new(DashMap::new()),
       },
     }
   }
@@ -28,29 +27,59 @@ impl PipewireState {
 
 #[derive(Clone)]
 pub struct AudioState {
-  pub sinks: Arc<DashMap<u32, AudioSink>>,
+  pub nodes: Arc<DashMap<u32, AudioNode>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeType {
+  Sink,
+  Source,
+  Stream,
+}
+
+impl FromStr for NodeType {
+  type Err = anyhow::Error;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      "Audio/Sink" => Ok(NodeType::Sink),
+      "Audio/Source" => Ok(NodeType::Source),
+      "Stream/Output/Audio" => Ok(NodeType::Stream),
+      _ => Err(anyhow!("Invalid node type: {}", s)),
+    }
+  }
 }
 
 #[derive(Clone, Debug)]
-pub struct AudioSink {
+pub struct AudioNode {
   pub id: u32,
+  pub kind: NodeType,
   pub name: String,
   pub description: String,
   pub nickname: Option<String>,
-  pub device: u32,
+  pub device: Option<u32>,
   pub profile_device: Option<i32>,
   pub volumes: Vec<f32>,
   pub mute: bool,
 }
 
-impl AudioSink {
-  pub fn new(id: u32, props: &DictRef) -> Option<Self> {
+fn label(props: &DictRef) -> Option<&str> {
+  ["node.description", "media.name", "application.name"]
+    .into_iter()
+    .find_map(|key| props.get(key))
+}
+
+impl AudioNode {
+  pub fn new(id: u32, kind: NodeType, props: &DictRef) -> Option<Self> {
+    let name = props.get("node.name")?.to_string();
+
     Some(Self {
       id,
-      name: props.get("node.name")?.to_string(),
-      description: props.get("node.description")?.to_string(),
-      nickname: props.get("node.nick").map(|s| s.to_string()),
-      device: props.get("device.id").and_then(|s| s.parse().ok())?,
+      kind,
+      description: label(props).unwrap_or(&name).to_string(),
+      name,
+      nickname: props.get("node.nick").map(|nick| nick.to_string()),
+      device: props.get("device.id").and_then(|id| id.parse().ok()),
       profile_device: None,
       mute: false,
       volumes: vec![0.0],
@@ -60,14 +89,14 @@ impl AudioSink {
   fn update_props(&mut self, props: &DictRef) -> bool {
     let mut changed = false;
     changed |= update(&mut self.name, props.get("node.name"));
-    changed |= update(&mut self.description, props.get("node.description"));
+    changed |= update(&mut self.description, label(props));
     changed |= update_optional(&mut self.nickname, props.get("node.nick"));
-    changed |= update(&mut self.device, props.get("device.id"));
+    changed |= update_optional(&mut self.device, props.get("device.id"));
     changed |= update_optional(&mut self.profile_device, props.get("card.profile.device"));
     changed
   }
 
-  fn update(&mut self, obj: Object) -> bool {
+  fn update_params(&mut self, obj: Object) -> bool {
     let mut changed = false;
     for prop in obj.properties {
       match (prop.key, prop.value) {
@@ -86,51 +115,28 @@ impl AudioSink {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
-pub enum NodeType {
-  AudioSink,
-}
-
-impl NodeType {
-  pub fn update(
-    &self,
-    state: &PipewireState,
-    id: u32,
-    obj: Object,
-    events: &flume::Sender<PipewireEvent>,
-  ) {
-    match self {
-      NodeType::AudioSink => {
-        let Some(mut sink) = state.audio.sinks.get_mut(&id) else {
-          return;
-        };
-
-        if sink.update(obj) {
-          drop(sink);
-          let _ = events.send(PipewireEvent::AudioSinkChanged(id));
-        }
-      }
-    }
+impl AudioState {
+  pub fn update_params(&self, id: u32, obj: Object, events: &flume::Sender<PipewireEvent>) {
+    self.changed(id, events, |node| node.update_params(obj));
   }
 
-  pub fn update_props(
-    &self,
-    state: &PipewireState,
-    id: u32,
-    props: &DictRef,
-    events: &flume::Sender<PipewireEvent>,
-  ) {
-    match self {
-      NodeType::AudioSink => {
-        let Some(mut sink) = state.audio.sinks.get_mut(&id) else {
-          return;
-        };
+  pub fn update_props(&self, id: u32, props: &DictRef, events: &flume::Sender<PipewireEvent>) {
+    self.changed(id, events, |node| node.update_props(props));
+  }
 
-        if sink.update_props(props) {
-          drop(sink);
-          let _ = events.send(PipewireEvent::AudioSinkChanged(id));
-        }
-      }
+  fn changed(
+    &self,
+    id: u32,
+    events: &flume::Sender<PipewireEvent>,
+    update: impl FnOnce(&mut AudioNode) -> bool,
+  ) {
+    let Some(mut node) = self.nodes.get_mut(&id) else {
+      return;
+    };
+
+    if update(&mut node) {
+      drop(node);
+      let _ = events.send(PipewireEvent::AudioNodeChanged(id));
     }
   }
 }
@@ -161,24 +167,13 @@ fn update_optional<T: FromStr + PartialEq>(field: &mut Option<T>, value: Option<
   true
 }
 
-impl FromStr for NodeType {
-  type Err = anyhow::Error;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      "Audio/Sink" => Ok(NodeType::AudioSink),
-      _ => Err(anyhow!("Invalid node type: {}", s)),
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use pipewire::spa::{static_dict, utils::dict::StaticDict};
 
   use super::*;
 
-  fn sink() -> AudioSink {
+  fn sink() -> AudioNode {
     static PROPS: StaticDict = static_dict! {
       "node.name" => "alsa_output.speaker",
       "node.description" => "Speaker",
@@ -186,7 +181,7 @@ mod tests {
       "device.id" => "47",
     };
 
-    AudioSink::new(54, &PROPS).expect("the registry props are complete")
+    AudioNode::new(54, NodeType::Sink, &PROPS).expect("the registry props are complete")
   }
 
   #[test]
@@ -221,6 +216,24 @@ mod tests {
     assert_eq!(sink.name, "alsa_output.speaker");
   }
 
+  #[test]
+  fn a_stream_is_named_by_its_media_and_written_on_the_node() {
+    static STREAM: StaticDict = static_dict! {
+      "node.name" => "spotify",
+      "application.name" => "spotify",
+      "media.name" => "Spotify",
+      "media.class" => "Stream/Output/Audio",
+    };
+
+    let stream =
+      AudioNode::new(110, NodeType::Stream, &STREAM).expect("a stream needs only a node.name");
+
+    assert_eq!(stream.description, "Spotify");
+    // No card, so nothing to route through.
+    assert_eq!(stream.device, None);
+    assert_eq!(stream.profile_device, None);
+  }
+
   /// The trap that cost a session: a narrower info event used to clear
   /// `profile_device`, and the next volume write silently fell back to the node.
   #[test]
@@ -241,6 +254,6 @@ mod tests {
     assert_eq!(sink.profile_device, Some(0));
     assert_eq!(sink.description, "Speaker");
     assert_eq!(sink.nickname.as_deref(), Some("Built-in"));
-    assert_eq!(sink.device, 47);
+    assert_eq!(sink.device, Some(47));
   }
 }

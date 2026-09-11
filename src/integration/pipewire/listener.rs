@@ -16,7 +16,7 @@ use pipewire::{
 
 use crate::integration::pipewire::{
   event::PipewireEvent,
-  state::{AudioSink, NodeType, PipewireState},
+  state::{AudioNode, PipewireState},
 };
 
 #[derive(Clone, Default)]
@@ -99,15 +99,10 @@ fn add_node(
     return;
   };
 
-  match class {
-    NodeType::AudioSink => {
-      let Some(sink) = AudioSink::new(obj.id, props) else {
-        return;
-      };
-      state.audio.sinks.insert(obj.id, sink);
-    }
-    _ => return,
-  }
+  let Some(node) = AudioNode::new(obj.id, class, props) else {
+    return;
+  };
+  state.audio.nodes.insert(obj.id, node);
 
   let Ok(node) = registry.bind::<Node, &DictRef>(obj) else {
     return;
@@ -115,18 +110,8 @@ fn add_node(
 
   let listener = node
     .add_listener_local()
-    .info(node_info_listener(
-      obj.id,
-      state.clone(),
-      events.clone(),
-      class,
-    ))
-    .param(node_props_listener(
-      obj.id,
-      state.clone(),
-      events.clone(),
-      class,
-    ))
+    .info(node_info_listener(obj.id, state.clone(), events.clone()))
+    .param(node_props_listener(obj.id, state.clone(), events.clone()))
     .register();
   node.subscribe_params(&[ParamType::Props]);
 
@@ -136,7 +121,7 @@ fn add_node(
     .nodes
     .insert(obj.id, (node, listener));
 
-  let _ = events.send(PipewireEvent::AudioSinkAdded(obj.id));
+  let _ = events.send(PipewireEvent::AudioNodeAdded(obj.id));
 }
 
 fn add_device(registry: &RegistryRc, handles: &Handles, obj: &GlobalObject<&DictRef>) {
@@ -165,8 +150,8 @@ pub fn global_remove_listener(
   move |id| {
     handles.remove(id);
 
-    if state.audio.sinks.remove(&id).is_some() {
-      let _ = events.send(PipewireEvent::AudioSinkRemoved(id));
+    if state.audio.nodes.remove(&id).is_some() {
+      let _ = events.send(PipewireEvent::AudioNodeRemoved(id));
     }
   }
 }
@@ -175,14 +160,13 @@ fn node_info_listener(
   id: u32,
   state: PipewireState,
   events: flume::Sender<PipewireEvent>,
-  class: NodeType,
 ) -> impl Fn(&NodeInfoRef) {
   move |info| {
     let Some(props) = info.props() else {
       return;
     };
 
-    class.update_props(&state, id, props, &events);
+    state.audio.update_props(id, props, &events);
   }
 }
 
@@ -190,7 +174,6 @@ fn node_props_listener(
   id: u32,
   state: PipewireState,
   events: flume::Sender<PipewireEvent>,
-  class: NodeType,
 ) -> impl Fn(i32, ParamType, u32, u32, Option<&Pod>) {
   move |_seq, param_type, _index, _next, param| {
     if param_type != ParamType::Props {
@@ -201,7 +184,7 @@ fn node_props_listener(
       return;
     };
 
-    class.update(&state, id, obj, &events);
+    state.audio.update_params(id, obj, &events);
   }
 }
 

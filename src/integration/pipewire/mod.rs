@@ -15,7 +15,7 @@ mod state;
 
 pub use api::Pipewire;
 pub use event::PipewireEvent;
-pub use state::AudioSink;
+pub use state::{AudioNode, NodeType};
 
 pub fn init(cx: &mut App) -> Result<()> {
   let (event_tx, event_rx) = flume::unbounded();
