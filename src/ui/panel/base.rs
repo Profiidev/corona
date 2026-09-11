@@ -34,12 +34,11 @@ pub struct BasePanel {
 
 impl BasePanel {
   pub fn new<P: Panel>(
-    panel: P,
     align: Align,
     placement: Placement,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
-    let panel = cx.new(|_| panel);
+    let panel = cx.new(P::init);
 
     Self {
       panel: panel.into(),

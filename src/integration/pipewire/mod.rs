@@ -4,7 +4,7 @@ use anyhow::Result;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
-use crate::integration::pipewire::{event::PipewireEvent, listener::Handles, state::PipewireState};
+use crate::integration::pipewire::{listener::Handles, state::PipewireState};
 
 mod api;
 mod audio;
@@ -14,6 +14,8 @@ mod listener;
 mod state;
 
 pub use api::Pipewire;
+pub use event::PipewireEvent;
+pub use state::AudioSink;
 
 pub fn init(cx: &mut App) -> Result<()> {
   let (event_tx, event_rx) = flume::unbounded();

@@ -32,7 +32,6 @@ impl PanelState {
   }
 
   pub fn toggle<P: Panel>(
-    panel: impl FnOnce() -> P,
     button_bounds: Bounds<Pixels>,
     bar_bounds: Bounds<Pixels>,
     placement: Placement,
@@ -60,11 +59,10 @@ impl PanelState {
       }
     }
 
-    Self::open_new::<P>(panel(), new_align, placement, display_id, cx)
+    Self::open_new::<P>(new_align, placement, display_id, cx)
   }
 
   fn open_new<P: Panel>(
-    panel: P,
     align: Align,
     placement: Placement,
     display_id: Option<DisplayId>,
@@ -94,7 +92,7 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new(panel, align, placement, cx));
+        let view = cx.new(|cx| BasePanel::new::<P>(align, placement, cx));
         let state = cx.global_mut::<PanelState>();
         state
           .panels
@@ -118,11 +116,11 @@ impl PanelState {
 }
 
 pub trait PanelExt {
-  fn toggle_panel<P: Panel>(&mut self, panel: impl FnOnce() -> P, window: &Window) -> Result<()>;
+  fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()>;
 }
 
 impl<W: Widget> PanelExt for Context<'_, W> {
-  fn toggle_panel<P: Panel>(&mut self, panel: impl FnOnce() -> P, window: &Window) -> Result<()> {
+  fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()> {
     let widget_id = self.entity_id();
     let bar = BarState::get(window, self)
       .context("no bar in this window")?
@@ -131,13 +129,6 @@ impl<W: Widget> PanelExt for Context<'_, W> {
       .widget_bounds(widget_id)
       .context("no bounds for this widget")?;
 
-    PanelState::toggle(
-      panel,
-      button_bounds,
-      bar.bounds(),
-      bar.placement(),
-      window,
-      self,
-    )
+    PanelState::toggle::<P>(button_bounds, bar.bounds(), bar.placement(), window, self)
   }
 }

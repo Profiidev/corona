@@ -17,6 +17,6 @@ impl Widget for ControlPanelButton {
 
 impl Render for ControlPanelButton {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    Button::new(cx, "control-panel-button", IconName::Nixos, || ControlPanel)
+    Button::<_, ControlPanel>::new(cx, "control-panel-button", IconName::Nixos)
   }
 }
