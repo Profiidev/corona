@@ -4,16 +4,34 @@ use anyhow::Result;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
-use crate::integration::pipewire::state::PipewireState;
+use crate::integration::pipewire::{event::PipewireEvent, listener::Handles, state::PipewireState};
 
 mod api;
+mod audio;
+mod command;
+mod event;
 mod listener;
 mod state;
 
 pub use api::Pipewire;
 
 pub fn init(cx: &mut App) -> Result<()> {
+  let (event_tx, event_rx) = flume::unbounded();
+  let (command_tx, state) = spawn(event_tx)?;
+
+  let pipewire = Pipewire::new(cx, command_tx, state, event_rx);
+  cx.set_global(pipewire);
+
+  Ok(())
+}
+
+fn spawn(
+  event_tx: flume::Sender<PipewireEvent>,
+) -> Result<(pipewire::channel::Sender<command::Command>, PipewireState)> {
   let (init_tx, init_rx) = flume::bounded(1);
+
+  let state = PipewireState::new();
+  let thread_state = state.clone();
 
   thread::spawn(move || {
     let (mainloop, registry) = match init_loop() {
@@ -26,29 +44,37 @@ pub fn init(cx: &mut App) -> Result<()> {
       }
     };
 
-    let state = PipewireState::new();
-    let (pipewire, _rx) = Pipewire::init(&mainloop, state.clone());
+    let handles = Handles::default();
+
+    let (command_tx, command_rx) = pipewire::channel::channel();
+    let _command_rx = command_rx.attach(mainloop.loop_(), {
+      let handles = handles.clone();
+      move |command: command::Command| command.execute(&handles)
+    });
 
     init_tx
-      .send(Ok(pipewire))
+      .send(Ok(command_tx))
       .expect("Failed to send success from pipewire init");
 
     let _listener = registry
       .add_listener_local()
-      .global(listener::global_listener(registry.clone(), state))
+      .global(listener::global_listener(
+        registry.clone(),
+        handles.clone(),
+        thread_state.clone(),
+        event_tx.clone(),
+      ))
+      .global_remove(listener::global_remove_listener(
+        handles,
+        thread_state,
+        event_tx,
+      ))
       .register();
 
     mainloop.run();
   });
 
-  let pipewire = init_rx.recv()??;
-
-  thread::sleep(std::time::Duration::from_millis(100));
-  dbg!(pipewire.list_audio_sinks());
-
-  cx.set_global(pipewire);
-
-  Ok(())
+  Ok((init_rx.recv()??, state))
 }
 
 fn init_loop() -> Result<(MainLoopRc, RegistryRc)> {
