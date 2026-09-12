@@ -33,7 +33,7 @@ pub struct Monitor {
 
 #[derive(Debug, Deserialize)]
 pub struct WorkspaceInfo {
-  pub id: u32,
+  pub id: i32,
   pub name: String,
 }
 

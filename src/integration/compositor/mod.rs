@@ -16,7 +16,7 @@ pub trait Compositor {
 
   fn list_workspaces(&self) -> Result<Vec<Workspace>>;
   fn active_workspace(&self) -> Result<Workspace>;
-  fn focus_workspace(&self, workspace: u32) -> Result<()>;
+  fn focus_workspace(&self, workspace: i32) -> Result<()>;
 
   fn list_monitors(&self) -> Result<Vec<types::Monitor>>;
   fn active_monitor(&self) -> Result<types::Monitor>;

@@ -50,7 +50,7 @@ impl PipewireAudio<'_> {
       .map(|node| node.clone())
       .collect();
 
-    nodes.sort_by_key(|node| node.id);
+    nodes.sort_unstable_by_key(|node| node.id);
     nodes
   }
 

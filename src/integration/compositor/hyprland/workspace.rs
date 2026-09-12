@@ -7,13 +7,19 @@ hypr_data_cmd!(
   "workspaces",
   Vec<Workspace>,
   Vec<types::Workspace>,
-  |workspaces: Vec<Workspace>| { workspaces.into_iter().map(|w| w.into()).collect() }
+  |workspaces: Vec<Workspace>| {
+    workspaces
+      .into_iter()
+      .filter(|w| w.id >= 0)
+      .map(|w| w.into())
+      .collect()
+  }
 );
 
 hypr_dsp!(
   focus_workspace,
   "focus({{ workspace = {} }})",
-  workspace: u32
+  workspace: i32
 );
 
 hypr_data_cmd!(
@@ -26,7 +32,7 @@ hypr_data_cmd!(
 
 #[derive(Debug, Deserialize)]
 pub struct Workspace {
-  pub id: u32,
+  pub id: i32,
   pub name: String,
   pub monitor: String,
   #[serde(rename = "monitorID")]

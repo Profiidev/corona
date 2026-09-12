@@ -1,6 +1,6 @@
 #[derive(Debug, Clone)]
 pub struct Workspace {
-  pub id: u32,
+  pub id: i32,
   pub name: String,
   pub monitor: String,
   pub monitor_id: u32,
@@ -27,7 +27,7 @@ pub struct Monitor {
 pub struct Window {
   pub address: String,
   pub monitor: u32,
-  pub workspace: u32,
+  pub workspace: i32,
   pub class: String,
   pub title: String,
   pub x: i32,

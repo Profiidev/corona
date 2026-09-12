@@ -8,6 +8,10 @@ impl Panel for ControlPanel {
   const NAME: &'static str = "control_panel";
   const WIDTH: f32 = 400.0;
   const HEIGHT: f32 = 600.0;
+
+  fn init(_cx: &mut Context<'_, Self>) -> Self {
+    ControlPanel
+  }
 }
 
 impl Render for ControlPanel {

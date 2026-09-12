@@ -33,13 +33,13 @@ const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 pub struct Workspaces {
-  windows: HashMap<u32, Vec<types::Window>>,
+  windows: HashMap<i32, Vec<types::Window>>,
   workspaces: Vec<Workspace>,
-  active_workspace: Option<u32>,
+  active_workspace: Option<i32>,
   active_window: Option<String>,
-  pill_size: HashMap<u32, SizeAnimation>,
+  pill_size: HashMap<i32, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
-  current_tooltip: Option<(u32, String, AnyWindowHandle)>,
+  current_tooltip: Option<(i32, String, AnyWindowHandle)>,
   current_hover: Option<Task<()>>,
   #[allow(dead_code)]
   subscription: Subscription,
@@ -54,7 +54,7 @@ impl Widget for Workspaces {
     workspaces.sort_unstable_by_key(|w| w.id);
 
     let windows = compositor.list_windows().log_err().unwrap_or_default();
-    let mut windows_by_workspace: HashMap<u32, Vec<types::Window>> = HashMap::new();
+    let mut windows_by_workspace: HashMap<i32, Vec<types::Window>> = HashMap::new();
     for window in windows {
       if workspaces.iter().all(|w| w.id != window.workspace) {
         continue;
@@ -192,7 +192,7 @@ impl Render for Workspaces {
           .relative()
           .child(
             div()
-              .id(("workspace", ws.id))
+              .id(format!("workspace {}", ws.id))
               .flex_bar(window, cx)
               .gap(px(ICON_GAP))
               .items_center()
@@ -268,7 +268,7 @@ fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
 }
 
 fn workspace_windows(
-  windows: &HashMap<u32, Vec<types::Window>>,
+  windows: &HashMap<i32, Vec<types::Window>>,
   active_window: &Option<String>,
   icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   ws: &Workspace,
