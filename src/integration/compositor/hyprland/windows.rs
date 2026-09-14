@@ -38,7 +38,7 @@ pub struct Window {
 }
 #[derive(Debug, Deserialize)]
 pub struct WindowWorkspace {
-  pub id: i32,
+  pub address: String,
 }
 
 impl From<Window> for types::Window {
@@ -46,7 +46,7 @@ impl From<Window> for types::Window {
     types::Window {
       address: w.address,
       monitor: w.monitor,
-      workspace: w.workspace.id,
+      workspace: w.workspace.address,
       class: w.class,
       title: w.title,
       x: w.at.0,

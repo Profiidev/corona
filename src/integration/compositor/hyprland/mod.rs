@@ -42,7 +42,7 @@ impl Compositor for Hyprland {
   fn active_workspace(&self) -> Result<types::Workspace> {
     self.ipc.active_workspace()
   }
-  fn focus_workspace(&self, workspace: i32) -> Result<()> {
+  fn focus_workspace(&self, workspace: &str) -> Result<()> {
     self.ipc.focus_workspace(workspace)
   }
 

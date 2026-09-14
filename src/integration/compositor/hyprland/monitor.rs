@@ -4,7 +4,7 @@ use crate::{hypr_data_cmd, integration::compositor::types};
 
 hypr_data_cmd!(
   list_monitors,
-  "monitors",
+  "monitors all",
   Vec<Monitor>,
   Vec<types::Monitor>,
   |monitors: Vec<Monitor>| { monitors.into_iter().map(|m| m.into()).collect() }
@@ -33,7 +33,7 @@ pub struct Monitor {
 
 #[derive(Debug, Deserialize)]
 pub struct WorkspaceInfo {
-  pub id: i32,
+  pub address: String,
   pub name: String,
 }
 
@@ -47,21 +47,23 @@ impl From<Monitor> for types::Monitor {
       refresh_rate: m.refresh_rate,
       x: m.x,
       y: m.y,
-      active_scratchpad: (m.special_workspace.id != 0).then_some(types::Workspace {
-        id: m.special_workspace.id,
+      active_scratchpad: (!m.special_workspace.address.is_empty()).then_some(types::Workspace {
+        id: m.special_workspace.address,
         name: m.special_workspace.name,
         monitor: m.name.clone(),
         monitor_id: m.id,
       }),
       active_workspace: types::Workspace {
-        id: m.active_workspace.id,
+        id: m.active_workspace.address,
         name: m.active_workspace.name,
         monitor: m.name,
         monitor_id: m.id,
       },
       scale: m.scale,
       focused: m.focused,
-      disabled: m.disabled,
+      // Hyprland 0.56 JSON has `disabled` inverted: enabled monitors report
+      // true while the plain `hyprctl monitors` output says false.
+      disabled: !m.disabled,
       mirror_of: m.mirror_of,
     }
   }

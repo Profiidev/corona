@@ -10,7 +10,7 @@ hypr_data_cmd!(
   |workspaces: Vec<Workspace>| {
     workspaces
       .into_iter()
-      .filter(|w| w.id >= 0)
+      .filter(|w| w.workspace_type != "special")
       .map(|w| w.into())
       .collect()
   }
@@ -19,7 +19,7 @@ hypr_data_cmd!(
 hypr_dsp!(
   focus_workspace,
   "focus({{ workspace = {} }})",
-  workspace: i32
+  workspace: &str
 );
 
 hypr_data_cmd!(
@@ -32,7 +32,9 @@ hypr_data_cmd!(
 
 #[derive(Debug, Deserialize)]
 pub struct Workspace {
-  pub id: i32,
+  pub address: String,
+  #[serde(rename = "type")]
+  pub workspace_type: String,
   pub name: String,
   pub monitor: String,
   #[serde(rename = "monitorID")]
@@ -42,7 +44,7 @@ pub struct Workspace {
 impl From<Workspace> for types::Workspace {
   fn from(w: Workspace) -> Self {
     types::Workspace {
-      id: w.id,
+      id: w.address,
       name: w.name,
       monitor: w.monitor,
       monitor_id: w.monitor_id,

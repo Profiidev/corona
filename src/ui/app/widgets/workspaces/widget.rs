@@ -33,13 +33,13 @@ const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 pub struct Workspaces {
-  windows: HashMap<i32, Vec<types::Window>>,
+  windows: HashMap<String, Vec<types::Window>>,
   workspaces: Vec<Workspace>,
-  active_workspace: Option<i32>,
+  active_workspace: Option<String>,
   active_window: Option<String>,
-  pill_size: HashMap<i32, SizeAnimation>,
+  pill_size: HashMap<String, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
-  current_tooltip: Option<(i32, String, AnyWindowHandle)>,
+  current_tooltip: Option<(String, String, AnyWindowHandle)>,
   current_hover: Option<Task<()>>,
   #[allow(dead_code)]
   subscription: Subscription,
@@ -51,17 +51,17 @@ impl Widget for Workspaces {
 
     let mut workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
     workspaces.retain(|w| w.display_id() == display_id);
-    workspaces.sort_unstable_by_key(|w| w.id);
+    workspaces.sort_unstable_by_key(|w| w.id.clone());
 
     let windows = compositor.list_windows().log_err().unwrap_or_default();
-    let mut windows_by_workspace: HashMap<i32, Vec<types::Window>> = HashMap::new();
+    let mut windows_by_workspace: HashMap<String, Vec<types::Window>> = HashMap::new();
     for window in windows {
       if workspaces.iter().all(|w| w.id != window.workspace) {
         continue;
       }
 
       windows_by_workspace
-        .entry(window.workspace)
+        .entry(window.workspace.clone())
         .or_default()
         .push(window);
     }
@@ -80,13 +80,13 @@ impl Widget for Workspaces {
     let emitter = compositor.emitter().clone();
     let subscription = cx.subscribe(&emitter, move |this, _, e, cx| match e {
       CompositorEvent::ActiveWorkspace(workspace) => {
-        this.active_workspace = Some(workspace.id);
+        this.active_workspace = Some(workspace.id.clone());
         cx.notify();
       }
       CompositorEvent::Workspace(workspaces) => {
         this.workspaces = workspaces.clone();
         this.workspaces.retain(|w| w.display_id() == display_id);
-        this.workspaces.sort_unstable_by_key(|w| w.id);
+        this.workspaces.sort_unstable_by_key(|w| w.id.clone());
 
         if let Some(tooltip) = &this.current_tooltip
           && this.workspaces.iter().all(|w| w.id != tooltip.0)
@@ -108,7 +108,7 @@ impl Widget for Workspaces {
 
           this
             .windows
-            .entry(window.workspace)
+            .entry(window.workspace.clone())
             .or_default()
             .push(window);
         }
@@ -182,7 +182,7 @@ impl Render for Workspaces {
       .flex_bar(window, cx)
       .gap_1()
       .children(workspaces.iter().map(|ws| {
-        let border = if *active_workspace == Some(ws.id) {
+        let border = if active_workspace.as_ref() == Some(&ws.id) {
           theme.tokens.primary
         } else {
           theme.tokens.secondary
@@ -211,9 +211,9 @@ impl Render for Workspaces {
               .text_color(theme.tokens.secondary_foreground)
               .cursor_pointer()
               .on_mouse_down(MouseButton::Left, {
-                let id = ws.id;
+                let id = ws.id.clone();
                 move |_, _window, cx| {
-                  let _ = cx.compositor().focus_workspace(id).log_err();
+                  let _ = cx.compositor().focus_workspace(&id).log_err();
                 }
               })
               .child({
@@ -225,7 +225,7 @@ impl Render for Workspaces {
                 };
 
                 pill_size
-                  .entry(ws.id)
+                  .entry(ws.id.clone())
                   .or_insert_with(|| SizeAnimation::new(WIDTH_CHANGE).start(ICON_SIZE as f32))
                   .animate(
                     "workspace-icons",
@@ -268,7 +268,7 @@ fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
 }
 
 fn workspace_windows(
-  windows: &HashMap<i32, Vec<types::Window>>,
+  windows: &HashMap<String, Vec<types::Window>>,
   active_window: &Option<String>,
   icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   ws: &Workspace,
@@ -300,7 +300,7 @@ fn workspace_windows(
           })
           .on_hover(cx.listener({
             let title = w.title.clone();
-            let id = ws.id;
+            let id = ws.id.clone();
             let address = w.address.clone();
             move |this, hovered: &bool, window, cx| {
               if !*hovered {
@@ -314,6 +314,7 @@ fn workspace_windows(
                 let address = address.clone();
                 let bounds = bounds.clone();
                 let title = title.clone();
+                let id = id.clone();
                 async move |e, cx| {
                   cx.background_executor().timer(TOOLTIP_DELAY).await;
                   e.update_in(cx, |this, window, cx| {

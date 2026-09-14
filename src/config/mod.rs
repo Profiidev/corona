@@ -33,7 +33,7 @@ pub fn load(cx: &mut App) -> Result<()> {
   Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
   pub theme: String,
   pub animation_speed: f32,
