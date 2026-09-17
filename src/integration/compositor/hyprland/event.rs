@@ -118,7 +118,7 @@ impl Ipc {
       }
       "activespecial" => {
         let (_, monitor_name) = data
-          .split_once(">>")
+          .split_once(",")
           .context("Invalid hyprland event format")?;
 
         let monitors = self.list_monitors()?;

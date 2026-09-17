@@ -25,16 +25,76 @@ impl PipewireAudio<'_> {
     self.0.state.audio.nodes.get(&id).map(|node| node.clone())
   }
 
+  pub fn default_sink(&self) -> Option<AudioNode> {
+    self.default(NodeType::Sink)
+  }
+
+  pub fn default_source(&self) -> Option<AudioNode> {
+    self.default(NodeType::Source)
+  }
+
+  pub fn set_default(&self, id: u32) -> Result<()> {
+    let node = self.node(id).context("No such audio node")?;
+
+    self.0.send(Command::SetDefault {
+      kind: node.kind,
+      name: node.name,
+    })
+  }
+
+  pub fn target(&self, stream: u32) -> Option<AudioNode> {
+    let target = self.0.state.audio.targets.get(&stream)?;
+
+    let serial = target.parse().ok();
+    self.find(|node| Some(node.serial) == serial || node.name == *target)
+  }
+
+  pub fn set_target(&self, stream: u32, sink: u32) -> Result<()> {
+    let sink = self.node(sink).context("No such audio node")?;
+
+    self.0.send(Command::SetTarget {
+      node: stream,
+      name: Some(sink.name),
+    })
+  }
+
+  pub fn reset_target(&self, stream: u32) -> Result<()> {
+    self.0.send(Command::SetTarget {
+      node: stream,
+      name: None,
+    })
+  }
+
+  fn default(&self, kind: NodeType) -> Option<AudioNode> {
+    let name = self.0.state.audio.defaults.get(&kind)?;
+    self.by_name(&name)
+  }
+
+  fn by_name(&self, name: &str) -> Option<AudioNode> {
+    self.find(|node| node.name == name)
+  }
+
+  fn find(&self, matches: impl Fn(&AudioNode) -> bool) -> Option<AudioNode> {
+    self
+      .0
+      .state
+      .audio
+      .nodes
+      .iter()
+      .find(|node| matches(node))
+      .map(|node| node.clone())
+  }
+
   pub fn set_volumes(&self, id: u32, volumes: Vec<f32>) -> Result<()> {
     self.0.send(Command::SetVolumes {
-      target: self.target(id)?,
+      target: self.props_target(id)?,
       volumes,
     })
   }
 
   pub fn set_mute(&self, id: u32, mute: bool) -> Result<()> {
     self.0.send(Command::SetMute {
-      target: self.target(id)?,
+      target: self.props_target(id)?,
       mute,
     })
   }
@@ -54,7 +114,7 @@ impl PipewireAudio<'_> {
     nodes
   }
 
-  fn target(&self, id: u32) -> Result<Target> {
+  fn props_target(&self, id: u32) -> Result<Target> {
     let node = self.node(id).context("No such audio node")?;
 
     Ok(match (node.device, node.profile_device) {

@@ -20,6 +20,8 @@ impl PipewireState {
     Self {
       audio: AudioState {
         nodes: Arc::new(DashMap::new()),
+        defaults: Arc::new(DashMap::new()),
+        targets: Arc::new(DashMap::new()),
       },
     }
   }
@@ -28,9 +30,11 @@ impl PipewireState {
 #[derive(Clone)]
 pub struct AudioState {
   pub nodes: Arc<DashMap<u32, AudioNode>>,
+  pub defaults: Arc<DashMap<NodeType, String>>,
+  pub targets: Arc<DashMap<u32, String>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NodeType {
   Sink,
   Source,
@@ -53,6 +57,7 @@ impl FromStr for NodeType {
 #[derive(Clone, Debug)]
 pub struct AudioNode {
   pub id: u32,
+  pub serial: u64,
   pub kind: NodeType,
   pub name: String,
   pub description: String,
@@ -61,6 +66,20 @@ pub struct AudioNode {
   pub profile_device: Option<i32>,
   pub volumes: Vec<f32>,
   pub mute: bool,
+  pub app: Vec<String>,
+}
+
+fn app(props: &DictRef) -> Vec<String> {
+  [
+    "application.icon-name",
+    "application.id",
+    "application.name",
+    "application.process.binary",
+  ]
+  .into_iter()
+  .filter_map(|key| props.get(key))
+  .map(|value| value.to_string())
+  .collect()
 }
 
 fn label(props: &DictRef) -> Option<&str> {
@@ -75,6 +94,10 @@ impl AudioNode {
 
     Some(Self {
       id,
+      serial: props
+        .get("object.serial")
+        .and_then(|serial| serial.parse().ok())
+        .unwrap_or_default(),
       kind,
       description: label(props).unwrap_or(&name).to_string(),
       name,
@@ -83,16 +106,23 @@ impl AudioNode {
       profile_device: None,
       mute: false,
       volumes: vec![0.0],
+      app: app(props),
     })
   }
 
   fn update_props(&mut self, props: &DictRef) -> bool {
     let mut changed = false;
+    changed |= update(&mut self.serial, props.get("object.serial"));
     changed |= update(&mut self.name, props.get("node.name"));
     changed |= update(&mut self.description, label(props));
     changed |= update_optional(&mut self.nickname, props.get("node.nick"));
     changed |= update_optional(&mut self.device, props.get("device.id"));
     changed |= update_optional(&mut self.profile_device, props.get("card.profile.device"));
+    let app = app(props);
+    if !app.is_empty() && app != self.app {
+      self.app = app;
+      changed = true;
+    }
     changed
   }
 
@@ -122,6 +152,33 @@ impl AudioState {
 
   pub fn update_props(&self, id: u32, props: &DictRef, events: &flume::Sender<PipewireEvent>) {
     self.changed(id, events, |node| node.update_props(props));
+  }
+
+  pub fn set_default(
+    &self,
+    kind: NodeType,
+    name: Option<String>,
+    events: &flume::Sender<PipewireEvent>,
+  ) {
+    let changed = match name {
+      Some(name) => self.defaults.insert(kind, name.clone()) != Some(name),
+      None => self.defaults.remove(&kind).is_some(),
+    };
+
+    if changed {
+      let _ = events.send(PipewireEvent::AudioDefaultChanged(kind));
+    }
+  }
+
+  pub fn set_target(&self, id: u32, name: Option<String>, events: &flume::Sender<PipewireEvent>) {
+    let changed = match name {
+      Some(name) => self.targets.insert(id, name.clone()) != Some(name),
+      None => self.targets.remove(&id).is_some(),
+    };
+
+    if changed {
+      let _ = events.send(PipewireEvent::AudioTargetChanged(id));
+    }
   }
 
   fn changed(
@@ -175,6 +232,7 @@ mod tests {
 
   fn sink() -> AudioNode {
     static PROPS: StaticDict = static_dict! {
+      "object.serial" => "62",
       "node.name" => "alsa_output.speaker",
       "node.description" => "Speaker",
       "node.nick" => "Built-in",
@@ -219,8 +277,10 @@ mod tests {
   #[test]
   fn a_stream_is_named_by_its_media_and_written_on_the_node() {
     static STREAM: StaticDict = static_dict! {
+      "object.serial" => "202",
       "node.name" => "spotify",
       "application.name" => "spotify",
+      "application.process.binary" => ".spotify-wrapped",
       "media.name" => "Spotify",
       "media.class" => "Stream/Output/Audio",
     };
@@ -229,6 +289,9 @@ mod tests {
       AudioNode::new(110, NodeType::Stream, &STREAM).expect("a stream needs only a node.name");
 
     assert_eq!(stream.description, "Spotify");
+    // The binary is decorated and the name is not, so both are worth keeping.
+    assert_eq!(stream.app, ["spotify", ".spotify-wrapped"]);
+    assert_eq!(stream.serial, 202);
     // No card, so nothing to route through.
     assert_eq!(stream.device, None);
     assert_eq!(stream.profile_device, None);
@@ -255,5 +318,39 @@ mod tests {
     assert_eq!(sink.description, "Speaker");
     assert_eq!(sink.nickname.as_deref(), Some("Built-in"));
     assert_eq!(sink.device, Some(47));
+  }
+
+  #[test]
+  fn a_default_is_reported_once_per_change() {
+    let (tx, rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+
+    audio.set_default(NodeType::Sink, Some("speaker".into()), &tx);
+    // Wireplumber republishes the same value freely; that is not a change.
+    audio.set_default(NodeType::Sink, Some("speaker".into()), &tx);
+    audio.set_default(NodeType::Sink, Some("headset".into()), &tx);
+    audio.set_default(NodeType::Sink, None, &tx);
+
+    assert_eq!(rx.len(), 3);
+    assert!(audio.defaults.is_empty());
+  }
+
+  #[test]
+  fn a_reset_drops_the_pin() {
+    let (tx, rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+
+    audio.set_target(110, Some("alsa_output.hdmi".into()), &tx);
+    assert_eq!(
+      audio.targets.get(&110).map(|name| name.clone()),
+      Some("alsa_output.hdmi".to_string())
+    );
+
+    audio.set_target(110, None, &tx);
+    assert!(audio.targets.is_empty());
+    // Nothing was pinned, so nothing changed.
+    audio.set_target(110, None, &tx);
+
+    assert_eq!(rx.len(), 2);
   }
 }
