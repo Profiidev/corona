@@ -1,12 +1,18 @@
+use std::{
+  collections::HashMap,
+  path::{Path, PathBuf},
+  sync::{Arc, Mutex, OnceLock},
+};
+
 use gpui_kit::{
-  AnyElement, App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-  Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, div, img,
-  prelude::FluentBuilder, px, relative,
+  AnyElement, App, DevicePixels, Div, ElementId, ImageSource, InteractiveElement, IntoElement,
+  ParentElement, RenderImage, RenderOnce, Stateful, StatefulInteractiveElement, StyleRefinement,
+  Styled, SvgSize, Window, div, img, prelude::FluentBuilder, px, relative, size,
 };
 
 use crate::integration::desktop::entry::icon_for_names_or_default;
 
-const ICON_SIZE: u16 = 18;
+const ICON_SIZE: u16 = 256;
 
 #[derive(IntoElement)]
 pub struct WindowIcon {
@@ -59,14 +65,50 @@ impl Styled for WindowIcon {
 
 impl StatefulInteractiveElement for WindowIcon {}
 
+/// `img` rasterizes an SVG at twice its intrinsic size, so an icon drawn at
+/// 256px reaches an 18px box as a 512px bitmap the GPU
+/// then minifies without mipmaps, which is what makes it look coarse. Rasterize
+/// at the size actually drawn instead.
+fn rasterize(path: &Path, pixels: i32, cx: &mut App) -> Option<Arc<RenderImage>> {
+  type Cache = Mutex<HashMap<(PathBuf, i32), Arc<RenderImage>>>;
+  static CACHE: OnceLock<Cache> = OnceLock::new();
+  let cache = CACHE.get_or_init(Mutex::default);
+
+  let key = (path.to_path_buf(), pixels);
+  if let Some(image) = cache.lock().ok()?.get(&key) {
+    return Some(image.clone());
+  }
+
+  let renderer = cx.svg_renderer();
+  let svg = renderer.parse_svg(&std::fs::read(path).ok()?).ok()?;
+  let image = renderer
+    .render_parsed(
+      &svg,
+      SvgSize::Size(size(DevicePixels(pixels), DevicePixels(pixels))),
+    )
+    .ok()?;
+
+  cache.lock().ok()?.insert(key, image.clone());
+  Some(image)
+}
+
 impl RenderOnce for WindowIcon {
-  fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+  fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
     let names = self
       .names
       .iter()
       .map(String::as_str)
       .chain([self.class.as_str()]);
-    let icon = icon_for_names_or_default(names, self.size);
+
+    let pixels = (self.size as f32 * window.scale_factor()) as i32;
+    let icon = icon_for_names_or_default(names, self.size).map(|path| {
+      match path.extension().is_some_and(|extension| extension == "svg") {
+        true => rasterize(&path, pixels, cx)
+          .map(ImageSource::Render)
+          .unwrap_or_else(|| ImageSource::from(path)),
+        false => ImageSource::from(path),
+      }
+    });
 
     self
       .base
@@ -78,7 +120,7 @@ impl RenderOnce for WindowIcon {
       .w(px(self.size as f32))
       .rounded_full()
       .map(|this| match icon {
-        Some(path) => this.child(img(path).size_full()),
+        Some(source) => this.child(img(source).size_full()),
         None => this
           .text_size(px(10.))
           .line_height(relative(1.))
