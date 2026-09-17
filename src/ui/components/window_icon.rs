@@ -4,7 +4,7 @@ use gpui_kit::{
   prelude::FluentBuilder, px, relative,
 };
 
-use crate::integration::desktop::entry::icon_for_class_or_default;
+use crate::integration::desktop::entry::icon_for_names_or_default;
 
 const ICON_SIZE: u16 = 18;
 
@@ -12,6 +12,7 @@ const ICON_SIZE: u16 = 18;
 pub struct WindowIcon {
   base: Stateful<Div>,
   class: String,
+  names: Vec<String>,
   size: u16,
   children: Vec<AnyElement>,
 }
@@ -21,9 +22,15 @@ impl WindowIcon {
     Self {
       base: div().id(address),
       class: class.into(),
+      names: Vec::new(),
       size: ICON_SIZE,
       children: Vec::new(),
     }
+  }
+
+  pub fn names(mut self, names: impl IntoIterator<Item = String>) -> Self {
+    self.names = names.into_iter().collect();
+    self
   }
 
   pub fn size(mut self, size: u16) -> Self {
@@ -54,7 +61,12 @@ impl StatefulInteractiveElement for WindowIcon {}
 
 impl RenderOnce for WindowIcon {
   fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-    let icon = icon_for_class_or_default(&self.class, self.size);
+    let names = self
+      .names
+      .iter()
+      .map(String::as_str)
+      .chain([self.class.as_str()]);
+    let icon = icon_for_names_or_default(names, self.size);
 
     self
       .base

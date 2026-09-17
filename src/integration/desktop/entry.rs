@@ -4,7 +4,7 @@ use std::{
   sync::OnceLock,
 };
 
-use freedesktop_desktop_entry::{Iter, default_paths, get_languages_from_env};
+use freedesktop_desktop_entry::{DesktopEntry, Iter, default_paths, get_languages_from_env};
 
 /// Generic icons to fall back on, best first. Only `application-x-executable`
 /// is in the icon naming spec; the other two are what themes ship it as.
@@ -14,7 +14,42 @@ const FALLBACK_NAMES: [&str; 3] = [
   "application-default-icon",
 ];
 
-/// Window class (lowercased) to the `Icon=` value of its desktop entry.
+/// How many keys [`keys`] produces at most, so the ranking loop covers them.
+const KEY_RANKS: usize = 5;
+
+/// Nix installs a binary as `.<name>-wrapped`, and a pipewire stream reports
+/// that as its `application.process.binary`. Nothing matches it as it stands.
+fn undecorate(name: &str) -> &str {
+  let name = name.strip_prefix('.').unwrap_or(name);
+  name.strip_suffix("-wrapped").unwrap_or(name)
+}
+
+/// The binary an `Exec=` line runs, without its path or its arguments.
+fn exec_binary(exec: &str) -> Option<&str> {
+  let binary = exec.split_whitespace().next()?.rsplit('/').next()?;
+  (!binary.is_empty()).then(|| undecorate(binary))
+}
+
+/// Everything (lowercased) an entry is known by, weakest key first.
+///
+/// Anything short of this misses real applications: spotify reports the app
+/// name `spotify` but the binary `.spotify-wrapped`, and Noctalia reports the
+/// app name `Noctalia` against the appid `dev.noctalia.Noctalia`.
+fn keys(entry: &DesktopEntry, locales: &[String]) -> Vec<String> {
+  let appid = entry.appid.to_lowercase();
+
+  let mut keys = Vec::new();
+  keys.extend(entry.name(locales).map(|name| name.to_lowercase()));
+  keys.extend(entry.exec().and_then(exec_binary).map(str::to_lowercase));
+  // A reverse-DNS appid is named by its last segment everywhere else.
+  keys.extend(appid.rsplit('.').next().map(str::to_string));
+  keys.push(appid);
+  keys.extend(entry.startup_wm_class().map(str::to_lowercase));
+  keys
+}
+
+/// Every name an application is known by (lowercased) to the `Icon=` value of
+/// its desktop entry.
 ///
 /// Built once: every lookup would otherwise re-walk each `applications/`
 /// directory on disk. Entries installed while corona runs are not picked up.
@@ -25,24 +60,18 @@ fn icon_names() -> &'static HashMap<String, String> {
     let locales = get_languages_from_env();
     let entries: Vec<_> = Iter::new(default_paths())
       .entries(Some(&locales))
-      .filter_map(|entry| {
-        Some((
-          entry.appid.to_lowercase(),
-          entry.startup_wm_class().map(str::to_lowercase),
-          entry.icon()?.to_string(),
-        ))
-      })
+      .filter_map(|entry| Some((keys(&entry, &locales), entry.icon()?.to_string())))
       .collect();
 
+    // Rank by key strength across all entries, not within one: an appid has to
+    // beat another application's display name, not only its own. A later
+    // insert wins, so the strongest key goes in last.
     let mut names = HashMap::new();
-    for (appid, _, icon) in &entries {
-      names.insert(appid.clone(), icon.clone());
-    }
-    // StartupWMClass is the key the spec reserves for this lookup, so it wins
-    // over an appid that collides with another app's window class.
-    for (_, class, icon) in &entries {
-      if let Some(class) = class {
-        names.insert(class.clone(), icon.clone());
+    for rank in (0..KEY_RANKS).rev() {
+      for (keys, icon) in &entries {
+        if let Some(key) = keys.get(rank) {
+          names.insert(key.clone(), icon.clone());
+        }
       }
     }
     names
@@ -91,10 +120,20 @@ fn lookup(name: &str, size: u16) -> Option<PathBuf> {
     .find()
 }
 
-/// Resolve a window class (`class` or `initialClass` from the compositor) to an
-/// icon file.
-pub fn icon_for_class(class: &str, size: u16) -> Option<PathBuf> {
-  let icon = icon_names().get(&class.to_lowercase())?;
+/// Resolve the first of `names` anything answers to. Pass what is known, best
+/// first: an icon the app named itself, then its application name, then its
+/// binary.
+pub fn icon_for_names<'n>(names: impl IntoIterator<Item = &'n str>, size: u16) -> Option<PathBuf> {
+  names.into_iter().find_map(|name| {
+    let name = undecorate(name).to_lowercase();
+    // A name may already be an icon (`application.icon-name`), so try the theme
+    // before asking which desktop entry the name belongs to.
+    lookup(&name, size).or_else(|| entry_icon(&name, size))
+  })
+}
+
+fn entry_icon(name: &str, size: u16) -> Option<PathBuf> {
+  let icon = icon_names().get(name)?;
 
   // `Icon=` may be an absolute path. Look its stem up in the theme first so a
   // themed replacement still wins, then fall back to the file the app shipped.
@@ -106,11 +145,14 @@ pub fn icon_for_class(class: &str, size: u16) -> Option<PathBuf> {
   lookup(name, size).or_else(|| icon.starts_with('/').then(|| PathBuf::from(icon)))
 }
 
-/// [`icon_for_class`], falling back to a generic application icon for classes
-/// with no desktop entry. Still `None` when the theme ships no generic icon,
+/// [`icon_for_names`], falling back to a generic application icon for names
+/// nothing answers to. Still `None` when the theme ships no generic icon,
 /// which is the case for a bare `hicolor`.
-pub fn icon_for_class_or_default(class: &str, size: u16) -> Option<PathBuf> {
-  icon_for_class(class, size).or_else(|| FALLBACK_NAMES.iter().find_map(|name| lookup(name, size)))
+pub fn icon_for_names_or_default<'n>(
+  names: impl IntoIterator<Item = &'n str>,
+  size: u16,
+) -> Option<PathBuf> {
+  icon_for_names(names, size).or_else(|| FALLBACK_NAMES.iter().find_map(|name| lookup(name, size)))
 }
 
 #[cfg(test)]
@@ -128,8 +170,25 @@ mod tests {
   }
 
   #[test]
+  fn a_nix_wrapper_is_not_part_of_the_name() {
+    assert_eq!(undecorate(".spotify-wrapped"), "spotify");
+    assert_eq!(undecorate("spotify"), "spotify");
+    assert_eq!(undecorate(".hidden"), "hidden");
+  }
+
+  #[test]
+  fn an_exec_line_names_one_binary() {
+    assert_eq!(exec_binary("spotify %U"), Some("spotify"));
+    assert_eq!(
+      exec_binary("/usr/bin/.noctalia-wrapped --daemon"),
+      Some("noctalia")
+    );
+    assert_eq!(exec_binary(""), None);
+  }
+
+  #[test]
   fn unknown_class_has_no_entry_icon() {
-    assert!(icon_for_class("corona-no-such-app", 24).is_none());
+    assert!(icon_for_names(["corona-no-such-app"], 24).is_none());
   }
 
   #[test]
@@ -137,7 +196,7 @@ mod tests {
     // Most desktop files set no StartupWMClass; keying only off that would
     // leave the map nearly empty on any real system.
     println!("{} classes mapped", icon_names().len());
-    assert!(icon_for_class("alacritty", 24).is_some() || icon_names().is_empty());
+    assert!(icon_for_names(["alacritty"], 24).is_some() || icon_names().is_empty());
   }
 
   #[test]
@@ -147,7 +206,7 @@ mod tests {
       return;
     };
 
-    if let Some(path) = icon_for_class_or_default(class, 24) {
+    if let Some(path) = icon_for_names_or_default([class.as_str()], 24) {
       assert!(path.exists(), "{path:?} does not exist");
     }
   }
