@@ -28,3 +28,8 @@ zbus = "5.19.0"
 [patch.crates-io]
 gpui-pre = { path = "vendor/gpui-pre" }
 gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = true
