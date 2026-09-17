@@ -1,6 +1,8 @@
 gpui_version := "0.3.4"
 gpui_crates := "gpui-pre gpui-pre-linux"
 
+layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })'
+
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
 # zed's own crates can't be used directly, they need its entire workspace.
 # `rm -rf vendor` to force a refetch after bumping gpui_version or a patch.
@@ -57,6 +59,8 @@ nested:
           },
       },
   })
+
+  {{layer_rules}}
 
   -- The way out if the shell wedges. Goes through hyprctl rather than a dispatcher
   -- name, since hyprctl targets this nested instance and needs no guessing.
@@ -148,3 +152,6 @@ nested-kill:
   pkill -9 -f "Hyprland .*-c $conf" 2>/dev/null || true
   rm -f /tmp/corona-nested.conf-path
   echo "killed nested session"
+
+layerrules:
+  hyprctl eval '{{layer_rules}}'
