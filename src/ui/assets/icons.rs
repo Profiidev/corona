@@ -1,6 +1,6 @@
 use gpui_kit::{
   AssetSource, Result, SharedString, Window,
-  assets::Assets as KitAssets,
+  assets::AllAssets as KitAssets,
   component::{IconNamed, icon_named},
   prelude::{IntoElement, RenderOnce},
 };

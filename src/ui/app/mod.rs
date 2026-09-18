@@ -1,3 +1,4 @@
+mod control_panel;
 mod panels;
 mod widgets;
 
