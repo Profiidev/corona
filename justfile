@@ -1,4 +1,4 @@
-gpui_version := "0.3.4"
+gpui_version := "0.3.5"
 gpui_crates := "gpui-pre gpui-pre-linux"
 
 layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })'

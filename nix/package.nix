@@ -13,7 +13,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.4";
+  gpuiVersion = "0.3.5";
 
   vendorCrate =
     pname: hash:

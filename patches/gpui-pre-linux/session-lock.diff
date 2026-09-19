@@ -354,7 +354,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  
          Ok((this, surface.id()))
      }
-@@ -1321,6 +1373,36 @@
+@@ -1321,6 +1373,37 @@
          }
      }
  
@@ -380,6 +380,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
 +            fullscreen: false,
 +            maximized: false,
 +            resizing: false,
++            visibility: WindowVisibility::Visible,
 +            tiling: Tiling::default(),
 +        });
 +        drop(state);
