@@ -1,17 +1,16 @@
-use gpui_kit::{
-  AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div,
-};
+use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
 
 use crate::ui::{
   app::control_center::{
-    layout::ControlCenterLayout,
-    nav::{ControlCenterNav, ControlCenterNavState},
+    ControlCenterPanelHandle, layout::ControlCenterLayout, nav::ControlCenterNav,
+    variants::ControlCenterType,
   },
   panel::Panel,
 };
 
 pub struct ControlCenter {
-  nav_state: Entity<ControlCenterNavState>,
+  selected: ControlCenterType,
+  panel: Box<dyn ControlCenterPanelHandle>,
 }
 
 impl Panel for ControlCenter {
@@ -20,20 +19,36 @@ impl Panel for ControlCenter {
   const HEIGHT: f32 = 600.0;
 
   fn init(cx: &mut Context<'_, Self>) -> Self {
-    let nav_state = cx.new(|_| ControlCenterNavState::new());
+    let selected = ControlCenterType::Dashboard;
 
-    ControlCenter { nav_state }
+    ControlCenter {
+      panel: selected.handle(cx),
+      selected,
+    }
   }
 }
 
 impl Render for ControlCenter {
-  fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     div()
       .size_full()
       .flex()
       .gap_2()
       .p_2()
-      .child(ControlCenterNav::new(&self.nav_state))
-      .child(ControlCenterLayout::new(&self.nav_state))
+      .child(ControlCenterNav::new(self.selected).on_click({
+        let handle = cx.entity().downgrade();
+        move |new, _, cx| {
+          let _ = handle.update(cx, |this, cx| {
+            this.selected = new;
+            this.panel = new.handle(cx);
+            cx.notify();
+          });
+        }
+      }))
+      .child(
+        ControlCenterLayout::new(self.selected)
+          .buttons(self.panel.buttons(cx).into_iter())
+          .content(self.panel.view()),
+      )
   }
 }

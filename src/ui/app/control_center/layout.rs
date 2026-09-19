@@ -1,35 +1,30 @@
 use gpui_kit::{
-  AnyElement, App, Entity, IntoElement, ParentElement, RenderOnce, Styled, Window,
-  assets::IconName, base::StyledExt, component::button::Button, div,
+  AnyElement, App, IntoElement, ParentElement, RenderOnce, Styled, Window, assets::IconName,
+  base::StyledExt, component::button::Button, div,
 };
 
 use crate::{
   error::ErrorLogExt,
   ui::{
-    app::control_center::{ControlCenter, nav::ControlCenterNavState},
+    app::control_center::{ControlCenter, variants::ControlCenterType},
     panel::AppPanelExt,
   },
 };
 
 #[derive(IntoElement)]
 pub struct ControlCenterLayout {
-  state: Entity<ControlCenterNavState>,
+  selected: ControlCenterType,
   buttons: Vec<AnyElement>,
   content: Option<AnyElement>,
 }
 
 impl ControlCenterLayout {
-  pub fn new(title: &Entity<ControlCenterNavState>) -> Self {
+  pub fn new(selected: ControlCenterType) -> Self {
     ControlCenterLayout {
-      state: title.clone(),
+      selected,
       buttons: Vec::new(),
       content: None,
     }
-  }
-
-  pub fn button(mut self, button: impl IntoElement) -> Self {
-    self.buttons.push(button.into_any_element());
-    self
   }
 
   pub fn buttons(mut self, buttons: impl Iterator<Item = impl IntoElement>) -> Self {
@@ -44,9 +39,7 @@ impl ControlCenterLayout {
 }
 
 impl RenderOnce for ControlCenterLayout {
-  fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let state = self.state.read(cx);
-
+  fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
     div()
       .size_full()
       .flex()
@@ -59,7 +52,7 @@ impl RenderOnce for ControlCenterLayout {
           .gap_2()
           .child(
             div()
-              .child(state.selected.title())
+              .child(self.selected.title())
               .font_bold()
               .text_base()
               .mr_auto(),

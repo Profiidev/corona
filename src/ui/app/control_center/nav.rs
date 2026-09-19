@@ -1,43 +1,46 @@
+use std::rc::Rc;
+
 use gpui_kit::{
-  App, Entity, IntoElement, ParentElement, RenderOnce, Styled, Window,
+  App, IntoElement, ParentElement, RenderOnce, Styled, Window,
   component::{
     ActiveTheme,
     button::{Button, ButtonVariant, ButtonVariants},
   },
-  div, px,
+  div,
+  prelude::FluentBuilder,
+  px,
 };
 
 use crate::ui::app::control_center::variants::ControlCenterType;
 
 #[derive(IntoElement)]
 pub struct ControlCenterNav {
-  state: Entity<ControlCenterNavState>,
-}
-
-pub struct ControlCenterNavState {
-  pub selected: ControlCenterType,
+  selected: ControlCenterType,
+  #[allow(clippy::type_complexity)]
+  on_click: Option<Rc<dyn Fn(ControlCenterType, &mut Window, &mut App) + 'static>>,
 }
 
 impl ControlCenterNav {
-  pub fn new(state: &Entity<ControlCenterNavState>) -> Self {
+  pub fn new(selected: ControlCenterType) -> Self {
     ControlCenterNav {
-      state: state.clone(),
+      selected,
+      on_click: None,
     }
   }
-}
 
-impl ControlCenterNavState {
-  pub fn new() -> Self {
-    ControlCenterNavState {
-      selected: ControlCenterType::Dashboard,
-    }
+  pub fn on_click<F>(mut self, f: F) -> Self
+  where
+    F: Fn(ControlCenterType, &mut Window, &mut App) + 'static,
+  {
+    self.on_click = Some(Rc::new(f));
+    self
   }
 }
 
 impl RenderOnce for ControlCenterNav {
   fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
     let theme = cx.theme();
-    let selected = self.state.read(cx).selected;
+    let on_click = self.on_click;
 
     div()
       .w(px(48.))
@@ -50,7 +53,7 @@ impl RenderOnce for ControlCenterNav {
       .bg(theme.tokens.sidebar)
       .children(ControlCenterType::iter().map(|v| {
         Button::new(v.as_str())
-          .with_variant(if selected == v {
+          .with_variant(if self.selected == v {
             ButtonVariant::Primary
           } else {
             ButtonVariant::Ghost
@@ -58,14 +61,8 @@ impl RenderOnce for ControlCenterNav {
           .tooltip(v.title())
           .cursor_pointer()
           .icon(v.icon())
-          .on_click({
-            let state = self.state.clone();
-            move |_, _, cx| {
-              state.update(cx, |this, cx| {
-                this.selected = v;
-                cx.notify();
-              });
-            }
+          .when_some(on_click.clone(), |button, on_click| {
+            button.on_click(move |_, window, cx| on_click(v, window, cx))
           })
       }))
   }

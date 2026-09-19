@@ -1,4 +1,9 @@
-use gpui_kit::assets::IconName;
+use gpui_kit::{App, assets::IconName};
+
+use crate::ui::app::control_center::{
+  ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, dashboard::DashboardPanel,
+  network::NetworkPanel,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlCenterType {
@@ -39,5 +44,13 @@ impl ControlCenterType {
       ControlCenterType::Network,
     ]
     .into_iter()
+  }
+
+  pub fn handle(&self, cx: &mut App) -> Box<dyn ControlCenterPanelHandle> {
+    match self {
+      ControlCenterType::Dashboard => DashboardPanel::handle(cx),
+      ControlCenterType::Audio => AudioPanel::handle(cx),
+      ControlCenterType::Network => NetworkPanel::handle(cx),
+    }
   }
 }
