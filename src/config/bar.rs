@@ -26,7 +26,7 @@ impl Default for BarConfig {
       height: 30.0,
       start_widgets: vec![
         WidgetConfig {
-          widget_type: WidgetType::ControlPanel,
+          widget_type: WidgetType::ControlCenter,
         },
         WidgetConfig {
           widget_type: WidgetType::Workspaces,
@@ -36,10 +36,10 @@ impl Default for BarConfig {
         },
       ],
       center_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::ControlPanel,
+        widget_type: WidgetType::ControlCenter,
       }],
       end_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::ControlPanel,
+        widget_type: WidgetType::ControlCenter,
       }],
     }
   }

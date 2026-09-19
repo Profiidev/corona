@@ -12,7 +12,7 @@ mod workspaces;
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WidgetType {
-  ControlPanel,
+  ControlCenter,
   Workspaces,
   ActiveWindow,
 }
@@ -20,7 +20,7 @@ pub enum WidgetType {
 impl WidgetType {
   pub fn init(&self, cx: &mut App, display_id: Uuid) -> AnyView {
     match self {
-      WidgetType::ControlPanel => control_panel::ControlPanelButton::view(cx, display_id),
+      WidgetType::ControlCenter => control_panel::ControlCenterButton::view(cx, display_id),
       WidgetType::Workspaces => workspaces::widget::Workspaces::view(cx, display_id),
       WidgetType::ActiveWindow => active_window::ActiveWindow::view(cx, display_id),
     }

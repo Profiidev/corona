@@ -2,21 +2,21 @@ use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
 use crate::ui::{
-  app::{control_panel::ControlPanel, widgets::button::Button},
+  app::{control_center::ControlCenter, widgets::button::Button},
   assets::icons::IconName,
   bar::Widget,
 };
 
-pub struct ControlPanelButton;
+pub struct ControlCenterButton;
 
-impl Widget for ControlPanelButton {
+impl Widget for ControlCenterButton {
   fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
-    ControlPanelButton
+    ControlCenterButton
   }
 }
 
-impl Render for ControlPanelButton {
+impl Render for ControlCenterButton {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    Button::<_, ControlPanel>::new(cx, "control-panel-button", IconName::Nixos)
+    Button::<_, ControlCenter>::new(cx, "control-panel-button", IconName::Nixos)
   }
 }

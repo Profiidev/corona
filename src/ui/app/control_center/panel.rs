@@ -3,37 +3,37 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-  app::control_panel::{
-    layout::ControlPanelLayout,
-    nav::{ControlPanelNav, ControlPanelNavState},
+  app::control_center::{
+    layout::ControlCenterLayout,
+    nav::{ControlCenterNav, ControlCenterNavState},
   },
   panel::Panel,
 };
 
-pub struct ControlPanel {
-  nav_state: Entity<ControlPanelNavState>,
+pub struct ControlCenter {
+  nav_state: Entity<ControlCenterNavState>,
 }
 
-impl Panel for ControlPanel {
+impl Panel for ControlCenter {
   const NAME: &'static str = "control_panel";
   const WIDTH: f32 = 500.0;
   const HEIGHT: f32 = 600.0;
 
   fn init(cx: &mut Context<'_, Self>) -> Self {
-    let nav_state = cx.new(|_| ControlPanelNavState::new());
+    let nav_state = cx.new(|_| ControlCenterNavState::new());
 
-    ControlPanel { nav_state }
+    ControlCenter { nav_state }
   }
 }
 
-impl Render for ControlPanel {
+impl Render for ControlCenter {
   fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
     div()
       .size_full()
       .flex()
       .gap_2()
       .p_2()
-      .child(ControlPanelNav::new(&self.nav_state))
-      .child(ControlPanelLayout::new("Dashboard"))
+      .child(ControlCenterNav::new(&self.nav_state))
+      .child(ControlCenterLayout::new(&self.nav_state))
   }
 }
