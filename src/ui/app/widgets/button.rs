@@ -9,7 +9,7 @@ use gpui_kit::{
 
 use crate::ui::{
   bar::Widget,
-  panel::{Panel, PanelExt},
+  panel::{Panel, WdigetPanelExt},
 };
 
 #[derive(IntoElement)]

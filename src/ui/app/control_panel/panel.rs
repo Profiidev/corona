@@ -3,7 +3,10 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-  app::control_panel::nav::{ControlPanelNav, ControlPanelNavState},
+  app::control_panel::{
+    layout::ControlPanelLayout,
+    nav::{ControlPanelNav, ControlPanelNavState},
+  },
   panel::Panel,
 };
 
@@ -27,7 +30,10 @@ impl Render for ControlPanel {
   fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
     div()
       .size_full()
+      .flex()
+      .gap_2()
       .p_2()
       .child(ControlPanelNav::new(&self.nav_state))
+      .child(ControlPanelLayout::new("Dashboard"))
   }
 }

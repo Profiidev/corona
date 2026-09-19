@@ -62,6 +62,14 @@ impl PanelState {
     Self::open_new::<P>(new_align, placement, display_id, cx)
   }
 
+  pub fn close<P: Panel>(cx: &mut App) -> Result<()> {
+    if let Some((_, panel)) = Self::get(P::NAME, cx) {
+      panel.update(cx, |panel, cx| panel.close(cx));
+    }
+
+    Ok(())
+  }
+
   fn open_new<P: Panel>(
     align: Align,
     placement: Placement,
@@ -115,11 +123,11 @@ impl PanelState {
   }
 }
 
-pub trait PanelExt {
+pub trait WdigetPanelExt {
   fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()>;
 }
 
-impl<W: Widget> PanelExt for Context<'_, W> {
+impl<W: Widget> WdigetPanelExt for Context<'_, W> {
   fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()> {
     let widget_id = self.entity_id();
     let bar = BarState::get(window, self)
@@ -130,5 +138,15 @@ impl<W: Widget> PanelExt for Context<'_, W> {
       .context("no bounds for this widget")?;
 
     PanelState::toggle::<P>(button_bounds, bar.bounds(), bar.placement(), window, self)
+  }
+}
+
+pub trait AppPanelExt {
+  fn close_panel<P: Panel>(&mut self) -> Result<()>;
+}
+
+impl AppPanelExt for App {
+  fn close_panel<P: Panel>(&mut self) -> Result<()> {
+    PanelState::close::<P>(self)
   }
 }
