@@ -34,8 +34,18 @@ impl Hyprland {
         };
 
         for line in BufReader::new(socket).lines().map_while(Result::ok) {
-          if tx.send(line).is_err() {
-            break; // Channel closed, exit the loop
+          let events = match ipc.parse_event(&line) {
+            Ok(events) => events,
+            Err(e) => {
+              warn!("Failed to parse hyprland event: {}", e);
+              continue;
+            }
+          };
+
+          for event in events {
+            if tx.send(event).is_err() {
+              break; // Channel closed, exit the loop
+            }
           }
         }
       }
@@ -43,20 +53,8 @@ impl Hyprland {
 
     cx.new(|cx| {
       cx.spawn(async move |this, cx| {
-        while let Ok(line) = rx.recv_async().await {
-          let ipc = ipc.clone();
-          let parsed = cx
-            .background_spawn(async move { ipc.parse_event(&line) })
-            .await;
-
-          match parsed {
-            Ok(events) => {
-              for event in events {
-                let _ = this.update(cx, |_, cx| cx.emit(event));
-              }
-            }
-            Err(e) => warn!("Failed to parse hyprland event: {}", e),
-          }
+        while let Ok(event) = rx.recv_async().await {
+          let _ = this.update(cx, |_, cx| cx.emit(event));
         }
       })
       .detach();

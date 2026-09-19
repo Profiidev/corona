@@ -1,7 +1,7 @@
 use std::{
   collections::HashMap,
   path::{Path, PathBuf},
-  sync::OnceLock,
+  sync::{Mutex, OnceLock},
 };
 
 use freedesktop_desktop_entry::{DesktopEntry, Iter, default_paths, get_languages_from_env};
@@ -112,12 +112,26 @@ fn parse_icon_theme(settings: &str) -> Option<String> {
 
 /// `size` is a preference, not a filter: a theme that lacks it falls back to
 /// its closest directory, so the file may come back at any resolution.
+/// Memoized: a name nothing answers to costs a full walk of the theme chain
+/// (~17ms here), and every render of every window icon repeats it. Misses are
+/// cached too; icons installed while corona runs are not picked up.
 fn lookup(name: &str, size: u16) -> Option<PathBuf> {
-  freedesktop_icons::lookup(name)
+  static CACHE: OnceLock<Mutex<HashMap<(String, u16), Option<PathBuf>>>> = OnceLock::new();
+  let cache = CACHE.get_or_init(Mutex::default);
+
+  let key = (name.to_string(), size);
+  if let Some(path) = cache.lock().ok()?.get(&key) {
+    return path.clone();
+  }
+
+  let path = freedesktop_icons::lookup(name)
     .with_theme(icon_theme())
     .with_size(size)
     .with_cache()
-    .find()
+    .find();
+
+  cache.lock().ok()?.insert(key, path.clone());
+  path
 }
 
 /// Resolve the first of `names` anything answers to. Pass what is known, best
@@ -200,6 +214,16 @@ mod tests {
   }
 
   #[test]
+  fn a_missing_icon_is_looked_up_once() {
+    use std::time::Instant;
+
+    icon_for_names_or_default(["corona-no-such-app"], 24);
+    let start = Instant::now();
+    icon_for_names_or_default(["corona-no-such-app"], 24);
+    assert!(start.elapsed().as_millis() < 5, "lookup is not cached");
+  }
+
+  #[test]
   fn resolved_icons_exist_on_disk() {
     // Any entry on this machine will do; the map is empty on a bare CI box.
     let Some(class) = icon_names().keys().next() else {
@@ -211,3 +235,4 @@ mod tests {
     }
   }
 }
+
