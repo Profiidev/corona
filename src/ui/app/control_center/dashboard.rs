@@ -5,7 +5,7 @@ use crate::ui::app::control_center::ControlCenterPanel;
 pub struct DashboardPanel {}
 
 impl ControlCenterPanel for DashboardPanel {
-  fn init(_cx: &mut Context<'_, Self>) -> Self {
+  fn init(_window: &mut Window, _cx: &mut Context<'_, Self>) -> Self {
     Self {}
   }
 }

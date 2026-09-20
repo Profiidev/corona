@@ -18,11 +18,11 @@ impl Panel for ControlCenter {
   const WIDTH: f32 = 500.0;
   const HEIGHT: f32 = 600.0;
 
-  fn init(cx: &mut Context<'_, Self>) -> Self {
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let selected = ControlCenterType::Dashboard;
 
     ControlCenter {
-      panel: selected.handle(cx),
+      panel: selected.handle(window, cx),
       selected,
     }
   }
@@ -37,10 +37,10 @@ impl Render for ControlCenter {
       .p_2()
       .child(ControlCenterNav::new(self.selected).on_click({
         let handle = cx.entity().downgrade();
-        move |new, _, cx| {
+        move |new, window, cx| {
           let _ = handle.update(cx, |this, cx| {
             this.selected = new;
-            this.panel = new.handle(cx);
+            this.panel = new.handle(window, cx);
             cx.notify();
           });
         }

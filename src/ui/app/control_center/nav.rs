@@ -49,8 +49,9 @@ impl RenderOnce for ControlCenterNav {
       .flex()
       .flex_col()
       .gap_1()
+      .mr_2()
       .rounded_2xl()
-      .bg(theme.tokens.sidebar)
+      .bg(theme.tokens.accent)
       .children(ControlCenterType::iter().map(|v| {
         Button::new(v.as_str())
           .with_variant(if self.selected == v {

@@ -5,7 +5,7 @@ use crate::ui::app::control_center::ControlCenterPanel;
 pub struct NetworkPanel {}
 
 impl ControlCenterPanel for NetworkPanel {
-  fn init(_cx: &mut Context<'_, Self>) -> Self {
+  fn init(_window: &mut Window, _cx: &mut Context<'_, Self>) -> Self {
     Self {}
   }
 }

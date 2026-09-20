@@ -100,7 +100,7 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new::<P>(align, placement, cx));
+        let view = cx.new(|cx| BasePanel::new::<P>(align, placement, window, cx));
         let state = cx.global_mut::<PanelState>();
         state
           .panels

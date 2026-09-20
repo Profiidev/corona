@@ -17,6 +17,16 @@ pub use api::Pipewire;
 pub use event::PipewireEvent;
 pub use state::{AudioNode, NodeType};
 
+pub trait PipewireExt {
+  fn pipewire(&self) -> &Pipewire;
+}
+
+impl PipewireExt for App {
+  fn pipewire(&self) -> &Pipewire {
+    self.global::<Pipewire>()
+  }
+}
+
 pub fn init(cx: &mut App) -> Result<()> {
   let (event_tx, event_rx) = flume::unbounded();
   let (command_tx, state) = spawn(event_tx)?;

@@ -6,18 +6,18 @@ mod network;
 mod panel;
 mod variants;
 
-use gpui_kit::{AnyElement, AnyView, App, AppContext, Context, Entity, Render};
+use gpui_kit::{AnyElement, AnyView, App, AppContext, Context, Entity, Render, Window};
 pub use panel::ControlCenter;
 
 trait ControlCenterPanel: Render {
-  fn init(cx: &mut Context<'_, Self>) -> Self;
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self;
 
   fn buttons(&mut self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
     vec![]
   }
 
-  fn handle(cx: &mut App) -> Box<dyn ControlCenterPanelHandle> {
-    Box::new(cx.new(|cx| Self::init(cx)))
+  fn handle(window: &mut Window, cx: &mut App) -> Box<dyn ControlCenterPanelHandle> {
+    Box::new(cx.new(|cx| Self::init(window, cx)))
   }
 }
 

@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use gpui_kit::{
   AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
-  PathBuilder, Pixels, Render, Styled, canvas, component::ActiveTheme, div, prelude::FluentBuilder,
-  px,
+  PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
+  prelude::FluentBuilder, px,
 };
 
 use crate::{
@@ -36,9 +36,10 @@ impl BasePanel {
   pub fn new<P: Panel>(
     align: Align,
     placement: Placement,
+    window: &mut Window,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
-    let panel = cx.new(P::init);
+    let panel = cx.new(|cx| P::init(window, cx));
 
     Self {
       panel: panel.into(),
