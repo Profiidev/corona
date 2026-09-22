@@ -14,6 +14,7 @@ mod listener;
 mod state;
 
 pub use api::Pipewire;
+pub use audio::PipewireAudio;
 pub use event::PipewireEvent;
 pub use state::{AudioNode, NodeType};
 

@@ -6,6 +6,6 @@ pub trait PanelStyle {
 
 impl PanelStyle for Theme {
   fn panel_radius(&self) -> f32 {
-    self.radius_2xl().as_f32()
+    (self.radius * 2).as_f32()
   }
 }

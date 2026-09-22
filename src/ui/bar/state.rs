@@ -137,7 +137,7 @@ impl BarState {
   }
 
   pub fn create(cx: &mut App, config: BarConfig, display_id: DisplayId) -> Result<AnyWindowHandle> {
-    let flare = cx.theme().radius_2xl().as_f32();
+    let flare = (cx.theme().radius * 2).as_f32();
     // Resolved here, not in the widgets: a layer-shell window has no output
     // until the compositor sends `wl_surface::enter`, so `window.display()` is
     // still `None` while the widgets are being built.

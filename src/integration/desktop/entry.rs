@@ -48,19 +48,31 @@ fn keys(entry: &DesktopEntry, locales: &[String]) -> Vec<String> {
   keys
 }
 
-/// Every name an application is known by (lowercased) to the `Icon=` value of
-/// its desktop entry.
+/// What an entry is worth looking up: its `Icon=` and its display name.
+#[derive(Clone)]
+struct Entry {
+  icon: Option<String>,
+  name: Option<String>,
+}
+
+/// Every name an application is known by (lowercased) to its desktop entry.
 ///
 /// Built once: every lookup would otherwise re-walk each `applications/`
 /// directory on disk. Entries installed while corona runs are not picked up.
-fn icon_names() -> &'static HashMap<String, String> {
-  static NAMES: OnceLock<HashMap<String, String>> = OnceLock::new();
+fn entries() -> &'static HashMap<String, Entry> {
+  static NAMES: OnceLock<HashMap<String, Entry>> = OnceLock::new();
 
   NAMES.get_or_init(|| {
     let locales = get_languages_from_env();
     let entries: Vec<_> = Iter::new(default_paths())
       .entries(Some(&locales))
-      .filter_map(|entry| Some((keys(&entry, &locales), entry.icon()?.to_string())))
+      .map(|entry| {
+        let found = Entry {
+          icon: entry.icon().map(str::to_string),
+          name: entry.name(&locales).map(|name| name.to_string()),
+        };
+        (keys(&entry, &locales), found)
+      })
       .collect();
 
     // Rank by key strength across all entries, not within one: an appid has to
@@ -68,9 +80,9 @@ fn icon_names() -> &'static HashMap<String, String> {
     // insert wins, so the strongest key goes in last.
     let mut names = HashMap::new();
     for rank in (0..KEY_RANKS).rev() {
-      for (keys, icon) in &entries {
+      for (keys, entry) in &entries {
         if let Some(key) = keys.get(rank) {
-          names.insert(key.clone(), icon.clone());
+          names.insert(key.clone(), entry.clone());
         }
       }
     }
@@ -146,8 +158,18 @@ pub fn icon_for_names<'n>(names: impl IntoIterator<Item = &'n str>, size: u16) -
   })
 }
 
+/// The display name of the desktop entry the first of `names` answers to.
+/// Pass what is known, best first, like [`icon_for_names`]. A pipewire stream
+/// reports `Brave`, its entry is called `Brave Web Browser`.
+pub fn name_for_names<'n>(names: impl IntoIterator<Item = &'n str>) -> Option<String> {
+  names.into_iter().find_map(|name| {
+    let name = undecorate(name).to_lowercase();
+    entries().get(&name)?.name.clone()
+  })
+}
+
 fn entry_icon(name: &str, size: u16) -> Option<PathBuf> {
-  let icon = icon_names().get(name)?;
+  let icon = entries().get(name)?.icon.as_ref()?;
 
   // `Icon=` may be an absolute path. Look its stem up in the theme first so a
   // themed replacement still wins, then fall back to the file the app shipped.
@@ -209,8 +231,8 @@ mod tests {
   fn entries_without_startup_wm_class_are_kept() {
     // Most desktop files set no StartupWMClass; keying only off that would
     // leave the map nearly empty on any real system.
-    println!("{} classes mapped", icon_names().len());
-    assert!(icon_for_names(["alacritty"], 24).is_some() || icon_names().is_empty());
+    println!("{} classes mapped", entries().len());
+    assert!(icon_for_names(["alacritty"], 24).is_some() || entries().is_empty());
   }
 
   #[test]
@@ -224,9 +246,20 @@ mod tests {
   }
 
   #[test]
+  fn an_entry_answers_to_every_name_it_is_keyed_by() {
+    // Any entry on this machine will do; the map is empty on a bare CI box.
+    let Some((class, entry)) = entries().iter().find(|(_, entry)| entry.name.is_some()) else {
+      return;
+    };
+
+    assert_eq!(name_for_names([class.as_str()]), entry.name);
+    assert_eq!(name_for_names(["corona-no-such-app"]), None);
+  }
+
+  #[test]
   fn resolved_icons_exist_on_disk() {
     // Any entry on this machine will do; the map is empty on a bare CI box.
-    let Some(class) = icon_names().keys().next() else {
+    let Some(class) = entries().keys().next() else {
       return;
     };
 
@@ -235,4 +268,5 @@ mod tests {
     }
   }
 }
+
 
