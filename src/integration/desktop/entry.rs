@@ -128,6 +128,7 @@ fn parse_icon_theme(settings: &str) -> Option<String> {
 /// (~17ms here), and every render of every window icon repeats it. Misses are
 /// cached too; icons installed while corona runs are not picked up.
 fn lookup(name: &str, size: u16) -> Option<PathBuf> {
+  #[allow(clippy::type_complexity)]
   static CACHE: OnceLock<Mutex<HashMap<(String, u16), Option<PathBuf>>>> = OnceLock::new();
   let cache = CACHE.get_or_init(Mutex::default);
 
