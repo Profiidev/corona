@@ -15,7 +15,7 @@ mod state;
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
-pub use event::PipewireEvent;
+pub use event::{PipewireEvent, PipewireEventEmitter};
 pub use state::{AudioNode, NodeType};
 
 pub trait PipewireExt {

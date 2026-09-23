@@ -53,6 +53,6 @@ impl Pipewire {
   }
 
   pub fn audio(&self) -> PipewireAudio<'_> {
-    PipewireAudio(&self)
+    PipewireAudio(self)
   }
 }
