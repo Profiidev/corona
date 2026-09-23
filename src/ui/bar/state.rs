@@ -18,8 +18,7 @@ use uuid::Uuid;
 use crate::{
   APP_NAME,
   config::{ConfigProvider, bar::BarConfig, placement::Placement},
-  error::ErrorLogExt,
-  integration::compositor::{CompositorExt, event::CompositorEvent},
+  integration::compositor::CompositorExt,
   ui::{
     bar::{BAR_NAMESPACE, base::Bar},
     utils::display_uuid,
@@ -45,11 +44,9 @@ impl BarState {
       subscription: None,
     });
 
-    let emitter = cx.compositor().emitter().clone();
-    let subscription = cx.subscribe(&emitter, |_, event, cx| {
-      if matches!(event, CompositorEvent::Monitor(_)) {
-        Self::reconcile_soon(cx);
-      }
+    let monitors = cx.compositor().monitors.clone();
+    let subscription = cx.observe(&monitors, |_, cx| {
+      Self::reconcile_soon(cx);
     });
     cx.global_mut::<BarState>().subscription = Some(subscription);
 
@@ -75,12 +72,7 @@ impl BarState {
 
   /// checks if internal gpui display list has caught up to the compositor's monitor list
   fn displays_ready(cx: &mut App) -> bool {
-    let monitors = cx
-      .compositor()
-      .list_monitors()
-      .log_err()
-      .unwrap_or_default();
-
+    let monitors = cx.compositor().list_monitors(cx);
     let displays: HashSet<Uuid> = cx.displays().iter().filter_map(|d| d.uuid().ok()).collect();
 
     monitors
@@ -90,11 +82,7 @@ impl BarState {
   }
 
   fn reconcile(cx: &mut App) {
-    let monitors = cx
-      .compositor()
-      .list_monitors()
-      .log_err()
-      .unwrap_or_default();
+    let monitors = cx.compositor().list_monitors(cx);
 
     let displays: HashMap<Uuid, DisplayId> = cx
       .displays()

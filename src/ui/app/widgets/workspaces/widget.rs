@@ -15,7 +15,6 @@ use crate::{
   error::ErrorLogExt,
   integration::compositor::{
     CompositorExt,
-    event::CompositorEvent,
     types::{self, Workspace},
   },
   ui::{
@@ -35,25 +34,21 @@ const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 pub struct Workspaces {
   windows: HashMap<String, Vec<types::Window>>,
   workspaces: Vec<Workspace>,
-  active_workspace: Option<String>,
-  active_window: Option<String>,
   pill_size: HashMap<String, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   current_tooltip: Option<(String, String, AnyWindowHandle)>,
   current_hover: Option<Task<()>>,
-  #[allow(dead_code)]
-  subscription: Subscription,
+  _subscriptions: [Subscription; 4],
 }
 
 impl Widget for Workspaces {
   fn init(cx: &mut Context<'_, Self>, display_id: Uuid) -> Self {
     let compositor = cx.compositor();
 
-    let mut workspaces = compositor.list_workspaces().log_err().unwrap_or_default();
+    let windows = compositor.list_windows(cx);
+    let mut workspaces = compositor.list_workspaces(cx).to_vec();
     workspaces.retain(|w| w.display_id() == display_id);
-    workspaces.sort_unstable_by_key(|w| w.id.clone());
 
-    let windows = compositor.list_windows().log_err().unwrap_or_default();
     let mut windows_by_workspace: HashMap<String, Vec<types::Window>> = HashMap::new();
     for window in windows {
       if workspaces.iter().all(|w| w.id != window.workspace) {
@@ -63,99 +58,88 @@ impl Widget for Workspaces {
       windows_by_workspace
         .entry(window.workspace.clone())
         .or_default()
-        .push(window);
-    }
-    for windows in windows_by_workspace.values_mut() {
-      windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+        .push(window.clone());
     }
 
-    let active_workspace = compositor.active_workspace().log_err().map(|w| w.id).ok();
-    let active_window = compositor
-      .active_window()
-      .log_err()
-      .ok()
-      .flatten()
-      .map(|w| w.address);
+    let workspace = compositor.workspaces.clone();
+    let window = compositor.windows.clone();
+    let active_workspace = compositor.active_workspace.clone();
+    let active_window = compositor.active_window.clone();
 
-    let emitter = compositor.emitter().clone();
-    let subscription = cx.subscribe(&emitter, move |this, _, e, cx| match e {
-      CompositorEvent::ActiveWorkspace(workspace) => {
-        this.active_workspace = Some(workspace.id.clone());
-        cx.notify();
+    let workspace_subscription = cx.observe(&workspace, move |this, e, cx| {
+      let mut workspaces: Vec<Workspace> = e.read(cx).to_vec();
+      workspaces.retain(|w| w.display_id() == display_id);
+
+      this
+        .pill_size
+        .retain(|id, _| workspaces.iter().any(|w| &w.id == id));
+      this
+        .windows
+        .retain(|id, _| workspaces.iter().any(|w| &w.id == id));
+      this.workspaces = workspaces;
+
+      if let Some(tooltip) = &this.current_tooltip
+        && this.workspaces.iter().all(|w| w.id != tooltip.0)
+      {
+        this.current_tooltip = None;
+        this.current_hover = None;
+        cx.hide_tooltip::<WindowTitle>();
       }
-      CompositorEvent::Workspace(workspaces) => {
-        this.workspaces = workspaces.clone();
-        this.workspaces.retain(|w| w.display_id() == display_id);
-        this.workspaces.sort_unstable_by_key(|w| w.id.clone());
 
-        if let Some(tooltip) = &this.current_tooltip
-          && this.workspaces.iter().all(|w| w.id != tooltip.0)
-        {
-          this.current_tooltip = None;
-          this.current_hover = None;
-          cx.hide_tooltip::<WindowTitle>();
+      cx.notify();
+    });
+
+    let window_subscription = cx.observe(&window, |this, e, cx| {
+      this.windows.clear();
+
+      for window in e.read(cx) {
+        if this.workspaces.iter().all(|w| w.id != window.workspace) {
+          continue;
         }
 
-        cx.notify();
+        this
+          .windows
+          .entry(window.workspace.clone())
+          .or_default()
+          .push(window.clone());
       }
-      CompositorEvent::Window(windows) => {
-        this.windows.clear();
 
-        for window in windows.clone() {
-          if this.workspaces.iter().all(|w| w.id != window.workspace) {
-            continue;
+      if let Some((workspace, address, handle)) = this.current_tooltip.clone() {
+        let title = this
+          .windows
+          .get(&workspace)
+          .and_then(|windows| windows.iter().find(|w| w.address == address))
+          .map(|w| w.title.clone());
+        let bounds = this.icon_bounds.get(&address).map(|b| b.get());
+
+        match (title, bounds) {
+          (Some(title), Some(bounds)) => {
+            let _ = handle.update(cx, |_, window, cx| {
+              cx.show_bar_tooltip(WindowTitle::new(title), bounds, window)
+                .log_err()
+                .ok();
+            });
           }
-
-          this
-            .windows
-            .entry(window.workspace.clone())
-            .or_default()
-            .push(window);
-        }
-
-        for windows in this.windows.values_mut() {
-          windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
-        }
-
-        if let Some((workspace, address, handle)) = this.current_tooltip.clone() {
-          let title = this
-            .windows
-            .get(&workspace)
-            .and_then(|windows| windows.iter().find(|w| w.address == address))
-            .map(|w| w.title.clone());
-          let bounds = this.icon_bounds.get(&address).map(|b| b.get());
-
-          match (title, bounds) {
-            (Some(title), Some(bounds)) => {
-              let _ = handle.update(cx, |_, window, cx| {
-                cx.show_bar_tooltip(WindowTitle::new(title), bounds, window)
-                  .log_err()
-                  .ok();
-              });
-            }
-            _ => {
-              this.current_tooltip = None;
-              this.current_hover = None;
-              cx.hide_tooltip::<WindowTitle>();
-            }
+          _ => {
+            this.current_tooltip = None;
+            this.current_hover = None;
+            cx.hide_tooltip::<WindowTitle>();
           }
         }
+      }
 
-        cx.notify();
-      }
-      CompositorEvent::ActiveWindow(window) => {
-        this.active_window = window.as_ref().map(|w| w.address.clone());
-        cx.notify();
-      }
-      _ => {}
+      cx.notify();
     });
 
     Workspaces {
       windows: windows_by_workspace,
       workspaces,
-      subscription,
-      active_workspace,
-      active_window,
+      _subscriptions: [
+        workspace_subscription,
+        window_subscription,
+        cx.observe(&active_workspace, |_, _, cx| cx.notify()),
+        cx.observe(&active_window, |_, _, cx| cx.notify()),
+      ],
       pill_size: HashMap::new(),
       icon_bounds: HashMap::new(),
       current_tooltip: None,
@@ -171,18 +155,18 @@ impl Render for Workspaces {
     let Self {
       windows,
       workspaces,
-      active_workspace,
-      active_window,
       pill_size,
       icon_bounds,
       ..
     } = self;
+    let active_workspace = cx.compositor().active_workspace(cx);
+    let active_window = cx.compositor().active_window(cx).map(|w| &w.address);
 
     div()
       .flex_bar(window, cx)
       .gap_1()
       .children(workspaces.iter().map(|ws| {
-        let border = if active_workspace.as_ref() == Some(&ws.id) {
+        let border = if active_workspace.id == ws.id {
           theme.tokens.primary
         } else {
           theme.tokens.secondary
@@ -269,7 +253,7 @@ fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
 
 fn workspace_windows(
   windows: &HashMap<String, Vec<types::Window>>,
-  active_window: &Option<String>,
+  active_window: Option<&String>,
   icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   ws: &Workspace,
   theme: &Theme,
@@ -283,7 +267,7 @@ fn workspace_windows(
 
         WindowIcon::new(&w.class, w.address.clone())
           .size(ICON_SIZE)
-          .when(active_window.as_ref() == Some(&w.address), |d| {
+          .when(active_window == Some(&w.address), |d| {
             d.child(
               div()
                 .absolute()

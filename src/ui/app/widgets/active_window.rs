@@ -7,8 +7,7 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::{
-  error::ErrorLogExt,
-  integration::compositor::{CompositorExt, event::CompositorEvent, types},
+  integration::compositor::CompositorExt,
   ui::{
     animation::size::SizeAnimation,
     bar::{BarStyle, Widget},
@@ -23,44 +22,36 @@ const ICON_SIZE: u16 = 18;
 const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 
 pub struct ActiveWindow {
-  active: Option<types::Window>,
   scrolling: Entity<ScrollingTextState>,
   size: SizeAnimation,
-  #[allow(dead_code)]
-  subscription: Subscription,
+  _subscription: Subscription,
 }
 
 impl Widget for ActiveWindow {
   fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
-    let compositor = cx.compositor();
-    let active = compositor.active_window().log_err().ok().flatten();
-
-    let emitter = compositor.emitter().clone();
-    let subscription = cx.subscribe(&emitter, move |this, _, e, cx| {
-      if let CompositorEvent::ActiveWindow(window) = e {
-        this.active = window.clone();
-        if window.is_none() {
-          this.size.reset();
-          this.scrolling.reset_hover(cx);
-        }
-        cx.notify();
+    let active_window = cx.compositor().active_window.clone();
+    let subscription = cx.observe(&active_window, |this, e, cx| {
+      if e.read(cx).is_none() {
+        this.size.reset();
+        this.scrolling.reset_hover(cx);
       }
+
+      cx.notify();
     });
 
     let scrolling = cx.new(|_| ScrollingTextState::default());
 
     ActiveWindow {
-      active,
       size: SizeAnimation::new(WIDTH_CHANGE),
       scrolling,
-      subscription,
+      _subscription: subscription,
     }
   }
 }
 
 impl Render for ActiveWindow {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let Some(active_window) = self.active.clone() else {
+    let Some(active_window) = cx.compositor().active_window(cx) else {
       return Empty.into_any_element();
     };
 
@@ -77,7 +68,9 @@ impl Render for ActiveWindow {
       .rounded_full()
       .bg(theme.tokens.button_hover)
       .on_hover(self.scrolling.on_hover())
-      .child(WindowIcon::new(active_window.class, active_window.address).size(ICON_SIZE))
+      .child(
+        WindowIcon::new(active_window.class.clone(), active_window.address.clone()).size(ICON_SIZE),
+      )
       .child({
         let title = ScrollingText::new(self.scrolling.clone()).content(active_window.title.clone());
 

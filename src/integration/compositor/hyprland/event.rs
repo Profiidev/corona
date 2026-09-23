@@ -6,20 +6,26 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use gpui_kit::{App, AppContext, Entity};
+use gpui_kit::{App, BorrowAppContext};
 use tracing::{debug, warn};
 
 use crate::integration::compositor::{
-  event::{CompositorEvent, CompositorEventEmitter},
+  Compositor,
   hyprland::{Hyprland, command::Ipc},
+  types,
 };
 
+enum CompositorEvent {
+  Workspace(Vec<types::Workspace>),
+  ActiveWorkspace(types::Workspace),
+  Monitor(Vec<types::Monitor>),
+  ActiveMonitor(types::Monitor),
+  Window(Vec<types::Window>),
+  ActiveWindow(Option<types::Window>),
+}
+
 impl Hyprland {
-  pub fn spawn_event_listener(
-    cx: &mut App,
-    ipc: Ipc,
-    event_path: PathBuf,
-  ) -> Entity<CompositorEventEmitter> {
+  pub fn spawn_event_listener(cx: &mut App, ipc: Ipc, event_path: PathBuf) {
     let (tx, rx) = flume::bounded(100);
 
     thread::spawn(move || {
@@ -51,16 +57,32 @@ impl Hyprland {
       }
     });
 
-    cx.new(|cx| {
-      cx.spawn(async move |this, cx| {
-        while let Ok(event) = rx.recv_async().await {
-          let _ = this.update(cx, |_, cx| cx.emit(event));
-        }
-      })
-      .detach();
-
-      CompositorEventEmitter
+    cx.spawn(async move |cx| {
+      while let Ok(event) = rx.recv_async().await {
+        cx.update(|cx| {
+          cx.update_global::<Compositor, _>(|compositor, cx| match event {
+            CompositorEvent::Workspace(mut workspaces) => {
+              workspaces.sort_unstable_by_key(|w| w.id.clone());
+              compositor.workspaces.write(cx, workspaces)
+            }
+            CompositorEvent::ActiveWorkspace(workspace) => {
+              compositor.active_workspace.write(cx, workspace)
+            }
+            CompositorEvent::Monitor(mut monitors) => {
+              monitors.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+              compositor.monitors.write(cx, monitors)
+            }
+            CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write(cx, monitor),
+            CompositorEvent::Window(mut windows) => {
+              windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+              compositor.windows.write(cx, windows)
+            }
+            CompositorEvent::ActiveWindow(window) => compositor.active_window.write(cx, window),
+          });
+        });
+      }
     })
+    .detach();
   }
 }
 
@@ -106,26 +128,12 @@ impl Ipc {
 
         vec![
           CompositorEvent::ActiveWorkspace(monitor.active_workspace.clone()),
-          CompositorEvent::ActiveScratchpad(monitor.clone()),
           CompositorEvent::ActiveMonitor(monitor),
         ]
       }
       "monitorremoved" | "monitoradded" => {
         let monitors = self.list_monitors()?;
         vec![CompositorEvent::Monitor(monitors)]
-      }
-      "activespecial" => {
-        let (_, monitor_name) = data
-          .split_once(",")
-          .context("Invalid hyprland event format")?;
-
-        let monitors = self.list_monitors()?;
-        let monitor = monitors
-          .into_iter()
-          .find(|m| m.name == monitor_name)
-          .context("Monitor not found")?;
-
-        vec![CompositorEvent::ActiveScratchpad(monitor)]
       }
       _ => {
         debug!(

@@ -1,11 +1,9 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use gpui_kit::{App, Entity};
+use gpui_kit::App;
 
-use crate::integration::compositor::{
-  Compositor, event::CompositorEventEmitter, hyprland::command::Ipc, types,
-};
+use crate::integration::compositor::{CompositorImpl, hyprland::command::Ipc, types};
 
 mod command;
 mod encoding;
@@ -16,7 +14,6 @@ mod workspace;
 
 pub struct Hyprland {
   ipc: Ipc,
-  events: Entity<CompositorEventEmitter>,
 }
 
 impl Hyprland {
@@ -25,25 +22,18 @@ impl Hyprland {
     let ipc = Ipc { cmd_socket };
 
     let event_path = socket_dir.join(".socket2.sock");
-    let events = Self::spawn_event_listener(cx, ipc.clone(), event_path);
+    Self::spawn_event_listener(cx, ipc.clone(), event_path);
 
-    Hyprland { ipc, events }
+    Hyprland { ipc }
   }
 }
 
-impl Compositor for Hyprland {
-  fn emitter(&self) -> &Entity<CompositorEventEmitter> {
-    &self.events
-  }
-
+impl CompositorImpl for Hyprland {
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
     self.ipc.list_workspaces()
   }
   fn active_workspace(&self) -> Result<types::Workspace> {
     self.ipc.active_workspace()
-  }
-  fn focus_workspace(&self, workspace: &str) -> Result<()> {
-    self.ipc.focus_workspace(workspace)
   }
 
   fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
@@ -63,5 +53,9 @@ impl Compositor for Hyprland {
   }
   fn active_window(&self) -> Result<Option<types::Window>> {
     self.ipc.active_window()
+  }
+
+  fn focus_workspace(&self, workspace: &str) -> Result<()> {
+    self.ipc.focus_workspace(workspace)
   }
 }
