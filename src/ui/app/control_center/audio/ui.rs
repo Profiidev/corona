@@ -139,7 +139,6 @@ pub fn audio_stream(theme: &Theme, node: &StreamState, mic: bool) -> Div {
     .flex()
     .p_2()
     .items_center()
-    .gap_2()
     .rounded_xl()
     .bg(theme.tokens.background)
     .child(

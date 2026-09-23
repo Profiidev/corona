@@ -14,6 +14,56 @@ use crate::integration::desktop::entry::icon_for_names_or_default;
 
 const ICON_SIZE: u16 = 256;
 
+/// What one name list resolved to, once anything has asked for it.
+enum Icon {
+  Pending,
+  Ready(Option<PathBuf>),
+}
+
+/// Resolving a name nothing answers to costs a full walk of the icon theme
+/// (~19ms), and a panel can draw twenty applications at once. Keep all of it
+/// off the thread that is drawing them: the first render of a name list starts
+/// the walk and has nothing to draw yet, and the render after it lands draws
+/// the icon. Misses are kept too, so a list is walked once per size.
+fn icon(names: Vec<String>, size: u16, cx: &mut App) -> Option<PathBuf> {
+  type Cache = Mutex<HashMap<(Vec<String>, u16), Icon>>;
+  static CACHE: OnceLock<Cache> = OnceLock::new();
+  let cache = CACHE.get_or_init(Mutex::default);
+
+  let key = (names, size);
+  {
+    let mut icons = cache.lock().ok()?;
+    if let Some(icon) = icons.get(&key) {
+      return match icon {
+        Icon::Pending => None,
+        Icon::Ready(path) => path.clone(),
+      };
+    }
+
+    icons.insert(key.clone(), Icon::Pending);
+  }
+
+  cx.spawn(async move |cx| {
+    let (names, size) = key;
+    let resolved = names.clone();
+    let path = cx
+      .background_executor()
+      .spawn(async move { icon_for_names_or_default(resolved.iter().map(String::as_str), size) })
+      .await;
+
+    if let Ok(mut icons) = CACHE.get_or_init(Mutex::default).lock() {
+      icons.insert((names, size), Icon::Ready(path));
+    }
+
+    // Nothing observes this cache, so the windows holding a placeholder have to
+    // be told to draw again.
+    cx.refresh();
+  })
+  .detach();
+
+  None
+}
+
 #[derive(IntoElement)]
 pub struct WindowIcon {
   base: Stateful<Div>,
@@ -94,14 +144,15 @@ fn rasterize(path: &Path, pixels: i32, cx: &mut App) -> Option<Arc<RenderImage>>
 
 impl RenderOnce for WindowIcon {
   fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let names = self
+    let names: Vec<String> = self
       .names
       .iter()
-      .map(String::as_str)
-      .chain([self.class.as_str()]);
+      .cloned()
+      .chain([self.class.clone()])
+      .collect();
 
     let pixels = (self.size as f32 * window.scale_factor()) as i32;
-    let icon = icon_for_names_or_default(names, self.size).map(|path| {
+    let icon = icon(names, self.size, cx).map(|path| {
       match path.extension().is_some_and(|extension| extension == "svg") {
         true => rasterize(&path, pixels, cx)
           .map(ImageSource::Render)
