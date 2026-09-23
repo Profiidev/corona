@@ -13,7 +13,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.5";
+  gpuiVersion = "0.3.6";
 
   vendorCrate =
     pname: hash:
@@ -27,8 +27,8 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-BRyR2XTJEBdeZZ9NYP1aByDgAat7G+0+sn59O5oMlh8=";
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-RB7lXu/zYlOPL5o/2655G0WFRflNRMPKN4bvTsljcZ4=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-4+VpBtLm1EETfGfmB9VsKrlKBXOBJoQnyr/SqcS3pdA=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-sb3RqlO3TSyIklHkoqzqP2jNbrYCdUyLjhb/nvecCJ4=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
