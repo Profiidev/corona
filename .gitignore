@@ -11,3 +11,7 @@ devenv.local.nix
 /vendor
 
 /result
+
+*.d.ts
+jsconfig.json
+*.schema.json

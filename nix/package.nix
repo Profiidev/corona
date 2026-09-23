@@ -41,6 +41,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoLock = {
     lockFile = ../Cargo.lock;
+    outputHashes = {
+      "gpui-base-0.6.6" = "sha256-WcRgqgn/pD4LfsFb+6kByk1DzRym1G2qNm/D1fAaCYs=";
+      "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
+      "quickjs-jit-0.12.9" = "sha256-BykXNq9To8LH8xBZ0OekCHUegsUhzGwh8GennxtsFl0=";
+      "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
+    };
   };
 
   nativeBuildInputs = [

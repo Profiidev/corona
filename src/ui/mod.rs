@@ -1,3 +1,4 @@
+use anyhow::Result;
 use gpui_kit::App;
 
 mod animation;
@@ -12,9 +13,10 @@ mod utils;
 pub use app::WidgetType;
 pub use assets::Assets;
 
-pub fn init(cx: &mut App) {
-  assets::load(cx).expect("Failed to load themes");
+pub fn init(cx: &mut App) -> Result<()> {
+  assets::load(cx)?;
   bar::BarState::init(cx);
   panel::PanelState::init(cx);
   tooltip::TooltipState::init(cx);
+  Ok(())
 }

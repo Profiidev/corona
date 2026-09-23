@@ -1,0 +1,8 @@
+{
+  "$schema": "../../plugin.schema.json",
+  "id": "test",
+  "name": "Dashboard",
+  "views": {
+    "test": "main.js"
+  }
+}
