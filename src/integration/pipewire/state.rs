@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use dashmap::DashMap;
@@ -8,7 +8,7 @@ use pipewire::spa::{
   utils::dict::DictRef,
 };
 
-use crate::integration::pipewire::event::PipewireEvent;
+use crate::integration::pipewire::event::AudioEvent;
 
 #[derive(Clone)]
 pub struct PipewireState {
@@ -54,7 +54,7 @@ impl FromStr for NodeType {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AudioNode {
   pub id: u32,
   pub serial: u64,
@@ -146,11 +146,11 @@ impl AudioNode {
 }
 
 impl AudioState {
-  pub fn update_params(&self, id: u32, obj: Object, events: &flume::Sender<PipewireEvent>) {
+  pub fn update_params(&self, id: u32, obj: Object, events: &flume::Sender<AudioEvent>) {
     self.changed(id, events, |node| node.update_params(obj));
   }
 
-  pub fn update_props(&self, id: u32, props: &DictRef, events: &flume::Sender<PipewireEvent>) {
+  pub fn update_props(&self, id: u32, props: &DictRef, events: &flume::Sender<AudioEvent>) {
     self.changed(id, events, |node| node.update_props(props));
   }
 
@@ -158,7 +158,7 @@ impl AudioState {
     &self,
     kind: NodeType,
     name: Option<String>,
-    events: &flume::Sender<PipewireEvent>,
+    events: &flume::Sender<AudioEvent>,
   ) {
     let changed = match name {
       Some(name) => self.defaults.insert(kind, name.clone()) != Some(name),
@@ -166,34 +166,95 @@ impl AudioState {
     };
 
     if changed {
-      let _ = events.send(PipewireEvent::AudioDefaultChanged(kind));
+      let _ = events.send(self.default_event(kind));
     }
   }
 
-  pub fn set_target(&self, id: u32, name: Option<String>, events: &flume::Sender<PipewireEvent>) {
+  pub fn set_target(&self, id: u32, name: Option<String>, events: &flume::Sender<AudioEvent>) {
     let changed = match name {
       Some(name) => self.targets.insert(id, name.clone()) != Some(name),
       None => self.targets.remove(&id).is_some(),
     };
 
     if changed {
-      let _ = events.send(PipewireEvent::AudioTargetChanged(id));
+      let _ = events.send(AudioEvent::Targets(self.resolved_targets()));
+    }
+  }
+
+  pub fn list(&self, kind: NodeType) -> Vec<AudioNode> {
+    let mut nodes: Vec<AudioNode> = self
+      .nodes
+      .iter()
+      .filter(|node| node.kind == kind)
+      .map(|node| node.clone())
+      .collect();
+    nodes.sort_unstable_by_key(|node| node.id);
+    nodes
+  }
+
+  pub fn default(&self, kind: NodeType) -> Option<AudioNode> {
+    let name = self.defaults.get(&kind)?;
+    self
+      .nodes
+      .iter()
+      .find(|node| node.kind == kind && node.name == *name)
+      .map(|node| node.clone())
+  }
+
+  pub fn resolved_targets(&self) -> HashMap<u32, u32> {
+    self
+      .targets
+      .iter()
+      .filter_map(|pin| {
+        let serial = pin.value().parse().ok();
+        let sink = self.nodes.iter().find(|node| {
+          node.kind == NodeType::Sink && (Some(node.serial) == serial || node.name == *pin.value())
+        })?;
+        Some((*pin.key(), sink.id))
+      })
+      .collect()
+  }
+
+  pub fn node_events(&self, kind: NodeType) -> Vec<AudioEvent> {
+    let mut events = vec![AudioEvent::Nodes(kind, self.list(kind))];
+    match kind {
+      NodeType::Sink => {
+        events.push(self.default_event(kind));
+        events.push(AudioEvent::Targets(self.resolved_targets()));
+      }
+      NodeType::Source => events.push(self.default_event(kind)),
+      NodeType::Stream => events.push(AudioEvent::Targets(self.resolved_targets())),
+    }
+    events
+  }
+
+  fn default_event(&self, kind: NodeType) -> AudioEvent {
+    let node = self.default(kind);
+    match kind {
+      NodeType::Source => AudioEvent::DefaultSource(node),
+      _ => AudioEvent::DefaultSink(node),
     }
   }
 
   fn changed(
     &self,
     id: u32,
-    events: &flume::Sender<PipewireEvent>,
+    events: &flume::Sender<AudioEvent>,
     update: impl FnOnce(&mut AudioNode) -> bool,
   ) {
     let Some(mut node) = self.nodes.get_mut(&id) else {
       return;
     };
 
-    if update(&mut node) {
-      drop(node);
-      let _ = events.send(PipewireEvent::AudioNodeChanged(id));
+    if !update(&mut node) {
+      return;
+    }
+
+    let kind = node.kind;
+    drop(node);
+
+    for event in self.node_events(kind) {
+      let _ = events.send(event);
     }
   }
 }
@@ -333,6 +394,75 @@ mod tests {
 
     assert_eq!(rx.len(), 3);
     assert!(audio.defaults.is_empty());
+  }
+
+  fn stream(id: u32, serial: u64) -> AudioNode {
+    static PROPS: StaticDict = static_dict! {
+      "node.name" => "spotify",
+      "media.name" => "Spotify",
+    };
+
+    let mut node = AudioNode::new(id, NodeType::Stream, &PROPS).expect("a stream needs a name");
+    node.serial = serial;
+    node
+  }
+
+  /// A pin is stored as whatever wireplumber wrote — a name or a serial — so
+  /// both have to resolve to the same sink id.
+  #[test]
+  fn a_pin_resolves_by_either_name_or_serial() {
+    let (tx, _rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+    audio.nodes.insert(54, sink());
+    audio.nodes.insert(110, stream(110, 202));
+    audio.nodes.insert(111, stream(111, 203));
+
+    audio.set_target(110, Some("alsa_output.speaker".into()), &tx);
+    audio.set_target(111, Some("62".into()), &tx);
+
+    let targets = audio.resolved_targets();
+    assert_eq!(targets.get(&110), Some(&54));
+    assert_eq!(targets.get(&111), Some(&54));
+  }
+
+  /// The removal path projects *after* the node is gone, so nothing may still
+  /// name it — not the list, not the default, not a stream's pin.
+  #[test]
+  fn removing_a_sink_clears_the_default_and_every_pin_naming_it() {
+    let (tx, _rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+    audio.nodes.insert(54, sink());
+    audio.nodes.insert(110, stream(110, 202));
+    audio.set_default(NodeType::Sink, Some("alsa_output.speaker".into()), &tx);
+    audio.set_target(110, Some("alsa_output.speaker".into()), &tx);
+
+    assert!(audio.default(NodeType::Sink).is_some());
+    assert_eq!(audio.resolved_targets().get(&110), Some(&54));
+
+    audio.nodes.remove(&54);
+
+    assert!(audio.list(NodeType::Sink).is_empty());
+    // The name is still pinned; it just no longer names anything that exists.
+    assert!(audio.default(NodeType::Sink).is_none());
+    assert!(audio.resolved_targets().is_empty());
+  }
+
+  /// One changed sink moves three slices, and must not claim to move a source.
+  #[test]
+  fn a_sink_change_projects_only_the_slices_it_can_move() {
+    let audio = PipewireState::new().audio;
+    audio.nodes.insert(54, sink());
+
+    let events = audio.node_events(NodeType::Sink);
+    assert_eq!(events.len(), 3);
+    assert!(matches!(events[0], AudioEvent::Nodes(NodeType::Sink, _)));
+    assert!(matches!(events[1], AudioEvent::DefaultSink(_)));
+    assert!(matches!(events[2], AudioEvent::Targets(_)));
+
+    let events = audio.node_events(NodeType::Source);
+    assert_eq!(events.len(), 2);
+    assert!(matches!(events[0], AudioEvent::Nodes(NodeType::Source, _)));
+    assert!(matches!(events[1], AudioEvent::DefaultSource(_)));
   }
 
   #[test]

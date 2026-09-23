@@ -16,7 +16,7 @@ use pipewire::{
 };
 
 use crate::integration::pipewire::{
-  event::PipewireEvent,
+  event::AudioEvent,
   state::{AudioNode, NodeType, PipewireState},
 };
 
@@ -91,7 +91,7 @@ pub fn global_listener(
   registry: RegistryRc,
   handles: Handles,
   state: PipewireState,
-  events: flume::Sender<PipewireEvent>,
+  events: flume::Sender<AudioEvent>,
 ) -> impl Fn(&GlobalObject<&DictRef>) {
   move |obj| match obj.type_ {
     ObjectType::Node => add_node(&registry, &handles, &state, &events, obj),
@@ -105,7 +105,7 @@ fn add_node(
   registry: &RegistryRc,
   handles: &Handles,
   state: &PipewireState,
-  events: &flume::Sender<PipewireEvent>,
+  events: &flume::Sender<AudioEvent>,
   obj: &GlobalObject<&DictRef>,
 ) {
   let Some(props) = obj.props else {
@@ -141,7 +141,9 @@ fn add_node(
     .nodes
     .insert(obj.id, (node, listener));
 
-  let _ = events.send(PipewireEvent::AudioNodeAdded(obj.id));
+  for event in state.audio.node_events(class) {
+    let _ = events.send(event);
+  }
 }
 
 fn add_device(registry: &RegistryRc, handles: &Handles, obj: &GlobalObject<&DictRef>) {
@@ -166,7 +168,7 @@ fn add_metadata(
   registry: &RegistryRc,
   handles: &Handles,
   state: &PipewireState,
-  events: &flume::Sender<PipewireEvent>,
+  events: &flume::Sender<AudioEvent>,
   obj: &GlobalObject<&DictRef>,
 ) {
   if obj.props.and_then(|props| props.get("metadata.name")) != Some("default") {
@@ -191,7 +193,7 @@ fn add_metadata(
 
 fn metadata_property_listener(
   state: PipewireState,
-  events: flume::Sender<PipewireEvent>,
+  events: flume::Sender<AudioEvent>,
 ) -> impl Fn(u32, Option<&str>, Option<&str>, Option<&str>) -> i32 {
   move |subject, key, _type, value| {
     match key {
@@ -224,15 +226,17 @@ fn unquote(value: &str) -> String {
 pub fn global_remove_listener(
   handles: Handles,
   state: PipewireState,
-  events: flume::Sender<PipewireEvent>,
+  events: flume::Sender<AudioEvent>,
 ) -> impl Fn(u32) {
   move |id| {
     handles.remove(id);
 
     state.audio.targets.remove(&id);
 
-    if state.audio.nodes.remove(&id).is_some() {
-      let _ = events.send(PipewireEvent::AudioNodeRemoved(id));
+    if let Some((_, node)) = state.audio.nodes.remove(&id) {
+      for event in state.audio.node_events(node.kind) {
+        let _ = events.send(event);
+      }
     }
   }
 }
@@ -240,7 +244,7 @@ pub fn global_remove_listener(
 fn node_info_listener(
   id: u32,
   state: PipewireState,
-  events: flume::Sender<PipewireEvent>,
+  events: flume::Sender<AudioEvent>,
 ) -> impl Fn(&NodeInfoRef) {
   move |info| {
     let Some(props) = info.props() else {
@@ -254,7 +258,7 @@ fn node_info_listener(
 fn node_props_listener(
   id: u32,
   state: PipewireState,
-  events: flume::Sender<PipewireEvent>,
+  events: flume::Sender<AudioEvent>,
 ) -> impl Fn(i32, ParamType, u32, u32, Option<&Pod>) {
   move |_seq, param_type, _index, _next, param| {
     if param_type != ParamType::Props {

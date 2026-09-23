@@ -54,10 +54,7 @@ pub fn index_of(items: &[NodeSelectItem], selected: Option<u32>) -> Option<Index
 }
 
 pub fn target_of(stream: u32, cx: &App) -> u32 {
-  cx.pipewire()
-    .audio()
-    .target(stream)
-    .map_or(u32::MAX, |node| node.id)
+  cx.pipewire().target(stream, cx)
 }
 
 pub fn to_slider(linear: f32) -> f32 {

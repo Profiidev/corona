@@ -28,21 +28,20 @@ pub struct AudioPanel {
   streams: Vec<StreamState>,
   sources: Vec<AudioNode>,
   sinks: Vec<AudioNode>,
-  _pipewire_subscription: Subscription,
+  _pipewire_subscriptions: [Subscription; 6],
 }
 
 impl ControlCenterPanel for AudioPanel {
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
-    let audio = cx.pipewire().audio();
-    let sources = audio.list_sources();
-    let sinks = audio.list_sinks();
-    let streams = audio.list_streams();
+    let pipewire = cx.pipewire();
+    let sources = pipewire.list_sources(cx).to_vec();
+    let sinks = pipewire.list_sinks(cx).to_vec();
+    let streams = pipewire.list_streams(cx).to_vec();
 
-    let source = audio.default_source();
-    let sink = audio.default_sink();
+    let source = pipewire.default_source(cx).cloned();
+    let sink = pipewire.default_sink(cx).cloned();
 
-    let emitter = cx.pipewire().emitter().clone();
-    let pipewire_subscription = listener::listener(&emitter, cx, window);
+    let pipewire_subscriptions = listener::listeners(cx, window);
 
     let source = DefaultState::create(source, &sources, window, cx);
     let sink = DefaultState::create(sink, &sinks, window, cx);
@@ -69,7 +68,7 @@ impl ControlCenterPanel for AudioPanel {
       streams,
       sources,
       sinks,
-      _pipewire_subscription: pipewire_subscription,
+      _pipewire_subscriptions: pipewire_subscriptions,
     }
   }
 }

@@ -4,7 +4,9 @@ use anyhow::Result;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
-use crate::integration::pipewire::{listener::Handles, state::PipewireState};
+use crate::integration::pipewire::{
+  event::AudioEvent, listener::Handles, state::PipewireState,
+};
 
 mod api;
 mod audio;
@@ -15,8 +17,7 @@ mod state;
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
-pub use event::{PipewireEvent, PipewireEventEmitter};
-pub use state::{AudioNode, NodeType};
+pub use state::AudioNode;
 
 pub trait PipewireExt {
   fn pipewire(&self) -> &Pipewire;
@@ -39,7 +40,7 @@ pub fn init(cx: &mut App) -> Result<()> {
 }
 
 fn spawn(
-  event_tx: flume::Sender<PipewireEvent>,
+  event_tx: flume::Sender<AudioEvent>,
 ) -> Result<(pipewire::channel::Sender<command::Command>, PipewireState)> {
   let (init_tx, init_rx) = flume::bounded(1);
 

@@ -1,104 +1,90 @@
-use gpui_kit::{Context, Entity, Subscription, Window};
+use gpui_kit::{Context, Subscription, Window};
 
 use crate::{
   error::ErrorLogExt,
-  integration::pipewire::{NodeType, PipewireEvent, PipewireEventEmitter, PipewireExt},
+  integration::pipewire::{AudioNode, PipewireExt},
   ui::app::control_center::audio::{AudioPanel, state::StreamState},
 };
 
-pub fn listener(
-  emitter: &Entity<PipewireEventEmitter>,
-  cx: &mut Context<AudioPanel>,
-  window: &Window,
-) -> Subscription {
-  cx.subscribe_in(emitter, window, |this, _, event, window, cx| {
-    let audio = cx.pipewire().audio();
-    match event {
-      PipewireEvent::AudioNodeChanged(id) => {
-        let node = audio.node(*id);
-        if this.source.node.as_ref().map(|n| n.id) == Some(*id) {
-          this.source.update(node, window, cx);
-        } else if this.sink.node.as_ref().map(|n| n.id) == Some(*id) {
-          this.sink.update(node, window, cx);
-        } else if let Some(stream) = this.streams.iter_mut().find(|s| s.node.id == *id)
-          && let Some(node) = node
-        {
-          stream.update(node, window, cx);
-        }
-      }
-      PipewireEvent::AudioDefaultChanged(NodeType::Sink) => {
-        let node = audio.default_sink();
-        this.sink.update(node, window, cx);
-      }
-      PipewireEvent::AudioDefaultChanged(NodeType::Source) => {
-        let node = audio.default_source();
-        this.source.update(node, window, cx);
-      }
-      PipewireEvent::AudioTargetChanged(id) => {
-        if let Some(stream) = this.streams.iter_mut().find(|s| s.node.id == *id)
-          && let Some(node) = audio.node(*id)
-        {
-          stream.update(node, window, cx);
-        }
-      }
-      PipewireEvent::AudioNodeAdded(id) => {
-        let Some(node) = audio.node(*id) else {
-          return;
-        };
+pub fn listeners(cx: &mut Context<AudioPanel>, window: &mut Window) -> [Subscription; 6] {
+  let pipewire = cx.pipewire();
+  let sinks = pipewire.sinks.clone();
+  let sources = pipewire.sources.clone();
+  let streams = pipewire.streams.clone();
+  let default_sink = pipewire.default_sink.clone();
+  let default_source = pipewire.default_source.clone();
+  let targets = pipewire.targets.clone();
 
-        match node.kind {
-          NodeType::Sink => {
-            this.sinks = audio.list_sinks();
-            this.sink.update_options(&this.sinks, window, cx);
-            for stream in this.streams.iter_mut() {
-              stream.update_options(&this.sinks, window, cx);
-            }
-          }
-          NodeType::Source => {
-            this.sources = audio.list_sources();
-            this.source.update_options(&this.sources, window, cx);
-          }
-          NodeType::Stream => {
-            let stream = node.id;
-            this.streams.push(StreamState::create(
-              node,
-              &this.sinks,
-              window,
-              cx,
-              move |id, audio| {
-                if id == u32::MAX {
-                  audio.reset_target(stream).log_err().ok();
-                  return;
-                }
-                audio.set_target(stream, id).log_err().ok();
-              },
-            ));
-            this.streams.sort_unstable_by_key(|s| s.node.id);
-          }
-        }
+  [
+    cx.observe_in(&sinks, window, |this, e, window, cx| {
+      this.sinks = e.read(cx).clone();
+      let node = cx.pipewire().default_sink(cx).cloned();
+      this.sink.update(node, window, cx);
+      this.sink.update_options(&this.sinks, window, cx);
+      for stream in this.streams.iter_mut() {
+        stream.update_options(&this.sinks, window, cx);
       }
-      PipewireEvent::AudioNodeRemoved(id) => {
-        if let Some(index) = this.sinks.iter().position(|s| s.id == *id) {
-          this.sinks.remove(index);
-          if this.sink.node.as_ref().map(|node| node.id) == Some(*id) {
-            this.sink.update(None, window, cx);
+      cx.notify();
+    }),
+    cx.observe_in(&sources, window, |this, e, window, cx| {
+      this.sources = e.read(cx).clone();
+      let node = cx.pipewire().default_source(cx).cloned();
+      this.source.update(node, window, cx);
+      this.source.update_options(&this.sources, window, cx);
+      cx.notify();
+    }),
+    cx.observe_in(&streams, window, |this, e, window, cx| {
+      reconcile_streams(this, &e.read(cx).clone(), window, cx);
+      cx.notify();
+    }),
+    cx.observe_in(&default_sink, window, |this, e, window, cx| {
+      let node = e.read(cx).clone();
+      this.sink.update(node, window, cx);
+      cx.notify();
+    }),
+    cx.observe_in(&default_source, window, |this, e, window, cx| {
+      let node = e.read(cx).clone();
+      this.source.update(node, window, cx);
+      cx.notify();
+    }),
+    cx.observe_in(&targets, window, |this, _, window, cx| {
+      let streams = cx.pipewire().list_streams(cx).to_vec();
+      reconcile_streams(this, &streams, window, cx);
+      cx.notify();
+    }),
+  ]
+}
+
+fn reconcile_streams(
+  this: &mut AudioPanel,
+  streams: &[AudioNode],
+  window: &mut Window,
+  cx: &mut Context<AudioPanel>,
+) {
+  this
+    .streams
+    .retain(|state| streams.iter().any(|node| node.id == state.node.id));
+
+  for node in streams {
+    match this
+      .streams
+      .iter_mut()
+      .find(|state| state.node.id == node.id)
+    {
+      Some(state) => state.update(node.clone(), window, cx),
+      None => {
+        let stream = node.id;
+        let state = StreamState::create(node.clone(), &this.sinks, window, cx, move |id, audio| {
+          if id == u32::MAX {
+            audio.reset_target(stream).log_err().ok();
+            return;
           }
-          this.sink.update_options(&this.sinks, window, cx);
-          for stream in this.streams.iter_mut() {
-            stream.update_options(&this.sinks, window, cx);
-          }
-        } else if let Some(index) = this.sources.iter().position(|s| s.id == *id) {
-          this.sources.remove(index);
-          if this.source.node.as_ref().map(|node| node.id) == Some(*id) {
-            this.source.update(None, window, cx);
-          }
-          this.source.update_options(&this.sources, window, cx);
-        } else if let Some(index) = this.streams.iter().position(|s| s.node.id == *id) {
-          this.streams.remove(index);
-        }
+          audio.set_target(stream, id).log_err().ok();
+        });
+        this.streams.push(state);
       }
-      _ => (),
     }
-    cx.notify();
-  })
+  }
+
+  this.streams.sort_unstable_by_key(|state| state.node.id);
 }
