@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use anyhow::{Context as _, Result};
-use gpui_kit::{AnyView, App, Entity, Global, Window};
+use gpui_kit::{AnyView, App, Entity, Global, Subscription, Window};
 use gpui_shell::{
   ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
@@ -12,13 +12,14 @@ use crate::{
   script::{
     PLUGIN_MANIFEST_FILENAME, PLUGIN_STORAGE_FILENAME,
     manifest::{ManifestFile, PluginManifest},
-    module,
+    module::ModuleExt,
   },
 };
 
 pub struct Script {
   root: Entity<ShellRoot>,
   _watcher: Option<Watcher>,
+  _subscriptions: Vec<Subscription>,
 }
 
 impl Script {
@@ -92,20 +93,25 @@ impl ScriptManager {
       tracing::warn!("storage unavailable for `{id}`: {error}");
     }
 
-    let policy = Policy::new()
+    let runtime = manager.runtime.clone();
+    let root = manager.plugin_dir.join(&id).join(view);
+
+    let (policy, subscribes) = Policy::new()
       .with_application(&id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
-      .with_host_module(module::module())?;
-
-    let runtime = manager.runtime.clone();
-    let root = manager.plugin_dir.join(&id).join(view);
+      .with_corona_modules(cx)?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
     policy::set_default(policy);
     let root = runtime.load(root, window, cx);
     policy::set_default(Policy::new());
+
+    let subscriptions = subscribes
+      .into_iter()
+      .map(|subscription| subscription(&runtime, &root, cx))
+      .collect();
 
     let watcher = match runtime.watch(&root, window, cx) {
       Ok(watcher) => Some(watcher),
@@ -118,6 +124,7 @@ impl ScriptManager {
     Ok(Script {
       root,
       _watcher: watcher,
+      _subscriptions: subscriptions,
     })
   }
 }

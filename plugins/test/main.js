@@ -1,7 +1,7 @@
 import { View } from "gpui-kit";
 import { v_flex, h_flex, Button } from "gpui-base";
 import { Button as CompButton, Select } from "gpui-component";
-import { greet } from "corona";
+import { activeWorkspace } from "corona/compositor";
 
 /** @import { AsyncContext, Context, Element } from "gpui-kit" */
 /** @import { Props } from "gpui-shell" */
@@ -20,8 +20,8 @@ export default class Dashboard extends View {
       .size_full()
       .gap(8)
       .p(8)
-      .child(greet("dashboard"))
       .child(`Clicked ${this.clicks} times`)
+      .child(`Clicked ${activeWorkspace().id} times`)
       .child(
         h_flex()
           .gap(8)
