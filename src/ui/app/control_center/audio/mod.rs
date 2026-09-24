@@ -11,7 +11,7 @@ use crate::{
   ui::app::control_center::{
     ControlCenterPanel,
     audio::{
-      state::{DefaultState, StreamState},
+      state::{DEFAULT_SINK_ID, DefaultState, StreamState},
       ui::{audio_node, audio_stream},
     },
   },
@@ -51,7 +51,7 @@ impl ControlCenterPanel for AudioPanel {
       .map(|s| {
         let stream = s.id;
         let on_select = move |id, audio: PipewireAudio<'_>| {
-          if id == u32::MAX {
+          if id == DEFAULT_SINK_ID {
             audio.reset_target(stream).log_err().ok();
             return;
           }

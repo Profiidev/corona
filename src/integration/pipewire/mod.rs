@@ -4,9 +4,7 @@ use anyhow::Result;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
-use crate::integration::pipewire::{
-  event::AudioEvent, listener::Handles, state::PipewireState,
-};
+use crate::integration::pipewire::{event::AudioEvent, listener::Handles, state::PipewireState};
 
 mod api;
 mod audio;
@@ -17,7 +15,7 @@ mod state;
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
-pub use state::AudioNode;
+pub use state::{AudioNode, NodeType};
 
 pub trait PipewireExt {
   fn pipewire(&self) -> &Pipewire;

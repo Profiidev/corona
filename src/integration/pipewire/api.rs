@@ -96,13 +96,8 @@ impl Pipewire {
     self.default_source.read(cx).as_ref()
   }
 
-  pub fn target(&self, stream: u32, cx: &App) -> u32 {
-    self
-      .targets
-      .read(cx)
-      .get(&stream)
-      .copied()
-      .unwrap_or(u32::MAX)
+  pub fn target(&self, stream: u32, cx: &App) -> Option<u32> {
+    self.targets.read(cx).get(&stream).copied()
   }
 }
 

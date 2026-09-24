@@ -7,6 +7,7 @@ use gpui_shell::{ShellRoot, ShellRuntime, policy::Policy};
 use crate::error::ErrorLogExt;
 
 pub mod compositor;
+pub mod pipewire;
 
 #[derive(Clone, Default)]
 pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
@@ -14,6 +15,7 @@ pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
   Compositor(compositor::Updates),
+  Pipewire(pipewire::Updates),
 }
 
 type Subscribe = Box<dyn FnOnce(&Rc<ShellRuntime>, &Entity<ShellRoot>, &mut App) -> Subscription>;
@@ -50,7 +52,9 @@ impl ModuleExt for Policy {
     let reads = Subscriptions::default();
     let mut subs = Vec::new();
 
-    let policy = self.with_host_module(compositor::module(&reads, &mut subs, cx))?;
+    let policy = self
+      .with_host_module(compositor::module(&reads, &mut subs, cx))?
+      .with_host_module(pipewire::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }

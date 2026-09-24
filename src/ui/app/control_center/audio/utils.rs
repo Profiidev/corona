@@ -1,6 +1,9 @@
 use gpui_kit::{App, base::IndexPath, component::select::SelectItem};
 
-use crate::integration::pipewire::{AudioNode, PipewireExt};
+use crate::{
+  integration::pipewire::{AudioNode, PipewireExt},
+  ui::app::control_center::audio::state::DEFAULT_SINK_ID,
+};
 
 #[derive(Clone, Debug)]
 pub struct NodeSelectItem {
@@ -36,7 +39,7 @@ pub fn select_items(options: &[AudioNode], default_option: bool) -> Vec<NodeSele
     items.insert(
       0,
       NodeSelectItem {
-        id: u32::MAX,
+        id: DEFAULT_SINK_ID,
         name: "Default".to_string(),
       },
     );
@@ -53,7 +56,7 @@ pub fn index_of(items: &[NodeSelectItem], selected: Option<u32>) -> Option<Index
     .map(IndexPath::new)
 }
 
-pub fn target_of(stream: u32, cx: &App) -> u32 {
+pub fn target_of(stream: u32, cx: &App) -> Option<u32> {
   cx.pipewire().target(stream, cx)
 }
 

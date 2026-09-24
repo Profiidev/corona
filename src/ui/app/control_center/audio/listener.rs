@@ -3,7 +3,10 @@ use gpui_kit::{Context, Subscription, Window};
 use crate::{
   error::ErrorLogExt,
   integration::pipewire::{AudioNode, PipewireExt},
-  ui::app::control_center::audio::{AudioPanel, state::StreamState},
+  ui::app::control_center::audio::{
+    AudioPanel,
+    state::{DEFAULT_SINK_ID, StreamState},
+  },
 };
 
 pub fn listeners(cx: &mut Context<AudioPanel>, window: &mut Window) -> [Subscription; 6] {
@@ -75,7 +78,7 @@ fn reconcile_streams(
       None => {
         let stream = node.id;
         let state = StreamState::create(node.clone(), &this.sinks, window, cx, move |id, audio| {
-          if id == u32::MAX {
+          if id == DEFAULT_SINK_ID {
             audio.reset_target(stream).log_err().ok();
             return;
           }

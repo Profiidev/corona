@@ -2,6 +2,7 @@ import { View } from "gpui-kit";
 import { v_flex, h_flex, Button } from "gpui-base";
 import { Button as CompButton, Select } from "gpui-component";
 import { activeWorkspace } from "corona/compositor";
+import { defaultSink } from "corona/pipewire";
 
 /** @import { AsyncContext, Context, Element } from "gpui-kit" */
 /** @import { Props } from "gpui-shell" */
@@ -22,6 +23,7 @@ export default class Dashboard extends View {
       .p(8)
       .child(`Clicked ${this.clicks} times`)
       .child(`Clicked ${activeWorkspace().id} times`)
+      .child(`Clicked ${defaultSink().id} times`)
       .child(
         h_flex()
           .gap(8)

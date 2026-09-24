@@ -14,6 +14,8 @@ use crate::{
   },
 };
 
+pub const DEFAULT_SINK_ID: u32 = u32::MAX;
+
 pub struct NodeState {
   pub slider: Entity<SliderState>,
   pub select: Entity<SelectState<Vec<NodeSelectItem>>>,
@@ -157,7 +159,7 @@ impl StreamState {
     let target = target_of(node.id, cx);
     let state = NodeState::create(
       Some(&node),
-      Some(target),
+      Some(target.unwrap_or(DEFAULT_SINK_ID)),
       options,
       window,
       cx,
@@ -170,7 +172,12 @@ impl StreamState {
 
   pub fn update(&mut self, node: AudioNode, window: &mut Window, cx: &mut App) {
     let target = target_of(node.id, cx);
-    self.state.update(Some(&node), Some(target), window, cx);
+    self.state.update(
+      Some(&node),
+      Some(target.unwrap_or(DEFAULT_SINK_ID)),
+      window,
+      cx,
+    );
     self.node = node;
   }
 
