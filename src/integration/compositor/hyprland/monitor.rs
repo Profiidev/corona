@@ -7,7 +7,11 @@ hypr_data_cmd!(
   "monitors all",
   Vec<Monitor>,
   Vec<types::Monitor>,
-  |monitors: Vec<Monitor>| { monitors.into_iter().map(|m| m.into()).collect() }
+  |monitors: Vec<Monitor>| {
+    let mut monitors: Vec<types::Monitor> = monitors.into_iter().map(|m| m.into()).collect();
+    monitors.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+    monitors
+  }
 );
 
 #[derive(Debug, Deserialize)]

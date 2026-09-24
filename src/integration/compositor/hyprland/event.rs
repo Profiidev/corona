@@ -61,22 +61,13 @@ impl Hyprland {
       while let Ok(event) = rx.recv_async().await {
         cx.update(|cx| {
           cx.update_global::<Compositor, _>(|compositor, cx| match event {
-            CompositorEvent::Workspace(mut workspaces) => {
-              workspaces.sort_unstable_by_key(|w| w.id.clone());
-              compositor.workspaces.write(cx, workspaces)
-            }
+            CompositorEvent::Workspace(workspaces) => compositor.workspaces.write(cx, workspaces),
             CompositorEvent::ActiveWorkspace(workspace) => {
               compositor.active_workspace.write(cx, workspace)
             }
-            CompositorEvent::Monitor(mut monitors) => {
-              monitors.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
-              compositor.monitors.write(cx, monitors)
-            }
+            CompositorEvent::Monitor(monitors) => compositor.monitors.write(cx, monitors),
             CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write(cx, monitor),
-            CompositorEvent::Window(mut windows) => {
-              windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
-              compositor.windows.write(cx, windows)
-            }
+            CompositorEvent::Window(windows) => compositor.windows.write(cx, windows),
             CompositorEvent::ActiveWindow(window) => compositor.active_window.write(cx, window),
           });
         });

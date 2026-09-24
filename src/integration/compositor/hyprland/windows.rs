@@ -7,7 +7,11 @@ hypr_data_cmd!(
   "clients",
   Vec<Window>,
   Vec<types::Window>,
-  |windows: Vec<Window>| { windows.into_iter().map(|m| m.into()).collect() }
+  |windows: Vec<Window>| {
+    let mut windows: Vec<types::Window> = windows.into_iter().map(|m| m.into()).collect();
+    windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+    windows
+  }
 );
 
 impl crate::integration::compositor::hyprland::command::Ipc {

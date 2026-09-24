@@ -8,11 +8,13 @@ hypr_data_cmd!(
   Vec<Workspace>,
   Vec<types::Workspace>,
   |workspaces: Vec<Workspace>| {
-    workspaces
+    let mut workspaces: Vec<types::Workspace> = workspaces
       .into_iter()
       .filter(|w| w.workspace_type != "special")
       .map(|w| w.into())
-      .collect()
+      .collect();
+    workspaces.sort_unstable_by_key(|w| w.id.clone());
+    workspaces
   }
 );
 
