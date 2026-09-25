@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-corona_config = { workspace = true }
-corona_components = { workspace = true }
-corona_compositor = { workspace = true }
-corona_utils = { workspace = true }
-gpui-kit = { workspace = true }
-anyhow = { workspace = true }
-uuid = { workspace = true }
-tracing = { workspace = true }
+corona_config.workspace = true
+corona_components.workspace = true
+corona_compositor.workspace = true
+corona_utils.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+tracing.workspace = true

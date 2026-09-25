@@ -46,10 +46,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-corona_shell = { workspace = true }
-corona_components = { workspace = true }
-gpui-kit = { workspace = true }
-gpui-component-shell = { workspace = true }
+corona_shell.workspace = true
+corona_components.workspace = true
+gpui-kit.workspace = true
+gpui-component-shell.workspace = true
 tracing-subscriber = "0.3.23"
 
 [patch.crates-io]

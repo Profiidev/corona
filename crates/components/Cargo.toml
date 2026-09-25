@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-corona_config = { workspace = true }
-corona_desktop = { workspace = true }
-anyhow = { workspace = true }
-gpui-kit = { workspace = true }
+corona_config.workspace = true
+corona_desktop.workspace = true
+anyhow.workspace = true
+gpui-kit.workspace = true
 include_dir = "0.7.4"

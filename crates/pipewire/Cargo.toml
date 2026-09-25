@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui-kit = { workspace = true }
-anyhow = { workspace = true }
-serde = { workspace = true }
-ts-rs = { workspace = true }
-dashmap = { workspace = true }
-flume = { workspace = true }
-tracing = { workspace = true }
-serde_json = { workspace = true }
+gpui-kit.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+dashmap.workspace = true
+flume.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
 pipewire = "0.10.1"
