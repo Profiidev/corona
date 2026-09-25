@@ -1,12 +1,9 @@
-use std::{env, path::Path, rc::Rc};
+use std::rc::Rc;
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use gpui_kit::{App, AppContext, Entity, Global};
 
-use crate::integration::compositor::hyprland::Hyprland;
-
-mod hyprland;
-pub mod types;
+use crate::types;
 
 pub struct Compositor {
   inner: Rc<dyn CompositorImpl>,
@@ -26,7 +23,7 @@ fn init_state<T: 'static>(cx: &mut App, f: impl FnOnce() -> Result<T>) -> Result
 }
 
 impl Compositor {
-  fn new(cx: &mut App, inner: Rc<dyn CompositorImpl>) -> Result<Self> {
+  pub(crate) fn new(cx: &mut App, inner: Rc<dyn CompositorImpl>) -> Result<Self> {
     let workspaces = init_state(cx, || inner.list_workspaces())?;
     let active_workspace = init_state(cx, || inner.active_workspace())?;
     let monitors = init_state(cx, || inner.list_monitors())?;
@@ -74,7 +71,7 @@ impl Compositor {
   }
 }
 
-trait CompositorImpl {
+pub(crate) trait CompositorImpl {
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>>;
   fn active_workspace(&self) -> Result<types::Workspace>;
 
@@ -95,21 +92,4 @@ impl CompositorExt for App {
   fn compositor(&self) -> &Compositor {
     self.global::<Compositor>()
   }
-}
-
-pub fn init(cx: &mut App) -> Result<()> {
-  let runtime_dir = env::var("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR is not set")?;
-
-  let inner: Rc<dyn CompositorImpl> =
-    if let Ok(hypr_instance) = env::var("HYPRLAND_INSTANCE_SIGNATURE") {
-      let socket_dir = Path::new(&runtime_dir).join("hypr").join(hypr_instance);
-      Rc::new(Hyprland::init(cx, &socket_dir))
-    } else {
-      bail!("Current compositor is not supported")
-    };
-
-  let compositor = Compositor::new(cx, inner)?;
-  cx.set_global(compositor);
-
-  Ok(())
 }

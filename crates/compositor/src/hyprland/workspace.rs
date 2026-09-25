@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, hypr_dsp, integration::compositor::types};
+use crate::{hypr_data_cmd, hypr_dsp, types};
 
 hypr_data_cmd!(
   list_workspaces,

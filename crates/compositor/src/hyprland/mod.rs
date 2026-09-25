@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use gpui_kit::App;
 
-use crate::integration::compositor::{CompositorImpl, hyprland::command::Ipc, types};
+use crate::{CompositorImpl, hyprland::command::Ipc, types};
 
 mod command;
 mod encoding;

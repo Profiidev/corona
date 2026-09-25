@@ -1,0 +1,15 @@
+[package]
+name = "corona_compositor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = { workspace = true }
+anyhow = { workspace = true }
+ts-rs = { workspace = true }
+serde = { workspace = true }
+bitflags = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+chardetng = "1.0.0"
+flume = "0.12.0"

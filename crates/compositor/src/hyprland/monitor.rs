@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, integration::compositor::types};
+use crate::{hypr_data_cmd, types};
 
 hypr_data_cmd!(
   list_monitors,

@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::integration::compositor::hyprland::encoding::decode_ipc_response;
+use crate::hyprland::encoding::decode_ipc_response;
 
 #[derive(Clone)]
 pub struct Ipc {
@@ -67,11 +67,11 @@ impl Display for Command {
 #[macro_export]
 macro_rules! hypr_data_cmd {
   ($cmd:ident, $arg:literal, $output:ty, $parsed:ty, $convert:expr) => {
-    impl $crate::integration::compositor::hyprland::command::Ipc {
+    impl $crate::hyprland::command::Ipc {
       pub fn $cmd(&self) -> anyhow::Result<$parsed> {
-        let cmd = $crate::integration::compositor::hyprland::command::Command {
+        let cmd = $crate::hyprland::command::Command {
           command: $arg.to_string(),
-          flags: $crate::integration::compositor::hyprland::command::CommandFlags::JSON,
+          flags: $crate::hyprland::command::CommandFlags::JSON,
         };
         let res = self.send_cmd(&cmd)?;
         let output: $output = serde_json::from_str(&res)?;
@@ -84,7 +84,7 @@ macro_rules! hypr_data_cmd {
 #[macro_export]
 macro_rules! hypr_dsp {
   ($cmd:ident, $arg:literal, $($var:ident: $type:ty),*) => {
-    impl $crate::integration::compositor::hyprland::command::Ipc {
+    impl $crate::hyprland::command::Ipc {
       pub fn $cmd(&self, $($var: $type),*) -> anyhow::Result<()> {
         let call = format!($arg, $($var),*);
         self.dsp(call)

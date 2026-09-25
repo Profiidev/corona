@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use gpui_kit::{App, BorrowAppContext};
 use tracing::{debug, warn};
 
-use crate::integration::compositor::{
+use crate::{
   Compositor,
   hyprland::{Hyprland, command::Ipc},
   types,

@@ -1454,13 +1454,11 @@ name = "corona"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitflags 2.13.2",
- "chardetng",
  "config",
+ "corona_compositor",
  "corona_macros",
  "dashmap",
  "dirs 7.0.0",
- "flume",
  "freedesktop-desktop-entry",
  "freedesktop-icons",
  "glob",
@@ -1477,6 +1475,21 @@ dependencies = [
  "ts-rs",
  "uuid",
  "zbus",
+]
+
+[[package]]
+name = "corona_compositor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.2",
+ "chardetng",
+ "flume",
+ "gpui-kit",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ts-rs",
 ]
 
 [[package]]
