@@ -10,7 +10,7 @@ use gpui_kit::{
   Styled, SvgSize, Window, div, img, prelude::FluentBuilder, px, relative, size,
 };
 
-use crate::integration::desktop::entry::icon_for_names_or_default;
+use corona_desktop::entry::icon_for_names_or_default;
 
 const ICON_SIZE: u16 = 256;
 

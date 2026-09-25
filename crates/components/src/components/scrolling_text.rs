@@ -6,7 +6,7 @@ use gpui_kit::{
   linear_gradient, prelude::FluentBuilder, px, relative,
 };
 
-use crate::config::ConfigProvider;
+use corona_config::ConfigProvider;
 
 const TITLE_SIZE: f32 = 12.;
 const TITLE_MAX_WIDTH: f32 = 100.;

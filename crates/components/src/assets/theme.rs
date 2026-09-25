@@ -8,7 +8,7 @@ use include_dir::{Dir, include_dir};
 const THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
 pub fn load(cx: &mut App) -> Result<()> {
-  let theme = SharedString::new(&cx.global::<crate::config::Config>().theme);
+  let theme = SharedString::new(&cx.global::<corona_config::Config>().theme);
   let registry = ThemeRegistry::global_mut(cx);
 
   for file in THEMES.files() {

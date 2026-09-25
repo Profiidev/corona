@@ -1454,6 +1454,7 @@ name = "corona"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_components",
  "corona_compositor",
  "corona_config",
  "corona_desktop",
@@ -1463,15 +1464,25 @@ dependencies = [
  "gpui-component-shell",
  "gpui-kit",
  "gpui-shell",
- "include_dir",
  "schemars",
  "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",
  "ts-rs",
- "uuid",
  "zbus",
+]
+
+[[package]]
+name = "corona_components"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_config",
+ "corona_desktop",
+ "gpui-kit",
+ "include_dir",
+ "uuid",
 ]
 
 [[package]]

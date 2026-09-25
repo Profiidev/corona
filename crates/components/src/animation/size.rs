@@ -4,7 +4,7 @@ use gpui_kit::{
   Animation, AnimationExt, AnyElement, App, Axis, IntoElement, Styled, ease_out_quint, px,
 };
 
-use crate::config::ConfigProvider;
+use corona_config::ConfigProvider;
 
 pub struct SizeAnimation {
   current_target: f32,
