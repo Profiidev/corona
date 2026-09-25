@@ -1,12 +1,119 @@
-use std::{marker::PhantomData, ops::Deref};
+use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
 
+use corona_macros::all_tuples;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use ts_rs::{Config, TS, TypeVisitor};
 
 use gpui_kit::{App, Global};
-use gpui_shell::{
-  HostArguments, HostError, HostModule, HostObject, HostResult, HostValue, with_current_app,
-};
+use gpui_shell::{HostArguments, HostError, HostModule, HostResult, HostValue, with_current_app};
+
+/// Builds a `HostModule` and generates its TypeScript declarations, including every type the
+/// functions use, from the Rust signatures.
+pub struct Module {
+  module: HostModule,
+  functions: Vec<String>,
+  types: Types,
+}
+
+impl Module {
+  pub fn new(name: impl Into<String>) -> Self {
+    Self {
+      module: HostModule::new(name),
+      functions: Vec::new(),
+      types: Types::default(),
+    }
+  }
+
+  /// `f` comes from `#[host_fn]` or `named!`, which supply the script name and parameter names.
+  pub fn func<I, F: IntoHostFn<I> + 'static>(mut self, f: Named<F>) -> Self {
+    let name = f.name;
+    let (params, ret) = F::HostFn::signature(&mut self.types);
+    debug_assert_eq!(
+      f.names.len(),
+      params.len(),
+      "host function `{name}` names {} params but takes {}",
+      f.names.len(),
+      params.len()
+    );
+    let params: Vec<String> = f
+      .names
+      .iter()
+      .zip(params)
+      .filter_map(|(arg, ty)| Some(format!("{arg}: {}", ty?)))
+      .collect();
+    self.functions.push(format!(
+      "export function {name}({}): {ret};",
+      params.join(", ")
+    ));
+
+    let f = f.f.into_host_fn();
+    self.module = self.module.function(name, move |args| f.call(args));
+    self
+  }
+}
+
+/// A host fn with its script name and the names of all its params, context params included.
+pub struct Named<F> {
+  name: &'static str,
+  names: &'static [&'static str],
+  f: F,
+}
+
+impl<F> Named<F> {
+  pub const fn new(name: &'static str, names: &'static [&'static str], f: F) -> Self {
+    Self { name, names, f }
+  }
+}
+
+impl From<Module> for HostModule {
+  fn from(module: Module) -> Self {
+    let mut declarations: Vec<String> = module.types.decls.into_values().collect();
+    declarations.extend(module.functions);
+    module.module.declarations(declarations.join("\n"))
+  }
+}
+
+/// Collects the declarations of every named type reached from the function signatures.
+pub struct Types {
+  cfg: Config,
+  decls: BTreeMap<String, String>,
+}
+
+impl Default for Types {
+  fn default() -> Self {
+    // JS numbers are f64, so `i64`/`u64` are `number` too, not `bigint`.
+    Self {
+      cfg: Config::new().with_large_int("number"),
+      decls: BTreeMap::new(),
+    }
+  }
+}
+
+impl Types {
+  /// The TypeScript name of `T`, declaring `T` and everything it depends on.
+  fn add<T: TS + 'static + ?Sized>(&mut self) -> String {
+    self.visit::<T>();
+    T::name(&self.cfg)
+  }
+}
+
+impl TypeVisitor for Types {
+  fn visit<T: TS + 'static + ?Sized>(&mut self) {
+    // Only derived types have an output path; primitives and wrappers (`Vec`, `Option`) are inlined.
+    if T::output_path().is_some() {
+      let ident = T::ident(&self.cfg);
+      if self.decls.contains_key(&ident) {
+        return;
+      }
+      let docs = T::docs().unwrap_or_default();
+      let decl = format!("{docs}export {}", T::decl(&self.cfg));
+      self.decls.insert(ident, decl);
+    }
+    T::visit_dependencies(self);
+    T::visit_generics(self);
+  }
+}
 
 pub trait HostModuleExt {
   fn func<I>(self, name: impl Into<String>, f: impl IntoHostFn<I> + 'static) -> Self;
@@ -21,6 +128,11 @@ impl HostModuleExt for HostModule {
 
 pub trait HostFn {
   fn call(&self, args: &HostArguments) -> HostResult;
+
+  /// The TypeScript type of every param (`None` for context params) and of the return value.
+  fn signature(types: &mut Types) -> (Vec<Option<String>>, String)
+  where
+    Self: Sized;
 }
 
 pub struct FunctionHostFn<Input, F> {
@@ -47,31 +159,58 @@ pub trait HostParam {
     pos: &mut usize,
     cx: &'a App,
   ) -> Result<Self::Item<'a>, HostError>;
+
+  /// The TypeScript type of the script argument, `None` for context params.
+  fn ts_type(types: &mut Types) -> Option<String>;
 }
 
 /// `M` only separates the serde impl from the error impl, which would overlap otherwise.
 pub trait HostReturn<M> {
   fn result(self) -> HostResult;
+
+  fn ts_type(types: &mut Types) -> String;
 }
 
-impl<T: Serialize> HostReturn<HostValue> for T {
+impl<T: Serialize + TS + 'static> HostReturn<HostValue> for T {
   fn result(self) -> HostResult {
     let value = serde_json::to_value(self).map_err(|e| HostError::new(e.to_string()))?;
     Ok(to_host(value))
   }
+
+  fn ts_type(types: &mut Types) -> String {
+    types.add::<T>()
+  }
+}
+
+// What an `anyhow::Error` becomes in the script.
+#[derive(Serialize, TS)]
+#[ts(rename = "Error")]
+struct ErrorValue {
+  message: String,
 }
 
 // `Option` and `Result` are only covered for `anyhow::Error`. A generic `Option<T: HostReturn>` impl
 // would also match serializable `Option<u32>`, next to the serde impl, and inference fails (E0283).
 impl HostReturn<anyhow::Error> for anyhow::Error {
   fn result(self) -> HostResult {
-    Ok(HostObject::new().field("message", self.to_string()).into())
+    ErrorValue {
+      message: self.to_string(),
+    }
+    .result()
+  }
+
+  fn ts_type(types: &mut Types) -> String {
+    types.add::<ErrorValue>()
   }
 }
 
 impl HostReturn<Option<anyhow::Error>> for Option<anyhow::Error> {
   fn result(self) -> HostResult {
     self.map_or(Ok(HostValue::Null), anyhow::Error::result)
+  }
+
+  fn ts_type(types: &mut Types) -> String {
+    format!("{} | null", types.add::<ErrorValue>())
   }
 }
 
@@ -82,9 +221,13 @@ impl<T: HostReturn<M>, M> HostReturn<Result<M, anyhow::Error>> for anyhow::Resul
       Err(error) => error.result(),
     }
   }
+
+  fn ts_type(types: &mut Types) -> String {
+    format!("{} | {}", T::ts_type(types), types.add::<ErrorValue>())
+  }
 }
 
-impl<T: DeserializeOwned + 'static> HostParam for T {
+impl<T: DeserializeOwned + TS + 'static> HostParam for T {
   type Item<'a> = T;
 
   #[allow(clippy::needless_lifetimes)]
@@ -92,6 +235,10 @@ impl<T: DeserializeOwned + 'static> HostParam for T {
     let value = deserialize(args, *pos);
     *pos += 1;
     value
+  }
+
+  fn ts_type(types: &mut Types) -> Option<String> {
+    Some(types.add::<T>())
   }
 }
 
@@ -111,6 +258,10 @@ impl HostParam for Cx<'_> {
 
   fn get_param<'a>(_: &HostArguments, _: &mut usize, cx: &'a App) -> Result<Cx<'a>, HostError> {
     Ok(Cx(cx))
+  }
+
+  fn ts_type(_: &mut Types) -> Option<String> {
+    None
   }
 }
 
@@ -136,6 +287,9 @@ impl<G: Global> HostParam for Glob<'_, G> {
     cx.try_global::<G>()
       .map(Glob)
       .ok_or_else(|| HostError::new(format!("global {} not set", std::any::type_name::<G>())))
+  }
+  fn ts_type(_: &mut Types) -> Option<String> {
+    None
   }
 }
 
@@ -212,6 +366,11 @@ macro_rules! impl_host_fn {
         })
         .unwrap_or_else(|| Err(no_app()))
       }
+
+      fn signature(types: &mut Types) -> (Vec<Option<String>>, String) {
+        let params = vec![$($params::ts_type(types)),*];
+        (params, R::ts_type(types))
+      }
     }
 
     #[allow(unused_variables)]
@@ -244,6 +403,12 @@ macro_rules! impl_host_fn {
         })
         .unwrap_or_else(|| Err(no_app()))
       }
+
+      fn signature(types: &mut Types) -> (Vec<Option<String>>, String) {
+        // `None` for the `&mut App`.
+        let params = vec![None, $($params::ts_type(types)),*];
+        (params, R::ts_type(types))
+      }
     }
 
     #[allow(unused_variables)]
@@ -260,35 +425,27 @@ macro_rules! impl_host_fn {
   };
 }
 
-macro_rules! impl_host_fn_tuples {
-  () => {
-    impl_host_fn!();
-  };
-  ($first:ident $(, $rest:ident)*) => {
-    impl_host_fn!($first $(, $rest)*);
-    impl_host_fn_tuples!($($rest),*);
-  };
-}
-
-impl_host_fn_tuples!(
-  A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18, A19, A20
-);
+all_tuples!(impl_host_fn, 0, 16, F);
 
 #[cfg(test)]
 mod tests {
+  use corona_macros::{host_fn, named};
   use gpui_shell::HostObject;
   use serde::Deserialize;
 
+  use crate::integration::pipewire::Pipewire;
+
   use super::*;
 
-  #[derive(Serialize, Deserialize, Debug, PartialEq)]
+  #[derive(Serialize, Deserialize, TS, Debug, PartialEq)]
   #[serde(rename_all = "snake_case")]
   enum Kind {
     Sink,
     Source,
   }
 
-  #[derive(Deserialize)]
+  /// An audio node.
+  #[derive(Serialize, Deserialize, TS)]
   struct Node {
     id: u32,
     kind: Kind,
@@ -315,7 +472,9 @@ mod tests {
     assert_eq!(None::<anyhow::Error>.result().unwrap(), HostValue::Null);
     assert_eq!(anyhow::Ok(3).result().unwrap(), HostValue::Number(3.0));
     assert_eq!(
-      anyhow::Result::<u32>::Err(anyhow::anyhow!("boom")).result().unwrap(),
+      anyhow::Result::<u32>::Err(anyhow::anyhow!("boom"))
+        .result()
+        .unwrap(),
       HostObject::new().field("message", "boom").into()
     );
     assert_eq!(
@@ -330,8 +489,6 @@ mod tests {
 
   #[test]
   fn param_kinds() {
-    use crate::integration::pipewire::Pipewire;
-
     let module = HostModule::new("test")
       .func("plain", |a: i64, b: String| a + b.len() as i64)
       .func("unit", || ())
@@ -353,7 +510,46 @@ mod tests {
       })
       .func("serde_option", |id: Option<u32>| id)
       .func("serde_result", |id: u32| -> Result<u32, String> { Ok(id) })
-      .func("nested", || -> anyhow::Result<Option<anyhow::Error>> { Ok(None) });
+      .func("nested", || -> anyhow::Result<Option<anyhow::Error>> {
+        Ok(None)
+      });
     assert_eq!(module.function_names().len(), 11);
+  }
+
+  #[host_fn]
+  fn get_node(_pw: Glob<Pipewire>, id: u32) -> Option<Node> {
+    let _ = id;
+    None
+  }
+
+  #[test]
+  fn declarations() {
+    let module: HostModule = Module::new("test")
+      .func(get_node)
+      .func(named!("set", |nodes: Vec<Node>, _force: bool| {
+        let _ = nodes;
+        None::<anyhow::Error>
+      }))
+      .func(named!("count", |_cx: &mut App,
+                             (a, b): (u32, u32)|
+       -> anyhow::Result<u64> {
+        Ok((a + b).into())
+      }))
+      .into();
+
+    module.validate().unwrap();
+    assert_eq!(
+      module.declared().unwrap(),
+      [
+        "export type Error = { message: string, };",
+        r#"export type Kind = "sink" | "source";"#,
+        "/**\n * An audio node.\n */",
+        r#"export type Node = { id: number, kind: Kind, name: string | null, };"#,
+        "export function getNode(id: number): Node | null;",
+        "export function set(nodes: Array<Node>, force: boolean): Error | null;",
+        "export function count(arg1: [number, number]): number | Error;",
+      ]
+      .join("\n")
+    );
   }
 }
