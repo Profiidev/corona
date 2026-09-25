@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-  ExprClosure, FnArg, ItemFn, LitStr, Pat, ReturnType, Token,
+  Attribute, Expr, ExprClosure, ExprLit, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Token,
   parse::{Parse, ParseStream},
   parse_macro_input,
 };
@@ -39,13 +39,17 @@ pub fn attribute(item: TokenStream) -> TokenStream {
   }
   let names = names(pats.iter().copied());
   let name = camel_case(&ident.to_string());
+  let docs = docs(&item.attrs);
 
   if item.sig.asyncness.is_none() {
     return quote! {
       #[allow(non_upper_case_globals)]
       #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) #output> = {
         #item
-        crate::script::host_fn::Named::new(#name, #names, #ident)
+        // Typed `let`, so the fn item coerces to the fn pointer before `.docs` is called on it.
+        let named: crate::script::host_fn::Named<fn(#(#tys),*) #output> =
+          crate::script::host_fn::Named::new(#name, #names, #ident);
+        named.docs(#docs)
       };
     }
     .into();
@@ -68,14 +72,17 @@ pub fn attribute(item: TokenStream) -> TokenStream {
       fn boxed(#(#args: #tys),*) -> #future {
         ::std::boxed::Box::pin(#ident(#(#args),*))
       }
-      crate::script::host_fn::Named::new(#name, #names, boxed)
+      let named: crate::script::host_fn::Named<fn(#(#tys),*) -> #future> =
+        crate::script::host_fn::Named::new(#name, #names, boxed);
+      named.docs(#docs)
     };
   }
   .into()
 }
 
 struct NamedClosure {
-  name: LitStr,
+  name: Expr,
+  attrs: Vec<Attribute>,
   closure: ExprClosure,
 }
 
@@ -83,16 +90,47 @@ impl Parse for NamedClosure {
   fn parse(input: ParseStream) -> syn::Result<Self> {
     let name = input.parse()?;
     input.parse::<Token![,]>()?;
+    let attrs = input.call(Attribute::parse_outer)?;
     let closure = input.parse()?;
-    Ok(Self { name, closure })
+    input.parse::<Option<Token![,]>>()?;
+    Ok(Self {
+      name,
+      attrs,
+      closure,
+    })
   }
 }
 
-/// `named!("setMute", move |pw: Glob<Pipewire>, id: u32| ..)` wraps the closure in a `Named`.
+/// `named!("setMute", /// docs \n move |pw: Glob<Pipewire>, id: u32| ..)` wraps the closure in a
+/// `Named`. The name is any `&'static str` expression; doc comments before the closure become the
+/// function's JSDoc.
 pub fn closure(input: TokenStream) -> TokenStream {
-  let NamedClosure { name, closure } = parse_macro_input!(input as NamedClosure);
+  let NamedClosure {
+    name,
+    attrs,
+    closure,
+  } = parse_macro_input!(input as NamedClosure);
   let names = names(closure.inputs.iter());
-  quote! { crate::script::host_fn::Named::new(#name, #names, #closure) }.into()
+  let docs = docs(&attrs);
+  quote! { crate::script::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into()
+}
+
+/// The `///` lines, joined; each line keeps the leading space `///` leaves.
+fn docs(attrs: &[Attribute]) -> String {
+  let lines: Vec<String> = attrs
+    .iter()
+    .filter(|attr| attr.path().is_ident("doc"))
+    .filter_map(|attr| match &attr.meta {
+      Meta::NameValue(meta) => match &meta.value {
+        Expr::Lit(ExprLit {
+          lit: Lit::Str(doc), ..
+        }) => Some(doc.value().trim().to_owned()),
+        _ => None,
+      },
+      _ => None,
+    })
+    .collect();
+  lines.join("\n")
 }
 
 fn camel_case(snake: &str) -> String {

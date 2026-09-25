@@ -48,12 +48,21 @@ impl Module {
       ret
     };
     self.functions.push(format!(
-      "export function {name}({}): {ret};",
+      "{}export function {name}({}): {ret};",
+      jsdoc(f.docs),
       params.join(", ")
     ));
 
     self.module = register(self.module, name, f.f.into_host_fn());
     self
+  }
+}
+
+fn jsdoc(docs: &str) -> String {
+  match docs.lines().collect::<Vec<_>>()[..] {
+    [] => String::new(),
+    [line] => format!("/** {line} */\n"),
+    ref lines => format!("/**\n{} */\n", lines.iter().map(|line| format!(" * {line}\n")).collect::<String>()),
   }
 }
 
@@ -76,12 +85,24 @@ fn register(module: HostModule, name: impl Into<String>, f: impl HostFn + 'stati
 pub struct Named<F> {
   name: &'static str,
   names: &'static [&'static str],
+  docs: &'static str,
   f: F,
 }
 
 impl<F> Named<F> {
   pub const fn new(name: &'static str, names: &'static [&'static str], f: F) -> Self {
-    Self { name, names, f }
+    Self {
+      name,
+      names,
+      docs: "",
+      f,
+    }
+  }
+
+  /// JSDoc for the declaration, one line per `\n`.
+  pub const fn docs(mut self, docs: &'static str) -> Self {
+    self.docs = docs;
+    self
   }
 }
 
@@ -131,16 +152,6 @@ impl TypeVisitor for Types {
     }
     T::visit_dependencies(self);
     T::visit_generics(self);
-  }
-}
-
-pub trait HostModuleExt {
-  fn func<I>(self, name: impl Into<String>, f: impl IntoHostFn<I> + 'static) -> Self;
-}
-
-impl HostModuleExt for HostModule {
-  fn func<I>(self, name: impl Into<String>, f: impl IntoHostFn<I> + 'static) -> Self {
-    register(self, name, f.into_host_fn())
   }
 }
 
@@ -573,30 +584,31 @@ mod tests {
 
   #[test]
   fn param_kinds() {
-    let module = HostModule::new("test")
-      .func("plain", |a: i64, b: String| a + b.len() as i64)
-      .func("unit", || ())
-      .func("global", |id: u32, _pw: Glob<Pipewire>| id)
-      .func(
+    let module: HostModule = Module::new("test")
+      .func(named!("plain", |a: i64, b: String| a + b.len() as i64))
+      .func(named!("unit", || ()))
+      .func(named!("global", |id: u32, _pw: Glob<Pipewire>| id))
+      .func(named!(
         "cx",
         |_cx: Cx, _pw: Glob<Pipewire>, name: Option<String>| name,
-      )
-      .func("mut_app", |_cx: &mut App, id: u32| id * 2)
-      .func("mut_app_only", |_cx: &mut App| ())
-      .func("error", |fail: bool| {
+      ))
+      .func(named!("mut_app", |_cx: &mut App, id: u32| id * 2))
+      .func(named!("mut_app_only", |_cx: &mut App| ()))
+      .func(named!("error", |fail: bool| {
         fail.then(|| anyhow::anyhow!("failed"))
-      })
-      .func("result", |fail: bool| -> anyhow::Result<u32> {
+      }))
+      .func(named!("result", |fail: bool| -> anyhow::Result<u32> {
         if fail {
           anyhow::bail!("failed")
         }
         Ok(1)
-      })
-      .func("serde_option", |id: Option<u32>| id)
-      .func("serde_result", |id: u32| -> Result<u32, String> { Ok(id) })
-      .func("nested", || -> anyhow::Result<Option<anyhow::Error>> {
+      }))
+      .func(named!("serde_option", |id: Option<u32>| id))
+      .func(named!("serde_result", |id: u32| -> Result<u32, String> { Ok(id) }))
+      .func(named!("nested", || -> anyhow::Result<Option<anyhow::Error>> {
         Ok(None)
-      });
+      }))
+      .into();
     assert_eq!(module.function_names().len(), 11);
   }
 
