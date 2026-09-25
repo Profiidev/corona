@@ -7,6 +7,7 @@ use pipewire::spa::{
   sys,
   utils::dict::DictRef,
 };
+use serde::Serialize;
 
 use crate::integration::pipewire::event::AudioEvent;
 
@@ -34,7 +35,8 @@ pub struct AudioState {
   pub targets: Arc<DashMap<u32, String>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NodeType {
   Sink,
   Source,
@@ -54,7 +56,7 @@ impl FromStr for NodeType {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AudioNode {
   pub id: u32,
   pub serial: u64,

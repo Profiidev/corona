@@ -1,9 +1,14 @@
+use std::ops::Deref;
+
 use gpui_kit::{App, Entity};
 use gpui_shell::{HostArguments, HostModule, HostObject, HostResult, HostValue, with_current_app};
 
 use crate::{
   integration::pipewire::{AudioNode, NodeType, Pipewire, PipewireExt},
-  script::module::{Subscribe, Subscriptions, watch},
+  script::{
+    host_fn::{Cx, Glob, HostModuleExt},
+    module::{Subscribe, Subscriptions, watch},
+  },
 };
 
 const DECLARATIONS: &str = r#"
@@ -108,14 +113,6 @@ fn read<W: 'static, R: Into<HostValue>>(
   }
 }
 
-fn command(body: impl FnOnce(&Pipewire) -> anyhow::Result<()>) -> HostValue {
-  with_current_app(|cx| match body(cx.pipewire()) {
-    Ok(()) => HostValue::Null,
-    Err(error) => HostObject::new().field("message", error.to_string()).into(),
-  })
-  .unwrap_or(HostValue::Null)
-}
-
 pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
   HostModule::new("corona/pipewire")
     .declarations(DECLARATIONS)
@@ -169,7 +166,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
         |pipewire, cx| pipewire.default_source(cx).cloned(),
       ),
     )
-    .function("target", {
+    .func("target", {
       let sub = watch(
         reads,
         Updates::Targets.into(),
@@ -178,52 +175,34 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs.push(sub);
       let reads = reads.clone();
 
-      move |args: &HostArguments| {
+      move |cx: Cx, pipewire: Glob<Pipewire>, stream: u32| {
         reads.record(Updates::Targets.into());
-        let stream = args.integer(0)?;
-        if stream < 0 || stream > u32::MAX as i64 {
-          return Err(gpui_shell::HostError::new("stream id must be a valid u32"));
-        }
-        let stream = stream as u32;
-
-        Ok(
-          with_current_app(|cx| cx.pipewire().target(stream, cx).into()).unwrap_or(HostValue::Null),
-        )
+        pipewire.target(stream, cx.deref())
       }
     })
-    .function("setDefault", |args| {
-      let id = args.integer(0)? as u32;
-      Ok(command(|pipewire| pipewire.audio().set_default(id)))
+    .func("setDefault", |pipewire: Glob<Pipewire>, id: u32| {
+      pipewire.audio().set_default(id)
     })
-    .function("setTarget", |args| {
-      let stream = args.integer(0)? as u32;
-      let sink = args.integer(1)? as u32;
-      Ok(command(|pipewire| {
-        pipewire.audio().set_target(stream, sink)
-      }))
+    .func(
+      "setTarget",
+      |pipewire: Glob<Pipewire>, stream: u32, sink: u32| pipewire.audio().set_target(stream, sink),
+    )
+    .func("resetTarget", |pipewire: Glob<Pipewire>, stream: u32| {
+      pipewire.audio().reset_target(stream)
     })
-    .function("resetTarget", |args| {
-      let stream = args.integer(0)? as u32;
-      Ok(command(|pipewire| pipewire.audio().reset_target(stream)))
-    })
-    .function("setVolume", |args| {
-      let id = args.integer(0)? as u32;
-      let volume = args.number(1)?;
-
-      Ok(command(|pipewire| {
+    .func(
+      "setVolume",
+      |pipewire: Glob<Pipewire>, id: u32, volume: f32| {
         let channels = pipewire
           .audio()
           .node(id)
           .map_or(1, |node| node.volumes.len().max(1));
 
-        pipewire
-          .audio()
-          .set_volumes(id, vec![volume as f32; channels])
-      }))
-    })
-    .function("setMute", |args| {
-      let id = args.integer(0)? as u32;
-      let mute = args.boolean(1)?;
-      Ok(command(|pipewire| pipewire.audio().set_mute(id, mute)))
-    })
+        pipewire.audio().set_volumes(id, vec![volume; channels])
+      },
+    )
+    .func(
+      "setMute",
+      |pipewire: Glob<Pipewire>, id: u32, mute: bool| pipewire.audio().set_mute(id, mute),
+    )
 }

@@ -10,6 +10,7 @@ const PLUGIN_MANIFEST_FILENAME: &str = "plugin.json";
 const PLUGIN_SCHEMA_FILENAME: &str = "plugin.schema.json";
 const PLUGIN_STORAGE_FILENAME: &str = "store.json";
 
+mod host_fn;
 mod manager;
 mod manifest;
 mod module;
