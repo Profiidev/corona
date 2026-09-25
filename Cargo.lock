@@ -1461,10 +1461,7 @@ dependencies = [
  "corona_macros",
  "corona_pipewire",
  "dirs 7.0.0",
- "gpui-component-shell",
  "gpui-kit",
- "gpui-shell",
- "schemars",
  "serde",
  "serde_json",
  "tracing",
@@ -1482,8 +1479,6 @@ dependencies = [
  "corona_desktop",
  "gpui-kit",
  "include_dir",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1547,6 +1542,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_script"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_compositor",
+ "corona_config",
+ "corona_macros",
+ "corona_pipewire",
+ "corona_utils",
+ "dirs 7.0.0",
+ "gpui-component-shell",
+ "gpui-kit",
+ "gpui-shell",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "corona_surface"
 version = "0.1.0"
 dependencies = [
@@ -1554,7 +1570,16 @@ dependencies = [
  "corona_components",
  "corona_compositor",
  "corona_config",
+ "corona_utils",
  "gpui-kit",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "corona_utils"
+version = "0.1.0"
+dependencies = [
  "tracing",
  "uuid",
 ]

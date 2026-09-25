@@ -1,15 +1,13 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use anyhow::Result;
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, Entity, Subscription};
 use gpui_shell::{ShellRoot, ShellRuntime, policy::Policy};
 
 use corona_macros::named;
 
-use crate::{
-  error::ErrorLogExt,
-  script::host_fn::{Cx, HostReturn, Named},
-};
+use crate::host_fn::{Cx, HostReturn, Named};
 
 pub mod compositor;
 pub mod pipewire;

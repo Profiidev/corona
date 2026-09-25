@@ -8,6 +8,4 @@ corona_config = { workspace = true }
 corona_desktop = { workspace = true }
 anyhow = { workspace = true }
 gpui-kit = { workspace = true }
-uuid = { workspace = true }
-tracing = { workspace = true }
 include_dir = "0.7.4"

@@ -1,14 +1,12 @@
+use corona_pipewire::{AudioNode, NodeType, Pipewire, PipewireExt};
 use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
 
 use crate::{
-  integration::pipewire::{AudioNode, NodeType, Pipewire, PipewireExt},
-  script::{
-    host_fn::{Cx, Glob, Module},
-    module::{Subscribe, Subscriptions, read, watch},
-  },
+  host_fn::{Cx, Glob, Module},
+  module::{Subscribe, Subscriptions, read, watch},
 };
 use corona_macros::{host_fn, named};
 

@@ -44,11 +44,11 @@ pub fn attribute(item: TokenStream) -> TokenStream {
   if item.sig.asyncness.is_none() {
     return quote! {
       #[allow(non_upper_case_globals)]
-      #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) #output> = {
+      #vis const #ident: crate::host_fn::Named<fn(#(#tys),*) #output> = {
         #item
         // Typed `let`, so the fn item coerces to the fn pointer before `.docs` is called on it.
-        let named: crate::script::host_fn::Named<fn(#(#tys),*) #output> =
-          crate::script::host_fn::Named::new(#name, #names, #ident);
+        let named: crate::host_fn::Named<fn(#(#tys),*) #output> =
+          crate::host_fn::Named::new(#name, #names, #ident);
         named.docs(#docs)
       };
     }
@@ -67,13 +67,13 @@ pub fn attribute(item: TokenStream) -> TokenStream {
   let args: Vec<_> = (0..tys.len()).map(|i| format_ident!("arg{i}")).collect();
   quote! {
     #[allow(non_upper_case_globals)]
-    #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) -> #future> = {
+    #vis const #ident: crate::host_fn::Named<fn(#(#tys),*) -> #future> = {
       #item
       fn boxed(#(#args: #tys),*) -> #future {
         ::std::boxed::Box::pin(#ident(#(#args),*))
       }
-      let named: crate::script::host_fn::Named<fn(#(#tys),*) -> #future> =
-        crate::script::host_fn::Named::new(#name, #names, boxed);
+      let named: crate::host_fn::Named<fn(#(#tys),*) -> #future> =
+        crate::host_fn::Named::new(#name, #names, boxed);
       named.docs(#docs)
     };
   }
@@ -112,7 +112,7 @@ pub fn closure(input: TokenStream) -> TokenStream {
   } = parse_macro_input!(input as NamedClosure);
   let names = names(closure.inputs.iter());
   let docs = docs(&attrs);
-  quote! { crate::script::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into()
+  quote! { crate::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into()
 }
 
 /// The `///` lines, joined; each line keeps the leading space `///` leaves.

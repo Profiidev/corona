@@ -62,7 +62,13 @@ fn jsdoc(docs: &str) -> String {
   match docs.lines().collect::<Vec<_>>()[..] {
     [] => String::new(),
     [line] => format!("/** {line} */\n"),
-    ref lines => format!("/**\n{} */\n", lines.iter().map(|line| format!(" * {line}\n")).collect::<String>()),
+    ref lines => format!(
+      "/**\n{} */\n",
+      lines
+        .iter()
+        .map(|line| format!(" * {line}\n"))
+        .collect::<String>()
+    ),
   }
 }
 
@@ -528,7 +534,7 @@ mod tests {
   use gpui_shell::HostObject;
   use serde::Deserialize;
 
-  use crate::integration::pipewire::Pipewire;
+  use corona_pipewire::Pipewire;
 
   use super::*;
 
@@ -604,10 +610,13 @@ mod tests {
         Ok(1)
       }))
       .func(named!("serde_option", |id: Option<u32>| id))
-      .func(named!("serde_result", |id: u32| -> Result<u32, String> { Ok(id) }))
-      .func(named!("nested", || -> anyhow::Result<Option<anyhow::Error>> {
-        Ok(None)
+      .func(named!("serde_result", |id: u32| -> Result<u32, String> {
+        Ok(id)
       }))
+      .func(named!(
+        "nested",
+        || -> anyhow::Result<Option<anyhow::Error>> { Ok(None) }
+      ))
       .into();
     assert_eq!(module.function_names().len(), 11);
   }

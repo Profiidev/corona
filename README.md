@@ -20,3 +20,7 @@ Update the version in the following files:
 
 - `nix/package.nix`
 - `justfile`
+
+# TODO
+
+widget type + script host fn refactor

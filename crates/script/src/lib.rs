@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
+use corona_config::APP_NAME;
 use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
@@ -20,7 +21,7 @@ pub fn init(cx: &mut App) -> Result<()> {
 
   #[cfg(debug_assertions)]
   {
-    use crate::script::manifest::ManifestFile;
+    use crate::manifest::ManifestFile;
 
     let schema = schemars::schema_for!(ManifestFile).to_value();
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PLUGIN_SCHEMA_FILENAME);
@@ -32,7 +33,7 @@ pub fn init(cx: &mut App) -> Result<()> {
   let runtime = ShellRuntime::new_with_components(cx, components)?;
   let data_home = dirs::data_dir()
     .unwrap_or_default()
-    .join(crate::APP_NAME)
+    .join(APP_NAME)
     .join("plugins");
   let plugin_directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");
 

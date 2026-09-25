@@ -4,9 +4,9 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use corona_components::utils::display_uuid;
 use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, ConfigProvider, bar::BarConfig, placement::Placement};
+use corona_utils::display::display_uuid;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, Global, Styled, Subscription,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,

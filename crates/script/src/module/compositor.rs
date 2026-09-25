@@ -1,12 +1,10 @@
+use corona_compositor::{Compositor, CompositorExt};
 use gpui_kit::App;
 use gpui_shell::HostModule;
 
 use crate::{
-  integration::compositor::{Compositor, CompositorExt},
-  script::{
-    host_fn::{Glob, Module},
-    module::{Subscribe, Subscriptions, read},
-  },
+  host_fn::{Glob, Module},
+  module::{Subscribe, Subscriptions, read},
 };
 use corona_macros::host_fn;
 

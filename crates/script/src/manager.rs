@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use anyhow::{Context as _, Result};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{AnyView, App, Entity, Global, Subscription, Window};
 use gpui_shell::{
   ShellRoot, ShellRuntime, Watcher,
@@ -8,12 +9,9 @@ use gpui_shell::{
 };
 
 use crate::{
-  error::ErrorLogExt,
-  script::{
-    PLUGIN_MANIFEST_FILENAME, PLUGIN_STORAGE_FILENAME,
-    manifest::{ManifestFile, PluginManifest},
-    module::ModuleExt,
-  },
+  PLUGIN_MANIFEST_FILENAME, PLUGIN_STORAGE_FILENAME,
+  manifest::{ManifestFile, PluginManifest},
+  module::ModuleExt,
 };
 
 pub struct Script {

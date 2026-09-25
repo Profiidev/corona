@@ -1,0 +1,8 @@
+[package]
+name = "corona_utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+uuid = { workspace = true }
+tracing = { workspace = true }
