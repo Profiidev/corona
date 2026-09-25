@@ -1453,21 +1453,11 @@ dependencies = [
 name = "corona"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "corona_components",
- "corona_compositor",
- "corona_config",
- "corona_desktop",
- "corona_macros",
- "corona_pipewire",
- "dirs 7.0.0",
+ "corona_shell",
+ "gpui-component-shell",
  "gpui-kit",
- "serde",
- "serde_json",
- "tracing",
  "tracing-subscriber",
- "ts-rs",
- "zbus",
 ]
 
 [[package]]
@@ -1488,12 +1478,14 @@ dependencies = [
  "anyhow",
  "bitflags 2.13.2",
  "chardetng",
+ "corona_utils",
  "flume",
  "gpui-kit",
  "serde",
  "serde_json",
  "tracing",
  "ts-rs",
+ "uuid",
 ]
 
 [[package]]
@@ -1560,6 +1552,25 @@ dependencies = [
  "serde_json",
  "tracing",
  "ts-rs",
+]
+
+[[package]]
+name = "corona_shell"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_components",
+ "corona_compositor",
+ "corona_config",
+ "corona_desktop",
+ "corona_pipewire",
+ "corona_script",
+ "corona_surface",
+ "corona_utils",
+ "gpui-kit",
+ "serde",
+ "uuid",
+ "zbus",
 ]
 
 [[package]]

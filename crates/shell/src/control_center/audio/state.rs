@@ -1,17 +1,15 @@
 use std::{cell::Cell, rc::Rc};
 
+use corona_pipewire::{AudioNode, PipewireAudio, PipewireExt};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Entity, Subscription, Window,
   base::slider::{SliderEvent, SliderState},
   component::select::{SelectEvent, SelectState},
 };
 
-use crate::{
-  error::ErrorLogExt,
-  integration::pipewire::{AudioNode, PipewireAudio, PipewireExt},
-  ui::app::control_center::audio::utils::{
-    NodeSelectItem, index_of, select_items, target_of, to_linear, to_slider,
-  },
+use crate::control_center::audio::utils::{
+  NodeSelectItem, index_of, select_items, target_of, to_linear, to_slider,
 };
 
 pub const DEFAULT_SINK_ID: u32 = u32::MAX;

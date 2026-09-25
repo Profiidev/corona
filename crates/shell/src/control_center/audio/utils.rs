@@ -1,9 +1,8 @@
 use gpui_kit::{App, base::IndexPath, component::select::SelectItem};
 
-use crate::{
-  integration::pipewire::{AudioNode, PipewireExt},
-  ui::app::control_center::audio::state::DEFAULT_SINK_ID,
-};
+use corona_pipewire::{AudioNode, PipewireExt};
+
+use crate::control_center::audio::state::DEFAULT_SINK_ID;
 
 #[derive(Clone, Debug)]
 pub struct NodeSelectItem {

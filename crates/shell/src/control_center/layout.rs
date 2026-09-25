@@ -1,15 +1,11 @@
+use corona_surface::panel::AppPanelExt;
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, IntoElement, ParentElement, RenderOnce, Styled, Window, assets::IconName,
   base::StyledExt, component::button::Button, div,
 };
 
-use crate::{
-  error::ErrorLogExt,
-  ui::{
-    app::control_center::{ControlCenter, variants::ControlCenterType},
-    panel::AppPanelExt,
-  },
-};
+use crate::control_center::{ControlCenter, variants::ControlCenterType};
 
 #[derive(IntoElement)]
 pub struct ControlCenterLayout {

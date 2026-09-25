@@ -5,6 +5,6 @@ mod widgets;
 
 pub use state::BarState;
 pub use style::BarStyle;
-pub use widgets::Widget;
+pub use widgets::{Widget, WidgetFactory};
 
 const BAR_NAMESPACE: &str = "corona_bar";

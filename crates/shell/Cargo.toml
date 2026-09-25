@@ -1,0 +1,19 @@
+[package]
+name = "corona_shell"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_surface = { workspace = true }
+corona_components = { workspace = true }
+corona_compositor = { workspace = true }
+corona_pipewire = { workspace = true }
+corona_desktop = { workspace = true }
+corona_script = { workspace = true }
+corona_utils = { workspace = true }
+corona_config = { workspace = true }
+gpui-kit = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+zbus = { workspace = true }

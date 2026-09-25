@@ -1,11 +1,9 @@
+use corona_surface::panel::Panel;
 use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
 
-use crate::ui::{
-  app::control_center::{
-    ControlCenterPanelHandle, layout::ControlCenterLayout, nav::ControlCenterNav,
-    variants::ControlCenterType,
-  },
-  panel::Panel,
+use crate::control_center::{
+  ControlCenterPanelHandle, layout::ControlCenterLayout, nav::ControlCenterNav,
+  variants::ControlCenterType,
 };
 
 pub struct ControlCenter {

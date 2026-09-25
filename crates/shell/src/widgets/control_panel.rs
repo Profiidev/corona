@@ -1,11 +1,9 @@
+use corona_components::assets::icons::IconName;
+use corona_surface::bar::Widget;
 use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
-use crate::ui::{
-  app::{control_center::ControlCenter, widgets::button::Button},
-  assets::icons::IconName,
-  bar::Widget,
-};
+use crate::{control_center::ControlCenter, widgets::button::Button};
 
 pub struct ControlCenterButton;
 

@@ -1,5 +1,7 @@
+use corona_utils::display::display_uuid;
 use serde::Serialize;
 use ts_rs::TS;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, TS)]
 pub struct Workspace {
@@ -37,4 +39,10 @@ pub struct Window {
   pub title: String,
   pub x: i32,
   pub y: i32,
+}
+
+impl Workspace {
+  pub fn display_id(&self) -> Uuid {
+    display_uuid(&self.monitor)
+  }
 }

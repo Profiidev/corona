@@ -9,6 +9,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
+use crate::bar::BarState;
 use corona_config::{
   bar::{BarConfig, WidgetConfig},
   placement::{Placement, PlacementStyle, PlacmentBounds},
@@ -26,10 +27,11 @@ pub struct Bar {
 
 impl Bar {
   pub fn new(config: BarConfig, cx: &mut Context<Bar>, display_id: Uuid) -> Self {
+    let widget = BarState::widget(cx);
     let mut init_widgets = |widgets: Vec<WidgetConfig>| {
       widgets
         .into_iter()
-        .map(|w| w.widget_type.init(cx, display_id))
+        .map(|w| widget(w.widget_type, cx, display_id))
         .collect::<Vec<_>>()
     };
 

@@ -1,6 +1,6 @@
 use gpui_kit::{Context, IntoElement, Render, Window};
 
-use crate::ui::app::control_center::ControlCenterPanel;
+use crate::control_center::ControlCenterPanel;
 
 pub struct NetworkPanel {}
 

@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+corona_utils = { workspace = true }
 gpui-kit = { workspace = true }
 anyhow = { workspace = true }
+uuid = { workspace = true }
 ts-rs = { workspace = true }
 serde = { workspace = true }
 bitflags = { workspace = true }

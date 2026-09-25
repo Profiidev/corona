@@ -1,12 +1,10 @@
+use corona_pipewire::{AudioNode, PipewireExt};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{Context, Subscription, Window};
 
-use crate::{
-  error::ErrorLogExt,
-  integration::pipewire::{AudioNode, PipewireExt},
-  ui::app::control_center::audio::{
-    AudioPanel,
-    state::{DEFAULT_SINK_ID, StreamState},
-  },
+use crate::control_center::audio::{
+  AudioPanel,
+  state::{DEFAULT_SINK_ID, StreamState},
 };
 
 pub fn listeners(cx: &mut Context<AudioPanel>, window: &mut Window) -> [Subscription; 6] {

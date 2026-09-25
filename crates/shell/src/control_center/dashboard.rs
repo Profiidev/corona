@@ -1,9 +1,8 @@
 use gpui_kit::{Context, IntoElement, Render, Window};
 
-use crate::{
-  script::{Script, ScriptManagerExt},
-  ui::app::control_center::ControlCenterPanel,
-};
+use corona_script::{Script, ScriptManagerExt};
+
+use crate::control_center::ControlCenterPanel;
 
 pub struct DashboardPanel {
   script: Script,

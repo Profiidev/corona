@@ -1,6 +1,6 @@
 use gpui_kit::{App, Window, assets::IconName};
 
-use crate::ui::app::control_center::{
+use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, dashboard::DashboardPanel,
   network::NetworkPanel,
 };

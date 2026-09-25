@@ -1,3 +1,5 @@
+use corona_pipewire::{AudioNode, PipewireAudio, PipewireExt};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   base::StyledExt,
@@ -5,15 +7,11 @@ use gpui_kit::{
   div,
 };
 
-use crate::{
-  error::ErrorLogExt,
-  integration::pipewire::{AudioNode, PipewireAudio, PipewireExt},
-  ui::app::control_center::{
-    ControlCenterPanel,
-    audio::{
-      state::{DEFAULT_SINK_ID, DefaultState, StreamState},
-      ui::{audio_node, audio_stream},
-    },
+use crate::control_center::{
+  ControlCenterPanel,
+  audio::{
+    state::{DEFAULT_SINK_ID, DefaultState, StreamState},
+    ui::{audio_node, audio_stream},
   },
 };
 

@@ -18,12 +18,13 @@ use gpui_kit::{
 use tracing::error;
 use uuid::Uuid;
 
-use crate::bar::{BAR_NAMESPACE, base::Bar};
+use crate::bar::{BAR_NAMESPACE, WidgetFactory, base::Bar};
 
 const DISPLAY_WAIT_TICK: Duration = Duration::from_millis(16);
 const DISPLAY_WAIT_TICKS: usize = 60;
 
 pub struct BarState {
+  widget: WidgetFactory,
   bars: HashMap<WindowId, WeakEntity<Bar>>,
   windows: HashMap<DisplayId, Vec<AnyWindowHandle>>,
   subscription: Option<Subscription>,
@@ -32,8 +33,9 @@ pub struct BarState {
 impl Global for BarState {}
 
 impl BarState {
-  pub fn init(cx: &mut gpui_kit::App) {
+  pub fn init(cx: &mut gpui_kit::App, widget: WidgetFactory) {
     cx.set_global(BarState {
+      widget,
       bars: HashMap::new(),
       windows: HashMap::new(),
       subscription: None,
@@ -169,6 +171,10 @@ impl BarState {
     )?;
 
     Ok(handle.into())
+  }
+
+  pub fn widget(cx: &App) -> WidgetFactory {
+    cx.global::<BarState>().widget
   }
 
   pub fn get(window: &Window, cx: &App) -> Option<Entity<Bar>> {

@@ -1,5 +1,12 @@
 use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 
+use corona_components::{animation::size::SizeAnimation, components::window_icon::WindowIcon};
+use corona_compositor::{CompositorExt, types};
+use corona_surface::{
+  bar::{BarState, BarStyle, Widget},
+  tooltip::TooltipExt,
+};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyWindowHandle, Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton,
   ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Subscription, Task, Window,
@@ -11,20 +18,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::{
-  error::ErrorLogExt,
-  integration::compositor::{
-    CompositorExt,
-    types::{self, Workspace},
-  },
-  ui::{
-    animation::size::SizeAnimation,
-    app::widgets::workspaces::tooltip::WindowTitle,
-    bar::{BarState, BarStyle, Widget},
-    components::window_icon::WindowIcon,
-    tooltip::TooltipExt,
-  },
-};
+use crate::widgets::workspaces::tooltip::WindowTitle;
 
 const ICON_SIZE: u16 = 18;
 const ICON_GAP: f32 = 2.;
@@ -33,7 +27,7 @@ const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 pub struct Workspaces {
   windows: HashMap<String, Vec<types::Window>>,
-  workspaces: Vec<Workspace>,
+  workspaces: Vec<types::Workspace>,
   pill_size: HashMap<String, SizeAnimation>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   current_tooltip: Option<(String, String, AnyWindowHandle)>,
@@ -67,7 +61,7 @@ impl Widget for Workspaces {
     let active_window = compositor.active_window.clone();
 
     let workspace_subscription = cx.observe(&workspace, move |this, e, cx| {
-      let mut workspaces: Vec<Workspace> = e.read(cx).to_vec();
+      let mut workspaces: Vec<types::Workspace> = e.read(cx).to_vec();
       workspaces.retain(|w| w.display_id() == display_id);
 
       this
@@ -232,7 +226,7 @@ impl Render for Workspaces {
   }
 }
 
-fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &Workspace) -> Div {
+fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &types::Workspace) -> Div {
   div()
     .absolute()
     .top(px(-2.))
@@ -255,7 +249,7 @@ fn workspace_windows(
   windows: &HashMap<String, Vec<types::Window>>,
   active_window: Option<&String>,
   icon_bounds: &mut HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
-  ws: &Workspace,
+  ws: &types::Workspace,
   theme: &Theme,
   cx: &Context<'_, Workspaces>,
 ) -> Vec<WindowIcon> {

@@ -11,7 +11,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::app::control_center::variants::ControlCenterType;
+use crate::control_center::variants::ControlCenterType;
 
 #[derive(IntoElement)]
 pub struct ControlCenterNav {

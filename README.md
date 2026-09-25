@@ -23,4 +23,4 @@ Update the version in the following files:
 
 # TODO
 
-widget type + script host fn refactor
+script host fn refactor

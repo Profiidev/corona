@@ -1,3 +1,7 @@
+use corona_components::components::window_icon::WindowIcon;
+use corona_desktop::entry::name_for_names;
+use corona_pipewire::{AudioNode, PipewireExt};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Div, IntoElement, ParentElement, SharedString, Styled,
   assets::IconName,
@@ -11,17 +15,7 @@ use gpui_kit::{
   div,
 };
 
-use crate::{
-  error::ErrorLogExt,
-  integration::{
-    desktop::entry::name_for_names,
-    pipewire::{AudioNode, PipewireExt},
-  },
-  ui::{
-    app::control_center::audio::state::{DefaultState, NodeState, StreamState},
-    components::window_icon::WindowIcon,
-  },
-};
+use crate::control_center::audio::state::{DefaultState, NodeState, StreamState};
 
 fn audio_btns(state: &NodeState, node: Option<&AudioNode>, mic: bool) -> Div {
   div()

@@ -1,20 +1,18 @@
 use std::time::Duration;
 
+use corona_compositor::CompositorExt;
+use corona_surface::bar::{BarStyle, Widget};
 use gpui_kit::{
   AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ParentElement, Render,
   StatefulInteractiveElement, Styled, Subscription, Window, component::ActiveTheme, div, px,
 };
 use uuid::Uuid;
 
-use crate::{
-  integration::compositor::CompositorExt,
-  ui::{
-    animation::size::SizeAnimation,
-    bar::{BarStyle, Widget},
-    components::{
-      scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
-      window_icon::WindowIcon,
-    },
+use corona_components::{
+  animation::size::SizeAnimation,
+  components::{
+    scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
+    window_icon::WindowIcon,
   },
 };
 
