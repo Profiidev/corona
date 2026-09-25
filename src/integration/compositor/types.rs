@@ -1,4 +1,7 @@
-#[derive(Debug, Clone)]
+use serde::Serialize;
+use ts_rs::TS;
+
+#[derive(Debug, Clone, Serialize, TS)]
 pub struct Workspace {
   pub id: String,
   pub name: String,
@@ -6,7 +9,7 @@ pub struct Workspace {
   pub monitor_id: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, TS)]
 pub struct Monitor {
   pub id: u32,
   pub name: String,
@@ -15,6 +18,8 @@ pub struct Monitor {
   pub refresh_rate: f32,
   pub x: i32,
   pub y: i32,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  #[ts(optional)]
   pub active_scratchpad: Option<Workspace>,
   pub active_workspace: Workspace,
   pub scale: f32,
@@ -23,7 +28,7 @@ pub struct Monitor {
   pub mirror_of: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, TS)]
 pub struct Window {
   pub address: String,
   pub monitor: u32,

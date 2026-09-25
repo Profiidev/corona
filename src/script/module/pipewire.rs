@@ -1,4 +1,4 @@
-use gpui_kit::{App, Entity};
+use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -6,8 +6,8 @@ use ts_rs::TS;
 use crate::{
   integration::pipewire::{AudioNode, NodeType, Pipewire, PipewireExt},
   script::{
-    host_fn::{Cx, Glob, HostReturn, Module, Named},
-    module::{Subscribe, Subscriptions, watch},
+    host_fn::{Cx, Glob, Module},
+    module::{Subscribe, Subscriptions, read, watch},
   },
 };
 use corona_macros::{host_fn, named};
@@ -61,24 +61,6 @@ impl From<Updates> for super::Updates {
   }
 }
 
-/// A read that re-renders the script when `entity` changes, if the script read it.
-fn read<W: 'static, R: HostReturn<M>, M: 'static>(
-  reads: &Subscriptions,
-  subs: &mut Vec<Subscribe>,
-  name: &'static str,
-  update: Updates,
-  entity: Entity<W>,
-  read: impl Fn(&Pipewire, &App) -> R + 'static,
-) -> Named<impl Fn(Cx) -> R + 'static> {
-  subs.push(watch(reads, update.into(), entity));
-  let reads = reads.clone();
-
-  named!(name, move |cx: Cx| {
-    reads.record(update.into());
-    read(cx.pipewire(), &cx)
-  })
-}
-
 fn nodes(nodes: &[AudioNode]) -> Vec<Node> {
   nodes.iter().map(Node::from).collect()
 }
@@ -123,7 +105,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "listSinks",
       Updates::Sinks,
       pipewire.sinks.clone(),
-      |pipewire, cx| nodes(pipewire.list_sinks(cx)),
+      |cx| nodes(cx.pipewire().list_sinks(cx)),
     ))
     .func(read(
       reads,
@@ -131,7 +113,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "listSources",
       Updates::Sources,
       pipewire.sources.clone(),
-      |pipewire, cx| nodes(pipewire.list_sources(cx)),
+      |cx| nodes(cx.pipewire().list_sources(cx)),
     ))
     .func(read(
       reads,
@@ -139,7 +121,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "listStreams",
       Updates::Streams,
       pipewire.streams.clone(),
-      |pipewire, cx| nodes(pipewire.list_streams(cx)),
+      |cx| nodes(cx.pipewire().list_streams(cx)),
     ))
     .func(read(
       reads,
@@ -147,7 +129,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "defaultSink",
       Updates::DefaultSink,
       pipewire.default_sink.clone(),
-      |pipewire, cx| pipewire.default_sink(cx).map(Node::from),
+      |cx| cx.pipewire().default_sink(cx).map(Node::from),
     ))
     .func(read(
       reads,
@@ -155,7 +137,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "defaultSource",
       Updates::DefaultSource,
       pipewire.default_source.clone(),
-      |pipewire, cx| pipewire.default_source(cx).map(Node::from),
+      |cx| cx.pipewire().default_source(cx).map(Node::from),
     ))
     .func({
       subs.push(watch(

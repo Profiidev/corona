@@ -4,7 +4,12 @@ use anyhow::Result;
 use gpui_kit::{App, Entity, Subscription};
 use gpui_shell::{ShellRoot, ShellRuntime, policy::Policy};
 
-use crate::error::ErrorLogExt;
+use corona_macros::named;
+
+use crate::{
+  error::ErrorLogExt,
+  script::host_fn::{Cx, HostReturn, Named},
+};
 
 pub mod compositor;
 pub mod pipewire;
@@ -30,6 +35,25 @@ fn watch<T: 'static>(reads: &Subscriptions, update: Updates, entity: Entity<T>) 
         runtime.refresh(&root, cx).log_err().ok();
       }
     })
+  })
+}
+
+/// A read that re-renders the script when `entity` changes, if the script called it.
+fn read<W: 'static, R: HostReturn<M>, M: 'static>(
+  reads: &Subscriptions,
+  subs: &mut Vec<Subscribe>,
+  name: &'static str,
+  update: impl Into<Updates>,
+  entity: Entity<W>,
+  read: impl Fn(&App) -> R + 'static,
+) -> Named<impl Fn(Cx) -> R + 'static> {
+  let update = update.into();
+  subs.push(watch(reads, update, entity));
+  let reads = reads.clone();
+
+  named!(name, move |cx: Cx| {
+    reads.record(update);
+    read(&cx)
   })
 }
 
