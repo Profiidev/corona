@@ -15,7 +15,7 @@ use pipewire::{
   types::ObjectType,
 };
 
-use crate::integration::pipewire::{
+use crate::{
   event::AudioEvent,
   state::{AudioNode, NodeType, PipewireState},
 };

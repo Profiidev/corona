@@ -1,15 +1,15 @@
 [package]
-name = "corona_compositor"
+name = "corona_pipewire"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 gpui-kit = { workspace = true }
 anyhow = { workspace = true }
-ts-rs = { workspace = true }
 serde = { workspace = true }
-bitflags = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
+ts-rs = { workspace = true }
+dashmap = { workspace = true }
 flume = { workspace = true }
-chardetng = "1.0.0"
+tracing = { workspace = true }
+serde_json = { workspace = true }
+pipewire = "0.10.1"

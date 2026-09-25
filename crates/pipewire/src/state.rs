@@ -10,7 +10,7 @@ use pipewire::spa::{
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::integration::pipewire::event::AudioEvent;
+use crate::event::AudioEvent;
 
 #[derive(Clone)]
 pub struct PipewireState {

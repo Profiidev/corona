@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result};
 
-use crate::integration::pipewire::{
+use crate::{
   Pipewire,
   command::{Command, Target},
   state::AudioNode,

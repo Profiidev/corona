@@ -4,7 +4,7 @@ use anyhow::Result;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
-use crate::integration::pipewire::{event::AudioEvent, listener::Handles, state::PipewireState};
+use crate::{event::AudioEvent, listener::Handles, state::PipewireState};
 
 mod api;
 mod audio;

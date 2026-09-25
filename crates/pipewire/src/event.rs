@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::integration::pipewire::state::{AudioNode, NodeType};
+use crate::state::{AudioNode, NodeType};
 
 #[derive(Debug, Clone)]
 pub enum AudioEvent {

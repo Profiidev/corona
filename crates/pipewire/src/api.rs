@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Result, bail};
 use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global};
 
-use crate::integration::pipewire::{
+use crate::{
   audio::PipewireAudio,
   command::Command,
   event::AudioEvent,

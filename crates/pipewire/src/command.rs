@@ -7,7 +7,7 @@ use pipewire::spa::{
 };
 use tracing::warn;
 
-use crate::integration::pipewire::{listener::Handles, state::NodeType};
+use crate::{listener::Handles, state::NodeType};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Target {

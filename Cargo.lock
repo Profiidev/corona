@@ -1457,7 +1457,7 @@ dependencies = [
  "config",
  "corona_compositor",
  "corona_macros",
- "dashmap",
+ "corona_pipewire",
  "dirs 7.0.0",
  "freedesktop-desktop-entry",
  "freedesktop-icons",
@@ -1466,7 +1466,6 @@ dependencies = [
  "gpui-kit",
  "gpui-shell",
  "include_dir",
- "pipewire",
  "schemars",
  "serde",
  "serde_json",
@@ -1499,6 +1498,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "corona_pipewire"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dashmap",
+ "flume",
+ "gpui-kit",
+ "pipewire",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ts-rs",
 ]
 
 [[package]]
