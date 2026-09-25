@@ -1568,7 +1568,6 @@ dependencies = [
  "corona_surface",
  "corona_utils",
  "gpui-kit",
- "serde",
  "uuid",
  "zbus",
 ]

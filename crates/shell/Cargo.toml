@@ -14,6 +14,5 @@ corona_utils = { workspace = true }
 corona_config = { workspace = true }
 gpui-kit = { workspace = true }
 uuid = { workspace = true }
-serde = { workspace = true }
 anyhow = { workspace = true }
 zbus = { workspace = true }
