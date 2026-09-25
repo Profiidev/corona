@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
+use std::{collections::BTreeMap, future::Future, marker::PhantomData, ops::Deref, pin::Pin};
 
 use corona_macros::all_tuples;
 use serde::{Serialize, de::DeserializeOwned};
@@ -42,14 +42,33 @@ impl Module {
       .zip(params)
       .filter_map(|(arg, ty)| Some(format!("{arg}: {}", ty?)))
       .collect();
+    let ret = if F::HostFn::ASYNC {
+      format!("Promise<{ret}>")
+    } else {
+      ret
+    };
     self.functions.push(format!(
       "export function {name}({}): {ret};",
       params.join(", ")
     ));
 
-    let f = f.f.into_host_fn();
-    self.module = self.module.function(name, move |args| f.call(args));
+    self.module = register(self.module, name, f.f.into_host_fn());
     self
+  }
+}
+
+/// Registers `f` as a sync or async function, whichever its return type is.
+fn register(module: HostModule, name: impl Into<String>, f: impl HostFn + 'static) -> HostModule {
+  if f.is_async() {
+    module.async_function(name, move |args| match f.call(args) {
+      HostOutput::Pending(future) => Ok(future),
+      HostOutput::Ready(result) => result.map(|value| Box::pin(async { Ok(value) }) as HostFuture),
+    })
+  } else {
+    module.function(name, move |args| match f.call(args) {
+      HostOutput::Ready(result) => result,
+      HostOutput::Pending(_) => unreachable!("a sync host fn returned a future"),
+    })
   }
 }
 
@@ -121,13 +140,22 @@ pub trait HostModuleExt {
 
 impl HostModuleExt for HostModule {
   fn func<I>(self, name: impl Into<String>, f: impl IntoHostFn<I> + 'static) -> Self {
-    let f = f.into_host_fn();
-    self.function(name, move |args| f.call(args))
+    register(self, name, f.into_host_fn())
   }
 }
 
 pub trait HostFn {
-  fn call(&self, args: &HostArguments) -> HostResult;
+  /// Whether `call` returns `HostOutput::Pending`; decides how the fn is registered.
+  const ASYNC: bool;
+
+  fn call(&self, args: &HostArguments) -> HostOutput;
+
+  fn is_async(&self) -> bool
+  where
+    Self: Sized,
+  {
+    Self::ASYNC
+  }
 
   /// The TypeScript type of every param (`None` for context params) and of the return value.
   fn signature(types: &mut Types) -> (Vec<Option<String>>, String)
@@ -164,11 +192,58 @@ pub trait HostParam {
   fn ts_type(types: &mut Types) -> Option<String>;
 }
 
-/// `M` only separates the serde impl from the error impl, which would overlap otherwise.
-pub trait HostReturn<M> {
-  fn result(self) -> HostResult;
+/// Same as gpui-shell's private `HostFuture`, what `HostModule::async_function` boxes to.
+pub type HostFuture = Pin<Box<dyn Future<Output = HostResult> + Send>>;
 
+pub enum HostOutput {
+  Ready(HostResult),
+  Pending(HostFuture),
+}
+
+/// `M` only separates the serde impl from the error impl, which would overlap otherwise.
+///
+/// Sync impls implement `result`, async ones `output`; each defaults to the other.
+pub trait HostReturn<M>: Sized {
+  const ASYNC: bool = false;
+
+  fn result(self) -> HostResult {
+    match self.output() {
+      HostOutput::Ready(result) => result,
+      HostOutput::Pending(_) => Err(HostError::new("async host fn result read synchronously")),
+    }
+  }
+
+  fn output(self) -> HostOutput {
+    HostOutput::Ready(self.result())
+  }
+
+  /// The TypeScript type of the value; `Promise` is added for async fns by `Module`.
   fn ts_type(types: &mut Types) -> String;
+}
+
+pub struct Async<M>(PhantomData<M>);
+
+/// An async host fn returns its future: the fn body runs on the main thread with its params, the
+/// future on the background executor, so it must be `Send + 'static` and cannot hold `Cx`/`Glob`.
+impl<Fut, M: 'static> HostReturn<Async<M>> for Fut
+where
+  Fut: Future + Send + 'static,
+  Fut::Output: HostReturn<M>,
+{
+  const ASYNC: bool = true;
+
+  fn output(self) -> HostOutput {
+    HostOutput::Pending(Box::pin(async move {
+      match self.await.output() {
+        HostOutput::Ready(result) => result,
+        HostOutput::Pending(future) => future.await,
+      }
+    }))
+  }
+
+  fn ts_type(types: &mut Types) -> String {
+    Fut::Output::ts_type(types)
+  }
 }
 
 impl<T: Serialize + TS + 'static> HostReturn<HostValue> for T {
@@ -215,10 +290,13 @@ impl HostReturn<Option<anyhow::Error>> for Option<anyhow::Error> {
 }
 
 impl<T: HostReturn<M>, M> HostReturn<Result<M, anyhow::Error>> for anyhow::Result<T> {
-  fn result(self) -> HostResult {
+  // `Ok(future)` makes the fn async; `Err` then resolves the promise with the error.
+  const ASYNC: bool = T::ASYNC;
+
+  fn output(self) -> HostOutput {
     match self {
-      Ok(value) => value.result(),
-      Err(error) => error.result(),
+      Ok(value) => value.output(),
+      Err(error) => error.output(),
     }
   }
 
@@ -350,7 +428,9 @@ macro_rules! impl_host_fn {
     where
       for<'a, 'b> &'a F: Fn($($params),*) -> R + Fn($(<$params as HostParam>::Item<'b>),*) -> R,
     {
-      fn call(&self, args: &HostArguments) -> HostResult {
+      const ASYNC: bool = R::ASYNC;
+
+      fn call(&self, args: &HostArguments) -> HostOutput {
         #[allow(clippy::too_many_arguments)]
         fn call_inner<R, $($params),*>(f: impl Fn($($params),*) -> R, $($params: $params),*) -> R {
           f($($params),*)
@@ -362,9 +442,10 @@ macro_rules! impl_host_fn {
           $(
             let $params = $params::get_param(args, &mut pos, cx)?;
           )*
-          call_inner(&self.f, $($params),*).result()
+          Ok(call_inner(&self.f, $($params),*).output())
         })
         .unwrap_or_else(|| Err(no_app()))
+        .unwrap_or_else(|error| HostOutput::Ready(Err(error)))
       }
 
       fn signature(types: &mut Types) -> (Vec<Option<String>>, String) {
@@ -392,16 +473,19 @@ macro_rules! impl_host_fn {
     impl<F: Fn(&mut App, $($params),*) -> R, R: HostReturn<M>, M, $($params : for<'a> HostParam<Item<'a> = $params>),*> HostFn
       for FunctionHostFn<WithApp<(M, ($($params ,)*))>, F>
     {
-      fn call(&self, args: &HostArguments) -> HostResult {
+      const ASYNC: bool = R::ASYNC;
+
+      fn call(&self, args: &HostArguments) -> HostOutput {
         with_current_app(|cx| {
           #[allow(unused_mut)]
           let mut pos = 0;
           $(
             let $params = $params::get_param(args, &mut pos, cx)?;
           )*
-          (self.f)(cx, $($params),*).result()
+          Ok((self.f)(cx, $($params),*).output())
         })
         .unwrap_or_else(|| Err(no_app()))
+        .unwrap_or_else(|error| HostOutput::Ready(Err(error)))
       }
 
       fn signature(types: &mut Types) -> (Vec<Option<String>>, String) {
@@ -522,10 +606,49 @@ mod tests {
     None
   }
 
+  #[host_fn]
+  async fn fetch_nodes(count: usize) -> anyhow::Result<Vec<Node>> {
+    let _ = count;
+    Ok(Vec::new())
+  }
+
+  /// Polls a future that never waits, which is all the async test fns do.
+  fn poll_ready(mut future: HostFuture) -> HostResult {
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut cx) {
+      std::task::Poll::Ready(result) => result,
+      std::task::Poll::Pending => panic!("test future is pending"),
+    }
+  }
+
+  #[test]
+  fn async_output() {
+    let HostOutput::Pending(future) = async { 3 }.output() else {
+      panic!("an async block is async");
+    };
+    assert_eq!(poll_ready(future).unwrap(), HostValue::Number(3.0));
+
+    // `Err` before the future exists still resolves to the error value.
+    let result: anyhow::Result<std::future::Ready<u32>> = Err(anyhow::anyhow!("boom"));
+    let HostOutput::Ready(value) = result.output() else {
+      panic!("an `Err` has no future");
+    };
+    assert_eq!(
+      value.unwrap(),
+      HostObject::new().field("message", "boom").into()
+    );
+  }
+
   #[test]
   fn declarations() {
     let module: HostModule = Module::new("test")
       .func(get_node)
+      .func(fetch_nodes)
+      .func(named!("double", async |id: u32| id * 2))
+      .func(named!("delayed", |pw: Glob<Pipewire>, id: u32| {
+        let _ = pw;
+        async move { anyhow::Ok(id) }
+      }))
       .func(named!("set", |nodes: Vec<Node>, _force: bool| {
         let _ = nodes;
         None::<anyhow::Error>
@@ -546,6 +669,9 @@ mod tests {
         "/**\n * An audio node.\n */",
         r#"export type Node = { id: number, kind: Kind, name: string | null, };"#,
         "export function getNode(id: number): Node | null;",
+        "export function fetchNodes(count: number): Promise<Array<Node> | Error>;",
+        "export function double(id: number): Promise<number>;",
+        "export function delayed(id: number): Promise<number | Error>;",
         "export function set(nodes: Array<Node>, force: boolean): Error | null;",
         "export function count(arg1: [number, number]): number | Error;",
       ]

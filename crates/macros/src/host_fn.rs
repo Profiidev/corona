@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
-  ExprClosure, FnArg, ItemFn, LitStr, Pat, Token,
+  ExprClosure, FnArg, ItemFn, LitStr, Pat, ReturnType, Token,
   parse::{Parse, ParseStream},
   parse_macro_input,
 };
@@ -13,8 +13,8 @@ use syn::{
 /// `const set_mute: Named<fn(..) -> R>` carrying the script name `setMute` and the parameter names.
 pub fn attribute(item: TokenStream) -> TokenStream {
   let item = parse_macro_input!(item as ItemFn);
-  if !item.sig.generics.params.is_empty() || item.sig.asyncness.is_some() {
-    return syn::Error::new_spanned(&item.sig, "#[host_fn] needs a plain, non-generic, sync fn")
+  if !item.sig.generics.params.is_empty() {
+    return syn::Error::new_spanned(&item.sig, "#[host_fn] needs a non-generic fn")
       .into_compile_error()
       .into();
   }
@@ -40,11 +40,35 @@ pub fn attribute(item: TokenStream) -> TokenStream {
   let names = names(pats.iter().copied());
   let name = camel_case(&ident.to_string());
 
+  if item.sig.asyncness.is_none() {
+    return quote! {
+      #[allow(non_upper_case_globals)]
+      #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) #output> = {
+        #item
+        crate::script::host_fn::Named::new(#name, #names, #ident)
+      };
+    }
+    .into();
+  }
+
+  // An `async fn`'s future has no nameable type, so a sync wrapper boxes it. Params the future
+  // borrows (`Cx`, `Glob`) make it non-'static, which the box type rejects.
+  let ret = match output {
+    ReturnType::Default => quote! { () },
+    ReturnType::Type(_, ty) => quote! { #ty },
+  };
+  let future = quote! {
+    ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #ret> + ::std::marker::Send>>
+  };
+  let args: Vec<_> = (0..tys.len()).map(|i| format_ident!("arg{i}")).collect();
   quote! {
     #[allow(non_upper_case_globals)]
-    #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) #output> = {
+    #vis const #ident: crate::script::host_fn::Named<fn(#(#tys),*) -> #future> = {
       #item
-      crate::script::host_fn::Named::new(#name, #names, #ident)
+      fn boxed(#(#args: #tys),*) -> #future {
+        ::std::boxed::Box::pin(#ident(#(#args),*))
+      }
+      crate::script::host_fn::Named::new(#name, #names, boxed)
     };
   }
   .into()
