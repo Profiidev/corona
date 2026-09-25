@@ -1456,11 +1456,10 @@ dependencies = [
  "anyhow",
  "config",
  "corona_compositor",
+ "corona_desktop",
  "corona_macros",
  "corona_pipewire",
  "dirs 7.0.0",
- "freedesktop-desktop-entry",
- "freedesktop-icons",
  "glob",
  "gpui-component-shell",
  "gpui-kit",
@@ -1489,6 +1488,15 @@ dependencies = [
  "serde_json",
  "tracing",
  "ts-rs",
+]
+
+[[package]]
+name = "corona_desktop"
+version = "0.1.0"
+dependencies = [
+ "dirs 7.0.0",
+ "freedesktop-desktop-entry",
+ "freedesktop-icons",
 ]
 
 [[package]]

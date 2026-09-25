@@ -1,11 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/compositor", "crates/macros", "crates/pipewire"]
+members = ["crates/compositor", "crates/desktop", "crates/macros", "crates/pipewire"]
 
 [workspace.dependencies]
 corona_macros = { path = "crates/macros" }
 corona_compositor = { path = "crates/compositor" }
 corona_pipewire = { path = "crates/pipewire" }
+corona_desktop = { path = "crates/desktop" }
 anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
@@ -14,6 +15,7 @@ bitflags = "2.13.2"
 tracing = "0.1.44"
 dashmap = "6.2.1"
 flume = "0.12.0"
+dirs = "7.0.0"
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.6.6" }
 
 [package]
@@ -23,9 +25,6 @@ edition = "2024"
 
 [dependencies]
 config = { version = "0.15.26", default-features = false, features = ["toml"] }
-dirs = "7.0.0"
-freedesktop-desktop-entry = "0.8.3"
-freedesktop-icons = "0.4.0"
 glob = "0.3.4"
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.6.6" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.6.6" }
@@ -37,12 +36,14 @@ zbus = "5.19.0"
 corona_macros = { workspace = true }
 corona_compositor = { workspace = true }
 corona_pipewire = { workspace = true }
+corona_desktop = { workspace = true }
 anyhow = { workspace = true }
 gpui-kit = { workspace = true }
 ts-rs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+dirs = { workspace = true }
 
 [patch.crates-io]
 gpui-pre = { path = "vendor/gpui-pre" }
