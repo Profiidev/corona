@@ -1,4 +1,9 @@
-{ pkgs, lib, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 
 let
   buildDeps = with pkgs; [
@@ -19,4 +24,5 @@ in
   packages = runtimeDeps ++ buildDeps;
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath runtimeDeps;
+  env.CORONA_PLUGIN_DIR = "${config.env.DEVENV_ROOT}/plugins";
 }

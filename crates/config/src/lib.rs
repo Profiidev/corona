@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,7 @@ pub fn load(cx: &mut App) -> Result<()> {
   let config = config::Config::builder()
     .add_source(config::Config::try_from(&Config::default())?)
     .add_source(files)
+    .add_source(config::Environment::with_prefix("CORONA"))
     .build()?
     .try_deserialize::<Config>()?;
 
@@ -41,6 +44,7 @@ pub struct Config {
   pub theme: String,
   pub animation_speed: f32,
   pub bars: Vec<BarConfig>,
+  pub plugin_dir: PathBuf,
 }
 
 pub trait ConfigProvider {
@@ -61,6 +65,9 @@ impl Default for Config {
       theme: "shadcn Zinc Blue Dark".to_string(),
       animation_speed: 1.,
       bars: vec![Default::default()],
+      plugin_dir: dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("corona/plugins"),
     }
   }
 }

@@ -6,8 +6,8 @@ mod control_center;
 mod widgets;
 
 pub fn init(cx: &mut App) {
-  corona_script::init(cx).expect("Failed to init script manager");
   corona_config::load(cx).expect("Failed to load config");
+  corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
   cx.foreground_executor()

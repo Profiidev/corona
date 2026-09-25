@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider};
 use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
@@ -35,7 +35,7 @@ pub fn init(cx: &mut App) -> Result<()> {
     .unwrap_or_default()
     .join(APP_NAME)
     .join("plugins");
-  let plugin_directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");
+  let plugin_directory = cx.config().plugin_dir.clone();
 
   let mut manager = ScriptManager::new(runtime, data_home, plugin_directory);
   manager.discover();

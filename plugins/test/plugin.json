@@ -1,5 +1,5 @@
 {
-  "$schema": "../../plugin.schema.json",
+  "$schema": "../../crates/script/plugin.schema.json",
   "id": "test",
   "name": "Dashboard",
   "views": {
