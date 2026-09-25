@@ -2,10 +2,11 @@ use anyhow::{Context, Result};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::config::bar::BarConfig;
+use crate::bar::BarConfig;
 
 pub mod bar;
 pub mod placement;
+pub mod widget;
 
 pub fn load(cx: &mut App) -> Result<()> {
   let config_dir = dirs::config_dir()

@@ -1,0 +1,12 @@
+[package]
+name = "corona_config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+dirs = { workspace = true }
+glob = { workspace = true }
+config = { version = "0.15.26", default-features = false, features = ["toml"] }

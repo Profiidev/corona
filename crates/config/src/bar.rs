@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{config::placement::Placement, ui::WidgetType};
+use crate::{placement::Placement, widget::WidgetType};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BarConfig {
