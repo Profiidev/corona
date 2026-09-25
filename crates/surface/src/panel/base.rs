@@ -1,21 +1,17 @@
 use std::time::Duration;
 
+use corona_components::animation::smooth_retarget::SmoothRetarget;
+use corona_config::{
+  ConfigProvider,
+  placement::{Placement, PlacementStyle, PlacmentBounds},
+};
 use gpui_kit::{
   AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
   PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
   prelude::FluentBuilder, px,
 };
 
-use crate::{
-  config::{
-    ConfigProvider,
-    placement::{Placement, PlacementStyle, PlacmentBounds},
-  },
-  ui::{
-    animation::smooth_retarget::SmoothRetarget,
-    panel::{align::Align, style::PanelStyle, variants::Panel},
-  },
-};
+use crate::panel::{align::Align, style::PanelStyle, variants::Panel};
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 

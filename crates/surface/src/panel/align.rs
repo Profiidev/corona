@@ -1,9 +1,7 @@
+use corona_config::placement::{Placement, PlacmentBounds};
 use gpui_kit::{App, Bounds, Pixels, component::ActiveTheme};
 
-use crate::{
-  config::placement::{Placement, PlacmentBounds},
-  ui::panel::style::PanelStyle,
-};
+use crate::panel::style::PanelStyle;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Align {

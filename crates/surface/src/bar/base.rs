@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::config::{
+use corona_config::{
   bar::{BarConfig, WidgetConfig},
   placement::{Placement, PlacementStyle, PlacmentBounds},
 };

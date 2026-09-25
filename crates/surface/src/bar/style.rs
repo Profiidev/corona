@@ -1,6 +1,7 @@
+use corona_config::placement::Placement;
 use gpui_kit::{App, Styled, Window, prelude::FluentBuilder};
 
-use crate::{config::placement::Placement, ui::bar::BarState};
+use crate::bar::BarState;
 
 pub trait BarStyle: Styled + FluentBuilder {
   fn with_placement(

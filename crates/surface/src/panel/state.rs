@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context as _, Result};
+use corona_config::{APP_NAME, placement::Placement};
 use gpui_kit::{
   App, AppContext, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Styled, WeakEntity,
   Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
@@ -10,12 +11,8 @@ use gpui_kit::{
 };
 
 use crate::{
-  APP_NAME,
-  config::placement::Placement,
-  ui::{
-    bar::{BarState, Widget},
-    panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
-  },
+  bar::{BarState, Widget},
+  panel::{PANEL_NAME, align::Align, base::BasePanel, variants::Panel},
 };
 
 pub struct PanelState {

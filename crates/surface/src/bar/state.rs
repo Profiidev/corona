@@ -4,6 +4,9 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
+use corona_components::utils::display_uuid;
+use corona_compositor::CompositorExt;
+use corona_config::{APP_NAME, ConfigProvider, bar::BarConfig, placement::Placement};
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, Global, Styled, Subscription,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
@@ -15,15 +18,7 @@ use gpui_kit::{
 use tracing::error;
 use uuid::Uuid;
 
-use crate::{
-  APP_NAME,
-  config::{ConfigProvider, bar::BarConfig, placement::Placement},
-  integration::compositor::CompositorExt,
-  ui::{
-    bar::{BAR_NAMESPACE, base::Bar},
-    utils::display_uuid,
-  },
-};
+use crate::bar::{BAR_NAMESPACE, base::Bar};
 
 const DISPLAY_WAIT_TICK: Duration = Duration::from_millis(16);
 const DISPLAY_WAIT_TICKS: usize = 60;

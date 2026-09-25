@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
+use corona_config::{APP_NAME, placement::Placement};
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Styled,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
@@ -12,14 +13,10 @@ use gpui_kit::{
 };
 
 use crate::{
-  APP_NAME,
-  config::placement::Placement,
-  ui::{
-    bar::BarState,
-    tooltip::{
-      base::{BORDER, BaseTooltip},
-      variants::Tooltip,
-    },
+  bar::BarState,
+  tooltip::{
+    base::{BORDER, BaseTooltip},
+    variants::Tooltip,
   },
 };
 

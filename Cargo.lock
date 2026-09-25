@@ -1482,6 +1482,7 @@ dependencies = [
  "corona_desktop",
  "gpui-kit",
  "include_dir",
+ "tracing",
  "uuid",
 ]
 
@@ -1543,6 +1544,19 @@ dependencies = [
  "serde_json",
  "tracing",
  "ts-rs",
+]
+
+[[package]]
+name = "corona_surface"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_components",
+ "corona_compositor",
+ "corona_config",
+ "gpui-kit",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

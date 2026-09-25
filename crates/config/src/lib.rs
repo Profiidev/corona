@@ -8,6 +8,8 @@ pub mod bar;
 pub mod placement;
 pub mod widget;
 
+pub const APP_NAME: &str = "corona";
+
 pub fn load(cx: &mut App) -> Result<()> {
   let config_dir = dirs::config_dir()
     .context("Failed to get config directory")?
