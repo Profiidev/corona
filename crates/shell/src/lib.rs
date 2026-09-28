@@ -18,8 +18,10 @@ pub fn init(cx: &mut App) {
   corona_surface::init(cx, widgets::view).expect("Failed to init ui");
 }
 
-async fn init_dbus(_cx: &mut App) -> Result<()> {
-  let _system = Connection::system().await?;
+async fn init_dbus(cx: &mut App) -> Result<()> {
+  let system = Connection::system().await?;
+
+  corona_network_manager::init(cx, &system).await?;
 
   Ok(())
 }

@@ -1,0 +1,16 @@
+[package]
+name = "corona_network_manager"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_utils.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+futures-lite.workspace = true
+flume.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+corona-zbus-networkmanager = "0.1.0"
+corona-zbus-nm-secret-agent-manager = "0.1.0"
