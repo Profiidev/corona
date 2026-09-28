@@ -27,6 +27,7 @@ pub struct Snapshot {
   pub interfaces: Vec<Interface>,
   pub primary_interface: Option<Interface>,
   pub connectivity: NmConnectivityState,
+  pub connectivity_check: Option<String>,
   pub wifi_supported: bool,
   pub wifi_enabled: bool,
   pub primary_wifi: Option<Interface>,
@@ -151,12 +152,20 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     interfaces,
     primary_interface,
     connectivity: nm.connectivity().await?,
+    connectivity_check: connectivity_check(&nm).await,
     wifi_supported,
     wifi_enabled: nm.wireless_enabled().await?,
     primary_wifi,
     wifi_networks,
     vpns: vpns(conn, &nm).await.log_err().unwrap_or_default(),
   })
+}
+
+async fn connectivity_check(nm: &NetworkManager<'_>) -> Option<String> {
+  let enabled = nm.connectivity_check_enabled().await.unwrap_or_default()
+    && nm.connectivity_check_available().await.unwrap_or_default();
+  let uri = nm.connectivity_check_uri().await.ok()?;
+  (enabled && !uri.is_empty()).then_some(uri)
 }
 
 async fn vpns(conn: &Connection, nm: &NetworkManager<'_>) -> Result<Vec<Vpn>> {

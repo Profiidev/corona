@@ -1,5 +1,7 @@
 pub use agent::{Secret, SecretKind, SecretRequest};
 
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, zvariant::OwnedObjectPath};
@@ -7,7 +9,7 @@ use zbus::{Connection, zvariant::OwnedObjectPath};
 use crate::listener::{agent_listener, listener, subscribe};
 
 pub use crate::{
-  actions::{EnterpriseConfig, HiddenSecurity},
+  actions::{EnterpriseConfig, HiddenSecurity, ScanResult},
   snapshot::{FailReason, WifiFailure, WifiNetwork, WifiStatus},
   state::{Interface, InterfaceType, Vpn, VpnKind},
 };
@@ -21,11 +23,15 @@ mod listener;
 mod snapshot;
 mod state;
 
+const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
+const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
+
 #[derive(Clone)]
 pub struct NetworkManager {
   pub interfaces: Entity<Vec<Interface>>,
   pub primary_interface: Entity<Option<Interface>>,
   pub connectivity: Entity<NmConnectivityState>,
+  pub connectivity_check: Entity<Option<String>>,
   pub wifi_supported: Entity<bool>,
   pub wifi_enabled: Entity<bool>,
   pub primary_wifi: Entity<Option<Interface>>,
@@ -59,6 +65,10 @@ impl NetworkManager {
 
   pub fn connectivity(&self, cx: &App) -> NmConnectivityState {
     *self.connectivity.read(cx)
+  }
+
+  pub fn connectivity_check<'c>(&self, cx: &'c App) -> Option<&'c str> {
+    self.connectivity_check.read(cx).as_deref()
   }
 
   pub fn wifi_supported(&self, cx: &App) -> bool {
@@ -113,9 +123,24 @@ impl NetworkManager {
     async move { actions::set_wifi_enabled(&conn, enabled).await }
   }
 
-  pub fn rescan(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+  /// resolves once the scan finished, or with `TimedOut` after `SCAN_TIMEOUT`
+  pub fn rescan(&self, cx: &App) -> impl Future<Output = Result<ScanResult>> + use<> {
     let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
-    async move { actions::rescan(&conn, device?).await }
+    let timeout = cx.background_executor().timer(SCAN_TIMEOUT);
+    async move { actions::rescan(&conn, device?, timeout).await }
+  }
+
+  pub fn check_connectivity(&self) -> impl Future<Output = Result<NmConnectivityState>> + use<> {
+    let conn = self.conn.clone();
+    async move { actions::check_connectivity(&conn).await }
+  }
+
+  pub fn open_portal(&self, cx: &App) {
+    let url = self
+      .connectivity_check(cx)
+      .filter(|uri| uri.starts_with("http://"))
+      .unwrap_or(PORTAL_FALLBACK_URL);
+    cx.open_url(url);
   }
 
   pub fn connect_wifi(&self, ssid: String, cx: &App) -> impl Future<Output = Result<()>> + use<> {
@@ -188,6 +213,7 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     interfaces: cx.new(|_| Vec::new()),
     primary_interface: cx.new(|_| None),
     connectivity: cx.new(|_| NmConnectivityState::Unknown),
+    connectivity_check: cx.new(|_| None),
     wifi_supported: cx.new(|_| false),
     wifi_enabled: cx.new(|_| false),
     primary_wifi: cx.new(|_| None),

@@ -62,6 +62,13 @@ enum Connectivity {
 
 #[derive(Serialize, TS)]
 #[serde(rename_all = "snake_case")]
+enum ScanResult {
+  Done,
+  TimedOut,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "snake_case")]
 enum WifiStatus {
   Connected,
   NeedAuth,
@@ -259,6 +266,7 @@ pub enum Updates {
   Interfaces,
   PrimaryInterface,
   Connectivity,
+  ConnectivityCheck,
   WifiSupported,
   WifiEnabled,
   PrimaryWifi,
@@ -309,6 +317,21 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       network.connectivity.clone(),
       |cx| Connectivity::from(cx.network_manager().connectivity(cx)),
     ))
+    .func(read(
+      reads,
+      subs,
+      "connectivityCheckEnabled",
+      Updates::ConnectivityCheck,
+      network.connectivity_check.clone(),
+      |cx| cx.network_manager().connectivity_check(cx).is_some(),
+    ))
+    .func(named!("checkConnectivity", |nm: Glob<NetworkManager>| {
+      let check = nm.check_connectivity();
+      async move { check.await.map(Connectivity::from) }
+    }))
+    .func(named!("openPortal", |cx: Cx| cx
+      .network_manager()
+      .open_portal(&cx)))
     .func(read(
       reads,
       subs,
@@ -413,7 +436,15 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "setWifiEnabled",
       |nm: Glob<NetworkManager>, enabled: bool| nm.set_wifi_enabled(enabled)
     ))
-    .func(named!("rescan", |cx: Cx, nm: Glob<NetworkManager>| nm.rescan(&cx)))
+    .func(named!("rescan", |cx: Cx, nm: Glob<NetworkManager>| {
+      let scan = nm.rescan(&cx);
+      async move {
+        scan.await.map(|result| match result {
+          nm::ScanResult::Done => ScanResult::Done,
+          nm::ScanResult::TimedOut => ScanResult::TimedOut,
+        })
+      }
+    }))
     .func(named!(
       "connectWifi",
       |cx: Cx, nm: Glob<NetworkManager>, ssid: String| nm.connect_wifi(ssid, &cx)

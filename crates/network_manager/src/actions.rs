@@ -1,15 +1,17 @@
 use std::{collections::HashMap, path::Path};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use cosmic_dbus_networkmanager::{
   device::{Device, wireless::WirelessDevice},
   interface::{
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
+    enums::NmConnectivityState,
     settings::SettingsProxy,
   },
   nm::NetworkManager,
   settings::connection::{Connection as NmConnection, Settings, WifiSecurity, WifiSettings},
 };
+use futures_lite::{StreamExt, future::or};
 use serde::Deserialize;
 use ts_rs::TS;
 use zbus::{
@@ -126,9 +128,44 @@ pub(crate) async fn set_wifi_enabled(conn: &Connection, enabled: bool) -> Result
   Ok(())
 }
 
-pub(crate) async fn rescan(conn: &Connection, device: OwnedObjectPath) -> Result<()> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScanResult {
+  Done,
+  TimedOut,
+}
+
+pub(crate) async fn rescan(
+  conn: &Connection,
+  device: OwnedObjectPath,
+  timeout: impl Future<Output = ()>,
+) -> Result<ScanResult> {
   let wireless = proxy::<WirelessDeviceProxy, WirelessDevice>(conn, device).await?;
-  Ok(wireless.request_scan(HashMap::new()).await?)
+  let mut changes = wireless.receive_last_scan_changed().await;
+  let before = wireless.last_scan().await?;
+  wireless.request_scan(HashMap::new()).await?;
+
+  let done = async {
+    while let Some(change) = changes.next().await {
+      if change.get().await? > before {
+        return Ok(ScanResult::Done);
+      }
+    }
+    bail!("NetworkManager went away while scanning")
+  };
+  let timed_out = async {
+    timeout.await;
+    Ok(ScanResult::TimedOut)
+  };
+  or(done, timed_out).await
+}
+
+pub(crate) async fn check_connectivity(conn: &Connection) -> Result<NmConnectivityState> {
+  Ok(
+    NetworkManager::new(conn)
+      .await?
+      .check_connectivity()
+      .await?,
+  )
 }
 
 async fn strongest_access_point(

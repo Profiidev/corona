@@ -68,6 +68,7 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
         write_changed(cx, &state.interfaces, snapshot.interfaces);
         write_changed(cx, &state.primary_interface, snapshot.primary_interface);
         write_changed(cx, &state.connectivity, snapshot.connectivity);
+        write_changed(cx, &state.connectivity_check, snapshot.connectivity_check);
         write_changed(cx, &state.wifi_supported, snapshot.wifi_supported);
         write_changed(cx, &state.wifi_enabled, snapshot.wifi_enabled);
         write_changed(cx, &state.primary_wifi, snapshot.primary_wifi);
