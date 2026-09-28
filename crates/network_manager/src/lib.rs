@@ -8,8 +8,8 @@ use crate::listener::{agent_listener, listener, subscribe};
 
 pub use crate::{
   actions::{EnterpriseConfig, HiddenSecurity},
-  snapshot::{WifiFailure, WifiNetwork},
-  state::{Interface, Vpn},
+  snapshot::{FailReason, WifiFailure, WifiNetwork, WifiStatus},
+  state::{Interface, InterfaceType, Vpn, VpnKind},
 };
 pub use cosmic_dbus_networkmanager::interface::enums::{
   ActiveConnectionState, DeviceState, NmConnectivityState,
@@ -105,53 +105,70 @@ impl NetworkManager {
       .context("no usable wifi device")
   }
 
-  pub async fn set_wifi_enabled(&self, enabled: bool) -> Result<()> {
-    actions::set_wifi_enabled(&self.conn, enabled).await
+  // Actions read `cx` and clone the connection up front, so their futures are `'static` and can
+  // run on the background executor.
+
+  pub fn set_wifi_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    async move { actions::set_wifi_enabled(&conn, enabled).await }
   }
 
-  pub async fn rescan(&self, cx: &App) -> Result<()> {
-    actions::rescan(&self.conn, self.wifi_path(cx)?).await
+  pub fn rescan(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::rescan(&conn, device?).await }
   }
 
-  pub async fn connect_wifi(&self, ssid: String, cx: &App) -> Result<()> {
-    actions::connect_wifi(&self.conn, self.wifi_path(cx)?, ssid).await
+  pub fn connect_wifi(&self, ssid: String, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::connect_wifi(&conn, device?, ssid).await }
   }
 
-  pub async fn forget_wifi(&self, ssid: String, cx: &App) -> Result<()> {
-    actions::forget_wifi(&self.conn, self.wifi_path(cx)?, ssid).await
+  pub fn forget_wifi(&self, ssid: String, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::forget_wifi(&conn, device?, ssid).await }
   }
 
-  pub async fn join_hidden_wifi(
+  pub fn join_hidden_wifi(
     &self,
     ssid: String,
     security: HiddenSecurity,
     password: Option<String>,
     cx: &App,
-  ) -> Result<()> {
-    actions::join_hidden_wifi(&self.conn, self.wifi_path(cx)?, ssid, security, password).await
+  ) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::join_hidden_wifi(&conn, device?, ssid, security, password).await }
   }
 
-  pub async fn connect_vpn(&self, uuid: String) -> Result<()> {
-    actions::connect_vpn(&self.conn, uuid).await
+  pub fn connect_vpn(&self, uuid: String) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    async move { actions::connect_vpn(&conn, uuid).await }
   }
 
-  pub async fn disconnect_vpn(&self, uuid: String) -> Result<()> {
-    actions::disconnect_vpn(&self.conn, uuid).await
+  pub fn disconnect_vpn(&self, uuid: String) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    async move { actions::disconnect_vpn(&conn, uuid).await }
   }
 
   /// creates an 802.1X profile and connects the primary wifi device with it
-  pub async fn connect_enterprise_wifi(&self, config: EnterpriseConfig, cx: &App) -> Result<()> {
-    actions::connect_enterprise_wifi(&self.conn, self.wifi_path(cx)?, config).await
+  pub fn connect_enterprise_wifi(
+    &self,
+    config: EnterpriseConfig,
+    cx: &App,
+  ) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::connect_enterprise_wifi(&conn, device?, config).await }
   }
 
   /// activates the best saved profile of an interface
-  pub async fn connect(&self, interface: &str, cx: &App) -> Result<()> {
-    actions::connect_device(&self.conn, self.interface_path(interface, cx)?).await
+  pub fn connect(&self, interface: &str, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.interface_path(interface, cx));
+    async move { actions::connect_device(&conn, device?).await }
   }
 
   /// disconnects an interface, NM does not autoconnect it again until asked to
-  pub async fn disconnect(&self, interface: &str, cx: &App) -> Result<()> {
-    actions::disconnect_device(&self.conn, self.interface_path(interface, cx)?).await
+  pub fn disconnect(&self, interface: &str, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.interface_path(interface, cx));
+    async move { actions::disconnect_device(&conn, device?).await }
   }
 
   /// answer the pending secret request, None cancels it

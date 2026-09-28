@@ -662,10 +662,14 @@ mod tests {
 
   #[test]
   fn declarations() {
+    let prefix = String::from("node ");
     let module: HostModule = Module::new("test")
       .func(get_node)
       .func(fetch_nodes)
       .func(named!("double", async |id: u32| id * 2))
+      .func(named!("label", async move |id: u32| format!(
+        "{prefix}{id}"
+      )))
       .func(named!("delayed", |pw: Glob<Pipewire>, id: u32| {
         let _ = pw;
         async move { anyhow::Ok(id) }
@@ -692,6 +696,7 @@ mod tests {
         "export function getNode(id: number): Node | null;",
         "export function fetchNodes(count: number): Promise<Array<Node> | Error>;",
         "export function double(id: number): Promise<number>;",
+        "export function label(id: number): Promise<string>;",
         "export function delayed(id: number): Promise<number | Error>;",
         "export function set(nodes: Array<Node>, force: boolean): Error | null;",
         "export function count(arg1: [number, number]): number | Error;",

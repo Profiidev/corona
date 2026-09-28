@@ -10,6 +10,7 @@ use corona_macros::named;
 use crate::host_fn::{Cx, HostReturn, Named};
 
 pub mod compositor;
+pub mod network;
 pub mod pipewire;
 
 #[derive(Clone, Default)]
@@ -18,6 +19,7 @@ pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
   Compositor(compositor::Updates),
+  Network(network::Updates),
   Pipewire(pipewire::Updates),
 }
 
@@ -76,7 +78,8 @@ impl ModuleExt for Policy {
 
     let policy = self
       .with_host_module(compositor::module(&reads, &mut subs, cx))?
-      .with_host_module(pipewire::module(&reads, &mut subs, cx))?;
+      .with_host_module(pipewire::module(&reads, &mut subs, cx))?
+      .with_host_module(network::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }

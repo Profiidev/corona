@@ -8,6 +8,7 @@ corona_config.workspace = true
 corona_macros.workspace = true
 corona_compositor.workspace = true
 corona_pipewire.workspace = true
+corona_network_manager.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 gpui-shell.workspace = true

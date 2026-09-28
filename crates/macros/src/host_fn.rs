@@ -2,7 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-  Attribute, Expr, ExprClosure, ExprLit, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Token,
+  Attribute, Expr, ExprClosure, ExprLit, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Token, Type,
+  TypeParamBound,
   parse::{Parse, ParseStream},
   parse_macro_input,
 };
@@ -41,7 +42,21 @@ pub fn attribute(item: TokenStream) -> TokenStream {
   let name = camel_case(&ident.to_string());
   let docs = docs(&item.attrs);
 
-  if item.sig.asyncness.is_none() {
+  let future = if item.sig.asyncness.is_some() {
+    let ret = match output {
+      ReturnType::Default => quote! { () },
+      ReturnType::Type(_, ty) => quote! { #ty },
+    };
+    quote! { ::std::future::Future<Output = #ret> + ::std::marker::Send }
+  } else if let ReturnType::Type(_, ty) = output
+    && let Type::ImplTrait(ty) = &**ty
+  {
+    let bounds = ty
+      .bounds
+      .iter()
+      .filter(|bound| !matches!(bound, TypeParamBound::PreciseCapture(_)));
+    quote! { #(#bounds)+* }
+  } else {
     return quote! {
       #[allow(non_upper_case_globals)]
       #vis const #ident: crate::host_fn::Named<fn(#(#tys),*) #output> = {
@@ -53,17 +68,8 @@ pub fn attribute(item: TokenStream) -> TokenStream {
       };
     }
     .into();
-  }
-
-  // An `async fn`'s future has no nameable type, so a sync wrapper boxes it. Params the future
-  // borrows (`Cx`, `Glob`) make it non-'static, which the box type rejects.
-  let ret = match output {
-    ReturnType::Default => quote! { () },
-    ReturnType::Type(_, ty) => quote! { #ty },
   };
-  let future = quote! {
-    ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #ret> + ::std::marker::Send>>
-  };
+  let future = quote! { ::std::pin::Pin<::std::boxed::Box<dyn #future>> };
   let args: Vec<_> = (0..tys.len()).map(|i| format_ident!("arg{i}")).collect();
   quote! {
     #[allow(non_upper_case_globals)]
@@ -112,7 +118,32 @@ pub fn closure(input: TokenStream) -> TokenStream {
   } = parse_macro_input!(input as NamedClosure);
   let names = names(closure.inputs.iter());
   let docs = docs(&attrs);
-  quote! { crate::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into()
+  if closure.asyncness.is_none() {
+    return quote! { crate::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into();
+  }
+
+  let mut args = Vec::new();
+  let mut tys = Vec::new();
+  for (i, pat) in closure.inputs.iter().enumerate() {
+    let Pat::Type(typed) = pat else {
+      return syn::Error::new_spanned(pat, "named! async closure params need a type")
+        .into_compile_error()
+        .into();
+    };
+    args.push(format_ident!("arg{i}"));
+    tys.push(&*typed.ty);
+  }
+  quote! {
+    crate::host_fn::Named::new(#name, #names, {
+      let f = ::std::sync::Arc::new(#closure);
+      move |#(#args: #tys),*| {
+        let f = ::std::sync::Arc::clone(&f);
+        async move { (*f)(#(#args),*).await }
+      }
+    })
+    .docs(#docs)
+  }
+  .into()
 }
 
 /// The `///` lines, joined; each line keeps the leading space `///` leaves.
