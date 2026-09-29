@@ -2,6 +2,7 @@
   lib,
   rustPlatform,
   fetchCrate,
+  fetchFromGitHub,
   applyPatches,
   pkg-config,
   fontconfig,
@@ -29,6 +30,18 @@ let
 
   gpui-pre = vendorCrate "gpui-pre" "sha256-ZmzcsmgiJUvhfz8ybIKn1PxnyHvalRmL5whrtvZ+XmY=
 sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
+  # Not on crates.io; patched for ShellRuntime::load_entry. Tag matches Cargo.toml.
+  gpui-shell = applyPatches {
+    name = "gpui-shell-patched";
+    src = fetchFromGitHub {
+      owner = "longbridge";
+      repo = "gpui-kit";
+      tag = "v0.7.0";
+      hash = "sha256-Ii3wGy0gLfT2PiSkrqNWPCT2SdSAz5CruC46UrW/55M=";
+    };
+    patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
+    patchFlags = [ "-p1" ];
+  };
   gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
 in
 
@@ -66,6 +79,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     mkdir -p vendor
     cp -r --no-preserve=mode,ownership ${gpui-pre} vendor/gpui-pre
     cp -r --no-preserve=mode,ownership ${gpui-pre-linux} vendor/gpui-pre-linux
+    cp -r --no-preserve=mode,ownership ${gpui-shell}/crates/shell vendor/gpui-shell
   '';
 
   postFixup = ''

@@ -3898,7 +3898,6 @@ checksum = "829258540ea51bb9ea4a71686beffe5c99586901ba9f39944d06e4a180ab63fe"
 [[package]]
 name = "gpui-shell"
 version = "0.7.0"
-source = "git+https://github.com/longbridge/gpui-kit?tag=v0.7.0#0c830f4d257e69fdd17200650533ab4ca9a40cc0"
 dependencies = [
  "anyhow",
  "async-channel",

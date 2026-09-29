@@ -103,7 +103,7 @@ impl ScriptManager {
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
     policy::set_default(policy);
-    let root = runtime.load(root, window, cx);
+    let root = runtime.try_load_entry(root, window, cx)?;
     policy::set_default(Policy::new());
 
     let subscriptions = subscribes

@@ -1,0 +1,59 @@
+ShellRuntime::load only takes an application directory and always runs its
+main.js (or a gpui-shell.json entry), so a plugin with several view files
+cannot load any but main.js. load_entry takes the exact entry file instead.
+
+diff --git a/crates/shell/src/plugin.rs b/crates/shell/src/plugin.rs
+index d791243..7acf230 100644
+--- a/crates/shell/src/plugin.rs
++++ b/crates/shell/src/plugin.rs
+@@ -1308,6 +1308,50 @@ impl ShellRuntime {
+             "main.js".to_owned()
+         };
+         let root = crate::runtime::resolve_app_root(&root, &entry)?;
++        self.mount_entry(root, entry, window, cx)
++    }
++
++    /// Loads the entry module at exactly `entry`, with no manifest lookup and
++    /// no `main.js` default. The entry's directory becomes the application
++    /// root, so relative imports and watching resolve from there.
++    pub fn load_entry(
++        self: &Rc<Self>,
++        entry: impl AsRef<Path>,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> Entity<ShellRoot> {
++        match self.try_load_entry(entry, window, cx) {
++            Ok(root) => root,
++            Err(error) => load_failure_root(error.to_string(), window, cx),
++        }
++    }
++
++    /// Structured-error variant of [`Self::load_entry`].
++    pub fn try_load_entry(
++        self: &Rc<Self>,
++        entry: impl AsRef<Path>,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> Result<Entity<ShellRoot>> {
++        let entry = entry.as_ref();
++        let path = entry
++            .canonicalize()
++            .with_context(|| format!("cannot read `{}`", entry.display()))?;
++        anyhow::ensure!(path.is_file(), "`{}` is not a file", entry.display());
++        let (Some(root), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
++        else {
++            bail!("`{}` has no parent directory or UTF-8 file name", entry.display());
++        };
++        self.mount_entry(root.to_path_buf(), name.to_owned(), window, cx)
++    }
++
++    fn mount_entry(
++        self: &Rc<Self>,
++        root: PathBuf,
++        entry: String,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> Result<Entity<ShellRoot>> {
+         let policy = Rc::new(crate::policy::default().duplicate());
+         let view = load_view_with_policy(self, &root, &entry, policy.clone(), window, cx)?;
+         Ok(cx.new(|cx| ShellRoot::with_application(view, root, entry, policy, window, cx)))

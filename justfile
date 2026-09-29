@@ -1,5 +1,7 @@
 gpui_version := "0.3.7"
 gpui_crates := "gpui-pre gpui-pre-linux"
+# Keep in sync with the gpui-kit tag in Cargo.toml.
+gpui_kit_tag := "v0.7.0"
 
 layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })'
 
@@ -18,6 +20,13 @@ vendor:
       [ -e "$p" ] || continue
       (cd "vendor/$c" && patch -p3 --forward < "$p")
     done
+  done
+  # gpui-shell is not on crates.io, so it comes from the tagged gpui-kit source.
+  mkdir -p vendor/gpui-shell
+  curl -sL --fail "https://github.com/longbridge/gpui-kit/archive/refs/tags/{{gpui_kit_tag}}.tar.gz" \
+    | tar xz -C vendor/gpui-shell --strip-components=3 --wildcards '*/crates/shell/*'
+  for p in "$PWD/patches/gpui-shell"/*.diff; do
+    (cd vendor/gpui-shell && patch -p3 --forward < "$p")
   done
 
 # Run corona in a nested Hyprland — a lock screen that won't unlock can't lock you out
