@@ -97,9 +97,19 @@ fn icon_theme() -> &'static str {
 
   THEME.get_or_init(|| {
     gtk_settings_icon_theme()
-      .or_else(freedesktop_icons::default_theme_gtk)
+      .or_else(gsettings_icon_theme)
       .unwrap_or_else(|| "hicolor".into())
   })
+}
+
+fn gsettings_icon_theme() -> Option<String> {
+  let output = std::process::Command::new("gsettings")
+    .args(["get", "org.gnome.desktop.interface", "icon-theme"])
+    .output()
+    .ok()?;
+  let name = String::from_utf8(output.stdout).ok()?;
+  let name = name.trim().trim_matches('\'');
+  (output.status.success() && !name.is_empty()).then(|| name.to_string())
 }
 
 fn gtk_settings_icon_theme() -> Option<String> {
@@ -137,7 +147,7 @@ fn lookup(name: &str, size: u16) -> Option<PathBuf> {
     return path.clone();
   }
 
-  let path = freedesktop_icons::lookup(name)
+  let path = cosmic_freedesktop_icons::lookup(name)
     .with_theme(icon_theme())
     .with_size(size)
     .with_cache()

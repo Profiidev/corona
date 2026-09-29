@@ -65,9 +65,7 @@ impl From<Monitor> for types::Monitor {
       },
       scale: m.scale,
       focused: m.focused,
-      // Hyprland 0.56 JSON has `disabled` inverted: enabled monitors report
-      // true while the plain `hyprctl monitors` output says false.
-      disabled: !m.disabled,
+      disabled: m.disabled,
       mirror_of: m.mirror_of,
     }
   }

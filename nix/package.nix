@@ -13,7 +13,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.6";
+  gpuiVersion = "0.3.7";
 
   vendorCrate =
     pname: hash:
@@ -27,8 +27,9 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-4+VpBtLm1EETfGfmB9VsKrlKBXOBJoQnyr/SqcS3pdA=";
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-sb3RqlO3TSyIklHkoqzqP2jNbrYCdUyLjhb/nvecCJ4=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-ZmzcsmgiJUvhfz8ybIKn1PxnyHvalRmL5whrtvZ+XmY=
+sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -42,7 +43,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "gpui-base-0.6.6" = "sha256-WcRgqgn/pD4LfsFb+6kByk1DzRym1G2qNm/D1fAaCYs=";
+      "gpui-base-0.7.0" = "sha256-Ii3wGy0gLfT2PiSkrqNWPCT2SdSAz5CruC46UrW/55M=";
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
       "quickjs-jit-0.12.9" = "sha256-BykXNq9To8LH8xBZ0OekCHUegsUhzGwh8GennxtsFl0=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";

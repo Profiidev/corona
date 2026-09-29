@@ -105,7 +105,6 @@ impl PanelState {
 
         cx.new(|cx| {
           Root::new(view, window, cx)
-            .bordered(false)
             .bg(gpui_kit::transparent_black())
         })
       },

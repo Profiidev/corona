@@ -1,0 +1,14 @@
+diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -2183,6 +2183,10 @@
+ 
+     fn window_decorations(&self) -> Decorations {
+         let state = self.borrow();
++        // Only xdg toplevels have a frame; layer shell / lock surfaces must not get one.
++        if !matches!(state.surface_state, WaylandSurfaceState::Xdg(_)) {
++            return Decorations::Server;
++        }
+         match state.decorations {
+             WindowDecorations::Server => Decorations::Server,
+             WindowDecorations::Client => Decorations::Client {
