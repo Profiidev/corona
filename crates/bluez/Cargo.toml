@@ -1,0 +1,13 @@
+[package]
+name = "corona_bluez"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_utils.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+futures-lite.workspace = true
+corona-zbus-bluez = "0.1.0"
+futures-channel = "0.3"

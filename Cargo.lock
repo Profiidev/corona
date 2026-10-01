@@ -1528,6 +1528,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona-zbus-bluez"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67e6cf449eb12f4fd73afbf92496361a932c065c53a8efb5fbea1ab236ae053"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "corona-zbus-mpris2"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1561,6 +1573,19 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "316f763145cf8514289e0ac388f8d58a1b401a804e99396b07c3e256bb1f3ae7"
 dependencies = [
+ "zbus",
+]
+
+[[package]]
+name = "corona_bluez"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona-zbus-bluez",
+ "corona_utils",
+ "futures-channel",
+ "futures-lite",
+ "gpui-kit",
  "zbus",
 ]
 
@@ -1684,6 +1709,7 @@ name = "corona_script"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_bluez",
  "corona_compositor",
  "corona_config",
  "corona_macros",
@@ -1707,6 +1733,7 @@ name = "corona_shell"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_bluez",
  "corona_components",
  "corona_compositor",
  "corona_config",

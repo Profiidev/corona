@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/components",
+  "crates/bluez",
   "crates/compositor",
   "crates/config",
   "crates/desktop",
@@ -29,6 +30,7 @@ corona_utils = { path = "crates/utils" }
 corona_shell = { path = "crates/shell" }
 corona_network_manager = { path = "crates/network_manager" }
 corona_mpris = { path = "crates/mpris" }
+corona_bluez = { path = "crates/bluez" }
 corona_reqwest = { path = "crates/reqwest" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
