@@ -103,10 +103,7 @@ impl PanelState {
           .panels
           .insert(P::NAME.to_string(), (display_id, view.downgrade()));
 
-        cx.new(|cx| {
-          Root::new(view, window, cx)
-            .bg(gpui_kit::transparent_black())
-        })
+        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
       },
     )?;
 

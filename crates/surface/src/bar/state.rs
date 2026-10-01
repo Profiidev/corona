@@ -162,10 +162,7 @@ impl BarState {
           .bars
           .insert(window.window_handle().window_id(), view.downgrade());
 
-        cx.new(|cx| {
-          Root::new(view, window, cx)
-            .bg(gpui_kit::transparent_black())
-        })
+        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
       },
     )?;
 

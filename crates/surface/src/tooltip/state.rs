@@ -154,10 +154,7 @@ impl TooltipState {
           },
         );
 
-        cx.new(|cx| {
-          Root::new(view, window, cx)
-            .bg(gpui_kit::transparent_black())
-        })
+        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
       },
     )?;
 
