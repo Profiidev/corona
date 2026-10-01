@@ -14,6 +14,7 @@ pub mod compositor;
 pub mod mpris;
 pub mod network;
 pub mod pipewire;
+pub mod power;
 
 #[derive(Clone, Default)]
 pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
@@ -25,6 +26,7 @@ pub enum Updates {
   Mpris(mpris::Updates),
   Network(network::Updates),
   Pipewire(pipewire::Updates),
+  Power(power::Updates),
 }
 
 type Subscribe = Box<dyn FnOnce(&Rc<ShellRuntime>, &Entity<ShellRoot>, &mut App) -> Subscription>;
@@ -85,7 +87,8 @@ impl ModuleExt for Policy {
       .with_host_module(pipewire::module(&reads, &mut subs, cx))?
       .with_host_module(network::module(&reads, &mut subs, cx))?
       .with_host_module(mpris::module(&reads, &mut subs, cx))?
-      .with_host_module(bluetooth::module(&reads, &mut subs, cx))?;
+      .with_host_module(bluetooth::module(&reads, &mut subs, cx))?
+      .with_host_module(power::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }
