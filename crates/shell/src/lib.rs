@@ -11,6 +11,7 @@ pub fn init(cx: &mut App) {
   corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
+  corona_sysinfo::init(cx);
   cx.foreground_executor()
     .clone()
     .block_on(init_dbus(cx))

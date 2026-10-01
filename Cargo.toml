@@ -17,6 +17,7 @@ members = [
   "crates/script",
   "crates/shell",
   "crates/surface",
+  "crates/sysinfo",
   "crates/utils",
 ]
 
@@ -37,6 +38,7 @@ corona_bluez = { path = "crates/bluez" }
 corona_power = { path = "crates/power" }
 corona_brightness = { path = "crates/brightness" }
 corona_notifications = { path = "crates/notifications" }
+corona_sysinfo = { path = "crates/sysinfo" }
 corona_reqwest = { path = "crates/reqwest" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
