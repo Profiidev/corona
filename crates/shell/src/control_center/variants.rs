@@ -3,7 +3,7 @@ use gpui_kit::{App, Window, assets::IconName};
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
   brightness::BrightnessPanel, dashboard::DashboardPanel, media::MediaPanel, network::NetworkPanel,
-  power::PowerPanel,
+  notifications::NotificationsPanel, power::PowerPanel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +14,7 @@ pub enum ControlCenterType {
   Bluetooth,
   Power,
   Brightness,
+  Notifications,
   Media,
 }
 
@@ -26,6 +27,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => "bluetooth",
       ControlCenterType::Power => "power",
       ControlCenterType::Brightness => "brightness",
+      ControlCenterType::Notifications => "notifications",
       ControlCenterType::Media => "media",
     }
   }
@@ -38,6 +40,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => IconName::Bluetooth,
       ControlCenterType::Power => IconName::Zap,
       ControlCenterType::Brightness => IconName::Sun,
+      ControlCenterType::Notifications => IconName::Bell,
       ControlCenterType::Media => IconName::Music,
     }
   }
@@ -50,6 +53,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => "Bluetooth",
       ControlCenterType::Power => "Power",
       ControlCenterType::Brightness => "Brightness",
+      ControlCenterType::Notifications => "Notifications",
       ControlCenterType::Media => "Media",
     }
   }
@@ -62,6 +66,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth,
       ControlCenterType::Power,
       ControlCenterType::Brightness,
+      ControlCenterType::Notifications,
       ControlCenterType::Media,
     ]
     .into_iter()
@@ -75,6 +80,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => BluetoothPanel::handle(window, cx),
       ControlCenterType::Power => PowerPanel::handle(window, cx),
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
+      ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
       ControlCenterType::Media => MediaPanel::handle(window, cx),
     }
   }

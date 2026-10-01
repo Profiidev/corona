@@ -6,6 +6,7 @@ mod layout;
 mod media;
 mod nav;
 mod network;
+mod notifications;
 mod panel;
 mod power;
 mod utils;
