@@ -3,7 +3,7 @@ use gpui_kit::{App, Window, assets::IconName};
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
   brightness::BrightnessPanel, dashboard::DashboardPanel, media::MediaPanel, network::NetworkPanel,
-  notifications::NotificationsPanel, power::PowerPanel,
+  notifications::NotificationsPanel, power::PowerPanel, sysinfo::SysinfoPanel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +15,7 @@ pub enum ControlCenterType {
   Power,
   Brightness,
   Notifications,
+  Sysinfo,
   Media,
 }
 
@@ -28,6 +29,7 @@ impl ControlCenterType {
       ControlCenterType::Power => "power",
       ControlCenterType::Brightness => "brightness",
       ControlCenterType::Notifications => "notifications",
+      ControlCenterType::Sysinfo => "sysinfo",
       ControlCenterType::Media => "media",
     }
   }
@@ -41,6 +43,7 @@ impl ControlCenterType {
       ControlCenterType::Power => IconName::Zap,
       ControlCenterType::Brightness => IconName::Sun,
       ControlCenterType::Notifications => IconName::Bell,
+      ControlCenterType::Sysinfo => IconName::Activity,
       ControlCenterType::Media => IconName::Music,
     }
   }
@@ -54,6 +57,7 @@ impl ControlCenterType {
       ControlCenterType::Power => "Power",
       ControlCenterType::Brightness => "Brightness",
       ControlCenterType::Notifications => "Notifications",
+      ControlCenterType::Sysinfo => "System",
       ControlCenterType::Media => "Media",
     }
   }
@@ -67,6 +71,7 @@ impl ControlCenterType {
       ControlCenterType::Power,
       ControlCenterType::Brightness,
       ControlCenterType::Notifications,
+      ControlCenterType::Sysinfo,
       ControlCenterType::Media,
     ]
     .into_iter()
@@ -81,6 +86,7 @@ impl ControlCenterType {
       ControlCenterType::Power => PowerPanel::handle(window, cx),
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
       ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
+      ControlCenterType::Sysinfo => SysinfoPanel::handle(window, cx),
       ControlCenterType::Media => MediaPanel::handle(window, cx),
     }
   }

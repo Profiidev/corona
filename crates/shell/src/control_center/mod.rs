@@ -9,6 +9,7 @@ mod network;
 mod notifications;
 mod panel;
 mod power;
+mod sysinfo;
 mod utils;
 mod variants;
 
