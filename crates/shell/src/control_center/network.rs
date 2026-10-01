@@ -1,7 +1,7 @@
 use corona_components::async_listener::AsyncListenerExt;
 use corona_network_manager::{
-  ActiveConnectionState, Interface, InterfaceType, NetworkManagerExt, NmConnectivityState, Vpn,
-  VpnKind, WifiNetwork, WifiStatus,
+  ActiveConnectionState, DeviceState, Interface, InterfaceType, NetworkManagerExt,
+  NmConnectivityState, Vpn, VpnKind, WifiNetwork, WifiStatus,
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -488,6 +488,120 @@ impl NetworkPanel {
           )),
       )
   }
+
+  fn interfaces(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
+    let interfaces = cx.network_manager().list_interfaces(cx);
+
+    div()
+      .flex()
+      .flex_col()
+      .w_full()
+      .when_else(
+        interfaces.len() > 2,
+        |d| d.min_h(px(128.)),
+        |d| d.flex_shrink_0(),
+      )
+      .gap_2()
+      .p_2()
+      .rounded_xl()
+      .bg(theme.colors.accent)
+      .child(
+        div()
+          .flex()
+          .gap_2()
+          .items_center()
+          .child(div().font_bold().text_sm().child("Interfaces")),
+      )
+      .child(
+        div()
+          .flex()
+          .flex_col()
+          .gap_1()
+          .h_auto()
+          .overflow_y_scrollbar()
+          .children(interfaces.iter().map(|i| self.interface(theme, i, cx))),
+      )
+      .into_any_element()
+  }
+
+  fn interface(
+    &self,
+    theme: &Theme,
+    interface: &Interface,
+    cx: &Context<'_, Self>,
+  ) -> impl IntoElement {
+    let (status, loading) = match interface.state {
+      DeviceState::Activated => (address(interface), false),
+      DeviceState::Prepare
+      | DeviceState::Config
+      | DeviceState::NeedAuth
+      | DeviceState::IpConfig
+      | DeviceState::IpCheck
+      | DeviceState::Secondaries => ("Connecting".into(), true),
+      DeviceState::Deactivating => ("Disconnecting".into(), true),
+      DeviceState::Disconnected
+      | DeviceState::Unmanaged
+      | DeviceState::Unavailable
+      | DeviceState::Failed
+      | DeviceState::Unknown => ("Disconnected".into(), false),
+    };
+
+    div()
+      .flex()
+      .w_full()
+      .gap_2()
+      .p_2()
+      .items_center()
+      .rounded_xl()
+      .bg(theme.colors.background)
+      .child(
+        Icon::new(match interface.kind {
+          InterfaceType::Wired => IconName::EthernetPort,
+          InterfaceType::Wireless => IconName::Wifi,
+        })
+        .small(),
+      )
+      .child(div().text_sm().truncate().child(interface.name.clone()))
+      .child(
+        div()
+          .text_xs()
+          .text_color(theme.colors.muted_foreground)
+          .child(status),
+      )
+      .child(
+        Button::new(format!("interface-{}", interface.name))
+          .small()
+          .loading(loading)
+          .icon(if interface.state == DeviceState::Activated {
+            IconName::Unplug
+          } else {
+            IconName::Plug
+          })
+          .cursor_pointer()
+          .ml_auto()
+          .on_click(cx.async_listener(
+            {
+              let name = interface.name.clone();
+              let state = interface.state;
+              move |_, _, _, cx| {
+                let disconnect = cx.network_manager().disconnect(&name, cx);
+                let connect = cx.network_manager().connect(&name, cx);
+
+                async move {
+                  if state == DeviceState::Activated {
+                    disconnect.await
+                  } else {
+                    connect.await
+                  }
+                }
+              }
+            },
+            |_, result, _| {
+              result.log_err().ok();
+            },
+          )),
+      )
+  }
 }
 
 impl Render for NetworkPanel {
@@ -502,5 +616,6 @@ impl Render for NetworkPanel {
       .child(self.status(theme, cx))
       .child(self.wifi(theme, cx))
       .child(self.vpns(theme, cx))
+      .child(self.interfaces(theme, cx))
   }
 }
