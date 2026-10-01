@@ -13,7 +13,7 @@ use gpui_kit::{
   component::{
     ActiveTheme, Icon, IndexPath, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
-    input::{Input, InputState},
+    input::{Input, InputEvent, InputState},
     scroll::ScrollableElement,
     select::{Select, SelectEvent, SelectState},
     spinner::Spinner,
@@ -64,6 +64,7 @@ pub struct NetworkPanel {
 struct SecretPrompt {
   password: Entity<InputState>,
   identity: Option<Entity<InputState>>,
+  _submit: Vec<Subscription>,
 }
 
 struct HiddenPrompt {
@@ -73,6 +74,7 @@ struct HiddenPrompt {
   /// mirrors the select, so the password field can hide for open networks
   security: HiddenSecurity,
   _security_changed: Subscription,
+  _submit: Vec<Subscription>,
 }
 
 const SECURITY_OPTIONS: [(&str, HiddenSecurity); 3] = [
@@ -81,7 +83,23 @@ const SECURITY_OPTIONS: [(&str, HiddenSecurity); 3] = [
   ("WPA3", HiddenSecurity::Wpa3),
 ];
 
-/// a card centered over the panel, a click on the dimmed background calls `on_close`
+fn on_enter(
+  input: &Entity<InputState>,
+  window: &mut Window,
+  cx: &mut Context<NetworkPanel>,
+  submit: fn(&mut NetworkPanel, &mut Window, &mut Context<NetworkPanel>),
+) -> Subscription {
+  cx.subscribe_in(
+    input,
+    window,
+    move |this, _, event: &InputEvent, window, cx| {
+      if let InputEvent::PressEnter { .. } = event {
+        submit(this, window, cx);
+      }
+    },
+  )
+}
+
 fn overlay(
   theme: &Theme,
   card: Div,
@@ -150,7 +168,30 @@ impl NetworkPanel {
         .placeholder("Password")
     });
     password.update(cx, |input, cx| input.focus(window, cx));
-    self.secret_prompt = Some(SecretPrompt { password, identity });
+    let submit = identity
+      .iter()
+      .chain([&password])
+      .map(|input| on_enter(input, window, cx, Self::submit_secret))
+      .collect();
+    self.secret_prompt = Some(SecretPrompt {
+      password,
+      identity,
+      _submit: submit,
+    });
+  }
+
+  fn submit_secret(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    let Some(prompt) = &self.secret_prompt else {
+      return;
+    };
+    let secret = Secret {
+      password: prompt.password.read(cx).value().to_string(),
+      identity: prompt
+        .identity
+        .as_ref()
+        .map(|i| i.read(cx).value().to_string()),
+    };
+    cx.network_manager().clone().answer_secret(cx, Some(secret));
   }
 
   fn secret_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -199,19 +240,7 @@ impl NetworkPanel {
                 .label("Connect")
                 .cursor_pointer()
                 .small()
-                .on_click(cx.listener(|this, _, _, cx| {
-                  let Some(prompt) = &this.secret_prompt else {
-                    return;
-                  };
-                  let secret = Secret {
-                    password: prompt.password.read(cx).value().to_string(),
-                    identity: prompt
-                      .identity
-                      .as_ref()
-                      .map(|i| i.read(cx).value().to_string()),
-                  };
-                  cx.network_manager().clone().answer_secret(cx, Some(secret));
-                })),
+                .on_click(cx.listener(|this, _, window, cx| this.submit_secret(window, cx))),
             ),
         ),
       cx.listener(|_, _, _, cx| cx.network_manager().clone().answer_secret(cx, None)),
@@ -244,13 +273,47 @@ impl NetworkPanel {
       },
     );
     ssid.update(cx, |input, cx| input.focus(window, cx));
+    let submit = vec![
+      on_enter(&ssid, window, cx, Self::join_hidden),
+      on_enter(&password, window, cx, Self::join_hidden),
+    ];
     self.hidden_prompt = Some(HiddenPrompt {
       ssid,
       password,
       security_select,
       security: HiddenSecurity::Wpa,
       _security_changed: security_changed,
+      _submit: submit,
     });
+    cx.notify();
+  }
+
+  fn join_hidden(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let Some(prompt) = &self.hidden_prompt else {
+      return;
+    };
+    let ssid = prompt.ssid.read(cx).value().trim().to_string();
+    if ssid.is_empty() {
+      prompt.ssid.update(cx, |input, cx| input.focus(window, cx));
+      return;
+    }
+    let password = Some(prompt.password.read(cx).value().to_string())
+      .filter(|password| prompt.security != HiddenSecurity::Open && !password.is_empty());
+    let join = cx
+      .network_manager()
+      .join_hidden_wifi(ssid, prompt.security, password, cx);
+    self.hidden_prompt = None;
+    cx.spawn(async move |this, cx| {
+      if let Err(e) = join.await.log_err() {
+        this
+          .update(cx, |this, cx| {
+            this.error = Some(e.to_string());
+            cx.notify();
+          })
+          .ok();
+      }
+    })
+    .detach();
     cx.notify();
   }
 
@@ -287,34 +350,7 @@ impl NetworkPanel {
                 .label("Connect")
                 .cursor_pointer()
                 .small()
-                .on_click(cx.listener(|this, _, window, cx| {
-                  let Some(prompt) = &this.hidden_prompt else {
-                    return;
-                  };
-                  let ssid = prompt.ssid.read(cx).value().to_string();
-                  if ssid.is_empty() {
-                    prompt.ssid.update(cx, |input, cx| input.focus(window, cx));
-                    return;
-                  }
-                  let password = (prompt.security != HiddenSecurity::Open)
-                    .then(|| prompt.password.read(cx).value().to_string());
-                  let join =
-                    cx.network_manager()
-                      .join_hidden_wifi(ssid, prompt.security, password, cx);
-                  this.hidden_prompt = None;
-                  cx.spawn(async move |this, cx| {
-                    if let Err(e) = join.await.log_err() {
-                      this
-                        .update(cx, |this, cx| {
-                          this.error = Some(e.to_string());
-                          cx.notify();
-                        })
-                        .ok();
-                    }
-                  })
-                  .detach();
-                  cx.notify();
-                })),
+                .on_click(cx.listener(|this, _, window, cx| this.join_hidden(window, cx))),
             ),
         ),
       cx.listener(|this, _, _, cx| {
@@ -803,20 +839,36 @@ impl NetworkPanel {
     interface: &Interface,
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
-    let (status, loading) = match interface.state {
-      DeviceState::Activated => (address(interface), false),
+    let status = match interface.state {
+      DeviceState::Activated => address(interface),
+      DeviceState::Unmanaged => "Unmanaged".into(),
+      DeviceState::Unavailable => "Unavailable".into(),
+      DeviceState::Disconnected => "Disconnected".into(),
+      DeviceState::Prepare => "Preparing".into(),
+      DeviceState::Config => "Configuring".into(),
+      DeviceState::NeedAuth => "Needs authentication".into(),
+      DeviceState::IpConfig => "Getting address".into(),
+      DeviceState::IpCheck => "Checking connection".into(),
+      DeviceState::Secondaries => "Starting dependencies".into(),
+      DeviceState::Deactivating => "Disconnecting".into(),
+      DeviceState::Failed => "Failed".into(),
+      DeviceState::Unknown => "Unknown".into(),
+    };
+    // Some(true): disconnect, also cancels an attempt still in progress, Some(false): connect,
+    // None: NM can't act on the device right now
+    let disconnect = match interface.state {
       DeviceState::Prepare
       | DeviceState::Config
       | DeviceState::NeedAuth
       | DeviceState::IpConfig
       | DeviceState::IpCheck
-      | DeviceState::Secondaries => ("Connecting".into(), true),
-      DeviceState::Deactivating => ("Disconnecting".into(), true),
-      DeviceState::Disconnected
-      | DeviceState::Unmanaged
+      | DeviceState::Secondaries
+      | DeviceState::Activated => Some(true),
+      DeviceState::Disconnected | DeviceState::Failed => Some(false),
+      DeviceState::Unmanaged
       | DeviceState::Unavailable
-      | DeviceState::Failed
-      | DeviceState::Unknown => ("Disconnected".into(), false),
+      | DeviceState::Deactivating
+      | DeviceState::Unknown => None,
     };
 
     div()
@@ -841,41 +893,42 @@ impl NetworkPanel {
           .text_color(theme.colors.muted_foreground)
           .child(status),
       )
-      .child(
-        Button::new(format!("interface-{}", interface.name))
-          .small()
-          .loading(loading)
-          .icon(if interface.state == DeviceState::Activated {
-            IconName::Unplug
-          } else {
-            IconName::Plug
-          })
-          .cursor_pointer()
-          .ml_auto()
-          .on_click(cx.async_listener(
-            {
-              let name = interface.name.clone();
-              let state = interface.state;
-              move |_, _, _, cx| {
-                let disconnect = cx.network_manager().disconnect(&name, cx);
-                let connect = cx.network_manager().connect(&name, cx);
+      .when_some(disconnect, |d, disconnect| {
+        d.child(
+          Button::new(format!("interface-{}", interface.name))
+            .small()
+            .icon(if disconnect {
+              IconName::Unplug
+            } else {
+              IconName::Plug
+            })
+            .tooltip(if disconnect { "Disconnect" } else { "Connect" })
+            .cursor_pointer()
+            .ml_auto()
+            .on_click(cx.async_listener(
+              {
+                let name = interface.name.clone();
+                move |_, _, _, cx| {
+                  let disconnect_task = cx.network_manager().disconnect(&name, cx);
+                  let connect_task = cx.network_manager().connect(&name, cx);
 
-                async move {
-                  if state == DeviceState::Activated {
-                    disconnect.await
-                  } else {
-                    connect.await
+                  async move {
+                    if disconnect {
+                      disconnect_task.await
+                    } else {
+                      connect_task.await
+                    }
                   }
                 }
-              }
-            },
-            |this, result, _| {
-              if let Err(e) = result.log_err() {
-                this.error = Some(e.to_string());
-              }
-            },
-          )),
-      )
+              },
+              |this, result, _| {
+                if let Err(e) = result.log_err() {
+                  this.error = Some(e.to_string());
+                }
+              },
+            )),
+        )
+      })
   }
 
   fn error(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
