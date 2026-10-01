@@ -32,7 +32,7 @@ pub struct Workspaces {
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   current_tooltip: Option<(String, String, AnyWindowHandle)>,
   current_hover: Option<Task<()>>,
-  _subscriptions: [Subscription; 4],
+  _subscriptions: [Subscription; 5],
 }
 
 impl Widget for Workspaces {
@@ -59,6 +59,7 @@ impl Widget for Workspaces {
     let window = compositor.windows.clone();
     let active_workspace = compositor.active_workspace.clone();
     let active_window = compositor.active_window.clone();
+    let urgent = compositor.urgent.clone();
 
     let workspace_subscription = cx.observe(&workspace, move |this, e, cx| {
       let mut workspaces: Vec<types::Workspace> = e.read(cx).to_vec();
@@ -133,6 +134,7 @@ impl Widget for Workspaces {
         window_subscription,
         cx.observe(&active_workspace, |_, _, cx| cx.notify()),
         cx.observe(&active_window, |_, _, cx| cx.notify()),
+        cx.observe(&urgent, |_, _, cx| cx.notify()),
       ],
       pill_size: HashMap::new(),
       icon_bounds: HashMap::new(),
@@ -221,12 +223,19 @@ impl Render for Workspaces {
                   )
               }),
           )
-          .child(workspace_badge(border, theme, ws))
+          .child({
+            let urgent = windows.get(&ws.id).is_some_and(|windows| {
+              windows
+                .iter()
+                .any(|w| cx.compositor().is_urgent(&w.address, cx))
+            });
+            workspace_badge(border, urgent, theme, ws)
+          })
       }))
   }
 }
 
-fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &types::Workspace) -> Div {
+fn workspace_badge(border: ThemeToken, urgent: bool, theme: &Theme, ws: &types::Workspace) -> Div {
   div()
     .absolute()
     .top(px(-2.))
@@ -238,10 +247,15 @@ fn workspace_badge(border: ThemeToken, theme: &Theme, ws: &types::Workspace) -> 
     .min_w(px(14.))
     .px_0p5()
     .rounded_full()
-    .bg(border)
     .text_size(px(10.))
     .line_height(relative(1.))
-    .text_color(theme.tokens.primary_foreground)
+    .text_center()
+    .whitespace_nowrap()
+    .when_else(
+      urgent,
+      |d| d.bg(theme.danger).text_color(theme.danger_foreground),
+      |d| d.bg(border).text_color(theme.tokens.primary_foreground),
+    )
     .child(ws.name.clone())
 }
 

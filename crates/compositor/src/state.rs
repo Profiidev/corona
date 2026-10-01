@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{collections::HashSet, rc::Rc};
 
 use anyhow::Result;
 use gpui_kit::{App, AppContext, Entity, Global};
@@ -13,6 +13,7 @@ pub struct Compositor {
   pub active_monitor: Entity<types::Monitor>,
   pub windows: Entity<Vec<types::Window>>,
   pub active_window: Entity<Option<types::Window>>,
+  pub urgent: Entity<HashSet<String>>,
 }
 
 impl Global for Compositor {}
@@ -30,6 +31,7 @@ impl Compositor {
     let active_monitor = init_state(cx, || inner.active_monitor())?;
     let windows = init_state(cx, || inner.list_windows())?;
     let active_window = init_state(cx, || inner.active_window())?;
+    let urgent = cx.new(|_| HashSet::new());
 
     Ok(Self {
       inner,
@@ -39,6 +41,7 @@ impl Compositor {
       active_monitor,
       windows,
       active_window,
+      urgent,
     })
   }
 
@@ -68,6 +71,10 @@ impl Compositor {
 
   pub fn active_window<'c>(&self, cx: &'c App) -> Option<&'c types::Window> {
     self.active_window.read(cx).as_ref()
+  }
+
+  pub fn is_urgent(&self, address: &str, cx: &App) -> bool {
+    self.urgent.read(cx).contains(address)
   }
 }
 

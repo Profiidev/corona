@@ -22,6 +22,8 @@ enum CompositorEvent {
   ActiveMonitor(types::Monitor),
   Window(Vec<types::Window>),
   ActiveWindow(Option<types::Window>),
+  Urgent(String),
+  Attended(String),
 }
 
 impl Hyprland {
@@ -69,12 +71,27 @@ impl Hyprland {
             CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write(cx, monitor),
             CompositorEvent::Window(windows) => compositor.windows.write(cx, windows),
             CompositorEvent::ActiveWindow(window) => compositor.active_window.write(cx, window),
+            CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
+              if urgent.insert(address) {
+                cx.notify();
+              }
+            }),
+            CompositorEvent::Attended(address) => compositor.urgent.update(cx, |urgent, cx| {
+              if urgent.remove(&address) {
+                cx.notify();
+              }
+            }),
           });
         });
       }
     })
     .detach();
   }
+}
+
+fn window_address(data: &str) -> String {
+  let address = data.split(',').next().unwrap_or_default();
+  format!("0x{}", address.trim_start_matches("0x"))
 }
 
 impl Ipc {
@@ -97,11 +114,20 @@ impl Ipc {
         let windows = self.list_windows()?;
         let window = self.active_window()?;
 
-        vec![
+        let mut events = vec![
           CompositorEvent::Window(windows),
           CompositorEvent::ActiveWindow(window),
-        ]
+        ];
+        if name == "closewindow" {
+          events.push(CompositorEvent::Attended(window_address(data)));
+        }
+        events
       }
+      "urgent" => vec![CompositorEvent::Urgent(window_address(data))],
+      "activewindowv2" if !data.is_empty() && data != "," => {
+        vec![CompositorEvent::Attended(window_address(data))]
+      }
+      "activewindowv2" => vec![],
       "activewindow" => {
         let window = self.active_window()?;
         vec![CompositorEvent::ActiveWindow(window)]
@@ -137,5 +163,15 @@ impl Ipc {
     };
 
     Ok(events)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn window_address() {
+    assert_eq!(super::window_address("5ba3a8eef560"), "0x5ba3a8eef560");
+    assert_eq!(super::window_address("0x5ba3a8eef560"), "0x5ba3a8eef560");
+    assert_eq!(super::window_address("5ba3a8eef560,1"), "0x5ba3a8eef560");
   }
 }
