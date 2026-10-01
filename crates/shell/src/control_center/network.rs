@@ -1,18 +1,21 @@
 use corona_components::async_listener::AsyncListenerExt;
 use corona_network_manager::{
-  ActiveConnectionState, DeviceState, FailReason, Interface, InterfaceType, NetworkManagerExt,
-  NmConnectivityState, Vpn, VpnKind, WifiNetwork, WifiStatus,
+  ActiveConnectionState, DeviceState, FailReason, HiddenSecurity, Interface, InterfaceType,
+  NetworkManagerExt, NmConnectivityState, Secret, SecretKind, Vpn, VpnKind, WifiNetwork,
+  WifiStatus,
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-  Styled, Window,
+  App, AppContext, Context, Div, Entity, InteractiveElement, IntoElement, MouseButton,
+  MouseDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Subscription, Window,
   assets::IconName,
   base::{Disableable, StyledExt},
   component::{
-    ActiveTheme, Icon, Sizable, Theme,
+    ActiveTheme, Icon, IndexPath, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
+    input::{Input, InputState},
     scroll::ScrollableElement,
+    select::{Select, SelectEvent, SelectState},
     spinner::Spinner,
     switch::Switch,
     tag::{Tag, TagVariant},
@@ -53,19 +56,274 @@ pub struct NetworkPanel {
   connectivity_checking: LoadingState,
   wifi_scanning: LoadingState,
   error: Option<String>,
+  secret_prompt: Option<SecretPrompt>,
+  hidden_prompt: Option<HiddenPrompt>,
+  _secret_request: Subscription,
+}
+
+struct SecretPrompt {
+  password: Entity<InputState>,
+  identity: Option<Entity<InputState>>,
+}
+
+struct HiddenPrompt {
+  ssid: Entity<InputState>,
+  password: Entity<InputState>,
+  security_select: Entity<SelectState<Vec<&'static str>>>,
+  /// mirrors the select, so the password field can hide for open networks
+  security: HiddenSecurity,
+  _security_changed: Subscription,
+}
+
+const SECURITY_OPTIONS: [(&str, HiddenSecurity); 3] = [
+  ("Open", HiddenSecurity::Open),
+  ("WPA/WPA2", HiddenSecurity::Wpa),
+  ("WPA3", HiddenSecurity::Wpa3),
+];
+
+/// a card centered over the panel, a click on the dimmed background calls `on_close`
+fn overlay(
+  theme: &Theme,
+  card: Div,
+  on_close: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+  div()
+    .on_mouse_down(MouseButton::Left, on_close)
+    .absolute()
+    .inset_0()
+    .flex()
+    .items_center()
+    .justify_center()
+    .rounded_xl()
+    .bg(theme.colors.background.opacity(0.8))
+    .occlude()
+    .child(
+      card
+        .flex()
+        .flex_col()
+        .w_3_4()
+        .gap_2()
+        .p_4()
+        .rounded_xl()
+        .border_1()
+        .border_color(theme.colors.border)
+        .bg(theme.colors.background)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+    )
 }
 
 impl ControlCenterPanel for NetworkPanel {
-  fn init(_window: &mut Window, _cx: &mut Context<'_, Self>) -> Self {
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
+    let secret_request = cx.network_manager().secret_request.clone();
+    let subscription = cx.observe_in(&secret_request, window, |this, _, window, cx| {
+      this.sync_secret_prompt(window, cx)
+    });
+    cx.defer_in(window, |this, window, cx| {
+      this.sync_secret_prompt(window, cx)
+    });
+
     Self {
       connectivity_checking: LoadingState::Idle,
       wifi_scanning: LoadingState::Idle,
-      error: Some("123".into()),
+      error: None,
+      secret_prompt: None,
+      hidden_prompt: None,
+      _secret_request: subscription,
     }
   }
 }
 
 impl NetworkPanel {
+  fn sync_secret_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let Some(request) = cx.network_manager().secret_request(cx) else {
+      self.secret_prompt = None;
+      return;
+    };
+    if self.secret_prompt.is_some() {
+      return;
+    }
+    let identity = (request.kind == SecretKind::Enterprise && request.identity.is_none())
+      .then(|| cx.new(|cx| InputState::new(window, cx).placeholder("Username")));
+    let password = cx.new(|cx| {
+      InputState::new(window, cx)
+        .masked(true)
+        .placeholder("Password")
+    });
+    password.update(cx, |input, cx| input.focus(window, cx));
+    self.secret_prompt = Some(SecretPrompt { password, identity });
+  }
+
+  fn secret_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+    let prompt = self.secret_prompt.as_ref()?;
+    let request = cx.network_manager().secret_request(cx)?;
+
+    Some(overlay(
+      theme,
+      div()
+        .child(
+          div()
+            .font_bold()
+            .text_sm()
+            .truncate()
+            .child(format!("Password for {}", request.name)),
+        )
+        .when(request.retry, |d| {
+          d.child(
+            div()
+              .text_xs()
+              .text_color(theme.colors.danger)
+              .child("Wrong password, try again"),
+          )
+        })
+        .when_some(prompt.identity.as_ref(), |d, identity| {
+          d.child(Input::new(identity).small())
+        })
+        .child(Input::new(&prompt.password).mask_toggle().small())
+        .child(
+          div()
+            .flex()
+            .gap_2()
+            .justify_end()
+            .child(
+              Button::new("secret-cancel")
+                .label("Cancel")
+                .cursor_pointer()
+                .small()
+                .on_click(cx.listener(|_, _, _, cx| {
+                  cx.network_manager().clone().answer_secret(cx, None);
+                })),
+            )
+            .child(
+              Button::new("secret-connect")
+                .primary()
+                .label("Connect")
+                .cursor_pointer()
+                .small()
+                .on_click(cx.listener(|this, _, _, cx| {
+                  let Some(prompt) = &this.secret_prompt else {
+                    return;
+                  };
+                  let secret = Secret {
+                    password: prompt.password.read(cx).value().to_string(),
+                    identity: prompt
+                      .identity
+                      .as_ref()
+                      .map(|i| i.read(cx).value().to_string()),
+                  };
+                  cx.network_manager().clone().answer_secret(cx, Some(secret));
+                })),
+            ),
+        ),
+      cx.listener(|_, _, _, cx| cx.network_manager().clone().answer_secret(cx, None)),
+    ))
+  }
+
+  fn open_hidden_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let ssid = cx.new(|cx| InputState::new(window, cx).placeholder("Network name"));
+    let password = cx.new(|cx| {
+      InputState::new(window, cx)
+        .masked(true)
+        .placeholder("Password")
+    });
+    let labels = SECURITY_OPTIONS.iter().map(|(label, _)| *label).collect();
+    let security_select =
+      cx.new(|cx| SelectState::new(labels, Some(IndexPath::default().row(1)), window, cx));
+    let security_changed = cx.subscribe(
+      &security_select,
+      |this, _, event: &SelectEvent<Vec<&'static str>>, cx| {
+        let SelectEvent::Confirm(Some(label)) = event else {
+          return;
+        };
+        if let (Some(prompt), Some((_, security))) = (
+          &mut this.hidden_prompt,
+          SECURITY_OPTIONS.iter().find(|(l, _)| l == label),
+        ) {
+          prompt.security = *security;
+          cx.notify();
+        }
+      },
+    );
+    ssid.update(cx, |input, cx| input.focus(window, cx));
+    self.hidden_prompt = Some(HiddenPrompt {
+      ssid,
+      password,
+      security_select,
+      security: HiddenSecurity::Wpa,
+      _security_changed: security_changed,
+    });
+    cx.notify();
+  }
+
+  fn hidden_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+    let prompt = self.hidden_prompt.as_ref()?;
+
+    Some(overlay(
+      theme,
+      div()
+        .child(div().font_bold().text_sm().child("Join hidden network"))
+        .child(Input::new(&prompt.ssid).small())
+        .child(Select::new(&prompt.security_select).small())
+        .when(prompt.security != HiddenSecurity::Open, |d| {
+          d.child(Input::new(&prompt.password).mask_toggle().small())
+        })
+        .child(
+          div()
+            .flex()
+            .gap_2()
+            .justify_end()
+            .child(
+              Button::new("hidden-cancel")
+                .label("Cancel")
+                .cursor_pointer()
+                .small()
+                .on_click(cx.listener(|this, _, _, cx| {
+                  this.hidden_prompt = None;
+                  cx.notify();
+                })),
+            )
+            .child(
+              Button::new("hidden-connect")
+                .primary()
+                .label("Connect")
+                .cursor_pointer()
+                .small()
+                .on_click(cx.listener(|this, _, window, cx| {
+                  let Some(prompt) = &this.hidden_prompt else {
+                    return;
+                  };
+                  let ssid = prompt.ssid.read(cx).value().to_string();
+                  if ssid.is_empty() {
+                    prompt.ssid.update(cx, |input, cx| input.focus(window, cx));
+                    return;
+                  }
+                  let password = (prompt.security != HiddenSecurity::Open)
+                    .then(|| prompt.password.read(cx).value().to_string());
+                  let join =
+                    cx.network_manager()
+                      .join_hidden_wifi(ssid, prompt.security, password, cx);
+                  this.hidden_prompt = None;
+                  cx.spawn(async move |this, cx| {
+                    if let Err(e) = join.await.log_err() {
+                      this
+                        .update(cx, |this, cx| {
+                          this.error = Some(e.to_string());
+                          cx.notify();
+                        })
+                        .ok();
+                    }
+                  })
+                  .detach();
+                  cx.notify();
+                })),
+            ),
+        ),
+      cx.listener(|this, _, _, cx| {
+        this.hidden_prompt = None;
+        cx.notify();
+      }),
+    ))
+  }
+
   fn status(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
     let primary = cx.network_manager().primary_interface(cx);
     let state = cx.network_manager().connectivity(cx);
@@ -213,7 +471,8 @@ impl NetworkPanel {
               .small()
               .ml_auto()
               .cursor_pointer()
-              .tooltip("Join hidden network"),
+              .tooltip("Join hidden network")
+              .on_click(cx.listener(|this, _, window, cx| this.open_hidden_prompt(window, cx))),
           )
           .child(
             Button::new("wifi-rescan")
@@ -384,7 +643,10 @@ impl NetworkPanel {
             .on_click(cx.async_listener(
               {
                 let ssid = network.ssid.clone();
-                move |_, _, _, cx| cx.network_manager().forget_wifi(ssid.clone(), cx)
+                move |_, _, _, cx| {
+                  cx.stop_propagation();
+                  cx.network_manager().forget_wifi(ssid.clone(), cx)
+                }
               },
               |this, result, _| {
                 if let Err(e) = result.log_err() {
@@ -646,9 +908,6 @@ impl NetworkPanel {
       );
     }
 
-    if cx.network_manager().secret_request(cx).is_some() {
-      return None;
-    }
     let failure = cx.network_manager().wifi_failure(cx)?;
 
     let error = match failure.reason {
@@ -678,9 +937,9 @@ impl NetworkPanel {
 impl Render for NetworkPanel {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
-    // prompt, hidden, enterprise
 
     div()
+      .relative()
       .flex()
       .flex_col()
       .size_full()
@@ -690,5 +949,7 @@ impl Render for NetworkPanel {
       .child(self.wifi(theme, cx))
       .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
       .child(self.interfaces(theme, cx))
+      .when_some(self.hidden_prompt(theme, cx), |d, prompt| d.child(prompt))
+      .when_some(self.secret_prompt(theme, cx), |d, prompt| d.child(prompt))
   }
 }

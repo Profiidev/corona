@@ -228,7 +228,12 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   let changes = subscribe(conn).await?;
   listener(cx, conn.clone(), changes, state.clone());
   let events = agent::register(conn).await?;
-  agent_listener(cx, events, state.secret_request.clone());
+  agent_listener(
+    cx,
+    events,
+    state.secret_request.clone(),
+    state.wifi_failure.clone(),
+  );
   cx.set_global(state);
 
   Ok(())

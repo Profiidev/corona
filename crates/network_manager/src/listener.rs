@@ -56,9 +56,14 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
   cx.spawn(async move |cx| {
     let mut wifi_path = None;
     let mut connecting_ssid = None;
+    let mut failed_path = None;
     loop {
       if let Ok(snapshot) = snapshot(&conn).await.log_err() {
         wifi_path = snapshot.primary_wifi.as_ref().map(|i| i.path.clone());
+        if failed_path.is_some() && failed_path != wifi_path {
+          failed_path = None;
+          write_changed(cx, &state.wifi_failure, None);
+        }
         connecting_ssid = snapshot
           .wifi_networks
           .iter()
@@ -84,16 +89,22 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
           continue;
         }
         match change.state {
-          DeviceState::Failed => write_changed(
-            cx,
-            &state.wifi_failure,
-            Some(WifiFailure {
-              ssid: connecting_ssid.clone(),
-              reason: change.reason.into(),
-            }),
-          ),
-          DeviceState::Prepare => write_changed(cx, &state.wifi_failure, None),
-          _ => {}
+          DeviceState::Failed => {
+            write_changed(
+              cx,
+              &state.wifi_failure,
+              Some(WifiFailure {
+                ssid: connecting_ssid.clone(),
+                reason: change.reason.into(),
+              }),
+            );
+            failed_path = Some(change.path);
+          }
+          DeviceState::Disconnected => {}
+          _ => {
+            failed_path = None;
+            write_changed(cx, &state.wifi_failure, None);
+          }
         }
       }
     }
@@ -113,11 +124,15 @@ pub fn agent_listener(
   cx: &mut App,
   events: flume::Receiver<AgentEvent>,
   secret_request: Entity<Option<SecretRequest>>,
+  wifi_failure: Entity<Option<WifiFailure>>,
 ) {
   cx.spawn(async move |cx| {
     while let Ok(event) = events.recv_async().await {
       let request = match event {
-        AgentEvent::Request(request) => Some(request),
+        AgentEvent::Request(request) => {
+          write_changed(cx, &wifi_failure, None);
+          Some(request)
+        }
         AgentEvent::Cancel => None,
       };
       secret_request.write(cx, request);

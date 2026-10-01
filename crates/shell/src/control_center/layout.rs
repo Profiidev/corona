@@ -38,6 +38,7 @@ impl RenderOnce for ControlCenterLayout {
   fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
     div()
       .size_full()
+      .min_w_0()
       .flex()
       .flex_col()
       .child(
