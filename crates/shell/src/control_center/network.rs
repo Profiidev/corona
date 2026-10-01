@@ -79,28 +79,21 @@ impl NetworkPanel {
           .child(
             div()
               .flex()
-              .flex_col()
-              .flex_1()
-              .min_w_0()
-              .child(
-                div()
-                  .flex()
-                  .text_sm()
-                  .font_bold()
-                  .child(primary.map_or("Disconnected".to_string(), |i| i.name.clone())),
-              )
-              .child(
-                div()
-                  .flex()
-                  .text_xs()
-                  .text_color(theme.colors.muted_foreground)
-                  .child(primary.map_or("No active connection".to_string(), address)),
-              ),
+              .text_sm()
+              .font_bold()
+              .child(primary.map_or("Disconnected".to_string(), |i| i.name.clone())),
           )
-          .child(Tag::new().small().with_variant(variant).child(label))
+          .child(
+            div()
+              .flex()
+              .text_xs()
+              .text_color(theme.colors.muted_foreground)
+              .child(primary.map_or("No active connection".to_string(), address)),
+          )
           .child(
             Button::new("connectivity-check")
               .small()
+              .ml_auto()
               .cursor_pointer()
               .tooltip("Recheck")
               .disabled(!connectivity_check_enabled)
@@ -132,7 +125,8 @@ impl NetworkPanel {
                 .detach();
                 cx.notify();
               })),
-          ),
+          )
+          .child(Tag::new().small().with_variant(variant).child(label)),
       )
       .when(!connectivity_check_enabled, |d| {
         d.child(
@@ -141,6 +135,30 @@ impl NetworkPanel {
             .text_xs()
             .text_color(theme.colors.muted_foreground)
             .child("Connectivity check is off, captive portals aren't detected"),
+        )
+      })
+      .when(state == NmConnectivityState::Portal, |d| {
+        d.child(
+          div()
+            .flex()
+            .child(
+              div()
+                .text_xs()
+                .text_color(theme.colors.muted_foreground)
+                .child("Sign in to the network to get online"),
+            )
+            .child(
+              Button::new("open-portal")
+                .small()
+                .label("Open")
+                .cursor_pointer()
+                .ml_auto()
+                .icon(IconName::ExternalLink)
+                .on_click(cx.listener(|_, _, _, cx| {
+                  cx.network_manager().open_portal(cx);
+                  cx.notify();
+                })),
+            ),
         )
       })
   }
