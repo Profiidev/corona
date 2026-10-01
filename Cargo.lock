@@ -1601,6 +1601,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_brightness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_config",
+ "corona_utils",
+ "flume",
+ "gpui-kit",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "corona_components"
 version = "0.1.0"
 dependencies = [
@@ -1733,6 +1746,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "corona_bluez",
+ "corona_brightness",
  "corona_compositor",
  "corona_config",
  "corona_macros",
@@ -1758,6 +1772,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "corona_bluez",
+ "corona_brightness",
  "corona_components",
  "corona_compositor",
  "corona_config",

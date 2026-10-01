@@ -45,6 +45,20 @@ pub struct Config {
   pub animation_speed: f32,
   pub bars: Vec<BarConfig>,
   pub plugin_dir: PathBuf,
+  pub brightness: BrightnessConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BrightnessConfig {
+  pub enable_ddcutil: bool,
+}
+
+impl Default for BrightnessConfig {
+  fn default() -> Self {
+    Self {
+      enable_ddcutil: true,
+    }
+  }
 }
 
 pub trait ConfigProvider {
@@ -68,6 +82,7 @@ impl Default for Config {
       plugin_dir: dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("corona/plugins"),
+      brightness: BrightnessConfig::default(),
     }
   }
 }

@@ -1,0 +1,14 @@
+`AtomicUsize::fetch_update` is deprecated since Rust 1.99, renamed to `try_update`
+with the same arguments; the old name only warns.
+
+--- a/crates/gpui/src/profiler/journal.rs
++++ b/crates/gpui/src/profiler/journal.rs
+@@ -381,7 +381,7 @@
+     fn finished(&self) {
+         let _ = self
+             .0
+-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
++            .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                 count.checked_sub(1)
+             });
+     }

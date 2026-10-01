@@ -1,0 +1,68 @@
+use std::{fs, path::Path};
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Output {
+  pub name: String,
+  pub model: Option<String>,
+}
+
+pub(crate) fn connected(drm_dir: &Path) -> Vec<Output> {
+  let mut outputs: Vec<Output> = fs::read_dir(drm_dir)
+    .into_iter()
+    .flatten()
+    .flatten()
+    .filter_map(|connector| {
+      let path = connector.path();
+      let status = fs::read_to_string(path.join("status")).ok()?;
+      if status.trim() != "connected" {
+        return None;
+      }
+      let name = connector.file_name().into_string().ok()?;
+      Some(Output {
+        name: name.split_once('-')?.1.to_string(),
+        model: fs::read(path.join("edid"))
+          .ok()
+          .and_then(|edid| edid_name(&edid)),
+      })
+    })
+    .collect();
+  outputs.sort_by(|a, b| a.name.cmp(&b.name));
+  outputs
+}
+
+fn edid_name(edid: &[u8]) -> Option<String> {
+  // four 18 byte descriptors start at byte 54
+  (0..4).find_map(|i| {
+    let descriptor = edid.get(54 + i * 18..72 + i * 18)?;
+    if descriptor[..3] != [0, 0, 0] || descriptor[3] != 0xFC {
+      return None;
+    }
+    let text = &descriptor[5..];
+    let end = text.iter().position(|&b| b == b'\n').unwrap_or(text.len());
+    let name = String::from_utf8_lossy(&text[..end]).trim().to_string();
+    (!name.is_empty()).then_some(name)
+  })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn edid_name() {
+    let mut edid = vec![0u8; 128];
+    // a serial number descriptor first, then the name
+    edid[54..59].copy_from_slice(&[0, 0, 0, 0xFF, 0]);
+    edid[72..77].copy_from_slice(&[0, 0, 0, 0xFC, 0]);
+    edid[77..90].copy_from_slice(b"DELL U2720Q\n ");
+    assert_eq!(super::edid_name(&edid).as_deref(), Some("DELL U2720Q"));
+    assert_eq!(super::edid_name(&[0; 128]), None);
+  }
+
+  /// this machine's monitors: `cargo test -p corona_brightness -- --ignored --nocapture`
+  #[test]
+  #[ignore]
+  fn live_outputs() {
+    println!("{:#?}", connected(Path::new("/sys/class/drm")));
+  }
+}
