@@ -23,4 +23,5 @@ corona_config.workspace = true
 gpui-kit.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
+jiff = "0.2"
 zbus.workspace = true

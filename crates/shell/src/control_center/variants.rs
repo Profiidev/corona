@@ -2,9 +2,9 @@ use gpui_kit::{App, Window, assets::IconName};
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
-  brightness::BrightnessPanel, dashboard::DashboardPanel, media::MediaPanel, network::NetworkPanel,
-  notifications::NotificationsPanel, power::PowerPanel, sysinfo::SysinfoPanel,
-  weather::WeatherPanel,
+  brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
+  media::MediaPanel, network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
+  sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +18,7 @@ pub enum ControlCenterType {
   Notifications,
   Sysinfo,
   Weather,
+  Calendar,
   Media,
 }
 
@@ -33,6 +34,7 @@ impl ControlCenterType {
       ControlCenterType::Notifications => "notifications",
       ControlCenterType::Sysinfo => "sysinfo",
       ControlCenterType::Weather => "weather",
+      ControlCenterType::Calendar => "calendar",
       ControlCenterType::Media => "media",
     }
   }
@@ -48,6 +50,7 @@ impl ControlCenterType {
       ControlCenterType::Notifications => IconName::Bell,
       ControlCenterType::Sysinfo => IconName::Activity,
       ControlCenterType::Weather => IconName::CloudSun,
+      ControlCenterType::Calendar => IconName::CalendarDays,
       ControlCenterType::Media => IconName::Music,
     }
   }
@@ -63,6 +66,7 @@ impl ControlCenterType {
       ControlCenterType::Notifications => "Notifications",
       ControlCenterType::Sysinfo => "System",
       ControlCenterType::Weather => "Weather",
+      ControlCenterType::Calendar => "Calendar",
       ControlCenterType::Media => "Media",
     }
   }
@@ -78,6 +82,7 @@ impl ControlCenterType {
       ControlCenterType::Notifications,
       ControlCenterType::Sysinfo,
       ControlCenterType::Weather,
+      ControlCenterType::Calendar,
       ControlCenterType::Media,
     ]
     .into_iter()
@@ -94,6 +99,7 @@ impl ControlCenterType {
       ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
       ControlCenterType::Sysinfo => SysinfoPanel::handle(window, cx),
       ControlCenterType::Weather => WeatherPanel::handle(window, cx),
+      ControlCenterType::Calendar => CalendarPanel::handle(window, cx),
       ControlCenterType::Media => MediaPanel::handle(window, cx),
     }
   }

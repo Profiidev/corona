@@ -1,6 +1,7 @@
 mod audio;
 mod bluetooth;
 mod brightness;
+mod calendar;
 mod dashboard;
 mod layout;
 mod media;

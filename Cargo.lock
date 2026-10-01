@@ -1813,6 +1813,7 @@ dependencies = [
  "corona_utils",
  "corona_weather",
  "gpui-kit",
+ "jiff",
  "uuid",
  "zbus",
 ]

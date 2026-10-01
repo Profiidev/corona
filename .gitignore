@@ -15,3 +15,4 @@ devenv.local.nix
 *.d.ts
 jsconfig.json
 *.schema.json
+/.benchmark/
