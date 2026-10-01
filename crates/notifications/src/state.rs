@@ -1,0 +1,85 @@
+use std::time::SystemTime;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Urgency {
+  Low,
+  Normal,
+  Critical,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Action {
+  pub key: String,
+  pub label: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Notification {
+  pub id: u32,
+  pub app_name: String,
+  /// a theme icon name or a `file://` path, empty when the app sent none
+  pub app_icon: String,
+  pub summary: String,
+  pub body: String,
+  pub actions: Vec<Action>,
+  pub urgency: Urgency,
+  pub desktop_entry: Option<String>,
+  pub resident: bool,
+  pub time: SystemTime,
+}
+
+pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
+  flat
+    .as_chunks::<2>()
+    .0
+    .iter()
+    .map(|[key, label]| Action {
+      key: key.clone(),
+      label: label.clone(),
+    })
+    .collect()
+}
+
+pub(crate) fn insert(list: &mut Vec<Notification>, notification: Notification) {
+  list.retain(|n| n.id != notification.id);
+  list.insert(0, notification);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn notification(id: u32, summary: &str) -> Notification {
+    Notification {
+      id,
+      app_name: "test".into(),
+      app_icon: String::new(),
+      summary: summary.into(),
+      body: String::new(),
+      actions: Vec::new(),
+      urgency: Urgency::Normal,
+      desktop_entry: None,
+      resident: false,
+      time: SystemTime::UNIX_EPOCH,
+    }
+  }
+
+  #[test]
+  fn helpers() {
+    let parsed = actions(vec!["default".into(), "Open".into(), "dangling".into()]);
+    assert_eq!(
+      parsed,
+      [Action {
+        key: "default".into(),
+        label: "Open".into()
+      }]
+    );
+
+    let mut list = Vec::new();
+    insert(&mut list, notification(1, "first"));
+    insert(&mut list, notification(2, "second"));
+    insert(&mut list, notification(1, "first, updated"));
+    let summaries: Vec<_> = list.iter().map(|n| n.summary.as_str()).collect();
+    assert_eq!(summaries, ["first, updated", "second"]);
+  }
+}

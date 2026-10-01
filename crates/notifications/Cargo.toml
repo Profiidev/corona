@@ -1,0 +1,13 @@
+[package]
+name = "corona_notifications"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_utils.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+flume.workspace = true
+futures-lite.workspace = true
+tracing.workspace = true

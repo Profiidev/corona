@@ -35,6 +35,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .build()
     .await?;
   corona_mpris::init(cx, &session).await?;
+  corona_notifications::init(cx, &session).await?;
 
   Ok(())
 }

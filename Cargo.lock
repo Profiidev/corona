@@ -1700,6 +1700,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_notifications"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_utils",
+ "flume",
+ "futures-lite",
+ "gpui-kit",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "corona_pipewire"
 version = "0.1.0"
 dependencies = [
@@ -1752,6 +1765,7 @@ dependencies = [
  "corona_macros",
  "corona_mpris",
  "corona_network_manager",
+ "corona_notifications",
  "corona_pipewire",
  "corona_power",
  "corona_utils",
@@ -1779,6 +1793,7 @@ dependencies = [
  "corona_desktop",
  "corona_mpris",
  "corona_network_manager",
+ "corona_notifications",
  "corona_pipewire",
  "corona_power",
  "corona_script",
