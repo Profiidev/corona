@@ -10,6 +10,7 @@ corona_compositor.workspace = true
 corona_pipewire.workspace = true
 corona_desktop.workspace = true
 corona_network_manager.workspace = true
+corona_mpris.workspace = true
 corona_script.workspace = true
 corona_utils.workspace = true
 corona_config.workspace = true

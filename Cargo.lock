@@ -1485,6 +1485,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona-zbus-mpris2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d0d6a859f8ff04021873bab3fc319feb41316d5bc19bcabb0d3c8d040c7917d"
+dependencies = [
+ "futures-util",
+ "jiff",
+ "serde",
+ "thiserror 2.0.21",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
 name = "corona-zbus-networkmanager"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1566,6 +1580,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_mpris"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona-zbus-mpris2",
+ "corona_utils",
+ "futures-lite",
+ "gpui-kit",
+ "zbus",
+]
+
+[[package]]
 name = "corona_network_manager"
 version = "0.1.0"
 dependencies = [
@@ -1604,6 +1630,7 @@ dependencies = [
  "corona_compositor",
  "corona_config",
  "corona_macros",
+ "corona_mpris",
  "corona_network_manager",
  "corona_pipewire",
  "corona_utils",
@@ -1627,6 +1654,7 @@ dependencies = [
  "corona_compositor",
  "corona_config",
  "corona_desktop",
+ "corona_mpris",
  "corona_network_manager",
  "corona_pipewire",
  "corona_script",

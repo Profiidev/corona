@@ -6,6 +6,7 @@ members = [
   "crates/config",
   "crates/desktop",
   "crates/macros",
+  "crates/mpris",
   "crates/network_manager",
   "crates/pipewire",
   "crates/script",
@@ -26,6 +27,7 @@ corona_script = { path = "crates/script" }
 corona_utils = { path = "crates/utils" }
 corona_shell = { path = "crates/shell" }
 corona_network_manager = { path = "crates/network_manager" }
+corona_mpris = { path = "crates/mpris" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }

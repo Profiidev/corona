@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use gpui_kit::App;
-use zbus::Connection;
 
 mod control_center;
 mod widgets;
@@ -19,9 +20,18 @@ pub fn init(cx: &mut App) {
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
-  let system = Connection::system().await?;
+  let system = zbus::connection::Builder::system()?
+    .method_timeout(Duration::from_secs(5))
+    .build()
+    .await?;
 
   corona_network_manager::init(cx, &system).await?;
+
+  let session = zbus::connection::Builder::session()?
+    .method_timeout(Duration::from_secs(5))
+    .build()
+    .await?;
+  corona_mpris::init(cx, &session).await?;
 
   Ok(())
 }
