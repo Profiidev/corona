@@ -2,7 +2,7 @@ use gpui_kit::{App, Window, assets::IconName};
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, dashboard::DashboardPanel,
-  network::NetworkPanel,
+  media::MediaPanel, network::NetworkPanel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum ControlCenterType {
   Dashboard,
   Audio,
   Network,
+  Media,
 }
 
 impl ControlCenterType {
@@ -18,6 +19,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => "dashboard",
       ControlCenterType::Audio => "audio",
       ControlCenterType::Network => "network",
+      ControlCenterType::Media => "media",
     }
   }
 
@@ -26,6 +28,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => IconName::LayoutDashboard,
       ControlCenterType::Audio => IconName::Volume2,
       ControlCenterType::Network => IconName::Wifi,
+      ControlCenterType::Media => IconName::Music,
     }
   }
 
@@ -34,6 +37,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => "Dashboard",
       ControlCenterType::Audio => "Audio",
       ControlCenterType::Network => "Network",
+      ControlCenterType::Media => "Media",
     }
   }
 
@@ -42,6 +46,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard,
       ControlCenterType::Audio,
       ControlCenterType::Network,
+      ControlCenterType::Media,
     ]
     .into_iter()
   }
@@ -51,6 +56,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => DashboardPanel::handle(window, cx),
       ControlCenterType::Audio => AudioPanel::handle(window, cx),
       ControlCenterType::Network => NetworkPanel::handle(window, cx),
+      ControlCenterType::Media => MediaPanel::handle(window, cx),
     }
   }
 }

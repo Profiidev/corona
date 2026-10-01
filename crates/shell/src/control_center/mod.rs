@@ -1,6 +1,7 @@
 mod audio;
 mod dashboard;
 mod layout;
+mod media;
 mod nav;
 mod network;
 mod panel;
