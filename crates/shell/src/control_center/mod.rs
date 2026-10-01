@@ -6,6 +6,7 @@ mod media;
 mod nav;
 mod network;
 mod panel;
+mod power;
 mod utils;
 mod variants;
 
