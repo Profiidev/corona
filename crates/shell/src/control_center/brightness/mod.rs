@@ -1,6 +1,7 @@
 use std::{
   collections::{HashMap, HashSet},
   pin::Pin,
+  time::Duration,
 };
 
 use anyhow::Result;
@@ -25,11 +26,13 @@ use crate::control_center::{
 mod lights;
 
 const KEYBOARD: &str = "keyboard";
+const THROTTLE: Duration = Duration::from_millis(100);
 
 pub struct BrightnessPanel {
   error: Option<String>,
   sliders: HashMap<String, (Entity<SliderState>, Subscription)>,
   dragging: HashSet<String>,
+  pending: HashMap<String, f32>,
   _subscriptions: [Subscription; 2],
 }
 
@@ -53,6 +56,7 @@ impl ControlCenterPanel for BrightnessPanel {
       error: None,
       sliders: HashMap::new(),
       dragging: HashSet::new(),
+      pending: HashMap::new(),
       _subscriptions: subscriptions,
     };
     panel.sync_sliders(window, cx);
@@ -92,12 +96,14 @@ impl BrightnessPanel {
         let subscription = cx.subscribe(&slider, {
           let id = light.id.clone();
           move |this, _, event: &SliderEvent, cx| match event {
-            SliderEvent::Change(_) => {
+            SliderEvent::Change(value) => {
               this.dragging.insert(id.clone());
+              this.throttle(&id, value.start(), cx);
               cx.notify();
             }
             SliderEvent::Release(value) => {
               this.dragging.remove(&id);
+              this.pending.remove(&id);
               this.set_brightness(&id, value.start(), cx);
             }
           }
@@ -111,6 +117,24 @@ impl BrightnessPanel {
         slider.update(cx, |state, cx| state.set_value(light.percent(), window, cx));
       }
     }
+  }
+
+  fn throttle(&mut self, id: &str, percent: f32, cx: &mut Context<Self>) {
+    if self.pending.insert(id.to_string(), percent).is_some() {
+      return;
+    }
+    let id = id.to_string();
+    cx.spawn(async move |this, cx| {
+      cx.background_executor().timer(THROTTLE).await;
+      this
+        .update(cx, |this, cx| {
+          if let Some(percent) = this.pending.remove(&id) {
+            this.set_brightness(&id, percent, cx);
+          }
+        })
+        .ok();
+    })
+    .detach();
   }
 
   fn set_brightness(&mut self, id: &str, percent: f32, cx: &mut Context<Self>) {
