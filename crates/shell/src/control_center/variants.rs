@@ -2,7 +2,8 @@ use gpui_kit::{App, Window, assets::IconName};
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
-  dashboard::DashboardPanel, media::MediaPanel, network::NetworkPanel, power::PowerPanel,
+  brightness::BrightnessPanel, dashboard::DashboardPanel, media::MediaPanel, network::NetworkPanel,
+  power::PowerPanel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +13,7 @@ pub enum ControlCenterType {
   Network,
   Bluetooth,
   Power,
+  Brightness,
   Media,
 }
 
@@ -23,6 +25,7 @@ impl ControlCenterType {
       ControlCenterType::Network => "network",
       ControlCenterType::Bluetooth => "bluetooth",
       ControlCenterType::Power => "power",
+      ControlCenterType::Brightness => "brightness",
       ControlCenterType::Media => "media",
     }
   }
@@ -34,6 +37,7 @@ impl ControlCenterType {
       ControlCenterType::Network => IconName::Wifi,
       ControlCenterType::Bluetooth => IconName::Bluetooth,
       ControlCenterType::Power => IconName::Zap,
+      ControlCenterType::Brightness => IconName::Sun,
       ControlCenterType::Media => IconName::Music,
     }
   }
@@ -45,6 +49,7 @@ impl ControlCenterType {
       ControlCenterType::Network => "Network",
       ControlCenterType::Bluetooth => "Bluetooth",
       ControlCenterType::Power => "Power",
+      ControlCenterType::Brightness => "Brightness",
       ControlCenterType::Media => "Media",
     }
   }
@@ -56,6 +61,7 @@ impl ControlCenterType {
       ControlCenterType::Network,
       ControlCenterType::Bluetooth,
       ControlCenterType::Power,
+      ControlCenterType::Brightness,
       ControlCenterType::Media,
     ]
     .into_iter()
@@ -68,6 +74,7 @@ impl ControlCenterType {
       ControlCenterType::Network => NetworkPanel::handle(window, cx),
       ControlCenterType::Bluetooth => BluetoothPanel::handle(window, cx),
       ControlCenterType::Power => PowerPanel::handle(window, cx),
+      ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
       ControlCenterType::Media => MediaPanel::handle(window, cx),
     }
   }
