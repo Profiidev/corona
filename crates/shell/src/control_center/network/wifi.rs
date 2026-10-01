@@ -58,6 +58,7 @@ impl NetworkPanel {
           .child(
             Button::new("join-hidden-network")
               .icon(IconName::Plus)
+              .primary()
               .disabled(device.is_none())
               .small()
               .ml_auto()
@@ -198,6 +199,7 @@ impl NetworkPanel {
             Button::new(format!("wifi-disconnect-{}", network.ssid))
               .icon(IconName::Unplug)
               .small()
+              .with_variant(ButtonVariant::Danger)
               .tooltip("Disconnect")
               .cursor_pointer()
               .on_click(cx.async_listener(

@@ -7,7 +7,7 @@ use gpui_kit::{
   base::StyledExt,
   component::{
     Icon, Sizable, Theme,
-    button::Button,
+    button::{Button, ButtonVariant, ButtonVariants},
     scroll::ScrollableElement,
     tag::{Tag, TagVariant},
   },
@@ -106,6 +106,11 @@ impl NetworkPanel {
               || vpn.state == ActiveConnectionState::Deactivating,
           )
           .icon(if up { IconName::Unplug } else { IconName::Plug })
+          .with_variant(if up {
+            ButtonVariant::Danger
+          } else {
+            ButtonVariant::Primary
+          })
           .on_click(cx.async_listener(
             {
               let uuid = vpn.uuid.clone();

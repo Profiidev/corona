@@ -172,7 +172,7 @@ impl MediaPanel {
         .with_variant(if active {
           ButtonVariant::Primary
         } else {
-          ButtonVariant::Ghost
+          ButtonVariant::Default
         })
     };
     let log = |_: &mut Self, result: anyhow::Result<()>, _: &mut Context<Self>| {

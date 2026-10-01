@@ -5,7 +5,11 @@ use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
   base::StyledExt,
-  component::{Icon, Sizable, Theme, button::Button, scroll::ScrollableElement},
+  component::{
+    Icon, Sizable, Theme,
+    button::{Button, ButtonVariant, ButtonVariants},
+    scroll::ScrollableElement,
+  },
   div,
   prelude::FluentBuilder,
   px,
@@ -119,6 +123,11 @@ impl NetworkPanel {
               IconName::Unplug
             } else {
               IconName::Plug
+            })
+            .with_variant(if disconnect {
+              ButtonVariant::Danger
+            } else {
+              ButtonVariant::Primary
             })
             .tooltip(if disconnect { "Disconnect" } else { "Connect" })
             .cursor_pointer()
