@@ -36,6 +36,8 @@ impl NetworkPanel {
         .p_2()
         .rounded_xl()
         .bg(theme.colors.accent)
+        .border_color(theme.border)
+        .border_1()
         .child(
           div()
             .flex()

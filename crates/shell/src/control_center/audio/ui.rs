@@ -109,6 +109,8 @@ pub fn audio_node(title: impl IntoElement, theme: &Theme, node: &DefaultState, m
     .gap_2()
     .p_2()
     .bg(theme.tokens.accent)
+    .border_color(theme.border)
+    .border_1()
     .rounded_xl()
     .child(div().child(title).text_sm().font_bold())
     .child(audio_controls(theme, node, mic))

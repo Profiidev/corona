@@ -43,7 +43,7 @@ impl RenderOnce for ControlCenterNav {
     let on_click = self.on_click;
 
     div()
-      .w(px(48.))
+      .w(px(50.))
       .h_full()
       .p_2()
       .flex()
@@ -51,6 +51,8 @@ impl RenderOnce for ControlCenterNav {
       .gap_1()
       .rounded_xl()
       .bg(theme.tokens.accent)
+      .border_color(theme.border)
+      .border_1()
       .children(ControlCenterType::iter().map(|v| {
         Button::new(v.as_str())
           .with_variant(if self.selected == v {

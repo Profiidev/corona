@@ -90,6 +90,8 @@ impl Render for AudioPanel {
           .flex_grow_1()
           .min_h_0()
           .bg(theme.tokens.accent)
+          .border_color(theme.border)
+          .border_1()
           .rounded_xl()
           .p_2()
           .gap_2()
