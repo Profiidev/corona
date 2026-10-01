@@ -231,6 +231,7 @@ impl NetworkPanel {
           Button::new(format!("wifi-forget-{}", network.ssid))
             .icon(IconName::Trash)
             .small()
+            .with_variant(ButtonVariant::Danger)
             .tooltip("Forget")
             .cursor_pointer()
             .on_click(cx.async_listener(

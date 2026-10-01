@@ -65,7 +65,7 @@ impl RenderOnce for ControlCenterLayout {
           ),
       )
       .child(
-        div().flex_col().size_full().child(
+        div().w_full().flex_1().min_h_0().child(
           self
             .content
             .unwrap_or_else(|| div().child("No content").into_any_element()),

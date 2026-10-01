@@ -1,10 +1,12 @@
 mod audio;
+mod bluetooth;
 mod dashboard;
 mod layout;
 mod media;
 mod nav;
 mod network;
 mod panel;
+mod utils;
 mod variants;
 
 use gpui_kit::{AnyElement, AnyView, App, AppContext, Context, Entity, Render, Window};

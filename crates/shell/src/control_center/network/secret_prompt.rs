@@ -11,8 +11,8 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::network::{
-  NetworkPanel,
+use crate::control_center::{
+  network::NetworkPanel,
   utils::{on_enter, overlay},
 };
 
