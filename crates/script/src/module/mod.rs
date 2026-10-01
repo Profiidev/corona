@@ -14,6 +14,7 @@ pub mod brightness;
 pub mod compositor;
 pub mod mpris;
 pub mod network;
+pub mod notifications;
 pub mod pipewire;
 pub mod power;
 
@@ -27,6 +28,7 @@ pub enum Updates {
   Compositor(compositor::Updates),
   Mpris(mpris::Updates),
   Network(network::Updates),
+  Notifications(notifications::Updates),
   Pipewire(pipewire::Updates),
   Power(power::Updates),
 }
@@ -91,7 +93,8 @@ impl ModuleExt for Policy {
       .with_host_module(mpris::module(&reads, &mut subs, cx))?
       .with_host_module(bluetooth::module(&reads, &mut subs, cx))?
       .with_host_module(power::module(&reads, &mut subs, cx))?
-      .with_host_module(brightness::module(&reads, &mut subs, cx))?;
+      .with_host_module(brightness::module(&reads, &mut subs, cx))?
+      .with_host_module(notifications::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }
