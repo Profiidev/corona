@@ -46,6 +46,39 @@ pub struct Config {
   pub bars: Vec<BarConfig>,
   pub plugin_dir: PathBuf,
   pub brightness: BrightnessConfig,
+  pub weather: WeatherConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Units {
+  #[default]
+  Metric,
+  Imperial,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct WeatherConfig {
+  pub city: Option<String>,
+  pub latitude: Option<f64>,
+  pub longitude: Option<f64>,
+  pub auto_locate: bool,
+  pub units: Units,
+  pub refresh_minutes: u64,
+}
+
+impl Default for WeatherConfig {
+  fn default() -> Self {
+    Self {
+      city: None,
+      latitude: None,
+      longitude: None,
+      auto_locate: false,
+      units: Units::Metric,
+      refresh_minutes: 30,
+    }
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -83,6 +116,7 @@ impl Default for Config {
         .unwrap_or_else(|| PathBuf::from("."))
         .join("corona/plugins"),
       brightness: BrightnessConfig::default(),
+      weather: WeatherConfig::default(),
     }
   }
 }

@@ -1,0 +1,21 @@
+[package]
+name = "corona_weather"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_config.workspace = true
+corona_utils.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+dirs.workspace = true
+flume.workspace = true
+futures-lite.workspace = true
+corona-zbus-geoclue2 = "0.1.0"
+
+[dev-dependencies]
+corona_reqwest.workspace = true

@@ -16,6 +16,7 @@ corona_power.workspace = true
 corona_brightness.workspace = true
 corona_notifications.workspace = true
 corona_sysinfo.workspace = true
+corona_weather.workspace = true
 corona_script.workspace = true
 corona_utils.workspace = true
 corona_config.workspace = true
