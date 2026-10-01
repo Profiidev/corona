@@ -4,7 +4,7 @@ use corona_components::async_listener::AsyncListenerExt;
 use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Context, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
+  Context, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
   assets::IconName,
   base::{Disableable, StyledExt},
   component::{
@@ -24,7 +24,6 @@ fn time(duration: Duration) -> String {
   format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
-/// only local art loads, the app has no HTTP client for `https://` art
 fn art(theme: &Theme, player: &Player) -> impl IntoElement {
   let placeholder = || {
     div()
@@ -35,11 +34,15 @@ fn art(theme: &Theme, player: &Player) -> impl IntoElement {
       .child(Icon::new(IconName::Music).large())
       .into_any_element()
   };
-  let path = player
-    .art_url
-    .as_deref()
-    .and_then(|url| url.strip_prefix("file://"))
-    .map(PathBuf::from);
+  let source: Option<ImageSource> = player.art_url.as_deref().and_then(|url| {
+    if let Some(path) = url.strip_prefix("file://") {
+      Some(PathBuf::from(path).into())
+    } else if url.starts_with("https://") || url.starts_with("http://") {
+      Some(url.into())
+    } else {
+      None
+    }
+  });
 
   div()
     .size(px(96.))
@@ -48,9 +51,8 @@ fn art(theme: &Theme, player: &Player) -> impl IntoElement {
     .overflow_hidden()
     .bg(theme.colors.background)
     .text_color(theme.colors.muted_foreground)
-    .child(match path {
-      // the parent's overflow does not clip an image to its rounded corners
-      Some(path) => img(path)
+    .child(match source {
+      Some(source) => img(source)
         .size_full()
         .rounded_xl()
         .object_fit(ObjectFit::Cover)
@@ -86,7 +88,10 @@ impl MediaPanel {
       .when_some(player, |d, player| {
         d.child(self.track(theme, player))
           .when_some(player.length, |d, length| {
-            d.child(self.progress(theme, player.position(), length))
+            let position = self
+              .seeking
+              .map_or_else(|| player.position(), |fraction| length.mul_f32(fraction));
+            d.child(self.progress(theme, position, length))
           })
           .child(self.controls(player, cx))
       })

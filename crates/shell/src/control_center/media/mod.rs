@@ -60,8 +60,8 @@ pub struct MediaPanel {
   pinned: Option<String>,
   select: Entity<SelectState<Vec<PlayerItem>>>,
   progress: Entity<SliderState>,
-  /// true while the progress thumb is dragged, so the ticking position does not fight it
-  seeking: bool,
+  /// the fraction the progress thumb is dragged to, the ticking position leaves it alone meanwhile
+  seeking: Option<f32>,
   _subscriptions: Vec<Subscription>,
   _ticker: Task<()>,
 }
@@ -94,9 +94,12 @@ impl ControlCenterPanel for MediaPanel {
         },
       ),
       cx.subscribe(&progress, |this, _, event: &SliderEvent, cx| match event {
-        SliderEvent::Change(_) => this.seeking = true,
+        SliderEvent::Change(value) => {
+          this.seeking = Some(value.start());
+          cx.notify();
+        }
         SliderEvent::Release(value) => {
-          this.seeking = false;
+          this.seeking = None;
           this.seek(value.start(), cx);
         }
       }),
@@ -125,7 +128,7 @@ impl ControlCenterPanel for MediaPanel {
       pinned: None,
       select,
       progress,
-      seeking: false,
+      seeking: None,
       _subscriptions: subscriptions,
       _ticker: ticker,
     };
@@ -172,7 +175,7 @@ impl MediaPanel {
   }
 
   fn sync_progress(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    if self.seeking {
+    if self.seeking.is_some() {
       return;
     }
     let fraction = self.shown(cx).and_then(|player| {
