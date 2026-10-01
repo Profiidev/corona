@@ -9,6 +9,7 @@ use corona_macros::named;
 
 use crate::host_fn::{Cx, HostReturn, Named};
 
+pub mod bluetooth;
 pub mod compositor;
 pub mod mpris;
 pub mod network;
@@ -19,6 +20,7 @@ pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
+  Bluetooth(bluetooth::Updates),
   Compositor(compositor::Updates),
   Mpris(mpris::Updates),
   Network(network::Updates),
@@ -82,7 +84,8 @@ impl ModuleExt for Policy {
       .with_host_module(compositor::module(&reads, &mut subs, cx))?
       .with_host_module(pipewire::module(&reads, &mut subs, cx))?
       .with_host_module(network::module(&reads, &mut subs, cx))?
-      .with_host_module(mpris::module(&reads, &mut subs, cx))?;
+      .with_host_module(mpris::module(&reads, &mut subs, cx))?
+      .with_host_module(bluetooth::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }
