@@ -1577,6 +1577,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona-zbus-upower"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ffa83aedd90e40a61b4d8964b7ff64b56e6041bccb1fbe7839ea98358b45f48"
+dependencies = [
+ "serde",
+ "serde_repr",
+ "zbus",
+]
+
+[[package]]
 name = "corona_bluez"
 version = "0.1.0"
 dependencies = [
@@ -1691,6 +1702,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_power"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona-zbus-upower",
+ "corona_utils",
+ "futures-lite",
+ "gpui-kit",
+ "zbus",
+]
+
+[[package]]
 name = "corona_reqwest"
 version = "0.1.0"
 dependencies = [
@@ -1716,6 +1739,7 @@ dependencies = [
  "corona_mpris",
  "corona_network_manager",
  "corona_pipewire",
+ "corona_power",
  "corona_utils",
  "dirs 7.0.0",
  "gpui-component-shell",
@@ -1741,6 +1765,7 @@ dependencies = [
  "corona_mpris",
  "corona_network_manager",
  "corona_pipewire",
+ "corona_power",
  "corona_script",
  "corona_surface",
  "corona_utils",
