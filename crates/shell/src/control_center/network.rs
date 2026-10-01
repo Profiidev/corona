@@ -1,6 +1,6 @@
 use corona_components::async_listener::AsyncListenerExt;
 use corona_network_manager::{
-  ActiveConnectionState, DeviceState, Interface, InterfaceType, NetworkManagerExt,
+  ActiveConnectionState, DeviceState, FailReason, Interface, InterfaceType, NetworkManagerExt,
   NmConnectivityState, Vpn, VpnKind, WifiNetwork, WifiStatus,
 };
 use corona_utils::error::ErrorLogExt;
@@ -12,7 +12,6 @@ use gpui_kit::{
   component::{
     ActiveTheme, Icon, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
-    empty::Empty,
     scroll::ScrollableElement,
     spinner::Spinner,
     switch::Switch,
@@ -52,14 +51,16 @@ impl<T, E> From<Result<T, E>> for LoadingState {
 
 pub struct NetworkPanel {
   connectivity_checking: LoadingState,
-  wifi_rescanning: LoadingState,
+  wifi_scanning: LoadingState,
+  error: Option<String>,
 }
 
 impl ControlCenterPanel for NetworkPanel {
   fn init(_window: &mut Window, _cx: &mut Context<'_, Self>) -> Self {
     Self {
       connectivity_checking: LoadingState::Idle,
-      wifi_rescanning: LoadingState::Idle,
+      wifi_scanning: LoadingState::Idle,
+      error: Some("123".into()),
     }
   }
 }
@@ -221,9 +222,9 @@ impl NetworkPanel {
               .small()
               .cursor_pointer()
               .tooltip("Scan for networks")
-              .loading(self.wifi_rescanning == LoadingState::Loading)
+              .loading(self.wifi_scanning == LoadingState::Loading)
               .when_else(
-                self.wifi_rescanning == LoadingState::Error,
+                self.wifi_scanning == LoadingState::Error,
                 |b| {
                   b.with_variant(ButtonVariant::Danger)
                     .icon(IconName::RotateCw)
@@ -232,21 +233,22 @@ impl NetworkPanel {
               )
               .on_click(cx.async_listener(
                 |this, _, _, cx| {
-                  this.wifi_rescanning = LoadingState::Loading;
+                  this.wifi_scanning = LoadingState::Loading;
                   cx.network_manager().rescan(cx)
                 },
-                |this, result, _| this.wifi_rescanning = result.log_err().into(),
+                |this, result, _| this.wifi_scanning = result.log_err().into(),
               )),
           )
           .child(
             Switch::new("wifi-enabled")
               .checked(enabled)
               .disabled(!supported)
-              // notify resets the switch if toggling failed
               .on_change(cx.async_listener(
                 |_, checked, _, cx| cx.network_manager().set_wifi_enabled(*checked),
-                |_, result, _| {
-                  result.log_err().ok();
+                |this, result, _| {
+                  if let Err(e) = result.log_err() {
+                    this.error = Some(e.to_string());
+                  }
                 },
               )),
           ),
@@ -350,8 +352,10 @@ impl NetworkPanel {
               .cursor_pointer()
               .on_click(cx.async_listener(
                 move |_, _, _, cx| cx.network_manager().disconnect(&interface, cx),
-                |_, result, _| {
-                  result.log_err().ok();
+                |this, result, _| {
+                  if let Err(e) = result.log_err() {
+                    this.error = Some(e.to_string());
+                  }
                 },
               )),
           )
@@ -362,8 +366,10 @@ impl NetworkPanel {
               let ssid = network.ssid.clone();
               move |_, _, _, cx| cx.network_manager().connect_wifi(ssid.clone(), cx)
             },
-            |_, result, _| {
-              result.log_err().ok();
+            |this, result, _| {
+              if let Err(e) = result.log_err() {
+                this.error = Some(e.to_string());
+              }
             },
           ))
         },
@@ -380,47 +386,50 @@ impl NetworkPanel {
                 let ssid = network.ssid.clone();
                 move |_, _, _, cx| cx.network_manager().forget_wifi(ssid.clone(), cx)
               },
-              |_, result, _| {
-                result.log_err().ok();
+              |this, result, _| {
+                if let Err(e) = result.log_err() {
+                  this.error = Some(e.to_string());
+                }
               },
             )),
         )
       })
   }
 
-  fn vpns(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
+  fn vpns(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
     let vpns = cx.network_manager().list_vpns(cx);
 
     if vpns.is_empty() {
-      return Empty::new().into_any_element();
+      return None;
     }
 
-    div()
-      .flex()
-      .flex_col()
-      .w_full()
-      .when_else(vpns.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
-      .gap_2()
-      .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .child(
-        div()
-          .flex()
-          .gap_2()
-          .items_center()
-          .child(div().font_bold().text_sm().child("VPNs")),
-      )
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .gap_1()
-          .h_auto()
-          .overflow_y_scrollbar()
-          .children(vpns.iter().map(|v| self.vpn(theme, v, cx))),
-      )
-      .into_any_element()
+    Some(
+      div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .when_else(vpns.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
+        .gap_2()
+        .p_2()
+        .rounded_xl()
+        .bg(theme.colors.accent)
+        .child(
+          div()
+            .flex()
+            .gap_2()
+            .items_center()
+            .child(div().font_bold().text_sm().child("VPNs")),
+        )
+        .child(
+          div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .h_auto()
+            .overflow_y_scrollbar()
+            .children(vpns.iter().map(|v| self.vpn(theme, v, cx))),
+        ),
+    )
   }
 
   fn vpn(&self, theme: &Theme, vpn: &Vpn, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -482,8 +491,10 @@ impl NetworkPanel {
                 async move { if up { disconnect.await } else { connect.await } }
               }
             },
-            |_, result, _| {
-              result.log_err().ok();
+            |this, result, _| {
+              if let Err(e) = result.log_err() {
+                this.error = Some(e.to_string());
+              }
             },
           )),
       )
@@ -596,17 +607,78 @@ impl NetworkPanel {
                 }
               }
             },
-            |_, result, _| {
-              result.log_err().ok();
+            |this, result, _| {
+              if let Err(e) = result.log_err() {
+                this.error = Some(e.to_string());
+              }
             },
           )),
       )
+  }
+
+  fn error(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+    if let Some(error) = &self.error {
+      return Some(
+        div()
+          .flex()
+          .gap_2()
+          .p_2()
+          .rounded_xl()
+          .bg(theme.colors.accent)
+          .child(
+            div()
+              .text_sm()
+              .text_color(theme.colors.danger)
+              .truncate()
+              .child(error.clone()),
+          )
+          .child(
+            Button::new("error-dismiss")
+              .small()
+              .ml_auto()
+              .icon(IconName::X)
+              .cursor_pointer()
+              .on_click(cx.listener(|this, _, _, cx| {
+                this.error = None;
+                cx.notify();
+              })),
+          ),
+      );
+    }
+
+    if cx.network_manager().secret_request(cx).is_some() {
+      return None;
+    }
+    let failure = cx.network_manager().wifi_failure(cx)?;
+
+    let error = match failure.reason {
+      FailReason::SsidNotFound => "Network not found".to_string(),
+      FailReason::NoSecrets => "No password provided".to_string(),
+      FailReason::Other(code) => format!("Connection failed: {}", code),
+    };
+
+    Some(
+      div()
+        .flex()
+        .gap_2()
+        .p_2()
+        .rounded_xl()
+        .bg(theme.colors.accent)
+        .child(
+          div()
+            .text_sm()
+            .text_color(theme.colors.danger)
+            .truncate()
+            .child(error),
+        ),
+    )
   }
 }
 
 impl Render for NetworkPanel {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
+    // prompt, hidden, enterprise
 
     div()
       .flex()
@@ -614,8 +686,9 @@ impl Render for NetworkPanel {
       .size_full()
       .gap_2()
       .child(self.status(theme, cx))
+      .when_some(self.error(theme, cx), |d, error| d.child(error))
       .child(self.wifi(theme, cx))
-      .child(self.vpns(theme, cx))
+      .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
       .child(self.interfaces(theme, cx))
   }
 }
