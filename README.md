@@ -20,7 +20,7 @@ Update the version in the following files:
 
 - `nix/package.nix`
 - `justfile`
-- `Cargo.toml`
+- `crates/reqwest/Cargo.toml`
 
 # TODO
 

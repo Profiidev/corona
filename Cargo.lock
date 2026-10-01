@@ -1505,10 +1505,10 @@ name = "corona"
 version = "0.1.0"
 dependencies = [
  "corona_components",
+ "corona_reqwest",
  "corona_shell",
  "gpui-component-shell",
  "gpui-kit",
- "gpui-pre-reqwest-client",
  "tracing-subscriber",
 ]
 
@@ -1663,6 +1663,20 @@ dependencies = [
  "serde_json",
  "tracing",
  "ts-rs",
+]
+
+[[package]]
+name = "corona_reqwest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs 7.0.0",
+ "futures",
+ "gpui-pre-http-client",
+ "gpui-pre-reqwest-client",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
