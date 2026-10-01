@@ -139,7 +139,11 @@ pub(crate) async fn rescan(
   device: OwnedObjectPath,
   timeout: impl Future<Output = ()>,
 ) -> Result<ScanResult> {
-  let wireless = proxy::<WirelessDeviceProxy, WirelessDevice>(conn, device).await?;
+  let wireless = Builder::<WirelessDeviceProxy>::new(conn)
+    .path(device)?
+    .cache_properties(CacheProperties::Yes)
+    .build()
+    .await?;
   let mut changes = wireless.receive_last_scan_changed().await;
   let before = wireless.last_scan().await?;
   wireless.request_scan(HashMap::new()).await?;
