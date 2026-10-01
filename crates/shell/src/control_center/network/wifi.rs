@@ -42,7 +42,7 @@ impl NetworkPanel {
       .flex_col()
       .w_full()
       .flex_1()
-      .min_h(px(160.))
+      .min_h(px(120.))
       .gap_2()
       .p_2()
       .rounded_xl()
