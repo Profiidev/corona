@@ -12,6 +12,7 @@ mod power;
 mod sysinfo;
 mod utils;
 mod variants;
+mod weather;
 
 use gpui_kit::{AnyElement, AnyView, App, AppContext, Context, Entity, Render, Window};
 pub use panel::ControlCenter;
