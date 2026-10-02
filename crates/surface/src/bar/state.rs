@@ -18,26 +18,28 @@ use gpui_kit::{
 use tracing::error;
 use uuid::Uuid;
 
-use crate::bar::{BAR_NAMESPACE, WidgetFactory, base::Bar};
+use crate::bar::{BAR_NAMESPACE, Widget, base::Bar, widgets::WidgetData};
 
 const DISPLAY_WAIT_TICK: Duration = Duration::from_millis(16);
 const DISPLAY_WAIT_TICKS: usize = 60;
 
 pub struct BarState {
-  widget: WidgetFactory,
+  widgets: HashMap<String, WidgetData>,
   bars: HashMap<WindowId, WeakEntity<Bar>>,
   windows: HashMap<DisplayId, Vec<AnyWindowHandle>>,
+  display_mapping: HashMap<Uuid, DisplayId>,
   subscription: Option<Subscription>,
 }
 
 impl Global for BarState {}
 
 impl BarState {
-  pub fn init(cx: &mut gpui_kit::App, widget: WidgetFactory) {
+  pub fn init(cx: &mut gpui_kit::App) {
     cx.set_global(BarState {
-      widget,
+      widgets: HashMap::new(),
       bars: HashMap::new(),
       windows: HashMap::new(),
+      display_mapping: HashMap::new(),
       subscription: None,
     });
 
@@ -46,8 +48,20 @@ impl BarState {
       Self::reconcile_soon(cx);
     });
     cx.global_mut::<BarState>().subscription = Some(subscription);
+  }
 
+  pub fn spawn_bars(cx: &mut App) {
     Self::reconcile_soon(cx);
+  }
+
+  pub fn register<W: Widget>(&mut self) -> &mut Self {
+    let data = WidgetData::new::<W>();
+    self.widgets.insert(data.name.clone(), data);
+    self
+  }
+
+  pub(crate) fn widget(&self, name: &str) -> Option<&WidgetData> {
+    self.widgets.get(name)
   }
 
   /// schedules a reconciliation of the internal display list with the compositor's monitor list
@@ -93,6 +107,7 @@ impl BarState {
       .filter_map(|m| displays.get(&display_uuid(&m.name)).copied())
       .collect();
 
+    cx.bar_mut().display_mapping = displays;
     let current: HashSet<DisplayId> = cx.global::<BarState>().windows.keys().copied().collect();
 
     for display_id in current.difference(&wanted) {
@@ -121,7 +136,11 @@ impl BarState {
     }
   }
 
-  pub fn create(cx: &mut App, config: BarConfig, display_id: DisplayId) -> Result<AnyWindowHandle> {
+  pub(crate) fn create(
+    cx: &mut App,
+    config: BarConfig,
+    display_id: DisplayId,
+  ) -> Result<AnyWindowHandle> {
     let flare = (cx.theme().radius * 2).as_f32();
     // Resolved here, not in the widgets: a layer-shell window has no output
     // until the compositor sends `wl_surface::enter`, so `window.display()` is
@@ -169,15 +188,26 @@ impl BarState {
     Ok(handle.into())
   }
 
-  pub fn widget(cx: &App) -> WidgetFactory {
-    cx.global::<BarState>().widget
-  }
-
-  pub fn get(window: &Window, cx: &App) -> Option<Entity<Bar>> {
+  pub(crate) fn get(window: &Window, cx: &App) -> Option<Entity<Bar>> {
     cx.global::<BarState>()
       .bars
       .get(&window.window_handle().window_id())?
       .upgrade()
+  }
+
+  pub(crate) fn display_id_for(&self, monitor: &str) -> Option<DisplayId> {
+    self.display_mapping.get(&display_uuid(monitor)).copied()
+  }
+
+  pub(crate) fn bars_on(display_id: DisplayId, cx: &App) -> Vec<Entity<Bar>> {
+    let state = cx.global::<BarState>();
+    state
+      .windows
+      .get(&display_id)
+      .into_iter()
+      .flatten()
+      .filter_map(|handle| state.bars.get(&handle.window_id())?.upgrade())
+      .collect()
   }
 
   pub fn bar_axis(window: &Window, cx: &App) -> Axis {
@@ -190,5 +220,20 @@ impl BarState {
     } else {
       Axis::Vertical
     }
+  }
+}
+
+pub trait BarExt {
+  fn bar(&self) -> &BarState;
+  fn bar_mut(&mut self) -> &mut BarState;
+}
+
+impl BarExt for App {
+  fn bar(&self) -> &BarState {
+    self.global::<BarState>()
+  }
+
+  fn bar_mut(&mut self) -> &mut BarState {
+    self.global_mut::<BarState>()
   }
 }

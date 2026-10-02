@@ -6,12 +6,11 @@ use corona_config::{
   placement::{Placement, PlacementStyle, PlacmentBounds},
 };
 use gpui_kit::{
-  AnyView, AppContext, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path,
-  PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
-  prelude::FluentBuilder, px,
+  AnyView, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path, PathBuilder,
+  Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div, prelude::FluentBuilder, px,
 };
 
-use crate::panel::{align::Align, style::PanelStyle, variants::Panel};
+use crate::panel::{align::Align, style::PanelStyle, variants::PanelData};
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 
@@ -29,18 +28,17 @@ pub struct BasePanel {
 }
 
 impl BasePanel {
-  pub fn new<P: Panel>(
+  pub fn new(
+    data: &PanelData,
     align: Align,
     placement: Placement,
     window: &mut Window,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
-    let panel = cx.new(|cx| P::init(window, cx));
-
     Self {
-      panel: panel.into(),
-      width: P::WIDTH,
-      height: P::HEIGHT,
+      panel: data.init(window, cx),
+      width: data.width,
+      height: data.height,
       open: true,
       blocks_input: true,
       removing: false,

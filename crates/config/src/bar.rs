@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{placement::Placement, widget::WidgetType};
+use crate::placement::Placement;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BarConfig {
@@ -14,9 +14,9 @@ pub struct BarConfig {
   pub end_widgets: Vec<WidgetConfig>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WidgetConfig {
-  pub widget_type: WidgetType,
+  pub widget_type: String,
 }
 
 impl Default for BarConfig {
@@ -26,20 +26,20 @@ impl Default for BarConfig {
       height: 30.0,
       start_widgets: vec![
         WidgetConfig {
-          widget_type: WidgetType::ControlCenter,
+          widget_type: "control_center".to_string(),
         },
         WidgetConfig {
-          widget_type: WidgetType::Workspaces,
+          widget_type: "workspaces".to_string(),
         },
         WidgetConfig {
-          widget_type: WidgetType::ActiveWindow,
+          widget_type: "active_window".to_string(),
         },
       ],
       center_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::ControlCenter,
+        widget_type: "control_center".to_string(),
       }],
       end_widgets: vec![WidgetConfig {
-        widget_type: WidgetType::ControlCenter,
+        widget_type: "control_center".to_string(),
       }],
     }
   }

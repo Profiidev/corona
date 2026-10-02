@@ -15,7 +15,7 @@ pub trait IpcCommand {
   type Payload: Serialize + DeserializeOwned;
   type Response: Serialize + DeserializeOwned;
 
-  fn handle(payload: Self::Payload, cx: &mut App) -> Self::Response;
+  fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response>;
 }
 
 pub trait IpcCommandSend: IpcCommand {
@@ -33,6 +33,6 @@ pub(crate) type Handler = Box<dyn Fn(Value, &mut App) -> Result<Value>>;
 pub(crate) fn erase<C: IpcCommand>() -> Handler {
   Box::new(|data, cx| {
     let payload = serde_json::from_value(data)?;
-    Ok(serde_json::to_value(C::handle(payload, cx))?)
+    Ok(serde_json::to_value(C::handle(payload, cx)?)?)
   })
 }

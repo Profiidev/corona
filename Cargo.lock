@@ -1841,6 +1841,7 @@ dependencies = [
  "corona_components",
  "corona_compositor",
  "corona_config",
+ "corona_ipc",
  "corona_utils",
  "gpui-kit",
  "tracing",

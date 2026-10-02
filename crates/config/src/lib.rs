@@ -8,7 +8,6 @@ use crate::bar::BarConfig;
 
 pub mod bar;
 pub mod placement;
-pub mod widget;
 
 pub const APP_NAME: &str = "corona";
 

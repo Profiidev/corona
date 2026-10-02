@@ -40,7 +40,7 @@ impl IpcServer {
     }))
   }
 
-  pub fn register<C: IpcCommand>(mut self) -> Self {
+  pub fn register<C: IpcCommand>(&mut self) -> &mut Self {
     self.handlers.insert(C::COMMAND, erase::<C>());
     self
   }

@@ -8,6 +8,7 @@ corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
 corona_utils.workspace = true
+corona_ipc.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true
 uuid.workspace = true

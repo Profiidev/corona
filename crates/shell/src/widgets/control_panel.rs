@@ -8,6 +8,8 @@ use crate::{control_center::ControlCenter, widgets::button::Button};
 pub struct ControlCenterButton;
 
 impl Widget for ControlCenterButton {
+  const NAME: &'static str = "control_center";
+
   fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
     ControlCenterButton
   }

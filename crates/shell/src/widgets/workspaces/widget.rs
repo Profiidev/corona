@@ -36,6 +36,8 @@ pub struct Workspaces {
 }
 
 impl Widget for Workspaces {
+  const NAME: &'static str = "workspaces";
+
   fn init(cx: &mut Context<'_, Self>, display_id: Uuid) -> Self {
     let compositor = cx.compositor();
 
