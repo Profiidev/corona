@@ -1674,6 +1674,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui-kit",
+ "serde",
+ "serde_json",
+ "smol",
+ "tracing",
+]
+
+[[package]]
 name = "corona_macros"
 version = "0.1.0"
 dependencies = [
@@ -1803,6 +1815,7 @@ dependencies = [
  "corona_compositor",
  "corona_config",
  "corona_desktop",
+ "corona_ipc",
  "corona_mpris",
  "corona_network_manager",
  "corona_notifications",
@@ -1815,6 +1828,7 @@ dependencies = [
  "corona_weather",
  "gpui-kit",
  "jiff",
+ "tracing",
  "uuid",
  "zbus",
 ]

@@ -20,6 +20,7 @@ members = [
   "crates/sysinfo",
   "crates/utils",
   "crates/weather",
+  "crates/ipc",
 ]
 
 [workspace.dependencies]
@@ -42,6 +43,7 @@ corona_notifications = { path = "crates/notifications" }
 corona_sysinfo = { path = "crates/sysinfo" }
 corona_weather = { path = "crates/weather" }
 corona_reqwest = { path = "crates/reqwest" }
+corona_ipc = { path = "crates/ipc" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
@@ -58,6 +60,7 @@ glob = "0.3.4"
 uuid = { version = "1.26.1", features = ["v5"] }
 zbus = "5.19.0"
 futures-lite = "2.6.1"
+smol = "2.0.2"
 
 [package]
 name = "corona"
