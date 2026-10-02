@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
+use corona_shell::overlays::screenshot::{commands::Screenshot, mode::Mode};
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
@@ -8,12 +9,23 @@ pub enum IpcCommands {
     #[command(subcommand)]
     command: PanelCommands,
   },
+  /// Open the screenshot overlay
+  Screenshot {
+    /// selection, monitor or window
+    #[arg(default_value = "selection")]
+    mode: Mode,
+  },
 }
 
 impl IpcCommands {
   pub fn execute(self) {
     match self {
       IpcCommands::Panel { command } => command.execute(),
+      IpcCommands::Screenshot { mode } => {
+        if let Err(e) = Screenshot::send(mode) {
+          tracing::error!("Failed to start screenshot: {}", e);
+        }
+      }
     }
   }
 }

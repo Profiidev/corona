@@ -1,6 +1,7 @@
 use std::{collections::HashSet, rc::Rc};
 
 use anyhow::Result;
+use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 use crate::types;
@@ -43,6 +44,14 @@ impl Compositor {
       active_window,
       urgent,
     })
+  }
+
+  /// required when relying on size and position of windows, no event when they change
+  pub fn refresh_windows(cx: &mut App) -> Result<()> {
+    let compositor = cx.global::<Compositor>();
+    let windows = compositor.inner.list_windows()?;
+    compositor.windows.clone().write_changed(cx, windows);
+    Ok(())
   }
 
   pub fn focus_workspace(&self, workspace: &str) -> Result<()> {

@@ -112,11 +112,14 @@ impl Ipc {
       | "moveworkspace" => {
         let workspaces = self.list_workspaces()?;
         let active = self.active_workspace()?;
+        let monitors = self.list_monitors()?;
         vec![
           CompositorEvent::Workspace(workspaces),
           CompositorEvent::ActiveWorkspace(active),
+          CompositorEvent::Monitor(monitors),
         ]
       }
+      "activespecial" => vec![CompositorEvent::Monitor(self.list_monitors()?)],
       "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" => {
         let windows = self.list_windows()?;
         let window = self.active_window()?;

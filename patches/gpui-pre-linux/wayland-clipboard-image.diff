@@ -1,0 +1,48 @@
+diff --git a/crates/gpui_linux/src/linux/wayland/clipboard.rs b/crates/gpui_linux/src/linux/wayland/clipboard.rs
+--- a/crates/gpui_linux/src/linux/wayland/clipboard.rs
++++ b/crates/gpui_linux/src/linux/wayland/clipboard.rs
+@@ -180,8 +180,29 @@
+         self.self_mime.clone()
+     }
+ 
+-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
+-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
++    /// Mime types of the images in the current clipboard contents.
++    pub fn image_mime_types(&self) -> Vec<&'static str> {
++        self.contents
++            .iter()
++            .flat_map(|contents| contents.entries())
++            .filter_map(|entry| match entry {
++                ClipboardEntry::Image(image) => Some(image.format.mime_type()),
++                _ => None,
++            })
++            .collect()
++    }
++
++    pub fn send(&self, mime_type: String, fd: OwnedFd) {
++        let Some(contents) = self.contents.as_ref() else {
++            return;
++        };
++        let image = contents.entries().iter().find_map(|entry| match entry {
++            ClipboardEntry::Image(image) if image.format.mime_type() == mime_type => Some(image),
++            _ => None,
++        });
++        if let Some(image) = image {
++            self.send_bytes(fd, image.bytes.clone());
++        } else if let Some(text) = contents.text() {
+             self.send_bytes(fd, text.as_bytes().to_owned());
+         }
+     }
+diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -1429,6 +1429,9 @@
+             for mime_type in TEXT_MIME_TYPES {
+                 data_source.offer(mime_type.to_string());
+             }
++            for mime_type in state.clipboard.image_mime_types() {
++                data_source.offer(mime_type.to_string());
++            }
+             data_source.offer(state.clipboard.self_mime());
+             data_device.set_selection(Some(&data_source), serial.as_raw());
+         }
