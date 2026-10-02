@@ -22,6 +22,7 @@ members = [
   "crates/weather",
   "crates/ipc",
   "crates/cli",
+  "crates/capture",
 ]
 
 [workspace.dependencies]
@@ -46,6 +47,7 @@ corona_weather = { path = "crates/weather" }
 corona_reqwest = { path = "crates/reqwest" }
 corona_ipc = { path = "crates/ipc" }
 corona_cli = { path = "crates/cli" }
+corona_capture = { path = "crates/capture" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }

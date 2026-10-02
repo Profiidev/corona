@@ -1716,6 +1716,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_capture"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui-kit",
+ "image",
+ "memmap2",
+ "png 0.18.1",
+ "rustix",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "corona_cli"
 version = "0.1.0"
 dependencies = [
