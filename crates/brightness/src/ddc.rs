@@ -15,6 +15,7 @@ use crate::state::{Display, DisplayKind};
 const BRIGHTNESS: &str = "10";
 const TIMEOUT: Duration = Duration::from_secs(5);
 const QUARANTINE: Duration = Duration::from_secs(5 * 60);
+const STARTUP_DELAY: Duration = Duration::from_secs(3);
 
 pub(crate) enum DdcCommand {
   Set { bus: u32, brightness: u32 },
@@ -35,6 +36,8 @@ pub fn available() -> bool {
 
 pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Sender<Update>) {
   thread::spawn(move || {
+    // probing over the NVIDIA I2C bus stalls the GPU setup of the first frame
+    thread::sleep(STARTUP_DELAY);
     let detected = match detect() {
       Ok(displays) => Update::Displays(displays),
       Err(e) => {
