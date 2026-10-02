@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
+use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global};
 
 use crate::{
@@ -46,16 +47,12 @@ impl Pipewire {
       while let Ok(event) = rx.recv_async().await {
         cx.update(|cx| {
           cx.update_global::<Pipewire, _>(|pipewire, cx| match event {
-            AudioEvent::Nodes(NodeType::Sink, nodes) => write_changed(&pipewire.sinks, nodes, cx),
-            AudioEvent::Nodes(NodeType::Source, nodes) => {
-              write_changed(&pipewire.sources, nodes, cx)
-            }
-            AudioEvent::Nodes(NodeType::Stream, nodes) => {
-              write_changed(&pipewire.streams, nodes, cx)
-            }
-            AudioEvent::DefaultSink(node) => write_changed(&pipewire.default_sink, node, cx),
-            AudioEvent::DefaultSource(node) => write_changed(&pipewire.default_source, node, cx),
-            AudioEvent::Targets(targets) => write_changed(&pipewire.targets, targets, cx),
+            AudioEvent::Nodes(NodeType::Sink, nodes) => pipewire.sinks.write_changed(cx, nodes),
+            AudioEvent::Nodes(NodeType::Source, nodes) => pipewire.sources.write_changed(cx, nodes),
+            AudioEvent::Nodes(NodeType::Stream, nodes) => pipewire.streams.write_changed(cx, nodes),
+            AudioEvent::DefaultSink(node) => pipewire.default_sink.write_changed(cx, node),
+            AudioEvent::DefaultSource(node) => pipewire.default_source.write_changed(cx, node),
+            AudioEvent::Targets(targets) => pipewire.targets.write_changed(cx, targets),
           });
         });
       }
@@ -98,11 +95,5 @@ impl Pipewire {
 
   pub fn target(&self, stream: u32, cx: &App) -> Option<u32> {
     self.targets.read(cx).get(&stream).copied()
-  }
-}
-
-fn write_changed<T: PartialEq + 'static>(entity: &Entity<T>, next: T, cx: &mut App) {
-  if *entity.read(cx) != next {
-    entity.write(cx, next);
   }
 }

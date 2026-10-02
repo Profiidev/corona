@@ -1,9 +1,9 @@
 use anyhow::Result;
 use bluez_zbus::agent1::Message;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use futures_channel::mpsc;
 use futures_lite::{StreamExt, future::poll_once};
-use gpui_kit::{App, AsyncApp, Entity};
+use gpui_kit::{App, Entity};
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
 
 use crate::{
@@ -25,8 +25,8 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
     loop {
       let snapshot = snapshot(&conn).await.log_err().ok();
       let (adapter, devices) = snapshot.map_or((None, Vec::new()), |s| (s.adapter, s.devices));
-      write_changed(cx, &state.adapter, adapter);
-      write_changed(cx, &state.devices, devices);
+      state.adapter.write_changed(cx, adapter);
+      state.devices.write_changed(cx, devices);
 
       if changes.next().await.is_none() {
         break;
@@ -56,12 +56,4 @@ pub fn agent_listener(
     }
   })
   .detach();
-}
-
-fn write_changed<T: PartialEq + 'static>(cx: &mut AsyncApp, entity: &Entity<T>, next: T) {
-  cx.update(|cx| {
-    if *entity.read(cx) != next {
-      entity.write(cx, next);
-    }
-  });
 }

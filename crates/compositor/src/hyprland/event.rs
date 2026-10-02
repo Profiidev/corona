@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{App, BorrowAppContext};
 use tracing::{debug, warn};
 
@@ -63,14 +64,20 @@ impl Hyprland {
       while let Ok(event) = rx.recv_async().await {
         cx.update(|cx| {
           cx.update_global::<Compositor, _>(|compositor, cx| match event {
-            CompositorEvent::Workspace(workspaces) => compositor.workspaces.write(cx, workspaces),
-            CompositorEvent::ActiveWorkspace(workspace) => {
-              compositor.active_workspace.write(cx, workspace)
+            CompositorEvent::Workspace(workspaces) => {
+              compositor.workspaces.write_changed(cx, workspaces)
             }
-            CompositorEvent::Monitor(monitors) => compositor.monitors.write(cx, monitors),
-            CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write(cx, monitor),
-            CompositorEvent::Window(windows) => compositor.windows.write(cx, windows),
-            CompositorEvent::ActiveWindow(window) => compositor.active_window.write(cx, window),
+            CompositorEvent::ActiveWorkspace(workspace) => {
+              compositor.active_workspace.write_changed(cx, workspace)
+            }
+            CompositorEvent::Monitor(monitors) => compositor.monitors.write_changed(cx, monitors),
+            CompositorEvent::ActiveMonitor(monitor) => {
+              compositor.active_monitor.write_changed(cx, monitor)
+            }
+            CompositorEvent::Window(windows) => compositor.windows.write_changed(cx, windows),
+            CompositorEvent::ActiveWindow(window) => {
+              compositor.active_window.write_changed(cx, window)
+            }
             CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
               if urgent.insert(address) {
                 cx.notify();

@@ -1728,6 +1728,7 @@ name = "corona_pipewire"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_utils",
  "dashmap",
  "flume",
  "gpui-kit",
@@ -1849,6 +1850,7 @@ dependencies = [
 name = "corona_utils"
 version = "0.1.0"
 dependencies = [
+ "gpui-kit",
  "tracing",
  "uuid",
 ]

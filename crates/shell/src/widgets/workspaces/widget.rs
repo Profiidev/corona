@@ -85,6 +85,18 @@ impl Widget for Workspaces {
     });
 
     let window_subscription = cx.observe(&window, |this, e, cx| {
+      let icons = |windows: &HashMap<String, Vec<types::Window>>| {
+        let mut icons: Vec<_> = windows
+          .iter()
+          .flat_map(|(id, ws)| {
+            ws.iter()
+              .map(move |w| (id.clone(), w.address.clone(), w.class.clone()))
+          })
+          .collect();
+        icons.sort();
+        icons
+      };
+      let before = icons(&this.windows);
       this.windows.clear();
 
       for window in e.read(cx) {
@@ -123,7 +135,10 @@ impl Widget for Workspaces {
         }
       }
 
-      cx.notify();
+      // title and position changes only reach the tooltip
+      if icons(&this.windows) != before {
+        cx.notify();
+      }
     });
 
     Workspaces {
@@ -291,7 +306,6 @@ fn workspace_windows(
             move |b, _, _| bounds.set(b)
           })
           .on_hover(cx.listener({
-            let title = w.title.clone();
             let id = ws.id.clone();
             let address = w.address.clone();
             move |this, hovered: &bool, window, cx| {
@@ -305,11 +319,18 @@ fn workspace_windows(
               this.current_hover = Some(cx.spawn_in(window, {
                 let address = address.clone();
                 let bounds = bounds.clone();
-                let title = title.clone();
                 let id = id.clone();
                 async move |e, cx| {
                   cx.background_executor().timer(TOOLTIP_DELAY).await;
                   e.update_in(cx, |this, window, cx| {
+                    let Some(title) = this
+                      .windows
+                      .get(&id)
+                      .and_then(|windows| windows.iter().find(|w| w.address == address))
+                      .map(|w| w.title.clone())
+                    else {
+                      return;
+                    };
                     if cx
                       .show_bar_tooltip(WindowTitle::new(title), bounds.get(), window)
                       .log_err()

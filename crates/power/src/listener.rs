@@ -1,7 +1,7 @@
 use anyhow::Result;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use futures_lite::{Stream, StreamExt, future::poll_once};
-use gpui_kit::{App, AsyncApp, Entity};
+use gpui_kit::App;
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
 
 use crate::{
@@ -35,12 +35,14 @@ pub fn listener(
   cx.spawn(async move |cx| {
     loop {
       if let Ok(snapshot) = snapshot(&conn).await.log_err() {
-        write_changed(cx, &state.status, Some(snapshot.status));
-        write_changed(cx, &state.battery, snapshot.battery);
-        write_changed(cx, &state.devices, snapshot.devices);
-        write_changed(cx, &state.keyboard_backlight, snapshot.keyboard_backlight);
+        state.status.write_changed(cx, Some(snapshot.status));
+        state.battery.write_changed(cx, snapshot.battery);
+        state.devices.write_changed(cx, snapshot.devices);
+        state
+          .keyboard_backlight
+          .write_changed(cx, snapshot.keyboard_backlight);
       }
-      write_changed(cx, &state.profiles, profiles(&conn).await);
+      state.profiles.write_changed(cx, profiles(&conn).await);
 
       if changes.next().await.is_none() {
         break;
@@ -50,12 +52,4 @@ pub fn listener(
     }
   })
   .detach();
-}
-
-fn write_changed<T: PartialEq + 'static>(cx: &mut AsyncApp, entity: &Entity<T>, next: T) {
-  cx.update(|cx| {
-    if *entity.read(cx) != next {
-      entity.write(cx, next);
-    }
-  });
 }

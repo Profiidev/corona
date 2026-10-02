@@ -1,7 +1,7 @@
 use anyhow::Result;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use futures_lite::{Stream, StreamExt, future::poll_once};
-use gpui_kit::{App, AsyncApp, Entity};
+use gpui_kit::App;
 use mpris2_zbus::enumerator::Enumerator;
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
 
@@ -30,8 +30,10 @@ pub fn listener(
     loop {
       if let Ok(players) = snapshot(&conn).await.log_err() {
         let active = cx.update(|cx| state.active.read(cx).clone());
-        write_changed(cx, &state.active, pick_active(&players, active.as_deref()));
-        write_changed(cx, &state.players, players);
+        state
+          .active
+          .write_changed(cx, pick_active(&players, active.as_deref()));
+        state.players.write_changed(cx, players);
       }
 
       if changes.next().await.is_none() {
@@ -42,12 +44,4 @@ pub fn listener(
     }
   })
   .detach();
-}
-
-fn write_changed<T: PartialEq + 'static>(cx: &mut AsyncApp, entity: &Entity<T>, next: T) {
-  cx.update(|cx| {
-    if *entity.read(cx) != next {
-      entity.write(cx, next);
-    }
-  });
 }

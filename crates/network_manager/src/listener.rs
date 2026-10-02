@@ -1,5 +1,5 @@
 use anyhow::Result;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use cosmic_dbus_networkmanager::interface::{
   NetworkManagerProxy,
   active_connection::ActiveConnectionProxy,
@@ -9,7 +9,7 @@ use cosmic_dbus_networkmanager::interface::{
   settings::{SettingsProxy, connection::ConnectionSettingsProxy},
 };
 use futures_lite::{StreamExt, future::poll_once};
-use gpui_kit::{App, AsyncApp, Entity};
+use gpui_kit::{App, Entity};
 use zbus::{
   Connection, MatchRule, Message, MessageStream, fdo::PropertiesChanged, message::Type,
   names::InterfaceName, proxy::Defaults, zvariant::OwnedObjectPath,
@@ -62,7 +62,7 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
         wifi_path = snapshot.primary_wifi.as_ref().map(|i| i.path.clone());
         if failed_path.is_some() && failed_path != wifi_path {
           failed_path = None;
-          write_changed(cx, &state.wifi_failure, None);
+          state.wifi_failure.write_changed(cx, None);
         }
         connecting_ssid = snapshot
           .wifi_networks
@@ -70,15 +70,23 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
           .find(|n| matches!(n.status, WifiStatus::Connecting | WifiStatus::NeedAuth))
           .map(|n| n.ssid.clone());
 
-        write_changed(cx, &state.interfaces, snapshot.interfaces);
-        write_changed(cx, &state.primary_interface, snapshot.primary_interface);
-        write_changed(cx, &state.connectivity, snapshot.connectivity);
-        write_changed(cx, &state.connectivity_check, snapshot.connectivity_check);
-        write_changed(cx, &state.wifi_supported, snapshot.wifi_supported);
-        write_changed(cx, &state.wifi_enabled, snapshot.wifi_enabled);
-        write_changed(cx, &state.primary_wifi, snapshot.primary_wifi);
-        write_changed(cx, &state.wifi_networks, snapshot.wifi_networks);
-        write_changed(cx, &state.vpns, snapshot.vpns);
+        state.interfaces.write_changed(cx, snapshot.interfaces);
+        state
+          .primary_interface
+          .write_changed(cx, snapshot.primary_interface);
+        state.connectivity.write_changed(cx, snapshot.connectivity);
+        state
+          .connectivity_check
+          .write_changed(cx, snapshot.connectivity_check);
+        state
+          .wifi_supported
+          .write_changed(cx, snapshot.wifi_supported);
+        state.wifi_enabled.write_changed(cx, snapshot.wifi_enabled);
+        state.primary_wifi.write_changed(cx, snapshot.primary_wifi);
+        state
+          .wifi_networks
+          .write_changed(cx, snapshot.wifi_networks);
+        state.vpns.write_changed(cx, snapshot.vpns);
       }
 
       let Some(state_changes) = next_changes(&mut changes).await else {
@@ -90,9 +98,8 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
         }
         match change.state {
           DeviceState::Failed => {
-            write_changed(
+            state.wifi_failure.write_changed(
               cx,
-              &state.wifi_failure,
               Some(WifiFailure {
                 ssid: connecting_ssid.clone(),
                 reason: change.reason.into(),
@@ -103,21 +110,13 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
           DeviceState::Disconnected => {}
           _ => {
             failed_path = None;
-            write_changed(cx, &state.wifi_failure, None);
+            state.wifi_failure.write_changed(cx, None);
           }
         }
       }
     }
   })
   .detach();
-}
-
-fn write_changed<T: PartialEq + 'static>(cx: &mut AsyncApp, entity: &Entity<T>, next: T) {
-  cx.update(|cx| {
-    if *entity.read(cx) != next {
-      entity.write(cx, next);
-    }
-  });
 }
 
 pub fn agent_listener(
@@ -130,7 +129,7 @@ pub fn agent_listener(
     while let Ok(event) = events.recv_async().await {
       let request = match event {
         AgentEvent::Request(request) => {
-          write_changed(cx, &wifi_failure, None);
+          wifi_failure.write_changed(cx, None);
           Some(request)
         }
         AgentEvent::Cancel => None,
