@@ -21,6 +21,7 @@ members = [
   "crates/utils",
   "crates/weather",
   "crates/ipc",
+  "crates/cli",
 ]
 
 [workspace.dependencies]
@@ -44,6 +45,7 @@ corona_sysinfo = { path = "crates/sysinfo" }
 corona_weather = { path = "crates/weather" }
 corona_reqwest = { path = "crates/reqwest" }
 corona_ipc = { path = "crates/ipc" }
+corona_cli = { path = "crates/cli" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
@@ -70,10 +72,11 @@ edition = "2024"
 [dependencies]
 corona_shell.workspace = true
 corona_components.workspace = true
+corona_reqwest.workspace = true
+corona_cli.workspace = true
 gpui-kit.workspace = true
 gpui-component-shell.workspace = true
 tracing-subscriber = "0.3.23"
-corona_reqwest.workspace = true
 
 [patch.crates-io]
 gpui-pre = { path = "vendor/gpui-pre" }

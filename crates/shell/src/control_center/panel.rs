@@ -12,7 +12,7 @@ pub struct ControlCenter {
 }
 
 impl Panel for ControlCenter {
-  const NAME: &'static str = "control_panel";
+  const NAME: &'static str = "control_center";
   const WIDTH: f32 = 500.0;
   const HEIGHT: f32 = 500.0;
 
