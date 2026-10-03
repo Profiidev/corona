@@ -1,0 +1,15 @@
+[package]
+name = "corona_tray"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_desktop.workspace = true
+corona_utils.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+dirs.workspace = true
+futures-lite.workspace = true
+tracing.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png"] }
