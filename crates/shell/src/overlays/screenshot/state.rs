@@ -27,8 +27,53 @@ pub struct ScreenshotState {
   pub mode: Mode,
   pub hovered_monitor: String,
   pub hovered_window: Option<Bounds<Pixels>>,
+  pub windows: Vec<(String, Bounds<Pixels>)>,
+  pub keyboard: bool,
   pub drag: Option<DragArea>,
   pub slide: AreaSlideAnimation,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Direction {
+  Left,
+  Right,
+  Up,
+  Down,
+}
+
+impl Direction {
+  pub fn from_key(key: &str) -> Option<Self> {
+    match key {
+      "left" | "h" => Some(Self::Left),
+      "right" | "l" => Some(Self::Right),
+      "up" | "k" => Some(Self::Up),
+      "down" | "j" => Some(Self::Down),
+      _ => None,
+    }
+  }
+}
+
+fn nearest<K>(
+  from: Bounds<Pixels>,
+  dir: Direction,
+  candidates: impl IntoIterator<Item = (K, Bounds<Pixels>)>,
+) -> Option<(K, Bounds<Pixels>)> {
+  let from = from.center();
+  candidates
+    .into_iter()
+    .filter_map(|(key, b)| {
+      let d = b.center() - from;
+      let (dx, dy) = (d.x.as_f32(), d.y.as_f32());
+      let (ahead, aside) = match dir {
+        Direction::Left => (-dx, dy),
+        Direction::Right => (dx, dy),
+        Direction::Up => (-dy, dx),
+        Direction::Down => (dy, dx),
+      };
+      (ahead > 0.).then_some((ahead + 2. * aside.abs(), key, b))
+    })
+    .min_by(|a, b| a.0.total_cmp(&b.0))
+    .map(|(_, key, b)| (key, b))
 }
 
 #[derive(Clone, Copy)]
@@ -142,6 +187,8 @@ impl ScreenshotState {
       mode,
       hovered_monitor: cx.compositor().active_monitor(cx).name.clone(),
       hovered_window: None,
+      windows: Vec::new(),
+      keyboard: false,
       drag: None,
       slide: AreaSlideAnimation::default(),
     });
@@ -234,6 +281,17 @@ impl ScreenshotState {
         hovered = Some((name.clone(), window));
       }
 
+      let global_windows = visible
+        .iter()
+        .map(|b| {
+          let global = Bounds {
+            origin: b.origin + geometry.origin,
+            size: b.size,
+          };
+          (name.clone(), global)
+        })
+        .collect::<Vec<_>>();
+
       let picture = image.to_gpui();
       let handle = cx.open_window(
         WindowOptions {
@@ -267,6 +325,7 @@ impl ScreenshotState {
         bail!("ScreenshotState was removed while opening overlay");
       };
       state.overlays.push(handle.into());
+      state.windows.extend(global_windows);
       state.screenshots.insert(name.clone(), image);
       state.geometry.insert(name, geometry);
     }
@@ -317,6 +376,40 @@ impl ScreenshotState {
     Self::refresh_all(cx);
   }
 
+  pub fn navigate(dir: Direction, cx: &mut App) {
+    let Some(state) = Self::get(cx) else {
+      return;
+    };
+    let monitor = state
+      .geometry
+      .get(&state.hovered_monitor)
+      .map(MonitorGeometry::bounds);
+    let Some(from) = state.target().or(monitor) else {
+      return;
+    };
+
+    match state.mode {
+      Mode::Selection => return,
+      Mode::Monitor => {
+        let monitors = state.geometry.iter().map(|(n, g)| (n, g.bounds()));
+        let Some((name, _)) = nearest(from, dir, monitors) else {
+          return;
+        };
+        state.hovered_monitor = name.clone();
+      }
+      Mode::Window => {
+        let windows = state.windows.iter().map(|(n, b)| (n, *b));
+        let Some((name, window)) = nearest(from, dir, windows) else {
+          return;
+        };
+        state.hovered_monitor = name.clone();
+        state.hovered_window = Some(window);
+      }
+    }
+    state.keyboard = true;
+    Self::refresh_all(cx);
+  }
+
   pub fn clear_drag(cx: &mut App) {
     let Some(state) = Self::get(cx) else {
       return;
@@ -331,5 +424,33 @@ impl ScreenshotState {
     } else {
       None
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn rect(x: f32, y: f32) -> Bounds<Pixels> {
+    Bounds {
+      origin: point(px(x), px(y)),
+      size: Size::new(px(100.), px(100.)),
+    }
+  }
+
+  #[test]
+  fn nearest_prefers_straight_ahead() {
+    let from = rect(0., 0.);
+    let candidates = [
+      ("ahead", rect(400., 0.)),
+      ("closer but aside", rect(150., 300.)),
+      ("behind", rect(-200., 0.)),
+    ];
+
+    let pick = |dir| nearest(from, dir, candidates).map(|(k, _)| k);
+    assert_eq!(pick(Direction::Right), Some("ahead"));
+    assert_eq!(pick(Direction::Left), Some("behind"));
+    assert_eq!(pick(Direction::Down), Some("closer but aside"));
+    assert_eq!(pick(Direction::Up), None);
   }
 }

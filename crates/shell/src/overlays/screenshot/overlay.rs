@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{mem, sync::Arc, time::Duration};
 
 use corona_config::ConfigProvider;
 use gpui_kit::{
@@ -14,7 +14,7 @@ use gpui_kit::{
 use crate::overlays::screenshot::{
   mode::Mode,
   save::{commit_selection, is_empty},
-  state::{DragArea, MonitorGeometry, ScreenshotState, window_at},
+  state::{Direction, DragArea, MonitorGeometry, ScreenshotState, window_at},
   toolbar::ScreenshotToolbar,
 };
 
@@ -105,6 +105,9 @@ impl Overlay {
   }
 
   fn on_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+    if self.cursor == Some(position) {
+      return;
+    }
     self.cursor = Some(position);
     let (origin, output) = (self.geometry.origin, self.output.clone());
     let under = window_at(&self.windows, position).map(|b| Bounds {
@@ -119,12 +122,13 @@ impl Overlay {
     if let Some(drag) = state.drag.as_mut() {
       drag.to = position + origin;
     }
+    let keyboard = mem::take(&mut state.keyboard);
     let moved_monitor = !dragging && state.hovered_monitor != output;
     if moved_monitor {
       state.hovered_monitor = output;
     }
     let moved_window = !dragging
-      && (under.is_some() || (moved_monitor && self.windows.is_empty()))
+      && (keyboard || under.is_some() || (moved_monitor && self.windows.is_empty()))
       && state.hovered_window != under;
     if moved_window {
       state.hovered_window = under;
@@ -257,10 +261,13 @@ impl Render for Overlay {
           "w" => ScreenshotState::set_mode(Mode::Window, cx),
           "enter"
             if let Some(state) = ScreenshotState::get(cx)
-              && state.mode == Mode::Monitor
-              && let Some(g) = state.geometry.get(&state.hovered_monitor) =>
+              && state.mode != Mode::Selection
+              && let Some(area) = state.target() =>
           {
-            commit_selection(g.bounds(), window, cx);
+            commit_selection(area, window, cx);
+          }
+          key if let Some(dir) = Direction::from_key(key) => {
+            ScreenshotState::navigate(dir, cx);
           }
           _ => return,
         }
