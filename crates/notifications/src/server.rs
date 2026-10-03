@@ -50,7 +50,6 @@ impl Server {
     hints: HashMap<String, OwnedValue>,
     _expire_timeout: i32,
   ) -> u32 {
-    // ponytail: expire_timeout and image hints are ignored, nothing pops up to expire yet
     let id = match replaces_id {
       0 => self.next_id.fetch_add(1, Ordering::Relaxed),
       id => id,

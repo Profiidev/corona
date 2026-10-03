@@ -50,6 +50,7 @@ pub struct TrayItem {
   pub icon: Option<PathBuf>,
   pub tooltip: Option<String>,
   pub item_is_menu: bool,
+  pub can_activate: bool,
   pub menu: Vec<MenuItem>,
   pub(crate) menu_path: Option<OwnedObjectPath>,
 }

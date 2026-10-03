@@ -7,7 +7,7 @@ use zbus::{Connection, MatchRule, MessageStream, message::Type};
 use crate::{
   Tray,
   proxy::{ITEM_INTERFACE, MENU_INTERFACE, WATCHER_NAME},
-  snapshot::snapshot,
+  snapshot::{Activatable, snapshot},
 };
 
 async fn signals(conn: &Connection, rule: MatchRule<'_>) -> Result<MessageStream> {
@@ -44,8 +44,10 @@ pub fn listener(
   state: Tray,
 ) {
   cx.spawn(async move |cx| {
+    let mut activatable = Activatable::new();
     loop {
-      if let Ok(items) = snapshot(&conn).await.log_err() {
+      if let Ok(items) = snapshot(&conn, &mut activatable).await.log_err() {
+        activatable.retain(|address, _| items.iter().any(|i| &i.address == address));
         state.items.write_changed(cx, items);
       }
 

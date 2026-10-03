@@ -71,7 +71,7 @@ impl Tray {
     let tray = cx.tray().clone();
 
     match button {
-      MouseButton::Left if item.item_is_menu && has_menu => {
+      MouseButton::Left if (item.item_is_menu || !item.can_activate) && has_menu => {
         menu::open(item.address, anchor, window, cx)
       }
       MouseButton::Left => run(cx, tray.activate(address, 0, 0)),

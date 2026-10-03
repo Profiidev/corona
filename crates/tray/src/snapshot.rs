@@ -10,7 +10,7 @@ use corona_utils::error::ErrorLogExt;
 use image::RgbaImage;
 use zbus::{
   Connection,
-  fdo::PropertiesProxy,
+  fdo::{IntrospectableProxy, PropertiesProxy},
   names::InterfaceName,
   proxy::CacheProperties,
   zvariant::{OwnedObjectPath, OwnedValue},
@@ -23,16 +23,16 @@ use crate::{
 
 const ICON_SIZE: u16 = 32;
 
-pub async fn snapshot(conn: &Connection) -> Result<Vec<TrayItem>> {
+pub type Activatable = HashMap<String, bool>;
+
+pub async fn snapshot(conn: &Connection, activatable: &mut Activatable) -> Result<Vec<TrayItem>> {
   let watcher = WatcherProxy::builder(conn)
     .cache_properties(CacheProperties::No)
     .build()
     .await?;
   let mut items = Vec::new();
   for address in watcher.registered_status_notifier_items().await? {
-    // ponytail: items are read one after another, a hanging one delays the rest by the
-    // connection's method timeout
-    if let Ok(item) = read_item(conn, &address).await.log_err() {
+    if let Ok(item) = read_item(conn, &address, activatable).await.log_err() {
       items.push(item);
     }
   }
@@ -87,8 +87,35 @@ impl Props {
   }
 }
 
-async fn read_item(conn: &Connection, address: &str) -> Result<TrayItem> {
+async fn can_activate(conn: &Connection, bus: &str, path: &str) -> Result<bool> {
+  let xml = IntrospectableProxy::builder(conn)
+    .destination(bus.to_string())?
+    .path(path.to_string())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .introspect()
+    .await?;
+  Ok(xml.contains(r#"name="Activate""#))
+}
+
+async fn read_item(
+  conn: &Connection,
+  address: &str,
+  activatable: &mut Activatable,
+) -> Result<TrayItem> {
   let (bus, path) = parse_address(address);
+  let can_activate = match activatable.get(address) {
+    Some(&known) => known,
+    None => {
+      let known = can_activate(conn, bus, &path)
+        .await
+        .log_err()
+        .unwrap_or(true);
+      activatable.insert(address.to_string(), known);
+      known
+    }
+  };
   let props = PropertiesProxy::builder(conn)
     .destination(bus.to_string())?
     .path(path)?
@@ -138,6 +165,7 @@ async fn read_item(conn: &Connection, address: &str) -> Result<TrayItem> {
     icon,
     tooltip: props.tooltip(),
     item_is_menu: props.bool("ItemIsMenu").unwrap_or(false),
+    can_activate,
     menu,
     menu_path,
   })
@@ -250,7 +278,10 @@ mod tests {
   fn live_snapshot() {
     zbus::block_on(async {
       let conn = zbus::Connection::session().await.unwrap();
-      for item in super::snapshot(&conn).await.unwrap() {
+      for item in super::snapshot(&conn, &mut Default::default())
+        .await
+        .unwrap()
+      {
         println!("{item:#?}");
       }
     });

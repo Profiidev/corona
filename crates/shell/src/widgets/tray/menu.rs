@@ -1,35 +1,17 @@
-use corona_surface::{bar::BarState, popup::popup_options};
 use corona_tray::{MenuItem, Toggle, TrayExt};
+
+use crate::widgets::popup::{self, ROW, SEPARATOR};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, Global, InteractiveElement,
-  IntoElement, KeyDownEvent, ParentElement, Pixels, Render, SharedString, Size,
-  StatefulInteractiveElement, Styled, Subscription, Window,
+  App, AppContext, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement,
+  KeyDownEvent, ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement,
+  Styled, Subscription, Window,
   assets::IconName,
-  component::{ActiveTheme, Icon, Root, Sizable},
+  component::{ActiveTheme, Icon, Sizable},
   div,
   prelude::FluentBuilder,
   px,
 };
-
-const WIDTH: f32 = 240.;
-const ROW: f32 = 28.;
-const SEPARATOR: f32 = 9.;
-const PADDING: f32 = 4.;
-const BORDER: f32 = 1.;
-const GAP: f32 = 4.;
-
-#[derive(Default)]
-struct OpenMenu(Option<AnyWindowHandle>);
-
-impl Global for OpenMenu {}
-
-fn close_open(cx: &mut App) {
-  let handle = cx.default_global::<OpenMenu>().0.take();
-  if let Some(handle) = handle {
-    let _ = handle.update(cx, |_, window, _| window.remove_window());
-  }
-}
 
 fn spawn(cx: &mut App, action: impl Future<Output = anyhow::Result<()>> + Send + 'static) {
   cx.background_spawn(async move {
@@ -39,7 +21,6 @@ fn spawn(cx: &mut App, action: impl Future<Output = anyhow::Result<()>> + Send +
 }
 
 pub fn open(address: String, anchor: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-  close_open(cx);
   let tray = cx.tray().clone();
   let about = tray.about_to_show(&address, 0, cx);
   spawn(cx, about);
@@ -48,24 +29,9 @@ pub fn open(address: String, anchor: Bounds<Pixels>, window: &mut Window, cx: &m
     return;
   };
   let size = size(&item.menu, false);
-  let placement = BarState::placement(window, cx);
-  let options = popup_options(
-    window.window_handle(),
-    anchor,
-    placement,
-    size,
-    px(GAP),
-    true,
-  );
-  let opened = cx.open_window(options, |window, cx| {
-    let view = cx.new(|cx| TrayMenu::new(address, window, cx));
-    let focus = view.read(cx).focus.clone();
-    window.focus(&focus, cx);
-    cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+  popup::open(anchor, size, window, cx, |window, cx| {
+    TrayMenu::new(address, window, cx)
   });
-  if let Ok(handle) = opened.log_err() {
-    cx.set_global(OpenMenu(Some(handle.into())));
-  }
 }
 
 fn visible(entries: &[MenuItem]) -> impl Iterator<Item = &MenuItem> {
@@ -77,10 +43,7 @@ fn size(entries: &[MenuItem], back: bool) -> Size<Pixels> {
     .map(|e| if e.separator { SEPARATOR } else { ROW })
     .sum();
   let back = if back { ROW + SEPARATOR } else { 0. };
-  Size::new(
-    px(WIDTH),
-    px((rows + back).max(ROW) + PADDING * 2. + BORDER * 2.),
-  )
+  popup::size(rows + back)
 }
 
 struct TrayMenu {
@@ -128,32 +91,10 @@ impl TrayMenu {
     cx.notify();
   }
 
-  fn row(
-    &self,
-    id: impl Into<SharedString>,
-    cx: &Context<Self>,
-  ) -> gpui_kit::Stateful<gpui_kit::Div> {
-    let theme = cx.theme();
-    div()
-      .id(id.into())
-      .flex()
-      .items_center()
-      .gap_2()
-      .h(px(ROW))
-      .px_2()
-      .rounded(theme.radius)
-      .text_sm()
-  }
-
   fn entry(&self, entry: &MenuItem, cx: &Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
     if entry.separator {
-      return div()
-        .h(px(SEPARATOR))
-        .flex()
-        .items_center()
-        .child(div().h(px(1.)).w_full().bg(theme.border))
-        .into_any_element();
+      return popup::separator(cx).into_any_element();
     }
 
     let checked = matches!(entry.toggle, Toggle::Checkmark(true) | Toggle::Radio(true));
@@ -162,8 +103,7 @@ impl TrayMenu {
     let (id, enabled) = (entry.id, entry.enabled);
     let hover = theme.tokens.button_hover;
 
-    self
-      .row(SharedString::from(format!("entry-{id}")), cx)
+    popup::row(SharedString::from(format!("entry-{id}")), cx)
       .when(!enabled, |d| d.text_color(theme.muted_foreground))
       .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(hover)))
       .when(toggles, |d| {
@@ -198,38 +138,29 @@ impl TrayMenu {
   }
 }
 
+impl Focusable for TrayMenu {
+  fn focus_handle(&self, _: &App) -> FocusHandle {
+    self.focus.clone()
+  }
+}
+
 impl Render for TrayMenu {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
     let entries = self.entries(cx).unwrap_or_default();
     let hover = theme.tokens.button_hover;
 
-    div()
-      .track_focus(&self.focus)
-      .on_key_down(cx.listener(
-        |this, e: &KeyDownEvent, window, cx| match e.keystroke.key.as_str() {
-          "escape" => window.remove_window(),
-          "backspace" if !this.path.is_empty() => {
-            let mut path = this.path.clone();
-            path.pop();
-            this.navigate(path, window, cx);
-          }
-          _ => {}
-        },
-      ))
-      .size_full()
-      .flex()
-      .flex_col()
-      .p(px(PADDING))
-      .bg(theme.tokens.background)
-      .rounded(theme.radius)
-      .border(px(BORDER))
-      .border_color(hover)
-      .text_color(theme.foreground)
+    popup::frame(self, cx)
+      .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
+        if e.keystroke.key == "backspace" && !this.path.is_empty() {
+          let mut path = this.path.clone();
+          path.pop();
+          this.navigate(path, window, cx);
+        }
+      }))
       .when(!self.path.is_empty(), |d| {
         d.child(
-          self
-            .row("back", cx)
+          popup::row("back", cx)
             .cursor_pointer()
             .hover(|d| d.bg(hover))
             .child(Icon::new(IconName::ChevronLeft).with_size(px(14.)))
@@ -240,13 +171,7 @@ impl Render for TrayMenu {
               this.navigate(path, window, cx);
             })),
         )
-        .child(
-          div()
-            .h(px(SEPARATOR))
-            .flex()
-            .items_center()
-            .child(div().h(px(1.)).w_full().bg(theme.border)),
-        )
+        .child(popup::separator(cx))
       })
       .children(visible(&entries).map(|e| self.entry(e, cx)))
   }
@@ -272,11 +197,7 @@ mod tests {
   #[test]
   fn menu_size() {
     let entries = [entry(false, true), entry(true, true), entry(false, false)];
-    let chrome = PADDING * 2. + BORDER * 2.;
-    assert_eq!(size(&entries, false).height, px(ROW + SEPARATOR + chrome));
-    assert_eq!(
-      size(&entries, true).height,
-      px(ROW * 2. + SEPARATOR * 2. + chrome)
-    );
+    assert_eq!(size(&entries, false), popup::size(ROW + SEPARATOR));
+    assert_eq!(size(&entries, true), popup::size(ROW * 2. + SEPARATOR * 2.));
   }
 }

@@ -70,6 +70,7 @@ impl Default for BarConfig {
         WidgetConfig::widget("player"),
       ],
       end_widgets: [
+        WidgetConfig::widget("privacy"),
         WidgetConfig::widget("tray"),
         WidgetConfig::group(
           ["cpu", "temperature", "memory", "download", "upload", "disk"].map(WidgetEntry::resource),

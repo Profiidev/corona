@@ -59,6 +59,7 @@ struct Item {
   tooltip: Option<String>,
   /// The item only has a menu, show it instead of calling `activate`.
   item_is_menu: bool,
+  can_activate: bool,
   menu: Vec<MenuItem>,
 }
 
@@ -104,6 +105,7 @@ impl From<&tray::TrayItem> for Item {
       icon: item.icon.as_ref().map(|p| p.display().to_string()),
       tooltip: item.tooltip.clone(),
       item_is_menu: item.item_is_menu,
+      can_activate: item.can_activate,
       menu: item.menu.iter().map(MenuItem::from).collect(),
     }
   }
