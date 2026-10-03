@@ -69,9 +69,13 @@ impl Default for BarConfig {
         WidgetConfig::widget("clock"),
         WidgetConfig::widget("player"),
       ],
-      end_widgets: std::iter::once(WidgetConfig::group(
-        ["cpu", "temperature", "memory", "download", "upload", "disk"].map(WidgetEntry::resource),
-      ))
+      end_widgets: [
+        WidgetConfig::widget("tray"),
+        WidgetConfig::group(
+          ["cpu", "temperature", "memory", "download", "upload", "disk"].map(WidgetEntry::resource),
+        ),
+      ]
+      .into_iter()
       .chain(
         [
           "bluetooth",

@@ -7,7 +7,7 @@ use gpui_kit::App;
 use crate::widgets::{
   ActivePlayer, ActiveWindow, AudioButton, BluetoothButton, BrightnessButton, CalendarButton,
   Clock, ControlCenterButton, MediaButton, NetworkButton, NotificationsButton, PowerButton,
-  Resource, SysinfoButton, WeatherButton, Workspaces,
+  Resource, SysinfoButton, Tray, WeatherButton, Workspaces,
 };
 
 mod control_center;
@@ -68,7 +68,8 @@ fn register_variants(cx: &mut App) {
     .register::<ActiveWindow>()
     .register::<Clock>()
     .register::<ActivePlayer>()
-    .register::<Resource>();
+    .register::<Resource>()
+    .register::<Tray>();
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
@@ -89,6 +90,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .await?;
   corona_mpris::init(cx, &session).await?;
   corona_notifications::init(cx, &session).await?;
+  corona_tray::init(cx, &session).await?;
 
   Ok(())
 }
