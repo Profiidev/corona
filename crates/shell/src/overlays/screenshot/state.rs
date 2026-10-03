@@ -9,14 +9,15 @@ use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Window,
-  WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
   base::{Root, animation::ease_out_cubic},
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
 };
 use tracing::{error, warn};
 
-use crate::overlays::screenshot::{mode::Mode, overlay::Overlay};
+use crate::overlays::{
+  fullscreen_options,
+  screenshot::{mode::Mode, overlay::Overlay},
+};
 
 const NAMESPACE: &str = "corona_screenshot";
 
@@ -293,33 +294,12 @@ impl ScreenshotState {
         .collect::<Vec<_>>();
 
       let picture = image.to_gpui();
-      let handle = cx.open_window(
-        WindowOptions {
-          kind: WindowKind::LayerShell(LayerShellOptions {
-            anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-            exclusive_zone: Some(px(-1.)),
-            exclusive_edge: None,
-            margin: None,
-            layer: Layer::Overlay,
-            namespace: NAMESPACE.to_string(),
-            keyboard_interactivity: KeyboardInteractivity::Exclusive,
-          }),
-          window_background: WindowBackgroundAppearance::Opaque,
-          display_id: Some(display.id()),
-          titlebar: None,
-          window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: point(px(0.), px(0.)),
-            size: Size::new(px(0.), px(0.)),
-          })),
-          ..Default::default()
-        },
-        |window, cx| {
-          let view = cx.new(|cx| Overlay::new(name.clone(), picture, geometry, visible, cx));
-          let focus = view.read(cx).focus.clone();
-          window.focus(&focus, cx);
-          cx.new(|cx| Root::new(view, window, cx))
-        },
-      )?;
+      let handle = cx.open_window(fullscreen_options(NAMESPACE, display.id()), |window, cx| {
+        let view = cx.new(|cx| Overlay::new(name.clone(), picture, geometry, visible, cx));
+        let focus = view.read(cx).focus.clone();
+        window.focus(&focus, cx);
+        cx.new(|cx| Root::new(view, window, cx))
+      })?;
 
       let Some(state) = Self::get(cx) else {
         bail!("ScreenshotState was removed while opening overlay");

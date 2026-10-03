@@ -1,6 +1,9 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
-use corona_shell::overlays::screenshot::{commands::Screenshot, mode::Mode};
+use corona_shell::overlays::{
+  colorpicker::commands::ColorPicker,
+  screenshot::{commands::Screenshot, mode::Mode},
+};
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
@@ -15,6 +18,8 @@ pub enum IpcCommands {
     #[arg(default_value = "selection")]
     mode: Mode,
   },
+  /// Pick a color from the screen and copy its hex code
+  ColorPicker,
 }
 
 impl IpcCommands {
@@ -24,6 +29,11 @@ impl IpcCommands {
       IpcCommands::Screenshot { mode } => {
         if let Err(e) = Screenshot::send(mode) {
           tracing::error!("Failed to start screenshot: {}", e);
+        }
+      }
+      IpcCommands::ColorPicker => {
+        if let Err(e) = ColorPicker::send(()) {
+          tracing::error!("Failed to start color picker: {}", e);
         }
       }
     }

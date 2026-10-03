@@ -31,7 +31,7 @@ fn init_ipc(cx: &mut App) {
   };
 
   corona_surface::commands::register_commands(&mut server);
-  overlays::screenshot::commands::register_commands(&mut server);
+  overlays::register_commands(&mut server);
 
   cx.spawn(async move |cx| server.run(cx).await).detach();
 }
