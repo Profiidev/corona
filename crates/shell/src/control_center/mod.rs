@@ -4,14 +4,14 @@ mod brightness;
 mod calendar;
 mod dashboard;
 mod layout;
-mod media;
+pub(crate) mod media;
 mod nav;
 pub(crate) mod network;
 mod notifications;
 mod panel;
 mod power;
 mod sysinfo;
-mod utils;
+pub(crate) mod utils;
 mod variants;
 mod weather;
 

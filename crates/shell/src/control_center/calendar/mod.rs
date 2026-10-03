@@ -1,19 +1,15 @@
-use std::{f32::consts::TAU, time::Duration};
+use std::time::Duration;
 
 use corona_weather::WeatherExt;
 use gpui_kit::{
-  App, Bounds, Context, Hsla, IntoElement, ParentElement, Render, Styled, Task, Window,
+  App, Context, IntoElement, ParentElement, Render, Styled, Task, Window,
   base::{StyledExt, Transition, transition},
-  canvas,
-  component::{
-    ActiveTheme, Theme,
-    plot::shape::{Arc, ArcData},
-  },
-  div, fill, point, px, size,
+  component::{ActiveTheme, Theme},
+  div, px,
 };
 use jiff::{Zoned, civil::Date};
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
+use crate::control_center::{ControlCenterPanel, utils::ring, variants::ControlCenterType};
 
 mod month;
 
@@ -28,6 +24,7 @@ pub struct CalendarPanel {
 
 impl ControlCenterPanel for CalendarPanel {
   const TYPE: ControlCenterType = ControlCenterType::Calendar;
+  const HEIGHT: f32 = 430.0;
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let ticker = cx.spawn(async move |this, cx| {
@@ -61,51 +58,6 @@ fn gmt_offset(seconds: i32) -> String {
 fn place(cx: &App) -> Option<String> {
   let name = &cx.weather().current(cx)?.location.name;
   Some(name.split(',').next().unwrap_or(name).trim().to_string())
-}
-
-fn ring(progress: f32, color: Hsla) -> impl IntoElement {
-  canvas(
-    |_, _, _| {},
-    move |bounds, _, window, _| {
-      let radius = (bounds.size.width.min(bounds.size.height).as_f32() - RING_WIDTH) / 2.;
-      let arc = Arc::new()
-        .inner_radius(radius - RING_WIDTH / 2.)
-        .outer_radius(radius + RING_WIDTH / 2.);
-      arc.paint(
-        &ArcData::new(&(), 0, 1., 0., TAU),
-        color.opacity(0.2),
-        &bounds,
-        window,
-      );
-      if progress <= 0. {
-        return;
-      }
-      let end = progress * TAU;
-      arc.paint(
-        &ArcData::new(&(), 1, progress, 0., end),
-        color,
-        &bounds,
-        window,
-      );
-
-      let center = bounds.center();
-      for angle in [0., end] {
-        let dot = point(
-          center.x + px(radius * angle.sin() - RING_WIDTH / 2.),
-          center.y - px(radius * angle.cos() + RING_WIDTH / 2.),
-        );
-        window.paint_quad(
-          fill(
-            Bounds::new(dot, size(px(RING_WIDTH), px(RING_WIDTH))),
-            color,
-          )
-          .corner_radii(px(RING_WIDTH / 2.)),
-        );
-      }
-    },
-  )
-  .absolute()
-  .size_full()
 }
 
 impl CalendarPanel {
@@ -184,7 +136,7 @@ impl CalendarPanel {
           .text_xs()
           .line_height(px(11.))
           .font_bold()
-          .child(ring(seconds, theme.colors.primary))
+          .child(ring(seconds, theme.colors.primary, RING_WIDTH))
           .child(format!("{:02}", now.hour()))
           .child(format!("{:02}", now.minute())),
       )

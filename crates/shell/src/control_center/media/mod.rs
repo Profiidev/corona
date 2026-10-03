@@ -18,7 +18,7 @@ use gpui_kit::{
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
-mod player;
+pub(crate) mod player;
 
 /// how often the position moves on while playing
 const TICK: Duration = Duration::from_secs(1);
@@ -68,6 +68,7 @@ pub struct MediaPanel {
 
 impl ControlCenterPanel for MediaPanel {
   const TYPE: ControlCenterType = ControlCenterType::Media;
+  const HEIGHT: f32 = 270.0;
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let mpris = cx.mpris().clone();

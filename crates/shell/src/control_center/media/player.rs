@@ -24,6 +24,17 @@ fn time(duration: Duration) -> String {
   format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+pub fn art_source(player: &Player) -> Option<ImageSource> {
+  let url = player.art_url.as_deref()?;
+  if let Some(path) = url.strip_prefix("file://") {
+    Some(PathBuf::from(path).into())
+  } else if url.starts_with("https://") || url.starts_with("http://") {
+    Some(url.into())
+  } else {
+    None
+  }
+}
+
 fn art(theme: &Theme, player: &Player) -> impl IntoElement {
   let placeholder = || {
     div()
@@ -34,15 +45,7 @@ fn art(theme: &Theme, player: &Player) -> impl IntoElement {
       .child(Icon::new(IconName::Music).large())
       .into_any_element()
   };
-  let source: Option<ImageSource> = player.art_url.as_deref().and_then(|url| {
-    if let Some(path) = url.strip_prefix("file://") {
-      Some(PathBuf::from(path).into())
-    } else if url.starts_with("https://") || url.starts_with("http://") {
-      Some(url.into())
-    } else {
-      None
-    }
-  });
+  let source = art_source(player);
 
   div()
     .size(px(96.))

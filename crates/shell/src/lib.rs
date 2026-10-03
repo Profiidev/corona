@@ -5,9 +5,9 @@ use corona_surface::bar::{BarExt, BarState};
 use gpui_kit::App;
 
 use crate::widgets::{
-  ActiveWindow, AudioButton, BluetoothButton, BrightnessButton, CalendarButton,
-  ControlCenterButton, MediaButton, NetworkButton, NotificationsButton, PowerButton, SysinfoButton,
-  WeatherButton, Workspaces,
+  ActivePlayer, ActiveWindow, AudioButton, BluetoothButton, BrightnessButton, CalendarButton,
+  Clock, ControlCenterButton, MediaButton, NetworkButton, NotificationsButton, PowerButton,
+  SysinfoButton, WeatherButton, Workspaces,
 };
 
 mod control_center;
@@ -64,7 +64,9 @@ fn register_variants(cx: &mut App) {
     .register::<CalendarButton>()
     .register::<MediaButton>()
     .register::<Workspaces>()
-    .register::<ActiveWindow>();
+    .register::<ActiveWindow>()
+    .register::<Clock>()
+    .register::<ActivePlayer>();
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {

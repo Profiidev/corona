@@ -35,9 +35,12 @@ impl Default for BarConfig {
           widget_type: "active_window".to_string(),
         },
       ],
-      center_widgets: vec![WidgetConfig {
-        widget_type: "control_center".to_string(),
-      }],
+      center_widgets: ["clock", "player"]
+        .into_iter()
+        .map(|widget_type| WidgetConfig {
+          widget_type: widget_type.to_string(),
+        })
+        .collect(),
       end_widgets: [
         "audio",
         "network",
