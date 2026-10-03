@@ -17,6 +17,7 @@ pub mod network;
 pub mod notifications;
 pub mod pipewire;
 pub mod power;
+pub mod tray;
 
 #[derive(Clone, Default)]
 pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
@@ -31,6 +32,7 @@ pub enum Updates {
   Notifications(notifications::Updates),
   Pipewire(pipewire::Updates),
   Power(power::Updates),
+  Tray(tray::Updates),
 }
 
 type Subscribe = Box<dyn FnOnce(&Rc<ShellRuntime>, &Entity<ShellRoot>, &mut App) -> Subscription>;
@@ -94,7 +96,8 @@ impl ModuleExt for Policy {
       .with_host_module(bluetooth::module(&reads, &mut subs, cx))?
       .with_host_module(power::module(&reads, &mut subs, cx))?
       .with_host_module(brightness::module(&reads, &mut subs, cx))?
-      .with_host_module(notifications::module(&reads, &mut subs, cx))?;
+      .with_host_module(notifications::module(&reads, &mut subs, cx))?
+      .with_host_module(tray::module(&reads, &mut subs, cx))?;
 
     Ok((policy, subs))
   }
