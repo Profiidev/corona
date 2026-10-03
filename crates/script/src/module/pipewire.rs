@@ -1,4 +1,7 @@
-use corona_pipewire::{AudioNode, NodeType, Pipewire, PipewireExt};
+use corona_pipewire::{
+  AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
+  Pipewire, PipewireExt,
+};
 use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
@@ -43,6 +46,50 @@ impl From<&AudioNode> for Node {
   }
 }
 
+#[derive(Serialize, TS)]
+struct Capture {
+  id: u32,
+  kind: CaptureKind,
+  name: String,
+  active: bool,
+}
+
+impl From<&PwCapture> for Capture {
+  fn from(capture: &PwCapture) -> Self {
+    Self {
+      id: capture.id,
+      kind: capture.kind,
+      name: capture.name.clone(),
+      active: capture.active,
+    }
+  }
+}
+
+#[derive(Serialize, TS)]
+struct CaptureAccess {
+  kind: CaptureKind,
+  name: Option<String>,
+  started: f64,
+  ended: Option<f64>,
+}
+
+fn unix(time: std::time::SystemTime) -> f64 {
+  time
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_or(0., |d| d.as_secs_f64())
+}
+
+impl From<&PwCaptureAccess> for CaptureAccess {
+  fn from(access: &PwCaptureAccess) -> Self {
+    Self {
+      kind: access.kind,
+      name: access.name.clone(),
+      started: unix(access.started),
+      ended: access.ended.map(unix),
+    }
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
   Sinks,
@@ -51,6 +98,8 @@ pub enum Updates {
   DefaultSink,
   DefaultSource,
   Targets,
+  Captures,
+  CaptureLog,
 }
 
 impl From<Updates> for super::Updates {
@@ -154,6 +203,28 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
         }
       )
     })
+    .func(read(
+      reads,
+      subs,
+      "listCaptures",
+      Updates::Captures,
+      pipewire.captures.clone(),
+      |cx| {
+        let captures = cx.pipewire().list_captures(cx);
+        captures.iter().map(Capture::from).collect::<Vec<_>>()
+      },
+    ))
+    .func(read(
+      reads,
+      subs,
+      "captureLog",
+      Updates::CaptureLog,
+      pipewire.capture_log.clone(),
+      |cx| {
+        let log = cx.pipewire().capture_log(cx);
+        log.iter().map(CaptureAccess::from).collect::<Vec<_>>()
+      },
+    ))
     .func(set_default)
     .func(set_target)
     .func(reset_target)

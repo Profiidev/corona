@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use anyhow::{Result, bail};
 use corona_utils::entity::WriteChangedExt;
@@ -6,6 +6,7 @@ use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global};
 
 use crate::{
   audio::PipewireAudio,
+  capture::{Capture, CaptureAccess, CaptureKind, record},
   command::Command,
   event::AudioEvent,
   state::{AudioNode, NodeType, PipewireState},
@@ -20,6 +21,8 @@ pub struct Pipewire {
   pub default_sink: Entity<Option<AudioNode>>,
   pub default_source: Entity<Option<AudioNode>>,
   pub targets: Entity<HashMap<u32, u32>>,
+  pub captures: Entity<Vec<Capture>>,
+  pub capture_log: Entity<Vec<CaptureAccess>>,
 }
 
 impl Global for Pipewire {}
@@ -39,6 +42,12 @@ impl Pipewire {
       default_sink: cx.new(|_| audio.default(NodeType::Sink)),
       default_source: cx.new(|_| audio.default(NodeType::Source)),
       targets: cx.new(|_| audio.resolved_targets()),
+      captures: cx.new(|_| state.captures.list()),
+      capture_log: cx.new(|_| {
+        let mut log = Vec::new();
+        record(&mut log, &state.captures.list(), SystemTime::now());
+        log
+      }),
       commands,
       state,
     };
@@ -53,6 +62,14 @@ impl Pipewire {
             AudioEvent::DefaultSink(node) => pipewire.default_sink.write_changed(cx, node),
             AudioEvent::DefaultSource(node) => pipewire.default_source.write_changed(cx, node),
             AudioEvent::Targets(targets) => pipewire.targets.write_changed(cx, targets),
+            AudioEvent::Captures(captures) => {
+              pipewire.capture_log.update(cx, |log, cx| {
+                if record(log, &captures, SystemTime::now()) {
+                  cx.notify();
+                }
+              });
+              pipewire.captures.write_changed(cx, captures);
+            }
           });
         });
       }
@@ -91,6 +108,33 @@ impl Pipewire {
 
   pub fn default_source<'c>(&self, cx: &'c App) -> Option<&'c AudioNode> {
     self.default_source.read(cx).as_ref()
+  }
+
+  pub fn capture_log<'c>(&self, cx: &'c App) -> &'c [CaptureAccess] {
+    self.capture_log.read(cx)
+  }
+
+  pub fn list_captures<'c>(&self, cx: &'c App) -> &'c [Capture] {
+    self.captures.read(cx)
+  }
+
+  pub fn is_capturing(&self, kind: CaptureKind, cx: &App) -> bool {
+    self
+      .list_captures(cx)
+      .iter()
+      .any(|c| c.kind == kind && c.active)
+  }
+
+  pub fn capturing(&self, kind: CaptureKind, cx: &App) -> Vec<String> {
+    let mut names: Vec<String> = self
+      .list_captures(cx)
+      .iter()
+      .filter(|c| c.kind == kind && c.active && !c.name.is_empty())
+      .map(|c| c.name.clone())
+      .collect();
+    names.sort();
+    names.dedup();
+    names
   }
 
   pub fn target(&self, stream: u32, cx: &App) -> Option<u32> {

@@ -16,6 +16,7 @@ use pipewire::{
 };
 
 use crate::{
+  capture::is_candidate,
   event::AudioEvent,
   state::{AudioNode, NodeType, PipewireState},
 };
@@ -112,6 +113,11 @@ fn add_node(
     return;
   };
 
+  if let Some(class) = props.get("media.class").filter(|c| is_candidate(c)) {
+    add_capture(registry, handles, state, events, obj, class, props);
+    return;
+  }
+
   let Some(class) = props
     .get("media.class")
     .and_then(|class| class.parse().ok())
@@ -144,6 +150,33 @@ fn add_node(
   for event in state.audio.node_events(class) {
     let _ = events.send(event);
   }
+}
+
+fn add_capture(
+  registry: &RegistryRc,
+  handles: &Handles,
+  state: &PipewireState,
+  events: &flume::Sender<AudioEvent>,
+  obj: &GlobalObject<&DictRef>,
+  class: &str,
+  props: &DictRef,
+) {
+  state.captures.insert(obj.id, class, props);
+  state.captures.send(events);
+
+  let Ok(node) = registry.bind::<Node, &DictRef>(obj) else {
+    return;
+  };
+  let (id, captures, events) = (obj.id, state.captures.clone(), events.clone());
+  let listener = node
+    .add_listener_local()
+    .info(move |info| captures.update(id, &info.state(), info.props(), &events))
+    .register();
+  handles
+    .0
+    .borrow_mut()
+    .nodes
+    .insert(obj.id, (node, listener));
 }
 
 fn add_device(registry: &RegistryRc, handles: &Handles, obj: &GlobalObject<&DictRef>) {
@@ -232,6 +265,9 @@ pub fn global_remove_listener(
     handles.remove(id);
 
     state.audio.targets.remove(&id);
+    if state.captures.remove(id, &events) {
+      return;
+    }
 
     if let Some((_, node)) = state.audio.nodes.remove(&id) {
       for event in state.audio.node_events(node.kind) {

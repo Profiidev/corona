@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::state::{AudioNode, NodeType};
+use crate::{
+  capture::Capture,
+  state::{AudioNode, NodeType},
+};
 
 #[derive(Debug, Clone)]
 pub enum AudioEvent {
@@ -8,4 +11,5 @@ pub enum AudioEvent {
   DefaultSink(Option<AudioNode>),
   DefaultSource(Option<AudioNode>),
   Targets(HashMap<u32, u32>),
+  Captures(Vec<Capture>),
 }

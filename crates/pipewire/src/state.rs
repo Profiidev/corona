@@ -10,11 +10,12 @@ use pipewire::spa::{
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::event::AudioEvent;
+use crate::{capture::CaptureState, event::AudioEvent};
 
 #[derive(Clone)]
 pub struct PipewireState {
   pub audio: AudioState,
+  pub captures: CaptureState,
 }
 
 impl PipewireState {
@@ -25,6 +26,7 @@ impl PipewireState {
         defaults: Arc::new(DashMap::new()),
         targets: Arc::new(DashMap::new()),
       },
+      captures: CaptureState::default(),
     }
   }
 }

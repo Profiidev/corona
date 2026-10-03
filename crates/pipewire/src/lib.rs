@@ -8,6 +8,7 @@ use crate::{event::AudioEvent, listener::Handles, state::PipewireState};
 
 mod api;
 mod audio;
+mod capture;
 mod command;
 mod event;
 mod listener;
@@ -16,6 +17,7 @@ pub mod volume;
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
+pub use capture::{Capture, CaptureAccess, CaptureKind};
 pub use state::{AudioNode, NodeType};
 
 pub trait PipewireExt {
@@ -97,4 +99,19 @@ fn init_loop() -> Result<(MainLoopRc, RegistryRc)> {
   let registry = core.get_registry_rc()?;
 
   Ok((mainloop, registry))
+}
+
+#[cfg(test)]
+mod tests {
+  /// lists the captures on this pipewire: `cargo test -p corona_pipewire -- --ignored --nocapture`
+  #[test]
+  #[ignore]
+  fn live_captures() {
+    let (events, _rx) = flume::unbounded();
+    let (_commands, state) = super::spawn(events).unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    for capture in state.captures.list() {
+      println!("{capture:?}");
+    }
+  }
 }
