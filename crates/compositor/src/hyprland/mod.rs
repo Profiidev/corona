@@ -6,6 +6,7 @@ use gpui_kit::App;
 use crate::{CompositorImpl, hyprland::command::Ipc, types};
 
 mod command;
+mod cursor;
 mod encoding;
 mod event;
 mod monitor;
@@ -57,5 +58,9 @@ impl CompositorImpl for Hyprland {
 
   fn focus_workspace(&self, workspace: &str) -> Result<()> {
     self.ipc.focus_workspace(workspace)
+  }
+
+  fn cursor_position(&self) -> Result<(i32, i32)> {
+    self.ipc.cursor_position()
   }
 }

@@ -58,6 +58,10 @@ impl Compositor {
     self.inner.focus_workspace(workspace)
   }
 
+  pub fn cursor_position(&self) -> Result<(i32, i32)> {
+    self.inner.cursor_position()
+  }
+
   pub fn list_workspaces<'c>(&self, cx: &'c App) -> &'c [types::Workspace] {
     self.workspaces.read(cx)
   }
@@ -98,6 +102,8 @@ pub(crate) trait CompositorImpl {
   fn active_window(&self) -> Result<Option<types::Window>>;
 
   fn focus_workspace(&self, workspace: &str) -> Result<()>;
+
+  fn cursor_position(&self) -> Result<(i32, i32)>;
 }
 
 pub trait CompositorExt {
