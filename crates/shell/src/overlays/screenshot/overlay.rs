@@ -14,7 +14,7 @@ use gpui_kit::{
 use crate::overlays::screenshot::{
   mode::Mode,
   save::{commit_selection, is_empty},
-  state::{DragArea, MonitorGeometry, ScreenshotState},
+  state::{DragArea, MonitorGeometry, ScreenshotState, window_at},
   toolbar::ScreenshotToolbar,
 };
 
@@ -59,18 +59,6 @@ impl Overlay {
       focus: cx.focus_handle(),
       toolbar: ScreenshotToolbar::new(),
     }
-  }
-
-  fn window_at(&self, p: Point<Pixels>) -> Option<Bounds<Pixels>> {
-    self
-      .windows
-      .iter()
-      .filter(|b| b.contains(&p))
-      .min_by(|a, b| {
-        let area = |b: &Bounds<Pixels>| b.size.width.as_f32() * b.size.height.as_f32();
-        area(a).total_cmp(&area(b))
-      })
-      .copied()
   }
 
   fn selection_part(&self, shown: Bounds<Pixels>) -> Option<(Bounds<Pixels>, Edges<bool>)> {
@@ -119,7 +107,7 @@ impl Overlay {
   fn on_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
     self.cursor = Some(position);
     let (origin, output) = (self.geometry.origin, self.output.clone());
-    let under = self.window_at(position).map(|b| Bounds {
+    let under = window_at(&self.windows, position).map(|b| Bounds {
       origin: b.origin + origin,
       size: b.size,
     });
@@ -216,6 +204,11 @@ impl Render for Overlay {
     } else {
       SLIDE_ANIMATION.mul_f32(cx.config().animation_speed)
     };
+    let pill_duration = if cx.reduce_motion() {
+      Duration::ZERO
+    } else {
+      SLIDE_ANIMATION.mul_f32(cx.config().animation_speed)
+    };
     let target = state.target();
     let mode = state.mode;
 
@@ -288,7 +281,11 @@ impl Render for Overlay {
       .on_mouse_down(
         MouseButton::Right,
         cx.listener(|_, _: &MouseDownEvent, window, cx| {
-          ScreenshotState::close(Some(window), cx);
+          if ScreenshotState::get(cx).is_some_and(|s| s.drag.is_some()) {
+            ScreenshotState::clear_drag(cx);
+          } else {
+            ScreenshotState::close(Some(window), cx);
+          }
         }),
       )
       .child(img(self.picture.clone()).size_full())
@@ -319,6 +316,6 @@ impl Render for Overlay {
           )
       })
       .when_some(self.size_badge(cx), |d, badge| d.child(badge))
-      .child(self.toolbar.render(mode, duration, window, cx))
+      .child(self.toolbar.render(mode, pill_duration, window, cx))
   }
 }

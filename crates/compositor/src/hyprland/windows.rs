@@ -40,6 +40,12 @@ pub struct Window {
   pub workspace: WindowWorkspace,
   pub at: (i32, i32),
   pub size: (i32, i32),
+  pub floating: bool,
+  pub pinned: bool,
+  pub fullscreen: u8,
+  pub hidden: bool,
+  #[serde(rename = "focusHistoryID")]
+  pub focus_history_id: i32,
 }
 #[derive(Debug, Deserialize)]
 pub struct WindowWorkspace {
@@ -58,6 +64,11 @@ impl From<Window> for types::Window {
       y: w.at.1,
       width: w.size.0,
       height: w.size.1,
+      floating: w.floating,
+      pinned: w.pinned,
+      fullscreen: w.fullscreen != 0,
+      hidden: w.hidden,
+      focus_history_id: w.focus_history_id,
     }
   }
 }

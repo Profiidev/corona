@@ -111,6 +111,10 @@ impl AreaSlideAnimation {
 
 impl Global for ScreenshotState {}
 
+pub fn window_at(windows: &[Bounds<Pixels>], p: Point<Pixels>) -> Option<Bounds<Pixels>> {
+  windows.iter().find(|b| b.contains(&p)).copied()
+}
+
 impl ScreenshotState {
   pub fn target(&self) -> Option<Bounds<Pixels>> {
     match self.mode {
@@ -170,6 +174,13 @@ impl ScreenshotState {
     let displays = cx.displays();
     let monitors = cx.compositor().list_monitors(cx).to_vec();
     let all_windows = cx.compositor().list_windows(cx).to_vec();
+    let cursor = cx
+      .compositor()
+      .cursor_position()
+      .map(|(x, y)| point(px(x as f32), px(y as f32)))
+      .inspect_err(|e| warn!("screenshot: no cursor position: {e:#}"))
+      .ok();
+    let mut hovered = None;
 
     for (name, image) in frozen {
       let uuid = display_uuid(&name);
@@ -180,7 +191,7 @@ impl ScreenshotState {
         continue;
       };
 
-      let visible = all_windows
+      let mut visible = all_windows
         .iter()
         .filter(|w| {
           w.monitor == monitor.id
@@ -189,9 +200,14 @@ impl ScreenshotState {
                 .active_scratchpad
                 .as_ref()
                 .is_some_and(|s| s.id == w.workspace))
+            && !w.hidden
             && w.width > 0
             && w.height > 0
         })
+        .collect::<Vec<_>>();
+      visible.sort_by_key(|w| std::cmp::Reverse(w.stacking()));
+      let visible = visible
+        .into_iter()
         .map(|w| Bounds {
           origin: point(px((w.x - monitor.x) as f32), px((w.y - monitor.y) as f32)),
           size: Size::new(px(w.width as f32), px(w.height as f32)),
@@ -207,6 +223,16 @@ impl ScreenshotState {
         ),
         scale,
       };
+
+      if let Some(cursor) = cursor
+        && geometry.bounds().contains(&cursor)
+      {
+        let window = window_at(&visible, cursor - geometry.origin).map(|b| Bounds {
+          origin: b.origin + geometry.origin,
+          size: b.size,
+        });
+        hovered = Some((name.clone(), window));
+      }
 
       let picture = image.to_gpui();
       let handle = cx.open_window(
@@ -243,6 +269,17 @@ impl ScreenshotState {
       state.overlays.push(handle.into());
       state.screenshots.insert(name.clone(), image);
       state.geometry.insert(name, geometry);
+    }
+
+    let Some(state) = Self::get(cx) else {
+      bail!("ScreenshotState was removed while opening overlay");
+    };
+    if state.overlays.is_empty() {
+      bail!("no display matched a captured monitor");
+    }
+    if let Some((monitor, window)) = hovered {
+      state.hovered_monitor = monitor;
+      state.hovered_window = window;
     }
 
     Ok(())

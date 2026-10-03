@@ -43,7 +43,7 @@ fn save(png: &[u8]) -> Result<std::path::PathBuf> {
     .join("Screenshots");
   fs::create_dir_all(&dir)?;
 
-  let time = Zoned::now().strftime("%Y-%m-%d-%H%M%S");
+  let time = Zoned::now().strftime("%Y-%m-%d-%H%M%S-%3f");
   let path = dir.join(format!("screenshot-{time}.png"));
   fs::write(&path, png)?;
   Ok(path)
