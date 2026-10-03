@@ -1,4 +1,11 @@
-use std::{collections::BTreeMap, future::Future, marker::PhantomData, ops::Deref, pin::Pin};
+use std::{
+  any::TypeId,
+  collections::{BTreeMap, HashSet},
+  future::Future,
+  marker::PhantomData,
+  ops::Deref,
+  pin::Pin,
+};
 
 use corona_macros::all_tuples;
 use serde::{Serialize, de::DeserializeOwned};
@@ -124,6 +131,7 @@ impl From<Module> for HostModule {
 pub struct Types {
   cfg: Config,
   decls: BTreeMap<String, String>,
+  visited: HashSet<TypeId>,
 }
 
 impl Default for Types {
@@ -132,6 +140,7 @@ impl Default for Types {
     Self {
       cfg: Config::new().with_large_int("number"),
       decls: BTreeMap::new(),
+      visited: HashSet::new(),
     }
   }
 }
@@ -146,6 +155,9 @@ impl Types {
 
 impl TypeVisitor for Types {
   fn visit<T: TS + 'static + ?Sized>(&mut self) {
+    if !self.visited.insert(TypeId::of::<T>()) {
+      return;
+    }
     // Only derived types have an output path; primitives and wrappers (`Vec`, `Option`) are inlined.
     if T::output_path().is_some() {
       let ident = T::ident(&self.cfg);
@@ -702,6 +714,26 @@ mod tests {
         "export function count(arg1: [number, number]): number | Error;",
       ]
       .join("\n")
+    );
+  }
+}
+
+#[cfg(test)]
+mod recursion {
+  use super::*;
+
+  #[derive(serde::Serialize, TS)]
+  struct Tree {
+    children: Vec<Tree>,
+  }
+
+  #[test]
+  fn recursive_types_terminate() {
+    let mut types = Types::default();
+    assert_eq!(types.add::<Vec<Tree>>(), "Array<Tree>");
+    assert_eq!(
+      types.decls.values().collect::<Vec<_>>(),
+      ["export type Tree = { children: Array<Tree>, };"]
     );
   }
 }
