@@ -2,6 +2,7 @@ mod active_window;
 mod clock;
 mod control_center;
 mod player;
+mod resource;
 mod workspaces;
 
 pub use active_window::ActiveWindow;
@@ -11,4 +12,5 @@ pub use control_center::{
   NetworkButton, NotificationsButton, PowerButton, SysinfoButton, WeatherButton,
 };
 pub use player::ActivePlayer;
+pub use resource::Resource;
 pub use workspaces::widget::Workspaces;
