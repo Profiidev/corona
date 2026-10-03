@@ -1,5 +1,6 @@
 use corona_bluez::BluetoothExt;
 use corona_components::async_listener::AsyncListenerExt;
+use corona_components::components::card::{CardExt, ErrorCard};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -36,10 +37,7 @@ impl BluetoothPanel {
       .w_full()
       .gap_2()
       .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(
         div()
           .flex()
@@ -109,35 +107,13 @@ impl BluetoothPanel {
       })
   }
 
-  pub fn error(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+  pub fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
     let error = self.error.clone()?;
     Some(
-      div()
-        .flex()
-        .gap_2()
-        .p_2()
-        .rounded_xl()
-        .bg(theme.colors.accent)
-        .border_color(theme.border)
-        .border_1()
-        .child(
-          div()
-            .text_sm()
-            .text_color(theme.colors.danger)
-            .truncate()
-            .child(error),
-        )
-        .child(
-          Button::new("bt-error-dismiss")
-            .small()
-            .ml_auto()
-            .icon(IconName::X)
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-              this.error = None;
-              cx.notify();
-            })),
-        ),
+      ErrorCard::new("bt-error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
+        this.error = None;
+        cx.notify();
+      })),
     )
   }
 }

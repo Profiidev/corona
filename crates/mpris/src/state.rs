@@ -1,4 +1,9 @@
-use std::time::{Duration, Instant};
+use std::{
+  path::PathBuf,
+  time::{Duration, Instant},
+};
+
+use gpui_kit::ImageSource;
 
 pub use mpris2_zbus::player::{LoopStatus, PlaybackStatus};
 use zbus::zvariant::OwnedObjectPath;
@@ -34,6 +39,17 @@ pub struct Player {
 }
 
 impl Player {
+  pub fn art_source(&self) -> Option<ImageSource> {
+    let url = self.art_url.as_deref()?;
+    if let Some(path) = url.strip_prefix("file://") {
+      Some(PathBuf::from(path).into())
+    } else if url.starts_with("https://") || url.starts_with("http://") {
+      Some(url.into())
+    } else {
+      None
+    }
+  }
+
   /// players only report the position when it jumps, in between it moves with the rate
   pub fn position(&self) -> Duration {
     self.position_after(self.position_at.elapsed())

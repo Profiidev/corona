@@ -9,7 +9,7 @@ use gpui_kit::{
   px,
 };
 
-use corona_surface::{
+use crate::{
   bar::Widget,
   panel::{Panel, WdigetPanelExt},
 };

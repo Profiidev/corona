@@ -7,7 +7,7 @@ use corona_surface::{
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-  Styled, Task, Window, component::ActiveTheme, div, px,
+  Styled, Task, Window, div,
 };
 use jiff::Zoned;
 use uuid::Uuid;
@@ -41,12 +41,7 @@ impl Render for Clock {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     div()
       .id("clock")
-      .flex_bar(window, cx)
-      .items_center()
-      .px_2()
-      .h(px(24.))
-      .rounded_full()
-      .bg(cx.theme().tokens.button_hover)
+      .bar_pill(window, cx)
       .cursor_pointer()
       .text_sm()
       .child(Zoned::now().strftime("%H:%M %a, %b %-d").to_string())

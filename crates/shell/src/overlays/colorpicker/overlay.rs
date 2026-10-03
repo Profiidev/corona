@@ -14,7 +14,7 @@ use gpui_kit::{
   px, rgb,
 };
 
-use crate::overlays::colorpicker::state::ColorPickerState;
+use crate::overlays::{OverlayState, colorpicker::state::ColorPickerState};
 
 const DIAMETER: f32 = 180.;
 const GRID: u32 = 11;

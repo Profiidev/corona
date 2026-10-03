@@ -1,3 +1,4 @@
+use corona_components::components::{input::on_enter, modal::modal};
 use corona_network_manager::{NetworkManagerExt, Secret, SecretKind};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
@@ -11,10 +12,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  network::NetworkPanel,
-  utils::{on_enter, overlay},
-};
+use crate::control_center::network::NetworkPanel;
 
 pub struct SecretPrompt {
   password: Entity<InputState>,
@@ -69,7 +67,7 @@ impl NetworkPanel {
     let prompt = self.secret_prompt.as_ref()?;
     let request = cx.network_manager().secret_request(cx)?;
 
-    Some(overlay(
+    Some(modal(
       theme,
       div()
         .child(

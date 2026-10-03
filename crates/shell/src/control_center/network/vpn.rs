@@ -1,4 +1,5 @@
 use corona_components::async_listener::AsyncListenerExt;
+use corona_components::components::card::CardExt;
 use corona_network_manager::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -34,10 +35,7 @@ impl NetworkPanel {
         .when_else(vpns.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
         .gap_2()
         .p_2()
-        .rounded_xl()
-        .bg(theme.colors.accent)
-        .border_color(theme.border)
-        .border_1()
+        .card(theme)
         .child(
           div()
             .flex()

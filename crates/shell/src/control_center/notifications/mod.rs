@@ -1,6 +1,8 @@
 use std::time::{Duration, SystemTime};
 
+use corona_components::components::card::CardExt;
 use corona_notifications::{Notification, NotificationsExt};
+use corona_utils::ticker::TickerExt;
 use gpui_kit::{
   AnyElement, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,
   assets::IconName,
@@ -55,14 +57,7 @@ impl ControlCenterPanel for NotificationsPanel {
 
     notifications.mark_all_read(cx);
 
-    let ticker = cx.spawn(async move |this, cx| {
-      loop {
-        cx.background_executor().timer(TICK).await;
-        if this.update(cx, |_, cx| cx.notify()).is_err() {
-          break;
-        }
-      }
-    });
+    let ticker = cx.ticker(TICK, |_, cx| cx.notify());
 
     Self {
       filter: Filter::All,
@@ -103,16 +98,7 @@ impl ControlCenterPanel for NotificationsPanel {
 }
 
 fn card(theme: &Theme) -> Div {
-  div()
-    .flex()
-    .flex_col()
-    .w_full()
-    .gap_2()
-    .p_2()
-    .rounded_xl()
-    .bg(theme.colors.accent)
-    .border_color(theme.border)
-    .border_1()
+  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
 }
 
 fn today(notification: &Notification) -> bool {

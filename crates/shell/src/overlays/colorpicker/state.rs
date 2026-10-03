@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 use tracing::{error, warn};
 
-use crate::overlays::{colorpicker::overlay::Overlay, fullscreen_options};
+use crate::overlays::{OverlayState, colorpicker::overlay::Overlay, fullscreen_options};
 
 const NAMESPACE: &str = "corona_colorpicker";
 
@@ -17,6 +17,12 @@ pub struct ColorPickerState {
 }
 
 impl Global for ColorPickerState {}
+
+impl OverlayState for ColorPickerState {
+  fn overlays(&self) -> &[AnyWindowHandle] {
+    &self.overlays
+  }
+}
 
 impl ColorPickerState {
   pub fn capture(cx: &mut App) {
@@ -104,36 +110,5 @@ impl ColorPickerState {
   pub fn pick(hex: String, window: &mut Window, cx: &mut App) {
     cx.write_to_clipboard(ClipboardItem::new_string(hex));
     Self::close(Some(window), cx);
-  }
-
-  pub fn close(current: Option<&mut Window>, cx: &mut App) {
-    if !cx.has_global::<Self>() {
-      return;
-    }
-    let state = cx.remove_global::<Self>();
-
-    for handle in &state.overlays {
-      let _ = handle.update(cx, |_, window, _| window.remove_window());
-    }
-    if let Some(window) = current {
-      window.remove_window();
-    }
-  }
-
-  pub fn refresh_all(cx: &mut App) {
-    let Some(state) = Self::get(cx) else {
-      return;
-    };
-    for handle in state.overlays.clone() {
-      let _ = handle.update(cx, |_, window, _| window.refresh());
-    }
-  }
-
-  pub fn get(cx: &mut App) -> Option<&mut Self> {
-    if cx.has_global::<Self>() {
-      Some(cx.global_mut::<Self>())
-    } else {
-      None
-    }
   }
 }

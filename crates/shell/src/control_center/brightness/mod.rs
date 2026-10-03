@@ -6,14 +6,14 @@ use std::{
 
 use anyhow::Result;
 use corona_brightness::BrightnessExt;
+use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Context, Div, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
   Window,
-  assets::IconName,
   base::slider::{SliderEvent, SliderState},
-  component::{ActiveTheme, Sizable, Theme, button::Button},
+  component::{ActiveTheme, Theme},
   div,
   prelude::FluentBuilder,
 };
@@ -68,16 +68,7 @@ impl ControlCenterPanel for BrightnessPanel {
 }
 
 fn card(theme: &Theme) -> Div {
-  div()
-    .flex()
-    .flex_col()
-    .w_full()
-    .gap_2()
-    .p_2()
-    .rounded_xl()
-    .bg(theme.colors.accent)
-    .border_color(theme.border)
-    .border_1()
+  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
 }
 
 impl BrightnessPanel {
@@ -166,35 +157,15 @@ impl BrightnessPanel {
     .detach();
   }
 
-  fn error(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+  fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
     let error = self.error.clone()?;
     Some(
-      div()
-        .flex()
-        .gap_2()
-        .p_2()
-        .rounded_xl()
-        .bg(theme.colors.accent)
-        .border_color(theme.border)
-        .border_1()
-        .child(
-          div()
-            .text_sm()
-            .text_color(theme.colors.danger)
-            .truncate()
-            .child(error),
-        )
-        .child(
-          Button::new("brightness-error-dismiss")
-            .small()
-            .ml_auto()
-            .icon(IconName::X)
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-              this.error = None;
-              cx.notify();
-            })),
-        ),
+      ErrorCard::new("brightness-error-dismiss", error).on_dismiss(cx.listener(
+        |this, _, _, cx| {
+          this.error = None;
+          cx.notify();
+        },
+      )),
     )
   }
 }
@@ -208,7 +179,7 @@ impl Render for BrightnessPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .when_some(self.error(theme, cx), |d, error| d.child(error))
+      .when_some(self.error(cx), |d, error| d.child(error))
       .when_some(
         self.lights(theme, "Displays", displays(cx), cx),
         |d, displays| d.child(displays),

@@ -1,3 +1,4 @@
+use corona_components::components::{input::on_enter, modal::modal};
 use corona_network_manager::{HiddenSecurity, NetworkManagerExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -13,10 +14,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  network::NetworkPanel,
-  utils::{on_enter, overlay},
-};
+use crate::control_center::network::NetworkPanel;
 
 pub struct HiddenPrompt {
   ssid: Entity<InputState>,
@@ -107,7 +105,7 @@ impl NetworkPanel {
   pub fn hidden_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
     let prompt = self.hidden_prompt.as_ref()?;
 
-    Some(overlay(
+    Some(modal(
       theme,
       div()
         .child(div().font_bold().text_sm().child("Join hidden network"))

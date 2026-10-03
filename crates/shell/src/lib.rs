@@ -11,6 +11,7 @@ use crate::widgets::{
 };
 
 mod control_center;
+mod icons;
 pub mod overlays;
 mod widgets;
 

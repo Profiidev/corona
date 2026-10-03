@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use corona_components::components::card::CardExt;
 use corona_notifications::{Notification, NotificationsExt, Urgency};
 use gpui_kit::{
   InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
@@ -60,9 +61,7 @@ impl NotificationsPanel {
       .gap_2()
       .p_2()
       .items_start()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_1()
+      .card(theme)
       .border_color(if notification.urgency == Urgency::Critical {
         theme.colors.danger
       } else {

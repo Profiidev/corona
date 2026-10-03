@@ -9,7 +9,7 @@ use corona_surface::{
   bar::{BarStyle, Widget},
   panel::WdigetPanelExt,
 };
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ObjectFit,
   ParentElement, Render, StatefulInteractiveElement, Styled, StyledImage, Subscription, Task,
@@ -20,7 +20,9 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::control_center::{MediaPanel, Standalone, media::player::art_source, utils::ring};
+use corona_components::components::progress_ring::ring;
+
+use crate::control_center::{MediaPanel, Standalone};
 
 const TICK: Duration = Duration::from_secs(1);
 const RING: f32 = 20.;
@@ -51,21 +53,13 @@ impl Widget for ActivePlayer {
       }),
     ];
 
-    let ticker = cx.spawn(async move |this, cx| {
-      loop {
-        cx.background_executor().timer(TICK).await;
-        let tick = this.update(cx, |_, cx| {
-          if cx
-            .mpris()
-            .active_player(cx)
-            .is_some_and(|p| p.status == PlaybackStatus::Playing)
-          {
-            cx.notify();
-          }
-        });
-        if tick.is_err() {
-          break;
-        }
+    let ticker = cx.ticker(TICK, |_, cx| {
+      if cx
+        .mpris()
+        .active_player(cx)
+        .is_some_and(|p| p.status == PlaybackStatus::Playing)
+      {
+        cx.notify();
       }
     });
 
@@ -107,7 +101,7 @@ impl Render for ActivePlayer {
       .items_center()
       .justify_center()
       .bg(theme.colors.background)
-      .child(match art_source(player) {
+      .child(match player.art_source() {
         Some(source) => img(source)
           .size_full()
           .rounded_full()
@@ -119,13 +113,8 @@ impl Render for ActivePlayer {
 
     div()
       .id("active-player")
-      .flex_bar(window, cx)
-      .items_center()
+      .bar_pill(window, cx)
       .pl(px(2.))
-      .pr_2()
-      .h(px(24.))
-      .rounded_full()
-      .bg(theme.tokens.button_hover)
       .cursor_pointer()
       .on_hover(self.scrolling.on_hover())
       .child(

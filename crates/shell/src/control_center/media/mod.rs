@@ -1,7 +1,7 @@
 use std::{iter, time::Duration};
 
 use corona_mpris::{MprisExt, PlaybackStatus, Player};
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
   Styled, Subscription, Task, Window,
@@ -18,7 +18,7 @@ use gpui_kit::{
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
-pub(crate) mod player;
+mod player;
 
 /// how often the position moves on while playing
 const TICK: Duration = Duration::from_secs(1);
@@ -109,21 +109,13 @@ impl ControlCenterPanel for MediaPanel {
     ];
 
     // players only report the position when it jumps, it moves on in between
-    let ticker = cx.spawn_in(window, async move |this, cx| {
-      loop {
-        cx.background_executor().timer(TICK).await;
-        let tick = this.update_in(cx, |this, window, cx| {
-          if this
-            .shown(cx)
-            .is_some_and(|p| p.status == PlaybackStatus::Playing)
-          {
-            this.sync_progress(window, cx);
-            cx.notify();
-          }
-        });
-        if tick.is_err() {
-          break;
-        }
+    let ticker = cx.ticker_in(window, TICK, |this, window, cx| {
+      if this
+        .shown(cx)
+        .is_some_and(|p| p.status == PlaybackStatus::Playing)
+      {
+        this.sync_progress(window, cx);
+        cx.notify();
       }
     });
 

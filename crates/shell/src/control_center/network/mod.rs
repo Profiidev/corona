@@ -14,7 +14,7 @@ mod hidden_network;
 mod interface;
 mod secret_prompt;
 mod status;
-pub(crate) mod utils;
+mod utils;
 mod vpn;
 mod wifi;
 
@@ -78,7 +78,7 @@ impl Render for NetworkPanel {
       .size_full()
       .gap_2()
       .child(self.status(theme, cx))
-      .when_some(self.error(theme, cx), |d, error| d.child(error))
+      .when_some(self.error(cx), |d, error| d.child(error))
       .child(self.wifi(theme, cx))
       .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
       .child(self.interfaces(theme, cx))

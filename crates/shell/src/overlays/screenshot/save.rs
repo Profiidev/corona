@@ -14,7 +14,7 @@ use gpui_kit::{
 use jiff::Zoned;
 use tracing::{error, info};
 
-use crate::overlays::screenshot::state::ScreenshotState;
+use crate::overlays::{OverlayState, screenshot::state::ScreenshotState};
 
 fn finish(image: RgbaImage, cx: &mut App) {
   let png = match image.to_png() {

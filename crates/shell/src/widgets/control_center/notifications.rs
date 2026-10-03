@@ -1,12 +1,9 @@
 use corona_notifications::NotificationsExt;
-use corona_surface::bar::Widget;
+use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::{
-  control_center::{NotificationsPanel, Standalone},
-  widgets::button::Button,
-};
+use crate::control_center::{NotificationsPanel, Standalone};
 
 pub struct NotificationsButton {
   _subscription: Subscription,

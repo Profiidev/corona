@@ -1,3 +1,4 @@
+use corona_components::components::card::CardExt;
 use corona_weather::{Condition, WeatherExt};
 use gpui_kit::{
   AnyElement, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -51,16 +52,7 @@ impl ControlCenterPanel for WeatherPanel {
 }
 
 fn card(theme: &Theme) -> Div {
-  div()
-    .flex()
-    .flex_col()
-    .w_full()
-    .gap_2()
-    .p_2()
-    .rounded_xl()
-    .bg(theme.colors.accent)
-    .border_color(theme.border)
-    .border_1()
+  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
 }
 
 fn icon(condition: Condition, is_day: bool) -> IconName {

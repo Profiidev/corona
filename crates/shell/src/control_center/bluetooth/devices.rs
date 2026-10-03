@@ -2,6 +2,7 @@ use std::pin::Pin;
 
 use corona_bluez::{BluetoothExt, Device};
 use corona_components::async_listener::AsyncListenerExt;
+use corona_components::components::card::CardExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -105,10 +106,7 @@ impl BluetoothPanel {
       )
       .gap_2()
       .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(div().font_bold().text_sm().child(title))
       .when_some(empty, |d, empty| d.child(empty))
       .child(

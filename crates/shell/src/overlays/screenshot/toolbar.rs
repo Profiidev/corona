@@ -1,5 +1,6 @@
 use std::{cell::Cell, rc::Rc, time::Duration};
 
+use corona_components::animation::bounds::BoundsAnimation;
 use gpui_kit::{
   Bounds, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Styled,
   Window,
@@ -12,16 +13,13 @@ use gpui_kit::{
 };
 
 use crate::overlays::screenshot::{
-  mode::Mode,
-  overlay::Overlay,
-  save::is_empty,
-  state::{AreaSlideAnimation, ScreenshotState},
+  mode::Mode, overlay::Overlay, save::is_empty, state::ScreenshotState,
 };
 
 pub struct ScreenshotToolbar {
   toolbar_bounds: Rc<Cell<Bounds<Pixels>>>,
   mode_bounds: [Rc<Cell<Bounds<Pixels>>>; 3],
-  pill: AreaSlideAnimation,
+  pill: BoundsAnimation,
 }
 
 impl ScreenshotToolbar {
@@ -29,7 +27,7 @@ impl ScreenshotToolbar {
     Self {
       toolbar_bounds: Default::default(),
       mode_bounds: Default::default(),
-      pill: AreaSlideAnimation::default(),
+      pill: BoundsAnimation::default(),
     }
   }
 

@@ -1,4 +1,4 @@
-use gpui_kit::{App, assets::IconName, base::IndexPath, component::select::SelectItem};
+use gpui_kit::{App, base::IndexPath, component::select::SelectItem};
 
 use corona_pipewire::{AudioNode, PipewireExt};
 
@@ -57,24 +57,4 @@ pub fn index_of(items: &[NodeSelectItem], selected: Option<u32>) -> Option<Index
 
 pub fn target_of(stream: u32, cx: &App) -> Option<u32> {
   cx.pipewire().target(stream, cx)
-}
-
-pub fn volume_icon(volume: f32, muted: bool) -> IconName {
-  if muted {
-    IconName::VolumeOff
-  } else if volume < f32::EPSILON {
-    IconName::VolumeX
-  } else if volume < 0.5 {
-    IconName::Volume1
-  } else {
-    IconName::Volume2
-  }
-}
-
-pub fn to_slider(linear: f32) -> f32 {
-  linear.cbrt()
-}
-
-pub fn to_linear(slider: f32) -> f32 {
-  slider.powi(3)
 }

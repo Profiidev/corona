@@ -1,14 +1,11 @@
-use corona_pipewire::PipewireExt;
-use corona_surface::bar::Widget;
+use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
+use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window};
 use uuid::Uuid;
 
 use crate::{
-  control_center::{
-    AudioPanel, Standalone,
-    audio::utils::{to_slider, volume_icon},
-  },
-  widgets::button::Button,
+  control_center::{AudioPanel, Standalone},
+  icons::volume_icon,
 };
 
 pub struct AudioButton {
@@ -29,7 +26,7 @@ impl Widget for AudioButton {
 impl Render for AudioButton {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let sink = cx.pipewire().default_sink(cx);
-    let volume = to_slider(sink.and_then(|s| s.volumes.first()).copied().unwrap_or(0.));
+    let volume = to_slider(sink.map_or(0., AudioNode::volume));
     let muted = sink.is_some_and(|s| s.mute);
 
     Button::<_, Standalone<AudioPanel>>::new(cx, "audio-button", volume_icon(volume, muted))

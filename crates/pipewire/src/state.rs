@@ -93,6 +93,10 @@ fn label(props: &DictRef) -> Option<&str> {
 }
 
 impl AudioNode {
+  pub fn volume(&self) -> f32 {
+    self.volumes.first().copied().unwrap_or(0.)
+  }
+
   pub fn new(id: u32, kind: NodeType, props: &DictRef) -> Option<Self> {
     let name = props.get("node.name")?.to_string();
 

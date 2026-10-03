@@ -12,6 +12,7 @@ mod command;
 mod event;
 mod listener;
 mod state;
+pub mod volume;
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;

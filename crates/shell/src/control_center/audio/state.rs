@@ -1,6 +1,9 @@
 use std::{cell::Cell, rc::Rc};
 
-use corona_pipewire::{AudioNode, PipewireAudio, PipewireExt};
+use corona_pipewire::{
+  AudioNode, PipewireAudio, PipewireExt,
+  volume::{to_linear, to_slider},
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Entity, Subscription, Window,
@@ -8,9 +11,7 @@ use gpui_kit::{
   component::select::{SelectEvent, SelectState},
 };
 
-use crate::control_center::audio::utils::{
-  NodeSelectItem, index_of, select_items, target_of, to_linear, to_slider,
-};
+use crate::control_center::audio::utils::{NodeSelectItem, index_of, select_items, target_of};
 
 pub const DEFAULT_SINK_ID: u32 = u32::MAX;
 
@@ -46,7 +47,7 @@ impl NodeState {
     default_option: bool,
     on_select: impl Fn(u32, PipewireAudio<'_>) + 'static,
   ) -> Self {
-    let volume = to_slider(node.and_then(|s| s.volumes.first()).copied().unwrap_or(0.));
+    let volume = to_slider(node.map_or(0., AudioNode::volume));
     let slider = cx.new(|_| {
       SliderState::new()
         .min(0.)
@@ -113,7 +114,7 @@ impl NodeState {
     cx: &mut App,
   ) {
     self.muted = node.map(|s| s.mute).unwrap_or(false);
-    self.volume = to_slider(node.and_then(|s| s.volumes.first()).copied().unwrap_or(0.));
+    self.volume = to_slider(node.map_or(0., AudioNode::volume));
     self.id.set(node.map(|node| node.id));
 
     let volume = self.volume;

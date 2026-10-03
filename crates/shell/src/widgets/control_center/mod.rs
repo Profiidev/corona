@@ -1,9 +1,9 @@
 use corona_components::assets::icons::IconName;
-use corona_surface::bar::Widget;
+use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
-use crate::{control_center::ControlCenter, widgets::button::Button};
+use crate::control_center::ControlCenter;
 
 mod audio;
 mod bluetooth;

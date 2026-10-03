@@ -86,7 +86,7 @@ impl Render for BluetoothPanel {
       .size_full()
       .gap_2()
       .child(self.status(theme, cx))
-      .when_some(self.error(theme, cx), |d, error| d.child(error))
+      .when_some(self.error(cx), |d, error| d.child(error))
       .when(powered, |d| {
         d.child(self.paired(theme, cx))
           .when_some(self.available(theme, cx), |d, available| d.child(available))

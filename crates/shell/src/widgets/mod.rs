@@ -1,5 +1,4 @@
 mod active_window;
-pub mod button;
 mod clock;
 mod control_center;
 mod player;

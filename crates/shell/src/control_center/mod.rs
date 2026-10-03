@@ -1,17 +1,16 @@
-pub(crate) mod audio;
+mod audio;
 mod bluetooth;
 mod brightness;
 mod calendar;
 mod dashboard;
 mod layout;
-pub(crate) mod media;
+mod media;
 mod nav;
-pub(crate) mod network;
+mod network;
 mod notifications;
 mod panel;
 mod power;
 mod sysinfo;
-pub(crate) mod utils;
 mod variants;
 mod weather;
 

@@ -15,10 +15,8 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::audio::{
-  state::{DefaultState, NodeState, StreamState},
-  utils::volume_icon,
-};
+use crate::control_center::audio::state::{DefaultState, NodeState, StreamState};
+use crate::icons::volume_icon;
 
 fn audio_btns(state: &NodeState, node: Option<&AudioNode>, mic: bool) -> Div {
   div()

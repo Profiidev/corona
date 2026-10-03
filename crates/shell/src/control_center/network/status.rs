@@ -1,4 +1,5 @@
 use corona_components::async_listener::AsyncListenerExt;
+use corona_components::components::card::CardExt;
 use corona_network_manager::{NetworkManagerExt, NmConnectivityState};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -14,10 +15,8 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::network::{
-  LoadingState, NetworkPanel,
-  utils::{address, interface_icon},
-};
+use crate::control_center::network::{LoadingState, NetworkPanel, utils::address};
+use crate::icons::interface_icon;
 
 impl NetworkPanel {
   pub fn status(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -41,10 +40,7 @@ impl NetworkPanel {
       .w_full()
       .gap_2()
       .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(
         div()
           .flex()

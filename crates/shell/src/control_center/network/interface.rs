@@ -1,4 +1,5 @@
 use corona_components::async_listener::AsyncListenerExt;
+use corona_components::components::card::CardExt;
 use corona_network_manager::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -32,10 +33,7 @@ impl NetworkPanel {
       )
       .gap_2()
       .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(
         div()
           .flex()

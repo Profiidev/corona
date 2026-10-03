@@ -11,11 +11,14 @@ use gpui_kit::{
   px,
 };
 
-use crate::overlays::screenshot::{
-  mode::Mode,
-  save::{commit_selection, is_empty},
-  state::{Direction, DragArea, MonitorGeometry, ScreenshotState, window_at},
-  toolbar::ScreenshotToolbar,
+use crate::overlays::{
+  OverlayState,
+  screenshot::{
+    mode::Mode,
+    save::{commit_selection, is_empty},
+    state::{Direction, DragArea, MonitorGeometry, ScreenshotState, window_at},
+    toolbar::ScreenshotToolbar,
+  },
 };
 
 const MIN_SELECTION_SIZE: f32 = 4.;

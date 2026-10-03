@@ -4,7 +4,7 @@ use corona_compositor::CompositorExt;
 use corona_surface::bar::{BarStyle, Widget};
 use gpui_kit::{
   AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ParentElement, Render,
-  StatefulInteractiveElement, Styled, Subscription, Window, component::ActiveTheme, div, px,
+  StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use uuid::Uuid;
 
@@ -55,18 +55,11 @@ impl Render for ActiveWindow {
       return Empty.into_any_element();
     };
 
-    let theme = cx.theme();
-
     div()
       .id("active-window")
-      .flex_bar(window, cx)
-      .items_center()
+      .bar_pill(window, cx)
       .justify_center()
-      .px_2()
-      .h(px(24.))
       .min_w(px(36.))
-      .rounded_full()
-      .bg(theme.tokens.button_hover)
       .on_hover(self.scrolling.on_hover())
       .child(
         WindowIcon::new(active_window.class.clone(), active_window.address.clone()).size(ICON_SIZE),

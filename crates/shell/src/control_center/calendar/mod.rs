@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use corona_components::components::card::CardExt;
+use corona_utils::ticker::TickerExt;
 use corona_weather::WeatherExt;
 use gpui_kit::{
   App, Context, IntoElement, ParentElement, Render, Styled, Task, Window,
@@ -9,7 +11,9 @@ use gpui_kit::{
 };
 use jiff::{Zoned, civil::Date};
 
-use crate::control_center::{ControlCenterPanel, utils::ring, variants::ControlCenterType};
+use corona_components::components::progress_ring::ring;
+
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod month;
 
@@ -27,14 +31,7 @@ impl ControlCenterPanel for CalendarPanel {
   const HEIGHT: f32 = 430.0;
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
-    let ticker = cx.spawn(async move |this, cx| {
-      loop {
-        cx.background_executor().timer(TICK).await;
-        if this.update(cx, |_, cx| cx.notify()).is_err() {
-          break;
-        }
-      }
-    });
+    let ticker = cx.ticker(TICK, |_, cx| cx.notify());
     Self {
       shown: today().first_of_month(),
       _ticker: ticker,
@@ -72,10 +69,7 @@ impl CalendarPanel {
       .w_full()
       .px_4()
       .py_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(
         div()
           .text_size(px(48.))

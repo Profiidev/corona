@@ -1,21 +1,17 @@
-use std::{
-  collections::HashMap,
-  time::{Duration, Instant},
-};
+use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 use corona_capture::{RgbaImageExt, capture_all, image::RgbaImage};
+use corona_components::animation::bounds::BoundsAnimation;
 use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Window,
-  base::{Root, animation::ease_out_cubic},
-  point, px,
+  AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, base::Root, point, px,
 };
 use tracing::{error, warn};
 
 use crate::overlays::{
-  fullscreen_options,
+  OverlayState, fullscreen_options,
   screenshot::{mode::Mode, overlay::Overlay},
 };
 
@@ -31,7 +27,7 @@ pub struct ScreenshotState {
   pub windows: Vec<(String, Bounds<Pixels>)>,
   pub keyboard: bool,
   pub drag: Option<DragArea>,
-  pub slide: AreaSlideAnimation,
+  pub slide: BoundsAnimation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -110,52 +106,13 @@ impl DragArea {
   }
 }
 
-#[derive(Default)]
-pub struct AreaSlideAnimation {
-  target: Option<Bounds<Pixels>>,
-  shown: Option<Bounds<Pixels>>,
-  from: Option<(Bounds<Pixels>, Instant)>,
-}
+impl Global for ScreenshotState {}
 
-impl AreaSlideAnimation {
-  pub fn step(
-    &mut self,
-    target: Option<Bounds<Pixels>>,
-    duration: Duration,
-  ) -> (Option<Bounds<Pixels>>, bool) {
-    if target != self.target {
-      self.from = match (self.shown, target) {
-        (Some(shown), Some(_)) if !duration.is_zero() => Some((shown, Instant::now())),
-        _ => None,
-      };
-      self.target = target;
-    }
-
-    let (shown, moving) = match (self.target, self.from) {
-      (Some(to), Some((from, start))) => {
-        let t = (start.elapsed().as_secs_f32() / duration.as_secs_f32()).min(1.);
-        let e = ease_out_cubic(t);
-        let lerp = |a: Pixels, b: Pixels| px(a.as_f32() + (b - a).as_f32() * e);
-        let b = Bounds {
-          origin: point(
-            lerp(from.origin.x, to.origin.x),
-            lerp(from.origin.y, to.origin.y),
-          ),
-          size: Size::new(
-            lerp(from.size.width, to.size.width),
-            lerp(from.size.height, to.size.height),
-          ),
-        };
-        (Some(b), t < 1.)
-      }
-      (to, _) => (to, false),
-    };
-    self.shown = shown;
-    (shown, moving)
+impl OverlayState for ScreenshotState {
+  fn overlays(&self) -> &[AnyWindowHandle] {
+    &self.overlays
   }
 }
-
-impl Global for ScreenshotState {}
 
 pub fn window_at(windows: &[Bounds<Pixels>], p: Point<Pixels>) -> Option<Bounds<Pixels>> {
   windows.iter().find(|b| b.contains(&p)).copied()
@@ -191,7 +148,7 @@ impl ScreenshotState {
       windows: Vec::new(),
       keyboard: false,
       drag: None,
-      slide: AreaSlideAnimation::default(),
+      slide: BoundsAnimation::default(),
     });
 
     let names: Vec<String> = cx
@@ -324,29 +281,6 @@ impl ScreenshotState {
     Ok(())
   }
 
-  pub fn close(current: Option<&mut Window>, cx: &mut App) {
-    if !cx.has_global::<Self>() {
-      return;
-    }
-    let state = cx.remove_global::<Self>();
-
-    for handle in &state.overlays {
-      let _ = handle.update(cx, |_, window, _| window.remove_window());
-    }
-    if let Some(window) = current {
-      window.remove_window();
-    }
-  }
-
-  pub fn refresh_all(cx: &mut App) {
-    let Some(state) = Self::get(cx) else {
-      return;
-    };
-    for handle in state.overlays.clone() {
-      let _ = handle.update(cx, |_, window, _| window.refresh());
-    }
-  }
-
   pub fn set_mode(mode: Mode, cx: &mut App) {
     let Some(state) = Self::get(cx) else {
       return;
@@ -396,14 +330,6 @@ impl ScreenshotState {
     };
     state.drag = None;
     Self::refresh_all(cx);
-  }
-
-  pub fn get(cx: &mut App) -> Option<&mut Self> {
-    if cx.has_global::<Self>() {
-      Some(cx.global_mut::<Self>())
-    } else {
-      None
-    }
   }
 }
 

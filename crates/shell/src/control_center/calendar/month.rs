@@ -1,3 +1,4 @@
+use corona_components::components::card::CardExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -45,10 +46,7 @@ impl CalendarPanel {
       .w_full()
       .gap_2()
       .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .border_color(theme.border)
-      .border_1()
+      .card(theme)
       .child(
         div()
           .flex()

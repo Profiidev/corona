@@ -1,11 +1,8 @@
-use corona_surface::bar::Widget;
+use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::{
-  control_center::{CalendarPanel, Standalone},
-  widgets::button::Button,
-};
+use crate::control_center::{CalendarPanel, Standalone};
 
 pub struct CalendarButton;
 

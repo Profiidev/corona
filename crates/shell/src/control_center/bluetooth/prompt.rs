@@ -1,4 +1,5 @@
 use corona_bluez::{BluetoothExt, PairingAnswer, PairingKind};
+use corona_components::components::{input::on_enter, modal::modal};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::{StyledExt, input::InputState},
@@ -11,10 +12,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  bluetooth::BluetoothPanel,
-  utils::{on_enter, overlay},
-};
+use crate::control_center::bluetooth::BluetoothPanel;
 
 pub struct PairingPrompt {
   code: Entity<InputState>,
@@ -84,7 +82,7 @@ impl BluetoothPanel {
       _ => Some("Pair"),
     };
 
-    Some(overlay(
+    Some(modal(
       theme,
       div()
         .child(
