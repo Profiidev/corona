@@ -20,7 +20,10 @@ use gpui_kit::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::widgets::popup::{self, ROW, SEPARATOR};
+use crate::{
+  icons::{capture_icon, capture_label},
+  widgets::popup::{self, ROW, SEPARATOR},
+};
 
 const ICON_SIZE: f32 = 16.;
 const LOG_ROWS: usize = 10;
@@ -30,22 +33,6 @@ const KINDS: [CaptureKind; 3] = [
   CaptureKind::Camera,
   CaptureKind::Screen,
 ];
-
-fn icon(kind: CaptureKind) -> IconName {
-  match kind {
-    CaptureKind::Microphone => IconName::Mic,
-    CaptureKind::Camera => IconName::Camera,
-    CaptureKind::Screen => IconName::ScreenShare,
-  }
-}
-
-fn label(kind: CaptureKind) -> &'static str {
-  match kind {
-    CaptureKind::Microphone => "Microphone",
-    CaptureKind::Camera => "Camera",
-    CaptureKind::Screen => "Screen share",
-  }
-}
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -102,7 +89,7 @@ impl Render for Privacy {
         )
       })
       .children(recording.into_iter().map(|kind| {
-        Icon::new(icon(kind))
+        Icon::new(capture_icon(kind))
           .with_size(px(ICON_SIZE))
           .text_color(active)
       }))
@@ -165,7 +152,7 @@ impl PrivacyLog {
     let name = access
       .name
       .clone()
-      .unwrap_or_else(|| label(access.kind).to_string());
+      .unwrap_or_else(|| capture_label(access.kind).to_string());
     let when = match access.ended {
       None => "Recording".to_string(),
       Some(ended) => ago(ended, now),
@@ -173,7 +160,7 @@ impl PrivacyLog {
 
     popup::row(SharedString::from(format!("access-{index}")), cx)
       .child(
-        Icon::new(icon(access.kind))
+        Icon::new(capture_icon(access.kind))
           .with_size(px(14.))
           .text_color(color),
       )

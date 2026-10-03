@@ -2,7 +2,6 @@ use corona_components::async_listener::AsyncListenerExt;
 use corona_power::PowerExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
-  assets::IconName,
   base::StyledExt,
   component::{
     Sizable, Theme,
@@ -12,16 +11,10 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::power::{PowerPanel, card};
-
-fn profile(name: &str) -> (IconName, String) {
-  match name {
-    "power-saver" => (IconName::Leaf, "Power saver".into()),
-    "balanced" => (IconName::Gauge, "Balanced".into()),
-    "performance" => (IconName::Zap, "Performance".into()),
-    other => (IconName::Gauge, other.into()),
-  }
-}
+use crate::{
+  control_center::power::{PowerPanel, card},
+  icons::power_profile,
+};
 
 impl PowerPanel {
   pub fn profiles(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -35,7 +28,7 @@ impl PowerPanel {
             .flex()
             .gap_2()
             .children(profiles.available.iter().map(|name| {
-              let (icon, label) = profile(name);
+              let (icon, label) = power_profile(name);
               Button::new(format!("profile-{name}"))
                 .icon(icon)
                 .label(label)

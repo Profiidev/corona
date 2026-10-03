@@ -12,6 +12,7 @@ use crate::widgets::{
 
 mod control_center;
 mod icons;
+mod osds;
 pub mod overlays;
 mod widgets;
 
@@ -19,6 +20,7 @@ pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
+  osds::init(cx);
 
   BarState::spawn_bars(cx);
 }
