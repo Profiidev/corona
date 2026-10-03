@@ -1,14 +1,8 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use corona_surface::bar::{BarExt, BarState};
+use corona_surface::bar::BarState;
 use gpui_kit::App;
-
-use crate::widgets::{
-  ActivePlayer, ActiveWindow, AudioButton, BluetoothButton, BrightnessButton, CalendarButton,
-  Clock, ControlCenterButton, MediaButton, NetworkButton, NotificationsButton, PowerButton,
-  Privacy, Resource, SysinfoButton, Tray, WeatherButton, Workspaces,
-};
 
 mod control_center;
 mod icons;
@@ -53,26 +47,7 @@ fn init_integrations(cx: &mut App) {
 
 fn register_variants(cx: &mut App) {
   control_center::register_panels(cx);
-
-  cx.bar_mut()
-    .register::<ControlCenterButton>()
-    .register::<AudioButton>()
-    .register::<NetworkButton>()
-    .register::<BluetoothButton>()
-    .register::<PowerButton>()
-    .register::<BrightnessButton>()
-    .register::<NotificationsButton>()
-    .register::<SysinfoButton>()
-    .register::<WeatherButton>()
-    .register::<CalendarButton>()
-    .register::<MediaButton>()
-    .register::<Workspaces>()
-    .register::<ActiveWindow>()
-    .register::<Clock>()
-    .register::<ActivePlayer>()
-    .register::<Resource>()
-    .register::<Tray>()
-    .register::<Privacy>();
+  widgets::register_widgets(cx);
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
