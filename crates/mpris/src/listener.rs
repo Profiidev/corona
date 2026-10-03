@@ -5,7 +5,11 @@ use gpui_kit::App;
 use mpris2_zbus::enumerator::Enumerator;
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
 
-use crate::{Mpris, snapshot::snapshot, state::pick_active};
+use crate::{
+  Mpris,
+  snapshot::snapshot,
+  state::{keep_positions, pick_active},
+};
 
 const PLAYER_PATH: &str = "/org/mpris/MediaPlayer2";
 
@@ -28,8 +32,11 @@ pub fn listener(
 ) {
   cx.spawn(async move |cx| {
     loop {
-      if let Ok(players) = snapshot(&conn).await.log_err() {
-        let active = cx.update(|cx| state.active.read(cx).clone());
+      if let Ok(mut players) = snapshot(&conn).await.log_err() {
+        let active = cx.update(|cx| {
+          keep_positions(&mut players, state.players.read(cx));
+          state.active.read(cx).clone()
+        });
         state
           .active
           .write_changed(cx, pick_active(&players, active.as_deref()));

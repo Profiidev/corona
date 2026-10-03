@@ -66,6 +66,25 @@ impl Player {
 
 /// keeps the current player unless another one started playing, so pausing does not jump away
 /// Playing beats paused beats stopped, the current player stays on a tie.
+/// Keeps a player's old position stamp when the fresh read is where the old one predicts, so a
+/// snapshot of a player that only moved on with playback compares equal and notifies nobody.
+pub(crate) fn keep_positions(fresh: &mut [Player], old: &[Player]) {
+  const SLACK: Duration = Duration::from_millis(500);
+  for player in fresh {
+    let Some(prev) = old.iter().find(|p| p.name == player.name) else {
+      continue;
+    };
+    let predicted = prev.position_after(player.position_at.duration_since(prev.position_at));
+    if prev.status == player.status
+      && prev.rate == player.rate
+      && predicted.abs_diff(player.position) <= SLACK
+    {
+      player.position = prev.position;
+      player.position_at = prev.position_at;
+    }
+  }
+}
+
 pub(crate) fn pick_active(players: &[Player], current: Option<&str>) -> Option<String> {
   let rank = |p: &Player| match p.status {
     PlaybackStatus::Playing => 2,
@@ -128,6 +147,21 @@ mod tests {
       paused.position_after(Duration::from_secs(5)),
       Duration::from_secs(10)
     );
+  }
+
+  #[test]
+  fn positions_kept_while_on_track() {
+    let old = player("a", PlaybackStatus::Playing);
+    let mut fresh = old.clone();
+    fresh.position_at = old.position_at + Duration::from_secs(2);
+    fresh.position = old.position + Duration::from_millis(2100);
+    keep_positions(std::slice::from_mut(&mut fresh), std::slice::from_ref(&old));
+    assert_eq!(fresh, old);
+
+    // a seek is a real change
+    fresh.position = Duration::from_secs(60);
+    keep_positions(std::slice::from_mut(&mut fresh), std::slice::from_ref(&old));
+    assert_eq!(fresh.position, Duration::from_secs(60));
   }
 
   #[test]

@@ -4,14 +4,14 @@ use corona_components::{
   animation::size::SizeAnimation,
   components::scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
 };
-use corona_mpris::{MprisExt, PlaybackStatus};
+use corona_mpris::{MprisExt, PlaybackStatus, Player};
 use corona_surface::{
   bar::{BarStyle, Widget},
   panel::WdigetPanelExt,
 };
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
-  AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ObjectFit,
+  App, AppContext, Axis, Context, Empty, Entity, InteractiveElement, IntoElement, ObjectFit,
   ParentElement, Render, StatefulInteractiveElement, Styled, StyledImage, Subscription, Task,
   Window,
   assets::IconName,
@@ -33,8 +33,51 @@ const WIDTH_CHANGE: Duration = Duration::from_millis(400);
 pub struct ActivePlayer {
   scrolling: Entity<ScrollingTextState>,
   size: SizeAnimation,
+  shown: Option<Shown>,
   _subscriptions: [Subscription; 2],
   _ticker: Task<()>,
+}
+
+const RING_STEPS: f32 = 60.;
+
+#[derive(Clone, Debug, PartialEq)]
+struct Shown {
+  name: String,
+  title: String,
+  art: Option<String>,
+  progress: u8,
+}
+
+fn title(player: &Player) -> String {
+  match (&player.title, player.artists.is_empty()) {
+    (Some(title), false) => format!("{title} - {}", player.artists.join(", ")),
+    (Some(title), true) => title.clone(),
+    (None, _) => player.identity.clone(),
+  }
+}
+
+fn progress(player: &Player) -> f32 {
+  player.length.filter(|l| !l.is_zero()).map_or(0., |l| {
+    (player.position().as_secs_f32() / l.as_secs_f32()).min(1.)
+  })
+}
+
+impl ActivePlayer {
+  fn shown(cx: &App) -> Option<Shown> {
+    let player = cx.mpris().active_player(cx)?;
+    Some(Shown {
+      name: player.name.clone(),
+      title: title(player),
+      art: player.art_url.clone(),
+      progress: (progress(player) * RING_STEPS).round() as u8,
+    })
+  }
+
+  fn refresh(&mut self, cx: &mut Context<Self>) {
+    if Self::shown(cx) != self.shown {
+      cx.notify();
+    }
+  }
 }
 
 impl Widget for ActivePlayer {
@@ -54,19 +97,20 @@ impl Widget for ActivePlayer {
       }),
     ];
 
-    let ticker = cx.ticker(TICK, |_, cx| {
+    let ticker = cx.ticker(TICK, |this, cx| {
       if cx
         .mpris()
         .active_player(cx)
         .is_some_and(|p| p.status == PlaybackStatus::Playing)
       {
-        cx.notify();
+        this.refresh(cx);
       }
     });
 
     Self {
       scrolling: cx.new(|_| ScrollingTextState::default()),
       size: SizeAnimation::new(WIDTH_CHANGE),
+      shown: None,
       _subscriptions: subscriptions,
       _ticker: ticker,
     }
@@ -75,19 +119,13 @@ impl Widget for ActivePlayer {
 
 impl Render for ActivePlayer {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    self.shown = Self::shown(cx);
     let Some(player) = cx.mpris().active_player(cx) else {
       return Empty.into_any_element();
     };
     let theme = cx.theme();
-
-    let progress = player.length.filter(|l| !l.is_zero()).map_or(0., |l| {
-      (player.position().as_secs_f32() / l.as_secs_f32()).min(1.)
-    });
-    let title = match (&player.title, player.artists.is_empty()) {
-      (Some(title), false) => format!("{title} - {}", player.artists.join(", ")),
-      (Some(title), true) => title.clone(),
-      (None, _) => player.identity.clone(),
-    };
+    let progress = progress(player);
+    let title = title(player);
 
     let placeholder = || {
       Icon::new(IconName::Music)
