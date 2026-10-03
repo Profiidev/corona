@@ -5,6 +5,28 @@ use uuid::Uuid;
 
 use crate::{control_center::ControlCenter, widgets::button::Button};
 
+mod audio;
+mod bluetooth;
+mod brightness;
+mod calendar;
+mod media;
+mod network;
+mod notifications;
+mod power;
+mod sysinfo;
+mod weather;
+
+pub use audio::AudioButton;
+pub use bluetooth::BluetoothButton;
+pub use brightness::BrightnessButton;
+pub use calendar::CalendarButton;
+pub use media::MediaButton;
+pub use network::NetworkButton;
+pub use notifications::NotificationsButton;
+pub use power::PowerButton;
+pub use sysinfo::SysinfoButton;
+pub use weather::WeatherButton;
+
 pub struct ControlCenterButton;
 
 impl Widget for ControlCenterButton {

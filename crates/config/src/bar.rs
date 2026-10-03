@@ -38,9 +38,24 @@ impl Default for BarConfig {
       center_widgets: vec![WidgetConfig {
         widget_type: "control_center".to_string(),
       }],
-      end_widgets: vec![WidgetConfig {
-        widget_type: "control_center".to_string(),
-      }],
+      end_widgets: [
+        "audio",
+        "network",
+        "bluetooth",
+        "power",
+        "brightness",
+        "notifications",
+        "sysinfo",
+        "weather",
+        "calendar",
+        "media",
+        "control_center",
+      ]
+      .into_iter()
+      .map(|widget_type| WidgetConfig {
+        widget_type: widget_type.to_string(),
+      })
+      .collect(),
     }
   }
 }

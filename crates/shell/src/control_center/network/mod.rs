@@ -14,7 +14,7 @@ mod hidden_network;
 mod interface;
 mod secret_prompt;
 mod status;
-mod utils;
+pub(crate) mod utils;
 mod vpn;
 mod wifi;
 

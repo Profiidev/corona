@@ -1,4 +1,4 @@
-mod audio;
+pub(crate) mod audio;
 mod bluetooth;
 mod brightness;
 mod calendar;
@@ -6,7 +6,7 @@ mod dashboard;
 mod layout;
 mod media;
 mod nav;
-mod network;
+pub(crate) mod network;
 mod notifications;
 mod panel;
 mod power;

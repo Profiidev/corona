@@ -15,7 +15,10 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::audio::state::{DefaultState, NodeState, StreamState};
+use crate::control_center::audio::{
+  state::{DefaultState, NodeState, StreamState},
+  utils::volume_icon,
+};
 
 fn audio_btns(state: &NodeState, node: Option<&AudioNode>, mic: bool) -> Div {
   div()
@@ -43,15 +46,7 @@ fn audio_btns(state: &NodeState, node: Option<&AudioNode>, mic: bool) -> Div {
           IconName::Mic
         }
       } else {
-        if state.muted {
-          IconName::VolumeOff
-        } else if state.volume < f32::EPSILON {
-          IconName::VolumeX
-        } else if state.volume < 0.5 {
-          IconName::Volume1
-        } else {
-          IconName::Volume2
-        }
+        volume_icon(state.volume, state.muted)
       })
       .with_variant(if state.muted {
         ButtonVariant::Danger

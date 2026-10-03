@@ -1,5 +1,5 @@
 use corona_components::async_listener::AsyncListenerExt;
-use corona_network_manager::{InterfaceType, NetworkManagerExt, NmConnectivityState};
+use corona_network_manager::{NetworkManagerExt, NmConnectivityState};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
@@ -14,7 +14,10 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::network::{LoadingState, NetworkPanel, utils::address};
+use crate::control_center::network::{
+  LoadingState, NetworkPanel,
+  utils::{address, interface_icon},
+};
 
 impl NetworkPanel {
   pub fn status(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -22,11 +25,7 @@ impl NetworkPanel {
     let state = cx.network_manager().connectivity(cx);
     let connectivity_check_enabled = cx.network_manager().connectivity_check(cx).is_some();
 
-    let icon = match primary {
-      None => IconName::GlobeOff,
-      Some(i) if i.kind == InterfaceType::Wired => IconName::EthernetPort,
-      Some(_) => IconName::Wifi,
-    };
+    let icon = interface_icon(primary);
 
     let (label, variant) = match state {
       NmConnectivityState::Full => ("Online", TagVariant::Success),

@@ -1,4 +1,4 @@
-use corona_network_manager::{FailReason, Interface, NetworkManagerExt};
+use corona_network_manager::{FailReason, Interface, InterfaceType, NetworkManagerExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -7,6 +7,14 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::NetworkPanel;
+
+pub fn interface_icon(primary: Option<&Interface>) -> IconName {
+  match primary {
+    None => IconName::GlobeOff,
+    Some(i) if i.kind == InterfaceType::Wired => IconName::EthernetPort,
+    Some(_) => IconName::Wifi,
+  }
+}
 
 pub fn address(i: &Interface) -> String {
   if let Some(addr) = i.ip {

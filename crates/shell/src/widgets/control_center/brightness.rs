@@ -1,0 +1,24 @@
+use corona_surface::bar::Widget;
+use gpui_kit::{Context, IntoElement, Render, Window, assets::IconName};
+use uuid::Uuid;
+
+use crate::{
+  control_center::{BrightnessPanel, Standalone},
+  widgets::button::Button,
+};
+
+pub struct BrightnessButton;
+
+impl Widget for BrightnessButton {
+  const NAME: &'static str = "brightness";
+
+  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+    BrightnessButton
+  }
+}
+
+impl Render for BrightnessButton {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    Button::<_, Standalone<BrightnessPanel>>::new(cx, "brightness-button", IconName::Sun)
+  }
+}

@@ -4,7 +4,11 @@ use anyhow::Result;
 use corona_surface::bar::{BarExt, BarState};
 use gpui_kit::App;
 
-use crate::widgets::{ActiveWindow, ControlCenterButton, Workspaces};
+use crate::widgets::{
+  ActiveWindow, AudioButton, BluetoothButton, BrightnessButton, CalendarButton,
+  ControlCenterButton, MediaButton, NetworkButton, NotificationsButton, PowerButton, SysinfoButton,
+  WeatherButton, Workspaces,
+};
 
 mod control_center;
 pub mod overlays;
@@ -49,6 +53,16 @@ fn register_variants(cx: &mut App) {
 
   cx.bar_mut()
     .register::<ControlCenterButton>()
+    .register::<AudioButton>()
+    .register::<NetworkButton>()
+    .register::<BluetoothButton>()
+    .register::<PowerButton>()
+    .register::<BrightnessButton>()
+    .register::<NotificationsButton>()
+    .register::<SysinfoButton>()
+    .register::<WeatherButton>()
+    .register::<CalendarButton>()
+    .register::<MediaButton>()
     .register::<Workspaces>()
     .register::<ActiveWindow>();
 }

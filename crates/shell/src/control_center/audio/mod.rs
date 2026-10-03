@@ -19,7 +19,7 @@ use crate::control_center::{
 mod listener;
 mod state;
 mod ui;
-mod utils;
+pub(crate) mod utils;
 
 pub struct AudioPanel {
   source: DefaultState,
