@@ -37,8 +37,9 @@ pub struct Workspaces {
 
 impl Widget for Workspaces {
   const NAME: &'static str = "workspaces";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, display_id: Uuid, _options: Self::Options) -> Self {
     let compositor = cx.compositor();
 
     let windows = compositor.list_windows(cx);

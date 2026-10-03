@@ -8,9 +8,9 @@ use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, ConfigProvider, bar::BarConfig, placement::Placement};
 use corona_utils::display::display_uuid;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, Global, Styled, Subscription,
-  WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
-  WindowKind, WindowOptions,
+  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, EntityId, Global, Styled,
+  Subscription, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+  WindowId, WindowKind, WindowOptions,
   component::{ActiveTheme, Root},
   layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -193,6 +193,10 @@ impl BarState {
       .bars
       .get(&window.window_handle().window_id())?
       .upgrade()
+  }
+
+  pub fn is_grouped(window: &Window, cx: &App, widget_id: EntityId) -> bool {
+    Self::get(window, cx).is_some_and(|bar| bar.read(cx).is_grouped(widget_id))
   }
 
   pub(crate) fn display_id_for(&self, monitor: &str) -> Option<DisplayId> {

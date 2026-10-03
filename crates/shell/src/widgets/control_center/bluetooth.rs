@@ -11,8 +11,9 @@ pub struct BluetoothButton {
 
 impl Widget for BluetoothButton {
   const NAME: &'static str = "bluetooth";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let adapter = cx.bluetooth().adapter.clone();
     Self {
       _subscription: cx.observe(&adapter, |_, _, cx| cx.notify()),

@@ -1,5 +1,5 @@
 use corona_config::placement::Placement;
-use gpui_kit::{App, Styled, Window, component::ActiveTheme, prelude::FluentBuilder, px};
+use gpui_kit::{App, Context, Styled, Window, component::ActiveTheme, prelude::FluentBuilder, px};
 
 use crate::bar::BarState;
 
@@ -35,14 +35,15 @@ pub trait BarStyle: Styled + FluentBuilder {
       .flex()
   }
 
-  fn bar_pill(self, window: &Window, cx: &App) -> Self {
+  fn bar_pill<V: 'static>(self, window: &Window, cx: &Context<V>) -> Self {
+    let grouped = BarState::is_grouped(window, cx, cx.entity_id());
     self
       .flex_bar(window, cx)
       .items_center()
       .h(px(24.))
       .px_2()
       .rounded_full()
-      .bg(cx.theme().tokens.button_hover)
+      .when(!grouped, |this| this.bg(cx.theme().tokens.button_hover))
   }
 }
 

@@ -27,8 +27,9 @@ pub struct ActiveWindow {
 
 impl Widget for ActiveWindow {
   const NAME: &'static str = "active_window";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let active_window = cx.compositor().active_window.clone();
     let subscription = cx.observe(&active_window, |this, e, cx| {
       if e.read(cx).is_none() {

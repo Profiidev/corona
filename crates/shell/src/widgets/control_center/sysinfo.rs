@@ -8,8 +8,9 @@ pub struct SysinfoButton;
 
 impl Widget for SysinfoButton {
   const NAME: &'static str = "sysinfo";
+  type Options = ();
 
-  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     SysinfoButton
   }
 }

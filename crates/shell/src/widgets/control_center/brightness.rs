@@ -8,8 +8,9 @@ pub struct BrightnessButton;
 
 impl Widget for BrightnessButton {
   const NAME: &'static str = "brightness";
+  type Options = ();
 
-  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     BrightnessButton
   }
 }

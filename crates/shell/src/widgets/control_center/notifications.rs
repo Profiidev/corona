@@ -11,8 +11,9 @@ pub struct NotificationsButton {
 
 impl Widget for NotificationsButton {
   const NAME: &'static str = "notifications";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let notifications = cx.notifications().notifications.clone();
     Self {
       _subscription: cx.observe(&notifications, |_, _, cx| cx.notify()),

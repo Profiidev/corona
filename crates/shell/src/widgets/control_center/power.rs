@@ -8,8 +8,9 @@ pub struct PowerButton;
 
 impl Widget for PowerButton {
   const NAME: &'static str = "power";
+  type Options = ();
 
-  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     PowerButton
   }
 }

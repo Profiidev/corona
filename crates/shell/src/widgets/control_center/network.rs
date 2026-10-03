@@ -14,8 +14,9 @@ pub struct NetworkButton {
 
 impl Widget for NetworkButton {
   const NAME: &'static str = "network";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let primary = cx.network_manager().primary_interface.clone();
     Self {
       _subscription: cx.observe(&primary, |_, _, cx| cx.notify()),

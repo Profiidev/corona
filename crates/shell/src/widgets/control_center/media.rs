@@ -8,8 +8,9 @@ pub struct MediaButton;
 
 impl Widget for MediaButton {
   const NAME: &'static str = "media";
+  type Options = ();
 
-  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(_cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     MediaButton
   }
 }

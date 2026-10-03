@@ -39,8 +39,9 @@ pub struct ActivePlayer {
 
 impl Widget for ActivePlayer {
   const NAME: &'static str = "player";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let mpris = cx.mpris().clone();
     let subscriptions = [
       cx.observe(&mpris.players, |_, _, cx| cx.notify()),

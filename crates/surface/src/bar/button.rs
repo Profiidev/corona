@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
 use gpui_kit::{
-  App, Context, ElementId, IntoElement, ParentElement, RenderOnce, Styled, WeakEntity, Window,
+  AnyElement, App, Context, ElementId, IntoElement, ParentElement, RenderOnce, Styled, WeakEntity,
+  Window,
   base::FocusableExt,
   component::{self, ActiveTheme, Icon, Sizable, button::ButtonVariants},
   div,
@@ -10,7 +11,7 @@ use gpui_kit::{
 };
 
 use crate::{
-  bar::Widget,
+  bar::{BarState, Widget},
   panel::{Panel, WdigetPanelExt},
 };
 
@@ -24,6 +25,7 @@ pub struct Button<W: Widget, P: Panel> {
   view: WeakEntity<W>,
   danger: bool,
   dot: bool,
+  suffix: Option<AnyElement>,
   panel: PhantomData<fn() -> P>,
 }
 
@@ -37,6 +39,7 @@ impl<W: Widget, P: Panel> Button<W, P> {
       view,
       danger: false,
       dot: false,
+      suffix: None,
       panel: PhantomData,
     }
   }
@@ -50,10 +53,16 @@ impl<W: Widget, P: Panel> Button<W, P> {
     self.dot = dot;
     self
   }
+
+  pub fn suffix(mut self, suffix: impl IntoElement) -> Self {
+    self.suffix = Some(suffix.into_any_element());
+    self
+  }
 }
 
 impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
-  fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+  fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    let grouped = BarState::is_grouped(window, cx, self.view.entity_id());
     let dot = self.dot.then(|| {
       div()
         .absolute()
@@ -65,13 +74,24 @@ impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
     });
 
     let button = component::button::Button::new(self.id)
-      .when_else(self.danger, |b| b.danger(), |b| b.secondary())
+      .map(|b| match (self.danger, grouped) {
+        (true, _) => b.danger(),
+        (false, true) => b.ghost(),
+        (false, false) => b.secondary(),
+      })
       .rounded_full()
       .focus_ring(false)
       .with_size(px(ICON_SIZE))
       .p(px(PADDING))
       .cursor_pointer()
-      .child(self.icon.with_size(px(ICON_SIZE)))
+      .child(
+        div()
+          .flex()
+          .items_center()
+          .gap_1()
+          .child(self.icon.with_size(px(ICON_SIZE)))
+          .children(self.suffix),
+      )
       .on_click(move |_, window, cx| {
         self
           .view

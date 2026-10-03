@@ -1,7 +1,11 @@
-use std::{cell::Cell, collections::HashMap, rc::Rc};
+use std::{
+  cell::Cell,
+  collections::{HashMap, HashSet},
+  rc::Rc,
+};
 
 use gpui_kit::{
-  AnyView, Bounds, Div, EntityId, Path, PathBuilder, Pixels, Window, canvas,
+  AnyView, App, Bounds, Div, EntityId, Path, PathBuilder, Pixels, Window, canvas,
   component::{ActiveTheme, *},
   div, point,
   prelude::*,
@@ -11,7 +15,7 @@ use uuid::Uuid;
 
 use crate::bar::state::BarExt;
 use corona_config::{
-  bar::{BarConfig, WidgetConfig},
+  bar::{BarConfig, WidgetConfig, WidgetEntry},
   placement::{Placement, PlacementStyle, PlacmentBounds},
 };
 
@@ -20,26 +24,42 @@ pub struct Bar {
   height: f32,
   bounds: Rc<Cell<Bounds<Pixels>>>,
   widget_bounds: HashMap<EntityId, Rc<Cell<Bounds<Pixels>>>>,
-  start_widgets: Vec<AnyView>,
-  center_widgets: Vec<AnyView>,
-  end_widgets: Vec<AnyView>,
+  start_widgets: Vec<Entry>,
+  center_widgets: Vec<Entry>,
+  end_widgets: Vec<Entry>,
+  grouped: HashSet<EntityId>,
+}
+
+#[derive(Clone)]
+enum Entry {
+  Widget(AnyView),
+  Group(Vec<AnyView>),
 }
 
 impl Bar {
   pub fn new(config: BarConfig, cx: &mut Context<Bar>, display_id: Uuid) -> Self {
-    let mut init_widgets = |widgets: Vec<WidgetConfig>| {
+    let mut grouped = HashSet::new();
+    let init = |entry: &WidgetEntry, cx: &mut Context<Bar>| {
+      let data = cx.bar().widget(&entry.widget_type).cloned()?;
+      data.init(cx, display_id, entry.options.as_ref())
+    };
+    let mut init_widgets = |widgets: Vec<WidgetConfig>, cx: &mut Context<Bar>| {
       widgets
-        .into_iter()
-        .flat_map(|w| cx.bar().widget(&w.widget_type).cloned())
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|w| w.init(cx, display_id))
+        .iter()
+        .filter_map(|w| match w {
+          WidgetConfig::Widget(entry) => init(entry, cx).map(Entry::Widget),
+          WidgetConfig::Group { group } => {
+            let views: Vec<_> = group.iter().filter_map(|e| init(e, cx)).collect();
+            grouped.extend(views.iter().map(AnyView::entity_id));
+            (!views.is_empty()).then_some(Entry::Group(views))
+          }
+        })
         .collect::<Vec<_>>()
     };
 
-    let start_widgets = init_widgets(config.start_widgets);
-    let center_widgets = init_widgets(config.center_widgets);
-    let end_widgets = init_widgets(config.end_widgets);
+    let start_widgets = init_widgets(config.start_widgets, cx);
+    let center_widgets = init_widgets(config.center_widgets, cx);
+    let end_widgets = init_widgets(config.end_widgets, cx);
 
     Self {
       placement: config.placement,
@@ -49,6 +69,7 @@ impl Bar {
       start_widgets,
       center_widgets,
       end_widgets,
+      grouped,
     }
   }
 }
@@ -66,18 +87,41 @@ impl Bar {
     self.widget_bounds.get(&widget_id).map(|b| b.get())
   }
 
-  fn widgets(&mut self, views: Vec<AnyView>) -> Div {
+  pub fn is_grouped(&self, widget_id: EntityId) -> bool {
+    self.grouped.contains(&widget_id)
+  }
+
+  fn widget(&mut self, view: AnyView) -> Div {
+    let bounds = self
+      .widget_bounds
+      .entry(view.entity_id())
+      .or_default()
+      .clone();
+    div().on_prepaint(move |b, _, _| bounds.set(b)).child(view)
+  }
+
+  fn widgets(&mut self, entries: Vec<Entry>, cx: &App) -> Div {
+    let vertical = self.placement.is_vertical();
+    let capsule = cx.theme().tokens.button_hover;
+
     div()
       .absolute()
       .inset_0()
       .flex()
       .items_center()
       .gap_2()
-      .when(self.placement.is_vertical(), |d| d.flex_col())
-      .children(views.into_iter().map(|v| {
-        let bounds = self.widget_bounds.entry(v.entity_id()).or_default().clone();
-
-        div().on_prepaint(move |b, _, _| bounds.set(b)).child(v)
+      .when(vertical, |d| d.flex_col())
+      .children(entries.into_iter().map(|entry| {
+        match entry {
+          Entry::Widget(view) => self.widget(view),
+          Entry::Group(views) => div()
+            .flex()
+            .items_center()
+            .when(vertical, |d| d.flex_col())
+            .rounded_full()
+            .bg(capsule)
+            .children(views.into_iter().map(|v| self.widget(v))),
+        }
       }))
   }
 }
@@ -134,9 +178,13 @@ impl Render for Bar {
               bar_bounds.set(bounds);
             }
           })
-          .child(self.widgets(self.start_widgets.clone()).justify_start())
-          .child(self.widgets(self.center_widgets.clone()).justify_center())
-          .child(self.widgets(self.end_widgets.clone()).justify_end()),
+          .child(self.widgets(self.start_widgets.clone(), cx).justify_start())
+          .child(
+            self
+              .widgets(self.center_widgets.clone(), cx)
+              .justify_center(),
+          )
+          .child(self.widgets(self.end_widgets.clone(), cx).justify_end()),
       )
   }
 }

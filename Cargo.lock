@@ -1777,6 +1777,7 @@ dependencies = [
  "glob",
  "gpui-kit",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1946,6 +1947,7 @@ dependencies = [
  "gpui-kit",
  "jiff",
  "serde",
+ "serde_json",
  "tracing",
  "uuid",
  "zbus",
@@ -1962,6 +1964,8 @@ dependencies = [
  "corona_ipc",
  "corona_utils",
  "gpui-kit",
+ "serde",
+ "serde_json",
  "tracing",
  "uuid",
 ]

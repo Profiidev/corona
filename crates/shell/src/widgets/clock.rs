@@ -20,8 +20,9 @@ pub struct Clock {
 
 impl Widget for Clock {
   const NAME: &'static str = "clock";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let ticker = cx.spawn(async move |this, cx| {
       loop {
         let wait = 60 - u64::from(Zoned::now().second().unsigned_abs());

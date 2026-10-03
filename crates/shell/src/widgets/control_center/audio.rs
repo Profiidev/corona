@@ -14,8 +14,9 @@ pub struct AudioButton {
 
 impl Widget for AudioButton {
   const NAME: &'static str = "audio";
+  type Options = ();
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: Self::Options) -> Self {
     let sink = cx.pipewire().default_sink.clone();
     Self {
       _subscription: cx.observe(&sink, |_, _, cx| cx.notify()),
