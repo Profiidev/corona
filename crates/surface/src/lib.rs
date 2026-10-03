@@ -4,6 +4,7 @@ use gpui_kit::App;
 pub mod bar;
 pub mod commands;
 pub mod panel;
+pub mod popup;
 pub mod tooltip;
 
 pub fn init(cx: &mut App) -> Result<()> {

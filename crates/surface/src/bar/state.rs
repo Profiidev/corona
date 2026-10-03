@@ -195,6 +195,10 @@ impl BarState {
       .upgrade()
   }
 
+  pub fn placement(window: &Window, cx: &App) -> Placement {
+    Self::get(window, cx).map_or(Placement::Top, |bar| bar.read(cx).placement())
+  }
+
   pub fn is_grouped(window: &Window, cx: &App, widget_id: EntityId) -> bool {
     Self::get(window, cx).is_some_and(|bar| bar.read(cx).is_grouped(widget_id))
   }
@@ -215,11 +219,7 @@ impl BarState {
   }
 
   pub fn bar_axis(window: &Window, cx: &App) -> Axis {
-    let placement = Self::get(window, cx)
-      .map(|bar| bar.read(cx).placement())
-      .unwrap_or(Placement::Top);
-
-    if placement.is_horizontal() {
+    if Self::placement(window, cx).is_horizontal() {
       Axis::Horizontal
     } else {
       Axis::Vertical

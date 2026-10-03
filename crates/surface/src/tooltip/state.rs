@@ -1,19 +1,15 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use corona_config::{APP_NAME, placement::Placement};
+use corona_config::placement::Placement;
 use gpui_kit::{
-  AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, Styled,
-  WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
-  WindowOptions,
-  component::Root,
-  point,
-  popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupOptions},
-  px,
+  AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Size, Styled, WeakEntity,
+  Window, component::Root, px,
 };
 
 use crate::{
   bar::BarState,
+  popup::popup_options,
   tooltip::{
     base::{BORDER, BaseTooltip},
     variants::Tooltip,
@@ -104,41 +100,8 @@ impl TooltipState {
     placement: Placement,
     cx: &mut App,
   ) -> Result<()> {
-    let gap = px(TOOLTIP_GAP);
-    let (popup_anchor, gravity, offset) = match placement {
-      Placement::Top => (
-        PopupAnchor::Bottom,
-        PopupGravity::Bottom,
-        point(px(0.), gap),
-      ),
-      Placement::Bottom => (PopupAnchor::Top, PopupGravity::Top, point(px(0.), -gap)),
-      Placement::Left => (PopupAnchor::Right, PopupGravity::Right, point(gap, px(0.))),
-      Placement::Right => (PopupAnchor::Left, PopupGravity::Left, point(-gap, px(0.))),
-    };
-
     cx.open_window(
-      WindowOptions {
-        kind: WindowKind::AnchoredPopup(PopupOptions {
-          parent,
-          anchor_rect: anchor,
-          anchor: popup_anchor,
-          gravity,
-          constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
-            | PopupConstraintAdjustment::SLIDE_Y,
-          offset,
-          grab: false,
-        }),
-        window_background: WindowBackgroundAppearance::Transparent,
-        window_decorations: Some(WindowDecorations::Client),
-        inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: Point::default(),
-          size,
-        })),
-        ..Default::default()
-      },
+      popup_options(parent, anchor, placement, size, px(TOOLTIP_GAP), false),
       |window, cx| {
         let view = cx.new(|_| BaseTooltip::new(tooltip));
 
