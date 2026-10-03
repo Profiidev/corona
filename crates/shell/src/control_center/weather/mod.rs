@@ -7,7 +7,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod current;
 mod forecast;
@@ -24,6 +24,8 @@ pub struct WeatherPanel {
 }
 
 impl ControlCenterPanel for WeatherPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Weather;
+
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let weather = cx.weather().clone();
     let subscriptions = [

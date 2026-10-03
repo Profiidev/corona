@@ -21,6 +21,7 @@ use gpui_kit::{
 use crate::control_center::{
   ControlCenterPanel,
   brightness::lights::{Light, displays, keyboard},
+  variants::ControlCenterType,
 };
 
 mod lights;
@@ -37,6 +38,8 @@ pub struct BrightnessPanel {
 }
 
 impl ControlCenterPanel for BrightnessPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Brightness;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let displays = cx.brightness().displays.clone();
     let keyboard = cx.power().keyboard_backlight.clone();

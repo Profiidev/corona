@@ -21,6 +21,8 @@ pub struct ControlCenterNav {
 }
 
 impl ControlCenterNav {
+  pub const WIDTH: f32 = 50.0;
+
   pub fn new(selected: ControlCenterType) -> Self {
     ControlCenterNav {
       selected,
@@ -43,7 +45,7 @@ impl RenderOnce for ControlCenterNav {
     let on_click = self.on_click;
 
     div()
-      .w(px(50.))
+      .w(px(Self::WIDTH))
       .h_full()
       .p_2()
       .flex()

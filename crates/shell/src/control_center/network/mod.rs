@@ -7,6 +7,7 @@ use gpui_kit::{
 use crate::control_center::{
   ControlCenterPanel,
   network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt},
+  variants::ControlCenterType,
 };
 
 mod hidden_network;
@@ -44,6 +45,8 @@ pub struct NetworkPanel {
 }
 
 impl ControlCenterPanel for NetworkPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Network;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let secret_request = cx.network_manager().secret_request.clone();
     let subscription = cx.observe_in(&secret_request, window, |this, _, window, cx| {

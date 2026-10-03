@@ -8,7 +8,9 @@ use gpui_kit::{
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::control_center::{ControlCenterPanel, bluetooth::prompt::PairingPrompt};
+use crate::control_center::{
+  ControlCenterPanel, bluetooth::prompt::PairingPrompt, variants::ControlCenterType,
+};
 
 mod devices;
 mod prompt;
@@ -23,6 +25,8 @@ pub struct BluetoothPanel {
 }
 
 impl ControlCenterPanel for BluetoothPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Bluetooth;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let bluetooth = cx.bluetooth().clone();
     let subscriptions = [

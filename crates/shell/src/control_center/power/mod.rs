@@ -9,7 +9,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod battery;
 mod devices;
@@ -21,6 +21,8 @@ pub struct PowerPanel {
 }
 
 impl ControlCenterPanel for PowerPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Power;
+
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let power = cx.power().clone();
 

@@ -16,7 +16,7 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod player;
 
@@ -67,6 +67,8 @@ pub struct MediaPanel {
 }
 
 impl ControlCenterPanel for MediaPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Media;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let mpris = cx.mpris().clone();
     let items = player_items(mpris.list_players(cx));

@@ -13,6 +13,7 @@ use crate::control_center::{
     state::{DEFAULT_SINK_ID, DefaultState, StreamState},
     ui::{audio_node, audio_stream},
   },
+  variants::ControlCenterType,
 };
 
 mod listener;
@@ -30,6 +31,8 @@ pub struct AudioPanel {
 }
 
 impl ControlCenterPanel for AudioPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Audio;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let pipewire = cx.pipewire();
     let sources = pipewire.list_sources(cx).to_vec();

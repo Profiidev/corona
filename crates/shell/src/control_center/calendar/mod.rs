@@ -13,7 +13,7 @@ use gpui_kit::{
 };
 use jiff::{Zoned, civil::Date};
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod month;
 
@@ -27,6 +27,8 @@ pub struct CalendarPanel {
 }
 
 impl ControlCenterPanel for CalendarPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Calendar;
+
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let ticker = cx.spawn(async move |this, cx| {
       loop {

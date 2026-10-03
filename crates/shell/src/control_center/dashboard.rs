@@ -2,13 +2,15 @@ use gpui_kit::{Context, IntoElement, Render, Window};
 
 use corona_script::{Script, ScriptManagerExt};
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 pub struct DashboardPanel {
   script: Script,
 }
 
 impl ControlCenterPanel for DashboardPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Dashboard;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let script = cx
       .load_plugin_view("test", "test", window)

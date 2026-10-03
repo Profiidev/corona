@@ -14,7 +14,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod notification;
 
@@ -35,6 +35,8 @@ pub struct NotificationsPanel {
 }
 
 impl ControlCenterPanel for NotificationsPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Notifications;
+
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let notifications = cx.notifications().clone();
 

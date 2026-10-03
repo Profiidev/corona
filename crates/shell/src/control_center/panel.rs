@@ -1,8 +1,10 @@
 use corona_surface::panel::Panel;
-use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
+use gpui_kit::{
+  AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div,
+};
 
 use crate::control_center::{
-  ControlCenterPanelHandle, layout::ControlCenterLayout, nav::ControlCenterNav,
+  ControlCenterPanel, ControlCenterPanelHandle, layout::ControlCenterLayout, nav::ControlCenterNav,
   variants::ControlCenterType,
 };
 
@@ -23,6 +25,29 @@ impl Panel for ControlCenter {
       panel: selected.handle(window, cx),
       selected,
     }
+  }
+}
+
+pub struct Standalone<T: ControlCenterPanel>(Entity<T>);
+
+impl<T: ControlCenterPanel> Panel for Standalone<T> {
+  const NAME: &'static str = T::TYPE.as_str();
+  const WIDTH: f32 = ControlCenter::WIDTH - 8.0 - ControlCenterNav::WIDTH;
+  const HEIGHT: f32 = <T as ControlCenterPanel>::HEIGHT;
+
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
+    Self(cx.new(|cx| T::init(window, cx)))
+  }
+}
+
+impl<T: ControlCenterPanel> Render for Standalone<T> {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    div().size_full().p_2().child(
+      ControlCenterLayout::new(T::TYPE)
+        .closes::<Self>()
+        .buttons(self.0.buttons(cx).into_iter())
+        .content(self.0.clone()),
+    )
   }
 }
 

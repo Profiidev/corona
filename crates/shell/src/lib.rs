@@ -1,16 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use corona_surface::{
-  bar::{BarExt, BarState},
-  panel::AppPanelExt,
-};
+use corona_surface::bar::{BarExt, BarState};
 use gpui_kit::App;
 
-use crate::{
-  control_center::ControlCenter,
-  widgets::{ActiveWindow, ControlCenterButton, Workspaces},
-};
+use crate::widgets::{ActiveWindow, ControlCenterButton, Workspaces};
 
 mod control_center;
 pub mod overlays;
@@ -51,7 +45,7 @@ fn init_integrations(cx: &mut App) {
 }
 
 fn register_variants(cx: &mut App) {
-  cx.panel().register::<ControlCenter>();
+  control_center::register_panels(cx);
 
   cx.bar_mut()
     .register::<ControlCenterButton>()

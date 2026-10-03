@@ -5,7 +5,7 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::ControlCenterPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod details;
 mod graphs;
@@ -15,6 +15,8 @@ pub struct SysinfoPanel {
 }
 
 impl ControlCenterPanel for SysinfoPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Sysinfo;
+
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let monitor = cx.system_monitor().clone();
 

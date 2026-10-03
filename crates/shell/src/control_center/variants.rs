@@ -23,7 +23,7 @@ pub enum ControlCenterType {
 }
 
 impl ControlCenterType {
-  pub fn as_str(&self) -> &'static str {
+  pub const fn as_str(&self) -> &'static str {
     match self {
       ControlCenterType::Dashboard => "dashboard",
       ControlCenterType::Audio => "audio",

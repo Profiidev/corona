@@ -1,4 +1,5 @@
-use corona_surface::panel::AppPanelExt;
+use anyhow::Result;
+use corona_surface::panel::{AppPanelExt, Panel};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, IntoElement, ParentElement, RenderOnce, Styled, Window, assets::IconName,
@@ -12,6 +13,7 @@ pub struct ControlCenterLayout {
   selected: ControlCenterType,
   buttons: Vec<AnyElement>,
   content: Option<AnyElement>,
+  close: fn(&mut App) -> Result<()>,
 }
 
 impl ControlCenterLayout {
@@ -20,7 +22,13 @@ impl ControlCenterLayout {
       selected,
       buttons: Vec::new(),
       content: None,
+      close: |cx| cx.close_panel::<ControlCenter>(),
     }
+  }
+
+  pub fn closes<P: Panel>(mut self) -> Self {
+    self.close = |cx| cx.close_panel::<P>();
+    self
   }
 
   pub fn buttons(mut self, buttons: impl Iterator<Item = impl IntoElement>) -> Self {
@@ -59,8 +67,8 @@ impl RenderOnce for ControlCenterLayout {
             Button::new("close")
               .icon(IconName::X)
               .cursor_pointer()
-              .on_click(|_, _, cx| {
-                let _ = cx.close_panel::<ControlCenter>().log_err();
+              .on_click(move |_, _, cx| {
+                let _ = (self.close)(cx).log_err();
               }),
           ),
       )

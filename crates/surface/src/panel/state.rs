@@ -93,6 +93,17 @@ impl PanelState {
     toggle: bool,
     cx: &mut App,
   ) -> Result<()> {
+    let others: Vec<_> = cx
+      .global::<PanelState>()
+      .panels
+      .iter()
+      .filter(|(name, _)| **name != data.name)
+      .filter_map(|(_, (_, panel))| panel.upgrade())
+      .collect();
+    for panel in others {
+      panel.update(cx, |panel, cx| panel.close(cx));
+    }
+
     if let Some((display, panel)) = Self::get(&data.name, cx) {
       let (current, open) = panel.read_with(cx, |p, _| (p.align(), p.is_open()));
 
