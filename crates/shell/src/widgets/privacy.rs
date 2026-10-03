@@ -4,7 +4,7 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use corona_pipewire::{CaptureAccess, CaptureKind, PipewireExt};
+use corona_pipewire::{CaptureKind, PipewireExt};
 use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
@@ -97,13 +97,61 @@ impl Render for Privacy {
         MouseButton::Left,
         cx.listener(|this, _, window, cx| {
           let anchor = this.bounds.get();
-          let size = log_size(cx.pipewire().capture_log(cx).len());
+          let size = log_size(apps(cx).len());
           popup::open(anchor, size, window, cx, PrivacyLog::new);
         }),
       )
       .on_prepaint(move |b, _, _| bounds.set(b))
       .into_any_element()
   }
+}
+
+#[derive(Debug, PartialEq)]
+struct AppAccess {
+  name: String,
+  kinds: Vec<(CaptureKind, bool)>,
+  ended: Option<SystemTime>,
+}
+
+type Access = (CaptureKind, Option<String>, Option<SystemTime>);
+
+fn by_app(log: impl IntoIterator<Item = Access>) -> Vec<AppAccess> {
+  let mut apps: Vec<AppAccess> = Vec::new();
+  for (kind, name, ended) in log {
+    let name = name.unwrap_or_else(|| capture_label(kind).to_string());
+    let ongoing = ended.is_none();
+    let app = match apps.iter_mut().find(|a| a.name == name) {
+      Some(app) => app,
+      None => {
+        apps.push(AppAccess {
+          name,
+          kinds: Vec::new(),
+          ended,
+        });
+        apps.last_mut().expect("just pushed")
+      }
+    };
+    match app.kinds.iter_mut().find(|(k, _)| *k == kind) {
+      Some((_, active)) => *active |= ongoing,
+      None => app.kinds.push((kind, ongoing)),
+    }
+    app.ended = match (app.ended, ended) {
+      (Some(a), Some(b)) => Some(a.max(b)),
+      _ => None,
+    };
+  }
+  for app in &mut apps {
+    app
+      .kinds
+      .sort_by_key(|(kind, _)| KINDS.iter().position(|k| k == kind));
+  }
+  apps.sort_by_key(|app| app.ended.map(std::cmp::Reverse));
+  apps
+}
+
+fn apps(cx: &App) -> Vec<AppAccess> {
+  let log = cx.pipewire().capture_log(cx);
+  by_app(log.iter().map(|a| (a.kind, a.name.clone(), a.ended)))
 }
 
 fn log_size(entries: usize) -> gpui_kit::Size<Pixels> {
@@ -130,8 +178,8 @@ struct PrivacyLog {
 impl PrivacyLog {
   fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
     let log = cx.pipewire().capture_log.clone();
-    let subscription = cx.observe_in(&log, window, |_, log, window, cx| {
-      window.resize(log_size(log.read(cx).len()));
+    let subscription = cx.observe_in(&log, window, |_, _, window, cx| {
+      window.resize(log_size(apps(cx).len()));
       cx.notify();
     });
     Self {
@@ -141,30 +189,26 @@ impl PrivacyLog {
     }
   }
 
-  fn entry(index: usize, access: &CaptureAccess, now: SystemTime, cx: &App) -> impl IntoElement {
+  fn entry(index: usize, app: &AppAccess, now: SystemTime, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
-    let ongoing = access.ended.is_none();
-    let color = if ongoing {
-      theme.primary
-    } else {
-      theme.muted_foreground
-    };
-    let name = access
-      .name
-      .clone()
-      .unwrap_or_else(|| capture_label(access.kind).to_string());
-    let when = match access.ended {
-      None => "Recording".to_string(),
-      Some(ended) => ago(ended, now),
+    let (active, idle) = (theme.primary, theme.muted_foreground);
+    let (when, color) = match app.ended {
+      None => ("Recording".to_string(), active),
+      Some(ended) => (ago(ended, now), idle),
     };
 
     popup::row(SharedString::from(format!("access-{index}")), cx)
       .child(
-        Icon::new(capture_icon(access.kind))
-          .with_size(px(14.))
-          .text_color(color),
+        div()
+          .flex()
+          .gap_1()
+          .children(app.kinds.iter().map(|&(kind, on)| {
+            Icon::new(capture_icon(kind))
+              .with_size(px(14.))
+              .text_color(if on { active } else { idle })
+          })),
       )
-      .child(div().flex_1().min_w_0().truncate().child(name))
+      .child(div().flex_1().min_w_0().truncate().child(app.name.clone()))
       .child(div().text_xs().text_color(color).child(when))
   }
 }
@@ -177,7 +221,7 @@ impl Focusable for PrivacyLog {
 
 impl Render for PrivacyLog {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let log = cx.pipewire().capture_log(cx).to_vec();
+    let apps = apps(cx);
     let now = SystemTime::now();
     let muted = cx.theme().muted_foreground;
 
@@ -188,7 +232,7 @@ impl Render for PrivacyLog {
           .child("Recent access"),
       )
       .child(popup::separator(cx))
-      .when(log.is_empty(), |d| {
+      .when(apps.is_empty(), |d| {
         d.child(
           popup::row("empty", cx)
             .text_color(muted)
@@ -196,11 +240,11 @@ impl Render for PrivacyLog {
         )
       })
       .children(
-        log
+        apps
           .iter()
           .take(LOG_ROWS)
           .enumerate()
-          .map(|(i, access)| Self::entry(i, access, now, cx)),
+          .map(|(i, app)| Self::entry(i, app, now, cx)),
       )
   }
 }
@@ -208,6 +252,36 @@ impl Render for PrivacyLog {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn one_row_per_app() {
+    use CaptureKind::*;
+    let at = |secs| Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs));
+    let name = |n: &str| Some(n.to_string());
+    // newest first, like the log
+    let apps = by_app([
+      (Microphone, name("Discord"), at(50)),
+      (Screen, name("OBS"), None),
+      (Microphone, name("Discord"), at(30)),
+      (Screen, name("Discord"), at(40)),
+      (Microphone, name("OBS"), at(10)),
+    ]);
+    assert_eq!(
+      apps,
+      [
+        AppAccess {
+          name: "OBS".into(),
+          kinds: vec![(Microphone, false), (Screen, true)],
+          ended: None,
+        },
+        AppAccess {
+          name: "Discord".into(),
+          kinds: vec![(Microphone, false), (Screen, false)],
+          ended: at(50),
+        },
+      ]
+    );
+  }
 
   #[test]
   fn relative_time() {
