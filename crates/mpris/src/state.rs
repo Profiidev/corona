@@ -65,16 +65,19 @@ impl Player {
 }
 
 /// keeps the current player unless another one started playing, so pausing does not jump away
+/// Playing beats paused beats stopped, the current player stays on a tie.
 pub(crate) fn pick_active(players: &[Player], current: Option<&str>) -> Option<String> {
-  let current = current.and_then(|name| players.iter().find(|p| p.name == name));
-  let playing = players.iter().find(|p| p.status == PlaybackStatus::Playing);
-  match (current, playing) {
-    (Some(current), _) if current.status == PlaybackStatus::Playing => Some(current),
-    (_, Some(playing)) => Some(playing),
-    (Some(current), None) => Some(current),
-    (None, None) => players.first(),
-  }
-  .map(|p| p.name.clone())
+  let rank = |p: &Player| match p.status {
+    PlaybackStatus::Playing => 2,
+    PlaybackStatus::Paused => 1,
+    PlaybackStatus::Stopped => 0,
+  };
+  let best = players.iter().map(rank).max()?;
+  players
+    .iter()
+    .find(|p| Some(p.name.as_str()) == current && rank(p) == best)
+    .or_else(|| players.iter().find(|p| rank(p) == best))
+    .map(|p| p.name.clone())
 }
 
 #[cfg(test)]
@@ -138,5 +141,9 @@ mod tests {
     assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
     assert_eq!(pick_active(&players, Some("gone")).as_deref(), Some("a"));
     assert_eq!(pick_active(&[], Some("a")), None);
+    // a paused player with a track beats a stopped one, even the current
+    let players = [player("a", Stopped), player("b", Paused)];
+    assert_eq!(pick_active(&players, None).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, Some("a")).as_deref(), Some("b"));
   }
 }

@@ -74,16 +74,10 @@ impl Default for BarConfig {
       ))
       .chain(
         [
-          "audio",
-          "network",
           "bluetooth",
-          "power",
-          "brightness",
+          "network",
+          "audio",
           "notifications",
-          "sysinfo",
-          "weather",
-          "calendar",
-          "media",
           "control_center",
         ]
         .map(WidgetConfig::widget),
