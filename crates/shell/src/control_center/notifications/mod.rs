@@ -42,6 +42,7 @@ impl ControlCenterPanel for NotificationsPanel {
 
     let subscriptions = [
       cx.observe_in(&notifications.notifications, window, |_, _, window, cx| {
+        cx.notifications().clone().mark_all_read(cx);
         window.refresh();
         cx.notify();
       }),
@@ -51,6 +52,8 @@ impl ControlCenterPanel for NotificationsPanel {
       }),
       cx.observe(&notifications.active, |_, _, cx| cx.notify()),
     ];
+
+    notifications.mark_all_read(cx);
 
     let ticker = cx.spawn(async move |this, cx| {
       loop {

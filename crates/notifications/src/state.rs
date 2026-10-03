@@ -26,6 +26,7 @@ pub struct Notification {
   pub desktop_entry: Option<String>,
   pub resident: bool,
   pub time: SystemTime,
+  pub read: bool,
 }
 
 pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
@@ -38,6 +39,12 @@ pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
       label: label.clone(),
     })
     .collect()
+}
+
+pub(crate) fn mark_read(list: &mut [Notification]) -> bool {
+  let changed = list.iter().any(|n| !n.read);
+  list.iter_mut().for_each(|n| n.read = true);
+  changed
 }
 
 pub(crate) fn insert(list: &mut Vec<Notification>, notification: Notification) {
@@ -61,6 +68,7 @@ mod tests {
       desktop_entry: None,
       resident: false,
       time: SystemTime::UNIX_EPOCH,
+      read: false,
     }
   }
 
@@ -81,5 +89,11 @@ mod tests {
     insert(&mut list, notification(1, "first, updated"));
     let summaries: Vec<_> = list.iter().map(|n| n.summary.as_str()).collect();
     assert_eq!(summaries, ["first, updated", "second"]);
+
+    assert!(mark_read(&mut list));
+    assert!(!mark_read(&mut list));
+    // a replacement is new content, so it is unread again
+    insert(&mut list, notification(2, "second, updated"));
+    assert!(list.iter().any(|n| !n.read));
   }
 }

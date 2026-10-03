@@ -49,6 +49,18 @@ impl Notifications {
     *self.active.read(cx)
   }
 
+  pub fn has_unread(&self, cx: &App) -> bool {
+    self.list(cx).iter().any(|n| !n.read)
+  }
+
+  pub fn mark_all_read(&self, cx: &mut App) {
+    self.notifications.update(cx, |list, cx| {
+      if state::mark_read(list) {
+        cx.notify();
+      }
+    });
+  }
+
   pub fn set_do_not_disturb(&self, enabled: bool, cx: &mut App) {
     self.do_not_disturb.write(cx, enabled);
   }

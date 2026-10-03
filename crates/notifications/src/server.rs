@@ -71,6 +71,7 @@ impl Server {
       desktop_entry: hint(&hints, "desktop-entry"),
       resident: hint(&hints, "resident").unwrap_or(false),
       time: SystemTime::now(),
+      read: false,
     };
     let _ = self.events.send(Event::Notify(notification));
     id
