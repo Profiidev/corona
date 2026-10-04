@@ -1,5 +1,6 @@
 mod convert;
 mod gpu;
+mod live;
 mod view;
 mod wayland;
 
@@ -7,6 +8,7 @@ use anyhow::Result;
 pub use image;
 
 pub use convert::RgbaImageExt;
+pub use live::capture_first_toplevel;
 pub use view::FrameView;
 pub use wayland::{Capturer, Frame};
 

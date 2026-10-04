@@ -66,6 +66,7 @@ glob = "0.3.4"
 uuid = { version = "1.26.1", features = ["v5"] }
 zbus = "5.19.0"
 futures-lite = "2.6.1"
+futures = "0.3.34"
 smol = "2.0.2"
 
 [package]

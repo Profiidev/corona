@@ -17,7 +17,7 @@ use crate::view::FrameView;
 use image::RgbaImage;
 use rustix::fs::{MemfdFlags, ftruncate, major, memfd_create, minor, stat};
 use wayland_client::{
-  Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop,
+  Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop, event_created_child,
   globals::{GlobalListContents, registry_queue_init},
   protocol::{
     wl_buffer::WlBuffer,
@@ -28,7 +28,12 @@ use wayland_client::{
   },
 };
 use wayland_protocols::ext::{
+  foreign_toplevel_list::v1::client::{
+    ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
+    ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
+  },
   image_capture_source::v1::client::{
+    ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
   },
@@ -50,6 +55,7 @@ struct State {
   format: Option<wl_shm::Format>,
   dmabuf_device: Option<u64>,
   dmabuf_formats: Vec<(u32, Vec<u64>)>,
+  toplevels: Vec<ExtForeignToplevelHandleV1>,
   session_done: bool,
   frame: Option<Result<(), String>>,
 }
@@ -76,6 +82,8 @@ pub struct Capturer {
   gbm: Option<(u64, gbm::Device<File>)>,
   copy: ExtImageCopyCaptureManagerV1,
   sources: ExtOutputImageCaptureSourceManagerV1,
+  toplevel_sources: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
+  _toplevel_list: Option<ExtForeignToplevelListV1>,
 }
 
 /// Formats sampled as BGRA/BGRX words, see [`Dmabuf`].
@@ -120,6 +128,8 @@ impl Capturer {
       .bind(&qh, 1..=1, ())
       .context("compositor lacks ext-image-copy-capture-v1")?;
     let sources: ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ())?;
+    let toplevel_sources = globals.bind(&qh, 1..=1, ()).ok();
+    let toplevel_list = globals.bind(&qh, 1..=1, ()).ok();
 
     for global in globals.contents().clone_list() {
       if global.interface == "wl_output" {
@@ -141,34 +151,26 @@ impl Capturer {
       gbm: None,
       copy,
       sources,
+      toplevel_sources,
+      _toplevel_list: toplevel_list,
     })
   }
 
   pub fn capture(&mut self, output: &str) -> Result<Frame> {
-    let (queue, qh, state) = (&mut self.queue, &self.qh, &mut self.state);
-    state.size = (0, 0);
-    state.format = None;
-    state.dmabuf_device = None;
-    state.dmabuf_formats.clear();
-    state.session_done = false;
-    state.frame = None;
-
-    let wl_output = state
+    let wl_output = self
+      .state
       .outputs
       .iter()
       .find(|(_, n)| n.as_deref() == Some(output))
       .ok_or_else(|| anyhow!("no output {output}"))?;
-    let source = self.sources.create_source(&wl_output.0, qh, ());
-
-    let session = self.copy.create_session(&source, Options::empty(), qh, ());
-    while !state.session_done && state.frame.is_none() {
-      queue.blocking_dispatch(state)?;
-    }
-    if let Some(Err(e)) = state.frame.take() {
-      session.destroy();
-      source.destroy();
-      bail!("capture failed: {e}");
-    }
+    let source = self.sources.create_source(&wl_output.0, &self.qh, ());
+    let session = match self.start_session(&source) {
+      Ok(session) => session,
+      Err(e) => {
+        source.destroy();
+        return Err(e);
+      }
+    };
 
     let frame = match self.alloc_dmabuf() {
       Ok(Some(frame)) => self.capture_into(&session, frame).and_then(|mut frame| {
@@ -192,6 +194,81 @@ impl Capturer {
     session.destroy();
     source.destroy();
     frame
+  }
+
+  /// A capture source for the first toplevel the compositor listed.
+  pub(crate) fn first_toplevel_source(&mut self) -> Result<ExtImageCaptureSourceV1> {
+    let manager = self
+      .toplevel_sources
+      .as_ref()
+      .context("compositor lacks ext-foreign-toplevel-image-capture-source-v1")?;
+    let toplevel = self
+      .state
+      .toplevels
+      .first()
+      .context("no toplevel to capture")?;
+    Ok(manager.create_source(toplevel, &self.qh, ()))
+  }
+
+  /// Opens a session and waits for its buffer constraints.
+  pub(crate) fn start_session(
+    &mut self,
+    source: &ExtImageCaptureSourceV1,
+  ) -> Result<ExtImageCopyCaptureSessionV1> {
+    let (queue, qh, state) = (&mut self.queue, &self.qh, &mut self.state);
+    state.size = (0, 0);
+    state.format = None;
+    state.dmabuf_device = None;
+    state.dmabuf_formats.clear();
+    state.session_done = false;
+    state.frame = None;
+
+    let session = self.copy.create_session(source, Options::empty(), qh, ());
+    while !state.session_done && state.frame.is_none() {
+      queue.blocking_dispatch(state)?;
+    }
+    if let Some(Err(e)) = state.frame.take() {
+      session.destroy();
+      bail!("capture failed: {e}");
+    }
+    Ok(session)
+  }
+
+  /// The buffer size the session currently asks for.
+  pub(crate) fn size(&self) -> (u32, u32) {
+    self.state.size
+  }
+
+  /// A buffer for the current session, a dmabuf when possible.
+  pub(crate) fn alloc(&mut self) -> Result<(Frame, WlBuffer)> {
+    match self.alloc_dmabuf() {
+      Ok(Some(buffer)) => return Ok(buffer),
+      Ok(None) => tracing::warn!("no usable dmabuf format offered, using shm"),
+      Err(e) => tracing::warn!("dmabuf unavailable, using shm: {e:#}"),
+    }
+    self.alloc_shm()
+  }
+
+  /// Captures the next frame of `session` into `buffer`.
+  pub(crate) fn copy(
+    &mut self,
+    session: &ExtImageCopyCaptureSessionV1,
+    buffer: &WlBuffer,
+  ) -> Result<()> {
+    let (queue, qh, state) = (&mut self.queue, &self.qh, &mut self.state);
+    let (w, h) = state.size;
+    state.frame = None;
+
+    let copy = session.create_frame(qh, ());
+    copy.attach_buffer(buffer);
+    copy.damage_buffer(0, 0, w as i32, h as i32);
+    copy.capture();
+    while state.frame.is_none() {
+      queue.blocking_dispatch(state)?;
+    }
+    let result = state.frame.take().unwrap();
+    copy.destroy();
+    result.map_err(|e| anyhow!("capture failed: {e}"))
   }
 
   /// A dmabuf on the device the compositor asked for, with any modifier it
@@ -319,23 +396,9 @@ impl Capturer {
     session: &ExtImageCopyCaptureSessionV1,
     (frame, buffer): (Frame, WlBuffer),
   ) -> Result<Frame> {
-    let (queue, qh, state) = (&mut self.queue, &self.qh, &mut self.state);
-    let (w, h) = state.size;
-    state.frame = None;
-
-    let copy = session.create_frame(qh, ());
-    copy.attach_buffer(&buffer);
-    copy.damage_buffer(0, 0, w as i32, h as i32);
-    copy.capture();
-    while state.frame.is_none() {
-      queue.blocking_dispatch(state)?;
-    }
-    let result = state.frame.take().unwrap();
-
-    copy.destroy();
+    let result = self.copy(session, &buffer);
     buffer.destroy();
-    result.map_err(|e| anyhow!("capture failed: {e}"))?;
-    Ok(frame)
+    result.map(|()| frame)
   }
 }
 
@@ -501,4 +564,25 @@ delegate_noop!(State: ExtImageCaptureSourceV1);
 delegate_noop!(State: ExtImageCopyCaptureManagerV1);
 delegate_noop!(State: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(State: ignore ZwpLinuxDmabufV1);
+delegate_noop!(State: ignore ExtForeignToplevelHandleV1);
+delegate_noop!(State: ExtForeignToplevelImageCaptureSourceManagerV1);
+
+impl Dispatch<ExtForeignToplevelListV1, ()> for State {
+  fn event(
+    state: &mut Self,
+    _: &ExtForeignToplevelListV1,
+    event: ext_foreign_toplevel_list_v1::Event,
+    _: &(),
+    _: &Connection,
+    _: &QueueHandle<Self>,
+  ) {
+    if let ext_foreign_toplevel_list_v1::Event::Toplevel { toplevel } = event {
+      state.toplevels.push(toplevel);
+    }
+  }
+
+  event_created_child!(State, ExtForeignToplevelListV1, [
+    ext_foreign_toplevel_list_v1::EVT_TOPLEVEL_OPCODE => (ExtForeignToplevelHandleV1, ()),
+  ]);
+}
 delegate_noop!(State: ZwpLinuxBufferParamsV1);

@@ -1949,6 +1949,7 @@ dependencies = [
  "corona_utils",
  "corona_weather",
  "dirs 7.0.0",
+ "futures",
  "gpui-kit",
  "jiff",
  "serde",
