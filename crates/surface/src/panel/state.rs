@@ -164,7 +164,7 @@ impl PanelState {
           exclusive_zone: None,
           exclusive_edge: None,
           margin: None,
-          layer: Layer::Overlay,
+          layer: Layer::Top,
           namespace: PANEL_NAME.to_string(),
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
         }),

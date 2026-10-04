@@ -60,6 +60,14 @@ impl CompositorImpl for Hyprland {
     self.ipc.focus_workspace(workspace)
   }
 
+  fn focus_window(&self, address: &str) -> Result<()> {
+    self.ipc.focus_window(address)
+  }
+
+  fn close_window(&self, address: &str) -> Result<()> {
+    self.ipc.close_window(address)
+  }
+
   fn cursor_position(&self) -> Result<(i32, i32)> {
     self.ipc.cursor_position()
   }

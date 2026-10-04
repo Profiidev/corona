@@ -1,6 +1,18 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, types};
+use crate::{hypr_data_cmd, hypr_dsp, types};
+
+hypr_dsp!(
+  close_window,
+  "window.close({{ window = \"address:{}\" }})",
+  address: &str
+);
+
+hypr_dsp!(
+  focus_window,
+  "focus({{ window = \"address:{}\" }})",
+  address: &str
+);
 
 hypr_data_cmd!(
   list_windows,

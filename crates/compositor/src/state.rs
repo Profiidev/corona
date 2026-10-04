@@ -58,6 +58,14 @@ impl Compositor {
     self.inner.focus_workspace(workspace)
   }
 
+  pub fn focus_window(&self, address: &str) -> Result<()> {
+    self.inner.focus_window(address)
+  }
+
+  pub fn close_window(&self, address: &str) -> Result<()> {
+    self.inner.close_window(address)
+  }
+
   pub fn cursor_position(&self) -> Result<(i32, i32)> {
     self.inner.cursor_position()
   }
@@ -102,6 +110,8 @@ pub(crate) trait CompositorImpl {
   fn active_window(&self) -> Result<Option<types::Window>>;
 
   fn focus_workspace(&self, workspace: &str) -> Result<()>;
+  fn focus_window(&self, address: &str) -> Result<()>;
+  fn close_window(&self, address: &str) -> Result<()>;
 
   fn cursor_position(&self) -> Result<(i32, i32)>;
 }
