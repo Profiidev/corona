@@ -7,6 +7,7 @@ use gpui_kit::{
 };
 
 pub mod colorpicker;
+pub mod notification;
 pub mod screenshot;
 
 pub trait OverlayState: Global + Sized {

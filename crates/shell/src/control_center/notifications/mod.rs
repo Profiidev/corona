@@ -186,7 +186,7 @@ impl Render for NotificationsPanel {
               .min_h_0()
               .gap_2()
               .overflow_y_scrollbar()
-              .children(shown.iter().map(|n| self.notification(theme, n))),
+              .children(shown.iter().map(|n| Self::notification(theme, n))),
           )
         },
       )

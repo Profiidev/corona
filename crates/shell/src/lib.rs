@@ -15,6 +15,7 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   osds::init(cx);
+  overlays::notification::init(cx);
 
   BarState::spawn_bars(cx);
 }

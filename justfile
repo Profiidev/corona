@@ -3,7 +3,7 @@ gpui_crates := "gpui-pre gpui-pre-linux"
 # Keep in sync with the gpui-kit tag in Cargo.toml.
 gpui_kit_tag := "v0.7.0"
 
-layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })'
+layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })'
 
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
 # zed's own crates can't be used directly, they need its entire workspace.

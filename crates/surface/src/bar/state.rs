@@ -203,7 +203,7 @@ impl BarState {
     Self::get(window, cx).is_some_and(|bar| bar.read(cx).is_grouped(widget_id))
   }
 
-  pub(crate) fn display_id_for(&self, monitor: &str) -> Option<DisplayId> {
+  pub fn display_id_for(&self, monitor: &str) -> Option<DisplayId> {
     self.display_mapping.get(&display_uuid(monitor)).copied()
   }
 

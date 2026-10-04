@@ -6,10 +6,11 @@ Personal desktop shell in gpui
 
 ### Hyprland
 
-Add the following layerrule to your config:
+Add the following layerrules to your config:
 
 ```lua
 hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })
+hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })
 ```
 
 ## Development

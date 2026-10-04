@@ -61,6 +61,15 @@ impl Notifications {
     });
   }
 
+  pub fn mark_read(&self, id: u32, cx: &mut App) {
+    self.notifications.update(cx, |list, cx| {
+      if let Some(n) = list.iter_mut().find(|n| n.id == id && !n.read) {
+        n.read = true;
+        cx.notify();
+      }
+    });
+  }
+
   pub fn set_do_not_disturb(&self, enabled: bool, cx: &mut App) {
     self.do_not_disturb.write(cx, enabled);
   }
