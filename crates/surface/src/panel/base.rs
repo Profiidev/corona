@@ -174,7 +174,7 @@ impl Render for BasePanel {
   }
 }
 
-fn panel_path(
+pub fn panel_path(
   bounds: Bounds<Pixels>,
   n: Pixels,
   align: Align,

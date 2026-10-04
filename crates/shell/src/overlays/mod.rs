@@ -9,6 +9,7 @@ use gpui_kit::{
 pub mod colorpicker;
 pub mod notification;
 pub mod screenshot;
+pub mod taskbar;
 
 pub trait OverlayState: Global + Sized {
   fn overlays(&self) -> &[AnyWindowHandle];

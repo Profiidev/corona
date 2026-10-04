@@ -2,7 +2,7 @@ mod active_window;
 mod clock;
 mod control_center;
 mod player;
-mod popup;
+pub(crate) mod popup;
 mod privacy;
 mod resource;
 mod tray;

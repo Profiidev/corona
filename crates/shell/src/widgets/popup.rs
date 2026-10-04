@@ -1,3 +1,4 @@
+use corona_config::placement::Placement;
 use corona_surface::{bar::BarState, popup::popup_options};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -37,8 +38,19 @@ pub fn open<V: Render + Focusable>(
   cx: &mut App,
   build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static,
 ) {
-  close_open(cx);
   let placement = BarState::placement(window, cx);
+  open_at(anchor, size, placement, window, cx, build);
+}
+
+pub fn open_at<V: Render + Focusable>(
+  anchor: Bounds<Pixels>,
+  size: Size<Pixels>,
+  placement: Placement,
+  window: &mut Window,
+  cx: &mut App,
+  build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static,
+) {
+  close_open(cx);
   let options = popup_options(
     window.window_handle(),
     anchor,
