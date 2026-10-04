@@ -13,7 +13,13 @@ use gbm::{BufferObjectFlags, Format, Modifier};
 use gpui_kit::{Dmabuf, DmabufPlane};
 use gpui_wgpu::wgpu;
 
-use crate::view::FrameView;
+use crate::{
+  hyprland::{
+    hyprland_toplevel_mapping_manager_v1::HyprlandToplevelMappingManagerV1,
+    hyprland_toplevel_window_mapping_handle_v1::{self, HyprlandToplevelWindowMappingHandleV1},
+  },
+  view::FrameView,
+};
 use image::RgbaImage;
 use rustix::fs::{MemfdFlags, ftruncate, major, memfd_create, minor, stat};
 use wayland_client::{
@@ -56,6 +62,8 @@ struct State {
   dmabuf_device: Option<u64>,
   dmabuf_formats: Vec<(u32, Vec<u64>)>,
   toplevels: Vec<ExtForeignToplevelHandleV1>,
+  /// Toplevel index and window address, from the last mapping requests.
+  mapped: Vec<(usize, u64)>,
   session_done: bool,
   frame: Option<Result<(), String>>,
 }
@@ -84,6 +92,7 @@ pub struct Capturer {
   sources: ExtOutputImageCaptureSourceManagerV1,
   toplevel_sources: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
   _toplevel_list: Option<ExtForeignToplevelListV1>,
+  mapping: Option<HyprlandToplevelMappingManagerV1>,
 }
 
 /// Formats sampled as BGRA/BGRX words, see [`Dmabuf`].
@@ -130,6 +139,7 @@ impl Capturer {
     let sources: ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ())?;
     let toplevel_sources = globals.bind(&qh, 1..=1, ()).ok();
     let toplevel_list = globals.bind(&qh, 1..=1, ()).ok();
+    let mapping = globals.bind(&qh, 1..=1, ()).ok();
 
     for global in globals.contents().clone_list() {
       if global.interface == "wl_output" {
@@ -153,6 +163,7 @@ impl Capturer {
       sources,
       toplevel_sources,
       _toplevel_list: toplevel_list,
+      mapping,
     })
   }
 
@@ -196,18 +207,37 @@ impl Capturer {
     frame
   }
 
-  /// A capture source for the first toplevel the compositor listed.
-  pub(crate) fn first_toplevel_source(&mut self) -> Result<ExtImageCaptureSourceV1> {
-    let manager = self
+  /// A capture source for the Hyprland window at `address`.
+  pub(crate) fn window_source(&mut self, address: u64) -> Result<ExtImageCaptureSourceV1> {
+    let sources = self
       .toplevel_sources
       .as_ref()
       .context("compositor lacks ext-foreign-toplevel-image-capture-source-v1")?;
-    let toplevel = self
+    let mapping = self
+      .mapping
+      .as_ref()
+      .context("compositor lacks hyprland-toplevel-mapping-v1")?;
+
+    self.state.mapped.clear();
+    let handles = self
       .state
       .toplevels
-      .first()
-      .context("no toplevel to capture")?;
-    Ok(manager.create_source(toplevel, &self.qh, ()))
+      .iter()
+      .enumerate()
+      .map(|(i, toplevel)| mapping.get_window_for_toplevel(toplevel, &self.qh, i))
+      .collect::<Vec<_>>();
+    self.queue.roundtrip(&mut self.state)?;
+    for handle in handles {
+      handle.destroy();
+    }
+
+    let (index, _) = self
+      .state
+      .mapped
+      .iter()
+      .find(|(_, a)| *a == address)
+      .with_context(|| format!("no toplevel for window {address:#x}"))?;
+    Ok(sources.create_source(&self.state.toplevels[*index], &self.qh, ()))
   }
 
   /// Opens a session and waits for its buffer constraints.
@@ -566,6 +596,27 @@ delegate_noop!(State: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(State: ignore ZwpLinuxDmabufV1);
 delegate_noop!(State: ignore ExtForeignToplevelHandleV1);
 delegate_noop!(State: ExtForeignToplevelImageCaptureSourceManagerV1);
+delegate_noop!(State: HyprlandToplevelMappingManagerV1);
+
+impl Dispatch<HyprlandToplevelWindowMappingHandleV1, usize> for State {
+  fn event(
+    state: &mut Self,
+    _: &HyprlandToplevelWindowMappingHandleV1,
+    event: hyprland_toplevel_window_mapping_handle_v1::Event,
+    index: &usize,
+    _: &Connection,
+    _: &QueueHandle<Self>,
+  ) {
+    if let hyprland_toplevel_window_mapping_handle_v1::Event::WindowAddress {
+      address_hi,
+      address,
+    } = event
+    {
+      let address = (u64::from(address_hi) << 32) | u64::from(address);
+      state.mapped.push((*index, address));
+    }
+  }
+}
 
 impl Dispatch<ExtForeignToplevelListV1, ()> for State {
   fn event(

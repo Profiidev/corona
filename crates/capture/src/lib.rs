@@ -1,5 +1,6 @@
 mod convert;
 mod gpu;
+mod hyprland;
 mod live;
 mod view;
 mod wayland;
@@ -8,8 +9,8 @@ use anyhow::Result;
 pub use image;
 
 pub use convert::RgbaImageExt;
-pub use live::capture_first_toplevel;
-pub use view::FrameView;
+pub use live::capture_window;
+pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};
 
 /// Capture all outputs, blocks until all are captured

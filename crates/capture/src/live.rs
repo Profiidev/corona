@@ -5,36 +5,42 @@ use std::{
 };
 
 use anyhow::Result;
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
+use futures::{
+  SinkExt,
+  channel::mpsc::{Receiver, Sender, channel},
+};
 use gpui_kit::{Dmabuf, DmabufPlane};
 
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
 use crate::{Capturer, Frame};
 
-/// Captures the first toplevel continuously on its own thread, at most
-/// `max_fps` frames a second. The compositor only completes a capture once the
-/// window changed, so idle windows send fewer frames. Drop the receiver to stop.
+/// Captures the Hyprland window at `address` continuously on its own thread,
+/// at most `max_fps` frames a second. The compositor only completes a capture
+/// once the window changed, so idle windows send fewer frames. Drop the
+/// receiver to stop.
 ///
-/// Frames alternate between two buffers that are written in place, so a
-/// dmabuf received earlier shows newer content once it is reused. Draw only
-/// the latest one.
-pub fn capture_first_toplevel(max_fps: u32) -> Result<UnboundedReceiver<Arc<Dmabuf>>> {
-  let (tx, rx) = unbounded();
+/// Frames alternate between two buffers written in place. The thread waits
+/// until the previous frame was taken before capturing into the other one, so
+/// a stalled consumer slows the capture down instead of queueing frames or
+/// overwriting the one on screen.
+pub fn capture_window(address: u64, max_fps: u32) -> Result<Receiver<Arc<Dmabuf>>> {
+  // One slot, the sender's own: a send waits until the last frame was taken.
+  let (tx, rx) = channel(0);
   thread::Builder::new()
     .name("live-capture".into())
     .spawn(move || {
-      if let Err(e) = run(max_fps.max(1), &tx) {
+      if let Err(e) = run(address, max_fps.max(1), tx) {
         tracing::warn!("live capture stopped: {e:#}");
       }
     })?;
   Ok(rx)
 }
 
-fn run(max_fps: u32, tx: &UnboundedSender<Arc<Dmabuf>>) -> Result<()> {
+fn run(address: u64, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
   let interval = Duration::from_secs(1) / max_fps;
   let mut capturer = Capturer::new()?;
-  let source = capturer.first_toplevel_source()?;
+  let source = capturer.window_source(address)?;
   let session = capturer.start_session(&source)?;
 
   let mut buffers: Vec<(Frame, WlBuffer)> = Vec::new();
@@ -84,7 +90,7 @@ fn run(max_fps: u32, tx: &UnboundedSender<Arc<Dmabuf>>) -> Result<()> {
         opaque: frame.surface.opaque,
       }),
     };
-    if tx.unbounded_send(surface).is_err() {
+    if futures::executor::block_on(tx.send(surface)).is_err() {
       break Ok(());
     }
     next ^= 1;
