@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, placement::Placement};
+use corona_utils::display::display_id_for;
 use gpui_kit::{
   App, AppContext, Bounds, Context, DisplayId, Entity, EntityId, Global, Pixels, Size, Styled,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
@@ -13,7 +14,7 @@ use gpui_kit::{
 };
 
 use crate::{
-  bar::{BarExt, BarState, Widget, base::Bar},
+  bar::{BarState, Widget, base::Bar},
   panel::{
     PANEL_NAME,
     align::Align,
@@ -86,7 +87,7 @@ impl PanelState {
 
     std::iter::once(active)
       .chain(monitors)
-      .filter_map(|m| cx.bar().display_id_for(&m.name))
+      .filter_map(|m| display_id_for(&m.name, cx))
       .find_map(|display_id| {
         let bars = BarState::bars_on(display_id, cx);
         Some((display_id, bars.first()?.clone()))

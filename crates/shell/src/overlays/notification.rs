@@ -5,11 +5,11 @@ use std::{
 };
 
 use anyhow::Result;
-use corona_components::animation::smooth_retarget::SmoothRetarget;
+use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider};
+use corona_config::APP_NAME;
 use corona_notifications::{NotificationsExt, Urgency};
-use corona_surface::bar::BarExt;
+use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
   ParentElement, Pixels, Point, Render, Size, StatefulInteractiveElement, Styled, Window,
@@ -67,14 +67,6 @@ impl Popup {
       slot: SmoothRetarget::new(-(slot as f32)),
       height: Rc::default(),
     }
-  }
-}
-
-fn slide_speed(cx: &App) -> Duration {
-  if cx.reduce_motion() {
-    Duration::ZERO
-  } else {
-    SLIDE_SPEED.mul_f32(cx.config().animation_speed)
   }
 }
 
@@ -139,7 +131,7 @@ impl NotificationPopups {
 
   fn show(notification: Item, cx: &mut App) -> Result<()> {
     let monitor = cx.compositor().active_monitor(cx).name.clone();
-    let display = cx.bar().display_id_for(&monitor);
+    let display = display_id_for(&monitor, cx);
 
     let existing = cx
       .global::<Self>()
@@ -182,7 +174,7 @@ impl NotificationPopups {
       return;
     }
 
-    let speed = slide_speed(cx);
+    let speed = animation_duration(SLIDE_SPEED, cx);
     cx.spawn(async move |cx| {
       cx.background_executor().timer(speed).await;
       cx.update(|cx| {
@@ -253,7 +245,7 @@ impl NotificationPopups {
 
 impl Render for Popups {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let speed = slide_speed(cx);
+    let speed = animation_duration(SLIDE_SPEED, cx);
     let theme = cx.theme();
     let mut slot = 0;
     let mut tops = Vec::new();

@@ -1,14 +1,15 @@
 use std::time::Duration;
 
 use corona_capture::LiveCapture;
-use corona_components::animation::smooth_retarget::SmoothRetarget;
+use corona_components::animation::{animation_duration, glide::Glide};
 use corona_compositor::types;
-use corona_config::ConfigProvider;
 use gpui_kit::{
-  App, AppContext, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels,
-  Render, StatefulInteractiveElement, Styled, WeakEntity, Window, component::ActiveTheme, div,
-  point, prelude::FluentBuilder, px, size,
+  App, AppContext, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+  StatefulInteractiveElement, Styled, WeakEntity, Window, component::ActiveTheme, div, point,
+  prelude::FluentBuilder, px, size,
 };
+
+use corona_surface::input_region::InputRegion;
 
 use super::{Taskbar, focus_window};
 
@@ -31,48 +32,6 @@ fn width(window: &types::Window) -> f32 {
   (HEIGHT * aspect).clamp(MIN_WIDTH, MAX_WIDTH)
 }
 
-struct Glide<const N: usize> {
-  from: [f32; N],
-  to: Option<[f32; N]>,
-  anim: SmoothRetarget,
-}
-
-impl<const N: usize> Glide<N> {
-  fn new() -> Self {
-    Self {
-      from: [0.; N],
-      to: None,
-      anim: SmoothRetarget::new(1.),
-    }
-  }
-
-  fn reset(&mut self) {
-    self.to = None;
-  }
-
-  fn value(&mut self, target: [f32; N], cx: &App) -> ([f32; N], bool) {
-    let Some(to) = self.to else {
-      self.to = Some(target);
-      return (target, false);
-    };
-    let (progress, moving) = self.anim.value();
-    let current = std::array::from_fn(|i| self.from[i] + (to[i] - self.from[i]) * progress);
-    if to == target {
-      return (current, moving);
-    }
-    let speed = if cx.reduce_motion() {
-      Duration::ZERO
-    } else {
-      SLIDE_SPEED.mul_f32(cx.config().animation_speed)
-    };
-    self.from = current;
-    self.to = Some(target);
-    self.anim = SmoothRetarget::new(0.);
-    self.anim.retarget(1., speed);
-    (current, true)
-  }
-}
-
 pub struct Preview {
   taskbar: WeakEntity<Taskbar>,
   windows: Vec<(types::Window, Entity<LiveCapture>)>,
@@ -81,7 +40,7 @@ pub struct Preview {
   slide: Glide<1>,
   hovered: Option<usize>,
   highlight: Glide<2>,
-  input_region: Option<Bounds<Pixels>>,
+  input_region: InputRegion,
 }
 
 impl Preview {
@@ -96,10 +55,10 @@ impl Preview {
       more: windows.len().saturating_sub(MAX_WINDOWS),
       windows: live(windows, cx),
       center,
-      slide: Glide::new(),
+      slide: Glide::default(),
       hovered: None,
-      highlight: Glide::new(),
-      input_region: None,
+      highlight: Glide::default(),
+      input_region: InputRegion::default(),
     }
   }
 
@@ -145,11 +104,12 @@ impl Render for Preview {
     let viewport = window.viewport_size().width.as_f32();
     let width = self.card_width();
     let target = (self.center - width / 2.).clamp(0., (viewport - width).max(0.));
-    let ([x], sliding) = self.slide.value([target], cx);
+    let speed = animation_duration(SLIDE_SPEED, cx);
+    let ([x], sliding) = self.slide.value([target], speed);
     let highlight = match self.hovered.filter(|&i| i < self.windows.len()) {
       Some(i) => {
         let tile = self.tile(i);
-        Some(self.highlight.value(tile, cx))
+        Some(self.highlight.value(tile, speed))
       }
       None => None,
     };
@@ -161,10 +121,7 @@ impl Render for Preview {
       point(px(x.round()), px(0.)),
       size(px(width), px(POPUP_HEIGHT)),
     );
-    if self.input_region != Some(region) {
-      self.input_region = Some(region);
-      window.set_input_region(Some(&[region]));
-    }
+    self.input_region.set(region, window);
 
     let theme = cx.theme();
     let taskbar = self.taskbar.clone();

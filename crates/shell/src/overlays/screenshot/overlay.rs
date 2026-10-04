@@ -1,7 +1,7 @@
 use std::{mem, sync::Arc, time::Duration};
 
 use corona_capture::FrameView;
-use corona_config::ConfigProvider;
+use corona_components::animation::animation_duration;
 use gpui_kit::{
   Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
   InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -207,15 +207,11 @@ impl Render for Overlay {
       Mode::Monitor | Mode::Window => CursorStyle::PointingHand,
     };
 
-    let duration = if state.mode == Mode::Selection || cx.reduce_motion() {
+    let pill_duration = animation_duration(SLIDE_ANIMATION, cx);
+    let duration = if state.mode == Mode::Selection {
       Duration::ZERO
     } else {
-      SLIDE_ANIMATION.mul_f32(cx.config().animation_speed)
-    };
-    let pill_duration = if cx.reduce_motion() {
-      Duration::ZERO
-    } else {
-      SLIDE_ANIMATION.mul_f32(cx.config().animation_speed)
+      pill_duration
     };
     let target = state.target();
     let mode = state.mode;

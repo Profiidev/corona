@@ -3,8 +3,10 @@ use gpui_kit::App;
 
 pub mod bar;
 pub mod commands;
+pub mod input_region;
 pub mod osd;
 pub mod panel;
+pub mod per_display;
 pub mod popup;
 pub mod tooltip;
 

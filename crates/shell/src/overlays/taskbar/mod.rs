@@ -5,22 +5,23 @@ use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 
 use anyhow::Result;
 use corona_components::{
-  animation::smooth_retarget::SmoothRetarget, components::window_icon::WindowIcon,
+  animation::{animation_duration, smooth_retarget::SmoothRetarget},
+  components::window_icon::WindowIcon,
 };
 use corona_compositor::{CompositorExt, types};
-use corona_config::{APP_NAME, ConfigProvider, placement::Placement};
+use corona_config::{APP_NAME, placement::Placement};
 use corona_surface::{
-  bar::BarExt,
-  panel::{Align, PanelStyle, panel_path},
+  input_region::InputRegion,
+  panel::{Align, PanelStyle, panel_shape},
+  per_display::PerDisplay,
   popup::popup_options,
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, InteractiveElement,
+  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, InteractiveElement,
   IntoElement, MouseButton, ParentElement, Pixels, Render, Size, StatefulInteractiveElement,
   Styled, Subscription, Task, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
   WindowKind, WindowOptions,
   base::{ElementExt, Root},
-  canvas,
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
@@ -47,8 +48,22 @@ const PREVIEW_DELAY: Duration = Duration::from_millis(200);
 const PREVIEW_GAP: f32 = 8.;
 const PREVIEW_HIDE_DELAY: Duration = Duration::from_millis(150);
 
+struct Taskbars {
+  _displays: Entity<PerDisplay>,
+}
+
+impl Global for Taskbars {}
+
 pub fn init(cx: &mut App) {
-  cx.bar_mut().register_surface(create_taskbar);
+  let taskbars = PerDisplay::new(cx, |cx, display| {
+    create_taskbar(cx, display)
+      .inspect_err(|e| error!("failed to create taskbar: {e:#}"))
+      .into_iter()
+      .collect()
+  });
+  cx.set_global(Taskbars {
+    _displays: taskbars,
+  });
 }
 
 fn create_taskbar(cx: &mut App, display: DisplayId) -> Result<AnyWindowHandle> {
@@ -92,7 +107,7 @@ struct Application {
 pub struct Taskbar {
   hovered: bool,
   closing: Option<Task<()>>,
-  input_region: Option<Bounds<Pixels>>,
+  input_region: InputRegion,
   anim: SmoothRetarget,
   apps: Vec<Application>,
   icon_bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
@@ -115,7 +130,7 @@ impl Taskbar {
     Taskbar {
       hovered: false,
       closing: None,
-      input_region: None,
+      input_region: InputRegion::default(),
       anim: SmoothRetarget::new(0.),
       apps: group(windows.read(cx)),
       icon_bounds: HashMap::new(),
@@ -324,11 +339,7 @@ impl Render for Taskbar {
     let bg = theme.tokens.background;
     let n = theme.panel_radius();
 
-    let speed = if cx.reduce_motion() {
-      Duration::ZERO
-    } else {
-      OPEN_SPEED.mul_f32(cx.config().animation_speed)
-    };
+    let speed = animation_duration(OPEN_SPEED, cx);
     self.anim.retarget(if self.open() { 1. } else { 0. }, speed);
     let (progress, animating) = self.anim.value();
     if animating {
@@ -343,10 +354,7 @@ impl Render for Taskbar {
 
     let depth = if self.open() { HEIGHT } else { TRIGGER };
     let region = Placement::Bottom.rect(viewport, px(left), px(shape_width), px(depth));
-    if self.input_region != Some(region) {
-      self.input_region = Some(region);
-      window.set_input_region(Some(&[region]));
-    }
+    self.input_region.set(region, window);
 
     let apps = self.apps.iter().enumerate().map(|(i, app)| {
       let count = app.windows.len();
@@ -402,19 +410,12 @@ impl Render for Taskbar {
       .relative()
       .on_hover(cx.listener(|this, hovered, _, cx| this.set_hovered(*hovered, cx)))
       .child(
-        canvas(|_, _, _| (), {
-          let n = px(n);
-          move |bounds, _, window, _| {
-            if let Some(path) = panel_path(bounds, n, Align::Relative(0.), Placement::Bottom) {
-              window.paint_path(path, bg);
-            }
-          }
-        })
-        .absolute()
-        .bottom_0()
-        .left(px(left))
-        .w(px(shape_width))
-        .h(px(h)),
+        panel_shape(n, Align::Relative(0.), Placement::Bottom, bg)
+          .absolute()
+          .bottom_0()
+          .left(px(left))
+          .w(px(shape_width))
+          .h(px(h)),
       )
       .child(
         div()

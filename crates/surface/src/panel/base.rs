@@ -1,13 +1,11 @@
 use std::time::Duration;
 
-use corona_components::animation::smooth_retarget::SmoothRetarget;
-use corona_config::{
-  ConfigProvider,
-  placement::{Placement, PlacementStyle, PlacmentBounds},
-};
+use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
+use corona_config::placement::{Placement, PlacementStyle, PlacmentBounds};
 use gpui_kit::{
-  AnyView, Bounds, Context, InteractiveElement, MouseButton, ParentElement, Path, PathBuilder,
-  Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div, prelude::FluentBuilder, px,
+  AnyView, Background, Bounds, Canvas, Context, InteractiveElement, MouseButton, ParentElement,
+  Path, PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
+  prelude::FluentBuilder, px,
 };
 
 use crate::panel::{align::Align, style::PanelStyle, variants::PanelData};
@@ -85,12 +83,7 @@ impl Render for BasePanel {
       (0., 1., 1.)
     };
 
-    let speed = if cx.reduce_motion() {
-      std::time::Duration::ZERO
-    } else {
-      let config = cx.config();
-      PANEL_OPEN_SPEED.mul_f32(config.animation_speed)
-    };
+    let speed = animation_duration(PANEL_OPEN_SPEED, cx);
     self.anim.retarget(if self.open { 1. } else { 0. }, speed);
     let (progress, animating) = self.anim.value();
     if animating {
@@ -146,19 +139,10 @@ impl Render for BasePanel {
           })
           .size_p(self.placement, px(self.width + br * (nl + nr)), px(h))
           .child(
-            canvas(|_, _, _| (), {
-              let n = px(br);
-              let align = self.align;
-              let placement = self.placement;
-              move |bounds, _, window, _| {
-                if let Some(path) = panel_path(bounds, n, align, placement) {
-                  window.paint_path(path, bg);
-                }
-              }
-            })
-            .absolute()
-            .size_full()
-            .inset_0(),
+            panel_shape(br, self.align, self.placement, bg)
+              .absolute()
+              .size_full()
+              .inset_0(),
           )
           .child(
             div()
@@ -172,6 +156,22 @@ impl Render for BasePanel {
           ),
       )
   }
+}
+
+pub fn panel_shape(
+  radius: f32,
+  align: Align,
+  placement: Placement,
+  color: impl Into<Background> + 'static,
+) -> Canvas<()> {
+  canvas(
+    |_, _, _| (),
+    move |bounds, _, window, _| {
+      if let Some(path) = panel_path(bounds, px(radius), align, placement) {
+        window.paint_path(path, color);
+      }
+    },
+  )
 }
 
 pub fn panel_path(

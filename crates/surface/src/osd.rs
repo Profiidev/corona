@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 use corona_compositor::CompositorExt;
 use corona_config::APP_NAME;
+use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Global, IntoElement,
   ParentElement, Pixels, Point, Render, Size, Styled, Task, WeakEntity, Window,
@@ -12,8 +13,6 @@ use gpui_kit::{
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   px,
 };
-
-use crate::bar::BarExt;
 
 const NAMESPACE: &str = "corona_osd";
 const GAP: f32 = 40.;
@@ -52,7 +51,7 @@ impl OsdState {
 
   pub fn show<T: Osd>(osd: T, cx: &mut App) -> Result<()> {
     let monitor = cx.compositor().active_monitor(cx).name.clone();
-    let display = cx.bar().display_id_for(&monitor);
+    let display = display_id_for(&monitor, cx);
     let content = osd.size(cx);
     let size = Size::new(
       content.width + px(BORDER * 2.),
