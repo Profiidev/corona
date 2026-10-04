@@ -1,0 +1,71 @@
+--- a/crates/gpui/src/scene.rs
++++ b/crates/gpui/src/scene.rs
+@@ -771,6 +771,39 @@
+     pub content_mask: ContentMask<ScaledPixels>,
+     #[cfg(target_os = "macos")]
+     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
++    #[cfg(target_os = "linux")]
++    pub dmabuf: std::sync::Arc<Dmabuf>,
++}
++
++/// A 32 bits per pixel image in `ARGB8888` or `XRGB8888` (BGRA/BGRX words),
++/// either a dmabuf the renderer imports without a copy, or plain linear memory
++/// (a memfd) it uploads.
++#[cfg(target_os = "linux")]
++#[derive(Debug)]
++pub struct Dmabuf {
++    /// Width in pixels.
++    pub width: u32,
++    /// Height in pixels.
++    pub height: u32,
++    /// The memory planes, one for linear memory.
++    pub planes: Vec<DmabufPlane>,
++    /// The DRM format modifier, `None` for plain linear memory that is not a
++    /// dmabuf.
++    pub modifier: Option<u64>,
++    /// `XRGB8888`, the alpha byte is undefined.
++    pub opaque: bool,
++}
++
++/// One memory plane of a [`Dmabuf`].
++#[cfg(target_os = "linux")]
++#[derive(Debug)]
++pub struct DmabufPlane {
++    /// The plane's memory.
++    pub fd: std::os::fd::OwnedFd,
++    /// Byte offset of the plane.
++    pub offset: u32,
++    /// Bytes per row.
++    pub stride: u32,
+ }
+ 
+ impl From<PaintSurface> for Primitive {
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -4999,6 +4999,26 @@
+         });
+     }
+ 
++    /// Paint a dmabuf into the scene for the next frame at the current z-index,
++    /// stretched to `bounds`.
++    ///
++    /// This method should only be called as part of the paint phase of element drawing.
++    #[cfg(target_os = "linux")]
++    pub fn paint_dmabuf(&mut self, bounds: Bounds<Pixels>, dmabuf: Arc<crate::Dmabuf>) {
++        use crate::PaintSurface;
++
++        self.invalidator.debug_assert_paint();
++
++        let bounds = self.snap_bounds(bounds);
++        let content_mask = self.snapped_content_mask();
++        self.next_frame.scene.insert_primitive(PaintSurface {
++            order: 0,
++            bounds,
++            content_mask,
++            dmabuf,
++        });
++    }
++
+     /// Removes an image from the sprite atlas.
+     pub fn drop_image(&mut self, data: Arc<RenderImage>) -> Result<()> {
+         for frame_index in 0..data.frame_count() {

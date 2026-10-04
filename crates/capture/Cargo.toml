@@ -7,7 +7,10 @@ edition = "2024"
 gpui-kit.workspace = true
 anyhow.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-memmap2 = "0.9.11"
+futures = "0.3"
+gbm = { version = "0.18", default-features = false }
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }
+tracing.workspace = true
 rustix = { version = "1.1.5", features = ["fs"] }
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

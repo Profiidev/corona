@@ -12,6 +12,7 @@ let
     libxkbcommon
     libxcb
     pipewire
+    libgbm
     rustPlatform.bindgenHook
   ];
 

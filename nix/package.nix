@@ -9,6 +9,7 @@
   libxkbcommon,
   libxcb,
   pipewire,
+  libgbm,
   wayland,
   vulkan-loader,
 }:
@@ -43,6 +44,7 @@ sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
     patchFlags = [ "-p1" ];
   };
   gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
+  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-bpYOVy3kygBfh+y2xmPtIQG6R7Nx5tR3dElg6PEOBzs=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -73,12 +75,14 @@ rustPlatform.buildRustPackage (finalAttrs: {
     libxkbcommon
     libxcb
     pipewire
+    libgbm
   ];
 
   postPatch = ''
     mkdir -p vendor
     cp -r --no-preserve=mode,ownership ${gpui-pre} vendor/gpui-pre
     cp -r --no-preserve=mode,ownership ${gpui-pre-linux} vendor/gpui-pre-linux
+    cp -r --no-preserve=mode,ownership ${gpui-pre-wgpu} vendor/gpui-pre-wgpu
     cp -r --no-preserve=mode,ownership ${gpui-shell}/crates/shell vendor/gpui-shell
   '';
 

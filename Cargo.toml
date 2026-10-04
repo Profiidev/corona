@@ -85,6 +85,7 @@ tracing-subscriber = "0.3.23"
 [patch.crates-io]
 gpui-pre = { path = "vendor/gpui-pre" }
 gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
+gpui-pre-wgpu = { path = "vendor/gpui-pre-wgpu" }
 # same patch as upstream gpui-kit
 rquickjs = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
 

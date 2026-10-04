@@ -1,8 +1,8 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 
 use anyhow::{Context, Result, bail};
 use corona_capture::{
-  RgbaImageExt,
+  Frame, RgbaImageExt,
   image::{
     RgbaImage,
     imageops::{self, FilterType},
@@ -14,14 +14,12 @@ use gpui_kit::{
 use jiff::Zoned;
 use tracing::{error, info};
 
-use crate::overlays::{OverlayState, screenshot::state::ScreenshotState};
+use crate::overlays::{
+  OverlayState,
+  screenshot::state::{MonitorGeometry, ScreenshotState},
+};
 
-fn finish(image: RgbaImage, cx: &mut App) {
-  let png = match image.to_png() {
-    Ok(png) => png,
-    Err(e) => return error!("failed to convert screen shot to png: {e:#}"),
-  };
-
+fn finish(png: Vec<u8>, cx: &mut App) {
   cx.write_to_clipboard(ClipboardItem::new_image(&GpuiImage::from_bytes(
     ImageFormat::Png,
     png.clone(),
@@ -53,9 +51,12 @@ pub fn is_empty(b: &Bounds<Pixels>) -> bool {
   b.size.width.as_f32() <= 0. || b.size.height.as_f32() <= 0.
 }
 
-fn compose(state: &ScreenshotState, area: Bounds<Pixels>) -> Result<RgbaImage> {
-  let parts = state
-    .geometry
+fn compose(
+  geometry: &HashMap<String, MonitorGeometry>,
+  screenshots: &HashMap<String, Frame>,
+  area: Bounds<Pixels>,
+) -> Result<RgbaImage> {
+  let parts = geometry
     .iter()
     .map(|(name, g)| (name, g, area.intersect(&g.bounds())))
     .filter(|(_, _, inter)| !is_empty(inter))
@@ -67,10 +68,11 @@ fn compose(state: &ScreenshotState, area: Bounds<Pixels>) -> Result<RgbaImage> {
   let scale = parts.iter().map(|(_, g, _)| g.scale).fold(0., f32::max);
   let len = |v: Pixels, scale: f32| (v.as_f32() * scale).round().max(1.) as u32;
   let (width, height) = (len(area.size.width, scale), len(area.size.height, scale));
+  let single = parts.len() == 1;
   let mut out = RgbaImage::new(width, height);
 
   for (name, g, inter) in parts {
-    let Some(shot) = state.screenshots.get(name) else {
+    let Some(shot) = screenshots.get(name) else {
       continue;
     };
     let rel = inter.origin - g.origin;
@@ -80,14 +82,16 @@ fn compose(state: &ScreenshotState, area: Bounds<Pixels>) -> Result<RgbaImage> {
       len(inter.size.width, g.scale),
       len(inter.size.height, g.scale),
     );
-    // crop_imm clamps to the frame, so rounding past its edge is harmless.
-    let piece = imageops::crop_imm(shot, x, y, w, h).to_image();
-    let piece = imageops::resize(
-      &piece,
-      len(inter.size.width, scale),
-      len(inter.size.height, scale),
-      FilterType::Nearest,
-    );
+    // Only the selected part leaves the GPU. `read` clamps to the frame, so
+    // rounding past its edge is harmless.
+    let mut piece = shot.read(x, y, w, h)?;
+    let size = (len(inter.size.width, scale), len(inter.size.height, scale));
+    if piece.dimensions() != size {
+      piece = imageops::resize(&piece, size.0, size.1, FilterType::Nearest);
+    }
+    if single && piece.dimensions() == (width, height) {
+      return Ok(piece);
+    }
 
     let at = inter.origin - area.origin;
     imageops::replace(
@@ -101,13 +105,24 @@ fn compose(state: &ScreenshotState, area: Bounds<Pixels>) -> Result<RgbaImage> {
 }
 
 pub fn commit_selection(area: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-  let Some(state) = cx.try_global::<ScreenshotState>() else {
+  let Some(state) = ScreenshotState::get(cx) else {
     error!("screenshot state missing");
     return;
   };
-  match compose(state, area) {
-    Ok(image) => finish(image, cx),
-    Err(e) => error!("screenshot failed: {e:#}"),
-  }
+  let screenshots = std::mem::take(&mut state.screenshots);
+  let geometry = state.geometry.clone();
+  // Close right away, the readback and encoding happen off the UI thread.
   ScreenshotState::close(Some(window), cx);
+
+  cx.spawn(async move |cx| {
+    let png = cx
+      .background_executor()
+      .spawn(async move { compose(&geometry, &screenshots, area)?.to_png() })
+      .await;
+    match png {
+      Ok(png) => cx.update(|cx| finish(png, cx)),
+      Err(e) => error!("screenshot failed: {e:#}"),
+    }
+  })
+  .detach();
 }

@@ -1,7 +1,7 @@
 use corona_ipc::IpcServer;
 use gpui_kit::{
   AnyWindowHandle, App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance,
-  WindowBounds, WindowKind, WindowOptions,
+  WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
 };
@@ -62,6 +62,7 @@ fn fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions {
       keyboard_interactivity: KeyboardInteractivity::Exclusive,
     }),
     window_background: WindowBackgroundAppearance::Opaque,
+    window_decorations: Some(WindowDecorations::Client),
     display_id: Some(display),
     titlebar: None,
     window_bounds: Some(WindowBounds::Windowed(Bounds {

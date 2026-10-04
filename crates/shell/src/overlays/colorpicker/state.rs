@@ -45,7 +45,12 @@ impl ColorPickerState {
     cx.spawn(async move |cx| {
       let frozen = cx
         .background_executor()
-        .spawn(async move { capture_all(names) })
+        .spawn(async move {
+          capture_all(names)?
+            .into_iter()
+            .map(|(name, frame)| Ok((name, frame.read_all()?)))
+            .collect::<Result<Vec<_>>>()
+        })
         .await;
 
       cx.update(|cx| {

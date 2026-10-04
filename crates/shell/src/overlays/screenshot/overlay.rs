@@ -1,12 +1,13 @@
 use std::{mem, sync::Arc, time::Duration};
 
+use corona_capture::FrameView;
 use corona_config::ConfigProvider;
 use gpui_kit::{
-  Bounds, Context, CursorStyle, DispatchPhase, Edges, Entity, FocusHandle, Hsla,
+  Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
   InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-  MouseUpEvent, ParentElement, Pixels, Point, Render, RenderImage, Size, Styled, Window, canvas,
+  MouseUpEvent, ParentElement, Pixels, Point, Render, Size, Styled, Window, canvas,
   component::{ActiveTheme, tag::Tag},
-  div, img, point,
+  div, point,
   prelude::FluentBuilder,
   px,
 };
@@ -38,7 +39,7 @@ fn snap(b: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
 pub struct Overlay {
   output: String,
   geometry: MonitorGeometry,
-  picture: Arc<RenderImage>,
+  picture: Arc<Dmabuf>,
   windows: Vec<Bounds<Pixels>>,
   cursor: Option<Point<Pixels>>,
   pub focus: FocusHandle,
@@ -48,7 +49,7 @@ pub struct Overlay {
 impl Overlay {
   pub fn new(
     output: String,
-    picture: Arc<RenderImage>,
+    picture: Arc<Dmabuf>,
     geometry: MonitorGeometry,
     windows: Vec<Bounds<Pixels>>,
     cx: &mut Context<'_, Self>,
@@ -298,7 +299,7 @@ impl Render for Overlay {
           }
         }),
       )
-      .child(img(self.picture.clone()).size_full())
+      .child(FrameView::new(self.picture.clone()).absolute().size_full())
       .child(Self::pointer_events(cx.entity()))
       .when_none(&highlight_area, |d| {
         d.child(strip(px(0.), px(0.), vp.width, vp.height))

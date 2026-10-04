@@ -1,0 +1,638 @@
+--- a/crates/gpui_wgpu/Cargo.toml
++++ b/crates/gpui_wgpu/Cargo.toml
+@@ -145,6 +145,9 @@
+ [dependencies.wgpu]
+ version = "29.0.4"
+ 
++[target.'cfg(target_os = "linux")'.dependencies.ash]
++version = "0.38"
++
+ [target.'cfg(target_family = "wasm")'.dependencies.web-sys]
+ version = "0.3"
+ features = ["HtmlCanvasElement"]
+--- a/crates/gpui_wgpu/src/gpui_wgpu.rs
++++ b/crates/gpui_wgpu/src/gpui_wgpu.rs
+@@ -1,4 +1,6 @@
+ mod cosmic_text_system;
++#[cfg(target_os = "linux")]
++pub mod dmabuf;
+ mod wgpu_atlas;
+ mod wgpu_context;
+ mod wgpu_renderer;
+--- a/crates/gpui_wgpu/src/dmabuf.rs
++++ b/crates/gpui_wgpu/src/dmabuf.rs
+@@ -0,0 +1,353 @@
++//! [`Dmabuf`]s as wgpu textures: imported into Vulkan without a copy when the
++//! device can, uploaded through a CPU mapping for plain linear memory.
++
++use std::ffi::CStr;
++use std::fs::File;
++use std::os::fd::{AsRawFd as _, IntoRawFd as _};
++use std::os::unix::fs::FileExt as _;
++
++use anyhow::{Context as _, Result, anyhow, ensure};
++use ash::vk;
++use gpui::Dmabuf;
++use wgpu::hal::{api::Vulkan, vulkan};
++
++const DRM_FORMAT_MOD_LINEAR: u64 = 0;
++const DRM_MODIFIER: &CStr = ash::ext::image_drm_format_modifier::NAME;
++/// Core in Vulkan 1.2, but `VK_EXT_image_drm_format_modifier` requires it by name.
++const FORMAT_LIST: &CStr = ash::khr::image_format_list::NAME;
++
++/// `request_device`, plus the extension importing dmabufs with any modifier
++/// needs on Vulkan.
++pub async fn request_device(
++    adapter: &wgpu::Adapter,
++    desc: &wgpu::DeviceDescriptor<'_>,
++) -> Result<(wgpu::Device, wgpu::Queue)> {
++    if let Some(device) = open_vulkan(adapter, desc) {
++        match device {
++            Ok(device) => return Ok(device),
++            Err(e) => log::warn!("device without dmabuf import: {e:#}"),
++        }
++    }
++    adapter
++        .request_device(desc)
++        .await
++        .map_err(|e| anyhow!("Failed to create wgpu device: {e}"))
++}
++
++fn open_vulkan(
++    adapter: &wgpu::Adapter,
++    desc: &wgpu::DeviceDescriptor<'_>,
++) -> Option<Result<(wgpu::Device, wgpu::Queue)>> {
++    let hal = unsafe { adapter.as_hal::<Vulkan>() }?;
++    let caps = hal.physical_device_capabilities();
++    if !caps.supports_extension(DRM_MODIFIER) || !caps.supports_extension(FORMAT_LIST) {
++        return None;
++    }
++    let open = unsafe {
++        hal.open_with_callback(
++            desc.required_features,
++            &desc.required_limits,
++            &desc.memory_hints,
++            Some(Box::new(|args: vulkan::CreateDeviceCallbackArgs<'_, '_, '_>| {
++                for extension in [DRM_MODIFIER, FORMAT_LIST] {
++                    if !args.extensions.contains(&extension) {
++                        args.extensions.push(extension);
++                    }
++                }
++            })),
++        )
++    };
++    drop(hal);
++    Some(
++        open.map_err(|e| anyhow!("open vulkan device: {e}"))
++            .and_then(|open| {
++                unsafe { adapter.create_device_from_hal(open, desc) }
++                    .map_err(|e| anyhow!("create device: {e}"))
++            }),
++    )
++}
++
++/// The dmabuf as a sampleable, copyable texture.
++pub fn texture(
++    device: &wgpu::Device,
++    queue: &wgpu::Queue,
++    dmabuf: &Dmabuf,
++) -> Result<wgpu::Texture> {
++    match dmabuf.modifier {
++        Some(modifier) => import(device, dmabuf).or_else(|e| {
++            // Linear memory can still be read through a mapping.
++            ensure!(modifier == DRM_FORMAT_MOD_LINEAR, e);
++            log::debug!("dmabuf import failed, uploading it: {e:#}");
++            upload(device, queue, dmabuf)
++        }),
++        None => upload(device, queue, dmabuf),
++    }
++}
++
++fn descriptor(dmabuf: &Dmabuf, usage: wgpu::TextureUsages) -> wgpu::TextureDescriptor<'static> {
++    wgpu::TextureDescriptor {
++        label: Some("dmabuf"),
++        size: wgpu::Extent3d {
++            width: dmabuf.width,
++            height: dmabuf.height,
++            depth_or_array_layers: 1,
++        },
++        mip_level_count: 1,
++        sample_count: 1,
++        dimension: wgpu::TextureDimension::D2,
++        format: wgpu::TextureFormat::Bgra8Unorm,
++        usage,
++        view_formats: &[],
++    }
++}
++
++/// The single plane modifiers `device` can import a `ARGB8888`/`XRGB8888`
++/// dmabuf with, to sample and copy it. Empty without Vulkan dmabuf import.
++pub fn importable_modifiers(device: &wgpu::Device) -> Vec<u64> {
++    match unsafe { device.as_hal::<Vulkan>() } {
++        Some(hal) if supports_import(&hal) => unsafe { vulkan_modifiers(&hal) },
++        _ => Vec::new(),
++    }
++}
++
++fn supports_import(device: &vulkan::Device) -> bool {
++    let enabled = device.enabled_device_extensions();
++    [
++        DRM_MODIFIER,
++        ash::ext::external_memory_dma_buf::NAME,
++        ash::khr::external_memory_fd::NAME,
++    ]
++    .iter()
++    .all(|extension| enabled.contains(extension))
++}
++
++const FORMAT: vk::Format = vk::Format::B8G8R8A8_UNORM;
++const USAGE: vk::ImageUsageFlags = vk::ImageUsageFlags::from_raw(
++    vk::ImageUsageFlags::SAMPLED.as_raw() | vk::ImageUsageFlags::TRANSFER_SRC.as_raw(),
++);
++
++unsafe fn vulkan_modifiers(device: &vulkan::Device) -> Vec<u64> {
++    let instance = device.shared_instance().raw_instance();
++    let physical = device.raw_physical_device();
++
++    let mut list = vk::DrmFormatModifierPropertiesListEXT::default();
++    unsafe {
++        instance.get_physical_device_format_properties2(
++            physical,
++            FORMAT,
++            &mut vk::FormatProperties2::default().push_next(&mut list),
++        )
++    };
++    let mut modifiers =
++        vec![vk::DrmFormatModifierPropertiesEXT::default(); list.drm_format_modifier_count as usize];
++    let mut list =
++        vk::DrmFormatModifierPropertiesListEXT::default().drm_format_modifier_properties(&mut modifiers);
++    unsafe {
++        instance.get_physical_device_format_properties2(
++            physical,
++            FORMAT,
++            &mut vk::FormatProperties2::default().push_next(&mut list),
++        )
++    };
++
++    let needed =
++        vk::FormatFeatureFlags::SAMPLED_IMAGE | vk::FormatFeatureFlags::TRANSFER_SRC;
++    modifiers
++        .iter()
++        // ponytail: one plane only, see `import_vulkan`.
++        .filter(|m| m.drm_format_modifier_plane_count == 1)
++        .filter(|m| m.drm_format_modifier_tiling_features.contains(needed))
++        .map(|m| m.drm_format_modifier)
++        .filter(|&modifier| {
++            let mut drm = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
++                .drm_format_modifier(modifier)
++                .sharing_mode(vk::SharingMode::EXCLUSIVE);
++            let mut external = vk::PhysicalDeviceExternalImageFormatInfo::default()
++                .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
++            let info = vk::PhysicalDeviceImageFormatInfo2::default()
++                .format(FORMAT)
++                .ty(vk::ImageType::TYPE_2D)
++                .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT)
++                .usage(USAGE)
++                .push_next(&mut drm)
++                .push_next(&mut external);
++            let mut external_props = vk::ExternalImageFormatProperties::default();
++            let mut props = vk::ImageFormatProperties2::default().push_next(&mut external_props);
++            unsafe {
++                instance.get_physical_device_image_format_properties2(physical, &info, &mut props)
++            }
++            .is_ok()
++                && external_props
++                    .external_memory_properties
++                    .external_memory_features
++                    .contains(vk::ExternalMemoryFeatureFlags::IMPORTABLE)
++        })
++        .collect()
++}
++
++/// Zero copy import, needs a device from [`request_device`].
++pub fn import(device: &wgpu::Device, dmabuf: &Dmabuf) -> Result<wgpu::Texture> {
++    let modifier = dmabuf.modifier.context("not a dmabuf")?;
++    let hal = unsafe { device.as_hal::<Vulkan>() }.context("not a Vulkan device")?;
++    let raw = unsafe { import_vulkan(&hal, dmabuf, modifier) }?;
++    drop(hal);
++    let desc = descriptor(
++        dmabuf,
++        wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
++    );
++    Ok(unsafe { device.create_texture_from_hal::<Vulkan>(raw, &desc) })
++}
++
++/// # Safety
++/// `dmabuf` must stay unwritten while the texture is in use.
++unsafe fn import_vulkan(
++    device: &vulkan::Device,
++    dmabuf: &Dmabuf,
++    modifier: u64,
++) -> Result<vulkan::Texture> {
++    ensure!(supports_import(device), "device lacks dmabuf import");
++    ensure!(
++        unsafe { vulkan_modifiers(device) }.contains(&modifier),
++        "modifier {modifier:#x} can't be imported"
++    );
++    let plane = dmabuf.planes.first().context("dmabuf without planes")?;
++
++    let raw = device.raw_device();
++    let fd_device =
++        ash::khr::external_memory_fd::Device::new(device.shared_instance().raw_instance(), raw);
++    let handle_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
++
++    let layouts = dmabuf
++        .planes
++        .iter()
++        .map(|p| vk::SubresourceLayout {
++            offset: p.offset.into(),
++            size: 0,
++            row_pitch: p.stride.into(),
++            array_pitch: 0,
++            depth_pitch: 0,
++        })
++        .collect::<Vec<_>>();
++    let mut explicit = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
++        .drm_format_modifier(modifier)
++        .plane_layouts(&layouts);
++    let mut external = vk::ExternalMemoryImageCreateInfo::default().handle_types(handle_type);
++    let image = unsafe {
++        raw.create_image(
++            &vk::ImageCreateInfo::default()
++                .image_type(vk::ImageType::TYPE_2D)
++                .format(FORMAT)
++                .extent(vk::Extent3D {
++                    width: dmabuf.width,
++                    height: dmabuf.height,
++                    depth: 1,
++                })
++                .mip_levels(1)
++                .array_layers(1)
++                .samples(vk::SampleCountFlags::TYPE_1)
++                .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT)
++                .usage(USAGE)
++                .sharing_mode(vk::SharingMode::EXCLUSIVE)
++                .initial_layout(vk::ImageLayout::UNDEFINED)
++                .push_next(&mut external)
++                .push_next(&mut explicit),
++            None,
++        )
++    }?;
++
++    // ponytail: every plane is bound from the first plane's memory, so disjoint
++    // multi-buffer dmabufs aren't supported. GBM allocates one buffer per image.
++    let memory = (|| {
++        let mut fd_props = vk::MemoryFdPropertiesKHR::default();
++        unsafe {
++            fd_device.get_memory_fd_properties(handle_type, plane.fd.as_raw_fd(), &mut fd_props)
++        }?;
++        let requirements = unsafe { raw.get_image_memory_requirements(image) };
++        let types = requirements.memory_type_bits & fd_props.memory_type_bits;
++        ensure!(types != 0, "no memory type can import the dmabuf");
++
++        let fd = plane.fd.try_clone()?;
++        let mut import = vk::ImportMemoryFdInfoKHR::default()
++            .handle_type(handle_type)
++            .fd(fd.as_raw_fd());
++        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
++        let memory = unsafe {
++            raw.allocate_memory(
++                &vk::MemoryAllocateInfo::default()
++                    .allocation_size(requirements.size)
++                    .memory_type_index(types.trailing_zeros())
++                    .push_next(&mut import)
++                    .push_next(&mut dedicated),
++                None,
++            )
++        }?;
++        // Vulkan owns the fd once the import succeeded.
++        let _ = fd.into_raw_fd();
++        if let Err(e) = unsafe { raw.bind_image_memory(image, memory, 0) } {
++            unsafe { raw.free_memory(memory, None) };
++            return Err(e.into());
++        }
++        Ok(memory)
++    })();
++
++    let memory = match memory {
++        Ok(memory) => memory,
++        Err(e) => {
++            unsafe { raw.destroy_image(image, None) };
++            return Err(e);
++        }
++    };
++
++    let desc = wgpu::hal::TextureDescriptor {
++        label: Some("dmabuf"),
++        size: wgpu::Extent3d {
++            width: dmabuf.width,
++            height: dmabuf.height,
++            depth_or_array_layers: 1,
++        },
++        mip_level_count: 1,
++        sample_count: 1,
++        dimension: wgpu::TextureDimension::D2,
++        format: wgpu::TextureFormat::Bgra8Unorm,
++        usage: wgpu::TextureUses::RESOURCE | wgpu::TextureUses::COPY_SRC,
++        memory_flags: wgpu::hal::MemoryFlags::empty(),
++        view_formats: Vec::new(),
++    };
++    // Owns the image and the memory from here on.
++    Ok(unsafe { device.texture_from_raw(image, &desc, None, vulkan::TextureMemory::Dedicated(memory)) })
++}
++
++/// Copies linear memory into a new texture.
++pub fn upload(
++    device: &wgpu::Device,
++    queue: &wgpu::Queue,
++    dmabuf: &Dmabuf,
++) -> Result<wgpu::Texture> {
++    let plane = dmabuf.planes.first().context("dmabuf without planes")?;
++    let mut data = vec![0; plane.stride as usize * dmabuf.height as usize];
++    File::from(plane.fd.try_clone()?).read_exact_at(&mut data, plane.offset.into())?;
++
++    let desc = descriptor(
++        dmabuf,
++        wgpu::TextureUsages::TEXTURE_BINDING
++            | wgpu::TextureUsages::COPY_SRC
++            | wgpu::TextureUsages::COPY_DST,
++    );
++    let texture = device.create_texture(&desc);
++    queue.write_texture(
++        wgpu::TexelCopyTextureInfo {
++            texture: &texture,
++            mip_level: 0,
++            origin: wgpu::Origin3d::ZERO,
++            aspect: wgpu::TextureAspect::All,
++        },
++        &data,
++        wgpu::TexelCopyBufferLayout {
++            offset: 0,
++            bytes_per_row: Some(plane.stride),
++            rows_per_image: Some(dmabuf.height),
++        },
++        desc.size,
++    );
++    Ok(texture)
++}
+--- a/crates/gpui_wgpu/src/wgpu_context.rs
++++ b/crates/gpui_wgpu/src/wgpu_context.rs
+@@ -419,15 +419,19 @@
+             .using_resolution(adapter.limits())
+             .using_alignment(adapter.limits());
+ 
++        let desc = wgpu::DeviceDescriptor {
++            label: Some("gpui_device"),
++            required_features,
++            required_limits,
++            memory_hints: wgpu::MemoryHints::MemoryUsage,
++            trace: wgpu::Trace::Off,
++            experimental_features: wgpu::ExperimentalFeatures::disabled(),
++        };
++        #[cfg(target_os = "linux")]
++        let (device, queue) = crate::dmabuf::request_device(adapter, &desc).await?;
++        #[cfg(not(target_os = "linux"))]
+         let (device, queue) = adapter
+-            .request_device(&wgpu::DeviceDescriptor {
+-                label: Some("gpui_device"),
+-                required_features,
+-                required_limits,
+-                memory_hints: wgpu::MemoryHints::MemoryUsage,
+-                trace: wgpu::Trace::Off,
+-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+-            })
++            .request_device(&desc)
+             .await
+             .map_err(|e| anyhow::anyhow!("Failed to create wgpu device: {e}"))?;
+ 
+--- a/crates/gpui_wgpu/src/wgpu_renderer.rs
++++ b/crates/gpui_wgpu/src/wgpu_renderer.rs
+@@ -84,6 +84,8 @@
+ struct SurfaceParams {
+     bounds: PodBounds,
+     content_mask: PodBounds,
++    opaque: u32,
++    _pad: [u32; 3],
+ }
+ 
+ #[repr(C)]
+@@ -132,7 +134,7 @@
+     mono_sprites: wgpu::RenderPipeline,
+     subpixel_sprites: Option<wgpu::RenderPipeline>,
+     poly_sprites: wgpu::RenderPipeline,
+-    #[allow(dead_code)]
++    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+     surfaces: wgpu::RenderPipeline,
+ }
+ 
+@@ -194,6 +196,18 @@
+     path_intermediate_view: Option<wgpu::TextureView>,
+     path_msaa_texture: Option<wgpu::Texture>,
+     path_msaa_view: Option<wgpu::TextureView>,
++    /// Keyed by the `Arc<Dmabuf>` address.
++    #[cfg(target_os = "linux")]
++    dmabufs: FxHashMap<usize, ImportedDmabuf>,
++}
++
++#[cfg(target_os = "linux")]
++struct ImportedDmabuf {
++    /// Dead once the scene no longer holds the dmabuf, which also guards against
++    /// a new dmabuf reusing the address.
++    source: std::sync::Weak<gpui::Dmabuf>,
++    /// `None` when the import failed, so it isn't retried every frame.
++    view: Option<wgpu::TextureView>,
+ }
+ 
+ struct CachedTextureBindGroup {
+@@ -592,16 +606,6 @@
+                 wgpu::BindGroupLayoutEntry {
+                     binding: 2,
+                     visibility: wgpu::ShaderStages::FRAGMENT,
+-                    ty: wgpu::BindingType::Texture {
+-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+-                        view_dimension: wgpu::TextureViewDimension::D2,
+-                        multisampled: false,
+-                    },
+-                    count: None,
+-                },
+-                wgpu::BindGroupLayoutEntry {
+-                    binding: 3,
+-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                     count: None,
+                 },
+@@ -1353,6 +1357,8 @@
+                 path_intermediate_view: None,
+                 path_msaa_texture: None,
+                 path_msaa_view: None,
++                #[cfg(target_os = "linux")]
++                dmabufs: FxHashMap::default(),
+             },
+             atlas,
+             path_globals_offset,
+@@ -1497,6 +1503,8 @@
+                 )
+             })?;
+         self.prepare_texture_bind_groups(scene);
++        #[cfg(target_os = "linux")]
++        let surface_bind_groups = self.prepare_surfaces(scene);
+ 
+         let mut encoder =
+             self.resources()
+@@ -1609,8 +1617,13 @@
+                             &mut pass,
+                         )?;
+                     }
+-                    // Surfaces are macOS-only for video playback and are not
+-                    // implemented by the WGPU renderer.
++                    #[cfg(target_os = "linux")]
++                    PrimitiveBatch::Surfaces(range) => {
++                        self.draw_surfaces(&surface_bind_groups[range], &mut pass)
++                    }
++                    // Surfaces are macOS-only for video playback elsewhere and are
++                    // not implemented by the WGPU renderer.
++                    #[cfg(not(target_os = "linux"))]
+                     PrimitiveBatch::Surfaces(_surfaces) => {}
+                 }
+             }
+@@ -1751,6 +1764,88 @@
+         );
+     }
+ 
++    #[cfg(target_os = "linux")]
++    fn prepare_surfaces(&mut self, scene: &Scene) -> Vec<Option<wgpu::BindGroup>> {
++        use wgpu::util::DeviceExt as _;
++
++        let resources = &mut self.resources;
++        resources
++            .dmabufs
++            .retain(|_, imported| imported.source.strong_count() > 0);
++
++        scene
++            .surfaces
++            .iter()
++            .map(|surface| {
++                let dmabuf = &surface.dmabuf;
++                let imported = resources
++                    .dmabufs
++                    .entry(Arc::as_ptr(dmabuf) as usize)
++                    .or_insert_with(|| ImportedDmabuf {
++                        source: Arc::downgrade(dmabuf),
++                        view: crate::dmabuf::texture(&resources.device, &resources.queue, dmabuf)
++                            .inspect_err(|e| warn!("failed to import dmabuf: {e:#}"))
++                            .ok()
++                            .map(|texture| texture.create_view(&Default::default())),
++                    });
++                let view = imported.view.as_ref()?;
++
++                let params = SurfaceParams {
++                    bounds: surface.bounds.into(),
++                    content_mask: surface.content_mask.bounds.into(),
++                    opaque: dmabuf.opaque as u32,
++                    _pad: [0; 3],
++                };
++                let params = resources
++                    .device
++                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
++                        label: Some("surface_params"),
++                        contents: bytemuck::bytes_of(&params),
++                        usage: wgpu::BufferUsages::UNIFORM,
++                    });
++                Some(
++                    resources
++                        .device
++                        .create_bind_group(&wgpu::BindGroupDescriptor {
++                            label: Some("surface_bind_group"),
++                            layout: &resources.bind_group_layouts.surfaces,
++                            entries: &[
++                                wgpu::BindGroupEntry {
++                                    binding: 0,
++                                    resource: params.as_entire_binding(),
++                                },
++                                wgpu::BindGroupEntry {
++                                    binding: 1,
++                                    resource: wgpu::BindingResource::TextureView(view),
++                                },
++                                wgpu::BindGroupEntry {
++                                    binding: 2,
++                                    resource: wgpu::BindingResource::Sampler(
++                                        &resources.atlas_sampler,
++                                    ),
++                                },
++                            ],
++                        }),
++                )
++            })
++            .collect()
++    }
++
++    #[cfg(target_os = "linux")]
++    fn draw_surfaces(
++        &self,
++        bind_groups: &[Option<wgpu::BindGroup>],
++        pass: &mut wgpu::RenderPass<'_>,
++    ) {
++        let resources = self.resources();
++        for bind_group in bind_groups.iter().flatten() {
++            pass.set_pipeline(&resources.pipelines.surfaces);
++            pass.set_bind_group(0, &resources.globals_bind_group, &[]);
++            pass.set_bind_group(1, bind_group, &[]);
++            pass.draw(0..4, 0..1);
++        }
++    }
++
+     fn draw_sprites(
+         &self,
+         sprite_instances: &InstanceBinding,
+--- a/crates/gpui_wgpu/src/shaders.wgsl
++++ b/crates/gpui_wgpu/src/shaders.wgsl
+@@ -1311,23 +1311,20 @@
+ }
+ 
+ // --- surfaces --- //
++// A BGRA dmabuf texture, the format swizzles it to RGBA when sampled.
+ 
+ struct SurfaceParams {
+     bounds: Bounds,
+     content_mask: Bounds,
++    opaque: u32,
++    _pad0: u32,
++    _pad1: u32,
++    _pad2: u32,
+ }
+ 
+ @group(1) @binding(0) var<uniform> surface_locals: SurfaceParams;
+-@group(1) @binding(1) var t_y: texture_2d<f32>;
+-@group(1) @binding(2) var t_cb_cr: texture_2d<f32>;
+-@group(1) @binding(3) var s_surface: sampler;
+-
+-const ycbcr_to_RGB = mat4x4<f32>(
+-    vec4<f32>( 1.0000f,  1.0000f,  1.0000f, 0.0),
+-    vec4<f32>( 0.0000f, -0.3441f,  1.7720f, 0.0),
+-    vec4<f32>( 1.4020f, -0.7141f,  0.0000f, 0.0),
+-    vec4<f32>(-0.7010f,  0.5291f, -0.8860f, 1.0),
+-);
++@group(1) @binding(1) var t_surface: texture_2d<f32>;
++@group(1) @binding(2) var s_surface: sampler;
+ 
+ struct SurfaceVarying {
+     @builtin(position) position: vec4<f32>,
+@@ -1348,15 +1345,10 @@
+ 
+ @fragment
+ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
+-    // Alpha clip after using the derivatives.
++    let sample = textureSampleLevel(t_surface, s_surface, input.texture_position, 0.0);
+     if (any(input.clip_distances < vec4<f32>(0.0))) {
+         return vec4<f32>(0.0);
+     }
+-
+-    let y_cb_cr = vec4<f32>(
+-        textureSampleLevel(t_y, s_surface, input.texture_position, 0.0).r,
+-        textureSampleLevel(t_cb_cr, s_surface, input.texture_position, 0.0).rg,
+-        1.0);
+-
+-    return ycbcr_to_RGB * y_cb_cr;
++    let alpha = select(sample.a, 1.0, surface_locals.opaque != 0u);
++    return blend_color(vec4<f32>(sample.rgb, alpha), 1.0);
+ }

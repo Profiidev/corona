@@ -22,6 +22,7 @@ Update the version in the following files:
 - `nix/package.nix`
 - `justfile`
 - `crates/reqwest/Cargo.toml`
+- `crates/capture/Cargo.toml`
 
 # TODO
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
-use corona_capture::{RgbaImageExt, capture_all, image::RgbaImage};
+use corona_capture::{Frame, capture_all};
 use corona_components::animation::bounds::BoundsAnimation;
 use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;
@@ -19,7 +19,7 @@ const NAMESPACE: &str = "corona_screenshot";
 
 pub struct ScreenshotState {
   overlays: Vec<AnyWindowHandle>,
-  pub screenshots: HashMap<String, RgbaImage>,
+  pub screenshots: HashMap<String, Frame>,
   pub geometry: HashMap<String, MonitorGeometry>,
   pub mode: Mode,
   pub hovered_monitor: String,
@@ -175,7 +175,7 @@ impl ScreenshotState {
     .detach();
   }
 
-  fn open(frozen: Vec<(String, RgbaImage)>, cx: &mut App) -> Result<()> {
+  fn open(frozen: Vec<(String, Frame)>, cx: &mut App) -> Result<()> {
     let displays = cx.displays();
     let monitors = cx.compositor().list_monitors(cx).to_vec();
     let all_windows = cx.compositor().list_windows(cx).to_vec();
@@ -250,7 +250,7 @@ impl ScreenshotState {
         })
         .collect::<Vec<_>>();
 
-      let picture = image.to_gpui();
+      let picture = image.surface.clone();
       let handle = cx.open_window(fullscreen_options(NAMESPACE, display.id()), |window, cx| {
         let view = cx.new(|cx| Overlay::new(name.clone(), picture, geometry, visible, cx));
         let focus = view.read(cx).focus.clone();
