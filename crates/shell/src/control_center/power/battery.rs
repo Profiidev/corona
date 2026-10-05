@@ -21,7 +21,7 @@ fn duration(duration: Duration) -> String {
   }
 }
 
-fn icon(battery: &Battery) -> IconName {
+pub(crate) fn icon(battery: &Battery) -> IconName {
   match battery.percentage {
     _ if battery.state == BatteryState::Charging => IconName::BatteryCharging,
     p if p <= 10. => IconName::BatteryWarning,

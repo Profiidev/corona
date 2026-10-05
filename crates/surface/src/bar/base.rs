@@ -14,6 +14,7 @@ use gpui_kit::{
 use uuid::Uuid;
 
 use crate::bar::state::BarExt;
+use corona_components::components::tracked::Tracked;
 use corona_config::{
   bar::{BarConfig, WidgetConfig, WidgetEntry},
   placement::{Placement, PlacementStyle, PlacmentBounds},
@@ -91,13 +92,13 @@ impl Bar {
     self.grouped.contains(&widget_id)
   }
 
-  fn widget(&mut self, view: AnyView) -> Div {
+  fn widget(&mut self, view: AnyView) -> Tracked {
     let bounds = self
       .widget_bounds
       .entry(view.entity_id())
       .or_default()
       .clone();
-    div().on_prepaint(move |b, _, _| bounds.set(b)).child(view)
+    Tracked::new(view, bounds)
   }
 
   fn widgets(&mut self, entries: Vec<Entry>, cx: &App) -> Div {
@@ -113,14 +114,15 @@ impl Bar {
       .when(vertical, |d| d.flex_col())
       .children(entries.into_iter().map(|entry| {
         match entry {
-          Entry::Widget(view) => self.widget(view),
+          Entry::Widget(view) => self.widget(view).into_any_element(),
           Entry::Group(views) => div()
             .flex()
             .items_center()
             .when(vertical, |d| d.flex_col())
             .rounded_full()
             .bg(capsule)
-            .children(views.into_iter().map(|v| self.widget(v))),
+            .children(views.into_iter().map(|v| self.widget(v)))
+            .into_any_element(),
         }
       }))
   }

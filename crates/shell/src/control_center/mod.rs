@@ -33,6 +33,8 @@ pub use crate::control_center::{
   weather::WeatherPanel,
 };
 
+pub(crate) use crate::control_center::power::battery_icon;
+
 pub fn register_panels(cx: &mut App) {
   cx.panel()
     .register::<ControlCenter>()

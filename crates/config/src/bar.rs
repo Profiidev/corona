@@ -79,6 +79,7 @@ impl Default for BarConfig {
       .into_iter()
       .chain(
         [
+          "battery",
           "bluetooth",
           "network",
           "audio",

@@ -15,6 +15,8 @@ mod battery;
 mod devices;
 mod profiles;
 
+pub(crate) use battery::icon as battery_icon;
+
 pub struct PowerPanel {
   error: Option<String>,
   _subscriptions: [Subscription; 4],

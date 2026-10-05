@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::control_center::ControlCenter;
 
 mod audio;
+mod battery;
 mod bluetooth;
 mod brightness;
 mod calendar;
@@ -17,6 +18,7 @@ mod sysinfo;
 mod weather;
 
 pub use audio::AudioButton;
+pub use battery::BatteryButton;
 pub use bluetooth::BluetoothButton;
 pub use brightness::BrightnessButton;
 pub use calendar::CalendarButton;
