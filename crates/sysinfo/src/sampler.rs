@@ -16,7 +16,7 @@ use sysinfo::{
 };
 
 use crate::{
-  gpu::{self, PCI},
+  gpu::{self, Engines, PCI, PROC},
   state::{Disk, Gpu, GpuVendor, Sample, SystemInfo},
 };
 
@@ -34,6 +34,8 @@ struct Sampler {
   components: Components,
   nvml: Option<Nvml>,
   gpus: Vec<Gpu>,
+  drm: Engines,
+  started: Instant,
   last: Instant,
 }
 
@@ -87,6 +89,8 @@ impl Sampler {
       components: Components::new_with_refreshed_list(),
       nvml,
       gpus,
+      drm: Engines::new(),
+      started: Instant::now(),
       last: Instant::now(),
     }
   }
@@ -121,8 +125,20 @@ impl Sampler {
   fn baseline(&mut self) {
     self.system.refresh_cpu_usage();
     self.networks.refresh(true);
+    self.drm = self.engines();
     self.last = Instant::now();
     thread::sleep(MINIMUM_CPU_UPDATE_INTERVAL);
+  }
+
+  fn engines(&self) -> Engines {
+    match self
+      .gpus
+      .iter()
+      .any(|gpu| gpu.measurable && gpu.vendor == GpuVendor::Intel)
+    {
+      true => gpu::engines(Path::new(PROC), self.started.elapsed().as_nanos() as u64),
+      false => Engines::new(),
+    }
   }
 
   fn sample(&mut self) -> Sample {
@@ -149,6 +165,14 @@ impl Sampler {
         (rx + data.received(), tx + data.transmitted())
       });
     let load = System::load_average();
+    let drm = self.engines();
+    let gpus = self
+      .gpus
+      .iter()
+      .filter(|gpu| gpu.measurable)
+      .map(|gpu| gpu::sample(Path::new(PCI), gpu, self.nvml.as_ref(), (&self.drm, &drm)))
+      .collect();
+    self.drm = drm;
 
     Sample {
       time: now,
@@ -167,12 +191,7 @@ impl Sampler {
       network_rx: rx as f64 / elapsed,
       network_tx: tx as f64 / elapsed,
       disks: disks(&self.disks),
-      gpus: self
-        .gpus
-        .iter()
-        .filter(|gpu| gpu.measurable)
-        .map(|gpu| gpu::sample(Path::new(PCI), gpu, self.nvml.as_ref()))
-        .collect(),
+      gpus,
     }
   }
 }

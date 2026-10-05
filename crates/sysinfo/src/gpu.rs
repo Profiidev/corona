@@ -1,4 +1,5 @@
 use std::{
+  collections::HashMap,
   fs,
   path::{Path, PathBuf},
 };
@@ -8,6 +9,10 @@ use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
 use crate::state::{Gpu, GpuSample, GpuVendor};
 
 pub(crate) const PCI: &str = "/sys/bus/pci/devices";
+pub(crate) const PROC: &str = "/proc";
+
+/// busy and total time per (device, DRM client, engine): cycles on xe, ns on i915
+pub(crate) type Engines = HashMap<(String, String, String), (u64, u64)>;
 
 fn read(path: impl AsRef<Path>) -> Option<String> {
   Some(fs::read_to_string(path).ok()?.trim().to_string())
@@ -52,7 +57,8 @@ pub(crate) fn list(pci_dir: &Path, nvml: Option<&Nvml>) -> Vec<Gpu> {
       let measurable = match vendor {
         GpuVendor::Nvidia => nvml.is_some_and(|nvml| nvidia_device(nvml, &pci).is_some()),
         GpuVendor::Amd => path.join("gpu_busy_percent").exists(),
-        GpuVendor::Intel | GpuVendor::Other => false,
+        GpuVendor::Intel => matches!(driver.as_deref(), Some("xe" | "i915")),
+        GpuVendor::Other => false,
       };
       Some(Gpu {
         pci,
@@ -93,7 +99,79 @@ fn suspended(device: &Path) -> bool {
   read(device.join("power/runtime_status")).is_some_and(|status| status == "suspended")
 }
 
-pub(crate) fn sample(pci_dir: &Path, gpu: &Gpu, nvml: Option<&Nvml>) -> GpuSample {
+pub(crate) fn engines(proc_dir: &Path, now: u64) -> Engines {
+  let mut engines = Engines::new();
+  let fdinfos = fs::read_dir(proc_dir)
+    .into_iter()
+    .flatten()
+    .flatten()
+    .filter_map(|process| fs::read_dir(process.path().join("fdinfo")).ok())
+    .flatten()
+    .flatten();
+  for fdinfo in fdinfos {
+    let Some(text) = read(fdinfo.path()) else {
+      continue;
+    };
+    let fields: HashMap<&str, &str> = text
+      .lines()
+      .filter_map(|line| line.split_once(':'))
+      .map(|(key, value)| (key, value.trim()))
+      .collect();
+    let (Some(pdev), Some(client)) = (fields.get("drm-pdev"), fields.get("drm-client-id")) else {
+      continue;
+    };
+    let number = |key: &str| fields.get(key)?.split(' ').next()?.parse::<u64>().ok();
+    for key in fields.keys() {
+      let (engine, busy, total) = if let Some(engine) = key.strip_prefix("drm-cycles-") {
+        (
+          engine,
+          number(key),
+          number(&format!("drm-total-cycles-{engine}")),
+        )
+      } else if let Some(engine) = key
+        .strip_prefix("drm-engine-")
+        .filter(|engine| !engine.starts_with("capacity-"))
+      {
+        (engine, number(key), Some(now))
+      } else {
+        continue;
+      };
+      let (Some(busy), Some(total)) = (busy, total) else {
+        continue;
+      };
+      let capacity = number(&format!("drm-engine-capacity-{engine}")).unwrap_or(1);
+      engines.insert(
+        (pdev.to_string(), client.to_string(), engine.to_string()),
+        (busy, total * capacity),
+      );
+    }
+  }
+  engines
+}
+
+fn drm_usage(pci: &str, previous: &Engines, current: &Engines) -> f32 {
+  let mut per_engine: HashMap<&str, (u64, u64)> = HashMap::new();
+  for (key @ (device, _, engine), (busy, total)) in current {
+    let Some((previous_busy, previous_total)) = previous.get(key).filter(|_| device == pci) else {
+      continue;
+    };
+    let entry = per_engine.entry(engine).or_default();
+    entry.0 += busy.saturating_sub(*previous_busy);
+    entry.1 = entry.1.max(total.saturating_sub(*previous_total));
+  }
+  per_engine
+    .values()
+    .filter(|(_, total)| *total > 0)
+    .map(|(busy, total)| (*busy as f32 / *total as f32 * 100.).min(100.))
+    .fold(0., f32::max)
+}
+
+pub(crate) fn sample(
+  pci_dir: &Path,
+  gpu: &Gpu,
+  nvml: Option<&Nvml>,
+  (previous, current): (&Engines, &Engines),
+) -> GpuSample {
   let path = pci_dir.join(&gpu.pci);
   let mut sample = GpuSample {
     pci: gpu.pci.clone(),
@@ -126,7 +204,8 @@ pub(crate) fn sample(pci_dir: &Path, gpu: &Gpu, nvml: Option<&Nvml>) -> GpuSampl
       sample.vram_total = number("mem_info_vram_total");
       sample.temperature = hwmon_temperature(&path.join("hwmon"));
     }
-    GpuVendor::Intel | GpuVendor::Other => {}
+    GpuVendor::Intel => sample.usage = Some(drm_usage(&gpu.pci, previous, current)),
+    GpuVendor::Other => {}
   }
   sample
 }
@@ -177,10 +256,48 @@ mod tests {
       ("AMD GPU", GpuVendor::Amd)
     );
     assert!(gpus[0].measurable);
-    let sample = sample(&root, &gpus[0], None);
+    let sample = sample(&root, &gpus[0], None, (&Engines::new(), &Engines::new()));
     assert_eq!(sample.usage, Some(37.));
     assert_eq!(sample.temperature, Some(52.));
     assert_eq!(sample.vram_total, Some(8589934592));
+    fs::remove_dir_all(root).ok();
+  }
+
+  #[test]
+  fn intel() {
+    let root = std::env::temp_dir().join(format!("corona-drm-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let fdinfo = |pid: &str, fd: &str, text: &str| {
+      fs::create_dir_all(root.join(pid).join("fdinfo")).unwrap();
+      fs::write(root.join(pid).join("fdinfo").join(fd), text).unwrap();
+    };
+    let xe = |cycles: u64, total: u64| {
+      format!(
+        "pos:\t0\ndrm-driver:\txe\ndrm-client-id:\t219\ndrm-pdev:\t0000:00:02.0\n\
+         drm-total-system:\t45420 KiB\ndrm-cycles-rcs:\t{cycles}\ndrm-total-cycles-rcs:\t{total}\n\
+         drm-cycles-vcs:\t0\ndrm-total-cycles-vcs:\t{total}\n"
+      )
+    };
+    let i915 = |ns: u64| {
+      format!(
+        "drm-driver:\ti915\ndrm-client-id:\t7\ndrm-pdev:\t0000:00:02.0\n\
+         drm-engine-video:\t{ns} ns\ndrm-engine-capacity-video:\t2\n"
+      )
+    };
+    // the same client open twice, and a non DRM fd
+    fdinfo("100", "62", &xe(1000, 10_000));
+    fdinfo("100", "63", &xe(1000, 10_000));
+    fdinfo("100", "0", "pos:\t0\nflags:\t02\n");
+    fdinfo("200", "5", &i915(0));
+    let previous = engines(&root, 1_000);
+
+    fdinfo("100", "62", &xe(3500, 20_000));
+    fdinfo("100", "63", &xe(3500, 20_000));
+    fdinfo("200", "5", &i915(1_500));
+    let current = engines(&root, 2_000);
+    // rcs: 2500 of 10000 cycles, video: 1500 ns of 2 × 1000 ns
+    assert_eq!(drm_usage("0000:00:02.0", &previous, &current), 75.);
+    assert_eq!(drm_usage("0000:03:00.0", &previous, &current), 0.);
     fs::remove_dir_all(root).ok();
   }
 }
