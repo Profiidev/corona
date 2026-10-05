@@ -3,6 +3,7 @@ use corona_ipc::IpcCommandSend;
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
+  switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
 
 #[derive(Subcommand)]
@@ -20,6 +21,18 @@ pub enum IpcCommands {
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
+  /// Open the window switcher, or move its selection while open
+  Switcher {
+    /// window or workspace
+    #[arg(long, default_value = "window")]
+    mode: SwitcherMode,
+    /// Held to keep the switcher open, releasing it switches: super, alt or ctrl
+    #[arg(long, default_value = "super")]
+    modifier: Modifier,
+    /// Only show what is on the focused monitor
+    #[arg(long)]
+    current_monitor: bool,
+  },
 }
 
 impl IpcCommands {
@@ -34,6 +47,20 @@ impl IpcCommands {
       IpcCommands::ColorPicker => {
         if let Err(e) = ColorPicker::send(()) {
           tracing::error!("Failed to start color picker: {}", e);
+        }
+      }
+      IpcCommands::Switcher {
+        mode,
+        modifier,
+        current_monitor,
+      } => {
+        let options = Options {
+          mode,
+          modifier,
+          current_monitor,
+        };
+        if let Err(e) = Cycle::send(options) {
+          tracing::error!("Failed to cycle window switcher: {}", e);
         }
       }
     }

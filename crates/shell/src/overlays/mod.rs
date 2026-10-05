@@ -9,6 +9,7 @@ use gpui_kit::{
 pub mod colorpicker;
 pub mod notification;
 pub mod screenshot;
+pub mod switcher;
 pub mod taskbar;
 
 pub trait OverlayState: Global + Sized {
@@ -49,6 +50,7 @@ pub trait OverlayState: Global + Sized {
 pub fn register_commands(server: &mut IpcServer) {
   colorpicker::commands::register_commands(server);
   screenshot::commands::register_commands(server);
+  switcher::commands::register_commands(server);
 }
 
 fn fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions {

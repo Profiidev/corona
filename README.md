@@ -13,6 +13,14 @@ hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })
 ```
 
+Bind the window switcher. It stays open while SUPER is held, Tab moves the selection, Shift reverses it and
+releasing SUPER focuses the selected window:
+
+```lua
+hl.bind("SUPER + TAB", hl.dsp.exec_cmd("corona ipc switcher"))
+hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc switcher --mode workspace"))
+```
+
 ## Development
 
 ### Gpui-pre update

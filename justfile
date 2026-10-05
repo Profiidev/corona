@@ -5,6 +5,10 @@ gpui_kit_tag := "v0.7.0"
 
 layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })'
 
+# Always this checkout's debug build, never a corona on PATH.
+corona := justfile_directory() / "target/debug/corona"
+keybinds := 'hl.bind("SUPER + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher")) hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher --mode workspace --current-monitor"))'
+
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
 # zed's own crates can't be used directly, they need its entire workspace.
 # `rm -rf vendor` to force a refetch after bumping gpui_version or a patch.
@@ -74,6 +78,9 @@ nested:
   -- The way out if the shell wedges. Goes through hyprctl rather than a dispatcher
   -- name, since hyprctl targets this nested instance and needs no guessing.
   hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("hyprctl dispatch exit"))
+
+  -- The window switcher: held SUPER keeps it open, releasing it switches.
+  {{keybinds}}
 
   -- Redirected: an exec'd child's output does not reach the terminal running this.
   hl.on("hyprland.start", function()
@@ -164,3 +171,7 @@ nested-kill:
 
 layerrules:
   hyprctl eval '{{layer_rules}}'
+
+# Bind corona's keys in the running Hyprland session, until its config reloads.
+keybinds:
+  hyprctl eval '{{keybinds}}'
