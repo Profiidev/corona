@@ -11,6 +11,7 @@ pub mod notification;
 pub mod screenshot;
 pub mod switcher;
 pub mod taskbar;
+pub mod wallpaper;
 
 pub trait OverlayState: Global + Sized {
   fn overlays(&self) -> &[AnyWindowHandle];

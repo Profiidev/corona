@@ -5,8 +5,9 @@ use corona_components::components::window_icon::WindowIcon;
 use corona_compositor::{CompositorExt, types};
 use gpui_kit::{
   App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-  ModifiersChangedEvent, MouseButton, ParentElement, Render, StatefulInteractiveElement, Styled,
-  Subscription, Window, black, component::ActiveTheme, div, prelude::FluentBuilder, px,
+  ModifiersChangedEvent, MouseButton, ObjectFit, ParentElement, Render, StatefulInteractiveElement,
+  Styled, StyledImage, Subscription, Window, black, component::ActiveTheme, div, img,
+  prelude::FluentBuilder, px,
 };
 use tracing::error;
 
@@ -16,6 +17,7 @@ use crate::overlays::{
     SwitcherState,
     commands::{Mode, Modifier, Options},
   },
+  wallpaper,
 };
 
 const FPS: u32 = 5;
@@ -302,6 +304,16 @@ impl Switcher {
           .border_color(match self.is_selected(Mode::Workspace, &workspace.id) {
             true => theme.colors.primary,
             false => gpui_kit::transparent_black(),
+          })
+          .when_some(wallpaper::configured(cx), |d, source| {
+            d.child(
+              img(source)
+                .absolute()
+                .inset_0()
+                .size_full()
+                .rounded(theme.radius)
+                .object_fit(ObjectFit::Cover),
+            )
           })
           .when(!window_mode, |d| {
             let id = workspace.id.clone();

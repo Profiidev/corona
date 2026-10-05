@@ -46,6 +46,7 @@ pub struct Config {
   pub plugin_dir: PathBuf,
   pub brightness: BrightnessConfig,
   pub weather: WeatherConfig,
+  pub wallpaper: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -116,6 +117,7 @@ impl Default for Config {
         .join("corona/plugins"),
       brightness: BrightnessConfig::default(),
       weather: WeatherConfig::default(),
+      wallpaper: None,
     }
   }
 }

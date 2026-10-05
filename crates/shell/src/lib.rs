@@ -17,6 +17,7 @@ pub fn init(cx: &mut App) {
   osds::init(cx);
   overlays::notification::init(cx);
   overlays::taskbar::init(cx);
+  overlays::wallpaper::init(cx);
 
   BarState::spawn_bars(cx);
 }
