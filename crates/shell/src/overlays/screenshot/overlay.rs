@@ -3,7 +3,7 @@ use std::{mem, sync::Arc, time::Duration};
 use corona_capture::FrameView;
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
+  App, Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
   InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
   MouseUpEvent, ParentElement, Pixels, Point, Render, Size, Styled, Window, canvas,
   component::{ActiveTheme, tag::Tag},
@@ -97,9 +97,9 @@ impl Overlay {
             v.update(cx, |this, cx| this.on_move(e.position, cx));
           }
         });
-        window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
+        window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
           if phase == DispatchPhase::Bubble && e.button == MouseButton::Left {
-            view.update(cx, |this, cx| this.on_release(window, cx));
+            view.update(cx, |this, cx| this.on_release(cx));
           }
         });
       },
@@ -109,6 +109,9 @@ impl Overlay {
   }
 
   fn on_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+    if finishing(cx) {
+      return;
+    }
     if self.cursor == Some(position) {
       return;
     }
@@ -144,29 +147,30 @@ impl Overlay {
     }
   }
 
-  fn on_release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    let Some(state) = ScreenshotState::get(cx) else {
+  fn on_release(&mut self, cx: &mut Context<Self>) {
+    let Some(state) = ScreenshotState::get(cx).filter(|s| !s.finishing) else {
       return;
     };
     match state.mode {
       Mode::Selection => {
-        let Some(drag) = state.drag.take() else {
+        let Some(area) = state.drag.as_ref().map(DragArea::bounds) else {
           return;
         };
-        let area = drag.bounds();
+        // the drag stays while finishing, so the selection stays drawn
         if area.size.width.as_f32() >= MIN_SELECTION_SIZE
           && area.size.height.as_f32() >= MIN_SELECTION_SIZE
         {
-          commit_selection(area, window, cx);
+          commit_selection(area, cx);
         } else {
+          state.drag = None;
           ScreenshotState::refresh_all(cx);
           cx.notify();
         }
       }
-      Mode::Monitor => commit_selection(self.geometry.bounds(), window, cx),
+      Mode::Monitor => commit_selection(self.geometry.bounds(), cx),
       Mode::Window => {
         if let Some(area) = state.hovered_window {
-          commit_selection(area, window, cx);
+          commit_selection(area, cx);
         }
       }
     }
@@ -201,7 +205,6 @@ impl Render for Overlay {
     let Some(state) = cx.try_global::<ScreenshotState>() else {
       return div().size_full();
     };
-
     let cursor = match state.mode {
       Mode::Selection => CursorStyle::Crosshair,
       Mode::Monitor | Mode::Window => CursorStyle::PointingHand,
@@ -249,6 +252,9 @@ impl Render for Overlay {
       .size_full()
       .cursor(cursor)
       .on_key_down(cx.listener(|_, e: &KeyDownEvent, window, cx| {
+        if finishing(cx) {
+          return;
+        }
         match e.keystroke.key.as_str() {
           "escape" if ScreenshotState::get(cx).is_some_and(|s| s.drag.is_some()) => {
             ScreenshotState::clear_drag(cx);
@@ -264,7 +270,7 @@ impl Render for Overlay {
               && state.mode != Mode::Selection
               && let Some(area) = state.target() =>
           {
-            commit_selection(area, window, cx);
+            commit_selection(area, cx);
           }
           key if let Some(dir) = Direction::from_key(key) => {
             ScreenshotState::navigate(dir, cx);
@@ -278,6 +284,7 @@ impl Render for Overlay {
         cx.listener(|this, e: &MouseDownEvent, _, cx| {
           if let Some(state) = ScreenshotState::get(cx)
             && state.mode == Mode::Selection
+            && !state.finishing
           {
             let at = e.position + this.geometry.origin;
             state.drag = Some(DragArea { from: at, to: at });
@@ -288,6 +295,9 @@ impl Render for Overlay {
       .on_mouse_down(
         MouseButton::Right,
         cx.listener(|_, _: &MouseDownEvent, window, cx| {
+          if finishing(cx) {
+            return;
+          }
           if ScreenshotState::get(cx).is_some_and(|s| s.drag.is_some()) {
             ScreenshotState::clear_drag(cx);
           } else {
@@ -325,4 +335,10 @@ impl Render for Overlay {
       .when_some(self.size_badge(cx), |d, badge| d.child(badge))
       .child(self.toolbar.render(mode, pill_duration, window, cx))
   }
+}
+
+/// the selection is being encoded, input does nothing until the overlays close
+fn finishing(cx: &App) -> bool {
+  cx.try_global::<ScreenshotState>()
+    .is_some_and(|s| s.finishing)
 }

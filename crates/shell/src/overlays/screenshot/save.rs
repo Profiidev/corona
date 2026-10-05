@@ -8,9 +8,7 @@ use corona_capture::{
     imageops::{self, FilterType},
   },
 };
-use gpui_kit::{
-  App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, ImageFormat, Pixels, Window,
-};
+use gpui_kit::{App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, ImageFormat, Pixels};
 use jiff::Zoned;
 use tracing::{error, info};
 
@@ -104,25 +102,33 @@ fn compose(
   Ok(out)
 }
 
-pub fn commit_selection(area: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+pub fn commit_selection(area: Bounds<Pixels>, cx: &mut App) {
   let Some(state) = ScreenshotState::get(cx) else {
     error!("screenshot state missing");
     return;
   };
+  if state.finishing {
+    return;
+  }
+  state.finishing = true;
   let screenshots = std::mem::take(&mut state.screenshots);
   let geometry = state.geometry.clone();
-  // Close right away, the readback and encoding happen off the UI thread.
-  ScreenshotState::close(Some(window), cx);
+  ScreenshotState::refresh_all(cx);
 
+  // The readback and encoding happen off the UI thread. The overlays close after the
+  // clipboard write, without a focused window Wayland ignores it.
   cx.spawn(async move |cx| {
     let png = cx
       .background_executor()
       .spawn(async move { compose(&geometry, &screenshots, area)?.to_png() })
       .await;
-    match png {
-      Ok(png) => cx.update(|cx| finish(png, cx)),
-      Err(e) => error!("screenshot failed: {e:#}"),
-    }
+    cx.update(|cx| {
+      match png {
+        Ok(png) => finish(png, cx),
+        Err(e) => error!("screenshot failed: {e:#}"),
+      }
+      ScreenshotState::close(None, cx);
+    });
   })
   .detach();
 }

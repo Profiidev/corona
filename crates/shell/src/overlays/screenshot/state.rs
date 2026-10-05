@@ -28,6 +28,7 @@ pub struct ScreenshotState {
   pub keyboard: bool,
   pub drag: Option<DragArea>,
   pub slide: BoundsAnimation,
+  pub finishing: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -149,6 +150,7 @@ impl ScreenshotState {
       keyboard: false,
       drag: None,
       slide: BoundsAnimation::default(),
+      finishing: false,
     });
 
     let names: Vec<String> = cx
@@ -282,7 +284,7 @@ impl ScreenshotState {
   }
 
   pub fn set_mode(mode: Mode, cx: &mut App) {
-    let Some(state) = Self::get(cx) else {
+    let Some(state) = Self::get(cx).filter(|s| !s.finishing) else {
       return;
     };
     state.mode = mode;
