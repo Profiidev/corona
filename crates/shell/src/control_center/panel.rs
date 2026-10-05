@@ -1,6 +1,8 @@
-use corona_surface::panel::Panel;
+use corona_surface::panel::{Panel, PanelState};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div,
+  App, AppContext, Context, Entity, Global, IntoElement, ParentElement, Render, Styled, WeakEntity,
+  Window, div,
 };
 
 use crate::control_center::{
@@ -13,6 +15,30 @@ pub struct ControlCenter {
   panel: Box<dyn ControlCenterPanelHandle>,
 }
 
+struct OpenControlCenter(WeakEntity<ControlCenter>);
+
+impl Global for OpenControlCenter {}
+
+impl ControlCenter {
+  pub fn navigate(page: ControlCenterType, window: &mut Window, cx: &mut App) {
+    let open = cx
+      .try_global::<OpenControlCenter>()
+      .and_then(|open| open.0.upgrade());
+    match open {
+      Some(control_center) => control_center.update(cx, |this, cx| this.select(page, window, cx)),
+      None => {
+        let _ = PanelState::show(page.as_str(), false, cx).log_err();
+      }
+    }
+  }
+
+  fn select(&mut self, page: ControlCenterType, window: &mut Window, cx: &mut Context<Self>) {
+    self.selected = page;
+    self.panel = page.handle(window, cx);
+    cx.notify();
+  }
+}
+
 impl Panel for ControlCenter {
   const NAME: &'static str = "control_center";
   const WIDTH: f32 = 500.0;
@@ -20,6 +46,8 @@ impl Panel for ControlCenter {
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let selected = ControlCenterType::Dashboard;
+    let this = cx.entity().downgrade();
+    cx.set_global(OpenControlCenter(this));
 
     ControlCenter {
       panel: selected.handle(window, cx),
@@ -61,11 +89,7 @@ impl Render for ControlCenter {
       .child(ControlCenterNav::new(self.selected).on_click({
         let handle = cx.entity().downgrade();
         move |new, window, cx| {
-          let _ = handle.update(cx, |this, cx| {
-            this.selected = new;
-            this.panel = new.handle(window, cx);
-            cx.notify();
-          });
+          let _ = handle.update(cx, |this, cx| this.select(new, window, cx));
         }
       }))
       .child(

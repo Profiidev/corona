@@ -2,5 +2,5 @@ pub mod commands;
 pub mod mode;
 mod overlay;
 mod save;
-mod state;
+pub(crate) mod state;
 mod toolbar;

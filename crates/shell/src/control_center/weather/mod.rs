@@ -55,7 +55,7 @@ fn card(theme: &Theme) -> Div {
   div().flex().flex_col().w_full().gap_2().p_2().card(theme)
 }
 
-fn icon(condition: Condition, is_day: bool) -> IconName {
+pub(super) fn icon(condition: Condition, is_day: bool) -> IconName {
   match condition {
     Condition::Clear if is_day => IconName::Sun,
     Condition::Clear => IconName::Moon,

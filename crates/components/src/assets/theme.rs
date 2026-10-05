@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use gpui_kit::{
   App, SharedString,
-  component::{Theme, ThemeRegistry},
+  component::{ActiveTheme, Theme, ThemeMode, ThemeRegistry},
 };
 use include_dir::{Dir, include_dir};
 
@@ -16,13 +16,35 @@ pub fn load(cx: &mut App) -> Result<()> {
     registry.load_themes_from_str(content)?;
   }
 
-  let theme = registry
-    .themes()
-    .get(&theme)
-    .context("Failed to get theme")?
-    .clone();
+  let themes = registry.themes();
+  let config = themes.get(&theme).context("Failed to get theme")?.clone();
+  let other = counterpart(&theme).and_then(|name| themes.get(name.as_str()).cloned());
 
-  Theme::global_mut(cx).apply_config(&theme);
+  let theme = Theme::global_mut(cx);
+  theme.apply_config(&config);
+  if let Some(other) = other {
+    match other.mode.is_dark() {
+      true => theme.dark_theme = other,
+      false => theme.light_theme = other,
+    }
+  }
 
   Ok(())
+}
+
+fn counterpart(name: &str) -> Option<String> {
+  if let Some(base) = name.strip_suffix(" Dark") {
+    return Some(format!("{base} Light"));
+  }
+  name
+    .strip_suffix(" Light")
+    .map(|base| format!("{base} Dark"))
+}
+
+pub fn toggle_mode(cx: &mut App) {
+  let mode = match cx.theme().is_dark() {
+    true => ThemeMode::Light,
+    false => ThemeMode::Dark,
+  };
+  Theme::change(mode, None, cx);
 }

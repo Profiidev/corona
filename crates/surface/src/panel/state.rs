@@ -64,7 +64,7 @@ impl PanelState {
     Self::apply(data, align, placement, display_id, Some(opener), true, cx)
   }
 
-  pub(crate) fn show(name: &str, toggle: bool, cx: &mut App) -> Result<()> {
+  pub fn show(name: &str, toggle: bool, cx: &mut App) -> Result<()> {
     let data = cx
       .global::<PanelState>()
       .registry
