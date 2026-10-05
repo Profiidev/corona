@@ -21,6 +21,7 @@ use crate::overlays::{
 const FPS: u32 = 5;
 const CARD_HEIGHT: f32 = 180.;
 const LABEL: f32 = 20.;
+const TITLE: f32 = 24.;
 const GAP: f32 = 16.;
 const PADDING: f32 = 16.;
 const BORDER: f32 = 2.;
@@ -278,9 +279,12 @@ impl Switcher {
       .flex()
       .flex_col()
       .gap_1()
+      .w(px(width))
       .child(
         div()
           .h(px(LABEL))
+          .w_full()
+          .truncate()
           .text_sm()
           .text_color(theme.muted_foreground)
           .child(workspace.name.clone()),
@@ -384,7 +388,16 @@ impl Render for Switcher {
               .gap(px(GAP))
               .children(cards),
           )
-          .child(div().max_w_full().truncate().child(title)),
+          .child(
+            div().w_full().h(px(TITLE)).relative().child(
+              div()
+                .absolute()
+                .inset_0()
+                .truncate()
+                .text_center()
+                .child(title),
+            ),
+          ),
       )
   }
 }
