@@ -24,6 +24,7 @@ const LABEL: f32 = 20.;
 const GAP: f32 = 16.;
 const PADDING: f32 = 16.;
 const BORDER: f32 = 2.;
+const INSET: f32 = 3.;
 const ICON_SIZE: u16 = 48;
 const CORNER_ICON_SIZE: u16 = 20;
 const CORNER_INSET: f32 = 4.;
@@ -77,7 +78,7 @@ impl Switcher {
     let previews = self::order(Mode::Window, monitor.as_deref(), cx)
       .into_iter()
       .map(|address| {
-        let live = cx.new(|cx| LiveCapture::window(&address, FPS, cx));
+        let live = cx.new(|cx| LiveCapture::window(&address, FPS, cx).rounded(cx.theme().radius));
         (address, live)
       })
       .collect();
@@ -183,35 +184,54 @@ impl Switcher {
       .list_monitors(cx)
       .iter()
       .find(|m| m.name == workspace.monitor);
-    let (origin, size) = monitor.map_or(((0, 0), (16., 9.)), |m| {
+    let monitor = monitor.map_or((0, 0, 16, 9), |m| {
       let scale = m.scale.max(0.1);
-      (
-        (m.x, m.y),
-        (m.width as f32 / scale, m.height as f32 / scale),
-      )
+      let size = |v: u32| (v as f32 / scale) as i32;
+      (m.x, m.y, size(m.width), size(m.height))
     });
-    let k = CARD_HEIGHT / size.1.max(1.);
+    let screen = (
+      monitor.0,
+      monitor.1,
+      monitor.0 + monitor.2,
+      monitor.1 + monitor.3,
+    );
+    let (left, top, right, bottom) = windows
+      .iter()
+      .map(|w| (w.x, w.y, w.x + w.width, w.y + w.height))
+      .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+      .map(|b| {
+        (
+          b.0.max(screen.0),
+          b.1.max(screen.1),
+          b.2.min(screen.2),
+          b.3.min(screen.3),
+        )
+      })
+      .filter(|b| b.0 < b.2 && b.1 < b.3)
+      .unwrap_or(screen);
+    let inset = INSET + BORDER;
+    let k = (CARD_HEIGHT - inset * 2.) / (bottom - top).max(1) as f32;
+    let width = (right - left) as f32 * k + inset * 2.;
 
     let window_mode = self.mode == Mode::Window;
     let tiles = windows.into_iter().map(|w| {
       let selected = self.is_selected(Mode::Window, &w.address);
       let preview = self.previews.get(&w.address).cloned();
       let address = w.address.clone();
+      let (tile_w, tile_h) = (w.width as f32 * k, w.height as f32 * k);
+      let short = tile_w.min(tile_h);
+      let icon = ((short * 0.5) as u16 / 8 * 8).clamp(8, ICON_SIZE);
+      let corner = short >= (CORNER_ICON_SIZE as f32 + CORNER_INSET) * 3.;
       div()
         .id(format!("switcher-window-{}", w.address))
         .absolute()
-        .left(px((w.x - origin.0) as f32 * k))
-        .top(px((w.y - origin.1) as f32 * k))
-        .w(px(w.width as f32 * k))
-        .h(px(w.height as f32 * k))
+        .left(px(INSET + (w.x - left) as f32 * k))
+        .top(px(INSET + (w.y - top) as f32 * k))
+        .w(px(tile_w))
+        .h(px(tile_h))
         .rounded(theme.radius)
         .overflow_hidden()
         .bg(theme.tokens.button_hover)
-        .border(px(BORDER))
-        .border_color(match selected {
-          true => theme.colors.primary,
-          false => gpui_kit::transparent_black(),
-        })
         .when(window_mode, |d| {
           d.cursor_pointer()
             .on_click(cx.listener(move |this, _, window, cx| this.select(&address, window, cx)))
@@ -223,23 +243,35 @@ impl Switcher {
             .flex()
             .items_center()
             .justify_center()
-            .child(WindowIcon::new(&w.class, w.address.clone()).size(ICON_SIZE)),
+            .child(WindowIcon::new(&w.class, w.address.clone()).size(icon)),
         )
         .when_some(preview, |d, live| {
           d.child(div().absolute().inset_0().child(live))
         })
-        .child(
-          div()
-            .absolute()
-            .top(px(CORNER_INSET))
-            .left(px(CORNER_INSET))
-            .p(px(2.))
-            .rounded(theme.radius)
-            .bg(theme.tokens.background)
-            .child(
-              WindowIcon::new(&w.class, format!("{}-corner", w.address)).size(CORNER_ICON_SIZE),
-            ),
-        )
+        .when(corner, |d| {
+          d.child(
+            div()
+              .absolute()
+              .top(px(CORNER_INSET))
+              .left(px(CORNER_INSET))
+              .p(px(2.))
+              .rounded(theme.radius)
+              .bg(theme.tokens.background)
+              .child(
+                WindowIcon::new(&w.class, format!("{}-corner", w.address)).size(CORNER_ICON_SIZE),
+              ),
+          )
+        })
+        .when(selected, |d| {
+          d.child(
+            div()
+              .absolute()
+              .inset_0()
+              .rounded(theme.radius)
+              .border(px(BORDER))
+              .border_color(theme.colors.primary),
+          )
+        })
     });
 
     div()
@@ -257,8 +289,9 @@ impl Switcher {
         div()
           .id(format!("switcher-workspace-{}", workspace.id))
           .relative()
-          .w(px(size.0 * k))
+          .w(px(width))
           .h(px(CARD_HEIGHT))
+          .overflow_hidden()
           .rounded(theme.radius)
           .bg(theme.tokens.button_hover.opacity(0.5))
           .border(px(BORDER))

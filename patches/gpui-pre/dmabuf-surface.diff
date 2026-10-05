@@ -1,9 +1,11 @@
 --- a/crates/gpui/src/scene.rs
 +++ b/crates/gpui/src/scene.rs
-@@ -771,6 +771,39 @@
+@@ -771,6 +771,41 @@
      pub content_mask: ContentMask<ScaledPixels>,
      #[cfg(target_os = "macos")]
      pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
++    #[cfg(target_os = "linux")]
++    pub corner_radii: Corners<ScaledPixels>,
 +    #[cfg(target_os = "linux")]
 +    pub dmabuf: std::sync::Arc<Dmabuf>,
 +}
@@ -42,26 +44,33 @@
  impl From<PaintSurface> for Primitive {
 --- a/crates/gpui/src/window.rs
 +++ b/crates/gpui/src/window.rs
-@@ -4999,6 +4999,26 @@
+@@ -4985,6 +4985,33 @@
          });
      }
  
 +    /// Paint a dmabuf into the scene for the next frame at the current z-index,
-+    /// stretched to `bounds`.
++    /// stretched to `bounds`, with `corner_radii` applied to `bounds`.
 +    ///
 +    /// This method should only be called as part of the paint phase of element drawing.
 +    #[cfg(target_os = "linux")]
-+    pub fn paint_dmabuf(&mut self, bounds: Bounds<Pixels>, dmabuf: Arc<crate::Dmabuf>) {
++    pub fn paint_dmabuf(
++        &mut self,
++        bounds: Bounds<Pixels>,
++        corner_radii: Corners<Pixels>,
++        dmabuf: Arc<crate::Dmabuf>,
++    ) {
 +        use crate::PaintSurface;
 +
 +        self.invalidator.debug_assert_paint();
 +
++        let scale_factor = self.scale_factor();
 +        let bounds = self.snap_bounds(bounds);
 +        let content_mask = self.snapped_content_mask();
 +        self.next_frame.scene.insert_primitive(PaintSurface {
 +            order: 0,
 +            bounds,
 +            content_mask,
++            corner_radii: corner_radii.scale(scale_factor),
 +            dmabuf,
 +        });
 +    }

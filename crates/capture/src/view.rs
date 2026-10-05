@@ -2,14 +2,15 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use gpui_kit::{
-  App, Context, Dmabuf, IntoElement, ParentElement, Render, RenderOnce, Size, StyleRefinement,
-  Styled, Task, Window, canvas, div, prelude::FluentBuilder,
+  App, Context, Corners, Dmabuf, IntoElement, ParentElement, Pixels, Render, RenderOnce, Size,
+  StyleRefinement, Styled, Task, Window, canvas, div, prelude::FluentBuilder,
 };
 
 use crate::capture_window;
 
 /// Draws a captured frame straight from its GPU memory, stretched to the
-/// element's bounds. Size it like any element, e.g. `.size_full()`.
+/// element's bounds. Size it like any element, e.g. `.size_full()`, and round it
+/// with `.rounded(..)`.
 #[derive(IntoElement)]
 pub struct FrameView {
   surface: Arc<Dmabuf>,
@@ -34,9 +35,19 @@ impl Styled for FrameView {
 impl RenderOnce for FrameView {
   fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
     let surface = self.surface;
+    let radii = &self.style.corner_radii;
+    let corner_radii = Corners {
+      top_left: radii.top_left.unwrap_or_default(),
+      top_right: radii.top_right.unwrap_or_default(),
+      bottom_right: radii.bottom_right.unwrap_or_default(),
+      bottom_left: radii.bottom_left.unwrap_or_default(),
+    };
     let mut canvas = canvas(
       |_, _, _| (),
-      move |bounds, _, window, _| window.paint_dmabuf(bounds, surface),
+      move |bounds, _, window, _| {
+        let corner_radii = corner_radii.to_pixels(window.rem_size());
+        window.paint_dmabuf(bounds, corner_radii, surface)
+      },
     );
     *canvas.style() = self.style;
     canvas
@@ -48,6 +59,7 @@ impl RenderOnce for FrameView {
 /// the parent; it notifies on every new frame.
 pub struct LiveCapture {
   frame: Option<Arc<Dmabuf>>,
+  corner_radius: Pixels,
   // Dropping it drops the receiver, which stops the capture thread.
   _capture: Task<()>,
 }
@@ -76,8 +88,14 @@ impl LiveCapture {
     });
     Self {
       frame: None,
+      corner_radius: Pixels::ZERO,
       _capture: capture,
     }
+  }
+
+  pub fn rounded(mut self, radius: Pixels) -> Self {
+    self.corner_radius = radius;
+    self
   }
 
   /// The latest frame's size in pixels, e.g. to keep the aspect ratio.
@@ -89,7 +107,11 @@ impl LiveCapture {
 impl Render for LiveCapture {
   fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
     div().size_full().when_some(self.frame.clone(), |d, frame| {
-      d.child(FrameView::new(frame).size_full())
+      d.child(
+        FrameView::new(frame)
+          .size_full()
+          .rounded(self.corner_radius),
+      )
     })
   }
 }

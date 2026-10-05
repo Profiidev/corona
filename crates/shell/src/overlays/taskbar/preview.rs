@@ -93,7 +93,7 @@ fn live(windows: Vec<types::Window>, cx: &mut App) -> Vec<(types::Window, Entity
     .into_iter()
     .take(MAX_WINDOWS)
     .map(|w| {
-      let live = cx.new(|cx| LiveCapture::window(&w.address, FPS, cx));
+      let live = cx.new(|cx| LiveCapture::window(&w.address, FPS, cx).rounded(cx.theme().radius));
       (w, live)
     })
     .collect()
