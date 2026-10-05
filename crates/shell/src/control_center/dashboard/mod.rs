@@ -7,25 +7,33 @@ use corona_network_manager::NetworkManagerExt;
 use corona_notifications::NotificationsExt;
 use corona_pipewire::PipewireExt;
 use corona_power::PowerExt;
+use corona_surface::panel::AppPanelExt;
 use corona_sysinfo::SystemMonitorExt;
 use corona_utils::error::ErrorLogExt;
 use corona_weather::WeatherExt;
 use gpui_kit::{
-  AnyElement, App, Context, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,
-  assets::IconName, component::button::Button, div,
+  Anchor, AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled,
+  Subscription, Task, Window,
+  assets::IconName,
+  component::{button::Button, popover::Popover},
+  div, px,
 };
 use jiff::Zoned;
 
 use crate::control_center::{
-  ControlCenter, ControlCenterPanel, dashboard::sliders::Sliders, variants::ControlCenterType,
+  ControlCenter, ControlCenterPanel, Standalone,
+  dashboard::{session::SessionMenu, sliders::Sliders},
+  variants::ControlCenterType,
 };
 
 mod cards;
+mod session;
 mod sliders;
 mod toggles;
 
 pub struct DashboardPanel {
   sliders: Sliders,
+  session: Entity<SessionMenu>,
   _clock: Task<()>,
   _subscriptions: Vec<Subscription>,
 }
@@ -83,8 +91,19 @@ impl ControlCenterPanel for DashboardPanel {
 
     let mut sliders = Sliders::new(cx);
     sliders.sync(window, cx);
+    let session = cx.new(|cx| {
+      SessionMenu::new(
+        |_, cx| {
+          let _ = cx.close_panel::<ControlCenter>();
+          let _ = cx.close_panel::<Standalone<DashboardPanel>>();
+        },
+        cx,
+      )
+    });
+
     Self {
       sliders,
+      session,
       _clock: clock,
       _subscriptions: subscriptions,
     }
@@ -92,9 +111,23 @@ impl ControlCenterPanel for DashboardPanel {
 
   fn buttons(&mut self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
     vec![
-      Button::new("power-menu")
-        .icon(IconName::Power)
-        .cursor_pointer()
+      Popover::new("power-menu")
+        .anchor(Anchor::TopRight)
+        .p_1()
+        .trigger(
+          Button::new("power-menu-trigger")
+            .icon(IconName::Power)
+            .cursor_pointer(),
+        )
+        .content({
+          let session = self.session.clone();
+          move |_, _, _| {
+            div()
+              .w(px(SessionMenu::WIDTH))
+              .h(px(SessionMenu::HEIGHT))
+              .child(session.clone())
+          }
+        })
         .into_any_element(),
     ]
   }

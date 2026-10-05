@@ -9,6 +9,7 @@ use crate::{
   profiles::PowerProfilesProxy,
 };
 
+pub use crate::session::{SessionAction, SessionCapabilities, entry_title};
 pub use crate::state::{
   Battery, BatteryLevel, BatteryState, BatteryType, ChargeThreshold, KeyboardBacklight,
   PowerDevice, Profiles, Status,
@@ -17,6 +18,7 @@ pub use crate::state::{
 mod charge;
 mod listener;
 mod profiles;
+mod session;
 mod snapshot;
 mod state;
 
@@ -61,6 +63,18 @@ impl Power {
 
   pub fn keyboard_backlight<'c>(&self, cx: &'c App) -> Option<&'c KeyboardBacklight> {
     self.keyboard_backlight.read(cx).as_ref()
+  }
+
+  pub fn session_capabilities(&self) -> impl Future<Output = Result<SessionCapabilities>> + use<> {
+    session::capabilities(self.conn.clone())
+  }
+
+  pub fn session_action(&self, action: SessionAction) -> impl Future<Output = Result<()>> + use<> {
+    session::run(self.conn.clone(), action)
+  }
+
+  pub fn reboot_to(&self, entry: String) -> impl Future<Output = Result<()>> + use<> {
+    session::reboot_to(self.conn.clone(), entry)
   }
 
   /// `power-saver`, `balanced` or `performance`
