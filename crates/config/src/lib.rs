@@ -47,6 +47,7 @@ pub struct Config {
   pub brightness: BrightnessConfig,
   pub weather: WeatherConfig,
   pub wallpaper: Option<String>,
+  pub avatar: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -118,6 +119,7 @@ impl Default for Config {
       brightness: BrightnessConfig::default(),
       weather: WeatherConfig::default(),
       wallpaper: None,
+      avatar: None,
     }
   }
 }

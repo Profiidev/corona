@@ -41,7 +41,7 @@ pub fn configured(cx: &App) -> Option<ImageSource> {
   cx.config().wallpaper.as_deref().map(source)
 }
 
-fn source(wallpaper: &str) -> ImageSource {
+pub(crate) fn source(wallpaper: &str) -> ImageSource {
   if wallpaper.starts_with("http://") || wallpaper.starts_with("https://") {
     return wallpaper.into();
   }

@@ -18,10 +18,15 @@ use gpui_kit::{
 };
 use jiff::Zoned;
 
-use crate::control_center::{
-  dashboard::{open, spawn_logged},
-  variants::ControlCenterType,
-  weather,
+use corona_config::ConfigProvider;
+
+use crate::{
+  control_center::{
+    dashboard::{open, spawn_logged},
+    variants::ControlCenterType,
+    weather,
+  },
+  overlays::wallpaper,
 };
 
 const ART: f32 = 64.;
@@ -69,6 +74,7 @@ pub(super) fn profile(cx: &App) -> Stateful<Div> {
     .map(|i| format!("{} · {}", i.os, uptime(i.booted)))
     .unwrap_or_default();
   let initials: String = user.chars().take(2).collect();
+  let avatar = cx.config().avatar.as_deref().map(wallpaper::source);
 
   card("dashboard-profile", cx)
     .items_center()
@@ -83,7 +89,15 @@ pub(super) fn profile(cx: &App) -> Stateful<Div> {
         .border_2()
         .border_color(theme.colors.primary)
         .font_semibold()
-        .child(initials),
+        .child(match avatar {
+          Some(source) => img(source)
+            .size_full()
+            .rounded_full()
+            .object_fit(ObjectFit::Cover)
+            .with_fallback(move || initials.clone().into_any_element())
+            .into_any_element(),
+          None => initials.into_any_element(),
+        }),
     )
     .child(
       div()
