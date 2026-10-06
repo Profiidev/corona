@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use corona_config::{ConfigProvider, observe_section};
+use corona_notifications::NotificationsExt;
 use corona_surface::bar::BarState;
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 
 pub mod commands;
@@ -23,6 +26,43 @@ pub fn init(cx: &mut App) {
   overlays::wallpaper::init(cx);
 
   BarState::spawn_bars(cx);
+  watch_config(cx);
+}
+
+/// Reloads the settings as their files change; a broken file is shown, the
+/// settings before it stay.
+fn watch_config(cx: &mut App) {
+  let watched = corona_config::watch(cx, config_failed);
+  if let Err(e) = watched {
+    tracing::error!("Failed to watch the config: {e:#}");
+  }
+
+  // read once at startup
+  fn later<T>(name: &'static str) -> impl FnMut(&T, &mut App) {
+    move |_, _| tracing::warn!("{name} applies after a restart")
+  }
+  observe_section(cx, |c| &c.shell.plugin_dir, later("shell.plugin_dir"));
+  observe_section(
+    cx,
+    |c| &c.brightness.enable_ddcutil,
+    later("brightness.enable_ddcutil"),
+  );
+  observe_section(
+    cx,
+    |c| &c.notification.enabled,
+    later("notification.enabled"),
+  );
+}
+
+/// Shows why the settings did not load; the shell keeps the ones it had
+fn config_failed(error: String, cx: &mut App) {
+  let send = cx
+    .notifications()
+    .send("Corona config not loaded".to_string(), error);
+  cx.spawn(async move |_| {
+    let _ = send.await.log_err();
+  })
+  .detach();
 }
 
 fn init_ipc(cx: &mut App) {
@@ -39,7 +79,7 @@ fn init_ipc(cx: &mut App) {
 }
 
 fn init_integrations(cx: &mut App) {
-  corona_config::load(cx).expect("Failed to load config");
+  let config_error = corona_config::load(cx).err();
   corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
@@ -50,6 +90,11 @@ fn init_integrations(cx: &mut App) {
     .expect("Failed to init dbus");
   corona_components::assets::load(cx).expect("Failed to load assets");
   corona_surface::init(cx).expect("Failed to init ui");
+
+  if let Some(e) = config_error {
+    tracing::error!("Failed to load config, using the defaults: {e:#}");
+    config_failed(format!("{e:#}"), cx);
+  }
 }
 
 fn register_variants(cx: &mut App) {
@@ -74,7 +119,8 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .build()
     .await?;
   corona_mpris::init(cx, &session).await?;
-  corona_notifications::init(cx, &session).await?;
+  let serve = cx.config().notification.enabled;
+  corona_notifications::init(cx, &session, serve).await?;
   corona_tray::init(cx, &session).await?;
 
   Ok(())

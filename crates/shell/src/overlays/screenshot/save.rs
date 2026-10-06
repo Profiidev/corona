@@ -8,6 +8,7 @@ use corona_capture::{
     imageops::{self, FilterType},
   },
 };
+use corona_config::{ConfigProvider, ScreenshotConfig};
 use gpui_kit::{App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, ImageFormat, Pixels};
 use jiff::Zoned;
 use tracing::{error, info};
@@ -23,8 +24,9 @@ fn finish(png: Vec<u8>, cx: &mut App) {
     png.clone(),
   )));
 
+  let config = cx.config().screenshot.clone();
   cx.background_spawn(async move {
-    match save(&png) {
+    match save(&png, &config) {
       Ok(path) => info!("screenshot saved to {}", path.display()),
       Err(e) => error!("screenshot not saved: {e:#}"),
     }
@@ -32,15 +34,20 @@ fn finish(png: Vec<u8>, cx: &mut App) {
   .detach();
 }
 
-fn save(png: &[u8]) -> Result<std::path::PathBuf> {
-  let dir = dirs::picture_dir()
-    .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
-    .context("no pictures directory")?
-    .join("Screenshots");
+fn save(png: &[u8], config: &ScreenshotConfig) -> Result<std::path::PathBuf> {
+  let dir = match &config.directory {
+    Some(dir) => corona_config::expand_home(dir),
+    None => dirs::picture_dir()
+      .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+      .context("no pictures directory")?
+      .join("Screenshots"),
+  };
   fs::create_dir_all(&dir)?;
 
-  let time = Zoned::now().strftime("%Y-%m-%d-%H%M%S-%3f");
-  let path = dir.join(format!("screenshot-{time}.png"));
+  // `strftime(..).to_string()` would panic on a bad pattern from the settings
+  let name = jiff::fmt::strtime::format(&config.filename_pattern, &Zoned::now())
+    .context("bad screenshot.filename_pattern")?;
+  let path = dir.join(name);
   fs::write(&path, png)?;
   Ok(path)
 }

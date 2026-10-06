@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use corona_config::{APP_NAME, ConfigProvider};
+use corona_config::{APP_NAME, ConfigProvider, observe_section};
 use corona_surface::per_display::PerDisplay;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, ImageSource,
@@ -17,12 +17,27 @@ use tracing::error;
 const NAMESPACE: &str = "corona_wallpaper";
 
 struct Wallpapers {
-  _displays: Entity<PerDisplay>,
+  displays: Option<Entity<PerDisplay>>,
 }
 
 impl Global for Wallpapers {}
 
 pub fn init(cx: &mut App) {
+  cx.set_global(Wallpapers { displays: None });
+  open(cx);
+  observe_section(
+    cx,
+    |c| &c.wallpaper,
+    |_, cx| {
+      if let Some(displays) = cx.global_mut::<Wallpapers>().displays.take() {
+        PerDisplay::close(displays, cx);
+      }
+      open(cx);
+    },
+  );
+}
+
+fn open(cx: &mut App) {
   let Some(source) = configured(cx) else {
     return;
   };
@@ -32,13 +47,11 @@ pub fn init(cx: &mut App) {
       .into_iter()
       .collect()
   });
-  cx.set_global(Wallpapers {
-    _displays: wallpapers,
-  });
+  cx.global_mut::<Wallpapers>().displays = Some(wallpapers);
 }
 
 pub fn configured(cx: &App) -> Option<ImageSource> {
-  cx.config().wallpaper.as_deref().map(source)
+  cx.config().wallpaper.path.as_deref().map(source)
 }
 
 pub(crate) fn source(wallpaper: &str) -> ImageSource {

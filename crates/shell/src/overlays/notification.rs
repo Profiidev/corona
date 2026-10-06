@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition};
 use corona_notifications::{NotificationsExt, Urgency};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
@@ -24,10 +24,6 @@ use gpui_kit::{
 use crate::control_center::NotificationsPanel;
 
 const NAMESPACE: &str = "corona_notification";
-const GAP: f32 = 20.;
-const WIDTH: f32 = 400.;
-const DEFAULT_TIMEOUT: u64 = 5000;
-const URGENT_TIMEOUT: u64 = 10000;
 const STACK_OFFSET: f32 = 12.;
 const SLIDE_SPEED: Duration = Duration::from_millis(250);
 
@@ -51,10 +47,10 @@ struct Popup {
 }
 
 impl Popup {
-  fn new(item: Item, slot: usize) -> Self {
+  fn new(item: Item, slot: usize, config: &NotificationConfig) -> Self {
     let timeout = Duration::from_millis(match item.urgency {
-      Urgency::Low | Urgency::Normal => DEFAULT_TIMEOUT,
-      Urgency::Critical => URGENT_TIMEOUT,
+      Urgency::Low | Urgency::Normal => config.timeout_ms,
+      Urgency::Critical => config.critical_timeout_ms,
     });
     Self {
       item,
@@ -149,6 +145,7 @@ impl NotificationPopups {
   fn show(notification: Item, cx: &mut App) -> Result<()> {
     let monitor = cx.compositor().active_monitor(cx).name.clone();
     let display = display_id_for(&monitor, cx);
+    let config = cx.config().notification.clone();
 
     let existing = cx
       .global::<Self>()
@@ -159,12 +156,12 @@ impl NotificationPopups {
     match existing {
       Some(view) => view.update(cx, |this, cx| {
         let slot = this.items.iter().filter(|p| p.open).count();
-        this.items.push(Popup::new(notification, slot));
+        this.items.push(Popup::new(notification, slot, &config));
         cx.notify();
       }),
       None => {
         let view = cx.new(|_| Popups {
-          items: vec![Popup::new(notification, 0)],
+          items: vec![Popup::new(notification, 0, &config)],
         });
         Self::open(view, display, cx)?;
       }
@@ -206,13 +203,18 @@ impl NotificationPopups {
   }
 
   fn open(view: Entity<Popups>, display: Option<DisplayId>, cx: &mut App) -> Result<()> {
+    let config = cx.config().notification.clone();
     let handle = cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::RIGHT | Anchor::TOP,
+          anchor: Anchor::TOP
+            | match config.position {
+              NotificationPosition::TopLeft => Anchor::LEFT,
+              NotificationPosition::TopRight => Anchor::RIGHT,
+            },
           exclusive_zone: None,
           exclusive_edge: None,
-          margin: Some((px(GAP), px(0.), px(0.), px(0.))),
+          margin: Some((px(config.offset), px(0.), px(0.), px(0.))),
           layer: Layer::Overlay,
           namespace: NAMESPACE.to_string(),
           keyboard_interactivity: KeyboardInteractivity::OnDemand,
@@ -224,7 +226,7 @@ impl NotificationPopups {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
           origin: Point::default(),
-          size: Size::new(px(WIDTH + GAP), px(1.)),
+          size: Size::new(px(config.width + config.offset), px(1.)),
         })),
         display_id: display,
         ..Default::default()
@@ -263,6 +265,14 @@ impl NotificationPopups {
 impl Render for Popups {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let speed = animation_duration(SLIDE_SPEED, cx);
+    let config = cx.config().notification.clone();
+    let (width, gap) = (config.width, config.offset);
+    // the window is `gap` wider than a card, the gap on the screen edge's side;
+    // a card slides out over that edge
+    let (shown_at, out) = match config.position {
+      NotificationPosition::TopLeft => (gap, -(width + gap)),
+      NotificationPosition::TopRight => (0., width + gap),
+    };
     let theme = cx.theme();
     let mut slot = 0;
     let mut tops = Vec::new();
@@ -274,7 +284,7 @@ impl Render for Popups {
         .absolute()
         .top_0()
         .left_0()
-        .w(px(WIDTH + GAP))
+        .w(px(width + gap))
         .children(self.items.iter_mut().map(|popup| {
           popup.anim.retarget(if popup.open { 1. } else { 0. }, speed);
           if popup.open {
@@ -301,8 +311,8 @@ impl Render for Popups {
           div()
             .absolute()
             .top(top)
-            .left(px(((WIDTH + GAP) * (1. - progress)).round()))
-            .w(px(WIDTH))
+            .left(px((shown_at + out * (1. - progress)).round()))
+            .w(px(width))
             .opacity(progress)
             .child({
               let id = popup.item.id;
@@ -322,7 +332,7 @@ impl Render for Popups {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .w(px(WIDTH))
+                        .w(px(width))
                         .h_full()
                         .rounded_xl()
                         .border_t_2()
@@ -353,7 +363,7 @@ impl Render for Popups {
               .fold(px(1.), Pixels::max)
               .ceil();
             if window.viewport_size().height != height {
-              window.resize(Size::new(px(WIDTH + GAP), height));
+              window.resize(Size::new(px(width + gap), height));
             }
           }
         }),

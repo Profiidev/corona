@@ -34,6 +34,7 @@ pub fn init(cx: &mut App) {
           IconName::Sun
         };
         show(
+          |k| k.brightness,
           LevelOsd {
             icon,
             label: name.clone().into(),

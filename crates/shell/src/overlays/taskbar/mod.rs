@@ -9,7 +9,7 @@ use corona_components::{
   components::window_icon::WindowIcon,
 };
 use corona_compositor::{CompositorExt, types};
-use corona_config::{APP_NAME, placement::Placement};
+use corona_config::{APP_NAME, ConfigProvider, observe_section, placement::Placement};
 use corona_surface::{
   input_region::InputRegion,
   panel::{Align, PanelStyle, panel_shape},
@@ -37,10 +37,8 @@ use crate::{
 };
 
 const NAMESPACE: &str = "corona_taskbar";
-const ICON_SIZE: f32 = 36.;
 const PADDING: f32 = 10.;
 const GAP: f32 = 10.;
-const HEIGHT: f32 = PADDING + ICON_SIZE + PADDING;
 const TRIGGER: f32 = 2.;
 const OPEN_SPEED: Duration = Duration::from_millis(250);
 const CLOSE_DELAY: Duration = Duration::from_millis(200);
@@ -49,21 +47,42 @@ const PREVIEW_GAP: f32 = 8.;
 const PREVIEW_HIDE_DELAY: Duration = Duration::from_millis(150);
 
 struct Taskbars {
-  _displays: Entity<PerDisplay>,
+  displays: Option<Entity<PerDisplay>>,
 }
 
 impl Global for Taskbars {}
 
 pub fn init(cx: &mut App) {
+  cx.set_global(Taskbars { displays: None });
+  open(cx);
+  // the window's height follows the icon size, so open them again
+  observe_section(
+    cx,
+    |c| &c.taskbar,
+    |_, cx| {
+      if let Some(displays) = cx.global_mut::<Taskbars>().displays.take() {
+        PerDisplay::close(displays, cx);
+      }
+      open(cx);
+    },
+  );
+}
+
+fn open(cx: &mut App) {
+  if !cx.config().taskbar.enabled {
+    return;
+  }
   let taskbars = PerDisplay::new(cx, |cx, display| {
     create_taskbar(cx, display)
       .inspect_err(|e| error!("failed to create taskbar: {e:#}"))
       .into_iter()
       .collect()
   });
-  cx.set_global(Taskbars {
-    _displays: taskbars,
-  });
+  cx.global_mut::<Taskbars>().displays = Some(taskbars);
+}
+
+fn height(icon_size: f32) -> f32 {
+  PADDING + icon_size + PADDING
 }
 
 fn create_taskbar(cx: &mut App, display: DisplayId) -> Result<AnyWindowHandle> {
@@ -86,7 +105,7 @@ fn create_taskbar(cx: &mut App, display: DisplayId) -> Result<AnyWindowHandle> {
       titlebar: None,
       window_bounds: Some(WindowBounds::Windowed(Bounds {
         origin: point(px(0.), px(0.)),
-        size: Size::new(px(0.), px(HEIGHT)),
+        size: Size::new(px(0.), px(height(cx.config().taskbar.icon_size))),
       })),
       ..Default::default()
     },
@@ -116,10 +135,16 @@ pub struct Taskbar {
   preview_hovered: bool,
   pending: Option<Task<()>>,
   menu_open: bool,
+  /// from the settings when it opened; it opens again when they change
+  icon_size: f32,
   _subscription: Subscription,
 }
 
 impl Taskbar {
+  fn height(&self) -> f32 {
+    height(self.icon_size)
+  }
+
   pub fn new(cx: &mut Context<Self>) -> Self {
     let windows = cx.compositor().windows.clone();
     let subscription = cx.observe(&windows, |this, windows, cx| {
@@ -139,13 +164,14 @@ impl Taskbar {
       preview_hovered: false,
       pending: None,
       menu_open: false,
+      icon_size: cx.config().taskbar.icon_size,
       _subscription: subscription,
     }
   }
 
   fn width(&self) -> f32 {
     let n = self.apps.len() as f32;
-    PADDING * 2. + n * ICON_SIZE + (n - 1.).max(0.) * GAP
+    PADDING * 2. + n * self.icon_size + (n - 1.).max(0.) * GAP
   }
 
   fn set_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
@@ -184,8 +210,11 @@ impl Taskbar {
       .map(|b| b.get())
       .unwrap_or_default();
     Bounds::new(
-      point(icon.origin.x, window.viewport_size().height - px(HEIGHT)),
-      Size::new(icon.size.width, px(HEIGHT)),
+      point(
+        icon.origin.x,
+        window.viewport_size().height - px(self.height()),
+      ),
+      Size::new(icon.size.width, px(self.height())),
     )
   }
 
@@ -204,6 +233,9 @@ impl Taskbar {
     }
 
     self.hovered_icon = Some(class.to_string());
+    if !cx.config().taskbar.previews {
+      return;
+    }
     if self.menu_open || self.preview.as_ref().is_some_and(|(c, _, _)| c == class) {
       self.pending = None;
       return;
@@ -238,7 +270,10 @@ impl Taskbar {
     let viewport = window.viewport_size();
     let options = popup_options(
       window.window_handle(),
-      Bounds::new(point(px(0.), px(0.)), Size::new(viewport.width, px(HEIGHT))),
+      Bounds::new(
+        point(px(0.), px(0.)),
+        Size::new(viewport.width, px(self.height())),
+      ),
       Placement::Bottom,
       Size::new(viewport.width, px(preview::POPUP_HEIGHT)),
       px(PREVIEW_GAP),
@@ -350,12 +385,13 @@ impl Render for Taskbar {
     let width = self.width();
     let shape_width = width + n * 2.;
     let left = (viewport.width.as_f32() - shape_width) / 2.;
-    let h = HEIGHT * progress;
+    let h = self.height() * progress;
 
-    let depth = if self.open() { HEIGHT } else { TRIGGER };
+    let depth = if self.open() { self.height() } else { TRIGGER };
     let region = Placement::Bottom.rect(viewport, px(left), px(shape_width), px(depth));
     self.input_region.set(region, window);
 
+    let (icon_size, height) = (self.icon_size, self.height());
     let apps = self.apps.iter().enumerate().map(|(i, app)| {
       let count = app.windows.len();
       let bounds = self
@@ -365,7 +401,7 @@ impl Render for Taskbar {
         .clone();
       let (hover_class, menu_class) = (app.class.clone(), app.class.clone());
       WindowIcon::new(&app.class, ("taskbar-app", i))
-        .size(ICON_SIZE as u16)
+        .size(icon_size as u16)
         .on_prepaint(move |b, _, _| bounds.set(b))
         .on_hover(cx.listener(move |this, hovered, window, cx| {
           this.icon_hovered(&hover_class, *hovered, window, cx)
@@ -427,7 +463,7 @@ impl Render for Taskbar {
           .overflow_hidden()
           .child(
             div()
-              .h(px(HEIGHT))
+              .h(px(height))
               .flex()
               .items_start()
               .gap(px(GAP))

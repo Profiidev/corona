@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 corona_surface.workspace = true
 corona_ipc.workspace = true
+corona_config.workspace = true
+anyhow.workspace = true
 corona_shell.workspace = true
 tracing.workspace = true
 clap.workspace = true

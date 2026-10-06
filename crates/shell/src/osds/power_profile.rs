@@ -18,6 +18,7 @@ pub fn init(cx: &mut App) {
     |_, active, cx| {
       let (icon, label) = power_profile(active);
       show(
+        |k| k.power_profile,
         ToggleOsd {
           icon,
           label: "Power profile".into(),

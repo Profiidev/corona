@@ -30,6 +30,7 @@ pub fn init(cx: &mut App) {
       if prev.0 == id {
         let icon = volume_icon(percent as f32 / 100., muted);
         show(
+          |k| k.volume,
           LevelOsd {
             icon,
             label: "Volume".into(),
@@ -53,6 +54,7 @@ pub fn init(cx: &mut App) {
           IconName::Mic
         };
         show(
+          |k| k.volume,
           LevelOsd {
             icon,
             label: "Microphone".into(),

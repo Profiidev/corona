@@ -85,7 +85,7 @@ impl Notifications {
 
   /// Goes through `org.freedesktop.Notifications` like any app's, so it lands
   /// wherever notifications go now, corona or another daemon.
-  pub fn send(&self, summary: String) -> impl Future<Output = Result<()>> + use<> {
+  pub fn send(&self, summary: String, body: String) -> impl Future<Output = Result<()>> + use<> {
     let conn = self.conn.clone();
     async move {
       let hints: HashMap<&str, Value> = HashMap::new();
@@ -100,7 +100,7 @@ impl Notifications {
             0u32,
             "",
             summary,
-            "",
+            body,
             Vec::<&str>::new(),
             hints,
             -1i32,
@@ -146,31 +146,35 @@ impl Notifications {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// `serve`: be the notification daemon. Without it the state stays empty, for
+/// when another daemon is wanted.
+pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let (events_tx, events) = flume::unbounded();
-  conn
-    .object_server()
-    .at(
-      PATH,
-      Server {
-        events: events_tx,
-        next_id: AtomicU32::new(1),
-      },
-    )
-    .await?;
-
   let dbus = DBusProxy::new(conn).await?;
   let mut acquired = dbus.receive_name_acquired().await?;
   let mut lost = dbus.receive_name_lost().await?;
-  let reply = conn
-    .request_name_with_flags(NAME, RequestNameFlags::AllowReplacement.into())
-    .await?;
-  let owner = matches!(
-    reply,
-    RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner
-  );
-  if !owner {
-    tracing::info!("another notification daemon runs, corona takes over when it exits");
+  let mut owner = false;
+  if serve {
+    conn
+      .object_server()
+      .at(
+        PATH,
+        Server {
+          events: events_tx,
+          next_id: AtomicU32::new(1),
+        },
+      )
+      .await?;
+    let reply = conn
+      .request_name_with_flags(NAME, RequestNameFlags::AllowReplacement.into())
+      .await?;
+    owner = matches!(
+      reply,
+      RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner
+    );
+    if !owner {
+      tracing::info!("another notification daemon runs, corona takes over when it exits");
+    }
   }
 
   let state = Notifications {

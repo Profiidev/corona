@@ -46,6 +46,9 @@ nested:
   -- Hyprland does not hand its own environment to the processes it execs, so the
   -- library path devenv sets has to be passed in or corona dies with NoWaylandLib.
   hl.env("LD_LIBRARY_PATH", "{{env('LD_LIBRARY_PATH', '')}}")
+  -- Set these to try a config other than ~/.config/corona; empty means the default.
+  hl.env("XDG_CONFIG_HOME", "{{env('XDG_CONFIG_HOME', '')}}")
+  hl.env("XDG_STATE_HOME", "{{env('XDG_STATE_HOME', '')}}")
 
   -- No pinned mode: the wayland backend's output then follows its host window,
   -- so resizing the nested session's window resizes the screen inside it.

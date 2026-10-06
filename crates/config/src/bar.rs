@@ -3,15 +3,13 @@ use serde::{Deserialize, Serialize};
 use crate::placement::Placement;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BarConfig {
-  pub placement: Placement,
-  pub height: f32,
-  #[serde(default)]
-  pub start_widgets: Vec<WidgetConfig>,
-  #[serde(default)]
-  pub center_widgets: Vec<WidgetConfig>,
-  #[serde(default)]
-  pub end_widgets: Vec<WidgetConfig>,
+  pub position: Placement,
+  pub thickness: f32,
+  pub start: Vec<WidgetConfig>,
+  pub center: Vec<WidgetConfig>,
+  pub end: Vec<WidgetConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,17 +57,17 @@ impl WidgetEntry {
 impl Default for BarConfig {
   fn default() -> Self {
     Self {
-      placement: Placement::Top,
-      height: 30.0,
-      start_widgets: vec![
+      position: Placement::Top,
+      thickness: 30.0,
+      start: vec![
         WidgetConfig::widget("workspaces"),
         WidgetConfig::widget("active_window"),
       ],
-      center_widgets: vec![
+      center: vec![
         WidgetConfig::widget("clock"),
         WidgetConfig::widget("player"),
       ],
-      end_widgets: [
+      end: [
         WidgetConfig::widget("privacy"),
         WidgetConfig::widget("tray"),
         WidgetConfig::group(
@@ -100,9 +98,7 @@ mod tests {
   #[test]
   fn parses_groups_and_options() {
     let toml = r#"
-      placement = "top"
-      height = 30.0
-      end_widgets = [
+      end = [
         { widget_type = "clock" },
         { group = [{ widget_type = "resource", options = { stat = "disk", mount = "/home", critical = 90 } }, { widget_type = "audio" }] },
       ]
@@ -114,8 +110,8 @@ mod tests {
       .try_deserialize()
       .unwrap();
 
-    assert_eq!(bar.end_widgets[0], WidgetConfig::widget("clock"));
-    let WidgetConfig::Group { group } = &bar.end_widgets[1] else {
+    assert_eq!(bar.end[0], WidgetConfig::widget("clock"));
+    let WidgetConfig::Group { group } = &bar.end[1] else {
       panic!("expected a group");
     };
     let options = group[0].options.as_ref().unwrap();
@@ -123,5 +119,7 @@ mod tests {
     assert_eq!(options["mount"], "/home");
     assert_eq!(options["critical"], 90);
     assert_eq!(group[1], WidgetEntry::new("audio"));
+    // unset fields keep their defaults
+    assert_eq!(bar.thickness, BarConfig::default().thickness);
   }
 }

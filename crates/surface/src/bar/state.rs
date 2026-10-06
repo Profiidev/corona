@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use anyhow::{Context as _, Result};
-use corona_config::{APP_NAME, ConfigProvider, bar::BarConfig, placement::Placement};
+use corona_config::{
+  APP_NAME, ConfigProvider, bar::BarConfig, observe_section, placement::Placement,
+};
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, EntityId, Global, Styled,
   WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
@@ -34,11 +36,26 @@ impl BarState {
     });
   }
 
+  /// Opens the configured bars on every monitor, and opens them again whenever
+  /// the `[bar]` settings change: their size and widgets are fixed once open.
   pub fn spawn_bars(cx: &mut App) {
+    Self::open_bars(cx);
+    observe_section(
+      cx,
+      |c| &c.bar,
+      |_, cx| {
+        if let Some(displays) = cx.bar_mut().displays.take() {
+          PerDisplay::close(displays, cx);
+        }
+        Self::open_bars(cx);
+      },
+    );
+  }
+
+  fn open_bars(cx: &mut App) {
     let displays = PerDisplay::new(cx, |cx, display_id| {
-      cx.config()
-        .bars
-        .clone()
+      let bars: Vec<BarConfig> = cx.config().bar.values().cloned().collect();
+      bars
         .into_iter()
         .filter_map(|config| {
           Self::create(cx, config, display_id)
@@ -77,8 +94,8 @@ impl BarState {
     let handle = cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: config.placement.anchor(),
-          exclusive_zone: Some(px(config.height)),
+          anchor: config.position.anchor(),
+          exclusive_zone: Some(px(config.thickness)),
           exclusive_edge: None,
           margin: None,
           layer: Layer::Top,
@@ -92,7 +109,7 @@ impl BarState {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
           origin: point(px(0.), px(0.)),
-          size: config.placement.size(config.height + flare, 0.),
+          size: config.position.size(config.thickness + flare, 0.),
         })),
         display_id: Some(display_id),
         ..Default::default()

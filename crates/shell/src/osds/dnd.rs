@@ -18,7 +18,7 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::Bell
       };
-      show(ToggleOsd::on_off(icon, "Do not disturb", on), cx);
+      show(|k| k.dnd, ToggleOsd::on_off(icon, "Do not disturb", on), cx);
     },
   );
 }

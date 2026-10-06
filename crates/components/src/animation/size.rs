@@ -29,7 +29,7 @@ impl SizeAnimation {
   }
 
   fn duration(&self, cx: &App) -> Duration {
-    self.duration.mul_f32(cx.config().animation_speed)
+    cx.config().shell.animation.duration(self.duration)
   }
 
   pub fn reset(&mut self) {

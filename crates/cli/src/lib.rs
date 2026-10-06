@@ -1,8 +1,9 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
-use crate::ipc::IpcCommands;
+use crate::{config::ConfigCommands, ipc::IpcCommands};
 
+mod config;
 mod ipc;
 
 /// Corona Shell CLI
@@ -29,4 +30,9 @@ pub enum Commands {
   },
   /// Run corona shell
   Shell,
+  /// Settings commands
+  Config {
+    #[command(subcommand)]
+    command: ConfigCommands,
+  },
 }

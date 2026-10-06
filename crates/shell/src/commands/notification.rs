@@ -56,7 +56,7 @@ impl IpcCommand for Show {
   type Response = ();
 
   fn handle(summary: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    let send = cx.notifications().send(summary);
+    let send = cx.notifications().send(summary, String::new());
     cx.spawn(async move |_| {
       let _ = send.await.log_err();
     })

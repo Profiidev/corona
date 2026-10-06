@@ -1,5 +1,5 @@
 mod active_window;
-mod clock;
+pub(crate) mod clock;
 mod control_center;
 mod player;
 pub(crate) mod popup;

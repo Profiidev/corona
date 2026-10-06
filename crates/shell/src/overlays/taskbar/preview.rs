@@ -3,6 +3,7 @@ use std::time::Duration;
 use corona_capture::LiveCapture;
 use corona_components::animation::{animation_duration, glide::Glide};
 use corona_compositor::types;
+use corona_config::ConfigProvider;
 use gpui_kit::{
   App, AppContext, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
   StatefulInteractiveElement, Styled, WeakEntity, Window, component::ActiveTheme, div, point,
@@ -21,7 +22,6 @@ const TITLE: f32 = 20.;
 const GAP: f32 = 8.;
 const PADDING: f32 = 8.;
 const BORDER: f32 = 2.;
-const MAX_WINDOWS: usize = 5;
 const MORE_WIDTH: f32 = 48.;
 const SLIDE_SPEED: Duration = Duration::from_millis(100);
 
@@ -52,7 +52,7 @@ impl Preview {
   ) -> Self {
     Self {
       taskbar,
-      more: windows.len().saturating_sub(MAX_WINDOWS),
+      more: windows.len().saturating_sub(max_windows(cx)),
       windows: live(windows, cx),
       center,
       slide: Glide::default(),
@@ -63,7 +63,7 @@ impl Preview {
   }
 
   pub fn show(&mut self, windows: Vec<types::Window>, center: f32, cx: &mut Context<Self>) {
-    self.more = windows.len().saturating_sub(MAX_WINDOWS);
+    self.more = windows.len().saturating_sub(max_windows(cx));
     self.windows = live(windows, cx);
     self.center = center;
     self.hovered = None;
@@ -88,10 +88,14 @@ impl Preview {
   }
 }
 
+fn max_windows(cx: &App) -> usize {
+  cx.config().taskbar.preview_max_windows
+}
+
 fn live(windows: Vec<types::Window>, cx: &mut App) -> Vec<(types::Window, Entity<LiveCapture>)> {
   windows
     .into_iter()
-    .take(MAX_WINDOWS)
+    .take(max_windows(cx))
     .map(|w| {
       let live = cx.new(|cx| LiveCapture::window(&w.address, FPS, cx).rounded(cx.theme().radius));
       (w, live)

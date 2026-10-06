@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use corona_config::{Config, ConfigProvider, observe_section};
 use gpui_kit::{App, AppContext, Entity, Global};
 
 use crate::sampler::Update;
@@ -11,7 +12,6 @@ mod sampler;
 mod state;
 
 const HISTORY: usize = 60;
-const INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
 pub struct SystemMonitor {
@@ -57,6 +57,10 @@ impl SystemMonitor {
   }
 }
 
+fn interval(config: &Config) -> Duration {
+  Duration::from_secs(config.system.monitor.poll_seconds.max(1))
+}
+
 pub fn init(cx: &mut App) {
   let (intervals, intervals_rx) = flume::unbounded();
   let (updates_tx, updates) = flume::unbounded();
@@ -69,7 +73,7 @@ pub fn init(cx: &mut App) {
     interval: cx.new(|_| None),
     intervals,
   };
-  state.set_interval(Some(INTERVAL), cx);
+  state.set_interval(Some(interval(cx.config())), cx);
 
   let (info, sample, history) = (
     state.info.clone(),
@@ -93,4 +97,14 @@ pub fn init(cx: &mut App) {
   .detach();
 
   cx.set_global(state);
+  observe_section(
+    cx,
+    |c| &c.system.monitor,
+    |_, cx| {
+      let interval = interval(cx.config());
+      cx.global::<SystemMonitor>()
+        .clone()
+        .set_interval(Some(interval), cx);
+    },
+  );
 }

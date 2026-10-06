@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 corona_config.workspace = true
+tracing.workspace = true
 corona_desktop.workspace = true
 anyhow.workspace = true
 gpui-kit.workspace = true

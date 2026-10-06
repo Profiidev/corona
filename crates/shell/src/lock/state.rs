@@ -6,7 +6,7 @@ use corona_capture::{
   image::imageops::{self, FilterType},
 };
 use corona_compositor::CompositorExt;
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider};
 use corona_utils::display::display_uuid;
 use futures::{
   channel::oneshot,
@@ -20,7 +20,6 @@ use gpui_kit::{
 use crate::lock::view::Lock;
 
 const BLUR_SCALE: u32 = 4;
-const BLUR_SIGMA: f32 = 3.;
 const CAPTURE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Default)]
@@ -53,6 +52,7 @@ impl LockState {
       .map(|m| m.name.clone())
       .collect();
 
+    let sigma = cx.config().lockscreen.blur;
     let locking = cx
       .spawn(async move |cx| {
         let capture = cx
@@ -65,7 +65,7 @@ impl LockState {
             .spawn(async move {
               frames?
                 .into_iter()
-                .map(|(name, frame)| Ok((name, blur(&frame)?)))
+                .map(|(name, frame)| Ok((name, blur(&frame, sigma)?)))
                 .collect::<Result<Vec<_>>>()
             })
             .await
@@ -165,13 +165,16 @@ impl LockState {
   }
 }
 
-fn blur(frame: &Frame) -> Result<Arc<RenderImage>> {
+fn blur(frame: &Frame, sigma: f32) -> Result<Arc<RenderImage>> {
   let image = frame.read_all()?;
+  if sigma <= 0. {
+    return Ok(image.to_gpui());
+  }
   let small = imageops::resize(
     &image,
     (image.width() / BLUR_SCALE).max(1),
     (image.height() / BLUR_SCALE).max(1),
     FilterType::Triangle,
   );
-  Ok(imageops::fast_blur(&small, BLUR_SIGMA).to_gpui())
+  Ok(imageops::fast_blur(&small, sigma).to_gpui())
 }

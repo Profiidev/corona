@@ -18,7 +18,11 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::BluetoothOff
       };
-      show(ToggleOsd::on_off(icon, "Bluetooth", on), cx);
+      show(
+        |k| k.bluetooth,
+        ToggleOsd::on_off(icon, "Bluetooth", on),
+        cx,
+      );
     },
   );
 }

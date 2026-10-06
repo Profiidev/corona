@@ -21,7 +21,7 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::WifiOff
       };
-      show(ToggleOsd::on_off(icon, "Wi-Fi", on), cx);
+      show(|k| k.wifi, ToggleOsd::on_off(icon, "Wi-Fi", on), cx);
     },
   );
 }

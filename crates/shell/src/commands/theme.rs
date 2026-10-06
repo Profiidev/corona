@@ -1,11 +1,8 @@
 use anyhow::Result;
 use clap::ValueEnum;
-use corona_components::assets::{apply_theme, theme_names, toggle_mode};
+use corona_components::assets::{set_mode, set_theme, theme_names};
 use corona_ipc::{IpcCommand, IpcServer};
-use gpui_kit::{
-  App,
-  component::{ActiveTheme, Theme, ThemeMode},
-};
+use gpui_kit::{App, component::ActiveTheme};
 use serde::{Deserialize, Serialize};
 
 pub fn register_commands(server: &mut IpcServer) {
@@ -37,20 +34,18 @@ impl IpcCommand for SetMode {
   type Response = String;
 
   fn handle(mode: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    match mode {
-      Mode::Dark => Theme::change(ThemeMode::Dark, None, cx),
-      Mode::Light => Theme::change(ThemeMode::Light, None, cx),
-      Mode::Toggle => toggle_mode(cx),
-      Mode::Get => {}
+    let dark = match mode {
+      Mode::Dark => Some(true),
+      Mode::Light => Some(false),
+      Mode::Toggle => Some(!cx.theme().is_dark()),
+      Mode::Get => None,
+    };
+    // the theme follows the settings only once this returns
+    if let Some(dark) = dark {
+      set_mode(dark, cx)?;
     }
-    Ok(
-      if cx.theme().is_dark() {
-        "dark"
-      } else {
-        "light"
-      }
-      .to_string(),
-    )
+    let dark = dark.unwrap_or_else(|| cx.theme().is_dark());
+    Ok(if dark { "dark" } else { "light" }.to_string())
   }
 }
 
@@ -63,7 +58,7 @@ impl IpcCommand for SetTheme {
   type Response = ();
 
   fn handle(name: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    apply_theme(&name, cx)
+    set_theme(name, cx)
   }
 }
 

@@ -38,6 +38,7 @@ pub fn init(cx: &mut App) {
           name.clone().into()
         };
         show(
+          |k| k.privacy,
           ToggleOsd {
             icon: capture_icon(*kind),
             label: capture_label(*kind).into(),

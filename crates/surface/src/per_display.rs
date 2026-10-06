@@ -35,6 +35,14 @@ impl PerDisplay {
     this
   }
 
+  /// Closes every window it opened; it opens no more once dropped.
+  pub fn close(this: Entity<Self>, cx: &mut App) {
+    let windows = this.update(cx, |this, _| std::mem::take(&mut this.windows));
+    for handle in windows.into_values().flatten() {
+      let _ = handle.update(cx, |_, window, _| window.remove_window());
+    }
+  }
+
   pub fn windows(&self, display: DisplayId) -> &[AnyWindowHandle] {
     self.windows.get(&display).map_or(&[], Vec::as_slice)
   }

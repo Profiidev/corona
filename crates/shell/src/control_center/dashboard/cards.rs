@@ -27,6 +27,7 @@ use crate::{
     weather,
   },
   overlays::wallpaper,
+  widgets::clock::format_time,
 };
 
 const ART: f32 = 64.;
@@ -74,7 +75,7 @@ pub(super) fn profile(cx: &App) -> Stateful<Div> {
     .map(|i| format!("{} · {}", i.os, uptime(i.booted)))
     .unwrap_or_default();
   let initials: String = user.chars().take(2).collect();
-  let avatar = cx.config().avatar.as_deref().map(wallpaper::source);
+  let avatar = cx.config().shell.avatar.as_deref().map(wallpaper::source);
 
   card("dashboard-profile", cx)
     .items_center()
@@ -210,6 +211,7 @@ pub(super) fn media(cx: &App) -> Option<Stateful<Div>> {
 pub(super) fn clock(cx: &App) -> Stateful<Div> {
   let theme = cx.theme();
   let now = Zoned::now();
+  let config = &cx.config().control_center;
   let weather = cx.weather().current(cx).map(|w| {
     let current = &w.current;
     let condition = current.condition();
@@ -232,9 +234,9 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
         .text_2xl()
         .font_bold()
         .text_color(theme.colors.primary)
-        .child(now.strftime("%H:%M").to_string()),
+        .child(format_time(&config.time_format, &now)),
     )
-    .child(muted(now.strftime("%a, %d.%m.%Y").to_string(), cx))
+    .child(muted(format_time(&config.date_format, &now), cx))
     .when_some(weather, |d, (icon, text)| {
       d.child(
         div()

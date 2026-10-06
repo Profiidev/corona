@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use corona_compositor::CompositorExt;
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Global, IntoElement,
@@ -22,10 +22,6 @@ pub trait Osd: Render {
   const NAME: &'static str;
 
   fn size(&self, cx: &App) -> Size<Pixels>;
-
-  fn timeout(&self) -> Duration {
-    Duration::from_millis(1500)
-  }
 }
 
 struct Shown {
@@ -57,7 +53,7 @@ impl OsdState {
       content.width + px(BORDER * 2.),
       content.height + px(BORDER * 2.),
     );
-    let timeout = osd.timeout();
+    let timeout = Duration::from_millis(cx.config().osd.hide_delay_ms);
     let view: AnyView = cx.new(|_| osd).into();
 
     let reused = cx

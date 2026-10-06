@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
-use corona_config::{ConfigProvider, WeatherConfig};
+use corona_config::{ConfigProvider, LocationConfig, observe_section};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 use zbus::Connection;
@@ -70,7 +70,7 @@ fn save_cache(weather: &Weather) -> Result<()> {
 async fn location(
   client: &dyn HttpClient,
   system: &Connection,
-  config: &WeatherConfig,
+  config: &LocationConfig,
   previous: Option<&Location>,
   timeout: impl Future<Output = ()>,
 ) -> Result<Location> {
@@ -92,7 +92,7 @@ async fn location(
     }
   }
   let Some(city) = &config.city else {
-    bail!("set city or latitude and longitude under [weather]");
+    bail!("set city or latitude and longitude under [location]");
   };
   if let Some(previous) = previous.filter(|l| l.query.as_ref() == Some(city)) {
     return Ok(previous.clone());
@@ -113,11 +113,12 @@ pub fn init(cx: &mut App, system: &Connection) {
   let client: Arc<dyn HttpClient> = cx.http_client();
   cx.spawn(async move |cx| {
     loop {
-      let config = cx.update(|cx| cx.config().weather.clone());
+      let (config, place) =
+        cx.update(|cx| (cx.config().weather.clone(), cx.config().location.clone()));
       let previous = cx.update(|cx| weather.read(cx).as_ref().map(|w| w.location.clone()));
       let timer = cx.background_executor().timer(LOCATE_TIMEOUT);
       let fetched = async {
-        let location = location(&*client, &system, &config, previous.as_ref(), timer).await?;
+        let location = location(&*client, &system, &place, previous.as_ref(), timer).await?;
         api::forecast(&*client, location, config.units).await
       }
       .await;
@@ -151,4 +152,15 @@ pub fn init(cx: &mut App, system: &Connection) {
   .detach();
 
   cx.set_global(state);
+  // fetch again right away for the new place or units
+  observe_section(
+    cx,
+    |c| &c.location,
+    |_, cx| cx.global::<WeatherService>().refresh(),
+  );
+  observe_section(
+    cx,
+    |c| &c.weather,
+    |_, cx| cx.global::<WeatherService>().refresh(),
+  );
 }

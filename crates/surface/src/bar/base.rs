@@ -58,13 +58,13 @@ impl Bar {
         .collect::<Vec<_>>()
     };
 
-    let start_widgets = init_widgets(config.start_widgets, cx);
-    let center_widgets = init_widgets(config.center_widgets, cx);
-    let end_widgets = init_widgets(config.end_widgets, cx);
+    let start_widgets = init_widgets(config.start, cx);
+    let center_widgets = init_widgets(config.center, cx);
+    let end_widgets = init_widgets(config.end, cx);
 
     Self {
-      placement: config.placement,
-      height: config.height,
+      placement: config.position,
+      height: config.thickness,
       bounds: Rc::new(Cell::new(Bounds::default())),
       widget_bounds: HashMap::new(),
       start_widgets,

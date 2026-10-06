@@ -1,7 +1,16 @@
-use std::{collections::HashSet, path::Path, thread, time::Duration};
+use std::{
+  collections::HashSet,
+  path::Path,
+  sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+  },
+  thread,
+  time::Duration,
+};
 
 use anyhow::{Context, Result, bail};
-use corona_config::ConfigProvider;
+use corona_config::{BrightnessConfig, ConfigProvider, observe_section};
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::Connection;
 
@@ -16,8 +25,6 @@ mod backlight;
 mod ddc;
 mod outputs;
 mod state;
-
-const POLL: Duration = Duration::from_millis(5000);
 
 #[derive(Clone)]
 pub struct Brightness {
@@ -168,6 +175,12 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   let ddcutil_enabled = cx.config().brightness.enable_ddcutil;
   let (events_tx, events) = flume::unbounded();
 
+  // seconds, kept current by the settings below
+  let poll = Arc::new(AtomicU64::new(cx.config().brightness.poll_seconds));
+  observe_section(cx, |c| &c.brightness, {
+    let poll = poll.clone();
+    move |config: &BrightnessConfig, _| poll.store(config.poll_seconds, Ordering::Relaxed)
+  });
   let sysfs = events_tx.clone();
   thread::spawn(move || {
     let mut last = None;
@@ -190,7 +203,7 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
           break;
         }
       }
-      thread::sleep(POLL);
+      thread::sleep(Duration::from_secs(poll.load(Ordering::Relaxed).max(1)));
     }
   });
 

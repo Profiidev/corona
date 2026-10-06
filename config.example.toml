@@ -1,0 +1,130 @@
+# Every corona setting at its default.
+#
+# Corona reads every *.toml in ~/.config/corona (in alphabetical order, later
+# files win), then ~/.local/state/corona/settings.toml, where the shell keeps
+# what it changes itself (theme mode from the CLI, the settings app). A file only
+# needs the keys it changes. Edits apply while the shell runs.
+#
+# Environment variables win over both: CORONA_SHELL__PLUGIN_DIR sets
+# shell.plugin_dir. Check a config with `corona config validate [path]`.
+
+[shell]
+# Path, ~/ path or http(s) URL of the picture on the dashboard.
+# avatar = "~/.face"
+# Where plugins live, ~/.config/corona/plugins when unset. Read at startup.
+# plugin_dir = "~/.config/corona/plugins"
+
+[shell.animation]
+enabled = true
+# 2 is twice as fast.
+speed = 1.0
+
+[theme]
+# A theme's name; its "Dark"/"Light" counterpart serves the other mode.
+name = "shadcn Zinc Blue Dark"
+# "dark" or "light"; unset: the mode of the named theme.
+# mode = "dark"
+
+[wallpaper]
+# Path, ~/ path or http(s) URL; no wallpaper when unset.
+# path = "~/Pictures/wallpaper.png"
+
+# Bars by name, each one on every monitor. Widgets take options inline, and a
+# { group = [...] } shares one pill.
+[bar.main]
+position = "top" # top, bottom, left or right
+thickness = 30.0
+start = [{ widget_type = "workspaces" }, { widget_type = "active_window" }]
+center = [
+  # options = { format = "%H:%M %a, %b %-d" } sets the strftime format
+  { widget_type = "clock" },
+  { widget_type = "player" },
+]
+end = [
+  { widget_type = "privacy" },
+  { widget_type = "tray" },
+  { group = [
+    { widget_type = "resource", options = { stat = "cpu" } },
+    { widget_type = "resource", options = { stat = "temperature" } },
+    { widget_type = "resource", options = { stat = "memory" } },
+    { widget_type = "resource", options = { stat = "download" } },
+    { widget_type = "resource", options = { stat = "upload" } },
+    { widget_type = "resource", options = { stat = "disk" } },
+  ] },
+  { widget_type = "battery" },
+  { widget_type = "bluetooth" },
+  { widget_type = "network" },
+  { widget_type = "audio" },
+  { widget_type = "notifications" },
+  { widget_type = "control_center" },
+]
+
+[notification]
+# Be the notification daemon. Read at startup.
+enabled = true
+position = "top_right" # top_left or top_right
+width = 400.0
+# Distance from the screen edges.
+offset = 20.0
+timeout_ms = 5000
+critical_timeout_ms = 10000
+
+[osd]
+enabled = true
+hide_delay_ms = 1500
+
+[osd.kinds]
+volume = true
+brightness = true
+wifi = true
+bluetooth = true
+dnd = true
+power_profile = true
+privacy = true
+
+[lockscreen]
+lock_before_suspend = true
+# Blur of the screen behind the lock, 0 for none.
+blur = 3.0
+
+[screenshot]
+# Screenshots in the pictures directory when unset.
+# directory = "~/Pictures/Screenshots"
+# strftime pattern.
+filename_pattern = "screenshot-%Y-%m-%d-%H%M%S-%3f.png"
+
+[window_switcher]
+# Only what is on the focused monitor, even without --current-monitor.
+current_monitor_only = false
+card_height = 180.0
+
+[taskbar]
+enabled = true
+icon_size = 36.0
+previews = true
+preview_max_windows = 5
+
+[control_center]
+# strftime patterns of the dashboard's clock.
+time_format = "%H:%M"
+date_format = "%a, %d.%m.%Y"
+week_start = "monday" # or "sunday"
+
+[weather]
+units = "metric" # or "imperial"
+refresh_minutes = 30
+
+[location]
+# A city, or coordinates; auto_locate asks GeoClue first.
+# city = "Berlin, Germany"
+# latitude = 52.52
+# longitude = 13.40
+auto_locate = false
+
+[brightness]
+# External monitors through ddcutil. Read at startup.
+enable_ddcutil = true
+poll_seconds = 5
+
+[system.monitor]
+poll_seconds = 3

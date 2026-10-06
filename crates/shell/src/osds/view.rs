@@ -1,3 +1,4 @@
+use corona_config::{ConfigProvider, OsdKinds};
 use corona_surface::osd::{Osd, OsdExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -142,6 +143,10 @@ impl Osd for ToggleOsd {
   }
 }
 
-pub fn show(osd: impl Osd, cx: &mut App) {
-  let _ = cx.show_osd(osd).log_err();
+/// Shows `osd` unless the OSD, or its `kind`, is turned off in the settings.
+pub fn show(kind: fn(&OsdKinds) -> bool, osd: impl Osd, cx: &mut App) {
+  let config = &cx.config().osd;
+  if config.enabled && kind(&config.kinds) {
+    let _ = cx.show_osd(osd).log_err();
+  }
 }

@@ -140,12 +140,11 @@ impl ScrollingTextExt for Entity<ScrollingTextState> {
             .map_or(0., |t| t.elapsed().as_secs_f32());
           this.return_from = (cycle > 0.).then(|| (elapsed / cycle).fract());
 
-          let config = cx.config();
-          let anim = config.animation_speed;
+          let anim = cx.config().shell.animation.clone();
 
           cx.spawn(async move |this, cx| {
             cx.background_executor()
-              .timer(SCROLL_RETURN.mul_f32(anim))
+              .timer(anim.duration(SCROLL_RETURN))
               .await;
             this
               .update(cx, |this, cx| {
@@ -187,8 +186,7 @@ impl RenderOnce for ScrollingText {
 
     let state = self.state.read(cx);
     let theme = cx.theme();
-    let config = cx.config();
-    let anim = config.animation_speed;
+    let anim = cx.config().shell.animation.clone();
 
     let label = || {
       div()
@@ -243,7 +241,7 @@ impl RenderOnce for ScrollingText {
           .child(label())
           .with_animation(
             ("scrolling-text-return", id),
-            Animation::new(self.return_duration.mul_f32(anim)).with_easing(ease_out_quint()),
+            Animation::new(anim.duration(self.return_duration)).with_easing(ease_out_quint()),
             move |this, delta| this.ml(px(offset - shift * from * (1. - delta))),
           )
           .into_any_element(),

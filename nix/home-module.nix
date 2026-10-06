@@ -34,7 +34,12 @@ in
     settings = lib.mkOption {
       type = lib.types.attrsOf lib.types.anything;
       default = { };
-      description = "Settings for the Corona shell.";
+      description = ''
+        Settings for the Corona shell, written to ~/.config/corona/config.toml.
+        See config.example.toml in the corona repository for every setting and
+        its default. Changes the shell makes itself (theme mode, the settings
+        app) go to ~/.local/state/corona/settings.toml and win over these.
+      '';
     };
   };
 

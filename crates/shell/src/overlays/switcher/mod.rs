@@ -3,6 +3,7 @@ mod view;
 
 use anyhow::{Context as _, Result};
 use corona_compositor::{Compositor, CompositorExt};
+use corona_config::ConfigProvider;
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Global, Styled, WeakEntity, WindowBackgroundAppearance,
@@ -44,7 +45,9 @@ impl SwitcherState {
     // window positions have no event
     Compositor::refresh_windows(cx)?;
     let monitor = cx.compositor().active_monitor(cx).name.clone();
-    let filter = options.current_monitor.then(|| monitor.clone());
+    let current_monitor =
+      options.current_monitor || cx.config().window_switcher.current_monitor_only;
+    let filter = current_monitor.then(|| monitor.clone());
     if view::order(options.mode, filter.as_deref(), cx).is_empty() {
       return Ok(());
     }

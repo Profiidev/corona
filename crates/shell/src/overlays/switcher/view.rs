@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use corona_capture::LiveCapture;
 use corona_components::components::window_icon::WindowIcon;
 use corona_compositor::{CompositorExt, types};
+use corona_config::ConfigProvider;
 use gpui_kit::{
   App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
   ModifiersChangedEvent, MouseButton, ObjectFit, ParentElement, Render, StatefulInteractiveElement,
@@ -21,7 +22,6 @@ use crate::overlays::{
 };
 
 const FPS: u32 = 5;
-const CARD_HEIGHT: f32 = 180.;
 const LABEL: f32 = 20.;
 const TITLE: f32 = 24.;
 const GAP: f32 = 16.;
@@ -181,6 +181,7 @@ impl Switcher {
     windows: Vec<&types::Window>,
     cx: &mut Context<Self>,
   ) -> impl IntoElement + use<> {
+    let card_height = cx.config().window_switcher.card_height;
     let theme = cx.theme();
     let monitor = cx
       .compositor()
@@ -213,7 +214,7 @@ impl Switcher {
       .filter(|b| b.0 < b.2 && b.1 < b.3)
       .unwrap_or(screen);
     let inset = INSET + BORDER;
-    let k = (CARD_HEIGHT - inset * 2.) / (bottom - top).max(1) as f32;
+    let k = (card_height - inset * 2.) / (bottom - top).max(1) as f32;
     let width = (right - left) as f32 * k + inset * 2.;
 
     let window_mode = self.mode == Mode::Window;
@@ -296,7 +297,7 @@ impl Switcher {
           .id(format!("switcher-workspace-{}", workspace.id))
           .relative()
           .w(px(width))
-          .h(px(CARD_HEIGHT))
+          .h(px(card_height))
           .overflow_hidden()
           .rounded(theme.radius)
           .bg(theme.tokens.button_hover.opacity(0.5))

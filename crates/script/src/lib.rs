@@ -37,7 +37,7 @@ pub fn init(cx: &mut App) -> Result<()> {
     .unwrap_or_default()
     .join(APP_NAME)
     .join("plugins");
-  let plugin_directory = cx.config().plugin_dir.clone();
+  let plugin_directory = cx.config().shell.plugin_dir();
 
   let mut manager = ScriptManager::new(runtime, data_home, plugin_directory);
   manager.discover();
