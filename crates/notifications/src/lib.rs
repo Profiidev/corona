@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicU32;
+use std::{collections::HashMap, sync::atomic::AtomicU32};
 
 use anyhow::Result;
 use futures_lite::StreamExt;
@@ -7,6 +7,7 @@ use zbus::{
   Connection,
   fdo::{DBusProxy, RequestNameFlags, RequestNameReply},
   object_server::SignalEmitter,
+  zvariant::Value,
 };
 
 use crate::server::{CloseReason, Event, NAME, PATH, Server};
@@ -80,6 +81,34 @@ impl Notifications {
 
   pub fn clear_all(&self, cx: &mut App) {
     self.remove(cx, |_| true);
+  }
+
+  /// Goes through `org.freedesktop.Notifications` like any app's, so it lands
+  /// wherever notifications go now, corona or another daemon.
+  pub fn send(&self, summary: String) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    async move {
+      let hints: HashMap<&str, Value> = HashMap::new();
+      conn
+        .call_method(
+          Some(NAME),
+          PATH,
+          Some(NAME),
+          "Notify",
+          &(
+            "corona",
+            0u32,
+            "",
+            summary,
+            "",
+            Vec::<&str>::new(),
+            hints,
+            -1i32,
+          ),
+        )
+        .await?;
+      Ok(())
+    }
   }
 
   pub fn invoke_action(&self, id: u32, key: &str, cx: &mut App) {

@@ -92,12 +92,29 @@ pub fn init(cx: &mut App) {
   cx.observe(&notifications, move |e, cx| {
     let new = e.read(cx).clone();
     NotificationPopups::sync(&new, cx);
-    for notification in new.iter().filter(|n| !old.contains(&n.id)) {
+    // suppressed ones count as seen, so turning do not disturb off replays nothing
+    let dnd = cx.notifications().do_not_disturb(cx);
+    for notification in new.iter().filter(|n| !dnd && !old.contains(&n.id)) {
       if let Err(e) = NotificationPopups::show(notification.clone(), cx) {
         tracing::error!("failed to show notification popup: {e:?}");
       }
     }
     old = new.iter().map(|n| n.id).collect();
+  })
+  .detach();
+
+  let dnd = cx.notifications().do_not_disturb.clone();
+  cx.observe(&dnd, |dnd, cx| {
+    if !*dnd.read(cx) {
+      return;
+    }
+    let ids: Vec<u32> = NotificationPopups::views(cx)
+      .iter()
+      .flat_map(|v| v.read(cx).items.iter().map(|p| p.item.id))
+      .collect();
+    for id in ids {
+      NotificationPopups::hide(id, cx);
+    }
   })
   .detach();
 }

@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
+use corona_shell::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
@@ -23,6 +24,11 @@ pub enum IpcCommands {
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
+  /// Notification commands
+  Notification {
+    #[command(subcommand)]
+    command: NotificationCommands,
+  },
   /// Lock, suspend, log out, reboot or shut down
   Session { action: Action },
   /// Open the window switcher, or move its selection while open
@@ -53,6 +59,7 @@ impl IpcCommands {
           tracing::error!("Failed to start color picker: {}", e);
         }
       }
+      IpcCommands::Notification { command } => command.execute(),
       IpcCommands::Session { action } => {
         if let Err(e) = Session::send(action) {
           tracing::error!("Failed to run session action: {}", e);
@@ -122,6 +129,43 @@ impl PanelCommands {
       PanelCommands::Toggle { panel } => {
         if let Err(e) = corona_surface::commands::TogglePanel::send(panel) {
           tracing::error!("Failed to toggle panel: {}", e);
+        }
+      }
+    }
+  }
+}
+
+#[derive(Subcommand)]
+pub enum NotificationCommands {
+  /// Do not disturb: on, off, toggle or status
+  Dnd { action: Dnd },
+  /// Send a notification
+  Show {
+    /// The notification's summary
+    summary: String,
+  },
+  /// Remove all entries from the notification history
+  ClearHistory,
+}
+
+impl NotificationCommands {
+  pub fn execute(self) {
+    match self {
+      NotificationCommands::Dnd { action } => match DoNotDisturb::send(action) {
+        Ok(enabled) if matches!(action, Dnd::Status) => {
+          println!("{}", if enabled { "on" } else { "off" })
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!("Failed to set do not disturb: {}", e),
+      },
+      NotificationCommands::Show { summary } => {
+        if let Err(e) = Show::send(summary) {
+          tracing::error!("Failed to show notification: {}", e);
+        }
+      }
+      NotificationCommands::ClearHistory => {
+        if let Err(e) = ClearHistory::send(()) {
+          tracing::error!("Failed to clear notification history: {}", e);
         }
       }
     }
