@@ -12,6 +12,8 @@ use gpui_kit::{
   px,
 };
 
+use crate::lock::LockState;
+
 const ROW: f32 = 40.;
 const ROWS: usize = 9;
 
@@ -62,7 +64,7 @@ impl Item {
 
   fn enabled(&self, capabilities: &SessionCapabilities) -> bool {
     match self {
-      Item::Lock => false,
+      Item::Lock => true,
       Item::Action(action) => match action {
         SessionAction::Logout => true,
         SessionAction::Suspend => capabilities.suspend,
@@ -142,7 +144,7 @@ impl SessionMenu {
   fn enabled(&self, entry: &Item) -> bool {
     match &self.capabilities {
       Some(capabilities) => entry.enabled(capabilities),
-      None => entry == &Item::Action(SessionAction::Logout),
+      None => matches!(entry, Item::Lock | Item::Action(SessionAction::Logout)),
     }
   }
 
@@ -153,6 +155,10 @@ impl SessionMenu {
     if matches!(entry, Item::RebootTo | Item::Back) {
       self.boot_menu = entry == Item::RebootTo;
       return cx.notify();
+    }
+    if entry == Item::Lock {
+      LockState::lock(cx).detach();
+      return (self.on_done)(window, cx);
     }
     let power = cx.power();
     let task = match entry {

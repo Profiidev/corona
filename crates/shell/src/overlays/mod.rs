@@ -1,3 +1,4 @@
+use corona_config::APP_NAME;
 use corona_ipc::IpcServer;
 use gpui_kit::{
   AnyWindowHandle, App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance,
@@ -68,6 +69,7 @@ fn fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions {
     window_background: WindowBackgroundAppearance::Opaque,
     window_decorations: Some(WindowDecorations::Client),
     display_id: Some(display),
+    app_id: Some(APP_NAME.to_string()),
     titlebar: None,
     window_bounds: Some(WindowBounds::Windowed(Bounds {
       origin: point(px(0.), px(0.)),

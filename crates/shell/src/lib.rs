@@ -6,6 +6,7 @@ use gpui_kit::App;
 
 mod control_center;
 mod icons;
+mod lock;
 mod osds;
 pub mod overlays;
 mod widgets;
@@ -14,6 +15,7 @@ pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
+  lock::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
   overlays::taskbar::init(cx);

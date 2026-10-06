@@ -1,6 +1,8 @@
 use std::env;
 
 use anyhow::{Context, Result};
+use futures_lite::StreamExt;
+use gpui_kit::{AsyncApp, Task};
 use zbus::{Connection, proxy::CacheProperties};
 
 #[zbus::proxy(
@@ -32,6 +34,20 @@ pub(crate) trait LoginManager {
   fn boot_loader_entries(&self) -> zbus::Result<Vec<String>>;
 
   fn terminate_session(&self, session: &str) -> zbus::Result<()>;
+
+  /// Held off until the returned fd closes. A `delay` lock lasts at most
+  /// `InhibitDelayMaxSec`, 5s by default.
+  fn inhibit(
+    &self,
+    what: &str,
+    who: &str,
+    why: &str,
+    mode: &str,
+  ) -> zbus::Result<zbus::zvariant::OwnedFd>;
+
+  /// `true` right before suspend or hibernate, `false` after resume
+  #[zbus(signal)]
+  fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +135,31 @@ pub(crate) async fn reboot_to(conn: Connection, entry: String) -> Result<()> {
   let manager = manager(&conn).await?;
   manager.set_reboot_to_boot_loader_entry(&entry).await?;
   Ok(manager.reboot(true).await?)
+}
+
+/// Holds every suspend and hibernate back until `before_sleep`'s task ends.
+pub(crate) async fn before_sleep(
+  conn: Connection,
+  cx: &mut AsyncApp,
+  before_sleep: impl Fn(&mut gpui_kit::App) -> Task<()>,
+) -> Result<()> {
+  let manager = manager(&conn).await?;
+  let mut signals = manager.receive_prepare_for_sleep().await?;
+  let mut next = async |start| loop {
+    let signal = signals.next().await.context("logind went away")?;
+    if signal.args()?.start == start {
+      return anyhow::Ok(());
+    }
+  };
+  loop {
+    let inhibitor = manager
+      .inhibit("sleep", "corona", "Lock the screen", "delay")
+      .await?;
+    next(true).await?;
+    cx.update(&before_sleep).await;
+    drop(inhibitor);
+    next(false).await?;
+  }
 }
 
 /// `nixos-generation-848-3f7m….efi` as "NixOS generation 848", `auto-windows` as

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use gpui_kit::{App, AppContext, Entity, Global};
+use corona_utils::error::ErrorLogExt;
+use gpui_kit::{App, AppContext, Entity, Global, Task};
 use upower_dbus::KbdBacklightProxy;
 use zbus::{Connection, proxy::CacheProperties};
 
@@ -75,6 +76,16 @@ impl Power {
 
   pub fn reboot_to(&self, entry: String) -> impl Future<Output = Result<()>> + use<> {
     session::reboot_to(self.conn.clone(), entry)
+  }
+
+  pub fn before_sleep(&self, cx: &mut App, before_sleep: impl Fn(&mut App) -> Task<()> + 'static) {
+    let conn = self.conn.clone();
+    cx.spawn(async move |cx| {
+      let _ = session::before_sleep(conn, cx, before_sleep)
+        .await
+        .log_err();
+    })
+    .detach();
   }
 
   /// `power-saver`, `balanced` or `performance`
