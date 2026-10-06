@@ -1966,6 +1966,7 @@ dependencies = [
  "futures",
  "gpui-kit",
  "jiff",
+ "regex",
  "serde",
  "serde_json",
  "tracing",

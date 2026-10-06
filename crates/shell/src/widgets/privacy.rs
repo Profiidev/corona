@@ -4,12 +4,13 @@ use std::{
   time::{Duration, SystemTime},
 };
 
+use corona_config::{ConfigProvider, PrivacyConfig, observe_section};
 use corona_pipewire::{CaptureKind, PipewireExt};
 use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
-  App, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton,
-  ParentElement, Pixels, Render, SharedString, Styled, Subscription, Task, Window,
+  App, Bounds, Context, FocusHandle, Focusable, Global, InteractiveElement, IntoElement,
+  MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Subscription, Task, Window,
   assets::IconName,
   base::ElementExt,
   component::{ActiveTheme, Icon, Sizable},
@@ -17,12 +18,16 @@ use gpui_kit::{
   prelude::FluentBuilder,
   px,
 };
+use regex::Regex;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
   icons::{capture_icon, capture_label},
-  widgets::popup::{self, ROW, SEPARATOR},
+  widgets::{
+    filter_regex,
+    popup::{self, ROW, SEPARATOR},
+  },
 };
 
 const ICON_SIZE: f32 = 16.;
@@ -33,6 +38,41 @@ const KINDS: [CaptureKind; 3] = [
   CaptureKind::Camera,
   CaptureKind::Screen,
 ];
+
+/// `[shell.privacy]` compiled, one regex per kind in [`KINDS`]'s order
+struct Filter([Option<Regex>; 3]);
+
+impl Global for Filter {}
+
+fn compile(config: &PrivacyConfig) -> Filter {
+  Filter(
+    [
+      &config.mic_filter_regex,
+      &config.cam_filter_regex,
+      &config.screen_filter_regex,
+    ]
+    .map(|p| filter_regex(p)),
+  )
+}
+
+pub(crate) fn init_filter(cx: &mut App) {
+  let filter = compile(&cx.config().shell.privacy);
+  cx.set_global(filter);
+  observe_section(
+    cx,
+    |c| &c.shell.privacy,
+    |config, cx| cx.set_global(compile(config)),
+  );
+}
+
+/// Whether the settings leave `name`'s `kind` of access out
+pub(crate) fn hidden(kind: CaptureKind, name: Option<&str>, cx: &App) -> bool {
+  let index = KINDS.iter().position(|k| *k == kind).unwrap_or_default();
+  match (&cx.global::<Filter>().0[index], name) {
+    (Some(re), Some(name)) => re.is_match(name),
+    _ => false,
+  }
+}
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -63,10 +103,14 @@ impl Widget for Privacy {
 
 impl Render for Privacy {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let pipewire = cx.pipewire();
+    let captures = cx.pipewire().list_captures(cx);
     let recording: Vec<CaptureKind> = KINDS
       .into_iter()
-      .filter(|kind| pipewire.is_capturing(*kind, cx))
+      .filter(|kind| {
+        captures
+          .iter()
+          .any(|c| c.kind == *kind && c.active && !hidden(c.kind, Some(&c.name), cx))
+      })
       .collect();
     if recording.is_empty() && self.options.hide_when_idle {
       return div().into_any_element();
@@ -151,7 +195,12 @@ fn by_app(log: impl IntoIterator<Item = Access>) -> Vec<AppAccess> {
 
 fn apps(cx: &App) -> Vec<AppAccess> {
   let log = cx.pipewire().capture_log(cx);
-  by_app(log.iter().map(|a| (a.kind, a.name.clone(), a.ended)))
+  by_app(
+    log
+      .iter()
+      .filter(|a| !hidden(a.kind, a.name.as_deref(), cx))
+      .map(|a| (a.kind, a.name.clone(), a.ended)),
+  )
 }
 
 fn log_size(entries: usize) -> gpui_kit::Size<Pixels> {

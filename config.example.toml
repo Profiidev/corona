@@ -14,6 +14,13 @@
 # Where plugins live, ~/.config/corona/plugins when unset. Read at startup.
 # plugin_dir = "~/.config/corona/plugins"
 
+# Apps the privacy widget, its log and OSD leave out: case-insensitive regexes
+# against the app's name, empty for none.
+[shell.privacy]
+mic_filter_regex = ""
+cam_filter_regex = ""
+screen_filter_regex = "" # e.g. "noctalia|obs"
+
 [shell.animation]
 enabled = true
 # 2 is twice as fast.
@@ -51,8 +58,8 @@ background_opacity = 1.0
 capsule = true
 widget_spacing = 8.0
 # Space before the first and after the last widget, along the bar.
-padding_start = 0.0
-padding_end = 0.0
+padding_start = 5.0
+padding_end = 5.0
 start = [{ widget_type = "workspaces" }, { widget_type = "active_window" }]
 center = [
   # options = { format = "%H:%M %a, %b %-d" } sets the strftime format
@@ -61,6 +68,8 @@ center = [
 ]
 end = [
   { widget_type = "privacy" },
+  # options = { blacklist = ["nm-applet"] } hides tray items whose id or title
+  # matches one of the case-insensitive regexes
   { widget_type = "tray" },
   { group = [
     { widget_type = "resource", options = { stat = "cpu" } },

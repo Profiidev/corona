@@ -7,6 +7,7 @@ use crate::{
     on_change,
     view::{ToggleOsd, show},
   },
+  widgets::privacy::hidden,
 };
 
 pub fn init(cx: &mut App) {
@@ -19,7 +20,7 @@ pub fn init(cx: &mut App) {
         .pipewire()
         .list_captures(cx)
         .iter()
-        .filter(|c| c.active)
+        .filter(|c| c.active && !hidden(c.kind, Some(&c.name), cx))
         .map(|c| (c.kind, c.name.clone()))
         .collect();
       active.sort_by_key(|(kind, name)| (*kind as u8, name.clone()));

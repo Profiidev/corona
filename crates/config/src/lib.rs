@@ -91,6 +91,17 @@ pub struct ShellConfig {
   /// Unset: `~/.config/corona/plugins`; may start with `~/`. Read at startup only
   pub plugin_dir: Option<PathBuf>,
   pub animation: AnimationConfig,
+  pub privacy: PrivacyConfig,
+}
+
+/// Apps the privacy widget, its log and OSD leave out: case-insensitive
+/// regexes against the app's name, empty for none
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(default)]
+pub struct PrivacyConfig {
+  pub mic_filter_regex: String,
+  pub cam_filter_regex: String,
+  pub screen_filter_regex: String,
 }
 
 /// `path` with a leading `~/` in the home directory

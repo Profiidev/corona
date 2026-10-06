@@ -12,26 +12,52 @@ use gpui_kit::{
   component::{ActiveTheme, Icon, Sizable},
   div, img, px,
 };
+use regex::Regex;
+use serde::Deserialize;
 use uuid::Uuid;
+
+use crate::widgets::filter_regex;
 
 mod menu;
 
 const ICON_SIZE: f32 = 16.;
 const SLOT_SIZE: f32 = 24.;
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Options {
+  /// Regexes, case-insensitive, against an item's id and title; a match hides it
+  pub blacklist: Vec<String>,
+}
+
 pub struct Tray {
+  blacklist: Vec<Regex>,
   bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
   _subscription: Subscription,
+}
+
+impl Tray {
+  fn hidden(&self, item: &TrayItem) -> bool {
+    self
+      .blacklist
+      .iter()
+      .any(|re| re.is_match(&item.id) || item.title.as_deref().is_some_and(|t| re.is_match(t)))
+  }
 }
 
 impl Widget for Tray {
   const NAME: &'static str = "tray";
 
-  type Options = ();
+  type Options = Options;
 
-  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, _options: ()) -> Self {
+  fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, options: Options) -> Self {
     let items = cx.tray().items.clone();
     Self {
+      blacklist: options
+        .blacklist
+        .iter()
+        .filter_map(|p| filter_regex(p))
+        .collect(),
       bounds: HashMap::new(),
       _subscription: cx.observe(&items, |this, items, cx| {
         let items = items.read(cx);
@@ -141,7 +167,13 @@ impl Tray {
 
 impl Render for Tray {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let items = cx.tray().list_items(cx).to_vec();
+    let items: Vec<TrayItem> = cx
+      .tray()
+      .list_items(cx)
+      .iter()
+      .filter(|item| !self.hidden(item))
+      .cloned()
+      .collect();
     if items.is_empty() {
       return Empty.into_any_element();
     }

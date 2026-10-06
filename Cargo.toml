@@ -61,6 +61,7 @@ bitflags = "2.13.2"
 tracing = "0.1.44"
 dashmap = "6.2.1"
 flume = "0.12.0"
+regex = "1.13.1"
 dirs = "7.0.0"
 glob = "0.3.4"
 uuid = { version = "1.27.0", features = ["v5"] }
