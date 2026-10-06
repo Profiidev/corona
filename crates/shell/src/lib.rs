@@ -4,15 +4,12 @@ use anyhow::Result;
 use corona_surface::bar::BarState;
 use gpui_kit::App;
 
+pub mod commands;
 mod control_center;
 mod icons;
 mod lock;
-pub mod media;
-pub mod notification;
 mod osds;
 pub mod overlays;
-pub mod session;
-pub mod theme;
 mod widgets;
 
 pub fn init(cx: &mut App) {
@@ -36,10 +33,7 @@ fn init_ipc(cx: &mut App) {
 
   corona_surface::commands::register_commands(&mut server);
   overlays::register_commands(&mut server);
-  session::register_commands(&mut server);
-  theme::register_commands(&mut server);
-  notification::register_commands(&mut server);
-  media::register_commands(&mut server);
+  commands::register_commands(&mut server);
 
   cx.spawn(async move |cx| server.run(cx).await).detach();
 }

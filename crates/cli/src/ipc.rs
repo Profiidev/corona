@@ -1,15 +1,15 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
-use corona_shell::media::{Action as MediaAction, Media};
-use corona_shell::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
+use corona_shell::commands::media::{Action as MediaAction, Media};
+use corona_shell::commands::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
+use corona_shell::commands::session::{Action, Session};
+use corona_shell::commands::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
-use corona_shell::session::{Action, Session};
-use corona_shell::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
