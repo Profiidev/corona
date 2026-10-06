@@ -1,7 +1,7 @@
-gpui_version := "0.3.7"
+gpui_version := "0.3.8"
 gpui_crates := "gpui-pre gpui-pre-linux gpui-pre-wgpu"
 # Keep in sync with the gpui-kit tag in Cargo.toml.
-gpui_kit_tag := "v0.7.0"
+gpui_kit_tag := "v0.7.1"
 
 layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })'
 

@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.7" }
-http_client = { package = "gpui-pre-http-client", version = "=0.3.7" }
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.8" }
+http_client = { package = "gpui-pre-http-client", version = "=0.3.8" }
 futures.workspace = true
 anyhow.workspace = true
 serde.workspace = true

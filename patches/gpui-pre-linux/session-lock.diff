@@ -1,44 +1,58 @@
+diff --git a/crates/gpui_linux/src/linux/display_connection.rs b/crates/gpui_linux/src/linux/display_connection.rs
+--- a/crates/gpui_linux/src/linux/display_connection.rs
++++ b/crates/gpui_linux/src/linux/display_connection.rs
+@@ -154,6 +154,29 @@
+         dispatch!(self, connection => connection.window_stack(), headless => None)
+     }
+ 
++    /// Locks the session; see [`gpui::Platform::lock_session`]. Wayland-only — X11 has
++    /// no equivalent protocol, so it reports the lock as unsupported.
++    pub(crate) fn lock_session(&self) -> futures::channel::oneshot::Receiver<anyhow::Result<()>> {
++        match self {
++            #[cfg(feature = "wayland")]
++            DisplayConnection::Wayland(connection) => connection.lock_session(),
++            _ => {
++                let (tx, rx) = futures::channel::oneshot::channel();
++                tx.send(Err(gpui::session_lock::SessionLockNotSupportedError.into()))
++                    .ok();
++                rx
++            }
++        }
++    }
++
++    /// Releases a lock taken with [`DisplayConnection::lock_session`].
++    pub(crate) fn unlock_session(&self) {
++        #[cfg(feature = "wayland")]
++        if let DisplayConnection::Wayland(connection) = self {
++            connection.unlock_session();
++        }
++    }
++
+     pub(crate) fn set_cursor_style(&self, style: CursorStyle) {
+         dispatch!(self, connection => connection.set_cursor_style(style), headless => ())
+     }
 diff --git a/crates/gpui_linux/src/linux/platform.rs b/crates/gpui_linux/src/linux/platform.rs
 --- a/crates/gpui_linux/src/linux/platform.rs
 +++ b/crates/gpui_linux/src/linux/platform.rs
-@@ -80,6 +80,18 @@
-         handle: AnyWindowHandle,
-         options: WindowParams,
-     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
-+
-+    /// Locks the session; see [`gpui::Platform::lock_session`]. Wayland-only — X11 has
-+    /// no equivalent protocol, so the default reports it as unsupported.
-+    fn lock_session(&self) -> oneshot::Receiver<anyhow::Result<()>> {
-+        let (tx, rx) = oneshot::channel();
-+        tx.send(Err(gpui::session_lock::SessionLockNotSupportedError.into()))
-+            .ok();
-+        rx
-+    }
-+
-+    /// Releases a lock taken with [`LinuxClient::lock_session`].
-+    fn unlock_session(&self) {}
-     fn set_cursor_style(&self, style: CursorStyle);
-     fn hide_cursor_until_mouse_moves(&self) {}
-     fn is_cursor_visible(&self) -> bool {
-@@ -389,6 +401,14 @@
-         self.inner.open_window(handle, options)
+@@ -739,6 +739,14 @@
+         self.connection.borrow().open_window(handle, options)
      }
  
 +    fn lock_session(&self) -> oneshot::Receiver<anyhow::Result<()>> {
-+        self.inner.lock_session()
++        self.connection.borrow().lock_session()
 +    }
 +
 +    fn unlock_session(&self) {
-+        self.inner.unlock_session()
++        self.connection.borrow().unlock_session()
 +    }
 +
      fn open_url(&self, url: &str) {
-         self.inner.open_uri(url);
+         self.connection.borrow().open_uri(url);
      }
 diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
 --- a/crates/gpui_linux/src/linux/wayland/client.rs
 +++ b/crates/gpui_linux/src/linux/wayland/client.rs
-@@ -37,6 +37,9 @@
+@@ -41,6 +41,9 @@
          wl_shm_pool, wl_surface, wl_touch,
      },
  };
@@ -48,15 +62,15 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
  use wayland_protocols::wp::pointer_gestures::zv1::client::{
      zwp_pointer_gesture_pinch_v1, zwp_pointer_gestures_v1,
  };
-@@ -102,6 +105,7 @@
-     MouseUpEvent, NavigationDirection, Pixels, PlatformDisplay, PlatformInput,
-     PlatformKeyboardLayout, PlatformWindow, Point, ScrollDelta, ScrollWheelEvent, SharedString,
-     Size, TouchPhase, WindowButtonLayout, WindowKind, WindowParams, point, profiler, px, size,
+@@ -106,6 +109,7 @@
+     PlatformFrameSignal, PlatformInput, PlatformKeyboardLayout, PlatformWindow, Point, ScrollDelta,
+     ScrollWheelEvent, SharedString, Size, TouchPhase, WindowButtonLayout, WindowKind, WindowParams,
+     point, px, size,
 +    session_lock::{SessionLockNotSupportedError, SessionLockRefusedError},
  };
  use gpui_wgpu::{CompositorGpuHint, GpuContext};
  use wayland_protocols::wp::linux_dmabuf::zv1::client::{
-@@ -229,6 +233,7 @@
+@@ -261,6 +265,7 @@
          Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
      pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
      pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
@@ -64,15 +78,15 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
      pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
      pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
      pub gesture_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
-@@ -249,6 +254,7 @@
+@@ -281,6 +286,7 @@
          let dialog_v = XdgWmDialogV1::interface().version;
-         Globals {
+         Ok(Globals {
              activation: globals.bind(&qh, 1..=1, ()).ok(),
 +            session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
              compositor: globals
                  .bind(
                      &qh,
-@@ -343,6 +349,13 @@
+@@ -381,6 +387,13 @@
      outputs: HashMap<ObjectId, Output>,
      in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
      wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
@@ -86,7 +100,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
      keyboard_layout: LinuxKeyboardLayout,
      keymap_state: Option<xkb::State>,
      compose_state: Option<xkb::compose::State>,
-@@ -934,6 +947,9 @@
+@@ -1058,6 +1071,9 @@
              composing: false,
              last_ime_cursor_rectangle: None,
              outputs: HashMap::default(),
@@ -96,11 +110,11 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
              in_progress_outputs,
              wl_outputs,
              windows: HashMap::default(),
-@@ -1069,6 +1085,41 @@
+@@ -1266,6 +1282,41 @@
          sources_rx
      }
  
-+    fn lock_session(&self) -> futures::channel::oneshot::Receiver<anyhow::Result<()>> {
++    pub(crate) fn lock_session(&self) -> futures::channel::oneshot::Receiver<anyhow::Result<()>> {
 +        let (tx, rx) = futures::channel::oneshot::channel();
 +        let mut state = self.0.borrow_mut();
 +
@@ -118,7 +132,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
 +        rx
 +    }
 +
-+    fn unlock_session(&self) {
++    pub(crate) fn unlock_session(&self) {
 +        let mut state = self.0.borrow_mut();
 +        if let Some(lock) = state.session_lock.take() {
 +            if state.session_locked {
@@ -135,10 +149,10 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
 +        state.session_lock_tx = None;
 +    }
 +
-     fn open_window(
+     pub(crate) fn open_window(
          &self,
          handle: AnyWindowHandle,
-@@ -1124,6 +1175,7 @@
+@@ -1321,6 +1372,7 @@
              parent,
              popup_grab,
              target_output,
@@ -146,7 +160,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
          )?;
  
          if window.0.toplevel().is_some() {
-@@ -1609,6 +1661,68 @@
+@@ -1820,6 +1872,68 @@
      }
  }
  
@@ -218,7 +232,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
 diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
 --- a/crates/gpui_linux/src/linux/wayland/window.rs
 +++ b/crates/gpui_linux/src/linux/wayland/window.rs
-@@ -17,6 +17,9 @@
+@@ -18,6 +18,9 @@
      Proxy,
      protocol::{wl_callback, wl_output, wl_seat, wl_surface},
  };
@@ -228,7 +242,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  use wayland_protocols::wp::viewporter::client::wp_viewport;
  use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
  use wayland_protocols::xdg::shell::client::xdg_popup;
-@@ -137,6 +140,11 @@
+@@ -149,6 +152,11 @@
      Xdg(WaylandXdgSurfaceState),
      LayerShell(WaylandLayerSurfaceState),
      Popup(WaylandPopupSurfaceState),
@@ -240,7 +254,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  }
  
  impl WaylandSurfaceState {
-@@ -147,6 +155,7 @@
+@@ -159,6 +167,7 @@
          parent: Option<WaylandWindowStatePtr>,
          popup_grab: Option<(u32, wl_seat::WlSeat)>,
          target_output: Option<wl_output::WlOutput>,
@@ -248,7 +262,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
      ) -> anyhow::Result<Self> {
          // For layer_shell windows, create a layer surface instead of an xdg surface
          if let WindowKind::LayerShell(options) = &params.kind {
-@@ -195,6 +204,26 @@
+@@ -206,6 +215,26 @@
              }));
          }
  
@@ -275,7 +289,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          if let WindowKind::AnchoredPopup(options) = &params.kind {
              let Some(parent) = parent.as_ref() else {
                  return Err(anyhow::anyhow!("popup parent window not found"));
-@@ -375,6 +404,12 @@
+@@ -386,6 +415,12 @@
              WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
                  xdg_surface.ack_configure(serial);
              }
@@ -288,7 +302,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          }
      }
  
-@@ -402,7 +437,7 @@
+@@ -413,7 +448,7 @@
              WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
                  Some(xdg_surface)
              }
@@ -297,7 +311,8 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          }
      }
  
-@@ -425,5 +460,7 @@
+@@ -434,6 +469,8 @@
+             }
              // The layer-shell requested size is independent of the configured drawable size.
              WaylandSurfaceState::LayerShell(_) => {}
 +            // A lock surface's size is the compositor's to decide.
@@ -305,7 +320,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
              WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
                  xdg_surface.set_window_geometry(x, y, width, height);
              }
-@@ -501,6 +538,14 @@
+@@ -510,6 +547,14 @@
  
      fn destroy(&mut self) {
          match self {
@@ -320,7 +335,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
              WaylandSurfaceState::Xdg(WaylandXdgSurfaceState {
                  xdg_surface,
                  toplevel,
-@@ -821,8 +866,10 @@
+@@ -841,8 +886,10 @@
          parent: Option<WaylandWindowStatePtr>,
          popup_grab: Option<(u32, wl_seat::WlSeat)>,
          target_output: Option<wl_output::WlOutput>,
@@ -331,7 +346,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          let surface_state = WaylandSurfaceState::new(
              &surface,
              &globals,
-@@ -830,6 +877,7 @@
+@@ -850,6 +897,7 @@
              parent.clone(),
              popup_grab,
              target_output,
@@ -339,8 +354,8 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          )?;
  
          if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
-@@ -861,8 +909,12 @@
-             frame_ping,
+@@ -882,8 +930,12 @@
+             scheduled_frame_at: Rc::new(Cell::new(None)),
          });
  
 -        // Kick things off
@@ -354,7 +369,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  
          Ok((this, surface.id()))
      }
-@@ -1321,6 +1373,37 @@
+@@ -1366,6 +1418,37 @@
          }
      }
  

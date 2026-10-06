@@ -1,7 +1,7 @@
 diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
 --- a/crates/gpui_linux/src/linux/wayland/client.rs
 +++ b/crates/gpui_linux/src/linux/wayland/client.rs
-@@ -351,6 +351,8 @@ pub(crate) struct WaylandClientState {
+@@ -387,6 +387,8 @@
      outputs: HashMap<ObjectId, Output>,
      in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
      wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
@@ -10,15 +10,15 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
      session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
      /// Whether the compositor has sent `locked`. `unlock_and_destroy` before that is an
      /// `invalid_unlock` protocol error — such a lock must be plainly destroyed instead.
-@@ -880,6 +882,7 @@ impl WaylandClient {
+@@ -995,6 +997,7 @@
          let mut in_progress_outputs = HashMap::default();
          #[allow(clippy::mutable_key_type)]
          let mut wl_outputs: HashMap<ObjectId, wl_output::WlOutput> = HashMap::default();
 +        let mut output_globals = HashMap::default();
-         globals.contents().with_list(|list| {
+         globals.contents().with_list(|list| -> anyhow::Result<()> {
              for global in list {
                  match &global.interface[..] {
-@@ -899,6 +902,7 @@ impl WaylandClient {
+@@ -1014,6 +1017,7 @@
                              (),
                          );
                          in_progress_outputs.insert(output.id(), InProgressOutput::default());
@@ -26,7 +26,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
                          wl_outputs.insert(output.id(), output);
                      }
                      _ => {}
-@@ -1043,6 +1047,7 @@ impl WaylandClient {
+@@ -1076,6 +1080,7 @@
              session_lock_tx: None,
              in_progress_outputs,
              wl_outputs,
@@ -34,7 +34,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
              windows: HashMap::default(),
              common,
              keyboard_layout: LinuxKeyboardLayout::new(UNKNOWN_KEYBOARD_LAYOUT_NAME),
-@@ -1584,12 +1589,23 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
+@@ -1668,12 +1673,23 @@
                      state
                          .in_progress_outputs
                          .insert(output.id(), InProgressOutput::default());

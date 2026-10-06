@@ -10,4 +10,4 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-bluez = "0.1.0"
-futures-channel = "0.3"
+futures-channel = "0.3.34"

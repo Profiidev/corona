@@ -16,7 +16,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.7";
+  gpuiVersion = "0.3.8";
 
   vendorCrate =
     pname: hash:
@@ -30,22 +30,21 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-ZmzcsmgiJUvhfz8ybIKn1PxnyHvalRmL5whrtvZ+XmY=
-sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-f9FaoOJLrqPgGzH0qMMqZEQu/Up8isYBgzuJWU3Q/Os=";
   # Not on crates.io; patched for ShellRuntime::load_entry. Tag matches Cargo.toml.
   gpui-shell = applyPatches {
     name = "gpui-shell-patched";
     src = fetchFromGitHub {
       owner = "longbridge";
       repo = "gpui-kit";
-      tag = "v0.7.0";
-      hash = "sha256-Ii3wGy0gLfT2PiSkrqNWPCT2SdSAz5CruC46UrW/55M=";
+      tag = "v0.7.1";
+      hash = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
     };
     patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
     patchFlags = [ "-p1" ];
   };
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-X20/pKW1PhzxEb1fMHoapSC/AwfG3JJgsgmZrD4SoK0=";
-  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-bpYOVy3kygBfh+y2xmPtIQG6R7Nx5tR3dElg6PEOBzs=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-TtGSoMKrW1JbTn6cmgwOLCX8cXXxr6meIkta0phI2vk=";
+  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-/ZwKGDOTUtMO8zYy0ypYQ9mZnSjAYKyFSoWSJr1o5FM=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -59,9 +58,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "gpui-base-0.7.0" = "sha256-Ii3wGy0gLfT2PiSkrqNWPCT2SdSAz5CruC46UrW/55M=";
+      "gpui-base-0.7.1" = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
-      "quickjs-jit-0.12.9" = "sha256-BykXNq9To8LH8xBZ0OekCHUegsUhzGwh8GennxtsFl0=";
+      "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
     };
   };

@@ -8,12 +8,12 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 futures.workspace = true
-gbm = { version = "0.18", default-features = false }
+gbm = { version = "0.18.0", default-features = false }
 gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }
 tracing.workspace = true
 rustix = { version = "1.1.5", features = ["fs"] }
 wayland-client = "0.31.15"
-wayland-backend = "0.3"
-wayland-scanner = "0.31"
-wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+wayland-backend = "0.3.17"
+wayland-scanner = "0.31.11"
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

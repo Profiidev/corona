@@ -50,9 +50,9 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +    pinch_start_distance: Option<f32>,
 +    last_pinch_distance: Option<f32>,
 +    pinch_zoom_threshold: f32,
-     loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
+     loop_handle: LoopHandle<'static, ()>,
      cursor_style: Option<CursorStyle>,
-     clipboard: Clipboard,
+     cursor_hidden_window: Option<WaylandWindowStatePtr>,
 @@ -607,6 +628,7 @@ impl WaylandClient {
              wl_seat: seat,
              wl_pointer: None,

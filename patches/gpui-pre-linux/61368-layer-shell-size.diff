@@ -65,7 +65,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
 @@ -604,7 +612,7 @@ impl WaylandWindowState {
              outputs: HashMap::default(),
              display: None,
-             renderer,
+             renderer: Some(renderer),
 -            bounds: options.bounds,
 +            bounds,
              scale: 1.0,

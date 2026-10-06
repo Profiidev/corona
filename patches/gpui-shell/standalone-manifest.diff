@@ -5,7 +5,7 @@ diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
 index 3ec815f..6a5244a 100644
 --- a/crates/shell/Cargo.toml
 +++ b/crates/shell/Cargo.toml
-@@ -5,7 +5,7 @@ version = "0.7.0"
+@@ -5,7 +5,7 @@ version = "0.7.1"
  keywords = ["desktop", "gpui", "javascript", "runtime"]
  license = "Apache-2.0"
  publish = false
@@ -22,10 +22,10 @@ index 3ec815f..6a5244a 100644
 -gpui_platform.workspace = true
 -gpui-base = { workspace = true, features = ["inspector"] }
 -gpui-fps.workspace = true
-+gpui = { package = "gpui-pre", version = "=0.3.7" }
-+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.7", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-+gpui-base = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0", features = ["inspector"] }
-+gpui-fps = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.0" }
++gpui = { package = "gpui-pre", version = "=0.3.8" }
++gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
++gpui-base = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1", features = ["inspector"] }
++gpui-fps = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1" }
  
  # Keep the bindings, runtime, and LLRT compatibility facade on the same release.
  rquickjs = { package = "quickjs-jit", version = "0.12.9", git = "https://github.com/longbridge/quickjs-jit", rev = "82d3808f3aa7d1c4ad2f360f5b3bd5979501d599", features = [
@@ -63,7 +63,7 @@ index 3ec815f..6a5244a 100644
  
  [dev-dependencies]
 -gpui = { workspace = true, features = ["test-support"] }
-+gpui = { package = "gpui-pre", version = "=0.3.7", features = ["test-support"] }
++gpui = { package = "gpui-pre", version = "=0.3.8", features = ["test-support"] }
  
  [target.'cfg(unix)'.dependencies]
  libc = "0.2"

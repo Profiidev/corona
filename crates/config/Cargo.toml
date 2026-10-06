@@ -15,4 +15,4 @@ tracing.workspace = true
 notify = "8.2.0"
 serde_ignored = "0.1.14"
 toml = "1.1.6"
-config = { version = "0.15.26", default-features = false, features = ["toml"] }
+config = { version = "0.15.27", default-features = false, features = ["toml"] }
