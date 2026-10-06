@@ -1,9 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+  collections::BTreeMap,
+  path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, anyhow};
 use gpui_kit::App;
 
-use crate::{Config, ConfigProvider};
+use crate::{Config, ConfigProvider, bar::BarConfig};
 
 /// `~/.config/corona`, the user's own files
 pub fn config_dir() -> Result<PathBuf> {
@@ -90,8 +93,26 @@ fn deserialize(files: &[PathBuf]) -> Result<Loaded> {
     .add_source(config::Environment::with_prefix("CORONA").separator("__"))
     .build()?;
   let mut unknown = Vec::new();
-  let config = serde_ignored::deserialize(built, |key| unknown.push(key.to_string()))?;
+  let mut config: Config = serde_ignored::deserialize(built, |key| unknown.push(key.to_string()))?;
+  if let Some(bars) = last_bars(files)? {
+    config.bar = bars;
+  }
   Ok(Loaded { config, unknown })
+}
+
+/// The bars of the last file that has any. Bars are taken whole from one layer
+/// rather than merged, so a later layer can drop a bar as well as add one.
+fn last_bars(files: &[PathBuf]) -> Result<Option<BTreeMap<String, BarConfig>>> {
+  for file in files.iter().rev() {
+    let Ok(text) = std::fs::read_to_string(file) else {
+      continue;
+    };
+    let mut table: toml::Table = toml::from_str(&text)?;
+    if let Some(bars) = table.remove("bar") {
+      return Ok(Some(bars.try_into()?));
+    }
+  }
+  Ok(None)
 }
 
 /// Makes `loaded` the settings, unless nothing changed.
@@ -142,6 +163,17 @@ mod tests {
       loaded
         .unknown
         .contains(&"notification.timout_ms".to_string())
+    );
+
+    // bars come whole from the last layer that has any
+    let bars = write("d.toml", "[bar.side]\nposition = \"left\"\n");
+    let loaded = read_files(&[a.clone(), bars.clone()]).unwrap();
+    assert_eq!(loaded.config.bar.keys().collect::<Vec<_>>(), ["side"]);
+    let more = write("e.toml", "[bar.main]\n[bar.side]\nposition = \"left\"\n");
+    let loaded = read_files(&[bars, more]).unwrap();
+    assert_eq!(
+      loaded.config.bar.keys().collect::<Vec<_>>(),
+      ["main", "side"]
     );
 
     let bad = write("c.toml", "[osd]\nhide_delay_ms = \"soon\"\n");

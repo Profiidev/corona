@@ -19,8 +19,14 @@ pub fn update(cx: &mut App, edit: impl FnOnce(&mut Config)) -> Result<()> {
   edit(&mut config);
 
   let base = read_files(&config_files(&config_dir()?)?)?.config;
-  let overrides = diff(&Value::try_from(&base)?, &Value::try_from(&config)?)
+  let mut overrides = diff(&Value::try_from(&base)?, &Value::try_from(&config)?)
     .unwrap_or_else(|| Value::Table(Default::default()));
+  // bars are read whole from one layer, so they are written whole too
+  if let Value::Table(overrides) = &mut overrides
+    && overrides.contains_key("bar")
+  {
+    overrides.insert("bar".to_string(), Value::try_from(&config.bar)?);
+  }
 
   let file = settings_file()?;
   fs::create_dir_all(file.parent().context("settings file has no directory")?)?;

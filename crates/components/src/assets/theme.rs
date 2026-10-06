@@ -55,17 +55,32 @@ fn apply_style(style: &ThemeConfig, cx: &mut App) {
   let radius = file.radius.map_or(6., |r| r as f32) * scale;
   let radius_lg = file.radius_lg.map_or(8., |r| r as f32) * scale;
   let font_size = file.font_size.unwrap_or(16.) * style.font_scale.max(0.1);
-  let font_family: SharedString = match &style.font_family {
-    Some(family) => family.clone().into(),
-    None => file.font_family.clone().unwrap_or(".SystemUIFont".into()),
-  };
+  let theme_font: SharedString = file.font_family.clone().unwrap_or(".SystemUIFont".into());
   Theme::update(cx, |theme| {
     theme.radius = px(radius);
     theme.radius_lg = px(radius_lg);
     theme.font_size = px(font_size);
-    theme.font_family = font_family;
+    theme.font_family = theme_font;
     theme.shadow = style.shadow && file.shadow.unwrap_or(true);
   });
+  // gpui has resolved the theme's font to a real family by now, like
+  // ".SystemUIFont" to "DejaVu Sans"; that is what applies without an override
+  cx.set_global(ThemeFont(cx.theme().font_family.clone()));
+  if let Some(family) = &style.font_family {
+    let family: SharedString = family.clone().into();
+    Theme::update(cx, |theme| theme.font_family = family);
+  }
+}
+
+struct ThemeFont(SharedString);
+
+impl gpui_kit::Global for ThemeFont {}
+
+/// The font of the active theme, the one used when no font is set
+pub fn theme_font(cx: &App) -> SharedString {
+  cx.try_global::<ThemeFont>()
+    .map(|f| f.0.clone())
+    .unwrap_or_else(|| cx.theme().font_family.clone())
 }
 
 /// Switches to the named theme, and to its Light/Dark counterpart for the other mode.

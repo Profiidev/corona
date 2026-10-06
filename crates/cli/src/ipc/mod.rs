@@ -5,12 +5,14 @@ use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
 use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
+use corona_shell::commands::settings::{Action as SettingsAction, SettingsWindow};
 use corona_shell::commands::volume::Device;
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
+use corona_shell::settings::PAGES;
 
 use crate::ipc::{
   brightness::BrightnessCommands, notification::NotificationCommands, panel::PanelCommands,
@@ -77,6 +79,13 @@ pub enum IpcCommands {
   },
   /// Lock, suspend, log out, reboot or shut down
   Session { action: Action },
+  /// The settings window: open, close or toggle
+  Settings {
+    action: SettingsAction,
+    /// The page to open on
+    #[arg(add = clap_complete::ArgValueCandidates::new(|| PAGES.into_iter().map(CompletionCandidate::new).collect::<Vec<_>>()))]
+    page: Option<String>,
+  },
   /// Open the window switcher, or move its selection while open
   Switcher {
     /// window or workspace
@@ -120,6 +129,11 @@ impl IpcCommands {
       IpcCommands::Brightness { command } => command.execute(),
       IpcCommands::Volume { command } => command.execute(Device::Output),
       IpcCommands::Mic { command } => command.execute(Device::Input),
+      IpcCommands::Settings { action, page } => {
+        if let Err(e) = SettingsWindow::send((action, page)) {
+          tracing::error!("Failed to open settings: {}", e);
+        }
+      }
       IpcCommands::Session { action } => {
         if let Err(e) = Session::send(action) {
           tracing::error!("Failed to run session action: {}", e);

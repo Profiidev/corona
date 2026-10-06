@@ -13,6 +13,7 @@ mod icons;
 mod lock;
 mod osds;
 pub mod overlays;
+pub mod settings;
 mod widgets;
 
 pub fn init(cx: &mut App) {

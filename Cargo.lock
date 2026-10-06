@@ -1850,6 +1850,7 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "serde",
+ "tracing",
  "ts-rs",
  "zbus",
 ]

@@ -111,6 +111,17 @@ impl ControlCenterPanel for DashboardPanel {
 
   fn buttons(&mut self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
     vec![
+      Button::new("settings")
+        .icon(IconName::Settings)
+        .cursor_pointer()
+        .tooltip("Settings")
+        .on_click(|_, _, cx| {
+          // the dashboard is in the control center, or a panel of its own
+          let _ = cx.close_panel::<ControlCenter>().log_err();
+          let _ = cx.close_panel::<Standalone<DashboardPanel>>().log_err();
+          let _ = crate::settings::open(None, cx).log_err();
+        })
+        .into_any_element(),
       Popover::new("power-menu")
         .anchor(Anchor::TopRight)
         .p_1()

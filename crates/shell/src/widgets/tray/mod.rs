@@ -13,7 +13,7 @@ use gpui_kit::{
   div, img, px,
 };
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::widgets::filter_regex;
@@ -23,7 +23,7 @@ mod menu;
 const ICON_SIZE: f32 = 16.;
 const SLOT_SIZE: f32 = 24.;
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
   /// Regexes, case-insensitive, against an item's id and title; a match hides it

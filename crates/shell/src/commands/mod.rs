@@ -8,6 +8,7 @@ pub mod notification;
 pub mod power_profile;
 pub mod radio;
 pub mod session;
+pub mod settings;
 pub mod theme;
 pub mod volume;
 
@@ -18,6 +19,7 @@ pub fn register_commands(server: &mut IpcServer) {
   power_profile::register_commands(server);
   radio::register_commands(server);
   session::register_commands(server);
+  settings::register_commands(server);
   theme::register_commands(server);
   volume::register_commands(server);
 }

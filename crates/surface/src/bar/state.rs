@@ -86,6 +86,13 @@ impl BarState {
     self
   }
 
+  /// Every widget a bar can show, sorted
+  pub fn widget_names(cx: &App) -> Vec<String> {
+    let mut names: Vec<String> = cx.global::<BarState>().widgets.keys().cloned().collect();
+    names.sort();
+    names
+  }
+
   pub(crate) fn widget(&self, name: &str) -> Option<&WidgetData> {
     self.widgets.get(name)
   }

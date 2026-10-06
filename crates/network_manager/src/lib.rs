@@ -227,13 +227,17 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   // subscribe before the first snapshot so no change can slip in between
   let changes = subscribe(conn).await?;
   listener(cx, conn.clone(), changes, state.clone());
-  let events = agent::register(conn).await?;
-  agent_listener(
-    cx,
-    events,
-    state.secret_request.clone(),
-    state.wifi_failure.clone(),
-  );
+  // another agent (another corona, say) leaves NetworkManager to ask it for
+  // passwords; everything else still works
+  match agent::register(conn).await {
+    Ok(events) => agent_listener(
+      cx,
+      events,
+      state.secret_request.clone(),
+      state.wifi_failure.clone(),
+    ),
+    Err(e) => tracing::warn!("Not asking for network passwords: {e:#}"),
+  }
   cx.set_global(state);
 
   Ok(())

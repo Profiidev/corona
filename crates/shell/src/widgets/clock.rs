@@ -10,7 +10,7 @@ use gpui_kit::{
   Styled, Task, Window, div,
 };
 use jiff::Zoned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::control_center::{CalendarPanel, Standalone};
@@ -21,7 +21,7 @@ pub(crate) fn format_time(pattern: &str, time: &Zoned) -> String {
   jiff::fmt::strtime::format(pattern, time).unwrap_or_else(|e| format!("bad format: {e}"))
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
   /// strftime pattern

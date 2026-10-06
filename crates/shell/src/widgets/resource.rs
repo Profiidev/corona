@@ -8,7 +8,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
   px, relative,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::control_center::{Standalone, SysinfoPanel};
@@ -18,7 +18,7 @@ const METER_WIDTH: f32 = 3.;
 /// network meters are relative to the busiest recent second
 const MIN_RATE: f64 = 1024. * 1024.;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stat {
   #[default]
@@ -36,6 +36,20 @@ pub enum Stat {
 }
 
 impl Stat {
+  pub(crate) const ALL: [Stat; 11] = [
+    Stat::Cpu,
+    Stat::Load,
+    Stat::Temperature,
+    Stat::Memory,
+    Stat::Swap,
+    Stat::Gpu,
+    Stat::GpuTemperature,
+    Stat::Vram,
+    Stat::Disk,
+    Stat::Download,
+    Stat::Upload,
+  ];
+
   fn icon(self) -> IconName {
     match self {
       Stat::Cpu => IconName::Gauge,
@@ -52,7 +66,7 @@ impl Stat {
     }
   }
 
-  fn thresholds(self) -> Option<(f32, f32)> {
+  pub(crate) fn thresholds(self) -> Option<(f32, f32)> {
     match self {
       Stat::Cpu => Some((70., 90.)),
       Stat::Load => Some((70., 100.)),
@@ -96,7 +110,7 @@ impl Stat {
   }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
   pub stat: Stat,
@@ -184,6 +198,23 @@ impl Render for Resource {
       Icon::new(stat.icon()).when_some(alert, |icon, color| icon.text_color(color)),
     )
     .suffix(meter)
+  }
+}
+
+/// A stat as people say it, like "GPU temperature"
+pub(crate) fn stat_name(stat: Stat) -> &'static str {
+  match stat {
+    Stat::Cpu => "CPU",
+    Stat::Load => "Load",
+    Stat::Temperature => "CPU temperature",
+    Stat::Memory => "Memory",
+    Stat::Swap => "Swap",
+    Stat::Gpu => "GPU",
+    Stat::GpuTemperature => "GPU temperature",
+    Stat::Vram => "VRAM",
+    Stat::Disk => "Disk",
+    Stat::Download => "Download",
+    Stat::Upload => "Upload",
   }
 }
 

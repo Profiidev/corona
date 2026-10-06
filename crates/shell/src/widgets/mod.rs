@@ -4,8 +4,8 @@ mod control_center;
 mod player;
 pub(crate) mod popup;
 pub(crate) mod privacy;
-mod resource;
-mod tray;
+pub(crate) mod resource;
+pub(crate) mod tray;
 mod workspaces;
 
 use active_window::ActiveWindow;

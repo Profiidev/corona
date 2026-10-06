@@ -19,7 +19,7 @@ use gpui_kit::{
   px,
 };
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -74,7 +74,7 @@ pub(crate) fn hidden(kind: CaptureKind, name: Option<&str>, cx: &App) -> bool {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
   pub hide_when_idle: bool,
