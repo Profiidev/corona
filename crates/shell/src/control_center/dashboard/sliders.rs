@@ -51,7 +51,8 @@ fn source(cx: &App) -> Option<&AudioNode> {
   cx.pipewire().default_source(cx)
 }
 
-fn display(cx: &App) -> Option<&Display> {
+/// the focused monitor's display, or the first usable one
+pub(crate) fn display(cx: &App) -> Option<&Display> {
   let focused = &cx.compositor().active_monitor(cx).name;
   let displays = cx.brightness().list_displays(cx);
   let usable = || displays.iter().filter(|d| d.unavailable.is_none());

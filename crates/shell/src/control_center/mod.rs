@@ -2,7 +2,7 @@ mod audio;
 mod bluetooth;
 mod brightness;
 mod calendar;
-mod dashboard;
+pub(crate) mod dashboard;
 mod layout;
 mod media;
 mod nav;

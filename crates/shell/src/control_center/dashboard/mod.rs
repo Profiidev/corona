@@ -28,7 +28,7 @@ use crate::control_center::{
 
 mod cards;
 mod session;
-mod sliders;
+pub(crate) mod sliders;
 mod toggles;
 
 pub struct DashboardPanel {
