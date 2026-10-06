@@ -103,4 +103,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --zsh  <(COMPLETE=zsh $out/bin/corona) \
       --fish <(COMPLETE=fish $out/bin/corona)
   '';
+
+  meta = with lib; {
+    description = "A shell for Wayland";
+    license = licenses.gpl2;
+    maintainers = with maintainers; [ profidev ];
+    platforms = platforms.linux;
+    mainProgram = "corona";
+  };
 })
