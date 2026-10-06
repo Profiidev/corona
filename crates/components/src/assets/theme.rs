@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use gpui_kit::{
-  App, SharedString,
+  App,
   component::{ActiveTheme, Theme, ThemeMode, ThemeRegistry},
 };
 use include_dir::{Dir, include_dir};
@@ -8,28 +8,45 @@ use include_dir::{Dir, include_dir};
 const THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
 pub fn load(cx: &mut App) -> Result<()> {
-  let theme = SharedString::new(&cx.global::<corona_config::Config>().theme);
   let registry = ThemeRegistry::global_mut(cx);
-
   for file in THEMES.files() {
     let content = file.contents_utf8().context("Failed to read theme file")?;
     registry.load_themes_from_str(content)?;
   }
 
-  let themes = registry.themes();
-  let config = themes.get(&theme).context("Failed to get theme")?.clone();
-  let other = counterpart(&theme).and_then(|name| themes.get(name.as_str()).cloned());
+  let theme = cx.global::<corona_config::Config>().theme.clone();
+  apply(&theme, cx)
+}
 
-  let theme = Theme::global_mut(cx);
-  theme.apply_config(&config);
-  if let Some(other) = other {
-    match other.mode.is_dark() {
-      true => theme.dark_theme = other,
-      false => theme.light_theme = other,
+/// Switches to the named theme, and to its Light/Dark counterpart for the other mode.
+pub fn apply(name: &str, cx: &mut App) -> Result<()> {
+  let themes = ThemeRegistry::global(cx).themes();
+  let config = themes
+    .get(name)
+    .with_context(|| format!("unknown theme: {name}"))?
+    .clone();
+  let other = counterpart(name).and_then(|name| themes.get(name.as_str()).cloned());
+
+  Theme::update(cx, |theme| {
+    theme.apply_config(&config);
+    if let Some(other) = other {
+      match other.mode.is_dark() {
+        true => theme.dark_theme = other,
+        false => theme.light_theme = other,
+      }
     }
-  }
-
+  });
   Ok(())
+}
+
+pub fn names(cx: &App) -> Vec<String> {
+  let mut names: Vec<_> = ThemeRegistry::global(cx)
+    .themes()
+    .keys()
+    .map(|name| name.to_string())
+    .collect();
+  names.sort();
+  names
 }
 
 fn counterpart(name: &str) -> Option<String> {

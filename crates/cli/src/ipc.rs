@@ -9,6 +9,7 @@ use corona_shell::overlays::{
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
 use corona_shell::session::{Action, Session};
+use corona_shell::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
@@ -31,6 +32,11 @@ pub enum IpcCommands {
   Notification {
     #[command(subcommand)]
     command: NotificationCommands,
+  },
+  /// Theme commands
+  Theme {
+    #[command(subcommand)]
+    command: ThemeCommands,
   },
   /// Lock, suspend, log out, reboot or shut down
   Session { action: Action },
@@ -68,6 +74,7 @@ impl IpcCommands {
         }
       }
       IpcCommands::Notification { command } => command.execute(),
+      IpcCommands::Theme { command } => command.execute(),
       IpcCommands::Session { action } => {
         if let Err(e) = Session::send(action) {
           tracing::error!("Failed to run session action: {}", e);
@@ -174,6 +181,44 @@ impl NotificationCommands {
       NotificationCommands::ClearHistory => {
         if let Err(e) = ClearHistory::send(()) {
           tracing::error!("Failed to clear notification history: {}", e);
+        }
+      }
+    }
+  }
+}
+
+#[derive(Subcommand)]
+pub enum ThemeCommands {
+  /// Dark, light, toggle or get the mode
+  Mode { mode: ThemeMode },
+  /// Switch to a theme by name
+  Set {
+    /// The name of the theme
+    #[arg(add = ArgValueCandidates::new(theme_names))]
+    name: String,
+  },
+}
+
+/// Asks the running shell, which knows every theme it loaded.
+fn theme_names() -> Vec<CompletionCandidate> {
+  ListThemes::send(())
+    .unwrap_or_default()
+    .into_iter()
+    .map(CompletionCandidate::new)
+    .collect()
+}
+
+impl ThemeCommands {
+  pub fn execute(self) {
+    match self {
+      ThemeCommands::Mode { mode } => match SetMode::send(mode) {
+        Ok(current) if matches!(mode, ThemeMode::Get) => println!("{current}"),
+        Ok(_) => {}
+        Err(e) => tracing::error!("Failed to set theme mode: {}", e),
+      },
+      ThemeCommands::Set { name } => {
+        if let Err(e) = SetTheme::send(name) {
+          tracing::error!("Failed to set theme: {}", e);
         }
       }
     }
