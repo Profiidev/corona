@@ -5,6 +5,7 @@ use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
+use corona_shell::commands::volume::{Action as VolumeAction, Device, Volume, parse_level};
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
@@ -32,6 +33,16 @@ pub enum IpcCommands {
   Notification {
     #[command(subcommand)]
     command: NotificationCommands,
+  },
+  /// Output volume commands
+  Volume {
+    #[command(subcommand)]
+    command: VolumeCommands,
+  },
+  /// Microphone volume commands
+  Mic {
+    #[command(subcommand)]
+    command: VolumeCommands,
   },
   /// Theme commands
   Theme {
@@ -75,6 +86,8 @@ impl IpcCommands {
       }
       IpcCommands::Notification { command } => command.execute(),
       IpcCommands::Theme { command } => command.execute(),
+      IpcCommands::Volume { command } => command.execute(Device::Output),
+      IpcCommands::Mic { command } => command.execute(Device::Input),
       IpcCommands::Session { action } => {
         if let Err(e) = Session::send(action) {
           tracing::error!("Failed to run session action: {}", e);
@@ -221,6 +234,49 @@ impl ThemeCommands {
           tracing::error!("Failed to set theme: {}", e);
         }
       }
+    }
+  }
+}
+
+const VOLUME_STEP: &str = "5";
+
+fn level(s: &str) -> Result<f32, String> {
+  parse_level(s).map_err(|e| e.to_string())
+}
+
+#[derive(Subcommand)]
+pub enum VolumeCommands {
+  /// Set the volume: 65, 65% or 0.65
+  Set {
+    #[arg(value_parser = level)]
+    level: f32,
+  },
+  /// Raise the volume
+  Up {
+    /// The step: 10, 10% or 0.1
+    #[arg(value_parser = level, default_value = VOLUME_STEP)]
+    step: f32,
+  },
+  /// Lower the volume
+  Down {
+    /// The step: 10, 10% or 0.1
+    #[arg(value_parser = level, default_value = VOLUME_STEP)]
+    step: f32,
+  },
+  /// Toggle mute
+  Mute,
+}
+
+impl VolumeCommands {
+  pub fn execute(self, device: Device) {
+    let action = match self {
+      VolumeCommands::Set { level } => VolumeAction::Set(level),
+      VolumeCommands::Up { step } => VolumeAction::Change(step),
+      VolumeCommands::Down { step } => VolumeAction::Change(-step),
+      VolumeCommands::Mute => VolumeAction::ToggleMute,
+    };
+    if let Err(e) = Volume::send((device, action)) {
+      tracing::error!("Failed to change volume: {}", e);
     }
   }
 }
