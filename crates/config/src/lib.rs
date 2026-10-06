@@ -149,6 +149,35 @@ pub struct ThemeConfig {
   pub name: String,
   /// Unset: the mode of the named theme
   pub mode: Option<ThemeMode>,
+  /// Unset: the theme's font
+  pub font_family: Option<String>,
+  /// Text and the spacing measured in it
+  pub font_scale: f32,
+  /// 0 for square corners
+  pub corner_radius_scale: f32,
+  /// Shadows under popovers
+  pub shadow: bool,
+  /// Borders around OSDs, tooltips, menus and the window switcher
+  pub popup_borders: bool,
+  /// Borders around the cards in panels
+  pub card_borders: bool,
+}
+
+impl ThemeConfig {
+  /// `width` when popup borders are on, else none
+  pub fn popup_border(&self, width: f32) -> f32 {
+    if self.popup_borders { width } else { 0. }
+  }
+
+  /// `color` when popup borders are on, else transparent. For popups whose
+  /// layout counts the border in, so its space stays.
+  pub fn popup_border_color(&self, color: gpui_kit::Hsla) -> gpui_kit::Hsla {
+    if self.popup_borders {
+      color
+    } else {
+      gpui_kit::transparent_black()
+    }
+  }
 }
 
 impl Default for ThemeConfig {
@@ -156,6 +185,12 @@ impl Default for ThemeConfig {
     Self {
       name: "shadcn Zinc Blue Dark".to_string(),
       mode: None,
+      font_family: None,
+      font_scale: 1.,
+      corner_radius_scale: 1.,
+      shadow: true,
+      popup_borders: true,
+      card_borders: true,
     }
   }
 }
@@ -193,6 +228,7 @@ pub struct NotificationConfig {
   pub offset: f32,
   pub timeout_ms: u64,
   pub critical_timeout_ms: u64,
+  pub background_opacity: f32,
 }
 
 impl Default for NotificationConfig {
@@ -204,6 +240,7 @@ impl Default for NotificationConfig {
       offset: 20.,
       timeout_ms: 5000,
       critical_timeout_ms: 10000,
+      background_opacity: 1.,
     }
   }
 }
@@ -213,6 +250,10 @@ impl Default for NotificationConfig {
 pub struct OsdConfig {
   pub enabled: bool,
   pub hide_delay_ms: u64,
+  pub position: OsdPosition,
+  /// Distance from the screen edge
+  pub offset: f32,
+  pub background_opacity: f32,
   pub kinds: OsdKinds,
 }
 
@@ -221,9 +262,22 @@ impl Default for OsdConfig {
     Self {
       enabled: true,
       hide_delay_ms: 1500,
+      position: OsdPosition::default(),
+      offset: 40.,
+      background_opacity: 1.,
       kinds: OsdKinds::default(),
     }
   }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OsdPosition {
+  TopCenter,
+  #[default]
+  BottomCenter,
+  CenterLeft,
+  CenterRight,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -293,6 +347,8 @@ pub struct WindowSwitcherConfig {
   /// Only show what is on the focused monitor, even without `--current-monitor`
   pub current_monitor_only: bool,
   pub card_height: f32,
+  /// How much the screen behind darkens
+  pub backdrop_opacity: f32,
 }
 
 impl Default for WindowSwitcherConfig {
@@ -300,6 +356,7 @@ impl Default for WindowSwitcherConfig {
     Self {
       current_monitor_only: false,
       card_height: 180.,
+      backdrop_opacity: 0.4,
     }
   }
 }
@@ -311,6 +368,7 @@ pub struct TaskbarConfig {
   pub icon_size: f32,
   pub previews: bool,
   pub preview_max_windows: usize,
+  pub background_opacity: f32,
 }
 
 impl Default for TaskbarConfig {
@@ -320,6 +378,7 @@ impl Default for TaskbarConfig {
       icon_size: 36.,
       previews: true,
       preview_max_windows: 5,
+      background_opacity: 1.,
     }
   }
 }
@@ -339,6 +398,8 @@ pub struct ControlCenterConfig {
   pub time_format: String,
   pub date_format: String,
   pub week_start: Weekday,
+  /// Of the panels
+  pub background_opacity: f32,
 }
 
 impl Default for ControlCenterConfig {
@@ -347,6 +408,7 @@ impl Default for ControlCenterConfig {
       time_format: "%H:%M".to_string(),
       date_format: "%a, %d.%m.%Y".to_string(),
       week_start: Weekday::default(),
+      background_opacity: 1.,
     }
   }
 }
@@ -482,10 +544,11 @@ mod tests {
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config.example.toml");
     let text = std::fs::read_to_string(example).unwrap();
     let mut unknown = Vec::new();
-    let config: Config = serde_ignored::deserialize(toml::Deserializer::new(&text), |k| {
-      unknown.push(k.to_string())
-    })
-    .unwrap();
+    let config: Config =
+      serde_ignored::deserialize(toml::Deserializer::parse(&text).unwrap(), |k| {
+        unknown.push(k.to_string())
+      })
+      .unwrap();
     assert_eq!(config, Config::default());
     assert!(unknown.is_empty(), "{unknown:?}");
 

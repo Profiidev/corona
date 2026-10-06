@@ -1,5 +1,6 @@
 use std::{env, time::SystemTime};
 
+use corona_components::components::card::CardExt;
 use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_sysinfo::SystemMonitorExt;
 use corona_weather::WeatherExt;
@@ -33,16 +34,7 @@ use crate::{
 const ART: f32 = 64.;
 
 fn card(id: &'static str, cx: &App) -> Stateful<Div> {
-  let theme = cx.theme();
-  div()
-    .id(id)
-    .flex()
-    .p_2()
-    .gap_2()
-    .rounded_xl()
-    .border_1()
-    .border_color(theme.border)
-    .bg(theme.colors.accent)
+  div().id(id).flex().p_2().gap_2().card(cx)
 }
 
 fn muted(text: impl Into<String>, cx: &App) -> Div {

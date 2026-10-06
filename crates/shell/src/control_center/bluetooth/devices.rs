@@ -106,7 +106,7 @@ impl BluetoothPanel {
       )
       .gap_2()
       .p_2()
-      .card(theme)
+      .card(cx)
       .child(div().font_bold().text_sm().child(title))
       .when_some(empty, |d, empty| d.child(empty))
       .child(

@@ -46,7 +46,7 @@ impl NetworkPanel {
       .min_h(px(120.))
       .gap_2()
       .p_2()
-      .card(theme)
+      .card(cx)
       .child(
         div()
           .flex()

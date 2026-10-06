@@ -317,7 +317,8 @@ impl Render for Popups {
             .child({
               let id = popup.item.id;
               let left = popup.remaining.as_secs_f32() / popup.timeout.as_secs_f32();
-              NotificationsPanel::notification_card(theme, &popup.item)
+              NotificationsPanel::notification_card(cx, &popup.item)
+                .bg(theme.colors.accent.opacity(config.background_opacity))
                 .relative()
                 .child(
                   div()

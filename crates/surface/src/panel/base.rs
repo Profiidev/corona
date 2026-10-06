@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
-use corona_config::placement::{Placement, PlacementStyle, PlacmentBounds};
+use corona_config::{
+  ConfigProvider,
+  placement::{Placement, PlacementStyle, PlacmentBounds},
+};
 use gpui_kit::{
   AnyView, Background, Bounds, Canvas, Context, InteractiveElement, MouseButton, ParentElement,
   Path, PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
@@ -72,7 +75,10 @@ impl Render for BasePanel {
     cx: &mut gpui_kit::prelude::Context<Self>,
   ) -> impl gpui_kit::prelude::IntoElement {
     let theme = cx.theme();
-    let bg = theme.tokens.background;
+    let bg = theme
+      .tokens
+      .background
+      .opacity(cx.config().control_center.background_opacity);
     let br = theme.panel_radius();
 
     let (bn, nl, nr) = if self.align == Align::Left {

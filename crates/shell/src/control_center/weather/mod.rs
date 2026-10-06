@@ -1,9 +1,9 @@
 use corona_components::components::card::CardExt;
 use corona_weather::{Condition, WeatherExt};
 use gpui_kit::{
-  AnyElement, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   assets::IconName,
-  component::{ActiveTheme, Theme, button::Button, scroll::ScrollableElement},
+  component::{ActiveTheme, button::Button, scroll::ScrollableElement},
   div,
   prelude::FluentBuilder,
 };
@@ -51,8 +51,8 @@ impl ControlCenterPanel for WeatherPanel {
   }
 }
 
-fn card(theme: &Theme) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
+fn card(cx: &App) -> Div {
+  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 pub(super) fn icon(condition: Condition, is_day: bool) -> IconName {
@@ -91,7 +91,7 @@ impl Render for WeatherPanel {
         .flex()
         .flex_col()
         .size_full()
-        .child(card(theme).child(div().flex().justify_center().p_2().child(muted(message))));
+        .child(card(cx).child(div().flex().justify_center().p_2().child(muted(message))));
     };
 
     div()
@@ -101,7 +101,7 @@ impl Render for WeatherPanel {
       .gap_2()
       .when_some(service.error(cx), |d, error| {
         d.child(
-          card(theme).child(
+          card(cx).child(
             div()
               .text_xs()
               .text_color(theme.colors.danger)
@@ -123,7 +123,7 @@ impl Render for WeatherPanel {
               .flex_1()
               .min_w_0()
               .gap_2()
-              .child(self.hero(theme, weather))
+              .child(self.hero(cx, weather))
               .child(
                 div()
                   .flex()
@@ -131,7 +131,7 @@ impl Render for WeatherPanel {
                   .flex_1()
                   .min_h_0()
                   .overflow_y_scrollbar()
-                  .child(self.details(theme, weather)),
+                  .child(self.details(cx, weather)),
               ),
           )
           .child(

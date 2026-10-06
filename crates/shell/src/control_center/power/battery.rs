@@ -86,7 +86,7 @@ impl PowerPanel {
     };
 
     Some(
-      card(theme)
+      card(cx)
         .child(
           div()
             .flex()
@@ -117,7 +117,7 @@ impl PowerPanel {
     let battery = cx.power().battery(cx)?;
 
     Some(
-      card(theme)
+      card(cx)
         .child(div().text_sm().font_bold().child("Battery"))
         .child(detail(theme, "Health", format!("{:.0}%", battery.capacity)))
         .child(detail(

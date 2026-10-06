@@ -365,6 +365,7 @@ impl Render for Switcher {
       .map(|(ws, on)| self.workspace(ws, on.iter().collect(), cx))
       .collect();
     let theme = cx.theme();
+    let config = cx.config();
 
     div()
       .track_focus(&self.focus)
@@ -378,7 +379,7 @@ impl Render for Switcher {
       .flex()
       .items_center()
       .justify_center()
-      .bg(black().opacity(0.4))
+      .bg(black().opacity(config.window_switcher.backdrop_opacity))
       .child(
         div()
           .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -391,7 +392,11 @@ impl Render for Switcher {
           .bg(theme.tokens.background)
           .rounded(theme.radius * 2)
           .border(px(BORDER))
-          .border_color(theme.tokens.button_hover)
+          .border_color(
+            config
+              .theme
+              .popup_border_color(theme.tokens.button_hover.color),
+          )
           .text_color(theme.foreground)
           .child(
             div()

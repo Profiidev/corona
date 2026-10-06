@@ -10,10 +10,10 @@ use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AppContext, Context, Div, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
+  App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
   Window,
   base::slider::{SliderEvent, SliderState},
-  component::{ActiveTheme, Theme},
+  component::ActiveTheme,
   div,
   prelude::FluentBuilder,
 };
@@ -67,8 +67,8 @@ impl ControlCenterPanel for BrightnessPanel {
   }
 }
 
-fn card(theme: &Theme) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
+fn card(cx: &App) -> Div {
+  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 impl BrightnessPanel {

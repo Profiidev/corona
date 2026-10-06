@@ -69,7 +69,7 @@ impl CalendarPanel {
       .w_full()
       .px_4()
       .py_2()
-      .card(theme)
+      .card(cx)
       .child(
         div()
           .text_size(px(48.))

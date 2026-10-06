@@ -24,6 +24,18 @@ speed = 1.0
 name = "shadcn Zinc Blue Dark"
 # "dark" or "light"; unset: the mode of the named theme.
 # mode = "dark"
+# Unset: the theme's font.
+# font_family = "Inter"
+# Text, and the spacing measured in it.
+font_scale = 1.0
+# 0 for square corners.
+corner_radius_scale = 1.0
+# Shadows under popovers.
+shadow = true
+# Borders around OSDs, tooltips, menus and the window switcher.
+popup_borders = true
+# Borders around the cards in panels.
+card_borders = true
 
 [wallpaper]
 # Path, ~/ path or http(s) URL; no wallpaper when unset.
@@ -34,6 +46,13 @@ name = "shadcn Zinc Blue Dark"
 [bar.main]
 position = "top" # top, bottom, left or right
 thickness = 30.0
+background_opacity = 1.0
+# A pill behind each widget.
+capsule = true
+widget_spacing = 8.0
+# Space before the first and after the last widget, along the bar.
+padding_start = 0.0
+padding_end = 0.0
 start = [{ widget_type = "workspaces" }, { widget_type = "active_window" }]
 center = [
   # options = { format = "%H:%M %a, %b %-d" } sets the strftime format
@@ -68,10 +87,15 @@ width = 400.0
 offset = 20.0
 timeout_ms = 5000
 critical_timeout_ms = 10000
+background_opacity = 1.0
 
 [osd]
 enabled = true
 hide_delay_ms = 1500
+position = "bottom_center" # top_center, bottom_center, center_left or center_right
+# Distance from the screen edge.
+offset = 40.0
+background_opacity = 1.0
 
 [osd.kinds]
 volume = true
@@ -97,18 +121,23 @@ filename_pattern = "screenshot-%Y-%m-%d-%H%M%S-%3f.png"
 # Only what is on the focused monitor, even without --current-monitor.
 current_monitor_only = false
 card_height = 180.0
+# How much the screen behind darkens.
+backdrop_opacity = 0.4
 
 [taskbar]
 enabled = true
 icon_size = 36.0
 previews = true
 preview_max_windows = 5
+background_opacity = 1.0
 
 [control_center]
 # strftime patterns of the dashboard's clock.
 time_format = "%H:%M"
 date_format = "%a, %d.%m.%Y"
 week_start = "monday" # or "sunday"
+# Of the panels.
+background_opacity = 1.0
 
 [weather]
 units = "metric" # or "imperial"

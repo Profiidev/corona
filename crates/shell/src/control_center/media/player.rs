@@ -65,7 +65,7 @@ impl MediaPanel {
       .w_full()
       .gap_2()
       .p_2()
-      .card(theme)
+      .card(cx)
       .when_none(&player, |d| {
         d.child(
           div()

@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use corona_components::components::card::CardExt;
 use gpui_kit::{
   App, IntoElement, ParentElement, RenderOnce, Styled, Window,
   component::{
@@ -51,10 +52,8 @@ impl RenderOnce for ControlCenterNav {
       .flex()
       .flex_col()
       .gap_1()
-      .rounded_xl()
+      .card(cx)
       .bg(theme.tokens.accent)
-      .border_color(theme.border)
-      .border_1()
       .children(ControlCenterType::iter().map(|v| {
         Button::new(v.as_str())
           .with_variant(if self.selected == v {

@@ -4,11 +4,12 @@ use corona_components::components::card::CardExt;
 use corona_notifications::{Notification, NotificationsExt};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
-  AnyElement, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,
+  AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Task,
+  Window,
   assets::IconName,
   base::Disableable,
   component::{
-    ActiveTheme, Sizable, Theme,
+    ActiveTheme, Sizable,
     button::{Button, ButtonVariant, ButtonVariants},
     scroll::ScrollableElement,
   },
@@ -97,8 +98,8 @@ impl ControlCenterPanel for NotificationsPanel {
   }
 }
 
-fn card(theme: &Theme) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
+fn card(cx: &App) -> Div {
+  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 fn today(notification: &Notification) -> bool {
@@ -160,7 +161,7 @@ impl Render for NotificationsPanel {
       .gap_2()
       .child(self.filters(all.len(), cx))
       .when(!notifications.active(cx), |d| {
-        d.child(card(theme).child(muted(
+        d.child(card(cx).child(muted(
           "Another notification daemon is running, corona takes over when it exits",
         )))
       })
@@ -168,7 +169,7 @@ impl Render for NotificationsPanel {
         shown.is_empty(),
         |d| {
           d.child(
-            card(theme).child(
+            card(cx).child(
               div()
                 .flex()
                 .justify_center()
@@ -186,7 +187,7 @@ impl Render for NotificationsPanel {
               .min_h_0()
               .gap_2()
               .overflow_y_scrollbar()
-              .children(shown.iter().map(|n| Self::notification(theme, n))),
+              .children(shown.iter().map(|n| Self::notification(cx, n))),
           )
         },
       )

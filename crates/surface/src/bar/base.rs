@@ -23,6 +23,10 @@ use corona_config::{
 pub struct Bar {
   placement: Placement,
   height: f32,
+  background_opacity: f32,
+  capsule: bool,
+  widget_spacing: f32,
+  padding: (f32, f32),
   bounds: Rc<Cell<Bounds<Pixels>>>,
   widget_bounds: HashMap<EntityId, Rc<Cell<Bounds<Pixels>>>>,
   start_widgets: Vec<Entry>,
@@ -65,6 +69,10 @@ impl Bar {
     Self {
       placement: config.position,
       height: config.thickness,
+      background_opacity: config.background_opacity,
+      capsule: config.capsule,
+      widget_spacing: config.widget_spacing,
+      padding: (config.padding_start, config.padding_end),
       bounds: Rc::new(Cell::new(Bounds::default())),
       widget_bounds: HashMap::new(),
       start_widgets,
@@ -88,8 +96,9 @@ impl Bar {
     self.widget_bounds.get(&widget_id).map(|b| b.get())
   }
 
-  pub fn is_grouped(&self, widget_id: EntityId) -> bool {
-    self.grouped.contains(&widget_id)
+  /// Drawn without a pill of its own: in a group, or capsules are off
+  pub fn is_bare(&self, widget_id: EntityId) -> bool {
+    !self.capsule || self.grouped.contains(&widget_id)
   }
 
   fn widget(&mut self, view: AnyView) -> Tracked {
@@ -103,15 +112,22 @@ impl Bar {
 
   fn widgets(&mut self, entries: Vec<Entry>, cx: &App) -> Div {
     let vertical = self.placement.is_vertical();
-    let capsule = cx.theme().tokens.button_hover;
+    let capsule = self.capsule.then_some(cx.theme().tokens.button_hover);
 
     div()
       .absolute()
       .inset_0()
       .flex()
       .items_center()
-      .gap_2()
-      .when(vertical, |d| d.flex_col())
+      .gap(px(self.widget_spacing))
+      // on every section, so the center one stays centered between the paddings
+      .map(|d| {
+        let (start, end) = (px(self.padding.0), px(self.padding.1));
+        match vertical {
+          true => d.flex_col().pt(start).pb(end),
+          false => d.pl(start).pr(end),
+        }
+      })
       .children(entries.into_iter().map(|entry| {
         match entry {
           Entry::Widget(view) => self.widget(view).into_any_element(),
@@ -120,7 +136,7 @@ impl Bar {
             .items_center()
             .when(vertical, |d| d.flex_col())
             .rounded_full()
-            .bg(capsule)
+            .when_some(capsule, |d, capsule| d.bg(capsule))
             .children(views.into_iter().map(|v| self.widget(v)))
             .into_any_element(),
         }
@@ -131,7 +147,7 @@ impl Bar {
 impl Render for Bar {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
-    let bg = theme.tokens.background;
+    let bg = theme.tokens.background.opacity(self.background_opacity);
     let flare = theme.radius * 2;
 
     let viewport = window.viewport_size();
@@ -160,8 +176,9 @@ impl Render for Bar {
         .inset_0(),
       )
       .child(
+        // the canvas above paints the background; painting it here too would
+        // show as a darker band once it is translucent
         div()
-          .bg(bg)
           .absolute()
           .flex()
           .anchor_p(self.placement)

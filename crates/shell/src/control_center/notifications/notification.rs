@@ -3,11 +3,12 @@ use std::time::Duration;
 use corona_components::components::card::CardExt;
 use corona_notifications::{Notification, NotificationsExt, Urgency};
 use gpui_kit::{
-  Div, InteractiveElement, IntoElement, ParentElement, Stateful, StatefulInteractiveElement,
+  App, Div, InteractiveElement, IntoElement, ParentElement, Stateful, StatefulInteractiveElement,
   Styled,
   assets::IconName,
   base::StyledExt,
-  component::{Icon, Sizable, Theme, button::Button},
+  component::ActiveTheme,
+  component::{Icon, Sizable, button::Button},
   div,
   prelude::FluentBuilder,
 };
@@ -46,17 +47,18 @@ fn ago(elapsed: Duration) -> String {
 }
 
 impl NotificationsPanel {
-  pub fn notification(theme: &Theme, notification: &Notification) -> impl IntoElement {
+  pub fn notification(cx: &App, notification: &Notification) -> impl IntoElement {
     let id = notification.id;
     let clickable = notification.actions.iter().any(|a| a.key == "default");
-    Self::notification_card(theme, notification).when(clickable, |d| {
+    Self::notification_card(cx, notification).when(clickable, |d| {
       d.cursor_pointer().on_click(move |_, _, cx| {
         cx.notifications().clone().invoke_action(id, "default", cx);
       })
     })
   }
 
-  pub fn notification_card(theme: &Theme, notification: &Notification) -> Stateful<Div> {
+  pub fn notification_card(cx: &App, notification: &Notification) -> Stateful<Div> {
+    let theme = cx.theme();
     let id = notification.id;
     let elapsed = notification.time.elapsed().unwrap_or_default();
 
@@ -67,7 +69,7 @@ impl NotificationsPanel {
       .gap_2()
       .p_2()
       .items_start()
-      .card(theme)
+      .card(cx)
       .border_color(if notification.urgency == Urgency::Critical {
         theme.colors.danger
       } else {

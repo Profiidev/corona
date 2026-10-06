@@ -128,6 +128,10 @@ impl Render for Preview {
     self.input_region.set(region, window);
 
     let theme = cx.theme();
+    let border = cx
+      .config()
+      .theme
+      .popup_border_color(theme.tokens.button_hover.color);
     let taskbar = self.taskbar.clone();
     div().size_full().relative().child(
       div()
@@ -143,7 +147,7 @@ impl Render for Preview {
         .bg(theme.tokens.background)
         .rounded(theme.radius)
         .border(px(BORDER))
-        .border_color(theme.tokens.button_hover)
+        .border_color(border)
         .text_color(theme.foreground)
         .on_hover(move |hovered, _, cx| {
           let hovered = *hovered;

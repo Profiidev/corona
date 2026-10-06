@@ -3,10 +3,8 @@ use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  component::{ActiveTheme, Theme},
-  div,
-  prelude::FluentBuilder,
+  App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
@@ -42,8 +40,8 @@ impl ControlCenterPanel for PowerPanel {
   }
 }
 
-fn card(theme: &Theme) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
+fn card(cx: &App) -> Div {
+  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 impl PowerPanel {

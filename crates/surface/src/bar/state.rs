@@ -5,9 +5,9 @@ use corona_config::{
   APP_NAME, ConfigProvider, bar::BarConfig, observe_section, placement::Placement,
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, EntityId, Global, Styled,
-  WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowId,
-  WindowKind, WindowOptions,
+  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, EntityId, Global, Pixels,
+  Styled, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+  WindowId, WindowKind, WindowOptions,
   component::{ActiveTheme, Root},
   layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -23,6 +23,8 @@ pub struct BarState {
   widgets: HashMap<String, WidgetData>,
   bars: HashMap<WindowId, WeakEntity<Bar>>,
   displays: Option<Entity<PerDisplay>>,
+  /// The theme radius the open bars were sized for
+  opened_radius: Pixels,
 }
 
 impl Global for BarState {}
@@ -33,26 +35,37 @@ impl BarState {
       widgets: HashMap::new(),
       bars: HashMap::new(),
       displays: None,
+      opened_radius: Pixels::ZERO,
     });
   }
 
   /// Opens the configured bars on every monitor, and opens them again whenever
-  /// the `[bar]` settings change: their size and widgets are fixed once open.
+  /// the `[bar]` settings change, or the theme's radius: their size, flare and
+  /// widgets are fixed once open.
   pub fn spawn_bars(cx: &mut App) {
     Self::open_bars(cx);
+    observe_section(cx, |c| &c.bar, |_, cx| Self::reopen(cx));
+    // registered after the theme's own observer, so the theme is already applied
     observe_section(
       cx,
-      |c| &c.bar,
+      |c| &c.theme,
       |_, cx| {
-        if let Some(displays) = cx.bar_mut().displays.take() {
-          PerDisplay::close(displays, cx);
+        if cx.theme().radius != cx.bar().opened_radius {
+          Self::reopen(cx);
         }
-        Self::open_bars(cx);
       },
     );
   }
 
+  fn reopen(cx: &mut App) {
+    if let Some(displays) = cx.bar_mut().displays.take() {
+      PerDisplay::close(displays, cx);
+    }
+    Self::open_bars(cx);
+  }
+
   fn open_bars(cx: &mut App) {
+    cx.bar_mut().opened_radius = cx.theme().radius;
     let displays = PerDisplay::new(cx, |cx, display_id| {
       let bars: Vec<BarConfig> = cx.config().bar.values().cloned().collect();
       bars
@@ -141,8 +154,9 @@ impl BarState {
     Self::get(window, cx).map_or(Placement::Top, |bar| bar.read(cx).placement())
   }
 
-  pub fn is_grouped(window: &Window, cx: &App, widget_id: EntityId) -> bool {
-    Self::get(window, cx).is_some_and(|bar| bar.read(cx).is_grouped(widget_id))
+  /// Whether the widget goes without a pill of its own
+  pub fn is_bare(window: &Window, cx: &App, widget_id: EntityId) -> bool {
+    Self::get(window, cx).is_some_and(|bar| bar.read(cx).is_bare(widget_id))
   }
 
   pub(crate) fn bars_on(display_id: DisplayId, cx: &App) -> Vec<Entity<Bar>> {

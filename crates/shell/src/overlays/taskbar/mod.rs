@@ -371,7 +371,10 @@ fn focus_window(address: &str, cx: &App) {
 impl Render for Taskbar {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
-    let bg = theme.tokens.background;
+    let bg = theme
+      .tokens
+      .background
+      .opacity(cx.config().taskbar.background_opacity);
     let n = theme.panel_radius();
 
     let speed = animation_duration(OPEN_SPEED, cx);

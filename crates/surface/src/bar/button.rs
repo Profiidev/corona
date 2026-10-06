@@ -62,7 +62,7 @@ impl<W: Widget, P: Panel> Button<W, P> {
 
 impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
   fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let grouped = BarState::is_grouped(window, cx, self.view.entity_id());
+    let grouped = BarState::is_bare(window, cx, self.view.entity_id());
     let dot = self.dot.then(|| {
       div()
         .absolute()

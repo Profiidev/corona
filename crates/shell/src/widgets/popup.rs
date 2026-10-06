@@ -1,4 +1,4 @@
-use corona_config::placement::Placement;
+use corona_config::{ConfigProvider, placement::Placement};
 use corona_surface::{bar::BarState, popup::popup_options};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -86,7 +86,11 @@ pub fn frame<V: Focusable>(view: &V, cx: &mut Context<V>) -> Div {
     .bg(theme.tokens.background)
     .rounded(theme.radius)
     .border(px(BORDER))
-    .border_color(theme.tokens.button_hover)
+    .border_color(
+      cx.config()
+        .theme
+        .popup_border_color(theme.tokens.button_hover.color),
+    )
     .text_color(theme.foreground)
 }
 

@@ -21,7 +21,7 @@ impl PowerPanel {
     let profiles = cx.power().profiles(cx)?;
 
     Some(
-      card(theme)
+      card(cx)
         .child(div().text_sm().font_bold().child("Power profile"))
         .child(
           div()

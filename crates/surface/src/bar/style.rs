@@ -36,7 +36,7 @@ pub trait BarStyle: Styled + FluentBuilder {
   }
 
   fn bar_pill<V: 'static>(self, window: &Window, cx: &Context<V>) -> Self {
-    let grouped = BarState::is_grouped(window, cx, cx.entity_id());
+    let grouped = BarState::is_bare(window, cx, cx.entity_id());
     self
       .flex_bar(window, cx)
       .items_center()

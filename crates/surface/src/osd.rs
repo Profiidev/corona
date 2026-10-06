@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider};
+use corona_config::{APP_NAME, ConfigProvider, OsdPosition};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Global, IntoElement,
@@ -15,7 +15,6 @@ use gpui_kit::{
 };
 
 const NAMESPACE: &str = "corona_osd";
-const GAP: f32 = 40.;
 const BORDER: f32 = 2.;
 
 pub trait Osd: Render {
@@ -49,9 +48,10 @@ impl OsdState {
     let monitor = cx.compositor().active_monitor(cx).name.clone();
     let display = display_id_for(&monitor, cx);
     let content = osd.size(cx);
+    let border = cx.config().theme.popup_border(BORDER);
     let size = Size::new(
-      content.width + px(BORDER * 2.),
-      content.height + px(BORDER * 2.),
+      content.width + px(border * 2.),
+      content.height + px(border * 2.),
     );
     let timeout = Duration::from_millis(cx.config().osd.hide_delay_ms);
     let view: AnyView = cx.new(|_| osd).into();
@@ -100,13 +100,23 @@ impl OsdState {
     cx: &mut App,
   ) -> Result<(AnyWindowHandle, WeakEntity<BaseOsd>)> {
     let mut base = WeakEntity::new_invalid();
+    let config = &cx.config().osd;
+    let offset = px(config.offset);
+    let zero = px(0.);
+    // margins go top, right, bottom, left
+    let (anchor, margin) = match config.position {
+      OsdPosition::TopCenter => (Anchor::TOP, (offset, zero, zero, zero)),
+      OsdPosition::BottomCenter => (Anchor::BOTTOM, (zero, zero, offset, zero)),
+      OsdPosition::CenterLeft => (Anchor::LEFT, (zero, zero, zero, offset)),
+      OsdPosition::CenterRight => (Anchor::RIGHT, (zero, offset, zero, zero)),
+    };
     let handle = cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::BOTTOM,
+          anchor,
           exclusive_zone: None,
           exclusive_edge: None,
-          margin: Some((px(0.), px(0.), px(GAP), px(0.))),
+          margin: Some(margin),
           layer: Layer::Overlay,
           namespace: NAMESPACE.to_string(),
           keyboard_interactivity: KeyboardInteractivity::None,
@@ -161,11 +171,17 @@ struct BaseOsd {
 impl Render for BaseOsd {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
+    let config = cx.config();
     div()
       .size_full()
-      .bg(theme.tokens.background)
+      .bg(
+        theme
+          .tokens
+          .background
+          .opacity(config.osd.background_opacity),
+      )
       .rounded(theme.radius * 2)
-      .border(px(BORDER))
+      .border(px(config.theme.popup_border(BORDER)))
       .border_color(theme.tokens.button_hover)
       .overflow_hidden()
       .child(self.content.clone())

@@ -35,7 +35,7 @@ impl NetworkPanel {
         .when_else(vpns.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
         .gap_2()
         .p_2()
-        .card(theme)
+        .card(cx)
         .child(
           div()
             .flex()

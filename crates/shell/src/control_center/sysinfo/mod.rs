@@ -1,9 +1,8 @@
 use corona_components::components::card::CardExt;
 use corona_sysinfo::SystemMonitorExt;
 use gpui_kit::{
-  Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  component::{ActiveTheme, Theme},
-  div,
+  App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  component::ActiveTheme, div,
 };
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
@@ -32,8 +31,8 @@ impl ControlCenterPanel for SysinfoPanel {
   }
 }
 
-fn card(theme: &Theme) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(theme)
+fn card(cx: &App) -> Div {
+  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 fn row(left: impl IntoElement, right: impl IntoElement) -> Div {

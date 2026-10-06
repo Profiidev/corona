@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, ThemeConfig, observe_section};
 use gpui_kit::{
-  App,
+  App, SharedString,
   component::{ActiveTheme, Theme, ThemeMode, ThemeRegistry},
+  px,
 };
 use include_dir::{Dir, include_dir};
 
@@ -37,7 +38,34 @@ fn apply_config(theme: &ThemeConfig, cx: &mut App) -> Result<()> {
     };
     Theme::change(mode, None, cx);
   }
+  apply_style(theme, cx);
   Ok(())
+}
+
+/// The look settings over the active theme file. Every value is set, from the
+/// file or gpui's default, since a file that leaves one out would otherwise keep
+/// the last theme's, scaled again.
+fn apply_style(style: &ThemeConfig, cx: &mut App) {
+  let theme = Theme::global(cx);
+  let file = match theme.mode.is_dark() {
+    true => theme.dark_theme.clone(),
+    false => theme.light_theme.clone(),
+  };
+  let scale = style.corner_radius_scale.max(0.);
+  let radius = file.radius.map_or(6., |r| r as f32) * scale;
+  let radius_lg = file.radius_lg.map_or(8., |r| r as f32) * scale;
+  let font_size = file.font_size.unwrap_or(16.) * style.font_scale.max(0.1);
+  let font_family: SharedString = match &style.font_family {
+    Some(family) => family.clone().into(),
+    None => file.font_family.clone().unwrap_or(".SystemUIFont".into()),
+  };
+  Theme::update(cx, |theme| {
+    theme.radius = px(radius);
+    theme.radius_lg = px(radius_lg);
+    theme.font_size = px(font_size);
+    theme.font_family = font_family;
+    theme.shadow = style.shadow && file.shadow.unwrap_or(true);
+  });
 }
 
 /// Switches to the named theme, and to its Light/Dark counterpart for the other mode.

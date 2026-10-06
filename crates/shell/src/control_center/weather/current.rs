@@ -1,8 +1,9 @@
 use corona_weather::{Units, Weather, compass};
 use gpui_kit::{
-  IntoElement, ParentElement, Styled,
+  App, IntoElement, ParentElement, Styled,
   assets::IconName,
   base::StyledExt,
+  component::ActiveTheme,
   component::{Icon, Sizable, Theme},
   div, px,
 };
@@ -43,11 +44,12 @@ fn detail(theme: &Theme, icon: IconName, label: &'static str, value: String) -> 
 }
 
 impl WeatherPanel {
-  pub(super) fn hero(&self, theme: &Theme, weather: &Weather) -> impl IntoElement {
+  pub(super) fn hero(&self, cx: &App, weather: &Weather) -> impl IntoElement {
+    let theme = cx.theme();
     let current = &weather.current;
     let today = weather.daily.first();
 
-    card(theme).child(
+    card(cx).child(
       div()
         .flex()
         .gap_4()
@@ -88,9 +90,10 @@ impl WeatherPanel {
     )
   }
 
-  pub(super) fn details(&self, theme: &Theme, weather: &Weather) -> impl IntoElement {
+  pub(super) fn details(&self, cx: &App, weather: &Weather) -> impl IntoElement {
+    let theme = cx.theme();
     let current = &weather.current;
-    let mut details = card(theme).gap_1().flex_1().child(detail(
+    let mut details = card(cx).gap_1().flex_1().child(detail(
       theme,
       IconName::Feather,
       "Feels like",

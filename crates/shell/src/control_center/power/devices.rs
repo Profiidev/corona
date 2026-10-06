@@ -47,7 +47,7 @@ impl PowerPanel {
     }
 
     Some(
-      card(theme)
+      card(cx)
         .child(div().text_sm().font_bold().child("Connected devices"))
         .children(devices.iter().map(|device| {
           div()

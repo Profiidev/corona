@@ -7,6 +7,14 @@ use crate::placement::Placement;
 pub struct BarConfig {
   pub position: Placement,
   pub thickness: f32,
+  pub background_opacity: f32,
+  /// A pill behind each widget
+  pub capsule: bool,
+  pub widget_spacing: f32,
+  /// Space before the first widget: left of a horizontal bar, top of a vertical one
+  pub padding_start: f32,
+  /// Space after the last widget
+  pub padding_end: f32,
   pub start: Vec<WidgetConfig>,
   pub center: Vec<WidgetConfig>,
   pub end: Vec<WidgetConfig>,
@@ -59,6 +67,11 @@ impl Default for BarConfig {
     Self {
       position: Placement::Top,
       thickness: 30.0,
+      background_opacity: 1.,
+      capsule: true,
+      widget_spacing: 8.,
+      padding_start: 5.,
+      padding_end: 5.,
       start: vec![
         WidgetConfig::widget("workspaces"),
         WidgetConfig::widget("active_window"),

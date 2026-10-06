@@ -114,7 +114,7 @@ impl WeatherPanel {
         .collect(),
     };
 
-    card(theme).flex_1().min_h_0().child(tabs).child(
+    card(cx).flex_1().min_h_0().child(tabs).child(
       div()
         .flex()
         .flex_col()

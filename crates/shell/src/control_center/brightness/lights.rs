@@ -83,7 +83,7 @@ impl BrightnessPanel {
       return None;
     }
     Some(
-      card(theme)
+      card(cx)
         .child(div().text_sm().font_bold().child(title))
         .children(lights.iter().map(|light| self.light(theme, light, cx))),
     )

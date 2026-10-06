@@ -121,7 +121,7 @@ impl SysinfoPanel {
     let sample = monitor.sample(cx);
     let (usage, temperature) = (theme.chart_1, theme.danger);
 
-    card(theme)
+    card(cx)
       .child(div().text_sm().font_bold().child("CPU"))
       .child(graph(
         "system-cpu",
@@ -160,7 +160,7 @@ impl SysinfoPanel {
     let memory = as_f64(&monitor.history(cx).memory);
     let color = theme.chart_2;
 
-    card(theme)
+    card(cx)
       .child(div().text_sm().font_bold().child("Memory"))
       .child(graph(
         "system-memory",
@@ -193,7 +193,7 @@ impl SysinfoPanel {
     let history = monitor.history(cx);
     let (down, up) = (theme.chart_1, theme.chart_2);
 
-    card(theme)
+    card(cx)
       .child(div().text_sm().font_bold().child("Network"))
       .child(graph(
         "system-network",
@@ -238,7 +238,7 @@ impl SysinfoPanel {
     let measured = monitor.sample(cx).and_then(|s| s.gpus.first());
 
     Some(
-      card(theme)
+      card(cx)
         .child(div().text_sm().font_bold().child("GPU"))
         .child(graph(
           "system-gpu",

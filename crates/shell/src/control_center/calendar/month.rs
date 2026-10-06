@@ -60,7 +60,7 @@ impl CalendarPanel {
       .w_full()
       .gap_2()
       .p_2()
-      .card(theme)
+      .card(cx)
       .child(
         div()
           .flex()

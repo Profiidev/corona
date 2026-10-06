@@ -1,17 +1,24 @@
+use corona_config::ConfigProvider;
 use gpui_kit::{
   App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window,
   assets::IconName,
-  component::{ActiveTheme, Sizable, Theme, button::Button},
+  component::{ActiveTheme, Sizable, button::Button},
   div,
   prelude::FluentBuilder,
 };
 
 pub trait CardExt: Styled + Sized {
-  fn card(self, theme: &Theme) -> Self {
+  fn card(self, cx: &App) -> Self {
+    let theme = cx.theme();
+    // kept, but invisible, when off, so content does not shift
+    let border = match cx.config().theme.card_borders {
+      true => theme.border,
+      false => gpui_kit::transparent_black(),
+    };
     self
       .rounded_xl()
       .bg(theme.colors.accent)
-      .border_color(theme.border)
+      .border_color(border)
       .border_1()
   }
 }
@@ -49,7 +56,7 @@ impl RenderOnce for ErrorCard {
       .flex()
       .gap_2()
       .p_2()
-      .card(theme)
+      .card(cx)
       .child(
         div()
           .text_sm()

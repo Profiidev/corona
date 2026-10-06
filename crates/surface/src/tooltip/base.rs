@@ -1,3 +1,4 @@
+use corona_config::ConfigProvider;
 use gpui_kit::{
   AnyView, Context, IntoElement, ParentElement, Render, Styled, Window, component::ActiveTheme,
   div, px,
@@ -23,12 +24,16 @@ impl BaseTooltip {
 impl Render for BaseTooltip {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
+    let border = cx
+      .config()
+      .theme
+      .popup_border_color(theme.tokens.button_hover.color);
 
     div()
       .size_full()
       .bg(theme.tokens.background)
       .rounded(theme.radius)
-      .border_color(theme.tokens.button_hover)
+      .border_color(border)
       .border(px(BORDER))
       .overflow_hidden()
       .child(self.tooltip.clone())

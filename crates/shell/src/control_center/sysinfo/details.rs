@@ -96,7 +96,7 @@ fn value(theme: &Theme, icon: IconName, label: String, value: String) -> impl In
 
 impl SysinfoPanel {
   pub(super) fn system(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
-    let mut system = card(theme)
+    let mut system = card(cx)
       .gap_1()
       .child(div().text_sm().font_bold().child("System"));
     let Some(info) = cx.system_monitor().info(cx) else {
@@ -130,7 +130,7 @@ impl SysinfoPanel {
   }
 
   pub(super) fn resources(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
-    let mut resources = card(theme)
+    let mut resources = card(cx)
       .gap_1()
       .child(div().text_sm().font_bold().child("Resources"));
     let monitor = cx.system_monitor();
