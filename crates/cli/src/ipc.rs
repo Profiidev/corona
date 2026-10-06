@@ -5,6 +5,7 @@ use corona_shell::commands::brightness::{Action as BrightnessAction, ListMonitor
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
 use corona_shell::commands::parse_level;
+use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
 use corona_shell::commands::volume::{Action as VolumeAction, Device, Volume};
@@ -51,6 +52,10 @@ pub enum IpcCommands {
     #[command(subcommand)]
     command: BrightnessCommands,
   },
+  /// Wi-Fi radio: on, off, toggle or status
+  Wifi { switch: Switch },
+  /// Bluetooth adapter: on, off, toggle or status
+  Bluetooth { switch: Switch },
   /// Theme commands
   Theme {
     #[command(subcommand)]
@@ -93,6 +98,10 @@ impl IpcCommands {
       }
       IpcCommands::Notification { command } => command.execute(),
       IpcCommands::Theme { command } => command.execute(),
+      IpcCommands::Wifi { switch } => print_switch(Wifi::send(switch), switch, "Wi-Fi"),
+      IpcCommands::Bluetooth { switch } => {
+        print_switch(Bluetooth::send(switch), switch, "Bluetooth")
+      }
       IpcCommands::Brightness { command } => command.execute(),
       IpcCommands::Volume { command } => command.execute(Device::Output),
       IpcCommands::Mic { command } => command.execute(Device::Input),
@@ -343,5 +352,14 @@ impl BrightnessCommands {
     if let Err(e) = SetBrightness::send((monitor.monitor, action)) {
       tracing::error!("Failed to change brightness: {}", e);
     }
+  }
+}
+
+/// Prints the state for `status`, the error for anything
+fn print_switch(result: Result<bool, impl std::fmt::Display>, switch: Switch, what: &str) {
+  match result {
+    Ok(on) if matches!(switch, Switch::Status) => println!("{}", if on { "on" } else { "off" }),
+    Ok(_) => {}
+    Err(e) => tracing::error!("Failed to switch {what}: {}", e),
   }
 }
