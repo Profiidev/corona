@@ -202,10 +202,7 @@ fn profile(cx: &App) -> Toggle {
   let profiles = cx.power().profiles(cx);
   let active = profiles.map(|p| p.active.clone());
   // the next one, so a click cycles through them
-  let next = profiles.and_then(|p| {
-    let at = p.available.iter().position(|a| *a == p.active)?;
-    p.available.get((at + 1) % p.available.len()).cloned()
-  });
+  let next = profiles.and_then(|p| p.next().cloned());
   Toggle {
     id: "toggle-profile",
     icon: match active.as_deref() {

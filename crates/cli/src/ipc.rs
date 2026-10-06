@@ -5,6 +5,7 @@ use corona_shell::commands::brightness::{Action as BrightnessAction, ListMonitor
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
 use corona_shell::commands::parse_level;
+use corona_shell::commands::power_profile::{CycleProfile, ListProfiles, SetProfile};
 use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
@@ -56,6 +57,11 @@ pub enum IpcCommands {
   Wifi { switch: Switch },
   /// Bluetooth adapter: on, off, toggle or status
   Bluetooth { switch: Switch },
+  /// Power profile commands
+  PowerProfile {
+    #[command(subcommand)]
+    command: PowerProfileCommands,
+  },
   /// Theme commands
   Theme {
     #[command(subcommand)]
@@ -98,6 +104,7 @@ impl IpcCommands {
       }
       IpcCommands::Notification { command } => command.execute(),
       IpcCommands::Theme { command } => command.execute(),
+      IpcCommands::PowerProfile { command } => command.execute(),
       IpcCommands::Wifi { switch } => print_switch(Wifi::send(switch), switch, "Wi-Fi"),
       IpcCommands::Bluetooth { switch } => {
         print_switch(Bluetooth::send(switch), switch, "Bluetooth")
@@ -361,5 +368,38 @@ fn print_switch(result: Result<bool, impl std::fmt::Display>, switch: Switch, wh
     Ok(on) if matches!(switch, Switch::Status) => println!("{}", if on { "on" } else { "off" }),
     Ok(_) => {}
     Err(e) => tracing::error!("Failed to switch {what}: {}", e),
+  }
+}
+
+#[derive(Subcommand)]
+pub enum PowerProfileCommands {
+  /// Activate a profile by name
+  Set {
+    /// The profile, like performance, balanced or power-saver
+    #[arg(add = ArgValueCandidates::new(profile_names))]
+    name: String,
+  },
+  /// Switch to the next profile, wrapping around
+  Cycle,
+}
+
+/// Asks the running shell for the profiles UPower offers.
+fn profile_names() -> Vec<CompletionCandidate> {
+  ListProfiles::send(())
+    .unwrap_or_default()
+    .into_iter()
+    .map(CompletionCandidate::new)
+    .collect()
+}
+
+impl PowerProfileCommands {
+  pub fn execute(self) {
+    let result = match self {
+      PowerProfileCommands::Set { name } => SetProfile::send(name),
+      PowerProfileCommands::Cycle => CycleProfile::send(()),
+    };
+    if let Err(e) = result {
+      tracing::error!("Failed to change power profile: {}", e);
+    }
   }
 }

@@ -50,6 +50,14 @@ pub struct Profiles {
   pub degraded: Option<String>,
 }
 
+impl Profiles {
+  /// The one after the active profile, wrapping around
+  pub fn next(&self) -> Option<&String> {
+    let at = self.available.iter().position(|a| *a == self.active)?;
+    self.available.get((at + 1) % self.available.len())
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyboardBacklight {
   pub brightness: i32,

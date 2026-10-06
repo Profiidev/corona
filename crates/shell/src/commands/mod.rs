@@ -5,6 +5,7 @@ pub mod brightness;
 
 pub mod media;
 pub mod notification;
+pub mod power_profile;
 pub mod radio;
 pub mod session;
 pub mod theme;
@@ -14,6 +15,7 @@ pub fn register_commands(server: &mut IpcServer) {
   brightness::register_commands(server);
   media::register_commands(server);
   notification::register_commands(server);
+  power_profile::register_commands(server);
   radio::register_commands(server);
   session::register_commands(server);
   theme::register_commands(server);
