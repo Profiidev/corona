@@ -18,6 +18,7 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       flake-utils,
       ...
@@ -28,9 +29,17 @@
         pkgs = import nixpkgs {
           inherit system;
         };
+
+        pkg = pkgs.callPackage ./nix/package.nix { };
       in
       {
-        packages.default = pkgs.callPackage ./nix/package.nix { };
+        packages = {
+          default = pkg;
+          corona = pkg;
+        };
+
+        nixosModules.default = import ./nix/nixos-module.nix self;
+        homeManagerModules.default = import ./nix/home-module.nix self;
       }
     );
 }
