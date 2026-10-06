@@ -1,15 +1,13 @@
-use clap::{Parser, Subcommand};
-use clap_complete::Shell;
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::CompleteEnv;
 
 use crate::ipc::IpcCommands;
 
-pub use completion::generate_completions;
-
-mod completion;
 mod ipc;
 
 /// Corona Shell CLI
 #[derive(Parser)]
+#[command(name = "corona")]
 pub struct Cli {
   #[command(subcommand)]
   pub command: Commands,
@@ -17,6 +15,7 @@ pub struct Cli {
 
 impl Cli {
   pub fn parse() -> Self {
+    CompleteEnv::with_factory(Cli::command).complete();
     <Cli as Parser>::parse()
   }
 }
@@ -30,6 +29,4 @@ pub enum Commands {
   },
   /// Run corona shell
   Shell,
-  /// Generate completion scripts for your shell
-  Completions { shell: Shell },
 }

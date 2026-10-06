@@ -8,7 +8,8 @@ pub fn register_commands(server: &mut IpcServer) {
   server
     .register::<TogglePanel>()
     .register::<OpenPanel>()
-    .register::<ClosePanel>();
+    .register::<ClosePanel>()
+    .register::<ListPanels>();
 }
 
 pub struct TogglePanel;
@@ -47,5 +48,18 @@ impl IpcCommand for ClosePanel {
 
   fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response> {
     PanelState::close(&payload, cx)
+  }
+}
+
+pub struct ListPanels;
+
+impl IpcCommand for ListPanels {
+  const COMMAND: &'static str = "surface:list_panels";
+
+  type Payload = ();
+  type Response = Vec<String>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    Ok(PanelState::names(cx))
   }
 }

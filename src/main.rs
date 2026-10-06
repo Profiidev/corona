@@ -12,7 +12,6 @@ fn main() {
     corona_cli::Commands::Shell => {
       run_shell();
     }
-    corona_cli::Commands::Completions { shell } => corona_cli::generate_completions(shell),
   }
 }
 

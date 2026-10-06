@@ -84,7 +84,7 @@ nested:
 
   -- Redirected: an exec'd child's output does not reach the terminal running this.
   hl.on("hyprland.start", function()
-      hl.exec_cmd("sh -c '{{justfile_directory()}}/target/debug/corona >/tmp/corona-nested.log 2>&1'")
+      hl.exec_cmd("sh -c '{{justfile_directory()}}/target/debug/corona shell >/tmp/corona-nested.log 2>&1'")
   end)
   LUA
   echo "nested session starting — SUPER+SHIFT+Q to quit; corona logs to /tmp/corona-nested.log"

@@ -99,8 +99,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   postInstall = ''
     installShellCompletion --cmd corona \
-      --bash <($out/bin/corona completions bash) \
-      --zsh  <($out/bin/corona completions zsh) \
-      --fish <($out/bin/corona completions fish)
+      --bash <(COMPLETE=bash $out/bin/corona) \
+      --zsh  <(COMPLETE=zsh $out/bin/corona) \
+      --fish <(COMPLETE=fish $out/bin/corona)
   '';
 })

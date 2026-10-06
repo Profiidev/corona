@@ -1,4 +1,5 @@
 use clap::Subcommand;
+use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
@@ -72,18 +73,29 @@ pub enum PanelCommands {
   /// Open a panel
   Open {
     /// The name of the panel to open
+    #[arg(add = ArgValueCandidates::new(panel_names))]
     panel: String,
   },
   /// Close a panel
   Close {
     /// The name of the panel to close
+    #[arg(add = ArgValueCandidates::new(panel_names))]
     panel: String,
   },
   /// Toggle a panel
   Toggle {
     /// The name of the panel to toggle
+    #[arg(add = ArgValueCandidates::new(panel_names))]
     panel: String,
   },
+}
+
+fn panel_names() -> Vec<CompletionCandidate> {
+  corona_surface::commands::ListPanels::send(())
+    .unwrap_or_default()
+    .into_iter()
+    .map(CompletionCandidate::new)
+    .collect()
 }
 
 impl PanelCommands {

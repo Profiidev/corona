@@ -50,6 +50,12 @@ impl PanelState {
     self
   }
 
+  pub(crate) fn names(cx: &App) -> Vec<String> {
+    let mut names: Vec<_> = cx.global::<PanelState>().registry.keys().cloned().collect();
+    names.sort_unstable();
+    names
+  }
+
   pub(crate) fn toggle(
     data: PanelData,
     button_bounds: Bounds<Pixels>,
