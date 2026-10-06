@@ -1,0 +1,62 @@
+diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -351,6 +351,8 @@ pub(crate) struct WaylandClientState {
+     outputs: HashMap<ObjectId, Output>,
+     in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
+     wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
++    // Registry name to output, so `GlobalRemove` can find what to drop
++    output_globals: HashMap<u32, ObjectId>,
+     session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
+     /// Whether the compositor has sent `locked`. `unlock_and_destroy` before that is an
+     /// `invalid_unlock` protocol error — such a lock must be plainly destroyed instead.
+@@ -880,6 +882,7 @@ impl WaylandClient {
+         let mut in_progress_outputs = HashMap::default();
+         #[allow(clippy::mutable_key_type)]
+         let mut wl_outputs: HashMap<ObjectId, wl_output::WlOutput> = HashMap::default();
++        let mut output_globals = HashMap::default();
+         globals.contents().with_list(|list| {
+             for global in list {
+                 match &global.interface[..] {
+@@ -899,6 +902,7 @@ impl WaylandClient {
+                             (),
+                         );
+                         in_progress_outputs.insert(output.id(), InProgressOutput::default());
++                        output_globals.insert(global.name, output.id());
+                         wl_outputs.insert(output.id(), output);
+                     }
+                     _ => {}
+@@ -1043,6 +1047,7 @@ impl WaylandClient {
+             session_lock_tx: None,
+             in_progress_outputs,
+             wl_outputs,
++            output_globals,
+             windows: HashMap::default(),
+             common,
+             keyboard_layout: LinuxKeyboardLayout::new(UNKNOWN_KEYBOARD_LAYOUT_NAME),
+@@ -1584,12 +1589,23 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
+                     state
+                         .in_progress_outputs
+                         .insert(output.id(), InProgressOutput::default());
++                    state.output_globals.insert(name, output.id());
+                     state.wl_outputs.insert(output.id(), output);
+                 }
+                 _ => {}
+             },
+-            wl_registry::Event::GlobalRemove { name: _ } => {
+-                // TODO: handle global removal
++            wl_registry::Event::GlobalRemove { name } => {
++                // A removed output must leave `displays()`, or windows get opened on it.
++                let Some(id) = state.output_globals.remove(&name) else {
++                    return;
++                };
++                state.outputs.remove(&id);
++                state.in_progress_outputs.remove(&id);
++                if let Some(output) = state.wl_outputs.remove(&id)
++                    && output.version() >= wl_output::REQ_RELEASE_SINCE
++                {
++                    output.release();
++                }
+             }
+             _ => {}
+         }

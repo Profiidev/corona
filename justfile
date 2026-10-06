@@ -94,7 +94,12 @@ nested:
   # Through start-hyprland: launching Hyprland directly only warns, but this is
   # what it asks for. Everything after -- goes to Hyprland itself. Not exec: that
   # would discard the EXIT trap and leak the temp config.
-  start-hyprland -- -c "$conf"
+  # LIBSEAT_BACKEND=none: Hyprland always tries DRM, which opens a libseat session,
+  # and with a session it imports its WAYLAND_DISPLAY and HYPRLAND_INSTANCE_SIGNATURE
+  # into the systemd user environment (unsetting them and stopping
+  # graphical-session.target on exit), so the real corona.service restarts against
+  # this one. HYPRLAND_NO_SD_VARS is not enough: the exec-once import ignores it.
+  LIBSEAT_BACKEND=none start-hyprland -- -c "$conf"
 
 # Print the nested session's HYPRLAND_INSTANCE_SIGNATURE.
 [private]
