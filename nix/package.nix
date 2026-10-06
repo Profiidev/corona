@@ -101,6 +101,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --bash <(COMPLETE=bash $out/bin/corona) \
       --zsh  <(COMPLETE=zsh $out/bin/corona) \
       --fish <(COMPLETE=fish $out/bin/corona)
+    install -Dm644 assets/corona-settings.svg $out/share/icons/hicolor/scalable/apps/corona-settings.svg
+    install -Dm644 assets/corona-settings.desktop $out/share/applications/corona-settings.desktop
+    substituteInPlace $out/share/applications/corona-settings.desktop \
+      --replace-fail "Exec=corona" "Exec=$out/bin/corona"
   '';
 
   meta = with lib; {

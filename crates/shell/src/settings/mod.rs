@@ -21,7 +21,7 @@ mod bar;
 mod fields;
 mod pages;
 
-const APP_ID: &str = "corona-settings";
+const APP_NAME_SETTINGS: &str = "corona-settings";
 
 #[derive(Default)]
 struct OpenSettings(Option<AnyWindowHandle>);
@@ -79,9 +79,8 @@ pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
       cx,
     ))),
     window_min_size: Some(size(px(640.), px(480.))),
-    // Hyprland draws no titlebar for these, as for every other tiled window
-    window_decorations: Some(WindowDecorations::Server),
-    app_id: Some(APP_ID.to_string()),
+    window_decorations: Some(WindowDecorations::Client),
+    app_id: Some(APP_NAME_SETTINGS.to_string()),
     ..Default::default()
   };
   let handle = cx.open_window(options, |window, cx| {

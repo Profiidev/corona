@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Corona Settings
+Comment=Settings of the Corona shell
+Exec=corona ipc settings open
+Icon=corona-settings
+Categories=Settings;
