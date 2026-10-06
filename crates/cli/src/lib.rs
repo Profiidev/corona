@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 use crate::ipc::IpcCommands;
 
+pub use completion::generate_completions;
+
+mod completion;
 mod ipc;
 
 /// Corona Shell CLI
@@ -26,4 +30,6 @@ pub enum Commands {
   },
   /// Run corona shell
   Shell,
+  /// Generate completion scripts for your shell
+  Completions { shell: Shell },
 }

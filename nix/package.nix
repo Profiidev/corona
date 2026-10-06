@@ -12,6 +12,7 @@
   libgbm,
   wayland,
   vulkan-loader,
+  installShellFiles,
 }:
 
 let
@@ -68,6 +69,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   nativeBuildInputs = [
     pkg-config
     rustPlatform.bindgenHook
+    installShellFiles
   ];
 
   buildInputs = [
@@ -93,5 +95,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
         vulkan-loader
       ]
     } $out/bin/corona
+  '';
+
+  postInstall = ''
+    installShellCompletion --cmd corona \
+      --bash <($out/bin/corona completions bash) \
+      --zsh  <($out/bin/corona completions zsh) \
+      --fish <($out/bin/corona completions fish)
   '';
 })
