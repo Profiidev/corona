@@ -53,6 +53,16 @@ impl Mpris {
     }
   }
 
+  pub fn play(&self, name: &str) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, name) = (self.conn.clone(), bus_name(name));
+    async move { Ok(player_proxy(&conn, name?).await?.play().await?) }
+  }
+
+  pub fn pause(&self, name: &str) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, name) = (self.conn.clone(), bus_name(name));
+    async move { Ok(player_proxy(&conn, name?).await?.pause().await?) }
+  }
+
   pub fn play_pause(&self, name: &str) -> impl Future<Output = Result<()>> + use<> {
     let (conn, name) = (self.conn.clone(), bus_name(name));
     async move { Ok(player_proxy(&conn, name?).await?.play_pause().await?) }

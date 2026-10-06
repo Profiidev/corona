@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
+use corona_shell::media::{Action as MediaAction, Media};
 use corona_shell::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
@@ -24,6 +25,8 @@ pub enum IpcCommands {
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
+  /// Control the active MPRIS player
+  Media { action: MediaAction },
   /// Notification commands
   Notification {
     #[command(subcommand)]
@@ -57,6 +60,11 @@ impl IpcCommands {
       IpcCommands::ColorPicker => {
         if let Err(e) = ColorPicker::send(()) {
           tracing::error!("Failed to start color picker: {}", e);
+        }
+      }
+      IpcCommands::Media { action } => {
+        if let Err(e) = Media::send(action) {
+          tracing::error!("Failed to run media action: {}", e);
         }
       }
       IpcCommands::Notification { command } => command.execute(),
