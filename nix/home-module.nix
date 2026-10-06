@@ -32,7 +32,7 @@ in
     };
 
     settings = lib.mkOption {
-      type = lib.types.attrsOf lib.types.any;
+      type = lib.types.attrsOf lib.types.anything;
       default = { };
       description = "Settings for the Corona shell.";
     };
