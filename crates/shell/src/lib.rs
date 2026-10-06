@@ -9,6 +9,7 @@ mod icons;
 mod lock;
 mod osds;
 pub mod overlays;
+pub mod session;
 mod widgets;
 
 pub fn init(cx: &mut App) {
@@ -32,6 +33,7 @@ fn init_ipc(cx: &mut App) {
 
   corona_surface::commands::register_commands(&mut server);
   overlays::register_commands(&mut server);
+  session::register_commands(&mut server);
 
   cx.spawn(async move |cx| server.run(cx).await).detach();
 }

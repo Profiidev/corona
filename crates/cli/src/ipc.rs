@@ -6,6 +6,7 @@ use corona_shell::overlays::{
   screenshot::{commands::Screenshot, mode::Mode},
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
+use corona_shell::session::{Action, Session};
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
@@ -22,6 +23,8 @@ pub enum IpcCommands {
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
+  /// Lock, suspend, log out, reboot or shut down
+  Session { action: Action },
   /// Open the window switcher, or move its selection while open
   Switcher {
     /// window or workspace
@@ -48,6 +51,11 @@ impl IpcCommands {
       IpcCommands::ColorPicker => {
         if let Err(e) = ColorPicker::send(()) {
           tracing::error!("Failed to start color picker: {}", e);
+        }
+      }
+      IpcCommands::Session { action } => {
+        if let Err(e) = Session::send(action) {
+          tracing::error!("Failed to run session action: {}", e);
         }
       }
       IpcCommands::Switcher {

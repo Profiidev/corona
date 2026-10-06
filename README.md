@@ -31,7 +31,3 @@ Update the version in the following files:
 - `justfile`
 - `crates/reqwest/Cargo.toml`
 - `crates/capture/Cargo.toml`
-
-# TODO
-
-script host fn refactor
