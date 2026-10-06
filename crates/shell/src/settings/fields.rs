@@ -352,15 +352,16 @@ pub(super) fn slider(
         })
         .child(
           div()
-            .flex_1()
-            .child(Slider::new(&slider).disabled(options.is_disabled())),
-        )
-        .child(
-          div()
             .w(px(40.))
+            .text_right()
             .text_sm()
             .text_color(cx.theme().muted_foreground)
             .child(format_number(f64::from(shown))),
+        )
+        .child(
+          div()
+            .flex_1()
+            .child(Slider::new(&slider).disabled(options.is_disabled())),
         )
     },
   )

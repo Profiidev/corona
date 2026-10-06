@@ -11,18 +11,17 @@ use std::{cell::Cell, rc::Rc};
 use corona_surface::bar::BarState;
 use gpui_kit::base::Disableable;
 use gpui_kit::{
-  App, AppContext, Div, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+  Anchor, App, AppContext, Div, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
   SharedString, StatefulInteractiveElement, Styled, Window,
   assets::IconName,
   base::ElementExt,
   component::{
     ActiveTheme, Icon, Sizable,
     button::{Button, ButtonVariants},
+    popover::Popover,
     setting::{SettingGroup, SettingItem, SettingPage},
   },
-  div,
-  prelude::FluentBuilder,
-  px,
+  div, px,
 };
 
 use crate::{
@@ -336,6 +335,7 @@ fn add_bar(window: &mut Window, cx: &mut App) -> Div {
     .child(
       Button::new("bar-add")
         .label("Add bar")
+        .cursor_pointer()
         .small()
         .on_click(move |_, window, cx| {
           let name = new_name.read(cx).value().trim().to_string();
@@ -356,6 +356,7 @@ fn remove_bar(name: &str, cx: &App) -> Div {
   div().flex().justify_end().child(
     Button::new(SharedString::from(format!("bar-remove-{name}")))
       .label("Remove this bar")
+      .cursor_pointer()
       .small()
       .danger()
       .disabled(only)
@@ -397,33 +398,20 @@ struct DragPreview(WidgetDrag);
 impl Render for DragPreview {
   fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
     let drag = &self.0;
-    let (options, remove) = row_buttons(
-      |what| format!("preview-{what}").into(),
-      drag.has_options,
-      false,
-    );
+    let (options, remove) = row_buttons(|what| format!("preview-{what}").into(), drag.has_options);
     row_body(drag.label.clone(), options, remove, cx)
       .w(drag.width.get())
       .opacity(0.9)
   }
 }
 
-/// Which widget's options form is open
-#[derive(Default)]
-struct Expanded(Option<(String, Slot)>);
-
 fn editor(name: &str, window: &mut Window, cx: &mut App) -> Div {
   let Some(bar) = cx.config().bar.get(name).cloned() else {
     return div();
   };
-  let expanded = window.use_keyed_state(
-    SharedString::from(format!("bar-expanded-{name}")),
-    cx,
-    |_, _| Expanded::default(),
-  );
   let mut columns = div().flex().gap_2().w_full();
   for section in Section::ALL {
-    columns = columns.child(column(name, &bar, section, &expanded, window, cx));
+    columns = columns.child(column(name, &bar, section, window, cx));
   }
   div()
     .flex()
@@ -456,14 +444,7 @@ fn gap(id: SharedString, name: &str, target: Target, cx: &App) -> impl IntoEleme
     })
 }
 
-fn column(
-  name: &str,
-  bar: &BarConfig,
-  section: Section,
-  expanded: &gpui_kit::Entity<Expanded>,
-  window: &mut Window,
-  cx: &mut App,
-) -> Div {
+fn column(name: &str, bar: &BarConfig, section: Section, window: &mut Window, cx: &mut App) -> Div {
   let theme = cx.theme();
   let (radius, accent, border, muted) = (
     theme.radius,
@@ -484,7 +465,7 @@ fn column(
     rows.push(gap(id(format!("gap-{index}")), name, Target::Before(at), cx).into_any_element());
     match entry {
       WidgetConfig::Widget(widget) => {
-        rows.push(row(name, bar, at, widget, expanded, window, cx).into_any_element())
+        rows.push(row(name, bar, at, widget, window, cx).into_any_element())
       }
       WidgetConfig::Group { group } => {
         let join_name = name.to_string();
@@ -506,7 +487,7 @@ fn column(
               .into_any_element(),
             );
           }
-          members.push(row(name, bar, slot, widget, expanded, window, cx).into_any_element());
+          members.push(row(name, bar, slot, widget, window, cx).into_any_element());
         }
         rows.push(
           div()
@@ -620,27 +601,29 @@ fn title(widget_type: &str) -> String {
 }
 
 /// The options and remove buttons of a row
-fn row_buttons(
-  id: impl Fn(&str) -> SharedString,
-  has_options: bool,
-  open: bool,
-) -> (Option<Button>, Button) {
+fn row_buttons(id: impl Fn(&str) -> SharedString, has_options: bool) -> (Option<Button>, Button) {
   let options = has_options.then(|| {
     Button::new(id("options"))
-      .icon(if open {
-        IconName::ChevronUp
-      } else {
-        IconName::Settings2
-      })
+      .icon(IconName::Settings2)
+      .cursor_pointer()
       .ghost()
       .xsmall()
   });
-  let remove = Button::new(id("remove")).icon(IconName::X).ghost().xsmall();
+  let remove = Button::new(id("remove"))
+    .icon(IconName::X)
+    .cursor_pointer()
+    .ghost()
+    .xsmall();
   (options, remove)
 }
 
 /// How a widget's row looks, shared by the row and its drag preview
-fn row_body(label: SharedString, options: Option<Button>, remove: Button, cx: &App) -> Div {
+fn row_body(
+  label: SharedString,
+  options: Option<impl IntoElement>,
+  remove: Button,
+  cx: &App,
+) -> Div {
   let theme = cx.theme();
   div()
     .flex()
@@ -666,10 +649,9 @@ fn row(
   bar: &BarConfig,
   slot: Slot,
   widget: &WidgetEntry,
-  expanded: &gpui_kit::Entity<Expanded>,
   window: &mut Window,
   cx: &mut App,
-) -> Div {
+) -> impl IntoElement {
   let hover = cx.theme().tokens.button_hover;
   let label: SharedString = match widget.widget_type.as_str() {
     // several of these sit side by side, what they show tells them apart
@@ -679,8 +661,8 @@ fn row(
     }
     other => title(other).into(),
   };
-  let has_options = options_form(&widget.widget_type).is_some();
-  let open = expanded.read(cx).0.as_ref() == Some(&(name.to_string(), slot));
+  let form = options_form(&widget.widget_type);
+  let has_options = form.is_some();
   let id = |what: &str| {
     SharedString::from(format!(
       "{what}-{name}-{:?}-{}-{:?}",
@@ -696,60 +678,47 @@ fn row(
     has_options,
     width: width.clone(),
   };
-  let (join_name, remove_name, toggle_name) =
-    (name.to_string(), name.to_string(), name.to_string());
-  let toggle = expanded.clone();
+  let (join_name, remove_name, form_name) = (name.to_string(), name.to_string(), name.to_string());
 
-  let (options, remove) = row_buttons(id, has_options, open);
-  let options = options.map(|b| {
-    b.on_click(move |_, _, cx| {
-      let key = (toggle_name.clone(), slot);
-      toggle.update(cx, |e, cx| {
-        e.0 = if e.0.as_ref() == Some(&key) {
-          None
-        } else {
-          Some(key)
+  let (options, remove) = row_buttons(id, has_options);
+  let options = options.zip(form).map(|(button, form)| {
+    Popover::new(id("options-popover"))
+      .anchor(Anchor::TopRight)
+      .trigger(button)
+      .content(move |_, window, cx| {
+        // read fresh: the config changes while the popup is open
+        let Some(bar) = cx.config().bar.get(&form_name).cloned() else {
+          return div().into_any_element();
         };
-        cx.notify();
-      });
-    })
+        form(&form_name, &bar, slot, window, cx)
+      })
   });
   let remove =
     remove.on_click(move |_, _, cx| edit_bar(cx, &remove_name, |b| remove_widget(b, slot)));
 
-  div()
-    .flex()
-    .flex_col()
-    .gap_1()
-    .child(
-      row_body(label, options, remove, cx)
-        .id(id("row"))
-        .cursor_grab()
-        .on_prepaint(move |bounds, _, _| width.set(bounds.size.width))
-        .on_drag(drag, |drag: &WidgetDrag, _, _, cx| {
-          cx.new(|_| DragPreview(drag.clone()))
-        })
-        .drag_over::<WidgetDrag>(move |style, _, _, _| style.bg(hover))
-        // dropped onto a widget: grouped with it
-        .on_drop(move |drag: &WidgetDrag, _, cx| {
-          if drag.bar == join_name && drag.from != slot {
-            let from = drag.from;
-            edit_bar(cx, &join_name, |b| {
-              move_widget(
-                b,
-                from,
-                Target::Join {
-                  section: slot.section,
-                  index: slot.index,
-                },
-              )
-            });
-          }
-        }),
-    )
-    .when(open, |d| {
-      let form = options_form(&widget.widget_type).expect("checked above");
-      d.child(form(name, bar, slot, window, cx))
+  row_body(label, options, remove, cx)
+    .id(id("row"))
+    .cursor_grab()
+    .on_prepaint(move |bounds, _, _| width.set(bounds.size.width))
+    .on_drag(drag, |drag: &WidgetDrag, _, _, cx| {
+      cx.new(|_| DragPreview(drag.clone()))
+    })
+    .drag_over::<WidgetDrag>(move |style, _, _, _| style.bg(hover))
+    // dropped onto a widget: grouped with it
+    .on_drop(move |drag: &WidgetDrag, _, cx| {
+      if drag.bar == join_name && drag.from != slot {
+        let from = drag.from;
+        edit_bar(cx, &join_name, |b| {
+          move_widget(
+            b,
+            from,
+            Target::Join {
+              section: slot.section,
+              index: slot.index,
+            },
+          )
+        });
+      }
     })
 }
 
@@ -808,7 +777,7 @@ fn set_options<T: serde::Serialize + Default>(cx: &mut App, name: &str, slot: Sl
 }
 
 fn form() -> Div {
-  div().flex().flex_col().gap_2().p_2().ml_4()
+  div().flex().flex_col().gap_2().w(px(320.))
 }
 
 fn form_row(label: &'static str, control: impl IntoElement) -> Div {
@@ -1057,6 +1026,7 @@ fn tray_form(
             slot,
             &format!("blacklist-remove-{i}"),
           )))
+          .cursor_pointer()
           .icon(IconName::X)
           .ghost()
           .xsmall()
@@ -1081,6 +1051,7 @@ fn tray_form(
       div().child(
         Button::new(SharedString::from(form_key(name, slot, "blacklist-add")))
           .label("Add pattern")
+          .cursor_pointer()
           .icon(IconName::Plus)
           .xsmall()
           .outline()
