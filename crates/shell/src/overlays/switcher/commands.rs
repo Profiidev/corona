@@ -1,6 +1,5 @@
-use std::str::FromStr;
-
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcServer};
 use gpui_kit::{App, Modifiers};
 use serde::{Deserialize, Serialize};
@@ -31,26 +30,14 @@ pub struct Options {
   pub current_monitor: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum Mode {
   #[default]
   Window,
   Workspace,
 }
 
-impl FromStr for Mode {
-  type Err = anyhow::Error;
-
-  fn from_str(s: &str) -> Result<Self> {
-    match s.trim().to_lowercase().as_str() {
-      "window" => Ok(Mode::Window),
-      "workspace" => Ok(Mode::Workspace),
-      _ => Err(anyhow!("unknown mode {s:?}, expected window|workspace")),
-    }
-  }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum Modifier {
   #[default]
   Super,
@@ -64,19 +51,6 @@ impl Modifier {
       Modifier::Super => modifiers.platform,
       Modifier::Alt => modifiers.alt,
       Modifier::Ctrl => modifiers.control,
-    }
-  }
-}
-
-impl FromStr for Modifier {
-  type Err = anyhow::Error;
-
-  fn from_str(s: &str) -> Result<Self> {
-    match s.trim().to_lowercase().as_str() {
-      "super" => Ok(Modifier::Super),
-      "alt" => Ok(Modifier::Alt),
-      "ctrl" => Ok(Modifier::Ctrl),
-      _ => Err(anyhow!("unknown modifier {s:?}, expected super|alt|ctrl")),
     }
   }
 }

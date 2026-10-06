@@ -1,10 +1,8 @@
-use std::str::FromStr;
-
-use anyhow::{Result, anyhow};
+use clap::ValueEnum;
 use gpui_kit::assets::IconName;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum Mode {
   Selection,
   Monitor,
@@ -36,16 +34,5 @@ impl Mode {
       Mode::Monitor => "Monitor under the cursor (M)",
       Mode::Window => "Window under the cursor (W)",
     }
-  }
-}
-
-impl FromStr for Mode {
-  type Err = anyhow::Error;
-
-  fn from_str(s: &str) -> Result<Self> {
-    Self::ALL
-      .into_iter()
-      .find(|m| m.label().eq_ignore_ascii_case(s.trim()))
-      .ok_or_else(|| anyhow!("unknown mode {s:?}, expected selection|monitor|window"))
   }
 }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap.workspace = true
 corona_surface.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true

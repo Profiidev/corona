@@ -17,7 +17,7 @@ pub enum IpcCommands {
   /// Open the screenshot overlay
   Screenshot {
     /// selection, monitor or window
-    #[arg(default_value = "selection")]
+    #[arg(default_value = "selection", ignore_case = true)]
     mode: Mode,
   },
   /// Pick a color from the screen and copy its hex code
@@ -25,10 +25,10 @@ pub enum IpcCommands {
   /// Open the window switcher, or move its selection while open
   Switcher {
     /// window or workspace
-    #[arg(long, default_value = "window")]
+    #[arg(long, default_value = "window", ignore_case = true)]
     mode: SwitcherMode,
     /// Held to keep the switcher open, releasing it switches: super, alt or ctrl
-    #[arg(long, default_value = "super")]
+    #[arg(long, default_value = "super", ignore_case = true)]
     modifier: Modifier,
     /// Only show what is on the focused monitor
     #[arg(long)]

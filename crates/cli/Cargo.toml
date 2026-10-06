@@ -8,5 +8,5 @@ corona_surface.workspace = true
 corona_ipc.workspace = true
 corona_shell.workspace = true
 tracing.workspace = true
-clap = { version = "4.6.7", features = ["derive"] }
+clap.workspace = true
 clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }

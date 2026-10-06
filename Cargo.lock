@@ -1945,6 +1945,7 @@ name = "corona_shell"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_bluez",
  "corona_brightness",
  "corona_capture",
