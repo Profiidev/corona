@@ -46,7 +46,7 @@ in
         restartTriggers = [ cfg.package ];
 
         serviceConfig = {
-          ExecStart = lib.getExe cfg.package;
+          ExecStart = "${lib.getExe cfg.package} shell";
           Restart = "on-failure";
         };
       };

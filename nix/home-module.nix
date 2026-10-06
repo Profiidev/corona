@@ -52,7 +52,7 @@ in
       };
 
       Service = {
-        ExecStart = lib.getExe cfg.package;
+        ExecStart = "${lib.getExe cfg.package} shell";
         Restart = "on-failure";
       };
 
