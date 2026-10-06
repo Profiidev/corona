@@ -46,10 +46,9 @@ in
         Description = "Corona shell";
         PartOf = [ config.wayland.systemd.target ];
         After = [ config.wayland.systemd.target ];
-        X-RestartTriggers = [
-          (lib.optional (cfg.settings != { }) "${config.xdg.configFile."corona/config.toml".source}")
-          cfg.package
-        ];
+        X-RestartTriggers =
+          lib.optional (cfg.settings != { }) "${config.xdg.configFile."corona/config.toml".source}"
+          ++ [ "${cfg.package}" ];
       };
 
       Service = {
