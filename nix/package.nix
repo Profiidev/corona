@@ -9,6 +9,7 @@
   libxkbcommon,
   libxcb,
   pipewire,
+  alsa-lib,
   libgbm,
   wayland,
   vulkan-loader,
@@ -76,6 +77,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     libxkbcommon
     libxcb
     pipewire
+    alsa-lib
     libgbm
   ];
 

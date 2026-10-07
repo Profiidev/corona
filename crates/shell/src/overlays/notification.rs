@@ -1,6 +1,9 @@
 use std::{
   cell::Cell,
+  io::Cursor,
   rc::Rc,
+  sync::{OnceLock, mpsc},
+  thread::spawn,
   time::{Duration, Instant},
 };
 
@@ -20,6 +23,7 @@ use gpui_kit::{
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   px, relative,
 };
+use rodio::{Decoder, DeviceSinkBuilder, Source};
 
 use crate::control_center::NotificationsPanel;
 
@@ -90,6 +94,9 @@ pub fn init(cx: &mut App) {
     NotificationPopups::sync(&new, cx);
     // suppressed ones count as seen, so turning do not disturb off replays nothing
     let dnd = cx.notifications().do_not_disturb(cx);
+    if !dnd && new.iter().any(|n| !old.contains(&n.id)) {
+      play_sound();
+    }
     for notification in new.iter().filter(|n| !dnd && !old.contains(&n.id)) {
       if let Err(e) = NotificationPopups::show(notification.clone(), cx) {
         tracing::error!("failed to show notification popup: {e:?}");
@@ -113,6 +120,37 @@ pub fn init(cx: &mut App) {
     }
   })
   .detach();
+}
+
+/// one thread owns the sink and the decoded sound, set up on first sound and
+/// kept for the rest
+fn play_sound() {
+  static SOUND: &[u8] = include_bytes!("../../assets/notification.oga");
+  static PLAY: OnceLock<mpsc::Sender<()>> = OnceLock::new();
+  let tx = PLAY.get_or_init(|| {
+    let (tx, rx) = mpsc::channel();
+    spawn(move || {
+      let mut player = None;
+      for _ in rx {
+        let result = match &player {
+          Some(player) => Ok(player),
+          // a failed setup is retried on the next sound
+          None => (|| {
+            let mut sink = DeviceSinkBuilder::open_default_sink()?;
+            sink.log_on_drop(false);
+            anyhow::Ok((sink, Decoder::new(Cursor::new(SOUND))?.buffered()))
+          })()
+          .map(|p| &*player.insert(p)),
+        };
+        match result {
+          Ok((sink, sound)) => sink.mixer().add(sound.clone()),
+          Err(e) => tracing::error!("failed to play notification sound: {e:?}"),
+        }
+      }
+    });
+    tx
+  });
+  let _ = tx.send(());
 }
 
 impl NotificationPopups {
