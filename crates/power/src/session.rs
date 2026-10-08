@@ -3,7 +3,7 @@ use std::env;
 use anyhow::{Context, Result};
 use futures_lite::StreamExt;
 use gpui_kit::{AsyncApp, Task};
-use zbus::{Connection, proxy::CacheProperties};
+use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 #[zbus::proxy(
   interface = "org.freedesktop.login1.Manager",
@@ -35,6 +35,8 @@ pub(crate) trait LoginManager {
 
   fn terminate_session(&self, session: &str) -> zbus::Result<()>;
 
+  fn get_session(&self, session: &str) -> zbus::Result<OwnedObjectPath>;
+
   /// Held off until the returned fd closes. A `delay` lock lasts at most
   /// `InhibitDelayMaxSec`, 5s by default.
   fn inhibit(
@@ -48,6 +50,20 @@ pub(crate) trait LoginManager {
   /// `true` right before suspend or hibernate, `false` after resume
   #[zbus(signal)]
   fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
+}
+
+#[zbus::proxy(
+  interface = "org.freedesktop.login1.Session",
+  default_service = "org.freedesktop.login1"
+)]
+pub(crate) trait LoginSession {
+  /// `loginctl lock-session`
+  #[zbus(signal)]
+  fn lock(&self) -> zbus::Result<()>;
+
+  /// `loginctl unlock-session`
+  #[zbus(signal)]
+  fn unlock(&self) -> zbus::Result<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,6 +176,27 @@ pub(crate) async fn before_sleep(
     drop(inhibitor);
     next(false).await?;
   }
+}
+
+/// Calls `on` with `true` when logind asks this session to lock, `false` to unlock
+pub(crate) async fn lock_requests(
+  conn: Connection,
+  cx: &mut AsyncApp,
+  on: impl Fn(bool, &mut gpui_kit::App),
+) -> Result<()> {
+  let path = manager(&conn).await?.get_session(&session_id()?).await?;
+  let session = LoginSessionProxy::builder(&conn)
+    .path(path)?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?;
+  let locks = session.receive_lock().await?.map(|_| true);
+  let unlocks = session.receive_unlock().await?.map(|_| false);
+  let mut requests = locks.or(unlocks);
+  while let Some(lock) = requests.next().await {
+    cx.update(|cx| on(lock, cx));
+  }
+  anyhow::bail!("logind went away")
 }
 
 /// What a boot entry is called, for the shell to word

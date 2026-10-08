@@ -88,6 +88,15 @@ impl Power {
     .detach();
   }
 
+  /// `loginctl lock-session` and `unlock-session` for this session
+  pub fn lock_requests(&self, cx: &mut App, on: impl Fn(bool, &mut App) + 'static) {
+    let conn = self.conn.clone();
+    cx.spawn(async move |cx| {
+      let _ = session::lock_requests(conn, cx, on).await.log_err();
+    })
+    .detach();
+  }
+
   /// `power-saver`, `balanced` or `performance`
   pub fn set_profile(&self, profile: String) -> impl Future<Output = Result<()>> + use<> {
     let conn = self.conn.clone();
