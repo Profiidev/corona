@@ -15,3 +15,16 @@ hypr_data_cmd!(
   (i32, i32),
   |c: CursorPosition| (c.x, c.y)
 );
+
+#[cfg(test)]
+mod tests {
+  use crate::hyprland::fake::FakeHyprland;
+
+  #[test]
+  fn cursor_position() {
+    let hypr = FakeHyprland::start();
+    assert_eq!(hypr.ipc().cursor_position().unwrap(), (-5, 1200));
+    hypr.answer("j/cursorpos", r#"{"x": 1.5, "y": 2}"#);
+    assert!(hypr.ipc().cursor_position().is_err());
+  }
+}

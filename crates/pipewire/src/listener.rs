@@ -352,8 +352,287 @@ fn parse_object(param: Option<&Pod>) -> Option<Object> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+  use pipewire::spa::pod::{Property, ValueArray};
+
   use super::*;
+  use crate::{
+    command::serialize,
+    testing::{pod, pod_bytes, props},
+  };
+
+  pub(crate) fn parse(pod: &Pod) -> Option<Object> {
+    parse_object(Some(pod))
+  }
+
+  /// handles that know `device` routes `profile_device` through `index`
+  pub(crate) fn with_route(device: u32, profile_device: i32, index: i32) -> Handles {
+    let handles = Handles::default();
+    handles
+      .0
+      .borrow_mut()
+      .routes
+      .insert((device, profile_device), index);
+    handles
+  }
+
+  fn route(properties: Vec<Property>) -> Vec<u8> {
+    pod_bytes(Object {
+      type_: sys::SPA_TYPE_OBJECT_ParamRoute,
+      id: sys::SPA_PARAM_Route,
+      properties,
+    })
+  }
+
+  fn volume_props(volumes: Vec<f32>, mute: bool) -> Vec<u8> {
+    serialize(Object {
+      type_: sys::SPA_TYPE_OBJECT_Props,
+      id: sys::SPA_PARAM_Props,
+      properties: vec![
+        Property::new(
+          sys::SPA_PROP_channelVolumes,
+          Value::ValueArray(ValueArray::Float(volumes)),
+        ),
+        Property::new(sys::SPA_PROP_mute, Value::Bool(mute)),
+      ],
+    })
+    .unwrap()
+  }
+
+  fn sink(id: u32, name: &str, serial: &str) -> AudioNode {
+    let props = props(&[("node.name", name), ("object.serial", serial)]);
+    AudioNode::new(id, NodeType::Sink, props.dict()).unwrap()
+  }
+
+  #[test]
+  fn objects_parse_from_pods() {
+    assert_eq!(parse_object(None), None);
+    // a pod that is not an object
+    let int = PodSerializerBytes::int(5);
+    assert_eq!(parse(pod(&int)), None);
+    let bytes = volume_props(vec![0.5], true);
+    let object = parse(pod(&bytes)).unwrap();
+    assert_eq!(object.properties.len(), 2);
+  }
+
+  /// a bare int pod
+  struct PodSerializerBytes;
+  impl PodSerializerBytes {
+    fn int(value: i32) -> Vec<u8> {
+      pipewire::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &Value::Int(value),
+      )
+      .unwrap()
+      .0
+      .into_inner()
+    }
+  }
+
+  #[test]
+  fn metadata_sets_defaults_and_pins() {
+    let (tx, rx) = flume::unbounded();
+    let state = PipewireState::new();
+    state.audio.nodes.insert(54, sink(54, "speaker", "62"));
+    let listen = metadata_property_listener(state.clone(), tx);
+
+    assert_eq!(
+      listen(
+        0,
+        Some("default.audio.sink"),
+        Some("Spa:String:JSON"),
+        Some(r#"{"name":"speaker"}"#)
+      ),
+      0
+    );
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::DefaultSink(Some(n)) if n.id == 54));
+    // cleared
+    listen(0, Some("default.audio.sink"), None, None);
+    assert!(matches!(
+      rx.try_recv().unwrap(),
+      AudioEvent::DefaultSink(None)
+    ));
+    // junk names clear too, a second clear is no change
+    listen(0, Some("default.audio.sink"), None, Some("not json"));
+    assert!(rx.try_recv().is_err());
+
+    listen(
+      0,
+      Some("default.audio.source"),
+      None,
+      Some(r#"{"name":"mic"}"#),
+    );
+    assert!(matches!(
+      rx.try_recv().unwrap(),
+      AudioEvent::DefaultSource(None)
+    ));
+    assert_eq!(
+      state
+        .audio
+        .defaults
+        .get(&NodeType::Source)
+        .map(|n| n.clone()),
+      Some("mic".into())
+    );
+
+    // pins come quoted or bare
+    listen(110, Some("target.object"), None, Some("\"speaker\""));
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.get(&110) == Some(&54)));
+    listen(111, Some("target.object"), None, Some("62"));
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.get(&111) == Some(&54)));
+    listen(111, Some("target.object"), None, None);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.len() == 1));
+
+    // other keys and a cleared everything are ignored
+    listen(
+      0,
+      Some("default.configured.audio.sink"),
+      None,
+      Some(r#"{"name":"x"}"#),
+    );
+    listen(0, None, None, None);
+    assert!(rx.try_recv().is_err());
+  }
+
+  #[test]
+  fn props_params_update_the_node() {
+    let (tx, rx) = flume::unbounded();
+    let state = PipewireState::new();
+    state.audio.nodes.insert(54, sink(54, "speaker", "62"));
+    let listen = node_props_listener(54, state.clone(), tx);
+
+    let bytes = volume_props(vec![0.5, 0.25], true);
+    listen(0, ParamType::Props, 0, 0, Some(pod(&bytes)));
+    let node = state.audio.nodes.get(&54).unwrap().clone();
+    assert_eq!(
+      (node.volumes.as_slice(), node.mute),
+      ([0.5, 0.25].as_slice(), true)
+    );
+    assert_eq!(rx.len(), 3);
+
+    // other params, no param and junk are ignored
+    let _ = rx.drain();
+    listen(0, ParamType::Route, 0, 0, Some(pod(&bytes)));
+    listen(0, ParamType::Props, 0, 0, None);
+    let int = PodSerializerBytes::int(1);
+    listen(0, ParamType::Props, 0, 0, Some(pod(&int)));
+    assert!(rx.is_empty());
+
+    // an unknown node is ignored
+    let other = node_props_listener(99, state.clone(), flume::unbounded().0);
+    other(0, ParamType::Props, 0, 0, Some(pod(&bytes)));
+  }
+
+  #[test]
+  fn routes_are_remembered_per_device() {
+    let handles = Handles::default();
+    let listen = device_route_listener(7, handles.clone());
+    let index = |i| Property::new(sys::SPA_PARAM_ROUTE_index, Value::Int(i));
+    let device = |d| Property::new(sys::SPA_PARAM_ROUTE_device, Value::Int(d));
+
+    listen(
+      0,
+      ParamType::Route,
+      0,
+      0,
+      Some(pod(&route(vec![index(3), device(1)]))),
+    );
+    assert_eq!(handles.route(7, 1), Some(3));
+    // a route moving to another index replaces it
+    listen(
+      0,
+      ParamType::Route,
+      0,
+      0,
+      Some(pod(&route(vec![device(1), index(4)]))),
+    );
+    assert_eq!(handles.route(7, 1), Some(4));
+
+    // incomplete or mistyped routes and other params are ignored
+    listen(0, ParamType::Route, 0, 0, Some(pod(&route(vec![index(5)]))));
+    listen(
+      0,
+      ParamType::Route,
+      0,
+      0,
+      Some(pod(&route(vec![device(2)]))),
+    );
+    let wrong = Property::new(sys::SPA_PARAM_ROUTE_index, Value::Long(1));
+    listen(
+      0,
+      ParamType::Route,
+      0,
+      0,
+      Some(pod(&route(vec![wrong, device(3)]))),
+    );
+    listen(
+      0,
+      ParamType::Props,
+      0,
+      0,
+      Some(pod(&route(vec![index(6), device(4)]))),
+    );
+    listen(0, ParamType::Route, 0, 0, None);
+    assert_eq!(handles.0.borrow().routes.len(), 1);
+    assert_eq!(handles.route(8, 1), None);
+  }
+
+  #[test]
+  fn removal_forgets_nodes_pins_and_captures() {
+    let (tx, rx) = flume::unbounded();
+    let state = PipewireState::new();
+    let handles = with_route(7, 1, 3);
+    state.audio.nodes.insert(54, sink(54, "speaker", "62"));
+    state.audio.targets.insert(54, "x".into());
+    let screen = props(&[("application.name", "OBS")]);
+    state
+      .captures
+      .insert(200, "Stream/Output/Video", screen.dict());
+    let remove = global_remove_listener(handles.clone(), state.clone(), tx);
+
+    // a capture: only the capture list moves
+    remove(200);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c.is_empty()));
+    assert!(rx.is_empty());
+
+    // a sink: its slices move and its own pin is gone
+    remove(54);
+    assert!(state.audio.targets.is_empty());
+    let events: Vec<_> = rx.drain().collect();
+    assert!(matches!(&events[0], AudioEvent::Nodes(NodeType::Sink, n) if n.is_empty()));
+    assert_eq!(events.len(), 3);
+
+    // unknown ids are fine
+    remove(12345);
+    assert!(rx.is_empty());
+  }
+
+  #[test]
+  fn handles_without_proxies_fail() {
+    let handles = Handles::default();
+    let bytes = volume_props(vec![1.], false);
+    assert_eq!(
+      handles
+        .set_node_param(1, pod(&bytes))
+        .unwrap_err()
+        .to_string(),
+      "No such node"
+    );
+    assert_eq!(
+      handles
+        .set_device_param(1, pod(&bytes))
+        .unwrap_err()
+        .to_string(),
+      "No such device"
+    );
+    assert_eq!(
+      handles
+        .set_metadata(0, "k", None, None)
+        .unwrap_err()
+        .to_string(),
+      "No default metadata"
+    );
+  }
 
   #[test]
   fn a_default_is_named_inside_json() {

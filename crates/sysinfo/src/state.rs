@@ -117,3 +117,125 @@ impl History {
     }
   }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+  use super::*;
+
+  pub(crate) fn sample() -> Sample {
+    Sample {
+      time: Instant::now(),
+      cpu: 10.,
+      cpu_cores: vec![10.],
+      cpu_frequency: 1000,
+      cpu_temperature: Some(40.),
+      memory_used: 1,
+      memory_total: 4,
+      swap_used: 0,
+      swap_total: 0,
+      load: [0.; 3],
+      network_rx: 1.,
+      network_tx: 2.,
+      disks: vec![],
+      gpus: vec![GpuSample {
+        pci: "a".into(),
+        usage: Some(30.),
+        temperature: Some(60.),
+        vram_used: Some(2),
+        vram_total: Some(8),
+      }],
+    }
+  }
+
+  #[test]
+  fn history_records_every_series() {
+    let mut history = History::default();
+    history.push(&sample(), 60);
+    assert_eq!(
+      history,
+      History {
+        cpu: [10.].into(),
+        cpu_temperature: [40.].into(),
+        memory: [25.].into(),
+        network_rx: [1.].into(),
+        network_tx: [2.].into(),
+        gpu: [30.].into(),
+        gpu_memory: [25.].into(),
+        gpu_temperature: [60.].into(),
+      }
+    );
+  }
+
+  #[test]
+  fn history_keeps_the_newest() {
+    let mut history = History::default();
+    for cpu in 0..10 {
+      history.push(
+        &Sample {
+          cpu: cpu as f32,
+          ..sample()
+        },
+        3,
+      );
+    }
+    assert_eq!(history.cpu, [7., 8., 9.]);
+    assert_eq!(history.memory.len(), 3);
+    assert_eq!(history.gpu_temperature.len(), 3);
+    // capacity 0 keeps nothing
+    let mut empty = History::default();
+    empty.push(&sample(), 0);
+    assert_eq!(empty, History::default());
+  }
+
+  #[test]
+  fn history_skips_what_is_missing() {
+    let mut history = History::default();
+    let mut s = sample();
+    s.memory_total = 0;
+    s.cpu_temperature = None;
+    s.gpus[0] = GpuSample {
+      pci: "a".into(),
+      usage: None,
+      temperature: None,
+      vram_used: Some(5),
+      vram_total: Some(0),
+    };
+    // only the first GPU counts
+    s.gpus.push(GpuSample {
+      usage: Some(99.),
+      ..sample().gpus[0].clone()
+    });
+    history.push(&s, 60);
+    assert_eq!(history.memory, [0.]);
+    assert!(history.cpu_temperature.is_empty());
+    assert!(history.gpu.is_empty() && history.gpu_memory.is_empty());
+    assert!(history.gpu_temperature.is_empty());
+
+    let mut no_gpu = History::default();
+    no_gpu.push(
+      &Sample {
+        gpus: vec![],
+        ..sample()
+      },
+      60,
+    );
+    assert!(no_gpu.gpu.is_empty());
+    assert_eq!(no_gpu.cpu.len(), 1);
+  }
+
+  #[test]
+  #[ignore = "BUG: a sample without a temperature is skipped, so older temperatures drift against cpu in the end-aligned charts"]
+  fn bug_series_stay_aligned() {
+    let mut history = History::default();
+    history.push(&sample(), 60);
+    history.push(
+      &Sample {
+        cpu_temperature: None,
+        ..sample()
+      },
+      60,
+    );
+    history.push(&sample(), 60);
+    assert_eq!(history.cpu.len(), history.cpu_temperature.len());
+  }
+}

@@ -245,4 +245,38 @@ mod tests {
       EntryTitle::Other("Rescue".into())
     );
   }
+
+  #[test]
+  fn title_edges() {
+    assert_eq!(
+      entry_title("nixos-generation-"),
+      EntryTitle::NixosGeneration("".into())
+    );
+    assert_eq!(
+      entry_title("nixos-generation-12"),
+      EntryTitle::NixosGeneration("12".into())
+    );
+    assert_eq!(entry_title(""), EntryTitle::Other("".into()));
+    assert_eq!(
+      entry_title("arch_linux-lts.conf"),
+      EntryTitle::Other("Arch linux lts".into())
+    );
+    assert_eq!(
+      entry_title("auto-reboot-to-firmware-setup"),
+      EntryTitle::Other("Reboot to firmware setup".into())
+    );
+    // a first letter that is not ASCII stays as it is
+    assert_eq!(entry_title("über.conf"), EntryTitle::Other("über".into()));
+    assert_eq!(entry_title("x.conf.conf"), EntryTitle::Other("X".into()));
+  }
+
+  #[test]
+  fn allowed_answers() {
+    assert!(super::allowed(Ok("yes".into())));
+    assert!(super::allowed(Ok("challenge".into())));
+    for no in ["no", "na", "", "YES"] {
+      assert!(!super::allowed(Ok(no.into())), "{no}");
+    }
+    assert!(!super::allowed(Err(zbus::Error::InvalidReply)));
+  }
 }

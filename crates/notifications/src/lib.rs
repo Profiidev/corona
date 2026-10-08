@@ -229,3 +229,304 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   cx.set_global(state);
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_utils::test_bus::{TestBus, settle, wait_until};
+  use futures_lite::future::block_on;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use zbus::{MatchRule, MessageStream, message::Type};
+
+  use super::*;
+
+  struct Running {
+    _bus: TestBus,
+    /// an app sending notifications
+    client: Connection,
+    signals: MessageStream,
+  }
+
+  fn start(cx: &mut TestAppContext, serve: bool) -> Running {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let (conn, client) = block_on(async { (bus.conn().await, bus.conn().await) });
+    let rule = MatchRule::builder()
+      .msg_type(Type::Signal)
+      .interface(NAME)
+      .unwrap()
+      .build();
+    let signals = block_on(MessageStream::for_match_rule(rule, &client, None)).unwrap();
+    cx.update(|cx| {
+      cx.foreground_executor()
+        .clone()
+        .block_on(init(cx, &conn, serve))
+        .unwrap()
+    });
+    Running {
+      _bus: bus,
+      client,
+      signals,
+    }
+  }
+
+  fn notify(
+    client: &Connection,
+    summary: &str,
+    replaces: u32,
+    actions: &[&str],
+    hints: HashMap<&str, Value<'_>>,
+  ) -> u32 {
+    let reply = block_on(client.call_method(
+      Some(NAME),
+      PATH,
+      Some(NAME),
+      "Notify",
+      &(
+        "app",
+        replaces,
+        "",
+        summary,
+        "body",
+        actions.to_vec(),
+        hints,
+        -1i32,
+      ),
+    ))
+    .unwrap();
+    reply.body().deserialize().unwrap()
+  }
+
+  /// the next signal: its member, id and second argument. The shell sends
+  /// signals from background tasks, so the app runs while waiting.
+  fn next_signal(cx: &mut TestAppContext, running: &mut Running) -> (String, u32, String) {
+    let mut message = None;
+    wait_until(cx, |_| {
+      message = block_on(futures_lite::future::poll_once(running.signals.next())).flatten();
+      message.is_some()
+    });
+    let message = message.unwrap().unwrap();
+    let member = message.header().member().unwrap().to_string();
+    let body = message.body();
+    if member == "NotificationClosed" {
+      let (id, reason): (u32, u32) = body.deserialize().unwrap();
+      return (member, id, reason.to_string());
+    }
+    let (id, key): (u32, String) = body.deserialize().unwrap();
+    (member, id, key)
+  }
+
+  fn ids(cx: &mut TestAppContext) -> Vec<u32> {
+    cx.read(|cx| cx.notifications().list(cx).iter().map(|n| n.id).collect())
+  }
+
+  #[gpui::test]
+  fn serves_notifications(cx: &mut TestAppContext) {
+    let running = start(cx, true);
+    cx.read(|cx| assert!(cx.notifications().active(cx)));
+    let first = notify(&running.client, "one", 0, &[], HashMap::new());
+    let second = notify(&running.client, "two", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [second, first]);
+    // a replacement moves to the front and is unread
+    cx.update(|cx| cx.notifications().clone().mark_all_read(cx));
+    cx.read(|cx| assert!(!cx.notifications().has_unread(cx)));
+    notify(&running.client, "one again", first, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [first, second]);
+    cx.read(|cx| {
+      let notifications = cx.notifications();
+      assert!(notifications.has_unread(cx));
+      assert_eq!(notifications.list(cx)[0].summary, "one again");
+    });
+  }
+
+  #[gpui::test]
+  fn read_state(cx: &mut TestAppContext) {
+    let running = start(cx, true);
+    let a = notify(&running.client, "a", 0, &[], HashMap::new());
+    let b = notify(&running.client, "b", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx).len() == 2);
+    cx.update(|cx| cx.notifications().clone().mark_read(a, cx));
+    cx.read(|cx| {
+      let list = cx.notifications().list(cx);
+      assert!(list.iter().find(|n| n.id == a).unwrap().read);
+      assert!(!list.iter().find(|n| n.id == b).unwrap().read);
+    });
+    // unknown ids and repeats are fine
+    cx.update(|cx| {
+      cx.notifications().clone().mark_read(999, cx);
+      cx.notifications().clone().mark_read(b, cx);
+      cx.notifications().clone().mark_read(b, cx);
+    });
+    cx.read(|cx| assert!(!cx.notifications().has_unread(cx)));
+
+    cx.update(|cx| cx.notifications().clone().set_do_not_disturb(true, cx));
+    cx.read(|cx| assert!(cx.notifications().do_not_disturb(cx)));
+  }
+
+  #[gpui::test]
+  fn apps_close_their_notifications(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let id = notify(&running.client, "a", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [id]);
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(id,)),
+    )
+    .unwrap();
+    wait_until(cx, |cx| ids(cx).is_empty());
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), id, "3".into())
+    );
+  }
+
+  #[gpui::test]
+  fn dismissing_tells_the_app(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let a = notify(&running.client, "a", 0, &[], HashMap::new());
+    let b = notify(&running.client, "b", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx).len() == 2);
+    cx.update(|cx| cx.notifications().clone().dismiss(a, cx));
+    assert_eq!(ids(cx), [b]);
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), a, "2".into())
+    );
+    cx.update(|cx| cx.notifications().clone().clear_all(cx));
+    assert!(ids(cx).is_empty());
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), b, "2".into())
+    );
+  }
+
+  #[gpui::test]
+  fn actions(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let plain = notify(
+      &running.client,
+      "a",
+      0,
+      &["default", "Open"],
+      HashMap::new(),
+    );
+    let resident = notify(
+      &running.client,
+      "b",
+      0,
+      &["play", "Play"],
+      HashMap::from([("resident", Value::from(true))]),
+    );
+    wait_until(cx, |cx| ids(cx).len() == 2);
+
+    cx.update(|cx| {
+      cx.notifications()
+        .clone()
+        .invoke_action(resident, "play", cx)
+    });
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("ActionInvoked".into(), resident, "play".into())
+    );
+    assert_eq!(ids(cx).len(), 2);
+
+    cx.update(|cx| {
+      cx.notifications()
+        .clone()
+        .invoke_action(plain, "default", cx)
+    });
+    let mut signals = vec![next_signal(cx, &mut running), next_signal(cx, &mut running)];
+    signals.sort();
+    assert_eq!(
+      signals,
+      [
+        ("ActionInvoked".into(), plain, "default".into()),
+        ("NotificationClosed".into(), plain, "2".into()),
+      ]
+    );
+    assert_eq!(ids(cx), [resident]);
+
+    // an unknown id does nothing
+    cx.update(|cx| cx.notifications().clone().invoke_action(999, "default", cx));
+    settle(cx);
+    assert_eq!(ids(cx), [resident]);
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: ActionInvoked and NotificationClosed go out from two tasks, the close can arrive first"]
+  fn bug_action_comes_before_close(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let plain = notify(
+      &running.client,
+      "a",
+      0,
+      &["default", "Open"],
+      HashMap::new(),
+    );
+    wait_until(cx, |cx| ids(cx).len() == 1);
+    cx.update(|cx| {
+      cx.notifications()
+        .clone()
+        .invoke_action(plain, "default", cx)
+    });
+    assert_eq!(next_signal(cx, &mut running).0, "ActionInvoked");
+  }
+
+  #[gpui::test]
+  fn send_goes_to_the_daemon(cx: &mut TestAppContext) {
+    let _running = start(cx, true);
+    let task = cx.read(|cx| cx.notifications().send("Hi".into(), "there".into()));
+    block_on(task).unwrap();
+    wait_until(cx, |cx| ids(cx).len() == 1);
+    cx.read(|cx| {
+      let n = &cx.notifications().list(cx)[0];
+      assert_eq!(
+        (n.app_name.as_str(), n.summary.as_str(), n.body.as_str()),
+        ("corona", "Hi", "there")
+      );
+    });
+  }
+
+  #[gpui::test]
+  fn without_serving(cx: &mut TestAppContext) {
+    let running = start(cx, false);
+    cx.read(|cx| assert!(!cx.notifications().active(cx)));
+    // nobody answers
+    let task = cx.read(|cx| cx.notifications().send("Hi".into(), "there".into()));
+    assert!(block_on(task).is_err());
+    drop(running);
+  }
+
+  #[gpui::test]
+  fn takes_over_from_another_daemon(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let other = block_on(async {
+      let other = bus.conn().await;
+      other.request_name(NAME).await.unwrap();
+      other
+    });
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      cx.foreground_executor()
+        .clone()
+        .block_on(init(cx, &conn, true))
+        .unwrap()
+    });
+    cx.read(|cx| assert!(!cx.notifications().active(cx)));
+    // queued: corona gets the name once the other daemon leaves
+    drop(other);
+    wait_until(cx, |cx| cx.read(|cx| cx.notifications().active(cx)));
+    // and gives it up to one that replaces it
+    let replacing = block_on(async {
+      let replacing = bus.conn().await;
+      replacing
+        .request_name_with_flags(NAME, RequestNameFlags::ReplaceExisting.into())
+        .await
+        .unwrap();
+      replacing
+    });
+    wait_until(cx, |cx| !cx.read(|cx| cx.notifications().active(cx)));
+    drop(replacing);
+  }
+}

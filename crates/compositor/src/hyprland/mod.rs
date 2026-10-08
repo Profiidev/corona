@@ -9,6 +9,8 @@ mod command;
 mod cursor;
 mod encoding;
 mod event;
+#[cfg(test)]
+pub(crate) mod fake;
 mod keyboard;
 mod monitor;
 mod windows;

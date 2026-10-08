@@ -108,4 +108,94 @@ mod tests {
     assert_eq!(left, ["recent.body", "recent.meta"]);
     fs::remove_dir_all(dir).ok();
   }
+
+  fn meta(expires: u64, etag: Option<&str>) -> Meta {
+    Meta {
+      url: "u".into(),
+      expires,
+      etag: etag.map(Into::into),
+      last_modified: None,
+      content_type: None,
+    }
+  }
+
+  fn names(dir: &Path) -> Vec<String> {
+    let mut left: Vec<_> = fs::read_dir(dir)
+      .unwrap()
+      .map(|e| e.unwrap().file_name().into_string().unwrap())
+      .collect();
+    left.sort();
+    left
+  }
+
+  #[test]
+  fn temp_files_are_removed_once_stale() {
+    let dir = temp_dir("cleanup-tmp");
+    fs::write(dir.join("a.body.1.0.tmp"), b"x").unwrap();
+    let stale = dir.join("b.meta.1.1.tmp");
+    fs::write(&stale, b"x").unwrap();
+    fs::File::options()
+      .write(true)
+      .open(&stale)
+      .unwrap()
+      .set_modified(SystemTime::now() - STALE_TEMP - Duration::from_secs(1))
+      .unwrap();
+    super::cleanup(&dir, MAX_SIZE, 0).unwrap();
+    assert_eq!(names(&dir), ["a.body.1.0.tmp"]);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn half_and_unreadable_entries_are_removed() {
+    let dir = temp_dir("cleanup-half");
+    write_entry(&dir.join("ok"), &meta(500, None), b"x").unwrap();
+    crate::store::write_meta(&dir.join("no-body"), &meta(500, None)).unwrap();
+    fs::write(dir.join("garbage.meta"), b"nope").unwrap();
+    fs::write(dir.join("garbage.body"), b"x").unwrap();
+    fs::write(dir.join("other.txt"), b"x").unwrap();
+    fs::create_dir(dir.join("subdir")).unwrap();
+    super::cleanup(&dir, MAX_SIZE, 100).unwrap();
+    assert_eq!(names(&dir), ["ok.body", "ok.meta", "other.txt", "subdir"]);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn expiry_is_inclusive() {
+    let dir = temp_dir("cleanup-expiry");
+    write_entry(&dir.join("now"), &meta(100, None), b"x").unwrap();
+    write_entry(&dir.join("later"), &meta(101, None), b"x").unwrap();
+    super::cleanup(&dir, MAX_SIZE, 100).unwrap();
+    assert_eq!(names(&dir), ["later.body", "later.meta"]);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  #[ignore = "BUG: cleanup deletes expired entries that could still be revalidated (no-cache + ETag)"]
+  fn bug_revalidatable_entries_survive_cleanup() {
+    let dir = temp_dir("cleanup-revalidatable");
+    // what `storable` keeps for `no-cache` + ETag: expires == now
+    write_entry(&dir.join("art"), &meta(100, Some("\"v1\"")), b"x").unwrap();
+    super::cleanup(&dir, MAX_SIZE, 200).unwrap();
+    assert_eq!(names(&dir), ["art.body", "art.meta"]);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn shrinking() {
+    let dir = temp_dir("cleanup-shrink");
+    write_entry(&dir.join("a"), &meta(500, None), &[0; 10]).unwrap();
+    let size: u64 = fs::read_dir(&dir)
+      .unwrap()
+      .map(|e| e.unwrap().metadata().unwrap().len())
+      .sum();
+    // exactly at the limit nothing goes
+    super::cleanup(&dir, size, 0).unwrap();
+    assert_eq!(names(&dir).len(), 2);
+    super::cleanup(&dir, size - 1, 0).unwrap();
+    assert!(names(&dir).is_empty());
+    // an empty dir is fine, a missing one is an error
+    super::cleanup(&dir, 0, 0).unwrap();
+    assert!(super::cleanup(&dir.join("missing"), 0, 0).is_err());
+    fs::remove_dir_all(dir).ok();
+  }
 }

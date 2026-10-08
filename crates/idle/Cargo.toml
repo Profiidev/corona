@@ -11,3 +11,12 @@ tracing.workspace = true
 rustix = { workspace = true, features = ["event"] }
 wayland-client.workspace = true
 wayland-protocols.workspace = true
+
+[features]
+test-support = []
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+wayland-server = "0.31"
+wayland-protocols = { workspace = true, features = ["server"] }
+tempfile = "3"

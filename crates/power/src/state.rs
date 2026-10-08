@@ -87,4 +87,52 @@ mod tests {
     assert!(is_peripheral(BatteryType::Mouse, false));
     assert!(!is_peripheral(BatteryType::LinePower, false));
   }
+
+  fn profiles(active: &str, available: &[&str]) -> Profiles {
+    Profiles {
+      active: active.into(),
+      available: available.iter().map(|a| a.to_string()).collect(),
+      degraded: None,
+    }
+  }
+
+  #[test]
+  fn next_profile() {
+    let all = ["power-saver", "balanced", "performance"];
+    assert_eq!(
+      profiles("power-saver", &all).next().map(String::as_str),
+      Some("balanced")
+    );
+    assert_eq!(
+      profiles("performance", &all).next().map(String::as_str),
+      Some("power-saver")
+    );
+    assert_eq!(
+      profiles("balanced", &["balanced"])
+        .next()
+        .map(String::as_str),
+      Some("balanced")
+    );
+    assert_eq!(profiles("custom", &all).next(), None);
+    assert_eq!(profiles("balanced", &[]).next(), None);
+  }
+
+  #[test]
+  fn helper_edges() {
+    assert_eq!(duration(-5), None);
+    assert_eq!(
+      duration(i64::MAX),
+      Some(Duration::from_secs(i64::MAX as u64))
+    );
+    assert!(!is_peripheral(BatteryType::Unknown, false));
+    assert!(!is_peripheral(BatteryType::Mouse, true));
+    for kind in [
+      BatteryType::Battery,
+      BatteryType::Ups,
+      BatteryType::Headset,
+      BatteryType::BluetoothGeneric,
+    ] {
+      assert!(is_peripheral(kind, false), "{kind:?}");
+    }
+  }
 }

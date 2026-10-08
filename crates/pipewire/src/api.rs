@@ -141,3 +141,242 @@ impl Pipewire {
     self.targets.read(cx).get(&stream).copied()
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{cell::Cell, rc::Rc};
+
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use super::*;
+  use crate::{
+    PipewireExt,
+    command::Target,
+    testing::{Commands, props},
+  };
+
+  fn node(id: u32, kind: NodeType, name: &str, pairs: &[(&str, &str)]) -> AudioNode {
+    let mut all = vec![("node.name", name)];
+    all.extend_from_slice(pairs);
+    AudioNode::new(id, kind, props(&all).dict()).unwrap()
+  }
+
+  struct Running {
+    events: flume::Sender<AudioEvent>,
+    commands: Commands,
+    state: PipewireState,
+  }
+
+  fn start(cx: &mut TestAppContext) -> Running {
+    let state = PipewireState::new();
+    state.audio.nodes.insert(
+      54,
+      node(54, NodeType::Sink, "speaker", &[("device.id", "47")]),
+    );
+    state
+      .audio
+      .nodes
+      .insert(60, node(60, NodeType::Source, "mic", &[]));
+    state
+      .audio
+      .nodes
+      .insert(110, node(110, NodeType::Stream, "spotify", &[]));
+    state
+      .audio
+      .defaults
+      .insert(NodeType::Sink, "speaker".into());
+    let screen = props(&[]);
+    state.captures.insert(300, "Video/Source", screen.dict());
+    let (tx, commands) = Commands::new();
+    let (events, rx) = flume::unbounded();
+    let thread_state = state.clone();
+    cx.update(|cx| {
+      let pipewire = Pipewire::new(cx, tx, thread_state, rx);
+      cx.set_global(pipewire);
+    });
+    Running {
+      events,
+      commands,
+      state,
+    }
+  }
+
+  #[gpui::test]
+  fn starts_from_the_state(cx: &mut TestAppContext) {
+    let _running = start(cx);
+    cx.read(|cx| {
+      let pipewire = cx.pipewire();
+      assert_eq!(pipewire.list_sinks(cx).len(), 1);
+      assert_eq!(pipewire.list_sources(cx)[0].name, "mic");
+      assert_eq!(pipewire.list_streams(cx)[0].id, 110);
+      assert_eq!(pipewire.default_sink(cx).unwrap().id, 54);
+      assert_eq!(pipewire.default_source(cx), None);
+      assert_eq!(pipewire.target(110, cx), None);
+      // the share that was running at startup is logged
+      assert!(pipewire.is_capturing(CaptureKind::Screen, cx));
+      assert_eq!(pipewire.capture_log(cx).len(), 1);
+    });
+  }
+
+  #[gpui::test]
+  fn events_update_the_entities(cx: &mut TestAppContext) {
+    let running = start(cx);
+    let sinks = cx.read(|cx| cx.pipewire().sinks.clone());
+    let notified = Rc::new(Cell::new(0));
+    let count = notified.clone();
+    cx.update(|cx| {
+      cx.observe(&sinks, move |_, _| count.set(count.get() + 1))
+        .detach()
+    });
+
+    let headset = node(70, NodeType::Sink, "headset", &[]);
+    let send = |event| running.events.send(event).unwrap();
+    send(AudioEvent::Nodes(NodeType::Sink, vec![headset.clone()]));
+    send(AudioEvent::Nodes(NodeType::Sink, vec![headset.clone()]));
+    send(AudioEvent::Nodes(NodeType::Source, vec![]));
+    send(AudioEvent::Nodes(NodeType::Stream, vec![]));
+    send(AudioEvent::DefaultSink(Some(headset.clone())));
+    send(AudioEvent::DefaultSource(Some(headset.clone())));
+    send(AudioEvent::Targets(HashMap::from([(110, 70)])));
+    cx.run_until_parked();
+    // the same list again is no change
+    assert_eq!(notified.get(), 1);
+    cx.read(|cx| {
+      let pipewire = cx.pipewire();
+      assert_eq!(pipewire.list_sinks(cx), std::slice::from_ref(&headset));
+      assert!(pipewire.list_sources(cx).is_empty() && pipewire.list_streams(cx).is_empty());
+      assert_eq!(pipewire.default_sink(cx).unwrap().id, 70);
+      assert_eq!(pipewire.default_source(cx).unwrap().id, 70);
+      assert_eq!(pipewire.target(110, cx), Some(70));
+      assert_eq!(pipewire.target(111, cx), None);
+    });
+  }
+
+  fn capture(id: u32, kind: CaptureKind, name: &str, active: bool) -> Capture {
+    Capture {
+      id,
+      kind,
+      name: name.into(),
+      active,
+    }
+  }
+
+  #[gpui::test]
+  fn captures_and_their_log(cx: &mut TestAppContext) {
+    let running = start(cx);
+    let log = cx.read(|cx| cx.pipewire().capture_log.clone());
+    let notified = Rc::new(Cell::new(0));
+    let count = notified.clone();
+    cx.update(|cx| {
+      cx.observe(&log, move |_, _| count.set(count.get() + 1))
+        .detach()
+    });
+
+    let captures = vec![
+      capture(1, CaptureKind::Microphone, "Zoom", true),
+      capture(2, CaptureKind::Microphone, "Discord", true),
+      capture(3, CaptureKind::Microphone, "Zoom", true),
+      capture(4, CaptureKind::Microphone, "", true),
+      capture(5, CaptureKind::Camera, "Zoom", false),
+    ];
+    running
+      .events
+      .send(AudioEvent::Captures(captures.clone()))
+      .unwrap();
+    cx.run_until_parked();
+    cx.read(|cx| {
+      let pipewire = cx.pipewire();
+      // sorted, unique, named and active only
+      assert_eq!(
+        pipewire.capturing(CaptureKind::Microphone, cx),
+        ["Discord", "Zoom"]
+      );
+      assert!(pipewire.capturing(CaptureKind::Camera, cx).is_empty());
+      assert!(!pipewire.is_capturing(CaptureKind::Camera, cx));
+      assert!(!pipewire.is_capturing(CaptureKind::Screen, cx));
+      assert_eq!(pipewire.list_captures(cx), captures);
+      // the screen share ended, three named mics started
+      let log = pipewire.capture_log(cx);
+      assert_eq!(log.len(), 4);
+      assert!(
+        log
+          .iter()
+          .any(|e| e.kind == CaptureKind::Screen && e.ended.is_some())
+      );
+    });
+    assert_eq!(notified.get(), 1);
+    // the same captures again change no log
+    running.events.send(AudioEvent::Captures(captures)).unwrap();
+    cx.run_until_parked();
+    assert_eq!(notified.get(), 1);
+  }
+
+  #[gpui::test]
+  fn audio_commands(cx: &mut TestAppContext) {
+    let running = start(cx);
+    // the sink has a card route once its info names the profile device
+    running
+      .state
+      .audio
+      .nodes
+      .get_mut(&54)
+      .unwrap()
+      .profile_device = Some(1);
+    cx.read(|cx| {
+      let audio = cx.pipewire().audio();
+      assert_eq!(audio.node(54).unwrap().name, "speaker");
+      assert!(audio.node(1).is_none());
+      audio.set_default(60).unwrap();
+      audio.set_target(110, 54).unwrap();
+      audio.reset_target(110).unwrap();
+      audio.set_volumes(54, vec![0.5, 0.5]).unwrap();
+      audio.set_mute(110, true).unwrap();
+      for error in [
+        audio.set_default(1),
+        audio.set_target(110, 1),
+        audio.set_volumes(1, vec![]),
+        audio.set_mute(1, true),
+      ] {
+        assert_eq!(error.unwrap_err().to_string(), "No such audio node");
+      }
+    });
+    let sent: Vec<String> = running
+      .commands
+      .take()
+      .iter()
+      .map(|c| format!("{c:?}"))
+      .collect();
+    assert_eq!(
+      sent,
+      [
+        "SetDefault { kind: Source, name: \"mic\" }",
+        "SetTarget { node: 110, name: Some(\"speaker\") }",
+        "SetTarget { node: 110, name: None }",
+        format!(
+          "SetVolumes {{ target: {:?}, volumes: [0.5, 0.5] }}",
+          Target::Route {
+            node: 54,
+            device: 47,
+            profile_device: 1
+          }
+        )
+        .as_str(),
+        "SetMute { target: Node(110), mute: true }",
+      ]
+    );
+  }
+
+  #[gpui::test]
+  fn a_device_without_a_profile_is_written_on_the_node(cx: &mut TestAppContext) {
+    let running = start(cx);
+    cx.read(|cx| cx.pipewire().audio().set_mute(54, false).unwrap());
+    let sent = running.commands.take();
+    assert!(matches!(
+      sent.as_slice(),
+      [Command::SetMute {
+        target: Target::Node(54),
+        mute: false
+      }]
+    ));
+  }
+}

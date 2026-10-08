@@ -10,3 +10,7 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-mpris2 = "0.1.0"
+
+[dev-dependencies]
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }

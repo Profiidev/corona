@@ -356,3 +356,38 @@ pub async fn read_access_point(ap: &AccessPoint<'_>) -> Result<AccessPointInfo> 
     enterprise,
   })
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn fail_reasons() {
+    assert_eq!(FailReason::from(7), FailReason::NoSecrets);
+    assert_eq!(FailReason::from(53), FailReason::SsidNotFound);
+    assert_eq!(FailReason::from(0), FailReason::Other(0));
+    assert_eq!(FailReason::from(u32::MAX), FailReason::Other(u32::MAX));
+  }
+
+  #[test]
+  fn statuses_sort_by_relevance() {
+    let mut all = [
+      WifiStatus::New,
+      WifiStatus::Saved,
+      WifiStatus::Connecting,
+      WifiStatus::NeedAuth,
+      WifiStatus::Connected,
+    ];
+    all.sort();
+    assert_eq!(
+      all,
+      [
+        WifiStatus::Connected,
+        WifiStatus::NeedAuth,
+        WifiStatus::Connecting,
+        WifiStatus::Saved,
+        WifiStatus::New
+      ]
+    );
+  }
+}

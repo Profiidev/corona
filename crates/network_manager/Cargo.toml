@@ -15,3 +15,8 @@ serde.workspace = true
 ts-rs.workspace = true
 corona-zbus-networkmanager = "0.1.0"
 corona-zbus-nm-secret-agent-manager = "0.1.0"
+
+[dev-dependencies]
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true

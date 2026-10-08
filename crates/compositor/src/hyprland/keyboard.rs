@@ -37,5 +37,22 @@ mod tests {
     let no_main = r#"{ "keyboards": [{ "active_keymap": "German", "main": false }] }"#;
     assert_eq!(super::layout(devices(no_main)).as_deref(), Some("German"));
     assert_eq!(super::layout(devices(r#"{ "keyboards": [] }"#)), None);
+    // the first main keyboard wins
+    let two_main = r#"{ "keyboards": [
+      { "active_keymap": "French", "main": true },
+      { "active_keymap": "German", "main": true }
+    ] }"#;
+    assert_eq!(super::layout(devices(two_main)).as_deref(), Some("French"));
+  }
+
+  #[test]
+  fn keyboard_layout_over_ipc() {
+    let hypr = crate::hyprland::fake::FakeHyprland::start();
+    assert_eq!(
+      hypr.ipc().keyboard_layout().unwrap().as_deref(),
+      Some("German")
+    );
+    hypr.answer("j/devices", r#"{"mice": []}"#);
+    assert!(hypr.ipc().keyboard_layout().is_err());
   }
 }

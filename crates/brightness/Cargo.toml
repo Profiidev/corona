@@ -11,3 +11,12 @@ zbus.workspace = true
 anyhow.workspace = true
 flume.workspace = true
 tracing.workspace = true
+
+[features]
+test-support = []
+
+[dev-dependencies]
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile = "3"
+futures-lite.workspace = true

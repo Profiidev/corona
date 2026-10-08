@@ -271,7 +271,226 @@ fn menu_item(value: &OwnedValue) -> Result<MenuItem> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+  use zbus::zvariant::Value;
+
+  use super::*;
+  use crate::state::Toggle;
+
+  pub(crate) fn owned(value: Value<'_>) -> OwnedValue {
+    value.try_to_owned().unwrap()
+  }
+
+  fn props(pairs: Vec<(&str, Value<'_>)>) -> Props {
+    Props(
+      pairs
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), owned(v)))
+        .collect(),
+    )
+  }
+
+  #[test]
+  fn string_bool_and_path_props() {
+    let p = props(vec![
+      ("Title", "App".into()),
+      ("Empty", "".into()),
+      ("Number", 5i32.into()),
+      ("ItemIsMenu", true.into()),
+      (
+        "Menu",
+        ObjectPath::from_static_str_unchecked("/MenuBar").into(),
+      ),
+    ]);
+    assert_eq!(p.str("Title").as_deref(), Some("App"));
+    assert_eq!(p.str("Empty"), None);
+    assert_eq!(p.str("Number"), None);
+    assert_eq!(p.str("Missing"), None);
+    assert_eq!(p.bool("ItemIsMenu"), Some(true));
+    assert_eq!(p.bool("Title"), None);
+    assert_eq!(p.path("Menu").unwrap().as_str(), "/MenuBar");
+    // a string is not an object path
+    assert_eq!(p.path("Title"), None);
+  }
+
+  use zbus::zvariant::ObjectPath;
+
+  fn pixmaps(list: Vec<(i32, i32, Vec<u8>)>) -> Props {
+    props(vec![("IconPixmap", list.into())])
+  }
+
+  #[test]
+  fn pixmaps_pick_the_widest() {
+    let small = (1, 1, vec![0xff, 1, 2, 3]);
+    let large = (2, 1, vec![0x80, 4, 5, 6, 0x40, 7, 8, 9]);
+    let image = pixmaps(vec![small.clone(), large, small])
+      .pixmap("IconPixmap")
+      .unwrap();
+    assert_eq!(image.dimensions(), (2, 1));
+    assert_eq!(image.as_raw(), &[4, 5, 6, 0x80, 7, 8, 9, 0x40]);
+    // broken ones are none
+    assert!(pixmaps(vec![]).pixmap("IconPixmap").is_none());
+    assert!(
+      pixmaps(vec![(-1, 1, vec![0; 4])])
+        .pixmap("IconPixmap")
+        .is_none()
+    );
+    assert!(
+      pixmaps(vec![(2, 2, vec![0; 4])])
+        .pixmap("IconPixmap")
+        .is_none()
+    );
+    assert!(
+      props(vec![("IconPixmap", "x".into())])
+        .pixmap("IconPixmap")
+        .is_none()
+    );
+  }
+
+  #[test]
+  fn tooltips() {
+    let tooltip = |title: &str, description: &str| {
+      props(vec![(
+        "ToolTip",
+        (
+          "icon",
+          Vec::<(i32, i32, Vec<u8>)>::new(),
+          title,
+          description,
+        )
+          .into(),
+      )])
+      .tooltip()
+    };
+    assert_eq!(tooltip("Title", "Body").as_deref(), Some("Title"));
+    assert_eq!(tooltip("", "Body").as_deref(), Some("Body"));
+    assert_eq!(tooltip("", ""), None);
+    assert_eq!(props(vec![("ToolTip", "plain".into())]).tooltip(), None);
+    assert_eq!(props(vec![]).tooltip(), None);
+  }
+
+  pub(crate) fn layout(
+    id: i32,
+    pairs: Vec<(&str, Value<'_>)>,
+    children: Vec<OwnedValue>,
+  ) -> OwnedValue {
+    let props: HashMap<String, OwnedValue> = pairs
+      .into_iter()
+      .map(|(k, v)| (k.to_string(), owned(v)))
+      .collect();
+    owned(Value::from((id, props, children)))
+  }
+
+  #[test]
+  fn menu_items() {
+    let check = layout(
+      2,
+      vec![
+        ("label", "_Mute".into()),
+        ("toggle-type", "checkmark".into()),
+        ("toggle-state", 1i32.into()),
+        ("icon-name", "audio-volume-muted".into()),
+      ],
+      vec![],
+    );
+    let radio = layout(
+      3,
+      vec![
+        ("toggle-type", "radio".into()),
+        ("toggle-state", 0i32.into()),
+      ],
+      vec![],
+    );
+    let separator = layout(
+      4,
+      vec![("type", "separator".into()), ("visible", false.into())],
+      vec![],
+    );
+    let broken = owned("not a layout".into());
+    let parent = layout(
+      1,
+      vec![("label", "Options".into()), ("enabled", false.into())],
+      vec![check, radio, separator, broken],
+    );
+    let item = menu_item(&parent).unwrap();
+    assert_eq!(
+      (item.id, item.label.as_str(), item.enabled, item.visible),
+      (1, "Options", false, true)
+    );
+    assert_eq!(item.children.len(), 3);
+    let check = &item.children[0];
+    assert_eq!(
+      (check.label.as_str(), check.toggle),
+      ("Mute", Toggle::Checkmark(true))
+    );
+    assert_eq!(check.icon_name.as_deref(), Some("audio-volume-muted"));
+    assert_eq!(item.children[1].toggle, Toggle::Radio(false));
+    assert!(item.children[2].separator && !item.children[2].visible);
+    assert_eq!(item.children[2].label, "");
+    assert!(menu_item(&owned(5i32.into())).is_err());
+  }
+
+  #[test]
+  fn themed_icons_are_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let write = |path: &str| {
+      let path = dir.path().join(path);
+      std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+      std::fs::write(path, b"").unwrap();
+    };
+    write("hicolor/22x22/apps/corona-test-app.svg");
+    write("hicolor/22x22/apps/corona-test-other.xpm");
+    write("a/b/c/d/corona-test-deep.png");
+    write("corona-test-top.png");
+    assert_eq!(
+      find_in(dir.path(), "corona-test-top", 0),
+      Some(dir.path().join("corona-test-top.png"))
+    );
+    assert_eq!(
+      find_in(dir.path(), "corona-test-app", 3),
+      Some(dir.path().join("hicolor/22x22/apps/corona-test-app.svg"))
+    );
+    assert_eq!(find_in(dir.path(), "corona-test-app", 2), None);
+    assert_eq!(find_in(dir.path(), "corona-test-other", 3), None);
+    assert_eq!(find_in(dir.path(), "corona-test-deep", 3), None);
+    assert_eq!(find_in(&dir.path().join("missing"), "x", 3), None);
+    // absolute names are used as they are, the theme dir first otherwise
+    assert_eq!(
+      named_icon("/abs/icon.png", None),
+      Some(PathBuf::from("/abs/icon.png"))
+    );
+    assert_eq!(
+      named_icon("corona-test-top", dir.path().to_str()),
+      Some(dir.path().join("corona-test-top.png"))
+    );
+    assert_eq!(
+      named_icon("corona-test-nowhere-at-all", dir.path().to_str()),
+      None
+    );
+  }
+
+  #[test]
+  fn pixmaps_are_cached_as_png() {
+    let runtime = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
+    assert_eq!(cache_dir(), runtime.path().join("corona").join("tray"));
+    let image = RgbaImage::from_raw(1, 1, vec![1, 2, 3, 4]).unwrap();
+    let path = pixmap_file(&image).unwrap();
+    assert!(path.starts_with(cache_dir()));
+    assert_eq!(image::open(&path).unwrap().into_rgba8(), image);
+    // the same pixels map to the same file, other pixels to another
+    assert_eq!(pixmap_file(&image).unwrap(), path);
+    let other = RgbaImage::from_raw(1, 1, vec![4, 3, 2, 1]).unwrap();
+    assert_ne!(pixmap_file(&other).unwrap(), path);
+    // icons fall back to the pixmap when the name finds nothing
+    let p = props(vec![
+      ("IconName", "corona-test-nowhere-at-all".into()),
+      ("IconPixmap", vec![(1i32, 1i32, vec![4u8, 1, 2, 3])].into()),
+    ]);
+    assert_eq!(icon(&p, "IconName", "IconPixmap", None), Some(path));
+    assert_eq!(icon(&props(vec![]), "IconName", "IconPixmap", None), None);
+  }
+
   /// reads the tray items on this session bus: `cargo test -p corona_tray -- --ignored --nocapture`
   #[test]
   #[ignore]

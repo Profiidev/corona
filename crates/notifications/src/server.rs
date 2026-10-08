@@ -107,7 +107,148 @@ impl Server {
 
 #[cfg(test)]
 mod tests {
+  use zbus::zvariant::Value;
+
   use super::*;
+
+  fn server(next_id: u32) -> (Server, flume::Receiver<Event>) {
+    let (events, received) = flume::unbounded();
+    (
+      Server {
+        events,
+        next_id: AtomicU32::new(next_id),
+      },
+      received,
+    )
+  }
+
+  fn hints(pairs: Vec<(&str, Value<'_>)>) -> HashMap<String, OwnedValue> {
+    pairs
+      .into_iter()
+      .map(|(k, v)| (k.to_string(), v.try_to_owned().unwrap()))
+      .collect()
+  }
+
+  fn notify(server: &Server, replaces_id: u32, hints: HashMap<String, OwnedValue>) -> u32 {
+    server.notify(
+      "app".into(),
+      replaces_id,
+      "icon".into(),
+      "summary".into(),
+      "body".into(),
+      vec!["default".into(), "Open".into()],
+      hints,
+      -1,
+    )
+  }
+
+  fn received(rx: &flume::Receiver<Event>) -> Notification {
+    match rx.try_recv().unwrap() {
+      Event::Notify(n) => n,
+      Event::Close(id) => panic!("closed {id}"),
+    }
+  }
+
+  #[test]
+  fn ids_count_up_unless_replacing() {
+    let (server, rx) = server(1);
+    assert_eq!(notify(&server, 0, HashMap::new()), 1);
+    assert_eq!(notify(&server, 0, HashMap::new()), 2);
+    assert_eq!(notify(&server, 1, HashMap::new()), 1);
+    assert_eq!(notify(&server, 0, HashMap::new()), 3);
+    assert_eq!(rx.len(), 4);
+    let first = received(&rx);
+    assert_eq!(
+      (
+        first.app_name.as_str(),
+        first.app_icon.as_str(),
+        first.summary.as_str(),
+        first.body.as_str()
+      ),
+      ("app", "icon", "summary", "body")
+    );
+    assert_eq!(first.actions[0].label, "Open");
+    assert!(!first.read && !first.resident);
+  }
+
+  #[test]
+  fn hint_values() {
+    let (server, rx) = server(1);
+    for (value, urgency) in [
+      (0u8, Urgency::Low),
+      (1, Urgency::Normal),
+      (2, Urgency::Critical),
+      (7, Urgency::Normal),
+    ] {
+      notify(&server, 0, hints(vec![("urgency", value.into())]));
+      assert_eq!(received(&rx).urgency, urgency);
+    }
+    notify(
+      &server,
+      0,
+      hints(vec![
+        ("desktop-entry", "firefox".into()),
+        ("resident", true.into()),
+      ]),
+    );
+    let n = received(&rx);
+    assert_eq!(
+      (n.desktop_entry.as_deref(), n.resident),
+      (Some("firefox"), true)
+    );
+    // mistyped hints are ignored
+    notify(
+      &server,
+      0,
+      hints(vec![
+        ("desktop-entry", 5u32.into()),
+        ("resident", "yes".into()),
+      ]),
+    );
+    let n = received(&rx);
+    assert_eq!((n.desktop_entry, n.resident), (None, false));
+  }
+
+  #[test]
+  #[ignore = "BUG: urgency sent as int32/uint32 (some clients do) is read as normal, critical notifications lose their urgency"]
+  fn bug_urgency_accepts_any_integer() {
+    let (server, rx) = server(1);
+    notify(&server, 0, hints(vec![("urgency", 2i32.into())]));
+    assert_eq!(received(&rx).urgency, Urgency::Critical);
+  }
+
+  #[test]
+  #[ignore = "BUG: an unknown replaces_id is taken as the new id, a later fresh id can then replace another app's notification"]
+  fn bug_unknown_replace_ids_get_a_fresh_id() {
+    let (server, _rx) = server(1);
+    let foreign = notify(&server, 2, HashMap::new());
+    let fresh = notify(&server, 0, HashMap::new());
+    let next = notify(&server, 0, HashMap::new());
+    assert!(
+      foreign != fresh && foreign != next,
+      "ids {foreign} {fresh} {next}"
+    );
+  }
+
+  #[test]
+  #[ignore = "BUG: the id counter wraps to 0, which the spec reserves for no notification"]
+  fn bug_ids_never_wrap_to_zero() {
+    let (server, _rx) = server(u32::MAX);
+    notify(&server, 0, HashMap::new());
+    assert_ne!(notify(&server, 0, HashMap::new()), 0);
+  }
+
+  #[test]
+  fn server_information() {
+    let (server, _) = server(1);
+    assert_eq!(
+      server.get_capabilities(),
+      ["body", "actions", "persistence"]
+    );
+    let (name, vendor, version, spec) = server.get_server_information();
+    assert_eq!((name, vendor, spec), ("corona", "corona", "1.2"));
+    assert_eq!(version, env!("CARGO_PKG_VERSION"));
+  }
 
   /// talks to the server over this session bus by its unique name, so the real
   /// `org.freedesktop.Notifications` owner is left alone:

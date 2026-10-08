@@ -25,3 +25,34 @@ impl RgbaImageExt for RgbaImage {
     Ok(out.into_inner())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use image::Rgba;
+
+  use super::*;
+
+  fn image() -> RgbaImage {
+    RgbaImage::from_fn(3, 2, |x, y| Rgba([x as u8, y as u8, 100, 200]))
+  }
+
+  #[test]
+  fn gpui_images_are_bgra() {
+    let original = image();
+    let render = original.to_gpui();
+    let bytes = render.as_bytes(0).unwrap();
+    assert_eq!(&bytes[..8], [100, 0, 0, 200, 100, 0, 1, 200]);
+    // the source is left alone
+    assert_eq!(original, image());
+  }
+
+  #[test]
+  fn png_round_trip() {
+    let png = image().to_png().unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let back = image::load_from_memory(&png).unwrap().into_rgba8();
+    assert_eq!(back, image());
+    let empty = RgbaImage::new(0, 0).to_png();
+    assert!(empty.is_err() || !empty.unwrap().is_empty());
+  }
+}

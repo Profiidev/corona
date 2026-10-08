@@ -194,4 +194,105 @@ mod tests {
     keys.dedup();
     assert_eq!(keys.len(), Condition::ALL.len());
   }
+
+  #[test]
+  fn compass_edges() {
+    // sector borders round up into the next point
+    assert_eq!(compass(0.), "n");
+    assert_eq!(compass(22.4), "n");
+    assert_eq!(compass(22.5), "ne");
+    assert_eq!(compass(337.4), "nw");
+    assert_eq!(compass(337.5), "n");
+    assert_eq!(compass(360.), "n");
+    assert_eq!(compass(720. + 90.), "e");
+    assert_eq!(compass(-90.), "w");
+    assert_eq!(compass(-0.1), "n");
+    // never panics on junk
+    assert_eq!(compass(f64::NAN), "n");
+    assert_eq!(compass(f64::INFINITY), "n");
+    for degrees in 0..3600 {
+      compass(degrees as f64 / 10.);
+    }
+  }
+
+  #[test]
+  fn every_wmo_code() {
+    use Condition::*;
+    let table = [
+      (0, Clear),
+      (1, MainlyClear),
+      (2, PartlyCloudy),
+      (3, Overcast),
+      (45, Fog),
+      (48, Fog),
+      (51, Drizzle),
+      (53, Drizzle),
+      (55, Drizzle),
+      (56, FreezingDrizzle),
+      (57, FreezingDrizzle),
+      (61, Rain),
+      (63, Rain),
+      (65, Rain),
+      (66, FreezingRain),
+      (67, FreezingRain),
+      (71, Snow),
+      (73, Snow),
+      (75, Snow),
+      (77, SnowGrains),
+      (80, RainShowers),
+      (81, RainShowers),
+      (82, RainShowers),
+      (85, SnowShowers),
+      (86, SnowShowers),
+      (95, Thunderstorm),
+      (96, ThunderstormHail),
+      (99, ThunderstormHail),
+    ];
+    for code in 0..=u8::MAX {
+      let expected = table
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map_or(Unknown, |(_, condition)| *condition);
+      assert_eq!(Condition::from_code(code), expected, "code {code}");
+    }
+    // every condition but Unknown has a code
+    for condition in Condition::ALL {
+      assert!(condition == Unknown || table.iter().any(|(_, c)| *c == condition));
+    }
+  }
+
+  #[test]
+  fn conditions_of_each_part() {
+    let current = Current {
+      time: String::new(),
+      temperature: 0.,
+      apparent_temperature: 0.,
+      humidity: 0.,
+      wind_speed: 0.,
+      wind_direction: 0.,
+      uv_index: 0.,
+      code: 61,
+      is_day: true,
+    };
+    assert_eq!(current.condition(), Condition::Rain);
+    let hour = Hour {
+      time: String::new(),
+      temperature: 0.,
+      humidity: 0.,
+      precipitation_probability: 0.,
+      wind_speed: 0.,
+      code: 71,
+      is_day: false,
+    };
+    assert_eq!(hour.condition(), Condition::Snow);
+    let day = Day {
+      date: String::new(),
+      max: 0.,
+      min: 0.,
+      code: 200,
+      sunrise: String::new(),
+      sunset: String::new(),
+    };
+    assert_eq!(day.condition(), Condition::Unknown);
+  }
 }

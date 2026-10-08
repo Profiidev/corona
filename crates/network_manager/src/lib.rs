@@ -20,6 +20,8 @@ pub use cosmic_dbus_networkmanager::interface::enums::{
 mod actions;
 mod agent;
 mod listener;
+#[cfg(test)]
+mod mock;
 mod snapshot;
 mod state;
 
@@ -241,4 +243,679 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   cx.set_global(state);
 
   Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+  use std::net::Ipv4Addr;
+
+  use corona_utils::test_bus::{TestBus, settle, wait_until};
+  use futures_lite::future::{block_on, poll_once};
+  use gpui_kit::{self as gpui, TestAppContext};
+  use zbus::zvariant::{OwnedValue, Value};
+
+  use super::*;
+  use crate::mock::{ETH, MockNm, NM, SETTINGS, SettingsMap, WLAN, World, ap};
+
+  fn start(cx: &mut TestAppContext, world: World) -> (TestBus, MockNm) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let nm = MockNm::start(&bus, world);
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      cx.foreground_executor()
+        .clone()
+        .block_on(init(cx, &conn))
+        .unwrap()
+    });
+    wait_until(cx, |cx| {
+      cx.read(|cx| !cx.network_manager().list_interfaces(cx).is_empty())
+    });
+    (bus, nm)
+  }
+
+  fn nm(cx: &mut TestAppContext) -> NetworkManager {
+    cx.read(|cx| cx.network_manager().clone())
+  }
+
+  fn networks(cx: &mut TestAppContext) -> Vec<(String, u8, bool, WifiStatus)> {
+    cx.read(|cx| {
+      cx.network_manager()
+        .list_wifi_networks(cx)
+        .iter()
+        .map(|n| (n.ssid.clone(), n.strength, n.secured, n.status))
+        .collect()
+    })
+  }
+
+  #[gpui::test]
+  fn reads_networkmanager(cx: &mut TestAppContext) {
+    let (_bus, _nm) = start(cx, World::default());
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    cx.read(|cx| {
+      let nm = cx.network_manager();
+      let interfaces = nm.list_interfaces(cx);
+      assert_eq!(interfaces.len(), 2);
+      let eth = &interfaces[0];
+      assert_eq!(
+        (eth.name.as_str(), eth.kind, eth.state),
+        ("eth0", InterfaceType::Wired, DeviceState::Activated)
+      );
+      let ip = eth.ip.unwrap();
+      assert_eq!((ip.address, ip.prefix), (Ipv4Addr::new(192, 168, 1, 5), 24));
+      assert_eq!(interfaces[1].ip, None);
+      assert_eq!(nm.primary_interface(cx).unwrap().name, "eth0");
+      assert_eq!(nm.primary_wifi(cx).unwrap().name, "wlan0");
+      assert!(nm.wifi_supported(cx) && nm.wifi_enabled(cx));
+      assert_eq!(nm.connectivity(cx), NmConnectivityState::Full);
+      assert_eq!(nm.connectivity_check(cx), Some("http://check.example/"));
+      let vpns: Vec<_> = nm
+        .list_vpns(cx)
+        .iter()
+        .map(|v| (v.name.as_str(), v.kind, v.state))
+        .collect();
+      assert_eq!(
+        vpns,
+        [
+          (
+            "Office VPN",
+            VpnKind::Plugin,
+            ActiveConnectionState::Deactivated
+          ),
+          ("wg0", VpnKind::WireGuard, ActiveConnectionState::Activating),
+        ]
+      );
+      assert!(nm.wifi_failure(cx).is_none() && nm.secret_request(cx).is_none());
+    });
+    // the same SSID twice merges: strongest signal, saved first
+    assert_eq!(
+      networks(cx),
+      [
+        ("home".to_string(), 80, true, WifiStatus::Saved),
+        ("cafe".to_string(), 70, false, WifiStatus::New),
+      ]
+    );
+  }
+
+  #[gpui::test]
+  fn security_kinds(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    let mut wep = ap(4, b"wep", 10, 0);
+    wep.flags = 0x1;
+    let mut corp = ap(5, b"corp", 20, 0x200);
+    corp.wpa = 0x100;
+    world.aps = vec![
+      wep,
+      corp,
+      ap(6, b"owe", 30, 0x800),
+      ap(7, b"sae", 40, 0x400),
+      ap(8, b"", 99, 0),
+    ];
+    let (_bus, _nm) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 4);
+    let secured: Vec<_> = networks(cx).into_iter().map(|n| (n.0, n.2)).collect();
+    // hidden networks without an SSID are not listed
+    assert_eq!(
+      secured,
+      [
+        ("sae".to_string(), true),
+        ("owe".to_string(), false),
+        ("corp".to_string(), true),
+        ("wep".to_string(), true)
+      ]
+    );
+    cx.read(|cx| {
+      let list = cx.network_manager().list_wifi_networks(cx);
+      let enterprise: Vec<_> = list
+        .iter()
+        .filter(|n| n.enterprise)
+        .map(|n| n.ssid.as_str())
+        .collect();
+      assert_eq!(enterprise, ["corp"]);
+    });
+  }
+
+  #[gpui::test]
+  fn the_connected_network(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.wlan_state = 100;
+    world.active_ap = format!("{NM}/AccessPoint/1");
+    world.primary = "/".into();
+    world.eth_state = 30;
+    let (_bus, _nm) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    // the active AP's SSID is connected, even though another AP of it is stronger
+    assert_eq!(
+      networks(cx)[0],
+      ("home".to_string(), 80, true, WifiStatus::Connected)
+    );
+    cx.read(|cx| {
+      // no primary connection: an activated interface stands in
+      assert_eq!(
+        cx.network_manager().primary_interface(cx).unwrap().name,
+        "wlan0"
+      );
+    });
+  }
+
+  #[gpui::test]
+  fn connecting_states(cx: &mut TestAppContext) {
+    for (state, status) in [
+      (40, WifiStatus::Connecting),
+      (70, WifiStatus::Connecting),
+      (60, WifiStatus::NeedAuth),
+    ] {
+      let mut world = World::default();
+      world.wlan_state = state;
+      world.active_ap = format!("{NM}/AccessPoint/2");
+      let (_bus, _nm) = start(cx, world);
+      wait_until(cx, |cx| networks(cx).len() == 2);
+      assert_eq!(networks(cx)[0], ("cafe".to_string(), 70, false, status));
+      cx.update(|cx| cx.remove_global::<NetworkManager>());
+    }
+  }
+
+  #[gpui::test]
+  fn wired_preferred_without_a_primary(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.primary = "/".into();
+    world.wlan_state = 100;
+    let (_bus, _nm) = start(cx, world);
+    cx.read(|cx| {
+      assert_eq!(
+        cx.network_manager().primary_interface(cx).unwrap().name,
+        "eth0"
+      )
+    });
+  }
+
+  #[gpui::test]
+  fn without_wifi(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    // the second device is wired too
+    world.wlan_type = 1;
+    world.check_enabled = false;
+    let (_bus, _nm) = start(cx, world);
+    settle(cx);
+    let nm = nm(cx);
+    cx.read(|cx| {
+      assert!(!nm.wifi_supported(cx));
+      assert!(nm.primary_wifi(cx).is_none() && nm.list_wifi_networks(cx).is_empty());
+      assert_eq!(nm.connectivity_check(cx), None);
+      assert_eq!(
+        block_on(nm.connect_wifi("home".into(), cx))
+          .unwrap_err()
+          .to_string(),
+        "no usable wifi device"
+      );
+      assert_eq!(
+        block_on(nm.forget_wifi("home".into(), cx))
+          .unwrap_err()
+          .to_string(),
+        "no usable wifi device"
+      );
+      assert_eq!(
+        block_on(nm.rescan(cx)).unwrap_err().to_string(),
+        "no usable wifi device"
+      );
+    });
+  }
+
+  #[gpui::test]
+  fn unmanaged_wifi_is_unsupported(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.wlan_state = 10;
+    let (_bus, _nm) = start(cx, world);
+    settle(cx);
+    cx.read(|cx| {
+      assert!(!cx.network_manager().wifi_supported(cx));
+      assert!(cx.network_manager().primary_wifi(cx).is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn follows_changes(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    mock.world().connectivity = 2;
+    mock.changed();
+    wait_until(cx, |cx| {
+      cx.read(|cx| cx.network_manager().connectivity(cx) == NmConnectivityState::Portal)
+    });
+  }
+
+  #[gpui::test]
+  fn portal_urls(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    cx.update(|cx| cx.network_manager().open_portal(cx));
+    assert_eq!(cx.opened_url().as_deref(), Some("http://check.example/"));
+    // https cannot be intercepted by a portal, the fallback can
+    mock.world().check_uri = "https://check.example/".into();
+    mock.changed();
+    wait_until(cx, |cx| {
+      cx.read(|cx| cx.network_manager().connectivity_check(cx) == Some("https://check.example/"))
+    });
+    cx.update(|cx| cx.network_manager().open_portal(cx));
+    assert_eq!(cx.opened_url().as_deref(), Some(PORTAL_FALLBACK_URL));
+  }
+
+  fn added(mock: &MockNm) -> SettingsMap {
+    mock
+      .world()
+      .added
+      .last()
+      .cloned()
+      .expect("a connection was added")
+  }
+
+  fn get(settings: &SettingsMap, setting: &str, key: &str) -> Option<OwnedValue> {
+    settings.get(setting)?.get(key)?.try_clone().ok()
+  }
+
+  fn text(settings: &SettingsMap, setting: &str, key: &str) -> Option<String> {
+    String::try_from(get(settings, setting, key)?).ok()
+  }
+
+  #[gpui::test]
+  fn wifi_actions(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    let nm = nm(cx);
+    block_on(nm.set_wifi_enabled(false)).unwrap();
+    // a saved network uses its profile
+    block_on(cx.read(|cx| nm.connect_wifi("home".into(), cx))).unwrap();
+    // a new one gets a profile, through its strongest access point
+    block_on(cx.read(|cx| nm.connect_wifi("cafe".into(), cx))).unwrap();
+    assert_eq!(
+      block_on(cx.read(|cx| nm.connect_wifi("nowhere".into(), cx)))
+        .unwrap_err()
+        .to_string(),
+      "nowhere is not in range"
+    );
+    block_on(cx.read(|cx| nm.forget_wifi("home".into(), cx))).unwrap();
+    // nothing saved: nothing to forget
+    block_on(cx.read(|cx| nm.forget_wifi("cafe".into(), cx))).unwrap();
+    assert_eq!(
+      mock
+        .calls()
+        .into_iter()
+        .filter(|c| !c.starts_with("Register"))
+        .collect::<Vec<_>>(),
+      [
+        "WirelessEnabled false".to_string(),
+        format!("ActivateConnection {SETTINGS}/2 {WLAN} /"),
+        format!("AddAndActivateConnection {WLAN} {NM}/AccessPoint/2"),
+        format!("Delete {SETTINGS}/2"),
+      ]
+    );
+    let cafe = added(&mock);
+    assert_eq!(
+      get(&cafe, "802-11-wireless", "ssid"),
+      Some(Value::from(b"cafe".to_vec()).try_to_owned().unwrap())
+    );
+  }
+
+  #[gpui::test]
+  fn hidden_networks(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let nm = nm(cx);
+    let join = |cx: &mut TestAppContext, security, password: Option<&str>| {
+      let task =
+        cx.read(|cx| nm.join_hidden_wifi("secret".into(), security, password.map(Into::into), cx));
+      block_on(task).unwrap();
+      added(&mock)
+    };
+    let open = join(cx, HiddenSecurity::Open, Some("ignored"));
+    assert!(!open.contains_key("802-11-wireless-security"));
+    assert_eq!(
+      get(&open, "802-11-wireless", "hidden"),
+      Some(Value::from(true).try_to_owned().unwrap())
+    );
+    let wpa = join(cx, HiddenSecurity::Wpa, Some("pw"));
+    assert_eq!(
+      text(&wpa, "802-11-wireless-security", "key-mgmt").as_deref(),
+      Some("wpa-psk")
+    );
+    assert_eq!(
+      text(&wpa, "802-11-wireless-security", "psk").as_deref(),
+      Some("pw")
+    );
+    let sae = join(cx, HiddenSecurity::Wpa3, None);
+    assert_eq!(
+      text(&sae, "802-11-wireless-security", "key-mgmt").as_deref(),
+      Some("sae")
+    );
+    assert_eq!(text(&sae, "802-11-wireless-security", "psk"), None);
+    // no access point to aim at
+    assert!(
+      mock
+        .calls()
+        .iter()
+        .all(|c| !c.starts_with("AddAndActivate") || c.ends_with(" /"))
+    );
+  }
+
+  fn enterprise(ssid: &str, hidden: bool) -> EnterpriseConfig {
+    serde_json_config(ssid, hidden)
+  }
+
+  fn serde_json_config(ssid: &str, hidden: bool) -> EnterpriseConfig {
+    let json = format!(
+      r#"{{"ssid": "{ssid}", "hidden": {hidden}, "eap": "peap", "phase2": "mschapv2", "identity": "me",
+          "anonymous_identity": null, "password": "pw", "ca_cert": null, "domain": null,
+          "client_cert": null, "private_key": null, "private_key_password": null}}"#
+    );
+    serde_json::from_str(&json).unwrap()
+  }
+
+  #[gpui::test]
+  fn enterprise_networks(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let nm = nm(cx);
+    block_on(cx.read(|cx| nm.connect_enterprise_wifi(enterprise("cafe", false), cx))).unwrap();
+    block_on(cx.read(|cx| nm.connect_enterprise_wifi(enterprise("hidden-corp", true), cx)))
+      .unwrap();
+    let error =
+      block_on(cx.read(|cx| nm.connect_enterprise_wifi(enterprise("far-away", false), cx)));
+    assert_eq!(error.unwrap_err().to_string(), "far-away is not in range");
+    let calls: Vec<_> = mock
+      .calls()
+      .into_iter()
+      .filter(|c| c.starts_with("AddAndActivate"))
+      .collect();
+    assert_eq!(
+      calls,
+      [
+        format!("AddAndActivateConnection {WLAN} {NM}/AccessPoint/2"),
+        format!("AddAndActivateConnection {WLAN} /")
+      ]
+    );
+    assert_eq!(
+      text(&added(&mock), "802-1x", "password").as_deref(),
+      Some("pw")
+    );
+  }
+
+  #[gpui::test]
+  fn vpn_and_device_actions(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let nm = nm(cx);
+    block_on(nm.connect_vpn("uuid-Office VPN".into())).unwrap();
+    assert!(block_on(nm.connect_vpn("uuid-unknown".into())).is_err());
+    block_on(nm.disconnect_vpn("uuid-wg0".into())).unwrap();
+    assert_eq!(
+      block_on(nm.disconnect_vpn("uuid-Office VPN".into()))
+        .unwrap_err()
+        .to_string(),
+      "uuid-Office VPN is not active"
+    );
+    block_on(cx.read(|cx| nm.connect("eth0", cx))).unwrap();
+    block_on(cx.read(|cx| nm.disconnect("wlan0", cx))).unwrap();
+    assert_eq!(
+      block_on(cx.read(|cx| nm.connect("nope", cx)))
+        .unwrap_err()
+        .to_string(),
+      "no interface nope"
+    );
+    assert_eq!(
+      block_on(nm.check_connectivity()).unwrap(),
+      NmConnectivityState::Portal
+    );
+    assert_eq!(
+      mock
+        .calls()
+        .into_iter()
+        .filter(|c| !c.starts_with("Register"))
+        .collect::<Vec<_>>(),
+      [
+        format!("ActivateConnection {SETTINGS}/3 / /"),
+        format!("DeactivateConnection {NM}/ActiveConnection/2"),
+        format!("ActivateConnection / {ETH} /"),
+        format!("Disconnect {WLAN}"),
+        "CheckConnectivity".to_string(),
+      ]
+    );
+  }
+
+  #[gpui::test]
+  fn rescans(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let nm = nm(cx);
+    assert_eq!(
+      block_on(cx.read(|cx| nm.rescan(cx))).unwrap(),
+      ScanResult::Done
+    );
+
+    mock.world().scan_finishes = false;
+    let scan = cx.read(|cx| nm.rescan(cx));
+    let task = cx.executor().spawn(scan);
+    wait_until(cx, |_| {
+      mock.calls().iter().filter(|c| *c == "RequestScan").count() == 2
+    });
+    settle(cx);
+    let mut task = Some(task);
+    assert!(block_on(poll_once(task.as_mut().unwrap())).is_none());
+    cx.executor().advance_clock(SCAN_TIMEOUT);
+    let mut result = None;
+    wait_until(cx, |_| {
+      result = block_on(poll_once(task.as_mut().unwrap()));
+      result.is_some()
+    });
+    assert_eq!(result.unwrap().unwrap(), ScanResult::TimedOut);
+  }
+
+  /// asks corona's agent for a secret like NetworkManager does
+  fn get_secrets(
+    mock: &MockNm,
+    ssid: &[u8],
+    connection_path: &str,
+  ) -> std::thread::JoinHandle<zbus::Result<SettingsMap>> {
+    let (agent, _) = mock.world().agent.clone().expect("an agent registered");
+    let conn = mock.conn.clone();
+    let settings: SettingsMap = std::collections::HashMap::from([(
+      "802-11-wireless".to_string(),
+      std::collections::HashMap::from([(
+        "ssid".to_string(),
+        Value::from(ssid.to_vec()).try_to_owned().unwrap(),
+      )]),
+    )]);
+    let path = zbus::zvariant::OwnedObjectPath::try_from(connection_path).unwrap();
+    std::thread::spawn(move || {
+      block_on(async {
+        let reply = conn
+          .call_method(
+            Some(agent.as_str()),
+            "/org/freedesktop/NetworkManager/SecretAgent",
+            Some("org.freedesktop.NetworkManager.SecretAgent"),
+            "GetSecrets",
+            &(
+              settings,
+              path,
+              "802-11-wireless-security",
+              Vec::<String>::new(),
+              1u32,
+            ),
+          )
+          .await?;
+        reply.body().deserialize::<SettingsMap>()
+      })
+    })
+  }
+
+  fn cancel_secrets(mock: &MockNm, connection_path: &str) {
+    let (agent, _) = mock.world().agent.clone().unwrap();
+    let path = zbus::zvariant::OwnedObjectPath::try_from(connection_path).unwrap();
+    block_on(mock.conn.call_method(
+      Some(agent.as_str()),
+      "/org/freedesktop/NetworkManager/SecretAgent",
+      Some("org.freedesktop.NetworkManager.SecretAgent"),
+      "CancelGetSecrets",
+      &(path, "802-11-wireless-security"),
+    ))
+    .unwrap();
+  }
+
+  fn requested(cx: &mut TestAppContext) -> Option<String> {
+    cx.read(|cx| {
+      cx.network_manager()
+        .secret_request(cx)
+        .map(|r| r.name.clone())
+    })
+  }
+
+  #[gpui::test]
+  fn secret_agent(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    assert_eq!(mock.world().agent.as_ref().unwrap().1, "io.corona.shell");
+
+    let reply = get_secrets(&mock, b"home", "/s/2");
+    wait_until(cx, |cx| requested(cx).as_deref() == Some("home"));
+    cx.update(|cx| {
+      let nm = cx.network_manager().clone();
+      nm.answer_secret(
+        cx,
+        Some(Secret {
+          password: "hunter22".into(),
+          identity: None,
+        }),
+      );
+    });
+    assert!(requested(cx).is_none());
+    let secrets = reply.join().unwrap().unwrap();
+    let psk = secrets["802-11-wireless-security"]["psk"]
+      .try_clone()
+      .unwrap();
+    assert_eq!(String::try_from(psk).unwrap(), "hunter22");
+
+    // dismissing cancels
+    let reply = get_secrets(&mock, b"home", "/s/2");
+    wait_until(cx, |cx| requested(cx).is_some());
+    cx.update(|cx| {
+      let nm = cx.network_manager().clone();
+      nm.answer_secret(cx, None);
+    });
+    let error = reply.join().unwrap().unwrap_err().to_string();
+    assert!(error.contains("UserCanceled"), "{error}");
+    // answering nothing pending is fine
+    cx.update(|cx| {
+      let nm = cx.network_manager().clone();
+      nm.answer_secret(
+        cx,
+        Some(Secret {
+          password: "x".into(),
+          identity: None,
+        }),
+      );
+    });
+
+    // NetworkManager giving up closes the prompt
+    let _reply = get_secrets(&mock, b"cafe", "/s/3");
+    wait_until(cx, |cx| requested(cx).is_some());
+    cancel_secrets(&mock, "/s/3");
+    wait_until(cx, |cx| requested(cx).is_none());
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: CancelGetSecrets ignores which request it cancels, a late cancel for an old request closes a newer one"]
+  fn bug_late_cancel_keeps_the_newer_request(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let _old = get_secrets(&mock, b"home", "/s/2");
+    wait_until(cx, |cx| requested(cx).as_deref() == Some("home"));
+    let _new = get_secrets(&mock, b"cafe", "/s/3");
+    wait_until(cx, |cx| requested(cx).as_deref() == Some("cafe"));
+    cancel_secrets(&mock, "/s/2");
+    settle(cx);
+    assert_eq!(requested(cx).as_deref(), Some("cafe"));
+  }
+
+  fn failure(cx: &mut TestAppContext) -> Option<WifiFailure> {
+    cx.read(|cx| cx.network_manager().wifi_failure(cx).cloned())
+  }
+
+  #[gpui::test]
+  fn wifi_failures(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.wlan_state = 40;
+    world.active_ap = format!("{NM}/AccessPoint/2");
+    let (_bus, mock) = start(cx, world);
+    wait_until(cx, |cx| {
+      networks(cx)
+        .first()
+        .is_some_and(|n| n.3 == WifiStatus::Connecting)
+    });
+
+    mock.world().wlan_state = 120;
+    mock.device_state(WLAN, 120, 40, 7);
+    mock.changed();
+    wait_until(cx, |cx| failure(cx).is_some());
+    assert_eq!(
+      failure(cx),
+      Some(WifiFailure {
+        ssid: Some("cafe".into()),
+        reason: FailReason::NoSecrets
+      })
+    );
+
+    // disconnecting after the failure keeps it, the wired device's states are not wifi's
+    mock.device_state(WLAN, 30, 120, 0);
+    mock.device_state(ETH, 40, 30, 0);
+    mock.changed();
+    settle(cx);
+    assert!(failure(cx).is_some());
+
+    // trying again clears it
+    mock.device_state(WLAN, 40, 30, 0);
+    mock.changed();
+    wait_until(cx, |cx| failure(cx).is_none());
+
+    // a password prompt clears it too
+    mock.device_state(WLAN, 120, 40, 53);
+    mock.changed();
+    wait_until(cx, |cx| {
+      failure(cx).is_some_and(|f| f.reason == FailReason::SsidNotFound)
+    });
+    let _reply = get_secrets(&mock, b"cafe", "/s/3");
+    wait_until(cx, |cx| failure(cx).is_none());
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: a non-UTF-8 SSID is shown lossily and can then never be connected"]
+  fn bug_non_utf8_ssids_connect(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.aps.push(ap(4, b"caf\xe9", 50, 0));
+    let (_bus, mock) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 3);
+    let ssid = networks(cx)
+      .into_iter()
+      .find(|n| n.0.starts_with("caf\u{fffd}"))
+      .unwrap()
+      .0;
+    let nm = nm(cx);
+    block_on(cx.read(|cx| nm.connect_wifi(ssid, cx))).unwrap();
+    assert!(mock.calls().iter().any(|c| c.ends_with("AccessPoint/4")));
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: networks of equal status and strength have no tie-break, their order follows NM's access point order and flips between snapshots"]
+  fn bug_network_order_is_stable(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.aps = vec![ap(1, b"b", 50, 0), ap(2, b"a", 50, 0)];
+    let (_bus, _mock) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    let order: Vec<_> = networks(cx).into_iter().map(|n| n.0).collect();
+    assert_eq!(order, ["a", "b"]);
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: the listener only hears signals sent by NetworkManager, a restarted NetworkManager's new state is not read"]
+  fn bug_networkmanager_restarts_are_noticed(cx: &mut TestAppContext) {
+    let (bus, mock) = start(cx, World::default());
+    drop(mock);
+    let mut world = World::default();
+    world.connectivity = 1;
+    let _restarted = MockNm::start(&bus, world);
+    wait_until(cx, |cx| {
+      cx.read(|cx| cx.network_manager().connectivity(cx) == NmConnectivityState::None)
+    });
+  }
 }

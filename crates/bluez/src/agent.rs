@@ -85,3 +85,100 @@ pub(crate) fn event(message: Message) -> Option<AgentEvent> {
     Message::AuthorizeService { .. } => None,
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use zbus::zvariant::OwnedObjectPath;
+
+  use super::*;
+
+  fn dev() -> OwnedObjectPath {
+    OwnedObjectPath::try_from("/org/bluez/hci0/dev_AA").unwrap()
+  }
+
+  fn request(message: Message) -> PairingRequest {
+    match event(message) {
+      Some(AgentEvent::Request(request)) => request,
+      _ => panic!("not a request"),
+    }
+  }
+
+  #[test]
+  fn messages_become_requests() {
+    let (response, mut confirmed) = oneshot::channel();
+    let confirm = request(Message::RequestConfirmation {
+      device: dev(),
+      passkey: 123456,
+      response,
+    });
+    assert_eq!(confirm.device, "/org/bluez/hci0/dev_AA");
+    assert_eq!(confirm.kind, PairingKind::Confirm { passkey: 123456 });
+    let Reply::Accept(reply) = confirm.reply else {
+      panic!()
+    };
+    reply.send(true).unwrap();
+    assert_eq!(confirmed.try_recv().unwrap(), Some(true));
+
+    let (response, _) = oneshot::channel();
+    let authorize = request(Message::RequestAuthorization {
+      device: dev(),
+      response,
+    });
+    assert_eq!(authorize.kind, PairingKind::Authorize);
+    assert!(matches!(authorize.reply, Reply::Accept(_)));
+
+    let (response, _) = oneshot::channel();
+    let pin = request(Message::RequestPinCode {
+      device: dev(),
+      response,
+    });
+    assert_eq!(pin.kind, PairingKind::PinCode);
+    assert!(matches!(pin.reply, Reply::PinCode(_)));
+
+    let (response, _) = oneshot::channel();
+    let passkey = request(Message::RequestPasskey {
+      device: dev(),
+      response,
+    });
+    assert_eq!(passkey.kind, PairingKind::Passkey);
+    assert!(matches!(passkey.reply, Reply::Passkey(_)));
+
+    let shown = request(Message::DisplayPasskey {
+      device: dev(),
+      passkey: 42,
+      entered: 3,
+    });
+    assert_eq!(shown.kind, PairingKind::DisplayPasskey { passkey: 42 });
+    assert!(matches!(shown.reply, Reply::None));
+
+    let pin_shown = request(Message::DisplayPinCode {
+      device: dev(),
+      pincode: "001234".into(),
+    });
+    assert_eq!(
+      pin_shown.kind,
+      PairingKind::DisplayPasskey { passkey: 1234 }
+    );
+  }
+
+  #[test]
+  fn other_messages() {
+    assert!(matches!(event(Message::Cancel), Some(AgentEvent::Cancel)));
+    assert!(matches!(event(Message::Release), Some(AgentEvent::Cancel)));
+    assert!(
+      event(Message::AuthorizeService {
+        device: dev(),
+        uuid: "0000110b".into(),
+      })
+      .is_none()
+    );
+    // not a number: nothing to show
+    assert!(
+      event(Message::DisplayPinCode {
+        device: dev(),
+        pincode: "abcd".into(),
+      })
+      .is_none()
+    );
+  }
+}

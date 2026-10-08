@@ -16,3 +16,22 @@ pub fn decode_ipc_response(bytes: &[u8]) -> String {
   }
   decoded.into_owned()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn decodes() {
+    assert_eq!(decode_ipc_response(b""), "");
+    assert_eq!(decode_ipc_response("Fünf ✓ 🦀".as_bytes()), "Fünf ✓ 🦀");
+    // window titles from apps writing Latin-1
+    assert_eq!(
+      decode_ipc_response(b"caf\xe9 cr\xe8me br\xfbl\xe9e"),
+      "café crème brûlée"
+    );
+    // nothing decodes it cleanly: replacement characters, never a panic
+    let junk = decode_ipc_response(b"\xff\xfe\x00\x81");
+    assert!(!junk.is_empty());
+  }
+}

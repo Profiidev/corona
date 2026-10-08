@@ -108,3 +108,83 @@ pub fn init(cx: &mut App) {
     },
   );
 }
+
+#[cfg(test)]
+mod tests {
+  use std::time::Instant;
+
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use super::*;
+
+  #[test]
+  fn interval_is_at_least_a_second() {
+    let mut config = Config::default();
+    config.system.monitor.poll_seconds = 0;
+    assert_eq!(interval(&config), Duration::from_secs(1));
+    config.system.monitor.poll_seconds = 7;
+    assert_eq!(interval(&config), Duration::from_secs(7));
+  }
+
+  /// the sampler is a real thread: wait for it in real time
+  fn wait(cx: &mut TestAppContext, done: impl Fn(&App) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+      cx.run_until_parked();
+      if cx.read(&done) {
+        return;
+      }
+      assert!(Instant::now() < deadline, "timed out");
+      std::thread::sleep(Duration::from_millis(20));
+    }
+  }
+
+  #[gpui::test]
+  fn samples_into_history(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let mut config = Config::default();
+    config.system.monitor.poll_seconds = 1;
+    cx.update(|cx| {
+      cx.set_global(config);
+      init(cx);
+    });
+    cx.read(|cx| {
+      assert_eq!(
+        cx.system_monitor().interval(cx),
+        Some(Duration::from_secs(1))
+      )
+    });
+    wait(cx, |cx| cx.system_monitor().info(cx).is_some());
+    wait(cx, |cx| cx.system_monitor().history(cx).cpu.len() >= 2);
+    cx.read(|cx| {
+      let monitor = cx.system_monitor();
+      let sample = monitor.sample(cx).unwrap();
+      assert!(sample.memory_total > 0);
+      assert_eq!(
+        monitor.history(cx).memory.len(),
+        monitor.history(cx).cpu.len()
+      );
+    });
+  }
+
+  #[gpui::test]
+  fn config_and_pausing_set_the_interval(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      cx.set_global(Config::default());
+      init(cx);
+    });
+    cx.update(|cx| {
+      let mut config = cx.config().clone();
+      config.system.monitor.poll_seconds = 0;
+      cx.set_global(config);
+    });
+    cx.read(|cx| {
+      assert_eq!(
+        cx.system_monitor().interval(cx),
+        Some(Duration::from_secs(1))
+      )
+    });
+    cx.update(|cx| cx.system_monitor().clone().set_interval(None, cx));
+    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), None));
+  }
+}

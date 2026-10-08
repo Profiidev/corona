@@ -96,4 +96,20 @@ mod tests {
     insert(&mut list, notification(2, "second, updated"));
     assert!(list.iter().any(|n| !n.read));
   }
+
+  #[test]
+  fn helper_edges() {
+    assert!(actions(vec![]).is_empty());
+    assert!(actions(vec!["only".into()]).is_empty());
+    assert_eq!(
+      actions(vec!["a".into(), "".into(), "b".into(), "B".into()]).len(),
+      2
+    );
+    assert!(!mark_read(&mut []));
+    // a new id goes first
+    let mut list = vec![notification(1, "a")];
+    insert(&mut list, notification(9, "b"));
+    assert_eq!(list.iter().map(|n| n.id).collect::<Vec<_>>(), [9, 1]);
+    assert!(Urgency::Critical > Urgency::Normal && Urgency::Normal > Urgency::Low);
+  }
 }

@@ -300,4 +300,286 @@ mod tests {
     assert_eq!(drm_usage("0000:03:00.0", &previous, &current), 0.);
     fs::remove_dir_all(root).ok();
   }
+
+  fn write(root: &Path, files: &[(&str, &str)]) {
+    for (file, value) in files {
+      let path = root.join(file);
+      fs::create_dir_all(path.parent().unwrap()).unwrap();
+      fs::write(path, value).unwrap();
+    }
+  }
+
+  fn gpu(pci: &str, vendor: GpuVendor) -> Gpu {
+    Gpu {
+      pci: pci.into(),
+      name: String::new(),
+      vendor,
+      driver: None,
+      measurable: true,
+    }
+  }
+
+  fn engine(entries: &[(&str, &str, &str, u64, u64)]) -> Engines {
+    entries
+      .iter()
+      .map(|(pdev, client, engine, busy, total)| {
+        (
+          (pdev.to_string(), client.to_string(), engine.to_string()),
+          (*busy, *total),
+        )
+      })
+      .collect()
+  }
+
+  #[test]
+  fn pci_address_edges() {
+    assert!(same_pci("00000000:01:00.0", "0000:01:00.0"));
+    assert!(same_pci("00000000:0A:00.1", "0000:0a:00.1"));
+    assert!(!same_pci("00000000:01:00.1", "0000:01:00.0"));
+    // only bus and function count, the domain does not
+    assert!(same_pci("00000001:01:00.0", "0000:01:00.0"));
+    assert!(same_pci("01:00.0", "0000:01:00.0"));
+    assert!(!same_pci("x", "x"));
+    assert!(!same_pci("", ""));
+    assert!(!same_pci("0000:01:00.0", "garbage"));
+  }
+
+  #[test]
+  fn vendors_and_drivers() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
+    let gpu_at = |pci: &str, vendor: &str, extra: &[(&str, &str)]| {
+      let mut files = vec![("class", "0x030000"), ("vendor", vendor)];
+      files.extend_from_slice(extra);
+      write(&root.join(pci), &files);
+    };
+    gpu_at("0000:04:00.0", "0x10de", &[]);
+    gpu_at("0000:00:02.0", "0x8086", &[]);
+    gpu_at("0000:00:03.0", "0x8086", &[]);
+    gpu_at("0000:05:00.0", "0x1af4", &[]);
+    gpu_at(
+      "0000:03:00.0",
+      "0x1002",
+      &[
+        ("product_name", "Radeon RX 7600"),
+        ("gpu_busy_percent", "0"),
+      ],
+    );
+    gpu_at("0000:06:00.0", "0x1002", &[("product_name", "")]);
+    // 3D controllers count too, other classes and unreadable devices do not
+    write(
+      &root.join("0000:07:00.0"),
+      &[("class", "0x030200"), ("vendor", "0x10de")],
+    );
+    write(
+      &root.join("0000:08:00.0"),
+      &[("class", "0x020000"), ("vendor", "0x8086")],
+    );
+    write(&root.join("0000:09:00.0"), &[("class", "0x030000")]);
+    fs::create_dir_all(root.join("0000:0a:00.0")).unwrap();
+    let drivers = root.join("drivers");
+    fs::create_dir_all(drivers.join("xe")).unwrap();
+    fs::create_dir_all(drivers.join("vfio-pci")).unwrap();
+    std::os::unix::fs::symlink(drivers.join("xe"), root.join("0000:00:02.0/driver")).unwrap();
+    std::os::unix::fs::symlink(drivers.join("vfio-pci"), root.join("0000:00:03.0/driver")).unwrap();
+
+    let gpus = list(root, None);
+    let summary: Vec<_> = gpus
+      .iter()
+      .map(|g| {
+        (
+          g.pci.as_str(),
+          g.name.as_str(),
+          g.vendor,
+          g.driver.as_deref(),
+          g.measurable,
+        )
+      })
+      .collect();
+    assert_eq!(
+      summary,
+      [
+        (
+          "0000:00:02.0",
+          "Intel GPU",
+          GpuVendor::Intel,
+          Some("xe"),
+          true
+        ),
+        (
+          "0000:00:03.0",
+          "Intel GPU",
+          GpuVendor::Intel,
+          Some("vfio-pci"),
+          false
+        ),
+        ("0000:03:00.0", "Radeon RX 7600", GpuVendor::Amd, None, true),
+        ("0000:04:00.0", "NVIDIA GPU", GpuVendor::Nvidia, None, false),
+        ("0000:05:00.0", "GPU", GpuVendor::Other, None, false),
+        ("0000:06:00.0", "AMD GPU", GpuVendor::Amd, None, false),
+        ("0000:07:00.0", "NVIDIA GPU", GpuVendor::Nvidia, None, false),
+      ]
+    );
+    assert!(list(&root.join("missing"), None).is_empty());
+  }
+
+  #[test]
+  fn i915_is_measurable() {
+    let root = tempfile::tempdir().unwrap();
+    let device = root.path().join("0000:00:02.0");
+    write(&device, &[("class", "0x030000"), ("vendor", "0x8086")]);
+    fs::create_dir_all(root.path().join("i915")).unwrap();
+    std::os::unix::fs::symlink(root.path().join("i915"), device.join("driver")).unwrap();
+    assert!(list(root.path(), None)[0].measurable);
+  }
+
+  #[test]
+  fn suspended_gpus_are_left_alone() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+      &root.path().join("0000:03:00.0"),
+      &[
+        ("power/runtime_status", "suspended\n"),
+        ("gpu_busy_percent", "50"),
+      ],
+    );
+    let none = (&Engines::new(), &Engines::new());
+    let sample = sample(
+      root.path(),
+      &gpu("0000:03:00.0", GpuVendor::Amd),
+      None,
+      none,
+    );
+    assert_eq!(
+      sample,
+      GpuSample {
+        pci: "0000:03:00.0".into(),
+        usage: None,
+        temperature: None,
+        vram_used: None,
+        vram_total: None,
+      }
+    );
+    write(
+      &root.path().join("0000:03:00.0"),
+      &[("power/runtime_status", "active")],
+    );
+    let awake = super::sample(
+      root.path(),
+      &gpu("0000:03:00.0", GpuVendor::Amd),
+      None,
+      none,
+    );
+    assert_eq!(awake.usage, Some(50.));
+  }
+
+  #[test]
+  fn amd_partial_readings() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+      &root.path().join("0000:03:00.0"),
+      &[
+        ("gpu_busy_percent", "x"),
+        ("mem_info_vram_used", " 12 \n"),
+        ("hwmon/hwmon1/name", "amdgpu"),
+        ("hwmon/hwmon1/temp1_input", "not a number"),
+      ],
+    );
+    let none = (&Engines::new(), &Engines::new());
+    let sample = sample(
+      root.path(),
+      &gpu("0000:03:00.0", GpuVendor::Amd),
+      None,
+      none,
+    );
+    assert_eq!(sample.usage, None);
+    assert_eq!((sample.vram_used, sample.vram_total), (Some(12), None));
+    assert_eq!(sample.temperature, None);
+  }
+
+  #[test]
+  fn other_and_nvidia_without_nvml_sample_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let none = (&Engines::new(), &Engines::new());
+    for vendor in [GpuVendor::Other, GpuVendor::Nvidia] {
+      let sample = sample(root.path(), &gpu("0000:01:00.0", vendor), None, none);
+      assert_eq!(
+        (sample.usage, sample.temperature, sample.vram_used),
+        (None, None, None)
+      );
+    }
+    // intel without any DRM client reads idle
+    let intel = sample(
+      root.path(),
+      &gpu("0000:00:02.0", GpuVendor::Intel),
+      None,
+      none,
+    );
+    assert_eq!(intel.usage, Some(0.));
+  }
+
+  #[test]
+  fn fdinfo_parsing() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
+    write(
+      root,
+      &[
+        // engine without its total, a capacity without an engine, junk values
+        (
+          "1/fdinfo/3",
+          "drm-pdev:\tA\ndrm-client-id:\t1\ndrm-cycles-rcs:\t5\ndrm-cycles-bcs:\tx\n\
+           drm-total-cycles-bcs:\t9\ndrm-engine-capacity-vcs:\t2\nno colon here\n",
+        ),
+        // no client id: skipped
+        ("2/fdinfo/3", "drm-pdev:\tA\ndrm-engine-render:\t5 ns\n"),
+        // no pdev: skipped
+        (
+          "3/fdinfo/3",
+          "drm-client-id:\t3\ndrm-engine-render:\t5 ns\n",
+        ),
+        // i915 style with capacity
+        (
+          "4/fdinfo/3",
+          "drm-pdev:\tB\ndrm-client-id:\t4\ndrm-engine-render:\t7 ns\ndrm-engine-capacity-render:\t3\n",
+        ),
+        ("not-a-pid", ""),
+      ],
+    );
+    fs::create_dir_all(root.join("5/fdinfo/7")).unwrap();
+    assert_eq!(engines(root, 100), engine(&[("B", "4", "render", 7, 300)]));
+    assert!(engines(&root.join("missing"), 1).is_empty());
+  }
+
+  #[test]
+  fn drm_usage_edges() {
+    let pci = "0000:00:02.0";
+    // counters reset: no negative busy time
+    let previous = engine(&[(pci, "1", "rcs", 500, 1000)]);
+    let current = engine(&[(pci, "1", "rcs", 100, 2000)]);
+    assert_eq!(drm_usage(pci, &previous, &current), 0.);
+    // no time passed: nothing to divide by
+    let current = engine(&[(pci, "1", "rcs", 600, 1000)]);
+    assert_eq!(drm_usage(pci, &previous, &current), 0.);
+    // more busy than total is capped
+    let current = engine(&[(pci, "1", "rcs", 5000, 2000)]);
+    assert_eq!(drm_usage(pci, &previous, &current), 100.);
+    // a client that just appeared has no baseline yet
+    let current = engine(&[(pci, "2", "rcs", 900, 2000)]);
+    assert_eq!(drm_usage(pci, &previous, &current), 0.);
+    // clients add up per engine, the busiest engine wins
+    let previous = engine(&[
+      (pci, "1", "rcs", 0, 0),
+      (pci, "2", "rcs", 0, 0),
+      (pci, "1", "vcs", 0, 0),
+    ]);
+    let current = engine(&[
+      (pci, "1", "rcs", 100, 1000),
+      (pci, "2", "rcs", 200, 1000),
+      (pci, "1", "vcs", 500, 1000),
+    ]);
+    assert_eq!(drm_usage(pci, &previous, &current), 50.);
+    assert_eq!(drm_usage("other", &previous, &current), 0.);
+    assert_eq!(drm_usage(pci, &Engines::new(), &Engines::new()), 0.);
+  }
 }

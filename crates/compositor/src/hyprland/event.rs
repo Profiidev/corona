@@ -16,6 +16,7 @@ use crate::{
   types,
 };
 
+#[derive(Debug, PartialEq)]
 enum CompositorEvent {
   Workspace(Vec<types::Workspace>),
   ActiveWorkspace(types::Workspace),
@@ -28,6 +29,11 @@ enum CompositorEvent {
   Attended(String),
 }
 
+#[cfg(not(any(test, feature = "test-support")))]
+const RECONNECT: std::time::Duration = std::time::Duration::from_secs(1);
+#[cfg(any(test, feature = "test-support"))]
+const RECONNECT: std::time::Duration = std::time::Duration::from_millis(20);
+
 impl Hyprland {
   pub fn spawn_event_listener(cx: &mut App, ipc: Ipc, event_path: PathBuf) {
     let (tx, rx) = flume::bounded(100);
@@ -38,7 +44,7 @@ impl Hyprland {
           Ok(socket) => socket,
           Err(e) => {
             warn!("Failed to hyprland connect to event socket: {}", e);
-            thread::sleep(std::time::Duration::from_secs(1));
+            thread::sleep(RECONNECT);
             continue;
           }
         };
@@ -64,39 +70,35 @@ impl Hyprland {
     cx.spawn(async move |cx| {
       while let Ok(event) = rx.recv_async().await {
         cx.update(|cx| {
-          cx.update_global::<Compositor, _>(|compositor, cx| match event {
-            CompositorEvent::Workspace(workspaces) => {
-              compositor.workspaces.write_changed(cx, workspaces)
-            }
-            CompositorEvent::ActiveWorkspace(workspace) => {
-              compositor.active_workspace.write_changed(cx, workspace)
-            }
-            CompositorEvent::Monitor(monitors) => compositor.monitors.write_changed(cx, monitors),
-            CompositorEvent::ActiveMonitor(monitor) => {
-              compositor.active_monitor.write_changed(cx, monitor)
-            }
-            CompositorEvent::Window(windows) => compositor.windows.write_changed(cx, windows),
-            CompositorEvent::ActiveWindow(window) => {
-              compositor.active_window.write_changed(cx, window)
-            }
-            CompositorEvent::KeyboardLayout(layout) => {
-              compositor.keyboard_layout.write_changed(cx, layout)
-            }
-            CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
-              if urgent.insert(address) {
-                cx.notify();
-              }
-            }),
-            CompositorEvent::Attended(address) => compositor.urgent.update(cx, |urgent, cx| {
-              if urgent.remove(&address) {
-                cx.notify();
-              }
-            }),
-          });
+          cx.update_global::<Compositor, _>(|compositor, cx| apply(compositor, event, cx))
         });
       }
     })
     .detach();
+  }
+}
+
+fn apply(compositor: &Compositor, event: CompositorEvent, cx: &mut App) {
+  match event {
+    CompositorEvent::Workspace(workspaces) => compositor.workspaces.write_changed(cx, workspaces),
+    CompositorEvent::ActiveWorkspace(workspace) => {
+      compositor.active_workspace.write_changed(cx, workspace)
+    }
+    CompositorEvent::Monitor(monitors) => compositor.monitors.write_changed(cx, monitors),
+    CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write_changed(cx, monitor),
+    CompositorEvent::Window(windows) => compositor.windows.write_changed(cx, windows),
+    CompositorEvent::ActiveWindow(window) => compositor.active_window.write_changed(cx, window),
+    CompositorEvent::KeyboardLayout(layout) => compositor.keyboard_layout.write_changed(cx, layout),
+    CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
+      if urgent.insert(address) {
+        cx.notify();
+      }
+    }),
+    CompositorEvent::Attended(address) => compositor.urgent.update(cx, |urgent, cx| {
+      if urgent.remove(&address) {
+        cx.notify();
+      }
+    }),
   }
 }
 
@@ -183,10 +185,175 @@ impl Ipc {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  use crate::hyprland::fake::FakeHyprland;
+
   #[test]
   fn window_address() {
     assert_eq!(super::window_address("5ba3a8eef560"), "0x5ba3a8eef560");
     assert_eq!(super::window_address("0x5ba3a8eef560"), "0x5ba3a8eef560");
     assert_eq!(super::window_address("5ba3a8eef560,1"), "0x5ba3a8eef560");
+    assert_eq!(super::window_address("abc,1,title, with commas"), "0xabc");
+    assert_eq!(super::window_address(""), "0x");
+    assert_eq!(super::window_address(","), "0x");
+  }
+
+  fn parse(hypr: &FakeHyprland, line: &str) -> Result<Vec<CompositorEvent>> {
+    hypr.ipc().parse_event(line)
+  }
+
+  fn names(events: &[CompositorEvent]) -> Vec<&'static str> {
+    events
+      .iter()
+      .map(|e| match e {
+        CompositorEvent::Workspace(_) => "Workspace",
+        CompositorEvent::ActiveWorkspace(_) => "ActiveWorkspace",
+        CompositorEvent::Monitor(_) => "Monitor",
+        CompositorEvent::ActiveMonitor(_) => "ActiveMonitor",
+        CompositorEvent::Window(_) => "Window",
+        CompositorEvent::ActiveWindow(_) => "ActiveWindow",
+        CompositorEvent::KeyboardLayout(_) => "KeyboardLayout",
+        CompositorEvent::Urgent(_) => "Urgent",
+        CompositorEvent::Attended(_) => "Attended",
+      })
+      .collect()
+  }
+
+  #[test]
+  fn workspace_events_refresh_workspaces_and_monitors() {
+    let hypr = FakeHyprland::start();
+    for name in [
+      "workspace",
+      "createworkspace",
+      "destroyworkspace",
+      "renameworkspace",
+      "moveworkspace",
+    ] {
+      let events = parse(&hypr, &format!("{name}>>3")).unwrap();
+      assert_eq!(
+        names(&events),
+        ["Workspace", "ActiveWorkspace", "Monitor"],
+        "{name}"
+      );
+    }
+    assert_eq!(
+      names(&parse(&hypr, "activespecial>>special:x,DP-1").unwrap()),
+      ["Monitor"]
+    );
+    assert_eq!(
+      names(&parse(&hypr, "monitoradded>>DP-2").unwrap()),
+      ["Monitor"]
+    );
+    assert_eq!(
+      names(&parse(&hypr, "monitorremoved>>DP-2").unwrap()),
+      ["Monitor"]
+    );
+  }
+
+  #[test]
+  fn window_events() {
+    let hypr = FakeHyprland::start();
+    for name in ["openwindow", "movewindow", "kill", "windowtitle"] {
+      let events = parse(&hypr, &format!("{name}>>a,1,x,y")).unwrap();
+      assert_eq!(names(&events), ["Window", "ActiveWindow"], "{name}");
+    }
+    let closed = parse(&hypr, "closewindow>>abc").unwrap();
+    assert_eq!(names(&closed), ["Window", "ActiveWindow", "Attended"]);
+    assert_eq!(closed[2], CompositorEvent::Attended("0xabc".into()));
+    let active = parse(&hypr, "activewindow>>firefox,title").unwrap();
+    assert_eq!(names(&active), ["ActiveWindow"]);
+  }
+
+  #[test]
+  fn urgency() {
+    let hypr = FakeHyprland::start();
+    assert_eq!(
+      parse(&hypr, "urgent>>abc").unwrap(),
+      [CompositorEvent::Urgent("0xabc".into())]
+    );
+    assert_eq!(
+      parse(&hypr, "activewindowv2>>abc").unwrap(),
+      [CompositorEvent::Attended("0xabc".into())]
+    );
+    // focus left every window
+    assert!(parse(&hypr, "activewindowv2>>").unwrap().is_empty());
+    assert!(parse(&hypr, "activewindowv2>>,").unwrap().is_empty());
+    // no IPC needed for these
+    assert!(hypr.commands().is_empty());
+  }
+
+  #[test]
+  #[ignore = "BUG: an urgent event without an address marks the bogus window 0x urgent"]
+  fn bug_empty_urgent_addresses_are_ignored() {
+    let hypr = FakeHyprland::start();
+    assert!(parse(&hypr, "urgent>>").unwrap().is_empty());
+  }
+
+  #[test]
+  #[ignore = "BUG: fullscreen, floating and pin changes are not handled, the windows' flags go stale"]
+  fn bug_window_state_changes_refresh_windows() {
+    let hypr = FakeHyprland::start();
+    for line in ["fullscreen>>1", "changefloatingmode>>abc,1", "pin>>abc,1"] {
+      assert!(
+        names(&parse(&hypr, line).unwrap()).contains(&"Window"),
+        "{line}"
+      );
+    }
+  }
+
+  #[test]
+  fn focused_monitor() {
+    let hypr = FakeHyprland::start();
+    let events = parse(&hypr, "focusedmon>>DP-1,2").unwrap();
+    let [
+      CompositorEvent::ActiveWorkspace(workspace),
+      CompositorEvent::ActiveMonitor(monitor),
+    ] = &events[..]
+    else {
+      panic!("{events:?}");
+    };
+    assert_eq!(
+      (workspace.name.as_str(), monitor.name.as_str()),
+      ("2", "DP-1")
+    );
+    assert_eq!(
+      parse(&hypr, "focusedmon>>DP-1").unwrap_err().to_string(),
+      "Invalid hyprland event format"
+    );
+    assert_eq!(
+      parse(&hypr, "focusedmon>>HDMI-A-1,1")
+        .unwrap_err()
+        .to_string(),
+      "Monitor not found"
+    );
+  }
+
+  #[test]
+  fn keyboard_layout() {
+    let hypr = FakeHyprland::start();
+    assert_eq!(
+      parse(&hypr, "activelayout>>at-translated-set-2-keyboard,German").unwrap(),
+      [CompositorEvent::KeyboardLayout(Some("German".into()))]
+    );
+  }
+
+  #[test]
+  fn malformed_and_unknown_lines() {
+    let hypr = FakeHyprland::start();
+    assert_eq!(
+      parse(&hypr, "garbage").unwrap_err().to_string(),
+      "Invalid hyprland event format"
+    );
+    assert!(parse(&hypr, "").is_err());
+    assert!(parse(&hypr, "configreloaded>>").unwrap().is_empty());
+    assert!(parse(&hypr, "submap>>resize").unwrap().is_empty());
+    // the first `>>` splits, data may contain more
+    assert_eq!(
+      parse(&hypr, "urgent>>a>>b").unwrap(),
+      [CompositorEvent::Urgent("0xa>>b".into())]
+    );
+    // an IPC failure fails the event
+    hypr.answer("j/clients", "not json");
+    assert!(parse(&hypr, "openwindow>>a").is_err());
   }
 }

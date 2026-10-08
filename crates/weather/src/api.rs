@@ -186,10 +186,10 @@ impl Forecast {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
   use super::*;
 
-  const FORECAST_JSON: &str = r#"{
+  pub(crate) const FORECAST_JSON: &str = r#"{
     "latitude": 47.86, "longitude": 12.0, "timezone": "Europe/Berlin",
     "timezone_abbreviation": "GMT+2", "elevation": 482.0,
     "current": {"time": "2026-10-01T14:15", "interval": 900, "temperature_2m": 14.2,
@@ -230,6 +230,233 @@ mod tests {
   fn encode() {
     assert_eq!(super::encode("Bad Aibling"), "Bad%20Aibling");
     assert_eq!(super::encode("München"), "M%C3%BCnchen");
+  }
+
+  use std::sync::{Arc, Mutex};
+
+  use futures_lite::future::block_on;
+  use gpui_kit::http_client::{FakeHttpClient, HttpClientWithUrl, Response};
+
+  /// answers every request with `answer(url)` and records the URLs
+  pub(crate) fn fake(
+    answer: impl Fn(&str) -> (u16, String) + Send + Sync + 'static,
+  ) -> (Arc<HttpClientWithUrl>, Arc<Mutex<Vec<String>>>) {
+    let urls = Arc::new(Mutex::new(Vec::new()));
+    let seen = urls.clone();
+    let answer = Arc::new(answer);
+    let client = FakeHttpClient::create(move |req| {
+      let url = req.uri().to_string();
+      seen.lock().unwrap().push(url.clone());
+      let (status, body) = answer(&url);
+      async move {
+        Ok(
+          Response::builder()
+            .status(status)
+            .body(body.into())
+            .unwrap(),
+        )
+      }
+    });
+    (client, urls)
+  }
+
+  fn here() -> Location {
+    Location {
+      name: "Here".into(),
+      latitude: 47.86,
+      longitude: -12.5,
+      query: None,
+    }
+  }
+
+  fn parse(json: &str) -> Weather {
+    serde_json::from_str::<Forecast>(json)
+      .unwrap()
+      .into_weather(here(), Units::Metric)
+  }
+
+  #[test]
+  fn encode_edges() {
+    assert_eq!(super::encode(""), "");
+    assert_eq!(super::encode("AZaz09-_.~"), "AZaz09-_.~");
+    assert_eq!(
+      super::encode("a+b,c&d=e/f?#%"),
+      "a%2Bb%2Cc%26d%3De%2Ff%3F%23%25"
+    );
+    assert_eq!(super::encode("東京"), "%E6%9D%B1%E4%BA%AC");
+  }
+
+  #[test]
+  fn ragged_arrays_are_cut_to_the_shortest() {
+    let json = FORECAST_JSON
+      .replace(
+        r#""wind_speed_10m": [7.0, 8.1]"#,
+        r#""wind_speed_10m": [7.0]"#,
+      )
+      .replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": []"#);
+    let weather = parse(&json);
+    assert_eq!(weather.hourly.len(), 1);
+    assert!(weather.daily.is_empty());
+  }
+
+  #[test]
+  fn optional_fields_default() {
+    let json = FORECAST_JSON
+      .replace(r#""timezone": "Europe/Berlin","#, "")
+      .replace(
+        r#""timezone_abbreviation": "GMT+2", "elevation": 482.0,"#,
+        "",
+      )
+      .replace(r#", "uv_index": 2.1"#, "");
+    let weather = parse(&json);
+    assert_eq!((weather.elevation, weather.timezone.as_str()), (0., ""));
+    assert_eq!(weather.timezone_abbreviation, "");
+    assert_eq!(weather.current.uv_index, 0.);
+    assert_eq!(weather.location, here());
+    assert_eq!(weather.units, Units::Metric);
+  }
+
+  #[test]
+  fn only_one_is_day() {
+    let night =
+      parse(&FORECAST_JSON.replace(r#""is_day": 1, "uv_index""#, r#""is_day": 0, "uv_index""#));
+    assert!(!night.current.is_day);
+    let odd =
+      parse(&FORECAST_JSON.replace(r#""is_day": 1, "uv_index""#, r#""is_day": 2, "uv_index""#));
+    assert!(!odd.current.is_day);
+    let hours = parse(&FORECAST_JSON.replace(r#""is_day": [1, 1]"#, r#""is_day": [0, 1]"#));
+    assert_eq!(
+      hours.hourly.iter().map(|h| h.is_day).collect::<Vec<_>>(),
+      [false, true]
+    );
+  }
+
+  #[test]
+  fn out_of_range_codes_fail() {
+    let json = FORECAST_JSON.replace(r#""weather_code": 3,"#, r#""weather_code": 300,"#);
+    assert!(serde_json::from_str::<Forecast>(&json).is_err());
+  }
+
+  #[test]
+  #[ignore = "BUG: one null hourly temperature fails the whole forecast"]
+  fn bug_null_hourly_values_keep_the_forecast() {
+    let json = FORECAST_JSON.replace(
+      r#""temperature_2m": [14.0, 14.4]"#,
+      r#""temperature_2m": [14.0, null]"#,
+    );
+    let forecast = serde_json::from_str::<Forecast>(&json);
+    assert!(forecast.is_ok());
+  }
+
+  #[test]
+  fn geocode_finds_the_first_place() {
+    let (client, urls) = fake(|_| {
+      (
+        200,
+        r#"{"results": [{"name": "Bad Aibling", "latitude": 47.86, "longitude": 12.01, "country": "Germany"},
+                        {"name": "Elsewhere", "latitude": 0, "longitude": 0}]}"#
+          .into(),
+      )
+    });
+    let location = block_on(geocode(&*client, " Bad Aibling , Bavaria")).unwrap();
+    assert_eq!(
+      location,
+      Location {
+        name: "Bad Aibling, Germany".into(),
+        latitude: 47.86,
+        longitude: 12.01,
+        query: Some(" Bad Aibling , Bavaria".into()),
+      }
+    );
+    let urls = urls.lock().unwrap();
+    assert_eq!(
+      urls.as_slice(),
+      [format!(
+        "{GEOCODING}?name=Bad%20Aibling&count=1&format=json"
+      )]
+    );
+  }
+
+  #[test]
+  fn geocode_without_a_country() {
+    let (client, _) = fake(|_| {
+      (
+        200,
+        r#"{"results": [{"name": "Atlantis", "latitude": 1, "longitude": 2}]}"#.into(),
+      )
+    });
+    assert_eq!(
+      block_on(geocode(&*client, "Atlantis")).unwrap().name,
+      "Atlantis"
+    );
+  }
+
+  #[test]
+  fn geocode_without_results() {
+    for body in [r#"{}"#, r#"{"results": null}"#, r#"{"results": []}"#] {
+      let (client, _) = fake(move |_| (200, body.into()));
+      let error = block_on(geocode(&*client, "Nowhere")).unwrap_err();
+      assert_eq!(error.to_string(), "no place named Nowhere");
+    }
+  }
+
+  #[test]
+  #[ignore = "BUG: the region after the comma is dropped, \"Paris, Texas\" can resolve to Paris, France"]
+  fn bug_geocode_keeps_the_region() {
+    let (client, urls) = fake(|_| (200, r#"{"results": []}"#.into()));
+    block_on(geocode(&*client, "Paris, Texas")).ok();
+    assert!(urls.lock().unwrap()[0].contains("Texas"));
+  }
+
+  #[test]
+  fn http_errors_carry_status_and_body() {
+    let (client, _) = fake(|_| (503, "  try later \n".into()));
+    let error = block_on(geocode(&*client, "Berlin"))
+      .unwrap_err()
+      .to_string();
+    assert!(
+      error.ends_with("answered 503 Service Unavailable: try later"),
+      "{error}"
+    );
+    assert!(error.starts_with(GEOCODING), "{error}");
+  }
+
+  #[test]
+  fn bad_json_names_the_url() {
+    let (client, _) = fake(|_| (200, "<html>".into()));
+    let error = block_on(super::forecast(&*client, here(), Units::Metric)).unwrap_err();
+    assert!(error.to_string().starts_with(&format!(
+      "parsing {FORECAST}?latitude=47.86&longitude=-12.5"
+    )));
+  }
+
+  #[test]
+  fn network_errors_pass_through() {
+    let client = FakeHttpClient::create(|_| async { Err(anyhow::anyhow!("offline")) });
+    let error = block_on(super::forecast(&*client, here(), Units::Metric)).unwrap_err();
+    assert_eq!(error.to_string(), "offline");
+  }
+
+  #[test]
+  fn forecast_queries_the_units() {
+    let (client, urls) = fake(|_| (200, FORECAST_JSON.into()));
+    let metric = block_on(super::forecast(&*client, here(), Units::Metric)).unwrap();
+    let imperial = block_on(super::forecast(&*client, here(), Units::Imperial)).unwrap();
+    assert_eq!(
+      (metric.units, imperial.units),
+      (Units::Metric, Units::Imperial)
+    );
+    let urls = urls.lock().unwrap();
+    assert!(!urls[0].contains("fahrenheit"));
+    assert!(urls[1].ends_with("&temperature_unit=fahrenheit&wind_speed_unit=mph"));
+    for url in urls.iter() {
+      assert!(url.starts_with(&format!(
+        "{FORECAST}?latitude=47.86&longitude=-12.5&current="
+      )));
+      assert!(url.contains(&format!(
+        "&forecast_days={DAYS}&forecast_hours={HOURS}&timezone=auto"
+      )));
+    }
   }
 }
 

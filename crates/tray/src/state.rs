@@ -114,4 +114,38 @@ mod tests {
     argb_to_rgba(&mut px);
     assert_eq!(px, [1, 2, 3, 0xff]);
   }
+
+  #[test]
+  fn mnemonic_edges() {
+    assert_eq!(strip_mnemonic(""), "");
+    assert_eq!(strip_mnemonic("a_"), "a");
+    assert_eq!(strip_mnemonic("___"), "_");
+    assert_eq!(strip_mnemonic("____"), "__");
+    assert_eq!(strip_mnemonic("Über_ändern"), "Überändern");
+    assert_eq!(strip_mnemonic("no mnemonic"), "no mnemonic");
+  }
+
+  #[test]
+  fn pixmap_edges() {
+    let mut empty: [u8; 0] = [];
+    argb_to_rgba(&mut empty);
+    // a partial pixel at the end is left alone
+    let mut px = [0xff, 1, 2, 3, 9, 8];
+    argb_to_rgba(&mut px);
+    assert_eq!(px, [1, 2, 3, 0xff, 9, 8]);
+  }
+
+  #[test]
+  fn statuses_and_categories() {
+    assert_eq!(Status::from("Passive"), Status::Passive);
+    assert_eq!(Status::from("NeedsAttention"), Status::NeedsAttention);
+    assert_eq!(Status::from("Active"), Status::Active);
+    assert_eq!(Status::from("passive"), Status::Active);
+    assert_eq!(Status::from(""), Status::default());
+    assert_eq!(Category::from("Communications"), Category::Communications);
+    assert_eq!(Category::from("SystemServices"), Category::SystemServices);
+    assert_eq!(Category::from("Hardware"), Category::Hardware);
+    assert_eq!(Category::from("Other"), Category::ApplicationStatus);
+    assert_eq!(Toggle::default(), Toggle::None);
+  }
 }

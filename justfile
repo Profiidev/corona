@@ -33,6 +33,15 @@ vendor:
     (cd vendor/gpui-shell && patch -p3 --forward < "$p")
   done
 
+# Every test, with test-support's short timeouts. Needs dbus-daemon; the ignored
+# ones are live checks against this machine and known bugs (`test(/bug_/)`).
+test *args:
+  cargo nextest run --workspace --all-features {{args}}
+
+# Line coverage of the tests, as HTML under target/llvm-cov/html.
+coverage:
+  cargo llvm-cov nextest --workspace --all-features --html
+
 # Run corona in a nested Hyprland — a lock screen that won't unlock can't lock you out
 nested:
   #!/usr/bin/env sh

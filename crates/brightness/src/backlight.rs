@@ -13,6 +13,15 @@ use crate::state::{Display, DisplayKind};
 pub(crate) const BACKLIGHT: &str = "/sys/class/backlight";
 pub(crate) const DRM: &str = "/sys/class/drm";
 
+/// `path` under sysfs; tests point `CORONA_TEST_SYSFS` at a fixture tree instead
+pub(crate) fn sys(path: &str) -> PathBuf {
+  #[cfg(any(test, feature = "test-support"))]
+  if let Some(root) = std::env::var_os("CORONA_TEST_SYSFS") {
+    return Path::new(&root).join(path.trim_start_matches("/sys/"));
+  }
+  PathBuf::from(path)
+}
+
 #[zbus::proxy(
   interface = "org.freedesktop.login1.Session",
   default_service = "org.freedesktop.login1",
@@ -69,7 +78,7 @@ pub(crate) async fn set(conn: &Connection, name: &str, brightness: u32) -> Resul
   };
   if let Err(error) = logind.await {
     tracing::debug!("logind refused the brightness ({error}), writing sysfs directly");
-    let path = PathBuf::from(BACKLIGHT).join(name).join("brightness");
+    let path = sys(BACKLIGHT).join(name).join("brightness");
     fs::write(&path, brightness.to_string())
       .with_context(|| format!("writing {}", path.display()))?;
   }
@@ -98,5 +107,44 @@ mod tests {
     assert_eq!(displays[0].output.as_deref(), Some("eDP-1"));
     assert_eq!(displays[0].percent(), 25.);
     fs::remove_dir_all(root).ok();
+  }
+
+  #[test]
+  fn list_edges() {
+    let root = tempfile::tempdir().unwrap();
+    let write = |file: &str, value: &str| {
+      let path = root.path().join(file);
+      fs::create_dir_all(path.parent().unwrap()).unwrap();
+      fs::write(path, value).unwrap();
+    };
+    write("backlight/b/brightness", " 7 \n");
+    write("backlight/b/max_brightness", "10");
+    write("backlight/a/brightness", "1");
+    write("backlight/a/max_brightness", "2");
+    // unreadable values: skipped
+    write("backlight/bad/brightness", "lots");
+    write("backlight/bad/max_brightness", "10");
+    write("backlight/half/brightness", "1");
+    // a connector without a dash names no output
+    fs::create_dir_all(root.path().join("drm/weird/b")).unwrap();
+    let displays = super::list(&root.path().join("backlight"), &root.path().join("drm"));
+    let summary: Vec<_> = displays
+      .iter()
+      .map(|d| (d.id.as_str(), d.output.as_deref(), d.brightness, d.max))
+      .collect();
+    assert_eq!(
+      summary,
+      [("backlight/a", None, 1, 2), ("backlight/b", None, 7, 10)]
+    );
+    assert!(super::list(&root.path().join("missing"), &root.path().join("missing")).is_empty());
+  }
+
+  #[test]
+  fn sys_follows_the_test_root() {
+    unsafe { std::env::remove_var("CORONA_TEST_SYSFS") };
+    assert_eq!(sys(BACKLIGHT), Path::new(BACKLIGHT));
+    unsafe { std::env::set_var("CORONA_TEST_SYSFS", "/fixture") };
+    assert_eq!(sys(BACKLIGHT), Path::new("/fixture/class/backlight"));
+    assert_eq!(sys(DRM), Path::new("/fixture/class/drm"));
   }
 }

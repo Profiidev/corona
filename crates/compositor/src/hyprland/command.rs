@@ -92,3 +92,68 @@ macro_rules! hypr_dsp {
     }
   };
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::hyprland::fake::FakeHyprland;
+
+  fn command(flags: CommandFlags) -> String {
+    Command {
+      command: "clients".into(),
+      flags,
+    }
+    .to_string()
+  }
+
+  #[test]
+  fn flags_prefix_the_command() {
+    assert_eq!(command(CommandFlags::empty()), "/clients");
+    assert_eq!(command(CommandFlags::JSON), "j/clients");
+    assert_eq!(command(CommandFlags::REFRESH), "r/clients");
+    assert_eq!(
+      command(CommandFlags::JSON | CommandFlags::REFRESH),
+      "jr/clients"
+    );
+  }
+
+  #[test]
+  fn sends_one_command_per_connection() {
+    let hypr = FakeHyprland::start();
+    let ipc = hypr.ipc();
+    let answer = ipc
+      .send_cmd(&Command {
+        command: "cursorpos".into(),
+        flags: CommandFlags::JSON,
+      })
+      .unwrap();
+    assert_eq!(answer, r#"{"x": -5, "y": 1200}"#);
+    assert_eq!(ipc.eval("hl.version()").unwrap(), "ok");
+    assert_eq!(hypr.commands(), ["j/cursorpos", "/eval hl.version()"]);
+  }
+
+  #[test]
+  fn dispatch_needs_ok() {
+    let hypr = FakeHyprland::start();
+    let ipc = hypr.ipc();
+    ipc.dsp("exec_cmd(\"true\")").unwrap();
+    assert_eq!(
+      hypr.commands(),
+      [r#"/eval hl.dispatch(hl.dsp.exec_cmd("true"))"#]
+    );
+    hypr.answer(r#"/eval hl.dispatch(hl.dsp.nope())"#, "no such dispatcher");
+    assert_eq!(
+      ipc.dsp("nope()").unwrap_err().to_string(),
+      "Hyprland dsp call failed: no such dispatcher"
+    );
+  }
+
+  #[test]
+  fn missing_socket_is_an_error() {
+    let ipc = Ipc {
+      cmd_socket: "/nonexistent/.socket.sock".into(),
+    };
+    assert!(ipc.eval("x").is_err());
+    assert!(ipc.dsp("x").is_err());
+  }
+}

@@ -309,19 +309,7 @@ impl Capturer {
     };
     // Only modifiers the GPU can import, which also rules out implicit ones.
     let importable = crate::gpu::importable_modifiers();
-    let Some((format, modifiers)) = FORMATS.into_iter().find_map(|(f, _)| {
-      let (_, mods) = self
-        .state
-        .dmabuf_formats
-        .iter()
-        .find(|(code, _)| *code == f as u32)?;
-      let mods = mods
-        .iter()
-        .filter(|m| importable.contains(m))
-        .map(|m| Modifier::from(*m))
-        .collect::<Vec<_>>();
-      (!mods.is_empty()).then_some((f, mods))
-    }) else {
+    let Some((format, modifiers)) = pick_format(&self.state.dmabuf_formats, importable) else {
       return Ok(None);
     };
 
@@ -482,6 +470,33 @@ impl Frame {
   }
 }
 
+/// The first of [`FORMATS`] the compositor offers with a modifier in `importable`.
+fn pick_format(offered: &[(u32, Vec<u64>)], importable: &[u64]) -> Option<(Format, Vec<Modifier>)> {
+  FORMATS.into_iter().find_map(|(f, _)| {
+    let (_, mods) = offered.iter().find(|(code, _)| *code == f as u32)?;
+    let mods = mods
+      .iter()
+      .filter(|m| importable.contains(m))
+      .map(|m| Modifier::from(*m))
+      .collect::<Vec<_>>();
+    (!mods.is_empty()).then_some((f, mods))
+  })
+}
+
+/// The protocol's array of native-endian u64 modifiers.
+fn modifiers(bytes: &[u8]) -> Vec<u64> {
+  bytes
+    .as_chunks::<8>()
+    .0
+    .iter()
+    .map(|m| u64::from_ne_bytes(*m))
+    .collect()
+}
+
+fn window_address(hi: u32, lo: u32) -> u64 {
+  (u64::from(hi) << 32) | u64::from(lo)
+}
+
 /// Rows of little-endian BGRA/BGRX words to RGBA.
 fn to_rgba(
   data: &[u8],
@@ -549,13 +564,9 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for State {
         state.dmabuf_device = device.try_into().ok().map(u64::from_ne_bytes);
       }
       Event::DmabufFormat { format, modifiers } => {
-        let modifiers = modifiers
-          .as_chunks::<8>()
-          .0
-          .iter()
-          .map(|m| u64::from_ne_bytes(*m))
-          .collect();
-        state.dmabuf_formats.push((format, modifiers));
+        state
+          .dmabuf_formats
+          .push((format, self::modifiers(&modifiers)));
       }
       Event::ShmFormat {
         format: WEnum::Value(f @ (wl_shm::Format::Argb8888 | wl_shm::Format::Xrgb8888)),
@@ -612,8 +623,9 @@ impl Dispatch<HyprlandToplevelWindowMappingHandleV1, usize> for State {
       address,
     } = event
     {
-      let address = (u64::from(address_hi) << 32) | u64::from(address);
-      state.mapped.push((*index, address));
+      state
+        .mapped
+        .push((*index, window_address(address_hi, address)));
     }
   }
 }
@@ -637,3 +649,185 @@ impl Dispatch<ExtForeignToplevelListV1, ()> for State {
   ]);
 }
 delegate_noop!(State: ZwpLinuxBufferParamsV1);
+
+#[cfg(test)]
+mod tests {
+  use std::io::Write;
+
+  use super::*;
+
+  /// a `w`×`h` shm frame with `stride` bytes per row after `offset` bytes of
+  /// padding, pixel (x, y) is BGRA [x, y, 7, 200]
+  fn shm_frame(w: u32, h: u32, stride: u32, offset: u32, opaque: bool) -> Frame {
+    let fd: OwnedFd = memfd_create("corona-test", MemfdFlags::CLOEXEC).unwrap();
+    let mut bytes = vec![0xEEu8; (offset + stride * h) as usize];
+    for y in 0..h {
+      for x in 0..w {
+        let at = (offset + y * stride + x * 4) as usize;
+        bytes[at..at + 4].copy_from_slice(&[x as u8, y as u8, 7, 200]);
+      }
+    }
+    File::from(fd.try_clone().unwrap())
+      .write_all(&bytes)
+      .unwrap();
+    Frame {
+      surface: Arc::new(Dmabuf {
+        width: w,
+        height: h,
+        planes: vec![DmabufPlane { fd, offset, stride }],
+        modifier: None,
+        opaque,
+      }),
+      backing: Backing::Shm,
+    }
+  }
+
+  fn rgba(x: u8, y: u8, alpha: u8) -> [u8; 4] {
+    [7, y, x, alpha]
+  }
+
+  #[test]
+  fn to_rgba_swizzles_and_skips_padding() {
+    // two rows of one pixel, 4 bytes padding each, after 2 bytes of header
+    let data = [9, 9, 1, 2, 3, 4, 0, 0, 0, 0, 5, 6, 7, 8, 0, 0, 0, 0];
+    let image = to_rgba(&data, 2, 8, 1, 2, false).unwrap();
+    assert_eq!(image.into_raw(), [3, 2, 1, 4, 7, 6, 5, 8]);
+    let opaque = to_rgba(&data, 2, 8, 1, 2, true).unwrap();
+    assert_eq!(opaque.into_raw(), [3, 2, 1, 255, 7, 6, 5, 255]);
+  }
+
+  #[test]
+  fn to_rgba_edges() {
+    assert_eq!(
+      to_rgba(&[], 0, 0, 0, 0, false).unwrap().dimensions(),
+      (0, 0)
+    );
+    assert_eq!(
+      to_rgba(&[], 0, 0, 0, 3, false).unwrap().dimensions(),
+      (0, 3)
+    );
+    let error = to_rgba(&[0; 7], 0, 4, 1, 2, false).unwrap_err();
+    assert_eq!(error.to_string(), "capture buffer smaller than its size");
+    assert!(to_rgba(&[0; 4], 1, 4, 1, 1, false).is_err());
+    // the last row needs no padding
+    assert!(to_rgba(&[0; 12], 0, 8, 1, 2, false).is_ok());
+  }
+
+  #[test]
+  fn reads_shm_frames() {
+    let frame = shm_frame(4, 3, 20, 8, false);
+    assert_eq!((frame.width(), frame.height()), (4, 3));
+    let all = frame.read_all().unwrap();
+    assert_eq!(all.dimensions(), (4, 3));
+    assert_eq!(all.get_pixel(3, 2).0, rgba(3, 2, 200));
+    assert_eq!(all.get_pixel(0, 0).0, rgba(0, 0, 200));
+
+    let part = frame.read(1, 1, 2, 2).unwrap();
+    assert_eq!(part.dimensions(), (2, 2));
+    assert_eq!(part.get_pixel(0, 0).0, rgba(1, 1, 200));
+    assert_eq!(part.get_pixel(1, 1).0, rgba(2, 2, 200));
+
+    let opaque = shm_frame(2, 2, 8, 0, true);
+    assert_eq!(
+      opaque.read_all().unwrap().get_pixel(1, 0).0,
+      rgba(1, 0, 255)
+    );
+  }
+
+  #[test]
+  fn reads_are_clamped_to_the_frame() {
+    let frame = shm_frame(4, 3, 16, 0, false);
+    let overhanging = frame.read(2, 1, 100, 100).unwrap();
+    assert_eq!(overhanging.dimensions(), (2, 2));
+    assert_eq!(overhanging.get_pixel(1, 1).0, rgba(3, 2, 200));
+    for (x, y, w, h) in [
+      (4, 0, 1, 1),
+      (0, 3, 1, 1),
+      (100, 100, 5, 5),
+      (0, 0, 0, 3),
+      (0, 0, 3, 0),
+    ] {
+      let empty = frame.read(x, y, w, h).unwrap();
+      assert_eq!(empty.width() * empty.height(), 0, "{x} {y} {w} {h}");
+    }
+    let empty = shm_frame(0, 0, 0, 0, false);
+    assert_eq!(empty.read_all().unwrap().dimensions(), (0, 0));
+  }
+
+  #[test]
+  fn short_memfds_are_errors() {
+    let frame = shm_frame(2, 2, 8, 0, false);
+    let big = Frame {
+      surface: Arc::new(Dmabuf {
+        width: 2,
+        height: 4,
+        planes: vec![DmabufPlane {
+          fd: frame.surface.planes[0].fd.try_clone().unwrap(),
+          offset: 0,
+          stride: 8,
+        }],
+        modifier: None,
+        opaque: false,
+      }),
+      backing: Backing::Shm,
+    };
+    assert!(big.read_all().is_err());
+  }
+
+  #[test]
+  fn format_choice() {
+    let argb = Format::Argb8888 as u32;
+    let xrgb = Format::Xrgb8888 as u32;
+    let mods = |m: Option<(Format, Vec<Modifier>)>| {
+      m.map(|(f, mods)| (f, mods.into_iter().map(u64::from).collect::<Vec<_>>()))
+    };
+    // alpha first, only importable modifiers
+    let offered = vec![(xrgb, vec![1, 2]), (argb, vec![2, 3, 4])];
+    assert_eq!(
+      mods(pick_format(&offered, &[2, 4])),
+      Some((Format::Argb8888, vec![2, 4]))
+    );
+    // argb has nothing importable: xrgb
+    assert_eq!(
+      mods(pick_format(&offered, &[1])),
+      Some((Format::Xrgb8888, vec![1]))
+    );
+    assert_eq!(mods(pick_format(&offered, &[9])), None);
+    assert_eq!(mods(pick_format(&[], &[1])), None);
+    // other formats are ignored
+    assert_eq!(
+      mods(pick_format(&[(Format::Abgr8888 as u32, vec![1])], &[1])),
+      None
+    );
+  }
+
+  #[test]
+  fn modifier_arrays() {
+    let mut bytes = Vec::new();
+    bytes.extend(7u64.to_ne_bytes());
+    bytes.extend(u64::MAX.to_ne_bytes());
+    assert_eq!(modifiers(&bytes), [7, u64::MAX]);
+    // a trailing partial modifier is dropped
+    bytes.extend([1, 2, 3]);
+    assert_eq!(modifiers(&bytes), [7, u64::MAX]);
+    assert!(modifiers(&[]).is_empty());
+  }
+
+  #[test]
+  fn window_addresses() {
+    assert_eq!(window_address(0, 0), 0);
+    assert_eq!(window_address(0x55d2, 0xa4e1_b2c0), 0x55d2_a4e1_b2c0);
+    assert_eq!(window_address(u32::MAX, u32::MAX), u64::MAX);
+  }
+
+  /// needs a running Wayland compositor with ext-image-copy-capture
+  #[test]
+  #[ignore]
+  fn live_capture_all() {
+    let mut capturer = Capturer::new().unwrap();
+    let name = capturer.state.outputs[0].1.clone().unwrap();
+    let frame = capturer.capture(&name).unwrap();
+    let image = frame.read_all().unwrap();
+    println!("{name}: {:?}", image.dimensions());
+  }
+}

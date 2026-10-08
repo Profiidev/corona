@@ -75,4 +75,11 @@ mod tests {
       ("org.kde.StatusNotifierItem-1-1", ITEM_PATH.to_string())
     );
   }
+
+  #[test]
+  fn address_edges() {
+    assert_eq!(parse_address(""), ("", ITEM_PATH.to_string()));
+    assert_eq!(parse_address(":1.5/"), (":1.5", "/".to_string()));
+    assert_eq!(parse_address("/only/path"), ("", "/only/path".to_string()));
+  }
 }

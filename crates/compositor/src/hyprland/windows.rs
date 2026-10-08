@@ -84,3 +84,71 @@ impl From<Window> for types::Window {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use crate::hyprland::fake::FakeHyprland;
+
+  #[test]
+  fn lists_windows() {
+    let hypr = FakeHyprland::start();
+    let windows = hypr.ipc().list_windows().unwrap();
+    assert_eq!(windows.len(), 2);
+    let (firefox, kitty) = (&windows[0], &windows[1]);
+    assert_eq!(firefox.address, "0xa");
+    assert_eq!(firefox.title, "Fünf ✓");
+    assert_eq!(
+      (firefox.x, firefox.y, firefox.width, firefox.height),
+      (0, 30, 1920, 1050)
+    );
+    assert!(!firefox.fullscreen);
+    // any fullscreen mode counts
+    assert!(kitty.fullscreen);
+    assert_eq!((kitty.workspace.as_str(), kitty.monitor), ("0x2", 1));
+    assert!(kitty.floating);
+  }
+
+  #[test]
+  fn active_window() {
+    let hypr = FakeHyprland::start();
+    assert_eq!(
+      hypr.ipc().active_window().unwrap().unwrap().class,
+      "firefox"
+    );
+    hypr.answer("j/activewindow", "{}");
+    assert_eq!(hypr.ipc().active_window().unwrap(), None);
+    hypr.answer("j/activewindow", r#"{"address": "0x1"}"#);
+    assert!(hypr.ipc().active_window().is_err());
+    hypr.answer("j/activewindow", "[]");
+    assert!(hypr.ipc().active_window().is_err());
+    hypr.answer("j/activewindow", "");
+    assert!(hypr.ipc().active_window().is_err());
+  }
+
+  #[test]
+  fn window_dispatches() {
+    let hypr = FakeHyprland::start();
+    hypr.ipc().focus_window("0xa").unwrap();
+    hypr.ipc().close_window("0xb").unwrap();
+    assert_eq!(
+      hypr.commands(),
+      [
+        r#"/eval hl.dispatch(hl.dsp.focus({ window = "address:0xa" }))"#,
+        r#"/eval hl.dispatch(hl.dsp.window.close({ window = "address:0xb" }))"#,
+      ]
+    );
+  }
+
+  #[test]
+  #[ignore = "BUG: the address goes into a Lua string unescaped, a quote ends it and runs any Lua"]
+  fn bug_focus_window_cannot_inject_lua() {
+    let hypr = FakeHyprland::start();
+    hypr
+      .ipc()
+      .focus_window("0xa\" }) hl.exec_cmd(\"x\") --")
+      .ok();
+    for command in hypr.commands() {
+      assert!(!command.contains("hl.exec_cmd"), "sent {command}");
+    }
+  }
+}

@@ -210,3 +210,597 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   cx.set_global(state);
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+  };
+
+  use corona_utils::test_bus::{TestBus, settle, wait_until};
+  use futures_lite::{StreamExt, future::block_on};
+  use gpui_kit::{self as gpui, TestAppContext};
+  use zbus::{
+    MatchRule, MessageStream, interface,
+    message::Type,
+    object_server::SignalEmitter,
+    zvariant::ObjectPath,
+  };
+
+  use super::*;
+  use crate::{
+    proxy::{WATCHER_NAME, WATCHER_PATH},
+    snapshot::tests::layout,
+  };
+
+  type Calls = Arc<Mutex<Vec<String>>>;
+
+  /// icon name, pixmaps, title, description
+  type ToolTip = (String, Vec<(i32, i32, Vec<u8>)>, String, String);
+
+  struct Item {
+    calls: Calls,
+    id: &'static str,
+    status: &'static str,
+    icon: String,
+    menu: &'static str,
+  }
+
+  #[interface(name = "org.kde.StatusNotifierItem")]
+  impl Item {
+    fn activate(&self, x: i32, y: i32) {
+      self.calls.lock().unwrap().push(format!("Activate {x} {y}"));
+    }
+    fn secondary_activate(&self, x: i32, y: i32) {
+      self
+        .calls
+        .lock()
+        .unwrap()
+        .push(format!("SecondaryActivate {x} {y}"));
+    }
+    fn context_menu(&self, x: i32, y: i32) {
+      self
+        .calls
+        .lock()
+        .unwrap()
+        .push(format!("ContextMenu {x} {y}"));
+    }
+    fn scroll(&self, delta: i32, orientation: String) {
+      self
+        .calls
+        .lock()
+        .unwrap()
+        .push(format!("Scroll {delta} {orientation}"));
+    }
+    #[zbus(signal)]
+    async fn new_icon(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
+
+    #[zbus(property)]
+    fn id(&self) -> String {
+      self.id.into()
+    }
+    #[zbus(property)]
+    fn title(&self) -> String {
+      "Test App".into()
+    }
+    #[zbus(property)]
+    fn status(&self) -> String {
+      self.status.into()
+    }
+    #[zbus(property)]
+    fn category(&self) -> String {
+      "Communications".into()
+    }
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+      self.icon.clone()
+    }
+    #[zbus(property)]
+    fn attention_icon_name(&self) -> String {
+      "/icons/attention.png".into()
+    }
+    #[zbus(property)]
+    fn tool_tip(&self) -> ToolTip {
+      (String::new(), vec![], "Tip".into(), String::new())
+    }
+    #[zbus(property)]
+    fn item_is_menu(&self) -> bool {
+      false
+    }
+    #[zbus(property)]
+    fn menu(&self) -> ObjectPath<'static> {
+      ObjectPath::from_static_str_unchecked(self.menu)
+    }
+  }
+
+  /// an item that can only be clicked for its menu
+  struct MenuOnlyItem;
+
+  #[interface(name = "org.kde.StatusNotifierItem")]
+  impl MenuOnlyItem {
+    fn context_menu(&self, _x: i32, _y: i32) {}
+    #[zbus(property)]
+    fn item_is_menu(&self) -> bool {
+      true
+    }
+  }
+
+  struct Menu {
+    calls: Calls,
+  }
+
+  #[interface(name = "com.canonical.dbusmenu")]
+  impl Menu {
+    fn get_layout(
+      &self,
+      _parent: i32,
+      _depth: i32,
+      _names: Vec<String>,
+    ) -> (u32, crate::proxy::Layout) {
+      let quit = layout(7, vec![("label", "_Quit".into())], vec![]);
+      (1, (0, HashMap::new(), vec![quit]))
+    }
+    fn about_to_show(&self, id: i32) -> bool {
+      self.calls.lock().unwrap().push(format!("AboutToShow {id}"));
+      false
+    }
+    fn event(&self, id: i32, event: String, _data: zbus::zvariant::Value<'_>, _timestamp: u32) {
+      self
+        .calls
+        .lock()
+        .unwrap()
+        .push(format!("Event {id} {event}"));
+    }
+  }
+
+  struct App {
+    conn: Connection,
+    calls: Calls,
+  }
+
+  /// an app with its item at /StatusNotifierItem and a menu, not yet registered
+  fn app(bus: &TestBus, id: &'static str) -> App {
+    let calls = Calls::default();
+    let item = Item {
+      calls: calls.clone(),
+      id,
+      status: "Active",
+      icon: "/icons/app.png".into(),
+      menu: "/MenuBar",
+    };
+    let conn = block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at("/StatusNotifierItem", item)
+        .await
+        .unwrap();
+      conn
+        .object_server()
+        .at(
+          "/MenuBar",
+          Menu {
+            calls: calls.clone(),
+          },
+        )
+        .await
+        .unwrap();
+      conn
+    });
+    App { conn, calls }
+  }
+
+  impl App {
+    fn register(&self, service: &str) -> zbus::Result<()> {
+      block_on(self.conn.call_method(
+        Some(WATCHER_NAME),
+        WATCHER_PATH,
+        Some(WATCHER_NAME),
+        "RegisterStatusNotifierItem",
+        &(service,),
+      ))
+      .map(|_| ())
+    }
+
+    fn address(&self) -> String {
+      format!("{}/StatusNotifierItem", self.conn.unique_name().unwrap())
+    }
+  }
+
+  fn start(cx: &mut TestAppContext, bus: &TestBus) -> tempfile::TempDir {
+    cx.executor().allow_parking();
+    let runtime = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      cx.foreground_executor()
+        .clone()
+        .block_on(init(cx, &conn))
+        .unwrap()
+    });
+    runtime
+  }
+
+  fn items(cx: &mut TestAppContext) -> Vec<String> {
+    cx.read(|cx| {
+      cx.tray()
+        .list_items(cx)
+        .iter()
+        .map(|i| i.address.clone())
+        .collect()
+    })
+  }
+
+  #[gpui::test]
+  fn registered_items_are_read(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let app = app(&bus, "test-app");
+    // by its unique name
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    wait_until(cx, |cx| items(cx) == [app.address()]);
+    cx.read(|cx| {
+      let item = &cx.tray().list_items(cx)[0];
+      assert_eq!(
+        (item.id.as_str(), item.title.as_deref()),
+        ("test-app", Some("Test App"))
+      );
+      assert_eq!(
+        (item.status, item.category),
+        (Status::Active, Category::Communications)
+      );
+      assert_eq!(
+        item.icon.as_deref(),
+        Some(std::path::Path::new("/icons/app.png"))
+      );
+      assert_eq!(item.tooltip.as_deref(), Some("Tip"));
+      assert!(item.can_activate && !item.item_is_menu);
+      assert_eq!(item.menu.len(), 1);
+      assert_eq!((item.menu[0].id, item.menu[0].label.as_str()), (7, "Quit"));
+    });
+    // registering again changes nothing
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    settle(cx);
+    assert_eq!(items(cx).len(), 1);
+  }
+
+  #[gpui::test]
+  fn registration_forms(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    // a well-known name resolves to its owner
+    let named = app(&bus, "named");
+    block_on(named.conn.request_name("org.kde.StatusNotifierItem-1-1")).unwrap();
+    named.register("org.kde.StatusNotifierItem-1-1").unwrap();
+    // a path, as ayatana does, belongs to the sender
+    let pathed = block_on(async {
+      let conn = bus.conn().await;
+      let item = Item {
+        calls: Calls::default(),
+        id: "pathed",
+        status: "Passive",
+        icon: String::new(),
+        menu: "/NO_DBUSMENU",
+      };
+      conn
+        .object_server()
+        .at("/org/ayatana/NotificationItem/x", item)
+        .await
+        .unwrap();
+      conn
+    });
+    block_on(pathed.call_method(
+      Some(WATCHER_NAME),
+      WATCHER_PATH,
+      Some(WATCHER_NAME),
+      "RegisterStatusNotifierItem",
+      &("/org/ayatana/NotificationItem/x",),
+    ))
+    .unwrap();
+    wait_until(cx, |cx| items(cx).len() == 2);
+    let pathed_address = format!(
+      "{}/org/ayatana/NotificationItem/x",
+      pathed.unique_name().unwrap()
+    );
+    assert_eq!(items(cx), [named.address(), pathed_address.clone()]);
+    cx.read(|cx| {
+      let item = cx.tray().item(&pathed_address, cx).unwrap();
+      assert_eq!(item.status, Status::Passive);
+      // no dbusmenu, no icon
+      assert!(item.menu.is_empty() && item.icon.is_none());
+    });
+    // invalid names are refused, unowned names fail
+    assert!(named.register("not a bus name!").is_err());
+    assert!(named.register("org.example.Nobody").is_err());
+  }
+
+  #[gpui::test]
+  fn items_leave_with_their_app(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let watcher = block_on(bus.conn());
+    let rule = MatchRule::builder()
+      .msg_type(Type::Signal)
+      .interface(WATCHER_NAME)
+      .unwrap()
+      .member("StatusNotifierItemUnregistered")
+      .unwrap()
+      .build();
+    let mut unregistered = block_on(MessageStream::for_match_rule(rule, &watcher, None)).unwrap();
+    let app = app(&bus, "leaving");
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    wait_until(cx, |cx| items(cx).len() == 1);
+    let address = app.address();
+    drop(app);
+    wait_until(cx, |cx| items(cx).is_empty());
+    let signal = block_on(unregistered.next()).unwrap().unwrap();
+    assert_eq!(signal.body().deserialize::<String>().unwrap(), address);
+  }
+
+  #[gpui::test]
+  fn attention_and_menu_only_items(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let conn = block_on(async {
+      let conn = bus.conn().await;
+      let item = Item {
+        calls: Calls::default(),
+        id: "alert",
+        status: "NeedsAttention",
+        icon: "/icons/app.png".into(),
+        menu: "/MenuBar",
+      };
+      conn
+        .object_server()
+        .at("/StatusNotifierItem", item)
+        .await
+        .unwrap();
+      conn
+    });
+    let menu_only = block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at("/StatusNotifierItem", MenuOnlyItem)
+        .await
+        .unwrap();
+      conn
+    });
+    for c in [&conn, &menu_only] {
+      block_on(c.call_method(
+        Some(WATCHER_NAME),
+        WATCHER_PATH,
+        Some(WATCHER_NAME),
+        "RegisterStatusNotifierItem",
+        &(c.unique_name().unwrap().as_str(),),
+      ))
+      .unwrap();
+    }
+    wait_until(cx, |cx| items(cx).len() == 2);
+    cx.read(|cx| {
+      let list = cx.tray().list_items(cx);
+      let alert = &list[0];
+      assert_eq!(alert.status, Status::NeedsAttention);
+      assert_eq!(
+        alert.icon.as_deref(),
+        Some(std::path::Path::new("/icons/attention.png"))
+      );
+      // the menu has no reachable dbusmenu: empty, not an error
+      assert!(alert.menu.is_empty());
+      let bare = &list[1];
+      // named by its bus when it has no id
+      assert_eq!(bare.id, menu_only.unique_name().unwrap().as_str());
+      assert!(bare.item_is_menu && !bare.can_activate);
+      assert!(bare.title.is_none() && bare.menu_path.is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn new_icons_are_picked_up(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let app = app(&bus, "changing");
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    wait_until(cx, |cx| items(cx).len() == 1);
+    block_on(async {
+      let iface = app
+        .conn
+        .object_server()
+        .interface::<_, Item>("/StatusNotifierItem")
+        .await
+        .unwrap();
+      iface.get_mut().await.icon = "/icons/new.png".into();
+      Item::new_icon(iface.signal_emitter()).await.unwrap();
+    });
+    wait_until(cx, |cx| {
+      cx.read(|cx| {
+        cx.tray().list_items(cx)[0].icon.as_deref() == Some(std::path::Path::new("/icons/new.png"))
+      })
+    });
+  }
+
+  #[gpui::test]
+  fn actions_reach_the_item(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let app = app(&bus, "clicked");
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    wait_until(cx, |cx| items(cx).len() == 1);
+    let address = app.address();
+    let tray = cx.read(|cx| cx.tray().clone());
+    block_on(tray.activate(&address, 1, 2)).unwrap();
+    block_on(tray.secondary_activate(&address, 3, 4)).unwrap();
+    block_on(tray.context_menu(&address, 5, 6)).unwrap();
+    block_on(tray.scroll(&address, -1, Orientation::Vertical)).unwrap();
+    block_on(tray.scroll(&address, 2, Orientation::Horizontal)).unwrap();
+    let task = cx.read(|cx| tray.about_to_show(&address, 7, cx));
+    block_on(task).unwrap();
+    let task = cx.read(|cx| tray.menu_click(&address, 7, cx));
+    block_on(task).unwrap();
+    assert_eq!(
+      *app.calls.lock().unwrap(),
+      [
+        "Activate 1 2",
+        "SecondaryActivate 3 4",
+        "ContextMenu 5 6",
+        "Scroll -1 vertical",
+        "Scroll 2 horizontal",
+        "AboutToShow 7",
+        "Event 7 clicked",
+      ]
+    );
+    let task = cx.read(|cx| tray.menu_click("nope", 1, cx));
+    assert_eq!(block_on(task).unwrap_err().to_string(), "unknown tray item");
+    assert!(block_on(tray.activate(":1.9999/StatusNotifierItem", 0, 0)).is_err());
+  }
+
+  #[gpui::test]
+  fn items_without_a_menu_cannot_open_one(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let conn = block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at("/StatusNotifierItem", MenuOnlyItem)
+        .await
+        .unwrap();
+      conn
+        .call_method(
+          Some(WATCHER_NAME),
+          WATCHER_PATH,
+          Some(WATCHER_NAME),
+          "RegisterStatusNotifierItem",
+          &(conn.unique_name().unwrap().as_str(),),
+        )
+        .await
+        .unwrap();
+      conn
+    });
+    wait_until(cx, |cx| items(cx).len() == 1);
+    let address = format!("{}/StatusNotifierItem", conn.unique_name().unwrap());
+    let task = cx.read(|cx| cx.tray().about_to_show(&address, 0, cx));
+    assert_eq!(
+      block_on(task).unwrap_err().to_string(),
+      "the tray item has no menu"
+    );
+  }
+
+  #[gpui::test]
+  fn watcher_properties(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let app = app(&bus, "props");
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    let props = block_on(async {
+      zbus::fdo::PropertiesProxy::builder(&app.conn)
+        .destination(WATCHER_NAME)
+        .unwrap()
+        .path(WATCHER_PATH)
+        .unwrap()
+        .build()
+        .await
+        .unwrap()
+        .get_all(zbus::names::InterfaceName::from_static_str(WATCHER_NAME).unwrap())
+        .await
+        .unwrap()
+    });
+    let get = |key: &str| props.get(key).unwrap().try_clone().unwrap();
+    assert_eq!(
+      Vec::<String>::try_from(get("RegisteredStatusNotifierItems")).unwrap(),
+      [app.address()]
+    );
+    assert!(bool::try_from(get("IsStatusNotifierHostRegistered")).unwrap());
+    assert_eq!(i32::try_from(get("ProtocolVersion")).unwrap(), 0);
+  }
+
+  /// another watcher, like a running KDE, that already lists one item
+  struct OtherWatcher {
+    items: Vec<String>,
+  }
+
+  #[interface(name = "org.kde.StatusNotifierWatcher")]
+  impl OtherWatcher {
+    fn register_status_notifier_host(&self, _service: String) {}
+    #[zbus(property)]
+    fn registered_status_notifier_items(&self) -> Vec<String> {
+      self.items.clone()
+    }
+  }
+
+  fn other_watcher(bus: &TestBus, items: Vec<String>) -> Connection {
+    block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at(WATCHER_PATH, OtherWatcher { items })
+        .await
+        .unwrap();
+      // as KDE's: not to be replaced
+      conn
+        .request_name_with_flags(WATCHER_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
+        .await
+        .unwrap();
+      conn
+    })
+  }
+
+  #[gpui::test]
+  fn uses_a_running_watcher(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let app = app(&bus, "elsewhere");
+    let _other = other_watcher(&bus, vec![app.address()]);
+    let _runtime = start(cx, &bus);
+    wait_until(cx, |cx| items(cx) == [app.address()]);
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: when the other watcher exits corona does not take over, the tray stays empty"]
+  fn bug_takes_over_from_a_watcher_that_exits(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let other = other_watcher(&bus, vec![]);
+    let _runtime = start(cx, &bus);
+    settle(cx);
+    drop(other);
+    let app = app(&bus, "late");
+    wait_until(cx, |_| {
+      app
+        .register(app.conn.unique_name().unwrap().as_str())
+        .is_ok()
+    });
+    wait_until(cx, |cx| items(cx).len() == 1);
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: init deletes the shared icon cache, a second corona (like `just nested`) wipes the running one's icons"]
+  fn bug_init_keeps_other_instances_icons(cx: &mut TestAppContext) {
+    let runtime = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
+    let cached = crate::snapshot::cache_dir().join("0123456789abcdef.png");
+    std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
+    std::fs::write(&cached, b"png").unwrap();
+    let bus = TestBus::new();
+    cx.executor().allow_parking();
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      cx.foreground_executor()
+        .clone()
+        .block_on(init(cx, &conn))
+        .unwrap()
+    });
+    assert!(cached.exists());
+  }
+}

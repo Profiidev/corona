@@ -309,4 +309,235 @@ mod tests {
     assert!(active(tracked(CaptureKind::Screen, true, false)));
     assert!(!active(tracked(CaptureKind::Screen, false, false)));
   }
+
+  use std::time::Duration;
+
+  use crate::testing::props;
+
+  #[test]
+  fn candidates() {
+    for class in [
+      "Stream/Input/Audio",
+      "Stream/Input/Video",
+      "Video/Source",
+      "Stream/Output/Video",
+    ] {
+      assert!(is_candidate(class), "{class}");
+    }
+    for class in [
+      "Audio/Sink",
+      "Audio/Source",
+      "Stream/Output/Audio",
+      "Video/Sink",
+      "",
+    ] {
+      assert!(!is_candidate(class), "{class}");
+    }
+  }
+
+  #[test]
+  fn more_kinds() {
+    let with = |pairs: &'static [(&'static str, &'static str)]| {
+      move |key: &str| {
+        pairs
+          .iter()
+          .find(|(k, _)| *k == key)
+          .map(|(_, v)| v.to_string())
+      }
+    };
+    assert_eq!(
+      classify("Stream/Input/Audio", with(&[("stream.monitor", "true")])),
+      None
+    );
+    // only "true" counts
+    assert_eq!(
+      classify("Stream/Input/Audio", with(&[("stream.monitor", "false")])),
+      Some(CaptureKind::Microphone)
+    );
+    assert_eq!(
+      classify("Video/Source", with(&[("device.id", "40")])),
+      Some(CaptureKind::Camera)
+    );
+    // a device does not make a screencast output a camera
+    assert_eq!(
+      classify("Stream/Output/Video", with(&[("device.id", "40")])),
+      Some(CaptureKind::Screen)
+    );
+    assert_eq!(
+      classify("Stream/Input/Video", with(&[("media.role", "Camera")])),
+      Some(CaptureKind::Camera)
+    );
+    assert_eq!(
+      classify("Stream/Input/Video", with(&[("media.role", "Music")])),
+      None
+    );
+  }
+
+  fn at(seconds: u64) -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
+  }
+
+  #[test]
+  fn unnamed_captures_wait_for_a_named_one() {
+    use CaptureKind::*;
+    let mut log = Vec::new();
+    // an app already reads the share: the unnamed source adds nothing
+    let both = [
+      capture(1, Screen, "", true),
+      capture(2, Screen, "OBS", true),
+    ];
+    assert!(record(&mut log, &both, at(0)));
+    assert_eq!(log.len(), 1);
+    assert_eq!(log[0].name.as_deref(), Some("OBS"));
+    // inactive captures are not logged
+    assert!(!record(
+      &mut Vec::new(),
+      &[capture(3, Camera, "x", false)],
+      at(0)
+    ));
+    // a named capture of another kind leaves an unnamed one alone
+    let mut log = Vec::new();
+    record(&mut log, &[capture(1, Microphone, "", true)], at(0));
+    record(
+      &mut log,
+      &[
+        capture(1, Microphone, "", true),
+        capture(2, Screen, "OBS", true),
+      ],
+      at(1),
+    );
+    assert_eq!(log.len(), 2);
+    assert!(log.iter().all(|e| e.ended.is_none()));
+  }
+
+  #[test]
+  fn sessions_end_and_restart() {
+    use CaptureKind::*;
+    let mut log = Vec::new();
+    record(&mut log, &[capture(1, Camera, "Zoom", true)], at(0));
+    assert!(record(
+      &mut log,
+      &[capture(1, Camera, "Zoom", false)],
+      at(5)
+    ));
+    assert_eq!(log[0].ended, Some(at(5)));
+    // ended stays ended
+    assert!(!record(&mut log, &[], at(6)));
+    assert_eq!(log[0].ended, Some(at(5)));
+    // the same node running again is a new entry
+    assert!(record(&mut log, &[capture(1, Camera, "Zoom", true)], at(7)));
+    assert_eq!(log.len(), 2);
+    assert_eq!((log[0].started, log[0].ended), (at(7), None));
+  }
+
+  #[test]
+  fn the_log_is_capped() {
+    use CaptureKind::*;
+    let mut log = Vec::new();
+    for i in 0..(LOG_LIMIT as u32 + 10) {
+      record(
+        &mut log,
+        &[capture(i, Microphone, "app", true)],
+        at(i.into()),
+      );
+    }
+    assert_eq!(log.len(), LOG_LIMIT);
+    // newest first
+    assert_eq!(log[0].started, at(LOG_LIMIT as u64 + 9));
+  }
+
+  #[test]
+  #[ignore = "BUG: capping the log can drop a still running capture, which then reappears with a new start time"]
+  fn bug_the_cap_keeps_running_captures() {
+    use CaptureKind::*;
+    let mut log = Vec::new();
+    let long = capture(1000, Microphone, "call", true);
+    record(&mut log, std::slice::from_ref(&long), at(0));
+    for i in 0..LOG_LIMIT as u32 {
+      record(
+        &mut log,
+        &[long.clone(), capture(i, Camera, "snap", true)],
+        at(1 + u64::from(i)),
+      );
+      record(&mut log, std::slice::from_ref(&long), at(1 + u64::from(i)));
+    }
+    let call = log
+      .iter()
+      .find(|e| e.id == 1000)
+      .expect("the call is still logged");
+    assert_eq!(call.started, at(0));
+  }
+
+  #[test]
+  fn tracked_nodes() {
+    let (tx, rx) = flume::unbounded();
+    let state = CaptureState::default();
+    let mic = props(&[("application.name", "Discord"), ("node.name", "discord-in")]);
+    state.insert(1, "Stream/Input/Audio", mic.dict());
+    // a desktop audio recorder is tracked but no capture
+    let monitor = props(&[("stream.capture.sink", "true")]);
+    state.insert(2, "Stream/Input/Audio", monitor.dict());
+    let screen = props(&[("application.name", "xdph")]);
+    state.insert(3, "Video/Source", screen.dict());
+
+    let list = state.list();
+    assert_eq!(list.len(), 2);
+    assert_eq!(
+      list[0],
+      capture(1, CaptureKind::Microphone, "Discord", false)
+    );
+    // a screen source is active until it fails, and keeps no name
+    assert_eq!(list[1], capture(3, CaptureKind::Screen, "", true));
+
+    state.update(1, &NodeState::Running, None, &tx);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c[0].active));
+    // running again is no change
+    state.update(1, &NodeState::Running, None, &tx);
+    assert!(rx.is_empty());
+    // a rename is a change
+    let renamed = props(&[("media.name", "Call")]);
+    state.update(1, &NodeState::Running, Some(renamed.dict()), &tx);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c[0].name == "Call"));
+    // a source does not take names from its props
+    state.update(3, &NodeState::Idle, Some(renamed.dict()), &tx);
+    assert!(rx.is_empty());
+    state.update(3, &NodeState::Error("gone"), None, &tx);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if !c[1].active));
+    // the recorder turning into a mic by its props
+    let mic_now = props(&[("node.name", "rec")]);
+    state.update(2, &NodeState::Running, Some(mic_now.dict()), &tx);
+    assert_eq!(state.list().len(), 3);
+    rx.drain().for_each(drop);
+    // unknown nodes are ignored
+    state.update(9, &NodeState::Running, None, &tx);
+    assert!(rx.is_empty());
+
+    assert!(state.remove(1, &tx));
+    assert_eq!(rx.drain().count(), 1);
+    assert!(!state.remove(1, &tx));
+    // removing an unclassified node needs no event
+    let unclassified = props(&[("media.role", "Music")]);
+    state.insert(4, "Stream/Input/Video", unclassified.dict());
+    assert!(state.remove(4, &tx));
+    assert!(rx.is_empty());
+  }
+
+  #[test]
+  fn names_fall_back() {
+    let name_of = |pairs: &[(&str, &str)]| name(props(pairs).dict());
+    assert_eq!(name_of(&[]), None);
+    assert_eq!(name_of(&[("node.name", "n")]).as_deref(), Some("n"));
+    assert_eq!(
+      name_of(&[("node.name", "n"), ("application.process.binary", "b")]).as_deref(),
+      Some("b")
+    );
+    assert_eq!(
+      name_of(&[("media.name", "m"), ("application.process.binary", "b")]).as_deref(),
+      Some("m")
+    );
+    assert_eq!(
+      name_of(&[("media.name", "m"), ("application.name", "a")]).as_deref(),
+      Some("a")
+    );
+  }
 }

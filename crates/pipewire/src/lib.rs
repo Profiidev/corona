@@ -13,6 +13,8 @@ mod command;
 mod event;
 mod listener;
 mod state;
+#[cfg(test)]
+mod testing;
 pub mod volume;
 
 pub use api::Pipewire;

@@ -63,4 +63,19 @@ mod tests {
     let names: Vec<_> = devices.iter().map(|d| d.name.as_str()).collect();
     assert_eq!(names, ["connected", "A paired", "b paired", "near", "far"]);
   }
+
+  #[test]
+  fn sort_edges() {
+    let mut devices = vec![
+      device("Zed", false, false, None),
+      device("weak", false, false, Some(-100)),
+      device("alpha", false, false, None),
+      device("Beta", false, false, None),
+    ];
+    sort_devices(&mut devices);
+    let names: Vec<_> = devices.iter().map(|d| d.name.as_str()).collect();
+    // any signal beats none, then by name ignoring case
+    assert_eq!(names, ["weak", "alpha", "Beta", "Zed"]);
+    sort_devices(&mut []);
+  }
 }

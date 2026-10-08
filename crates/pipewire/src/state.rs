@@ -493,4 +493,186 @@ mod tests {
 
     assert_eq!(rx.len(), 2);
   }
+
+  use crate::testing::props;
+
+  #[test]
+  fn node_types() {
+    assert_eq!("Audio/Sink".parse::<NodeType>().unwrap(), NodeType::Sink);
+    assert_eq!(
+      "Audio/Source".parse::<NodeType>().unwrap(),
+      NodeType::Source
+    );
+    assert_eq!(
+      "Stream/Output/Audio".parse::<NodeType>().unwrap(),
+      NodeType::Stream
+    );
+    for other in [
+      "",
+      "Audio/Duplex",
+      "Audio/Source/Virtual",
+      "Stream/Input/Audio",
+      "audio/sink",
+    ] {
+      assert!(other.parse::<NodeType>().is_err(), "{other}");
+    }
+    assert_eq!(
+      serde_json::to_string(&NodeType::Stream).unwrap(),
+      "\"stream\""
+    );
+  }
+
+  #[test]
+  fn new_nodes_fall_back() {
+    let new = |pairs: &[(&str, &str)]| AudioNode::new(1, NodeType::Sink, props(pairs).dict());
+    assert!(new(&[("node.description", "x")]).is_none());
+    let bare = new(&[
+      ("node.name", "n"),
+      ("object.serial", "x"),
+      ("device.id", "y"),
+    ])
+    .unwrap();
+    assert_eq!(bare.description, "n");
+    assert_eq!((bare.serial, bare.device, bare.nickname), (0, None, None));
+    assert_eq!(
+      (bare.volumes.as_slice(), bare.mute),
+      ([0.].as_slice(), false)
+    );
+    assert!(bare.app.is_empty());
+    let app = new(&[("node.name", "n"), ("application.name", "App")]).unwrap();
+    assert_eq!(app.description, "App");
+    let media = new(&[
+      ("node.name", "n"),
+      ("application.name", "App"),
+      ("media.name", "Song"),
+    ])
+    .unwrap();
+    assert_eq!(media.description, "Song");
+    let all = new(&[
+      ("node.name", "n"),
+      ("application.icon-name", "icon"),
+      ("application.id", "org.app"),
+      ("application.name", "App"),
+      ("application.process.binary", "app"),
+    ])
+    .unwrap();
+    assert_eq!(all.app, ["icon", "org.app", "App", "app"]);
+  }
+
+  #[test]
+  fn volume_is_the_first_channel() {
+    let mut node = sink();
+    node.volumes = vec![0.3, 0.7];
+    assert_eq!(node.volume(), 0.3);
+    node.volumes.clear();
+    assert_eq!(node.volume(), 0.);
+  }
+
+  #[test]
+  fn props_updates() {
+    let mut node = sink();
+    // junk values change nothing
+    assert!(!node.update_props(props(&[("object.serial", "x"), ("device.id", "-")]).dict()));
+    assert!(node.update_props(props(&[("object.serial", "70"), ("device.id", "48")]).dict()));
+    assert_eq!((node.serial, node.device), (70, Some(48)));
+    assert!(node.update_props(props(&[("application.name", "A")]).dict()));
+    assert_eq!(node.app, ["A"]);
+    // an event without app props keeps the app
+    assert!(!node.update_props(props(&[]).dict()));
+    assert_eq!(node.app, ["A"]);
+    assert!(!node.update_props(props(&[("application.name", "A")]).dict()));
+  }
+
+  fn volume_object(properties: Vec<pipewire::spa::pod::Property>) -> Object {
+    Object {
+      type_: sys::SPA_TYPE_OBJECT_Props,
+      id: sys::SPA_PARAM_Props,
+      properties,
+    }
+  }
+
+  #[test]
+  fn params_updates() {
+    use pipewire::spa::pod::Property;
+    let mut node = sink();
+    assert!(!node.update_params(volume_object(vec![])));
+    // mistyped values are ignored
+    assert!(!node.update_params(volume_object(vec![
+      Property::new(sys::SPA_PROP_mute, Value::Int(1)),
+      Property::new(
+        sys::SPA_PROP_channelVolumes,
+        Value::ValueArray(ValueArray::Int(vec![1]))
+      ),
+      Property::new(sys::SPA_PROP_volume, Value::Float(0.5)),
+    ])));
+    assert!(node.update_params(volume_object(vec![
+      Property::new(sys::SPA_PROP_mute, Value::Bool(true)),
+      Property::new(
+        sys::SPA_PROP_channelVolumes,
+        Value::ValueArray(ValueArray::Float(vec![0.5, 0.6]))
+      ),
+    ])));
+    assert_eq!(
+      (node.volumes.as_slice(), node.mute),
+      ([0.5, 0.6].as_slice(), true)
+    );
+  }
+
+  #[test]
+  fn state_changes_project_events() {
+    let (tx, rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+    // an unknown node is no change
+    audio.update_props(9, props(&[("node.name", "x")]).dict(), &tx);
+    assert!(rx.is_empty());
+    audio.nodes.insert(54, sink());
+    audio.update_props(54, props(&[("node.description", "Same")]).dict(), &tx);
+    assert_eq!(rx.drain().count(), 3);
+    audio.update_props(54, props(&[("node.description", "Same")]).dict(), &tx);
+    assert!(rx.is_empty());
+    let mut stream = stream(110, 202);
+    stream.kind = NodeType::Stream;
+    audio.nodes.insert(110, stream);
+    audio.update_params(110, volume_object(vec![]), &tx);
+    assert!(rx.is_empty());
+  }
+
+  #[test]
+  fn lists_and_defaults_by_kind() {
+    let (tx, _rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+    let mut later = sink();
+    later.id = 99;
+    audio.nodes.insert(99, later);
+    audio.nodes.insert(54, sink());
+    audio.nodes.insert(110, stream(110, 202));
+    assert_eq!(
+      audio
+        .list(NodeType::Sink)
+        .iter()
+        .map(|n| n.id)
+        .collect::<Vec<_>>(),
+      [54, 99]
+    );
+    assert_eq!(audio.list(NodeType::Stream).len(), 1);
+    assert!(audio.list(NodeType::Source).is_empty());
+    // a source default naming a sink finds nothing
+    audio.set_default(NodeType::Source, Some("alsa_output.speaker".into()), &tx);
+    assert_eq!(audio.default(NodeType::Source), None);
+    assert_eq!(audio.default(NodeType::Sink), None);
+  }
+
+  #[test]
+  fn pins_resolve_to_sinks_only() {
+    let (tx, rx) = flume::unbounded();
+    let audio = PipewireState::new().audio;
+    audio.nodes.insert(110, stream(110, 202));
+    audio.set_target(111, Some("spotify".into()), &tx);
+    audio.set_target(112, Some("202".into()), &tx);
+    audio.set_target(113, Some("nothing".into()), &tx);
+    assert!(audio.resolved_targets().is_empty());
+    // the same pin twice is one change
+    audio.set_target(113, Some("nothing".into()), &tx);
+    assert_eq!(rx.len(), 3);
+  }
 }

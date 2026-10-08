@@ -33,3 +33,27 @@ impl Display {
     self.brightness as f32 / self.max as f32 * 100.
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn percent() {
+    let display = |brightness, max| Display {
+      id: String::new(),
+      output: None,
+      name: None,
+      kind: DisplayKind::Backlight,
+      brightness,
+      max,
+      unavailable: None,
+    };
+    assert_eq!(display(0, 0).percent(), 0.);
+    assert_eq!(display(5, 0).percent(), 0.);
+    assert_eq!(display(0, 255).percent(), 0.);
+    assert_eq!(display(255, 255).percent(), 100.);
+    assert!((display(1, 3).percent() - 100. / 3.).abs() < 1e-4);
+    assert_eq!(display(u32::MAX, u32::MAX).percent(), 100.);
+  }
+}

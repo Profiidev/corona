@@ -186,3 +186,103 @@ fn is_relevant(msg: &Message) -> bool {
     })
   })
 }
+
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use zbus::zvariant::Value;
+
+  use super::*;
+
+  fn signal(path: &str, interface: &str, member: &str) -> zbus::message::Builder<'static> {
+    Message::signal(path.to_string(), interface.to_string(), member.to_string()).unwrap()
+  }
+
+  fn properties_changed(interface: &str) -> Message {
+    let changed: HashMap<&str, Value<'_>> = HashMap::from([("State", Value::from(100u32))]);
+    signal(
+      "/org/freedesktop/NetworkManager",
+      "org.freedesktop.DBus.Properties",
+      "PropertiesChanged",
+    )
+    .build(&(interface, changed, Vec::<&str>::new()))
+    .unwrap()
+  }
+
+  #[test]
+  fn device_state_changes() {
+    let device = "/org/freedesktop/NetworkManager/Devices/2";
+    let msg = signal(
+      device,
+      "org.freedesktop.NetworkManager.Device",
+      "StateChanged",
+    )
+    .build(&(120u32, 50u32, 7u32))
+    .unwrap();
+    let change = state_change(&msg).unwrap();
+    assert_eq!(
+      (change.path.as_str(), change.state, change.reason),
+      (device, DeviceState::Failed, 7)
+    );
+    // a device signal with another body, or another interface, is no state change
+    let odd = signal(
+      device,
+      "org.freedesktop.NetworkManager.Device",
+      "StateChanged",
+    )
+    .build(&("x",))
+    .unwrap();
+    assert!(state_change(&odd).is_none());
+    let wireless = signal(
+      device,
+      "org.freedesktop.NetworkManager.Device.Wireless",
+      "AccessPointAdded",
+    )
+    .build(&(zbus::zvariant::ObjectPath::from_static_str_unchecked("/ap"),))
+    .unwrap();
+    assert!(state_change(&wireless).is_none());
+    assert!(is_relevant(&wireless));
+    assert!(!is_relevant(&msg));
+  }
+
+  #[test]
+  fn relevant_signals() {
+    for interface in [
+      "org.freedesktop.NetworkManager",
+      "org.freedesktop.NetworkManager.Device",
+      "org.freedesktop.NetworkManager.IP4Config",
+      "org.freedesktop.NetworkManager.Connection.Active",
+    ] {
+      assert!(is_relevant(&properties_changed(interface)), "{interface}");
+    }
+    // access points change strength all the time, that alone is not worth a snapshot
+    assert!(!is_relevant(&properties_changed(
+      "org.freedesktop.NetworkManager.AccessPoint"
+    )));
+    for (interface, member) in [
+      ("org.freedesktop.NetworkManager.Settings", "NewConnection"),
+      (
+        "org.freedesktop.NetworkManager.Settings.Connection",
+        "Updated",
+      ),
+    ] {
+      let msg = signal(
+        "/org/freedesktop/NetworkManager/Settings",
+        interface,
+        member,
+      )
+      .build(&())
+      .unwrap();
+      assert!(is_relevant(&msg), "{interface}");
+    }
+    let other = signal(
+      "/org/freedesktop/NetworkManager",
+      "org.example.Other",
+      "Thing",
+    )
+    .build(&())
+    .unwrap();
+    assert!(!is_relevant(&other));
+  }
+}

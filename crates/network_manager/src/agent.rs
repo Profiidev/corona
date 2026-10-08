@@ -160,3 +160,248 @@ pub(crate) async fn register(conn: &Connection) -> Result<flume::Receiver<AgentE
     .await?;
   Ok(rx)
 }
+
+#[cfg(test)]
+mod tests {
+  use futures_lite::future::block_on;
+  use zbus::zvariant::Value;
+
+  use super::*;
+
+  fn settings(pairs: &[(&str, &str, Value<'_>)]) -> SettingsMap {
+    let mut map = SettingsMap::new();
+    for (setting, key, value) in pairs {
+      map
+        .entry(setting.to_string())
+        .or_default()
+        .insert(key.to_string(), value.try_to_owned().unwrap());
+    }
+    map
+  }
+
+  fn wifi(ssid: &[u8]) -> SettingsMap {
+    settings(&[
+      ("connection", "id", "Home profile".into()),
+      ("802-11-wireless", "ssid", ssid.to_vec().into()),
+    ])
+  }
+
+  /// asks the agent and answers with `answer` once the request arrives
+  fn ask(
+    connection: SettingsMap,
+    setting: &str,
+    hints: Vec<String>,
+    flags: u32,
+    answer: impl FnOnce(SecretRequest) + Send + 'static,
+  ) -> Result<SettingsMap, AgentError> {
+    let (events, received) = flume::unbounded();
+    let agent = SecretAgent { events };
+    let answering = std::thread::spawn(move || {
+      if let Ok(AgentEvent::Request(request)) = received.recv() {
+        answer(request);
+      }
+    });
+    let result = block_on(agent.get_secrets(
+      connection,
+      OwnedObjectPath::try_from("/org/freedesktop/NetworkManager/Settings/2").unwrap(),
+      setting.into(),
+      hints,
+      flags,
+    ));
+    drop(agent);
+    answering.join().unwrap();
+    result
+  }
+
+  fn secret(password: &str, identity: Option<&str>) -> Secret {
+    Secret {
+      password: password.into(),
+      identity: identity.map(Into::into),
+    }
+  }
+
+  fn value(result: &SettingsMap, setting: &str, key: &str) -> Option<String> {
+    String::try_from(result.get(setting)?.get(key)?.try_clone().unwrap()).ok()
+  }
+
+  #[test]
+  fn wifi_passwords() {
+    let result = ask(
+      wifi(b"home"),
+      WIFI_SECURITY_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| {
+        assert_eq!(
+          (request.name.as_str(), request.kind),
+          ("home", SecretKind::Psk)
+        );
+        assert!(!request.retry && request.identity.is_none());
+        request
+          .reply
+          .send(secret("hunter22", Some("ignored")))
+          .unwrap();
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      value(&result, WIFI_SECURITY_SETTING, PSK_KEY).as_deref(),
+      Some("hunter22")
+    );
+    // a psk never sends an identity
+    assert_eq!(result[WIFI_SECURITY_SETTING].len(), 1);
+  }
+
+  #[test]
+  fn retries_and_odd_names() {
+    ask(
+      wifi(b"caf\xe9"),
+      WIFI_SECURITY_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION | FLAG_REQUEST_NEW,
+      |request| {
+        assert!(request.retry);
+        assert_eq!(request.name, "caf\u{fffd}");
+      },
+    )
+    .unwrap_err();
+    // wired 802.1X: named by the profile
+    let wired = settings(&[("connection", "id", "Office LAN".into())]);
+    ask(
+      wired,
+      ENTERPRISE_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| {
+        assert_eq!(request.name, "Office LAN");
+      },
+    )
+    .unwrap_err();
+    ask(
+      SettingsMap::new(),
+      ENTERPRISE_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| {
+        assert_eq!(request.name, "");
+      },
+    )
+    .unwrap_err();
+  }
+
+  #[test]
+  fn enterprise_logins() {
+    let mut eduroam = wifi(b"eduroam");
+    eduroam.extend(settings(&[(
+      ENTERPRISE_SETTING,
+      IDENTITY_KEY,
+      "me@uni.example".into(),
+    )]));
+    let result = ask(
+      eduroam,
+      ENTERPRISE_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| {
+        assert_eq!(request.kind, SecretKind::Enterprise);
+        assert_eq!(request.identity.as_deref(), Some("me@uni.example"));
+        request
+          .reply
+          .send(secret("pw", Some("other@uni.example")))
+          .unwrap();
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      value(&result, ENTERPRISE_SETTING, PASSWORD_KEY).as_deref(),
+      Some("pw")
+    );
+    assert_eq!(
+      value(&result, ENTERPRISE_SETTING, IDENTITY_KEY).as_deref(),
+      Some("other@uni.example")
+    );
+
+    // an empty stored identity counts as none, a missing answer keeps it out
+    let mut blank = wifi(b"eduroam");
+    blank.extend(settings(&[(ENTERPRISE_SETTING, IDENTITY_KEY, "".into())]));
+    let result = ask(
+      blank,
+      ENTERPRISE_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| {
+        assert_eq!(request.identity, None);
+        request.reply.send(secret("pw", None)).unwrap();
+      },
+    )
+    .unwrap();
+    assert_eq!(value(&result, ENTERPRISE_SETTING, IDENTITY_KEY), None);
+
+    // EAP-TLS asks for the key's password
+    let result = ask(
+      wifi(b"eduroam"),
+      ENTERPRISE_SETTING,
+      vec!["other".into(), PRIVATE_KEY_PASSWORD_KEY.into()],
+      FLAG_ALLOW_INTERACTION,
+      |request| request.reply.send(secret("keypw", None)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+      value(&result, ENTERPRISE_SETTING, PRIVATE_KEY_PASSWORD_KEY).as_deref(),
+      Some("keypw")
+    );
+    assert_eq!(value(&result, ENTERPRISE_SETTING, PASSWORD_KEY), None);
+  }
+
+  #[test]
+  fn refusals() {
+    let error = ask(wifi(b"x"), "vpn", vec![], FLAG_ALLOW_INTERACTION, |_| {
+      panic!("not asked")
+    })
+    .unwrap_err();
+    assert!(matches!(error, AgentError::NoSecrets(ref m) if m == "vpn is not supported"));
+    let error = ask(wifi(b"x"), WIFI_SECURITY_SETTING, vec![], 0, |_| {
+      panic!("not asked")
+    })
+    .unwrap_err();
+    assert!(matches!(error, AgentError::NoSecrets(ref m) if m == "interaction not allowed"));
+    // the user closing the prompt
+    let error = ask(
+      wifi(b"x"),
+      WIFI_SECURITY_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      drop,
+    )
+    .unwrap_err();
+    assert!(matches!(error, AgentError::UserCanceled(ref m) if m == "canceled"));
+  }
+
+  #[test]
+  fn without_a_shell() {
+    let (events, received) = flume::unbounded();
+    drop(received);
+    let agent = SecretAgent { events };
+    let error = block_on(agent.get_secrets(
+      wifi(b"x"),
+      OwnedObjectPath::default(),
+      WIFI_SECURITY_SETTING.into(),
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+    ))
+    .unwrap_err();
+    assert!(matches!(error, AgentError::UserCanceled(ref m) if m == "shell is gone"));
+  }
+
+  #[test]
+  fn cancel_and_storage() {
+    let (events, received) = flume::unbounded();
+    let agent = SecretAgent { events };
+    block_on(agent.cancel_get_secrets(OwnedObjectPath::default(), WIFI_SECURITY_SETTING.into()));
+    assert!(matches!(received.try_recv(), Ok(AgentEvent::Cancel)));
+    // nothing is stored by the agent
+    block_on(agent.save_secrets(SettingsMap::new(), OwnedObjectPath::default()));
+    block_on(agent.delete_secrets(SettingsMap::new(), OwnedObjectPath::default()));
+    assert!(received.is_empty());
+  }
+}

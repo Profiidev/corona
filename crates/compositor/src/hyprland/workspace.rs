@@ -53,3 +53,64 @@ impl From<Workspace> for types::Workspace {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use crate::{hyprland::fake::FakeHyprland, types};
+
+  #[test]
+  fn lists_without_special_workspaces() {
+    let hypr = FakeHyprland::start();
+    let workspaces = hypr.ipc().list_workspaces().unwrap();
+    assert_eq!(
+      workspaces,
+      [
+        types::Workspace {
+          id: "0x1".into(),
+          name: "1".into(),
+          monitor: "eDP-1".into(),
+          monitor_id: 0,
+        },
+        types::Workspace {
+          id: "0x2".into(),
+          name: "2".into(),
+          monitor: "DP-1".into(),
+          monitor_id: 1,
+        },
+      ]
+    );
+    assert_eq!(hypr.ipc().active_workspace().unwrap().name, "1");
+  }
+
+  #[test]
+  fn malformed_answers_are_errors() {
+    let hypr = FakeHyprland::start();
+    hypr.answer("j/workspaces", "unknown request");
+    assert!(hypr.ipc().list_workspaces().is_err());
+    hypr.answer("j/activeworkspace", r#"{"name": "1"}"#);
+    assert!(hypr.ipc().active_workspace().is_err());
+  }
+
+  #[test]
+  fn focus_dispatch() {
+    let hypr = FakeHyprland::start();
+    hypr.ipc().focus_workspace("3").unwrap();
+    assert_eq!(
+      hypr.commands(),
+      ["/eval hl.dispatch(hl.dsp.focus({ workspace = 3 }))"]
+    );
+  }
+
+  #[test]
+  #[ignore = "BUG: the workspace goes into Lua unescaped, a plugin can run any Lua inside Hyprland"]
+  fn bug_focus_workspace_cannot_inject_lua() {
+    let hypr = FakeHyprland::start();
+    hypr
+      .ipc()
+      .focus_workspace("1 }) hl.exec_cmd(\"rm -rf ~\") --")
+      .ok();
+    for command in hypr.commands() {
+      assert!(!command.contains("hl.exec_cmd"), "sent {command}");
+    }
+  }
+}

@@ -14,7 +14,10 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 /// How often the watcher looks for new timeouts while the compositor is quiet
+#[cfg(not(any(test, feature = "test-support")))]
 const COMMAND_POLL: Duration = Duration::from_millis(250);
+#[cfg(any(test, feature = "test-support"))]
+const COMMAND_POLL: Duration = Duration::from_millis(10);
 
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
@@ -152,3 +155,380 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
 
 delegate_noop!(State: ignore WlSeat);
 delegate_noop!(State: ExtIdleNotifierV1);
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{
+      Arc, Mutex,
+      atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+  };
+
+  use gpui_kit::{self as gpui, TestAppContext};
+  use wayland_protocols::ext::idle_notify::v1::server::{
+    ext_idle_notification_v1::ExtIdleNotificationV1 as Notification,
+    ext_idle_notifier_v1::{self, ExtIdleNotifierV1 as Notifier},
+  };
+  use wayland_server::{
+    Client, DataInit, Dispatch as ServerDispatch, Display, DisplayHandle, GlobalDispatch,
+    ListeningSocket, New, Resource,
+    backend::{ClientData, ClientId, DisconnectReason},
+    protocol::wl_seat::WlSeat as ServerSeat,
+  };
+
+  use super::*;
+
+  struct Watched {
+    resource: Notification,
+    timeout: u32,
+    alive: bool,
+  }
+
+  #[derive(Clone, Default)]
+  struct Shared {
+    notifications: Arc<Mutex<Vec<Watched>>>,
+  }
+
+  struct NoData;
+  impl ClientData for NoData {
+    fn disconnected(&self, _: ClientId, _: DisconnectReason) {}
+  }
+
+  impl GlobalDispatch<ServerSeat, ()> for Shared {
+    fn bind(
+      _: &mut Self,
+      _: &DisplayHandle,
+      _: &Client,
+      seat: New<ServerSeat>,
+      _: &(),
+      init: &mut DataInit<'_, Self>,
+    ) {
+      init.init(seat, ());
+    }
+  }
+
+  impl ServerDispatch<ServerSeat, ()> for Shared {
+    fn request(
+      _: &mut Self,
+      _: &Client,
+      _: &ServerSeat,
+      _: <ServerSeat as Resource>::Request,
+      _: &(),
+      _: &DisplayHandle,
+      _: &mut DataInit<'_, Self>,
+    ) {
+    }
+  }
+
+  impl GlobalDispatch<Notifier, ()> for Shared {
+    fn bind(
+      _: &mut Self,
+      _: &DisplayHandle,
+      _: &Client,
+      notifier: New<Notifier>,
+      _: &(),
+      init: &mut DataInit<'_, Self>,
+    ) {
+      init.init(notifier, ());
+    }
+  }
+
+  impl ServerDispatch<Notifier, ()> for Shared {
+    fn request(
+      state: &mut Self,
+      _: &Client,
+      _: &Notifier,
+      request: ext_idle_notifier_v1::Request,
+      _: &(),
+      _: &DisplayHandle,
+      init: &mut DataInit<'_, Self>,
+    ) {
+      if let ext_idle_notifier_v1::Request::GetIdleNotification { id, timeout, .. } = request {
+        let resource = init.init(id, ());
+        state.notifications.lock().unwrap().push(Watched {
+          resource,
+          timeout,
+          alive: true,
+        });
+      }
+    }
+  }
+
+  impl ServerDispatch<Notification, ()> for Shared {
+    fn request(
+      _: &mut Self,
+      _: &Client,
+      _: &Notification,
+      _: <Notification as Resource>::Request,
+      _: &(),
+      _: &DisplayHandle,
+      _: &mut DataInit<'_, Self>,
+    ) {
+    }
+
+    fn destroyed(state: &mut Self, _: ClientId, resource: &Notification, _: &()) {
+      for watched in state.notifications.lock().unwrap().iter_mut() {
+        if watched.resource == *resource {
+          watched.alive = false;
+        }
+      }
+    }
+  }
+
+  /// A compositor on its own socket, `WAYLAND_DISPLAY` points at it.
+  /// nextest runs each test in its own process, so setting the environment is safe.
+  struct Compositor {
+    shared: Shared,
+    stop: Arc<AtomicBool>,
+    _dir: tempfile::TempDir,
+  }
+
+  impl Compositor {
+    fn start(with_notifier: bool) -> Self {
+      let dir = tempfile::tempdir().unwrap();
+      unsafe {
+        std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-test");
+        std::env::remove_var("WAYLAND_SOCKET");
+      }
+      let socket = ListeningSocket::bind("wayland-test").unwrap();
+      let shared = Shared::default();
+      let stop = Arc::new(AtomicBool::new(false));
+      let (mut state, stopped) = (shared.clone(), stop.clone());
+      thread::spawn(move || {
+        let mut display = Display::<Shared>::new().unwrap();
+        let handle = display.handle();
+        handle.create_global::<Shared, ServerSeat, ()>(7, ());
+        if with_notifier {
+          handle.create_global::<Shared, Notifier, ()>(1, ());
+        }
+        while !stopped.load(Ordering::Relaxed) {
+          if let Some(stream) = socket.accept().unwrap() {
+            display
+              .handle()
+              .insert_client(stream, Arc::new(NoData))
+              .unwrap();
+          }
+          display.dispatch_clients(&mut state).unwrap();
+          display.flush_clients().ok();
+          thread::sleep(Duration::from_millis(2));
+        }
+      });
+      Self {
+        shared,
+        stop,
+        _dir: dir,
+      }
+    }
+
+    /// (timeout, still alive) of every notification asked for, oldest first
+    fn watched(&self) -> Vec<(u32, bool)> {
+      let list = self.shared.notifications.lock().unwrap();
+      list.iter().map(|w| (w.timeout, w.alive)).collect()
+    }
+
+    fn live(&self) -> Vec<u32> {
+      self
+        .watched()
+        .into_iter()
+        .filter(|w| w.1)
+        .map(|w| w.0)
+        .collect()
+    }
+
+    fn send(&self, timeout: u32, idle: bool) {
+      for watched in self.shared.notifications.lock().unwrap().iter() {
+        if watched.alive && watched.timeout == timeout {
+          match idle {
+            true => watched.resource.idled(),
+            false => watched.resource.resumed(),
+          }
+        }
+      }
+    }
+  }
+
+  impl Drop for Compositor {
+    fn drop(&mut self) {
+      self.stop.store(true, Ordering::Relaxed);
+    }
+  }
+
+  type Events = Rc<RefCell<Vec<(String, bool)>>>;
+
+  fn start(cx: &mut TestAppContext) -> Events {
+    cx.executor().allow_parking();
+    let events = Events::default();
+    let seen = events.clone();
+    cx.update(|cx| {
+      init(cx, move |name, idle, _| {
+        seen.borrow_mut().push((name.into(), idle))
+      })
+    });
+    events
+  }
+
+  fn set(cx: &mut TestAppContext, timeouts: &[(&str, u64)]) {
+    let timeouts = timeouts
+      .iter()
+      .map(|(name, millis)| (name.to_string(), Duration::from_millis(*millis)))
+      .collect();
+    cx.update(|cx| cx.idle().set_timeouts(timeouts));
+  }
+
+  /// the watcher and compositor are real threads: wait in real time
+  fn wait(cx: &mut TestAppContext, done: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+      cx.run_until_parked();
+      if done() {
+        return;
+      }
+      assert!(Instant::now() < deadline, "timed out");
+      thread::sleep(Duration::from_millis(5));
+    }
+  }
+
+  /// nothing more arrives for a while
+  fn settle(cx: &mut TestAppContext) {
+    for _ in 0..20 {
+      cx.run_until_parked();
+      thread::sleep(Duration::from_millis(5));
+    }
+  }
+
+  #[gpui::test]
+  fn watches_the_timeouts(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let events = start(cx);
+    set(cx, &[("lock", 300_000), ("off", 0), ("huge", u64::MAX / 2)]);
+    // zero is left out, too long is clamped
+    wait(cx, || compositor.watched().len() == 2);
+    let mut live = compositor.live();
+    live.sort();
+    assert_eq!(live, [300_000, u32::MAX]);
+
+    compositor.send(300_000, true);
+    wait(cx, || events.borrow().len() == 1);
+    // repeated states are not reported twice
+    compositor.send(300_000, true);
+    compositor.send(300_000, false);
+    wait(cx, || events.borrow().len() == 2);
+    compositor.send(300_000, false);
+    settle(cx);
+    assert_eq!(
+      *events.borrow(),
+      [("lock".to_string(), true), ("lock".to_string(), false)]
+    );
+  }
+
+  #[gpui::test]
+  fn replacing_resumes_what_was_idle(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let events = start(cx);
+    set(cx, &[("lock", 1000), ("dim", 500)]);
+    wait(cx, || compositor.live().len() == 2);
+    compositor.send(500, true);
+    wait(cx, || events.borrow().len() == 1);
+
+    set(cx, &[("lock", 2000)]);
+    wait(cx, || compositor.live() == [2000]);
+    wait(cx, || events.borrow().len() == 2);
+    // only the idle one reports false, the old ones are destroyed
+    assert_eq!(events.borrow()[1], ("dim".to_string(), false));
+    assert_eq!(compositor.watched().iter().filter(|w| !w.1).count(), 2);
+
+    // an empty list stops watching
+    set(cx, &[]);
+    wait(cx, || compositor.live().is_empty());
+    settle(cx);
+    assert_eq!(events.borrow().len(), 2);
+  }
+
+  #[gpui::test]
+  fn events_of_destroyed_notifications_are_dropped(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let events = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live().len() == 1);
+    set(cx, &[("other", 3000)]);
+    wait(cx, || compositor.live() == [3000]);
+    // the compositor still knows the old object until it processes the destroy
+    for watched in compositor.shared.notifications.lock().unwrap().iter() {
+      if watched.timeout == 1000 {
+        watched.resource.idled();
+      }
+    }
+    settle(cx);
+    assert!(events.borrow().is_empty());
+  }
+
+  #[gpui::test]
+  #[ignore = "BUG: a name given twice leaks the first notification, it is never destroyed"]
+  fn bug_duplicate_names_are_cleaned_up(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let _events = start(cx);
+    set(cx, &[("lock", 1000), ("lock", 2000)]);
+    wait(cx, || compositor.watched().len() == 2);
+    set(cx, &[]);
+    settle(cx);
+    assert!(compositor.live().is_empty(), "{:?}", compositor.live());
+  }
+
+  #[gpui::test]
+  fn without_a_notifier_nothing_happens(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(false);
+    let events = start(cx);
+    set(cx, &[("lock", 1000)]);
+    settle(cx);
+    assert!(compositor.watched().is_empty());
+    assert!(events.borrow().is_empty());
+  }
+
+  #[gpui::test]
+  fn without_a_compositor_nothing_happens(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+      std::env::set_var("WAYLAND_DISPLAY", "nothing-here");
+    }
+    let events = start(cx);
+    set(cx, &[("lock", 1000)]);
+    settle(cx);
+    assert!(events.borrow().is_empty());
+  }
+
+  #[test]
+  fn the_watcher_ends_with_its_sender() {
+    let compositor = Compositor::start(true);
+    let (timeouts, timeouts_rx) = flume::unbounded();
+    let (events, _events_rx) = flume::unbounded();
+    let watcher = thread::spawn(move || watch(timeouts_rx, events));
+    timeouts
+      .send(vec![("lock".into(), Duration::from_secs(1))])
+      .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while compositor.live().is_empty() {
+      assert!(Instant::now() < deadline);
+      thread::sleep(Duration::from_millis(5));
+    }
+    drop(timeouts);
+    watcher.join().unwrap().unwrap();
+  }
+
+  #[test]
+  fn the_watcher_reports_a_missing_notifier() {
+    let _compositor = Compositor::start(false);
+    let (_timeouts, timeouts_rx) = flume::unbounded();
+    let (events, _events_rx) = flume::unbounded();
+    let error = watch(timeouts_rx, events).unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "the compositor has no ext_idle_notifier_v1"
+    );
+  }
+}

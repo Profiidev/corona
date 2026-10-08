@@ -101,4 +101,48 @@ mod tests {
     assert!(floating_recent.stacking() > floating_old.stacking());
     assert!(special.stacking() > floating_recent.stacking());
   }
+
+  #[test]
+  fn stacking_order() {
+    let mut pinned = window("1", false, 9);
+    pinned.pinned = true;
+    let mut fullscreen = window("1", false, 9);
+    fullscreen.fullscreen = true;
+    let floating = window("1", true, 0);
+    let special = window("special:x", false, 9);
+    // a workspace merely named special is not one
+    let named = window("special", true, 0);
+    assert!(special.stacking() > pinned.stacking());
+    assert!(pinned.stacking() > fullscreen.stacking());
+    assert!(fullscreen.stacking() > floating.stacking());
+    assert!(named.stacking() == floating.stacking());
+    assert!(window("1", false, 0).stacking() == window("2", false, 0).stacking());
+  }
+
+  #[test]
+  fn display_ids_follow_the_monitor() {
+    let workspace = |monitor: &str| super::Workspace {
+      id: "0x1".into(),
+      name: "1".into(),
+      monitor: monitor.into(),
+      monitor_id: 0,
+    };
+    assert_eq!(
+      workspace("DP-1").display_id(),
+      corona_utils::display::display_uuid("DP-1")
+    );
+    assert_ne!(
+      workspace("DP-1").display_id(),
+      workspace("DP-2").display_id()
+    );
+  }
+
+  #[test]
+  fn serializes_for_scripts() {
+    let mut w = window("1", false, 0);
+    w.address = "0xa".into();
+    let json = serde_json::to_value(&w).unwrap();
+    assert_eq!(json["focus_history_id"], 0);
+    assert_eq!(json["address"], "0xa");
+  }
 }

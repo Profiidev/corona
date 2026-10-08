@@ -180,4 +180,139 @@ mod tests {
     assert_eq!(pick_active(&players, None).as_deref(), Some("b"));
     assert_eq!(pick_active(&players, Some("a")).as_deref(), Some("b"));
   }
+
+  fn with_art(url: Option<&str>) -> Player {
+    Player {
+      art_url: url.map(Into::into),
+      ..player("a", PlaybackStatus::Playing)
+    }
+  }
+
+  /// where the art loads from: a path or a URI
+  fn art(player: Player) -> Option<String> {
+    match player.art_source()? {
+      ImageSource::Resource(gpui_kit::Resource::Path(path)) => {
+        Some(format!("path {}", path.display()))
+      }
+      ImageSource::Resource(gpui_kit::Resource::Uri(uri)) => Some(format!("uri {uri}")),
+      _ => Some("other".into()),
+    }
+  }
+
+  #[test]
+  fn art_sources() {
+    assert_eq!(art(with_art(None)), None);
+    assert_eq!(
+      art(with_art(Some("file:///tmp/cover.png"))).as_deref(),
+      Some("path /tmp/cover.png")
+    );
+    assert_eq!(
+      art(with_art(Some("https://i.scdn.co/image/x"))).as_deref(),
+      Some("uri https://i.scdn.co/image/x")
+    );
+    assert_eq!(
+      art(with_art(Some("http://localhost/x.jpg"))).as_deref(),
+      Some("uri http://localhost/x.jpg")
+    );
+    for unsupported in [
+      "data:image/png;base64,AAAA",
+      "/tmp/cover.png",
+      "ftp://x",
+      "",
+    ] {
+      assert_eq!(art(with_art(Some(unsupported))), None, "{unsupported}");
+    }
+  }
+
+  #[test]
+  #[ignore = "BUG: file:// art URLs are not percent-decoded, covers in paths with spaces or umlauts never load"]
+  fn bug_file_urls_are_decoded() {
+    assert_eq!(
+      art(with_art(Some("file:///home/u/My%20Music/cover.jpg"))).as_deref(),
+      Some("path /home/u/My Music/cover.jpg")
+    );
+  }
+
+  #[test]
+  fn position_edges() {
+    let at = |status, rate: f64, length: Option<u64>| Player {
+      rate,
+      length: length.map(Duration::from_secs),
+      ..player("a", status)
+    };
+    let five = Duration::from_secs(5);
+    assert_eq!(
+      at(PlaybackStatus::Playing, 2.0, Some(100)).position_after(five),
+      Duration::from_secs(20)
+    );
+    assert_eq!(
+      at(PlaybackStatus::Playing, 0.0, Some(100)).position_after(five),
+      Duration::from_secs(10)
+    );
+    // a negative rate does not run backwards
+    assert_eq!(
+      at(PlaybackStatus::Playing, -1.0, Some(100)).position_after(five),
+      Duration::from_secs(10)
+    );
+    // no length: no clamp
+    assert_eq!(
+      at(PlaybackStatus::Playing, 1.0, None).position_after(Duration::from_secs(1000)),
+      Duration::from_secs(1010)
+    );
+    assert_eq!(
+      at(PlaybackStatus::Stopped, 1.0, None).position_after(five),
+      Duration::from_secs(10)
+    );
+    // the live position moves on its own
+    let playing = Player {
+      position_at: Instant::now() - Duration::from_secs(3),
+      ..player("a", PlaybackStatus::Playing)
+    };
+    assert!(playing.position() >= Duration::from_secs(13));
+  }
+
+  #[test]
+  fn kept_positions_need_the_same_playback() {
+    let old = player("a", PlaybackStatus::Playing);
+    let fresh = |status, rate, drift_ms: u64| {
+      let mut fresh = Player {
+        status,
+        rate,
+        ..old.clone()
+      };
+      fresh.position_at = old.position_at + Duration::from_secs(2);
+      fresh.position = old.position + Duration::from_secs(2) + Duration::from_millis(drift_ms);
+      fresh
+    };
+    let kept = |mut fresh: Player| {
+      keep_positions(std::slice::from_mut(&mut fresh), std::slice::from_ref(&old));
+      fresh.position == old.position
+    };
+    assert!(kept(fresh(PlaybackStatus::Playing, 1.0, 500)));
+    assert!(!kept(fresh(PlaybackStatus::Playing, 1.0, 501)));
+    assert!(!kept(fresh(PlaybackStatus::Playing, 2.0, 0)));
+    assert!(!kept(fresh(PlaybackStatus::Paused, 1.0, 0)));
+    // backwards within the slack counts too
+    let mut back = fresh(PlaybackStatus::Playing, 1.0, 0);
+    back.position -= Duration::from_millis(400);
+    assert!(kept(back));
+    // a player not seen before keeps its read
+    let mut new = Player {
+      name: "b".into(),
+      ..fresh(PlaybackStatus::Playing, 1.0, 0)
+    };
+    let position = new.position;
+    keep_positions(std::slice::from_mut(&mut new), std::slice::from_ref(&old));
+    assert_eq!(new.position, position);
+  }
+
+  #[test]
+  fn active_without_a_current_choice() {
+    use PlaybackStatus::*;
+    let players = [player("a", Stopped), player("b", Stopped)];
+    assert_eq!(pick_active(&players, None).as_deref(), Some("a"));
+    assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
+    let players = [player("a", Playing), player("b", Playing)];
+    assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
+  }
 }

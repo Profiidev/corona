@@ -483,4 +483,107 @@ mod tests {
     };
     assert!(super::enterprise_settings(relative).is_err());
   }
+
+  #[test]
+  fn enterprise_settings_in_full() {
+    let peap = EnterpriseConfig {
+      hidden: true,
+      phase2: Some(Phase2::Mschapv2),
+      anonymous_identity: Some("anonymous@example.org".into()),
+      password: Some("pw".into()),
+      ca_cert: Some(String::new()),
+      private_key: Some(String::new()),
+      ..config(EapMethod::Peap)
+    };
+    let settings = super::enterprise_settings(peap).unwrap();
+    let enterprise = &settings[ENTERPRISE_SETTING];
+    assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_PEAP.to_owned()]));
+    assert_eq!(enterprise[PHASE2_KEY], string(PHASE2_MSCHAPV2));
+    assert_eq!(enterprise[IDENTITY_KEY], string("user@example.org"));
+    assert_eq!(
+      enterprise[ANONYMOUS_IDENTITY_KEY],
+      string("anonymous@example.org")
+    );
+    assert_eq!(enterprise[PASSWORD_KEY], string("pw"));
+    assert_eq!(enterprise[DOMAIN_KEY], string("example.org"));
+    // an empty CA path means the system bundle, an empty key path means none
+    assert_eq!(enterprise[SYSTEM_CA_KEY], Value::from(true));
+    assert!(!enterprise.contains_key(PRIVATE_KEY_KEY));
+    let wifi = &settings["802-11-wireless"];
+    assert_eq!(wifi["ssid"], Value::from(b"eduroam".to_vec()));
+    assert_eq!(wifi["hidden"], Value::from(true));
+
+    let tls = EnterpriseConfig {
+      phase2: None,
+      private_key: Some("/home/user/key.pem".into()),
+      private_key_password: Some("keypw".into()),
+      ..config(EapMethod::Tls)
+    };
+    let settings = super::enterprise_settings(tls).unwrap();
+    let enterprise = &settings[ENTERPRISE_SETTING];
+    assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TLS.to_owned()]));
+    assert!(!enterprise.contains_key(PHASE2_KEY));
+    assert_eq!(
+      enterprise[PRIVATE_KEY_KEY],
+      Value::from(b"file:///home/user/key.pem\0".to_vec())
+    );
+    assert_eq!(enterprise[PRIVATE_KEY_PASSWORD_KEY], string("keypw"));
+
+    for bad in [
+      EnterpriseConfig {
+        client_cert: Some("cert.pem".into()),
+        ..config(EapMethod::Tls)
+      },
+      EnterpriseConfig {
+        private_key: Some("./key.pem".into()),
+        ..config(EapMethod::Tls)
+      },
+    ] {
+      let error = super::enterprise_settings(bad).unwrap_err().to_string();
+      assert!(error.ends_with("is not absolute"), "{error}");
+    }
+  }
+
+  #[test]
+  fn cert_paths() {
+    assert_eq!(
+      cert_path("/a b/ü.pem").unwrap(),
+      Value::from("file:///a b/ü.pem\0".as_bytes().to_vec())
+    );
+    assert_eq!(
+      cert_path("x").unwrap_err().to_string(),
+      "certificate path x is not absolute"
+    );
+    assert!(cert_path("").is_err());
+  }
+
+  #[test]
+  fn borrowed_settings_keep_every_value() {
+    let settings: SettingsMap = HashMap::from([
+      (
+        "a".to_string(),
+        HashMap::from([("k".to_string(), Value::from(1u32))]),
+      ),
+      ("b".to_string(), HashMap::new()),
+    ]);
+    let view = borrowed(&settings);
+    assert_eq!(view.len(), 2);
+    assert_eq!(view["a"]["k"], Value::from(1u32));
+    assert!(view["b"].is_empty());
+  }
+
+  #[test]
+  fn enterprise_config_from_json() {
+    let config: EnterpriseConfig = serde_json::from_str(
+      r#"{"ssid": "eduroam", "hidden": false, "eap": "ttls", "phase2": "pap", "identity": "me",
+          "anonymous_identity": null, "password": null, "ca_cert": null, "domain": null,
+          "client_cert": null, "private_key": null, "private_key_password": null}"#,
+    )
+    .unwrap();
+    assert_eq!(
+      (config.eap, config.phase2),
+      (EapMethod::Ttls, Some(Phase2::Pap))
+    );
+    assert!(serde_json::from_str::<EnterpriseConfig>(r#"{"eap": "md5"}"#).is_err());
+  }
 }
