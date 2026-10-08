@@ -20,6 +20,10 @@ pub enum Action {
   Suspend,
   /// Lock the session, then suspend once the lock is active
   LockAndSuspend,
+  /// Suspend, then hibernate after the time logind sets (`HibernateDelaySec`)
+  SuspendThenHibernate,
+  /// Lock the session, then suspend and later hibernate
+  LockAndSuspendThenHibernate,
   /// End the graphical session
   Logout,
   /// Reboot the system
@@ -40,11 +44,18 @@ impl IpcCommand for Session {
     let power = match action {
       Action::Lock => None,
       Action::Suspend | Action::LockAndSuspend => Some(SessionAction::Suspend),
+      Action::SuspendThenHibernate | Action::LockAndSuspendThenHibernate => {
+        Some(SessionAction::SuspendThenHibernate)
+      }
       Action::Logout => Some(SessionAction::Logout),
       Action::Reboot => Some(SessionAction::Reboot),
       Action::Shutdown => Some(SessionAction::PowerOff),
     };
-    let lock = matches!(action, Action::Lock | Action::LockAndSuspend).then(|| LockState::lock(cx));
+    let lock = matches!(
+      action,
+      Action::Lock | Action::LockAndSuspend | Action::LockAndSuspendThenHibernate
+    )
+    .then(|| LockState::lock(cx));
     let power = power.map(|a| cx.power().session_action(a));
 
     cx.spawn(async move |_| {

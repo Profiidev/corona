@@ -1889,6 +1889,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_idle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flume",
+ "gpui-kit",
+ "rustix",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "corona_ipc"
 version = "0.1.0"
 dependencies = [
@@ -2036,6 +2049,7 @@ dependencies = [
  "corona_compositor",
  "corona_config",
  "corona_desktop",
+ "corona_idle",
  "corona_ipc",
  "corona_mpris",
  "corona_network_manager",

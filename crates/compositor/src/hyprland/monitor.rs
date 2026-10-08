@@ -1,6 +1,9 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, types};
+use crate::{hypr_data_cmd, hypr_dsp, types};
+
+// every monitor's power, `on` or `off`
+hypr_dsp!(dpms, "dpms({{ action = \"{}\" }})", action: &str);
 
 hypr_data_cmd!(
   list_monitors,

@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use gpui_kit::App;
 
-use crate::{Config, ConfigProvider, bar::BarConfig};
+use crate::{Config, ConfigProvider, IdleConfig, bar::BarConfig};
 
 /// `~/.config/corona`, the user's own files
 pub fn config_dir() -> Result<PathBuf> {
@@ -87,7 +87,7 @@ pub fn read_files(files: &[PathBuf]) -> Result<Loaded> {
 fn deserialize(files: &[PathBuf]) -> Result<Loaded> {
   let built = files
     .iter()
-    .fold(config::Config::builder(), |builder, file| {
+    .fold(defaults()?, |builder, file| {
       builder.add_source(config::File::from(file.as_path()).required(false))
     })
     .add_source(config::Environment::with_prefix("CORONA").separator("__"))
@@ -98,6 +98,19 @@ fn deserialize(files: &[PathBuf]) -> Result<Loaded> {
     config.bar = bars;
   }
   Ok(Loaded { config, unknown })
+}
+
+/// The bottom layer: defaults that sit in maps, which serde would otherwise
+/// drop whole once a file sets any entry. Idle behaviors merge into them per
+/// field, so turning one off keeps the others and its own action.
+fn defaults() -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
+  let mut table = toml::Table::new();
+  table.insert(
+    "idle".to_string(),
+    toml::Value::try_from(IdleConfig::default())?,
+  );
+  let source = config::File::from_str(&toml::to_string(&table)?, config::FileFormat::Toml);
+  Ok(config::Config::builder().add_source(source))
 }
 
 /// The bars of the last file that has any. Bars are taken whole from one layer
@@ -175,6 +188,17 @@ mod tests {
       loaded.config.bar.keys().collect::<Vec<_>>(),
       ["main", "side"]
     );
+
+    // one idle behavior changed keeps the defaults, its own fields too
+    let idle = write("f.toml", "[idle.behavior.lock]\nenabled = false\n");
+    let loaded = read_files(&[idle]).unwrap();
+    let mut defaults = Config::default().idle;
+    defaults.behavior.get_mut("lock").unwrap().enabled = false;
+    assert_eq!(loaded.config.idle, defaults);
+    let custom = write("g.toml", "[idle.behavior.notify]\ntimeout = 30\n");
+    let loaded = read_files(&[custom]).unwrap();
+    assert_eq!(loaded.config.idle.behavior.len(), 4);
+    assert_eq!(loaded.config.idle.behavior["notify"].timeout, 30.);
 
     let bad = write("c.toml", "[osd]\nhide_delay_ms = \"soon\"\n");
     let e = read_files(&[a, b, bad.clone()]).unwrap_err().to_string();

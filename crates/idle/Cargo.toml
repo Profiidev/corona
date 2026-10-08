@@ -1,0 +1,13 @@
+[package]
+name = "corona_idle"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit.workspace = true
+anyhow.workspace = true
+flume.workspace = true
+tracing.workspace = true
+rustix = { workspace = true, features = ["event"] }
+wayland-client.workspace = true
+wayland-protocols.workspace = true

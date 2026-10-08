@@ -11,9 +11,9 @@ futures.workspace = true
 gbm = { version = "0.18.0", default-features = false }
 gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }
 tracing.workspace = true
-rustix = { version = "1.1.5", features = ["fs"] }
-wayland-client = "0.31.15"
-wayland-backend = "0.3.17"
-wayland-scanner = "0.31.11"
-wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
-wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+rustix = { workspace = true, features = ["fs"] }
+wayland-client.workspace = true
+wayland-backend.workspace = true
+wayland-scanner.workspace = true
+wayland-protocols-wlr.workspace = true
+wayland-protocols.workspace = true

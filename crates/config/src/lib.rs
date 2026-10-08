@@ -59,6 +59,7 @@ pub struct Config {
   pub location: LocationConfig,
   pub brightness: BrightnessConfig,
   pub system: SystemConfig,
+  pub idle: IdleConfig,
 }
 
 impl Default for Config {
@@ -79,6 +80,7 @@ impl Default for Config {
       location: LocationConfig::default(),
       brightness: BrightnessConfig::default(),
       system: SystemConfig::default(),
+      idle: IdleConfig::default(),
     }
   }
 }
@@ -484,6 +486,84 @@ impl Default for BrightnessConfig {
   }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct IdleConfig {
+  /// What happens after a while without input, by name. The compositor waits
+  /// while an app inhibits idling, a playing video for one.
+  pub behavior: BTreeMap<String, IdleBehavior>,
+}
+
+/// Noctalia's timeouts: lock, monitors off, then suspend and later hibernate
+impl Default for IdleConfig {
+  fn default() -> Self {
+    let after = |action, timeout| IdleBehavior {
+      action,
+      timeout,
+      ..Default::default()
+    };
+    Self {
+      behavior: BTreeMap::from([
+        ("lock".to_string(), after(IdleAction::Lock, 600.)),
+        ("screen-off".to_string(), after(IdleAction::ScreenOff, 660.)),
+        (
+          "lock-and-suspend".to_string(),
+          after(IdleAction::LockAndSuspendThenHibernate, 900.),
+        ),
+      ]),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct IdleBehavior {
+  pub enabled: bool,
+  pub action: IdleAction,
+  /// Seconds without input, 0 for never
+  pub timeout: f64,
+  /// For `command`: a shell command run on idle
+  pub command: String,
+  /// For `command`: a shell command run when input follows
+  pub resume_command: String,
+}
+
+impl Default for IdleBehavior {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      action: IdleAction::default(),
+      timeout: 0.,
+      command: String::new(),
+      resume_command: String::new(),
+    }
+  }
+}
+
+impl IdleBehavior {
+  /// How long without input until it runs, `None` when it never does
+  pub fn after(&self) -> Option<std::time::Duration> {
+    let timeout = std::time::Duration::try_from_secs_f64(self.timeout).ok()?;
+    (self.enabled && !timeout.is_zero()).then_some(timeout)
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IdleAction {
+  Lock,
+  /// Monitors off, on again with input
+  ScreenOff,
+  /// Suspend; still locks first with `lockscreen.lock_before_suspend`
+  Suspend,
+  /// Lock, then suspend once the lock shows
+  LockAndSuspend,
+  /// Lock, then suspend and hibernate after logind's `HibernateDelaySec`
+  LockAndSuspendThenHibernate,
+  #[default]
+  Command,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(default)]
 pub struct SystemConfig {
@@ -581,6 +661,15 @@ mod tests {
       missing.is_empty(),
       "missing from config.example.toml: {missing:?}"
     );
+  }
+
+  #[test]
+  fn idle_actions_parse() {
+    use crate::{IdleAction, IdleBehavior};
+    let behavior: IdleBehavior =
+      toml::from_str(r#"action = "lock_and_suspend_then_hibernate""#).unwrap();
+    assert_eq!(behavior.action, IdleAction::LockAndSuspendThenHibernate);
+    assert!(behavior.enabled);
   }
 
   #[test]

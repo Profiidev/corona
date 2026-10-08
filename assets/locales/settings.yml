@@ -608,6 +608,63 @@ app:
         description:
           en: How much the screen behind darkens.
           de: Wie stark der Bildschirm dahinter abgedunkelt wird.
+    idle:
+      title:
+        en: Idle
+        de: Leerlauf
+      enabled:
+        title:
+          en: Enabled
+          de: Aktiv
+        description:
+          en: "Apps can hold it off, a playing video for one. New behaviors go under [idle.behavior.<name>] in the config."
+          de: "Apps können es aufhalten, etwa ein laufendes Video. Neue Abläufe gehören unter [idle.behavior.<name>] in der Konfiguration."
+      action:
+        title:
+          en: Action
+          de: Aktion
+        description:
+          en: What happens once the time is up.
+          de: Was passiert, wenn die Zeit um ist.
+        lock:
+          en: Lock
+          de: Sperren
+        screen_off:
+          en: Monitors off
+          de: Bildschirme aus
+        suspend:
+          en: Suspend
+          de: Bereitschaft
+        lock_and_suspend:
+          en: Lock and suspend
+          de: Sperren und Bereitschaft
+        lock_and_suspend_then_hibernate:
+          en: Lock, suspend, then hibernate
+          de: Sperren, Bereitschaft, dann Ruhezustand
+        command:
+          en: Command
+          de: Befehl
+      after:
+        title:
+          en: After
+          de: Nach
+        description:
+          en: Seconds without input, 0 for never.
+          de: Sekunden ohne Eingabe, 0 für nie.
+      command:
+        title:
+          en: Command
+          de: Befehl
+        description:
+          en: "Shell command for the Command action."
+          de: "Shell-Befehl für die Aktion Befehl."
+      resume_command:
+        title:
+          en: Resume command
+          de: Befehl beim Fortsetzen
+        description:
+          en: "Shell command for the Command action, run when input follows."
+          de: "Shell-Befehl für die Aktion Befehl, läuft bei der nächsten Eingabe."
     lockscreen:
       title:
         en: Lock Screen

@@ -175,3 +175,33 @@ poll_seconds = 5
 
 [system.monitor]
 poll_seconds = 3
+
+# What happens after a while without input, as named behaviors. The compositor
+# waits while an app inhibits idling, a playing video for one. action: "lock",
+# "screen_off" (monitors off, on again with input), "suspend",
+# "lock_and_suspend", "lock_and_suspend_then_hibernate" or "command"; timeout in seconds, 0 for never;
+# for "command", resume_command runs when input follows.
+[idle.behavior.lock]
+enabled = true
+action = "lock"
+timeout = 600.0
+command = ""
+resume_command = ""
+
+[idle.behavior.lock-and-suspend]
+enabled = true
+action = "lock_and_suspend_then_hibernate"
+timeout = 900.0
+command = ""
+resume_command = ""
+
+[idle.behavior.screen-off]
+enabled = true
+action = "screen_off"
+timeout = 660.0
+command = ""
+resume_command = ""
+# [idle.behavior.notify]
+# action = "command"
+# timeout = 570
+# command = "notify-send 'Locking soon'"

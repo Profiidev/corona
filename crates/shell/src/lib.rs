@@ -14,6 +14,7 @@ pub mod commands;
 mod control_center;
 pub mod i18n;
 mod icons;
+mod idle;
 mod lock;
 mod osds;
 pub mod overlays;
@@ -25,6 +26,7 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   lock::init(cx);
+  idle::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
   overlays::taskbar::init(cx);

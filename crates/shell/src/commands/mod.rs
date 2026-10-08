@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use corona_ipc::IpcServer;
 
 pub mod brightness;
+pub mod dpms;
 pub mod lock_key;
 
 pub mod media;
@@ -15,6 +16,7 @@ pub mod volume;
 
 pub fn register_commands(server: &mut IpcServer) {
   brightness::register_commands(server);
+  dpms::register_commands(server);
   lock_key::register_commands(server);
   media::register_commands(server);
   notification::register_commands(server);

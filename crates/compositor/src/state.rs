@@ -69,6 +69,11 @@ impl Compositor {
     self.inner.close_window(address)
   }
 
+  /// Turns every monitor's power on or off
+  pub fn set_dpms(&self, on: bool) -> Result<()> {
+    self.inner.set_dpms(on)
+  }
+
   pub fn cursor_position(&self) -> Result<(i32, i32)> {
     self.inner.cursor_position()
   }
@@ -123,6 +128,8 @@ pub(crate) trait CompositorImpl {
   fn cursor_position(&self) -> Result<(i32, i32)>;
 
   fn keyboard_layout(&self) -> Result<Option<String>>;
+
+  fn set_dpms(&self, on: bool) -> Result<()>;
 }
 
 pub trait CompositorExt {

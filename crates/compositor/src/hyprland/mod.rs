@@ -73,6 +73,10 @@ impl CompositorImpl for Hyprland {
     self.ipc.cursor_position()
   }
 
+  fn set_dpms(&self, on: bool) -> Result<()> {
+    self.ipc.dpms(if on { "on" } else { "off" })
+  }
+
   fn keyboard_layout(&self) -> Result<Option<String>> {
     self.ipc.keyboard_layout()
   }

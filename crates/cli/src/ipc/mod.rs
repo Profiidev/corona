@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
+use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
@@ -81,6 +82,8 @@ pub enum IpcCommands {
   /// Show the OSD of a lock key: caps, num or scroll. Bind it to the key in
   /// Hyprland, e.g. `hl.bind("Caps_Lock", hl.dsp.exec_cmd("corona ipc lock-key caps"))`
   LockKey { key: LockKey },
+  /// Turn every monitor on or off
+  Dpms { power: Power },
   /// Lock, suspend, log out, reboot or shut down
   Session { action: Action },
   /// The settings window: open, close or toggle
@@ -136,6 +139,11 @@ impl IpcCommands {
       IpcCommands::Settings { action, page } => {
         if let Err(e) = SettingsWindow::send((action, page)) {
           tracing::error!("Failed to open settings: {}", e);
+        }
+      }
+      IpcCommands::Dpms { power } => {
+        if let Err(e) = Dpms::send(power) {
+          tracing::error!("Failed to switch the monitors: {}", e);
         }
       }
       IpcCommands::LockKey { key } => {

@@ -2,7 +2,8 @@ use std::{iter, path::PathBuf};
 
 use corona_components::assets::{set_theme, theme_font, theme_names};
 use corona_config::{
-  Config, ConfigProvider, NotificationPosition, OsdPosition, ThemeMode, Units, Weekday,
+  Config, ConfigProvider, IdleAction, IdleBehavior, NotificationPosition, OsdPosition, ThemeMode,
+  Units, Weekday,
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -22,7 +23,7 @@ use crate::settings::{
 use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
-pub const PAGES: [&str; 13] = [
+pub const PAGES: [&str; 14] = [
   "appearance",
   "bar",
   "wallpaper",
@@ -32,6 +33,7 @@ pub const PAGES: [&str; 13] = [
   "taskbar",
   "window_switcher",
   "lockscreen",
+  "idle",
   "screenshot",
   "location",
   "privacy",
@@ -49,6 +51,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     taskbar(),
     window_switcher(),
     lockscreen(),
+    idle(cx),
     screenshot(),
     location(),
     privacy(),
@@ -620,6 +623,136 @@ fn window_switcher() -> SettingPage {
         ),
       ],
     )],
+  )
+}
+
+/// The idle behavior `name`; a field set right after the behavior went from
+/// the config writes to a new one
+fn idle_behavior<'c>(c: &'c mut Config, name: &str) -> &'c mut IdleBehavior {
+  c.idle.behavior.entry(name.to_string()).or_default()
+}
+
+/// Every setting of the idle behavior `name`
+fn idle_group(name: String, action: IdleAction) -> SettingGroup {
+  let read = {
+    let name = name.clone();
+    move |c: &Config| c.idle.behavior.get(&name).cloned().unwrap_or_default()
+  };
+  let write = |field: fn(&mut IdleBehavior, String)| {
+    let name = name.clone();
+    move |c: &mut Config, v: String| field(idle_behavior(c, &name), v)
+  };
+  let key = |field: &str| format!("idle.behavior.{name}.{field}");
+  let actions = [
+    (IdleAction::Lock, t!("app.settings.idle.action.lock")),
+    (
+      IdleAction::ScreenOff,
+      t!("app.settings.idle.action.screen_off"),
+    ),
+    (IdleAction::Suspend, t!("app.settings.idle.action.suspend")),
+    (
+      IdleAction::LockAndSuspend,
+      t!("app.settings.idle.action.lock_and_suspend"),
+    ),
+    (
+      IdleAction::LockAndSuspendThenHibernate,
+      t!("app.settings.idle.action.lock_and_suspend_then_hibernate"),
+    ),
+    (IdleAction::Command, t!("app.settings.idle.action.command")),
+  ];
+  // only the command action runs commands
+  let commands = (action == IdleAction::Command).then(|| {
+    [
+      item(
+        t!("app.settings.idle.command.title"),
+        t!("app.settings.idle.command.description"),
+        text(
+          key("command"),
+          {
+            let read = read.clone();
+            move |c| read(c).command
+          },
+          write(|b, v| b.command = v),
+        ),
+      )
+      .layout(Axis::Vertical),
+      item(
+        t!("app.settings.idle.resume_command.title"),
+        t!("app.settings.idle.resume_command.description"),
+        text(
+          key("resume_command"),
+          {
+            let read = read.clone();
+            move |c| read(c).resume_command
+          },
+          write(|b, v| b.resume_command = v),
+        ),
+      )
+      .layout(Axis::Vertical),
+    ]
+  });
+  let mut items = vec![
+    item(
+      t!("app.settings.idle.enabled.title"),
+      t!("app.settings.idle.enabled.description"),
+      switch(
+        {
+          let read = read.clone();
+          move |c| read(c).enabled
+        },
+        {
+          let name = name.clone();
+          move |c, v| idle_behavior(c, &name).enabled = v
+        },
+      ),
+    ),
+    item(
+      t!("app.settings.idle.action.title"),
+      t!("app.settings.idle.action.description"),
+      choice(
+        &actions,
+        {
+          let read = read.clone();
+          move |c| read(c).action
+        },
+        {
+          let name = name.clone();
+          move |c, v| idle_behavior(c, &name).action = v
+        },
+      ),
+    ),
+    item(
+      t!("app.settings.idle.after.title"),
+      t!("app.settings.idle.after.description"),
+      number(
+        key("timeout"),
+        (0., 86400., 30.),
+        {
+          let read = read.clone();
+          move |c| read(c).timeout
+        },
+        {
+          let name = name.clone();
+          move |c, v| idle_behavior(c, &name).timeout = v
+        },
+      ),
+    ),
+  ];
+  items.extend(commands.into_iter().flatten());
+  group(name, items)
+}
+
+/// One group per idle behavior in the config
+fn idle(cx: &App) -> SettingPage {
+  page(
+    t!("app.settings.idle.title"),
+    IconName::Moon,
+    cx.config()
+      .idle
+      .behavior
+      .iter()
+      .map(|(name, behavior)| idle_group(name.clone(), behavior.action))
+      .collect(),
   )
 }
 
