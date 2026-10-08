@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 use include_dir::{Dir, include_dir};
 
-const THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
+const THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../assets/themes");
 
 pub fn load(cx: &mut App) -> Result<()> {
   let registry = ThemeRegistry::global_mut(cx);

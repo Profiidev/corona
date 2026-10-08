@@ -125,7 +125,7 @@ pub fn init(cx: &mut App) {
 /// one thread owns the sink and the decoded sound, set up on first sound and
 /// kept for the rest
 fn play_sound() {
-  static SOUND: &[u8] = include_bytes!("../../assets/notification.oga");
+  static SOUND: &[u8] = include_bytes!("../../../../assets/sounds/notification.oga");
   static PLAY: OnceLock<mpsc::Sender<()>> = OnceLock::new();
   let tx = PLAY.get_or_init(|| {
     let (tx, rx) = mpsc::channel();

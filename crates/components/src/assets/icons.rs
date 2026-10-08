@@ -7,9 +7,9 @@ use gpui_kit::{
 use include_dir::{Dir, include_dir};
 use std::borrow::Cow;
 
-const ICONS: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/icons");
+const ICONS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../assets/icons");
 
-icon_named!(IconName, "assets/icons");
+icon_named!(IconName, "../../assets/icons");
 
 impl RenderOnce for IconName {
   fn render(self, _: &mut Window, _: &mut gpui_kit::App) -> impl IntoElement {
