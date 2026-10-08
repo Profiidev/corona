@@ -7,7 +7,7 @@ use gpui_kit::{
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
-mod details;
+pub(crate) mod details;
 mod graphs;
 
 pub struct SysinfoPanel {

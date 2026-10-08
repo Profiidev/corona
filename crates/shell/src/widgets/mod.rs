@@ -5,6 +5,7 @@ mod player;
 pub(crate) mod popup;
 pub(crate) mod privacy;
 pub(crate) mod resource;
+mod tooltip;
 pub(crate) mod tray;
 mod workspaces;
 

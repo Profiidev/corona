@@ -10,7 +10,7 @@ mod network;
 mod notifications;
 mod panel;
 mod power;
-mod sysinfo;
+pub(crate) mod sysinfo;
 mod variants;
 mod weather;
 

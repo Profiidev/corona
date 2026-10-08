@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::widgets::workspaces::tooltip::WindowTitle;
+use crate::widgets::tooltip::TextTooltip;
 
 const ICON_SIZE: u16 = 18;
 const ICON_GAP: f32 = 2.;
@@ -81,7 +81,7 @@ impl Widget for Workspaces {
       {
         this.current_tooltip = None;
         this.current_hover = None;
-        cx.hide_tooltip::<WindowTitle>();
+        cx.hide_tooltip::<TextTooltip>();
       }
 
       cx.notify();
@@ -125,7 +125,7 @@ impl Widget for Workspaces {
         match (title, bounds) {
           (Some(title), Some(bounds)) => {
             let _ = handle.update(cx, |_, window, cx| {
-              cx.show_bar_tooltip(WindowTitle::new(title), bounds, window)
+              cx.show_bar_tooltip(TextTooltip::new(title), bounds, window)
                 .log_err()
                 .ok();
             });
@@ -133,7 +133,7 @@ impl Widget for Workspaces {
           _ => {
             this.current_tooltip = None;
             this.current_hover = None;
-            cx.hide_tooltip::<WindowTitle>();
+            cx.hide_tooltip::<TextTooltip>();
           }
         }
       }
@@ -315,7 +315,7 @@ fn workspace_windows(
               if !*hovered {
                 this.current_tooltip = None;
                 this.current_hover = None;
-                cx.hide_tooltip::<WindowTitle>();
+                cx.hide_tooltip::<TextTooltip>();
                 return;
               }
 
@@ -335,7 +335,7 @@ fn workspace_windows(
                       return;
                     };
                     if cx
-                      .show_bar_tooltip(WindowTitle::new(title), bounds.get(), window)
+                      .show_bar_tooltip(TextTooltip::new(title), bounds.get(), window)
                       .log_err()
                       .is_ok()
                     {

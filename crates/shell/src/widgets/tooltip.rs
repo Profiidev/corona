@@ -11,15 +11,13 @@ const MAX_WIDTH: f32 = 300.;
 const LINE_HEIGHT: f32 = 1.4;
 const SLACK: f32 = 1.;
 
-pub struct WindowTitle {
-  title: SharedString,
+pub struct TextTooltip {
+  text: SharedString,
 }
 
-impl WindowTitle {
-  pub fn new(title: impl Into<SharedString>) -> Self {
-    Self {
-      title: title.into(),
-    }
+impl TextTooltip {
+  pub fn new(text: impl Into<SharedString>) -> Self {
+    Self { text: text.into() }
   }
 
   fn text_size(&self, window: &Window, cx: &App) -> Size<Pixels> {
@@ -31,9 +29,9 @@ impl WindowTitle {
     window
       .text_system()
       .shape_text(
-        self.title.clone(),
+        self.text.clone(),
         px(FONT_SIZE),
-        &[style.to_run(self.title.len())],
+        &[style.to_run(self.text.len())],
         Some(px(MAX_WIDTH)),
         None,
       )
@@ -54,15 +52,15 @@ impl WindowTitle {
   }
 }
 
-impl Tooltip for WindowTitle {
-  const NAME: &'static str = "window_title";
+impl Tooltip for TextTooltip {
+  const NAME: &'static str = "text";
 
   fn size(&self, window: &Window, cx: &App) -> Size<Pixels> {
     self.text_size(window, cx)
   }
 }
 
-impl Render for WindowTitle {
+impl Render for TextTooltip {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
 
@@ -76,6 +74,6 @@ impl Render for WindowTitle {
       .text_size(px(FONT_SIZE))
       .line_height(relative(LINE_HEIGHT))
       .text_color(theme.tokens.secondary_foreground)
-      .child(div().w_full().child(self.title.clone()))
+      .child(div().w_full().child(self.text.clone()))
   }
 }

@@ -30,7 +30,7 @@ fn size(bytes: u64) -> String {
   format!("{} {}", decimal(value, 1), UNITS[unit])
 }
 
-pub(super) fn rate(bytes_per_second: f64) -> String {
+pub(crate) fn rate(bytes_per_second: f64) -> String {
   match bytes_per_second {
     r if r >= 1e6 => format!("{} MB/s", decimal(r / 1e6, 1)),
     r => format!("{} kB/s", decimal(r / 1e3, 1)),

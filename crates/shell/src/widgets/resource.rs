@@ -1,24 +1,35 @@
-use corona_surface::bar::{Button, Widget};
+use corona_surface::{
+  bar::{Button, Widget},
+  tooltip::TooltipExt,
+};
 use corona_sysinfo::{History, Sample, SystemMonitorExt};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  AnyWindowHandle, Bounds, Context, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+  StatefulInteractiveElement, Styled, Subscription, Task, Window,
   assets::IconName,
+  base::ElementExt,
   component::{ActiveTheme, Icon},
   div,
   prelude::FluentBuilder,
   px, relative,
 };
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
+use std::{borrow::Cow, cell::Cell, rc::Rc, time::Duration};
 use uuid::Uuid;
 
-use crate::control_center::{Standalone, SysinfoPanel};
+use crate::{
+  control_center::{Standalone, SysinfoPanel, sysinfo::details::rate},
+  i18n::decimal,
+  widgets::tooltip::TextTooltip,
+};
 use rust_i18n::t;
 
 const METER_HEIGHT: f32 = 14.;
 const METER_WIDTH: f32 = 3.;
 /// network meters are relative to the busiest recent second
 const MIN_RATE: f64 = 1024. * 1024.;
+const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +121,19 @@ impl Stat {
       Stat::Upload => rate(sample.network_tx, &history.network_tx),
     }
   }
+
+  /// The reading as text, like `42%` or `1,2 MB/s`
+  fn value(self, sample: &Sample, history: &History, mount: &str) -> Option<String> {
+    match self {
+      Stat::Load => Some(decimal(sample.load[0], 2)),
+      Stat::Temperature | Stat::GpuTemperature => {
+        Some(format!("{:.0}°C", self.level(sample, history, mount)?))
+      }
+      Stat::Download => Some(rate(sample.network_rx)),
+      Stat::Upload => Some(rate(sample.network_tx)),
+      _ => Some(format!("{:.0}%", self.level(sample, history, mount)?)),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -134,7 +158,33 @@ impl Default for Options {
 
 pub struct Resource {
   options: Options,
+  bounds: Rc<Cell<Bounds<Pixels>>>,
+  tooltip: Option<AnyWindowHandle>,
+  hover: Option<Task<()>>,
   _subscription: Subscription,
+}
+
+impl Resource {
+  fn tooltip_text(&self, cx: &Context<Self>) -> String {
+    let stat = self.options.stat;
+    let monitor = cx.system_monitor();
+    let value = monitor
+      .sample(cx)
+      .and_then(|s| stat.value(s, monitor.history(cx), &self.options.mount))
+      .unwrap_or_else(|| "–".into());
+    format!("{}: {value}", stat_name(stat))
+  }
+
+  fn show_tooltip(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let text = self.tooltip_text(cx);
+    if cx
+      .show_bar_tooltip(TextTooltip::new(text), self.bounds.get(), window)
+      .log_err()
+      .is_ok()
+    {
+      self.tooltip = Some(window.window_handle());
+    }
+  }
 }
 
 impl Widget for Resource {
@@ -146,7 +196,20 @@ impl Widget for Resource {
     let sample = cx.system_monitor().sample.clone();
     Self {
       options,
-      _subscription: cx.observe(&sample, |_, _, cx| cx.notify()),
+      bounds: Rc::default(),
+      tooltip: None,
+      hover: None,
+      _subscription: cx.observe(&sample, |this, _, cx| {
+        if let Some(handle) = this.tooltip {
+          let (text, bounds) = (this.tooltip_text(cx), this.bounds.get());
+          let _ = handle.update(cx, |_, window, cx| {
+            cx.show_bar_tooltip(TextTooltip::new(text), bounds, window)
+              .log_err()
+              .ok();
+          });
+        }
+        cx.notify();
+      }),
     }
   }
 }
@@ -194,12 +257,33 @@ impl Render for Resource {
           .bg(fill),
       );
 
-    Button::<_, Standalone<SysinfoPanel>>::new(
-      cx,
-      "resource",
-      Icon::new(stat.icon()).when_some(alert, |icon, color| icon.text_color(color)),
-    )
-    .suffix(meter)
+    let bounds = self.bounds.clone();
+
+    div()
+      .id("resource-hover")
+      .on_prepaint(move |b, _, _| bounds.set(b))
+      .on_hover(cx.listener(|this, hovered: &bool, window, cx| {
+        if !*hovered {
+          this.tooltip = None;
+          this.hover = None;
+          cx.hide_tooltip::<TextTooltip>();
+          return;
+        }
+
+        this.hover = Some(cx.spawn_in(window, async move |e, cx| {
+          cx.background_executor().timer(TOOLTIP_DELAY).await;
+          e.update_in(cx, |this, window, cx| this.show_tooltip(window, cx))
+            .ok();
+        }));
+      }))
+      .child(
+        Button::<_, Standalone<SysinfoPanel>>::new(
+          cx,
+          "resource",
+          Icon::new(stat.icon()).when_some(alert, |icon, color| icon.text_color(color)),
+        )
+        .suffix(meter),
+      )
   }
 }
 
@@ -232,5 +316,34 @@ mod tests {
     assert_eq!(options.stat, Stat::GpuTemperature);
     assert_eq!(options.critical, Some(80.));
     assert_eq!(options.mount, "/");
+  }
+
+  #[test]
+  fn values() {
+    let sample = Sample {
+      time: std::time::Instant::now(),
+      cpu: 42.4,
+      cpu_cores: vec![0.; 4],
+      cpu_frequency: 0,
+      cpu_temperature: None,
+      memory_used: 1,
+      memory_total: 4,
+      swap_used: 0,
+      swap_total: 0,
+      load: [1.5, 0., 0.],
+      network_rx: 2.5e6,
+      network_tx: 0.,
+      disks: vec![],
+      gpus: vec![],
+    };
+    let history = History::default();
+    let value = |stat: Stat| stat.value(&sample, &history, "/");
+
+    assert_eq!(value(Stat::Cpu).as_deref(), Some("42%"));
+    assert_eq!(value(Stat::Memory).as_deref(), Some("25%"));
+    assert_eq!(value(Stat::Temperature), None);
+    assert_eq!(value(Stat::Swap), None);
+    assert!(value(Stat::Load).is_some_and(|v| v.starts_with('1')));
+    assert!(value(Stat::Download).is_some_and(|v| v.ends_with("MB/s")));
   }
 }
