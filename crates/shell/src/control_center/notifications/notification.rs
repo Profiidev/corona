@@ -14,6 +14,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::notifications::NotificationsPanel;
+use rust_i18n::t;
 
 fn icon(notification: &Notification) -> IconName {
   const ICONS: [(&[&str], IconName); 4] = [
@@ -39,10 +40,10 @@ fn icon(notification: &Notification) -> IconName {
 
 fn ago(elapsed: Duration) -> String {
   match elapsed.as_secs() {
-    0..60 => "now".into(),
-    s @ 60..3600 => format!("{}m", s / 60),
-    s @ 3600..86400 => format!("{}h", s / 3600),
-    s => format!("{}d", s / 86400),
+    0..60 => t!("app.notifications.ago.now").into(),
+    s @ 60..3600 => t!("app.notifications.ago.minutes", count = s / 60).into(),
+    s @ 3600..86400 => t!("app.notifications.ago.hours", count = s / 3600).into(),
+    s => t!("app.notifications.ago.days", count = s / 86400).into(),
   }
 }
 
@@ -152,7 +153,7 @@ impl NotificationsPanel {
         Button::new(format!("notification-{id}-dismiss"))
           .icon(IconName::X)
           .small()
-          .tooltip("Dismiss")
+          .tooltip(t!("app.notifications.dismiss"))
           .cursor_pointer()
           .on_click(move |_, _, cx| {
             cx.stop_propagation();

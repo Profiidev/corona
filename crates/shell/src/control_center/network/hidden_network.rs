@@ -15,42 +15,53 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::NetworkPanel;
+use rust_i18n::t;
 
 pub struct HiddenPrompt {
   ssid: Entity<InputState>,
   password: Entity<InputState>,
-  security_select: Entity<SelectState<Vec<&'static str>>>,
+  security_select: Entity<SelectState<Vec<String>>>,
   security: HiddenSecurity,
   _security_changed: Subscription,
   _submit: Vec<Subscription>,
 }
 
-const SECURITY_OPTIONS: [(&str, HiddenSecurity); 3] = [
-  ("Open", HiddenSecurity::Open),
-  ("WPA/WPA2", HiddenSecurity::Wpa),
-  ("WPA3", HiddenSecurity::Wpa3),
+const SECURITY_OPTIONS: [HiddenSecurity; 3] = [
+  HiddenSecurity::Open,
+  HiddenSecurity::Wpa,
+  HiddenSecurity::Wpa3,
 ];
+
+fn security_label(security: HiddenSecurity) -> String {
+  match security {
+    HiddenSecurity::Open => t!("app.network.hidden.open").into(),
+    HiddenSecurity::Wpa => "WPA/WPA2".into(),
+    HiddenSecurity::Wpa3 => "WPA3".into(),
+  }
+}
 
 impl NetworkPanel {
   pub fn open_hidden_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    let ssid = cx.new(|cx| InputState::new(window, cx).placeholder("Network name"));
+    let ssid = cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.hidden.ssid")));
     let password = cx.new(|cx| {
       InputState::new(window, cx)
         .masked(true)
-        .placeholder("Password")
+        .placeholder(t!("app.network.password"))
     });
-    let labels = SECURITY_OPTIONS.iter().map(|(label, _)| *label).collect();
+    let labels = SECURITY_OPTIONS.map(security_label).to_vec();
     let security_select =
       cx.new(|cx| SelectState::new(labels, Some(IndexPath::default().row(1)), window, cx));
     let security_changed = cx.subscribe(
       &security_select,
-      |this, _, event: &SelectEvent<Vec<&'static str>>, cx| {
+      |this, _, event: &SelectEvent<Vec<String>>, cx| {
         let SelectEvent::Confirm(Some(label)) = event else {
           return;
         };
-        if let (Some(prompt), Some((_, security))) = (
+        if let (Some(prompt), Some(security)) = (
           &mut this.hidden_prompt,
-          SECURITY_OPTIONS.iter().find(|(l, _)| l == label),
+          SECURITY_OPTIONS
+            .iter()
+            .find(|s| security_label(**s) == *label),
         ) {
           prompt.security = *security;
           cx.notify();
@@ -108,7 +119,12 @@ impl NetworkPanel {
     Some(modal(
       theme,
       div()
-        .child(div().font_bold().text_sm().child("Join hidden network"))
+        .child(
+          div()
+            .font_bold()
+            .text_sm()
+            .child(t!("app.network.hidden.title")),
+        )
         .child(Input::new(&prompt.ssid).small())
         .child(Select::new(&prompt.security_select).small())
         .when(prompt.security != HiddenSecurity::Open, |d| {
@@ -121,7 +137,7 @@ impl NetworkPanel {
             .justify_end()
             .child(
               Button::new("hidden-cancel")
-                .label("Cancel")
+                .label(t!("app.common.cancel"))
                 .cursor_pointer()
                 .small()
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -132,7 +148,7 @@ impl NetworkPanel {
             .child(
               Button::new("hidden-connect")
                 .primary()
-                .label("Connect")
+                .label(t!("app.common.connect"))
                 .cursor_pointer()
                 .small()
                 .on_click(cx.listener(|this, _, window, cx| this.join_hidden(window, cx))),

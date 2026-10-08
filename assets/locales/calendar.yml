@@ -1,0 +1,12 @@
+_version: 2
+app:
+  calendar:
+    previous_month:
+      en: Previous month
+      de: Vorheriger Monat
+    next_month:
+      en: Next month
+      de: Nächster Monat
+    today:
+      en: Today
+      de: Heute

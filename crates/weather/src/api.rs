@@ -250,7 +250,7 @@ mod live {
         "{} {}°C ({}) feels {}°C, elevation {}m, {} {}",
         weather.current.time,
         weather.current.temperature,
-        weather.current.condition().description(),
+        weather.current.condition().key(),
         weather.current.apparent_temperature,
         weather.elevation,
         weather.timezone,
@@ -258,12 +258,11 @@ mod live {
       );
       for day in &weather.daily {
         println!(
-          "{} {} {}/{} {}",
+          "{} {}/{} {}",
           day.date,
-          crate::state::weekday(&day.date).unwrap(),
           day.min,
           day.max,
-          day.condition().description()
+          day.condition().key()
         );
       }
     });

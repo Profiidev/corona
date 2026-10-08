@@ -13,6 +13,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::NetworkPanel;
+use rust_i18n::t;
 
 pub struct SecretPrompt {
   password: Entity<InputState>,
@@ -30,11 +31,11 @@ impl NetworkPanel {
       return;
     }
     let identity = (request.kind == SecretKind::Enterprise && request.identity.is_none())
-      .then(|| cx.new(|cx| InputState::new(window, cx).placeholder("Username")));
+      .then(|| cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.username"))));
     let password = cx.new(|cx| {
       InputState::new(window, cx)
         .masked(true)
-        .placeholder("Password")
+        .placeholder(t!("app.network.password"))
     });
     password.update(cx, |input, cx| input.focus(window, cx));
     let submit = identity
@@ -75,14 +76,14 @@ impl NetworkPanel {
             .font_bold()
             .text_sm()
             .truncate()
-            .child(format!("Password for {}", request.name)),
+            .child(t!("app.network.password_for", name = request.name)),
         )
         .when(request.retry, |d| {
           d.child(
             div()
               .text_xs()
               .text_color(theme.colors.danger)
-              .child("Wrong password, try again"),
+              .child(t!("app.network.wrong_password")),
           )
         })
         .when_some(prompt.identity.as_ref(), |d, identity| {
@@ -96,7 +97,7 @@ impl NetworkPanel {
             .justify_end()
             .child(
               Button::new("secret-cancel")
-                .label("Cancel")
+                .label(t!("app.common.cancel"))
                 .cursor_pointer()
                 .small()
                 .on_click(cx.listener(|_, _, _, cx| {
@@ -106,7 +107,7 @@ impl NetworkPanel {
             .child(
               Button::new("secret-connect")
                 .primary()
-                .label("Connect")
+                .label(t!("app.common.connect"))
                 .cursor_pointer()
                 .small()
                 .on_click(cx.listener(|this, _, window, cx| this.submit_secret(window, cx))),

@@ -8,7 +8,11 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::control_center::weather::{WeatherPanel, card, icon};
+use crate::{
+  control_center::weather::{WeatherPanel, card, describe, icon, place_name},
+  i18n::decimal,
+};
+use rust_i18n::t;
 
 fn degrees(value: f64) -> String {
   format!("{value:.0}°")
@@ -16,8 +20,8 @@ fn degrees(value: f64) -> String {
 
 fn speed(value: f64, units: Units) -> String {
   match units {
-    Units::Metric => format!("{value:.0} km/h"),
-    Units::Imperial => format!("{value:.0} mph"),
+    Units::Metric => t!("app.weather.unit.kmh", value = format!("{value:.0}")).to_string(),
+    Units::Imperial => t!("app.weather.unit.mph", value = format!("{value:.0}")).to_string(),
   }
 }
 
@@ -25,7 +29,12 @@ pub(super) fn clock(time: &str) -> &str {
   time.split_once('T').map_or(time, |(_, clock)| clock)
 }
 
-fn detail(theme: &Theme, icon: IconName, label: &'static str, value: String) -> impl IntoElement {
+fn detail(
+  theme: &Theme,
+  icon: IconName,
+  label: impl IntoElement,
+  value: String,
+) -> impl IntoElement {
   div()
     .flex()
     .gap_2()
@@ -78,13 +87,13 @@ impl WeatherPanel {
                 .text_color(theme.colors.primary)
                 .child(format!("{:.0} / {}C", day.min, degrees(day.max)))
             }))
-            .child(div().text_sm().child(current.condition().description()))
+            .child(div().text_sm().child(describe(current.condition())))
             .child(
               div()
                 .text_xs()
                 .text_color(theme.colors.muted_foreground)
                 .truncate()
-                .child(weather.location.name.clone()),
+                .child(place_name(&weather.location)),
             ),
         ),
     )
@@ -96,7 +105,7 @@ impl WeatherPanel {
     let mut details = card(cx).gap_1().flex_1().child(detail(
       theme,
       IconName::Feather,
-      "Feels like",
+      t!("app.weather.feels_like"),
       format!("{}C", degrees(current.apparent_temperature)),
     ));
     if let Some(today) = weather.daily.first() {
@@ -104,13 +113,13 @@ impl WeatherPanel {
         .child(detail(
           theme,
           IconName::ThermometerSnowflake,
-          "Temperature min",
+          t!("app.weather.temperature_min"),
           format!("{}C", degrees(today.min)),
         ))
         .child(detail(
           theme,
           IconName::ThermometerSun,
-          "Temperature max",
+          t!("app.weather.temperature_max"),
           format!("{}C", degrees(today.max)),
         ));
     }
@@ -118,17 +127,20 @@ impl WeatherPanel {
       .child(detail(
         theme,
         IconName::Wind,
-        "Wind",
+        t!("app.weather.wind"),
         format!(
           "{} {}",
           speed(current.wind_speed, weather.units),
-          compass(current.wind_direction)
+          t!(format!(
+            "app.weather.compass.{}",
+            compass(current.wind_direction)
+          ))
         ),
       ))
       .child(detail(
         theme,
         IconName::Droplets,
-        "Humidity",
+        t!("app.weather.humidity"),
         format!("{:.0}%", current.humidity),
       ));
     if let Some(today) = weather.daily.first() {
@@ -136,13 +148,13 @@ impl WeatherPanel {
         .child(detail(
           theme,
           IconName::Sunrise,
-          "Sunrise",
+          t!("app.weather.sunrise"),
           clock(&today.sunrise).to_string(),
         ))
         .child(detail(
           theme,
           IconName::Sunset,
-          "Sunset",
+          t!("app.weather.sunset"),
           clock(&today.sunset).to_string(),
         ));
     }
@@ -155,19 +167,19 @@ impl WeatherPanel {
       .child(detail(
         theme,
         IconName::Mountain,
-        "Elevation",
+        t!("app.weather.elevation"),
         format!("{:.0} m", weather.elevation),
       ))
       .child(detail(
         theme,
         IconName::SunDim,
-        "UV index",
-        format!("{:.1}", current.uv_index),
+        t!("app.weather.uv_index"),
+        decimal(current.uv_index, 1),
       ))
       .child(detail(
         theme,
         IconName::Clock,
-        "Timezone",
+        t!("app.weather.timezone"),
         format!("{} ({timezone})", weather.timezone_abbreviation),
       ))
   }

@@ -6,13 +6,14 @@ use corona_config::{
   bar::{BarConfig, WidgetConfig, WidgetEntry},
   placement::Placement,
 };
+use std::borrow::Cow;
 use std::{cell::Cell, rc::Rc};
 
 use corona_surface::bar::BarState;
 use gpui_kit::base::Disableable;
 use gpui_kit::{
-  Anchor, App, AppContext, Div, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
-  SharedString, StatefulInteractiveElement, Styled, Window,
+  Anchor, App, AppContext, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
+  Render, StatefulInteractiveElement, Styled, Window,
   assets::IconName,
   base::ElementExt,
   component::{
@@ -28,6 +29,7 @@ use crate::{
   settings::fields::{Choice, choice, number, save, searchable, slider, switch},
   widgets::{privacy, resource, tray},
 };
+use rust_i18n::t;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Section {
@@ -39,11 +41,11 @@ pub(crate) enum Section {
 impl Section {
   const ALL: [Section; 3] = [Section::Start, Section::Center, Section::End];
 
-  fn label(self) -> &'static str {
+  fn label(self) -> Cow<'static, str> {
     match self {
-      Section::Start => "Start",
-      Section::Center => "Center",
-      Section::End => "End",
+      Section::Start => t!("app.settings.bar.section.start"),
+      Section::Center => t!("app.settings.bar.section.center"),
+      Section::End => t!("app.settings.bar.section.end"),
     }
   }
 
@@ -205,10 +207,10 @@ pub(super) fn page(cx: &App) -> SettingPage {
   let mut groups: Vec<SettingGroup> = names.iter().map(|name| bar_group(name.clone())).collect();
   groups.push(
     SettingGroup::new()
-      .title("Bars")
+      .title(t!("app.settings.bar.groups.bars"))
       .item(SettingItem::render(|_, window, cx| add_bar(window, cx))),
   );
-  SettingPage::new("Bar")
+  SettingPage::new(t!("app.settings.bar.title"))
     .icon(Icon::new(IconName::PanelTop))
     .resettable(true)
     .groups(groups)
@@ -244,24 +246,24 @@ fn bar_group(name: String) -> SettingGroup {
   let editor_name = name.clone();
   let remove_name = name.clone();
   SettingGroup::new()
-    .title(SharedString::from(format!("Bar \u{201c}{name}\u{201d}")))
+    .title(t!("app.settings.bar.groups.bar", name = name))
     .items(vec![
       SettingItem::new(
-        "Position",
+        t!("app.settings.bar.position.title"),
         choice(
           &[
-            (Placement::Top, "Top"),
-            (Placement::Bottom, "Bottom"),
-            (Placement::Left, "Left"),
-            (Placement::Right, "Right"),
+            (Placement::Top, t!("app.settings.options.top")),
+            (Placement::Bottom, t!("app.settings.options.bottom")),
+            (Placement::Left, t!("app.settings.options.left")),
+            (Placement::Right, t!("app.settings.options.right")),
           ],
           of(&name, |b| b.position),
           set(&name, |b, v| b.position = v),
         ),
       )
-      .description("Which screen edge the bar sits at."),
+      .description(t!("app.settings.bar.position.description").into_owned()),
       SettingItem::new(
-        "Thickness",
+        t!("app.settings.bar.thickness.title"),
         number(
           key("thickness"),
           (16., 96., 1.),
@@ -269,9 +271,9 @@ fn bar_group(name: String) -> SettingGroup {
           set(&name, |b, v: f64| b.thickness = v as f32),
         ),
       )
-      .description("Height of a horizontal bar, width of a vertical one."),
+      .description(t!("app.settings.bar.thickness.description").into_owned()),
       SettingItem::new(
-        "Background opacity",
+        t!("app.settings.bar.background_opacity.title"),
         slider(
           key("opacity"),
           (0., 1., 0.05),
@@ -279,14 +281,14 @@ fn bar_group(name: String) -> SettingGroup {
           set(&name, |b, v| b.background_opacity = v),
         ),
       )
-      .description("Under 1 lets the desktop show through."),
+      .description(t!("app.settings.bar.background_opacity.description").into_owned()),
       SettingItem::new(
-        "Capsules",
+        t!("app.settings.bar.capsules.title"),
         switch(of(&name, |b| b.capsule), set(&name, |b, v| b.capsule = v)),
       )
-      .description("A pill behind each widget."),
+      .description(t!("app.settings.bar.capsules.description").into_owned()),
       SettingItem::new(
-        "Widget spacing",
+        t!("app.settings.bar.widget_spacing.title"),
         number(
           key("spacing"),
           (0., 64., 1.),
@@ -294,9 +296,9 @@ fn bar_group(name: String) -> SettingGroup {
           set(&name, |b, v: f64| b.widget_spacing = v as f32),
         ),
       )
-      .description("Space between widgets."),
+      .description(t!("app.settings.bar.widget_spacing.description").into_owned()),
       SettingItem::new(
-        "Padding at the start",
+        t!("app.settings.bar.padding_start.title"),
         number(
           key("padding_start"),
           (0., 400., 1.),
@@ -304,9 +306,9 @@ fn bar_group(name: String) -> SettingGroup {
           set(&name, |b, v: f64| b.padding_start = v as f32),
         ),
       )
-      .description("Space before the first widget."),
+      .description(t!("app.settings.bar.padding_start.description").into_owned()),
       SettingItem::new(
-        "Padding at the end",
+        t!("app.settings.bar.padding_end.title"),
         number(
           key("padding_end"),
           (0., 400., 1.),
@@ -314,7 +316,7 @@ fn bar_group(name: String) -> SettingGroup {
           set(&name, |b, v: f64| b.padding_end = v as f32),
         ),
       )
-      .description("Space after the last widget."),
+      .description(t!("app.settings.bar.padding_end.description").into_owned()),
       SettingItem::render(move |_, window, cx| editor(&editor_name, window, cx))
         .keywords(["widgets", "widget"]),
       SettingItem::render(move |_, _, cx| remove_bar(&remove_name, cx)),
@@ -334,7 +336,7 @@ fn add_bar(window: &mut Window, cx: &mut App) -> Div {
     )
     .child(
       Button::new("bar-add")
-        .label("Add bar")
+        .label(t!("app.settings.bar.add_bar"))
         .cursor_pointer()
         .small()
         .on_click(move |_, window, cx| {
@@ -354,8 +356,8 @@ fn remove_bar(name: &str, cx: &App) -> Div {
   let only = cx.config().bar.len() <= 1;
   let name = name.to_string();
   div().flex().justify_end().child(
-    Button::new(SharedString::from(format!("bar-remove-{name}")))
-      .label("Remove this bar")
+    Button::new(format!("bar-remove-{name}"))
+      .label(t!("app.settings.bar.remove_bar"))
       .cursor_pointer()
       .small()
       .danger()
@@ -376,7 +378,7 @@ fn text_input(
   cx: &mut App,
 ) -> gpui_kit::Entity<gpui_kit::component::input::InputState> {
   window.use_keyed_state(
-    SharedString::from(format!("input-{key}")),
+    format!("input-{key}"),
     cx,
     gpui_kit::component::input::InputState::new,
   )
@@ -386,7 +388,7 @@ fn text_input(
 struct WidgetDrag {
   bar: String,
   from: Slot,
-  label: SharedString,
+  label: String,
   has_options: bool,
   /// the dragged row's width, for a preview that looks the same
   width: Rc<Cell<Pixels>>,
@@ -398,7 +400,7 @@ struct DragPreview(WidgetDrag);
 impl Render for DragPreview {
   fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
     let drag = &self.0;
-    let (options, remove) = row_buttons(|what| format!("preview-{what}").into(), drag.has_options);
+    let (options, remove) = row_buttons(|what| format!("preview-{what}"), drag.has_options);
     row_body(drag.label.clone(), options, remove, cx)
       .w(drag.width.get())
       .opacity(0.9)
@@ -422,13 +424,13 @@ fn editor(name: &str, window: &mut Window, cx: &mut App) -> Div {
       div()
         .text_sm()
         .text_color(cx.theme().muted_foreground)
-        .child("Drag a widget between others to move it, onto one to group them."),
+        .child(t!("app.settings.bar.drag_hint")),
     )
     .child(columns)
 }
 
 /// A strip between rows: a widget dropped there lands at `target`
-fn gap(id: SharedString, name: &str, target: Target, cx: &App) -> impl IntoElement {
+fn gap(id: impl Into<ElementId>, name: &str, target: Target, cx: &App) -> impl IntoElement {
   let line = cx.theme().colors.primary;
   let name = name.to_string();
   div()
@@ -453,7 +455,7 @@ fn column(name: &str, bar: &BarConfig, section: Section, window: &mut Window, cx
     theme.muted_foreground,
   );
   let hover = theme.tokens.button_hover;
-  let id = |what: String| SharedString::from(format!("{what}-{name}-{section:?}"));
+  let id = |what: String| format!("{what}-{name}-{section:?}");
 
   let mut rows: Vec<gpui_kit::AnyElement> = Vec::new();
   for (index, entry) in section.of(bar).iter().enumerate() {
@@ -509,7 +511,13 @@ fn column(name: &str, bar: &BarConfig, section: Section, window: &mut Window, cx
                 });
               }
             })
-            .child(div().pb_1().text_xs().text_color(muted).child("Group"))
+            .child(
+              div()
+                .pb_1()
+                .text_xs()
+                .text_color(muted)
+                .child(t!("app.settings.bar.group")),
+            )
             .children(members)
             .into_any_element(),
         );
@@ -565,8 +573,8 @@ fn add_widget(name: &str, section: Section, window: &mut Window, cx: &mut App) -
   let choices = BarState::widget_names(cx)
     .into_iter()
     .map(|widget| Choice {
-      label: title(&widget).into(),
-      value: widget.into(),
+      label: title(&widget),
+      value: widget,
     })
     .collect();
   let name_ = name.to_string();
@@ -574,7 +582,7 @@ fn add_widget(name: &str, section: Section, window: &mut Window, cx: &mut App) -
     format!("add-{name}-{section:?}"),
     choices,
     None,
-    "Add widget",
+    t!("app.settings.bar.add_widget"),
     window,
     cx,
     move |widget, cx| {
@@ -591,8 +599,14 @@ fn add_widget(name: &str, section: Section, window: &mut Window, cx: &mut App) -
   .menu_width(px(220.))
 }
 
-/// `active_window` as "Active window"
+/// A widget's name: built-in ones are translated, a plugin's `my_widget` reads
+/// as "My widget"
 fn title(widget_type: &str) -> String {
+  // a missing key would come back as `en.<key>`
+  let key = format!("app.settings.bar.widget.{widget_type}");
+  if let Some(translated) = crate::_rust_i18n_try_translate(&rust_i18n::locale(), &key) {
+    return translated.into();
+  }
   let mut title = widget_type.replace('_', " ");
   if let Some(first) = title.get_mut(..1) {
     first.make_ascii_uppercase();
@@ -601,7 +615,7 @@ fn title(widget_type: &str) -> String {
 }
 
 /// The options and remove buttons of a row
-fn row_buttons(id: impl Fn(&str) -> SharedString, has_options: bool) -> (Option<Button>, Button) {
+fn row_buttons(id: impl Fn(&str) -> String, has_options: bool) -> (Option<Button>, Button) {
   let options = has_options.then(|| {
     Button::new(id("options"))
       .icon(IconName::Settings2)
@@ -619,7 +633,7 @@ fn row_buttons(id: impl Fn(&str) -> SharedString, has_options: bool) -> (Option<
 
 /// How a widget's row looks, shared by the row and its drag preview
 fn row_body(
-  label: SharedString,
+  label: impl IntoElement,
   options: Option<impl IntoElement>,
   remove: Button,
   cx: &App,
@@ -653,21 +667,21 @@ fn row(
   cx: &mut App,
 ) -> impl IntoElement {
   let hover = cx.theme().tokens.button_hover;
-  let label: SharedString = match widget.widget_type.as_str() {
+  let label: String = match widget.widget_type.as_str() {
     // several of these sit side by side, what they show tells them apart
     "resource" => {
       let options: resource::Options = options(bar, slot);
       resource::stat_name(options.stat).into()
     }
-    other => title(other).into(),
+    other => title(other),
   };
   let form = options_form(&widget.widget_type);
   let has_options = form.is_some();
   let id = |what: &str| {
-    SharedString::from(format!(
+    format!(
       "{what}-{name}-{:?}-{}-{:?}",
       slot.section, slot.index, slot.member
-    ))
+    )
   };
   let width = window.use_keyed_state(id("width"), cx, |_, _| Rc::new(Cell::new(Pixels::ZERO)));
   let width = width.read(cx).clone();
@@ -780,7 +794,7 @@ fn form() -> Div {
   div().flex().flex_col().gap_2().w(px(320.))
 }
 
-fn form_row(label: &'static str, control: impl IntoElement) -> Div {
+fn form_row(label: impl IntoElement, control: impl IntoElement) -> Div {
   div()
     .flex()
     .items_center()
@@ -803,7 +817,7 @@ fn form_input(
     shown: String,
     _subscription: gpui_kit::Subscription,
   }
-  let field = window.use_keyed_state(SharedString::from(key), cx, |window, cx| {
+  let field = window.use_keyed_state(key, cx, |window, cx| {
     let input = cx.new(|cx| InputState::new(window, cx).default_value(value.clone()));
     let commit = std::rc::Rc::new(commit);
     let _subscription = cx.subscribe(
@@ -854,7 +868,7 @@ fn clock_form(
   let name_ = name.to_string();
   form()
     .child(form_row(
-      "Format (strftime)",
+      t!("app.settings.bar.form.format"),
       form_input(
         form_key(name, slot, "format"),
         options.format,
@@ -881,20 +895,20 @@ fn resource_form(
     .map(|stat| Choice {
       value: serde_json::to_value(stat)
         .ok()
-        .and_then(|v| v.as_str().map(SharedString::from))
+        .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_default(),
       label: resource::stat_name(*stat).into(),
     })
     .collect();
   let selected = serde_json::to_value(current.stat)
     .ok()
-    .and_then(|v| v.as_str().map(SharedString::from));
+    .and_then(|v| v.as_str().map(str::to_string));
   let stat_name = name.to_string();
   let stat = searchable(
     form_key(name, slot, "stat"),
     choices,
     selected,
-    "Shows",
+    t!("app.settings.bar.form.shows"),
     window,
     cx,
     move |value, cx| {
@@ -979,10 +993,10 @@ fn resource_form(
   );
 
   form()
-    .child(form_row("Shows", stat))
-    .child(form_row("Warning at", warning))
-    .child(form_row("Critical at", critical))
-    .child(form_row("Mount (disk)", mount))
+    .child(form_row(t!("app.settings.bar.form.shows"), stat))
+    .child(form_row(t!("app.settings.bar.form.warning_at"), warning))
+    .child(form_row(t!("app.settings.bar.form.critical_at"), critical))
+    .child(form_row(t!("app.settings.bar.form.mount"), mount))
     .into_any_element()
 }
 
@@ -1021,20 +1035,16 @@ fn tray_form(
           },
         ))
         .child(
-          Button::new(SharedString::from(form_key(
-            name,
-            slot,
-            &format!("blacklist-remove-{i}"),
-          )))
-          .cursor_pointer()
-          .icon(IconName::X)
-          .ghost()
-          .xsmall()
-          .on_click(move |_, _, cx| {
-            let mut blacklist = remove_list.clone();
-            blacklist.remove(i);
-            set_options(cx, &remove_name, slot, tray::Options { blacklist });
-          }),
+          Button::new(form_key(name, slot, &format!("blacklist-remove-{i}")))
+            .cursor_pointer()
+            .icon(IconName::X)
+            .ghost()
+            .xsmall()
+            .on_click(move |_, _, cx| {
+              let mut blacklist = remove_list.clone();
+              blacklist.remove(i);
+              set_options(cx, &remove_name, slot, tray::Options { blacklist });
+            }),
         )
     })
     .collect();
@@ -1044,13 +1054,13 @@ fn tray_form(
     .child(
       div()
         .text_sm()
-        .child("Hidden items: case-insensitive regexes against id and title"),
+        .child(t!("app.settings.bar.form.hidden_items")),
     )
     .children(rows)
     .child(
       div().child(
-        Button::new(SharedString::from(form_key(name, slot, "blacklist-add")))
-          .label("Add pattern")
+        Button::new(form_key(name, slot, "blacklist-add"))
+          .label(t!("app.settings.bar.form.add_pattern"))
           .cursor_pointer()
           .icon(IconName::Plus)
           .xsmall()
@@ -1076,8 +1086,8 @@ fn privacy_form(
   let name = name.to_string();
   form()
     .child(form_row(
-      "Hide when nothing records",
-      gpui_kit::component::switch::Switch::new(SharedString::from(form_key(&name, slot, "idle")))
+      t!("app.settings.bar.form.hide_idle"),
+      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
         .checked(current.hide_when_idle)
         .small()
         .on_click(move |checked, _, cx| {
@@ -1098,7 +1108,15 @@ fn privacy_form(
 mod tests {
   use corona_config::bar::{BarConfig, WidgetConfig, WidgetEntry};
 
-  use super::{Section, Slot, Target, move_widget, remove_widget};
+  use super::{Section, Slot, Target, move_widget, remove_widget, title};
+
+  #[test]
+  fn widget_titles() {
+    assert_eq!(title("active_window"), "Active window");
+    assert_eq!(title("sysinfo"), "System info");
+    // a plugin's widget has no translation
+    assert_eq!(title("my_widget"), "My widget");
+  }
 
   fn w(t: &str) -> WidgetConfig {
     WidgetConfig::Widget(WidgetEntry {

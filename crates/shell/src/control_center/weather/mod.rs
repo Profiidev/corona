@@ -1,5 +1,5 @@
 use corona_components::components::card::CardExt;
-use corona_weather::{Condition, WeatherExt};
+use corona_weather::{Condition, Location, WeatherExt};
 use gpui_kit::{
   AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   assets::IconName,
@@ -9,6 +9,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
+use rust_i18n::t;
 
 mod current;
 mod forecast;
@@ -43,7 +44,7 @@ impl ControlCenterPanel for WeatherPanel {
     vec![
       Button::new("weather-refresh")
         .icon(IconName::RefreshCw)
-        .tooltip("Refresh")
+        .tooltip(t!("app.weather.refresh"))
         .cursor_pointer()
         .on_click(|_, _, cx| cx.weather().refresh())
         .into_any_element(),
@@ -53,6 +54,19 @@ impl ControlCenterPanel for WeatherPanel {
 
 fn card(cx: &App) -> Div {
   div().flex().flex_col().w_full().gap_2().p_2().card(cx)
+}
+
+/// The condition in words, like "Partly cloudy"
+pub(crate) fn describe(condition: Condition) -> String {
+  t!(format!("app.weather.condition.{}", condition.key())).into()
+}
+
+/// The location's name; the device's own position has none
+pub(crate) fn place_name(location: &Location) -> String {
+  match location.name.is_empty() {
+    true => t!("app.weather.current_location").into(),
+    false => location.name.clone(),
+  }
 }
 
 pub(super) fn icon(condition: Condition, is_day: bool) -> IconName {
@@ -86,7 +100,7 @@ impl Render for WeatherPanel {
     let Some(weather) = service.current(cx) else {
       let message = service
         .error(cx)
-        .map_or("Loading the weather…".to_string(), str::to_string);
+        .map_or(t!("app.weather.loading").to_string(), str::to_string);
       return div()
         .flex()
         .flex_col()

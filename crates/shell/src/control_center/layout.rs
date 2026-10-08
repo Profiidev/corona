@@ -7,6 +7,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::{ControlCenter, variants::ControlCenterType};
+use rust_i18n::t;
 
 #[derive(IntoElement)]
 pub struct ControlCenterLayout {
@@ -73,11 +74,15 @@ impl RenderOnce for ControlCenterLayout {
           ),
       )
       .child(
-        div().w_full().flex_1().min_h_0().child(
-          self
-            .content
-            .unwrap_or_else(|| div().child("No content").into_any_element()),
-        ),
+        div()
+          .w_full()
+          .flex_1()
+          .min_h_0()
+          .child(self.content.unwrap_or_else(|| {
+            div()
+              .child(t!("app.control_center.no_content"))
+              .into_any_element()
+          })),
       )
   }
 }

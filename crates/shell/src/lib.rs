@@ -6,9 +6,13 @@ use corona_notifications::NotificationsExt;
 use corona_surface::bar::BarState;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
+use rust_i18n::t;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub mod commands;
 mod control_center;
+pub mod i18n;
 mod icons;
 mod lock;
 mod osds;
@@ -38,6 +42,15 @@ fn watch_config(cx: &mut App) {
     tracing::error!("Failed to watch the config: {e:#}");
   }
 
+  observe_section(
+    cx,
+    |c| &c.shell.language,
+    |language, cx| {
+      i18n::apply(language.as_deref());
+      cx.refresh_windows();
+    },
+  );
+
   // read once at startup
   fn later<T>(name: &'static str) -> impl FnMut(&T, &mut App) {
     move |_, _| tracing::warn!("{name} applies after a restart")
@@ -59,7 +72,7 @@ fn watch_config(cx: &mut App) {
 fn config_failed(error: String, cx: &mut App) {
   let send = cx
     .notifications()
-    .send("Corona config not loaded".to_string(), error);
+    .send(t!("app.config_not_loaded").into(), error);
   cx.spawn(async move |_| {
     let _ = send.await.log_err();
   })
@@ -81,6 +94,7 @@ fn init_ipc(cx: &mut App) {
 
 fn init_integrations(cx: &mut App) {
   let config_error = corona_config::load(cx).err();
+  i18n::apply(cx.config().shell.language.as_deref());
   corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");

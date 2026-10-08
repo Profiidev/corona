@@ -3,12 +3,13 @@ use corona_network_manager::{FailReason, Interface, NetworkManagerExt};
 use gpui_kit::Context;
 
 use crate::control_center::network::NetworkPanel;
+use rust_i18n::t;
 
 pub fn address(i: &Interface) -> String {
   if let Some(addr) = i.ip {
     format!("{}/{}", addr.address, addr.prefix)
   } else {
-    "No address".to_string()
+    t!("app.network.no_address").into()
   }
 }
 
@@ -25,9 +26,9 @@ impl NetworkPanel {
 
     let failure = cx.network_manager().wifi_failure(cx)?;
     let error = match failure.reason {
-      FailReason::SsidNotFound => "Network not found".to_string(),
-      FailReason::NoSecrets => "No password provided".to_string(),
-      FailReason::Other(code) => format!("Connection failed: {}", code),
+      FailReason::SsidNotFound => t!("app.network.fail.not_found").to_string(),
+      FailReason::NoSecrets => t!("app.network.fail.no_secrets").to_string(),
+      FailReason::Other(code) => t!("app.network.fail.other", code = code).to_string(),
     };
     Some(ErrorCard::new("wifi-failure", error))
   }

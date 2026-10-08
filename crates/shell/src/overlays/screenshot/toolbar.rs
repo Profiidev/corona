@@ -90,7 +90,7 @@ impl ScreenshotToolbar {
           .children(Mode::ALL.into_iter().enumerate().map(|(i, m)| {
             let bounds = self.mode_bounds[i].clone();
             div().on_prepaint(move |b, _, _| bounds.set(b)).child(
-              Button::new(m.label())
+              Button::new(m.id())
                 .with_variant(if m == mode {
                   ButtonVariant::Custom(on_pill_variant)
                 } else {

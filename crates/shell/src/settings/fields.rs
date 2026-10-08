@@ -26,7 +26,9 @@ use gpui_kit::{
   Focusable,
   base::{AxisExt, Disableable},
 };
+use rust_i18n::t;
 use serde::{Serialize, de::DeserializeOwned};
+use std::{borrow::Cow, fmt::Display};
 
 /// Reads a setting; also called on `Config::default()` for its default
 pub(super) trait Get<T>: Fn(&Config) -> T + Clone + 'static {}
@@ -71,7 +73,7 @@ fn name<T: Serialize>(value: &T) -> SharedString {
 
 /// One of a config enum's values, labelled. `None` of an optional one is ""
 pub(super) fn choice<T>(
-  options: &[(T, &'static str)],
+  options: &[(T, Cow<'static, str>)],
   get: impl Get<T>,
   set: impl Set<T>,
 ) -> SettingField<SharedString>
@@ -81,7 +83,7 @@ where
   let default = name(&get(&Config::default()));
   let options: Vec<_> = options
     .iter()
-    .map(|(value, label)| (name(value), SharedString::from(*label)))
+    .map(|(value, label)| (name(value), label.clone().into()))
     .collect();
   SettingField::dropdown(
     options,
@@ -109,7 +111,7 @@ struct Field<S, T> {
 
 /// Free text, committed on enter or blur. `key` must be unique in the window.
 pub(super) fn text(
-  key: impl Into<SharedString>,
+  key: impl Display,
   get: impl Get<String>,
   set: impl Set<String>,
 ) -> SettingField<SharedString> {
@@ -121,13 +123,14 @@ pub(super) fn text(
     let set = set.clone();
     move |value: String, cx: &mut App| save(cx, |c| set(c, value))
   };
-  text_field(key.into(), read, commit).on_reset(is_default(get.clone()), reset(get, set))
+  text_field(format!("field-{key}"), read, commit)
+    .on_reset(is_default(get.clone()), reset(get, set))
 }
 
 /// An optional setting as text, showing what applies when it is unset
 /// (`fallback`). Leaving that or nothing in the field unsets it.
 pub(super) fn optional_text(
-  key: impl Into<SharedString>,
+  key: impl Display,
   get: impl Get<Option<String>>,
   set: impl Set<Option<String>>,
   fallback: impl Fn(&App) -> String + Clone + 'static,
@@ -145,14 +148,14 @@ pub(super) fn optional_text(
       }
     }
   };
-  text_field(key.into(), read, commit).on_reset(
+  text_field(format!("field-{key}"), read, commit).on_reset(
     move |cx: &App| get(cx.config()).is_some(),
     move |_, cx: &mut App| save(cx, |c| set(c, None)),
   )
 }
 
 fn text_field(
-  key: SharedString,
+  id: String,
   read: impl Fn(&App) -> String + Clone + 'static,
   commit: impl Fn(String, &mut App) + Clone + 'static,
 ) -> SettingField<SharedString> {
@@ -160,31 +163,27 @@ fn text_field(
     move |options: &RenderOptions, window: &mut Window, cx: &mut App| {
       let (read, commit) = (read.clone(), commit.clone());
       let current = read(cx);
-      let field = window.use_keyed_state(
-        SharedString::from(format!("field-{key}")),
-        cx,
-        |window, cx| {
-          let shown = read(cx);
-          let input = cx.new(|cx| InputState::new(window, cx).default_value(shown.clone()));
-          let _subscription = cx.subscribe(
-            &input,
-            move |field: &mut Field<InputState, String>, input, event: &InputEvent, cx| {
-              if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                let value = input.read(cx).value().to_string();
-                if value != field.last {
-                  field.last = value.clone();
-                  commit(value, cx);
-                }
+      let field = window.use_keyed_state(id.clone(), cx, |window, cx| {
+        let shown = read(cx);
+        let input = cx.new(|cx| InputState::new(window, cx).default_value(shown.clone()));
+        let _subscription = cx.subscribe(
+          &input,
+          move |field: &mut Field<InputState, String>, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+              let value = input.read(cx).value().to_string();
+              if value != field.last {
+                field.last = value.clone();
+                commit(value, cx);
               }
-            },
-          );
-          Field {
-            state: input,
-            last: shown,
-            _subscription,
-          }
-        },
-      );
+            }
+          },
+        );
+        Field {
+          state: input,
+          last: shown,
+          _subscription,
+        }
+      });
 
       // follow changes made elsewhere
       field.update(cx, |field, cx| {
@@ -210,56 +209,52 @@ fn text_field(
 
 /// A number, committed on enter, blur or a step. `key` must be unique in the window.
 pub(super) fn number(
-  key: impl Into<SharedString>,
+  key: impl Display,
   (min, max, step): (f64, f64, f64),
   get: impl Get<f64>,
   set: impl Set<f64>,
 ) -> SettingField<SharedString> {
-  let key: SharedString = key.into();
+  let id = format!("field-{key}");
   let (get_, set_) = (get.clone(), set.clone());
   SettingField::render(
     move |options: &RenderOptions, window: &mut Window, cx: &mut App| {
       let (get, set) = (get_.clone(), set_.clone());
       let current = get(cx.config());
-      let field = window.use_keyed_state(
-        SharedString::from(format!("field-{key}")),
-        cx,
-        |window, cx| {
-          let input = cx.new(|cx| {
-            InputState::new(window, cx)
-              .default_value(format_number(get(cx.config())))
-              .step(step)
-              .min(min)
-              .max(max)
-          });
-          let _subscription = cx.subscribe_in(
-            &input,
-            window,
-            move |field: &mut Field<InputState, f64>, input, event: &InputEvent, window, cx| {
-              let typing = input.read(cx).focus_handle(cx).is_focused(window);
-              // a keystroke may be half a number; a step (buttons, arrows) or leaving is whole
-              let commit = match event {
-                InputEvent::PressEnter { .. } | InputEvent::Blur => true,
-                InputEvent::Change => !typing,
-                InputEvent::Focus => false,
-              };
-              let Ok(value) = input.read(cx).value().trim().parse::<f64>() else {
-                return;
-              };
-              let value = value.clamp(min, max);
-              if commit && value != field.last {
-                field.last = value;
-                save(cx, |c| set(c, value));
-              }
-            },
-          );
-          Field {
-            state: input,
-            last: get(cx.config()),
-            _subscription,
-          }
-        },
-      );
+      let field = window.use_keyed_state(id.clone(), cx, |window, cx| {
+        let input = cx.new(|cx| {
+          InputState::new(window, cx)
+            .default_value(format_number(get(cx.config())))
+            .step(step)
+            .min(min)
+            .max(max)
+        });
+        let _subscription = cx.subscribe_in(
+          &input,
+          window,
+          move |field: &mut Field<InputState, f64>, input, event: &InputEvent, window, cx| {
+            let typing = input.read(cx).focus_handle(cx).is_focused(window);
+            // a keystroke may be half a number; a step (buttons, arrows) or leaving is whole
+            let commit = match event {
+              InputEvent::PressEnter { .. } | InputEvent::Blur => true,
+              InputEvent::Change => !typing,
+              InputEvent::Focus => false,
+            };
+            let Ok(value) = input.read(cx).value().trim().parse::<f64>() else {
+              return;
+            };
+            let value = value.clamp(min, max);
+            if commit && value != field.last {
+              field.last = value;
+              save(cx, |c| set(c, value));
+            }
+          },
+        );
+        Field {
+          state: input,
+          last: get(cx.config()),
+          _subscription,
+        }
+      });
 
       field.update(cx, |field, cx| {
         if current != field.last {
@@ -290,45 +285,44 @@ fn format_number(value: f64) -> String {
 
 /// A value on a slider, committed when it is let go. `key` must be unique in the window.
 pub(super) fn slider(
-  key: impl Into<SharedString>,
+  key: impl Display,
   (min, max, step): (f32, f32, f32),
   get: impl Get<f32>,
   set: impl Set<f32>,
 ) -> SettingField<SharedString> {
-  let key: SharedString = key.into();
+  let id = format!("field-{key}");
   let (get_, set_) = (get.clone(), set.clone());
   SettingField::render(
     move |options: &RenderOptions, window: &mut Window, cx: &mut App| {
       let (get, set) = (get_.clone(), set_.clone());
       let current = get(cx.config());
-      let field =
-        window.use_keyed_state(SharedString::from(format!("field-{key}")), cx, |_, cx| {
-          let slider = cx.new(|_| {
-            SliderState::new()
-              .min(min)
-              .max(max)
-              .step(step)
-              .default_value(current)
-          });
-          let _subscription = cx.subscribe(
-            &slider,
-            move |field: &mut Field<SliderState, f32>, _, event: &SliderEvent, cx| match event {
-              SliderEvent::Change(_) => cx.notify(),
-              SliderEvent::Release(value) => {
-                let value = value.start();
-                if value != field.last {
-                  field.last = value;
-                  save(cx, |c| set(c, value));
-                }
-              }
-            },
-          );
-          Field {
-            state: slider,
-            last: current,
-            _subscription,
-          }
+      let field = window.use_keyed_state(id.clone(), cx, |_, cx| {
+        let slider = cx.new(|_| {
+          SliderState::new()
+            .min(min)
+            .max(max)
+            .step(step)
+            .default_value(current)
         });
+        let _subscription = cx.subscribe(
+          &slider,
+          move |field: &mut Field<SliderState, f32>, _, event: &SliderEvent, cx| match event {
+            SliderEvent::Change(_) => cx.notify(),
+            SliderEvent::Release(value) => {
+              let value = value.start();
+              if value != field.last {
+                field.last = value;
+                save(cx, |c| set(c, value));
+              }
+            }
+          },
+        );
+        Field {
+          state: slider,
+          last: current,
+          _subscription,
+        }
+      });
 
       // follow changes made elsewhere; while dragging nothing else changes it
       field.update(cx, |field, cx| {
@@ -371,18 +365,18 @@ pub(super) fn slider(
 /// An entry of a [`searchable`] select
 #[derive(Clone)]
 pub(super) struct Choice {
-  pub value: SharedString,
-  pub label: SharedString,
+  pub value: String,
+  pub label: String,
 }
 
 impl SearchableListItem for Choice {
-  type Value = SharedString;
+  type Value = String;
 
   fn title(&self) -> SharedString {
-    self.label.clone()
+    self.label.clone().into()
   }
 
-  fn value(&self) -> &SharedString {
+  fn value(&self) -> &String {
     &self.value
   }
 }
@@ -398,34 +392,29 @@ struct Searchable {
 /// placeholder when that is `None` (so a pick that changes nothing, like adding
 /// a widget, goes back to it). `key` must be unique in the window.
 pub(super) fn searchable(
-  key: impl Into<SharedString>,
+  key: impl Display,
   choices: Vec<Choice>,
-  selected: Option<SharedString>,
-  placeholder: &'static str,
+  selected: Option<String>,
+  placeholder: impl Into<SharedString>,
   window: &mut Window,
   cx: &mut App,
-  on_pick: impl Fn(SharedString, &mut App) + 'static,
+  on_pick: impl Fn(String, &mut App) + 'static,
 ) -> Select<Choices> {
-  let key: SharedString = key.into();
-  let field = window.use_keyed_state(
-    SharedString::from(format!("select-{key}")),
-    cx,
-    |window, cx| {
-      let state = cx.new(|cx| {
-        SelectState::new(SearchableVec::new(choices.clone()), None, window, cx).searchable(true)
-      });
-      let _subscription = cx.subscribe(&state, move |_, _, event: &SelectEvent<Choices>, cx| {
-        let SelectEvent::Confirm(Some(value)) = event else {
-          return;
-        };
-        on_pick(value.clone(), cx);
-      });
-      Searchable {
-        state,
-        _subscription,
-      }
-    },
-  );
+  let field = window.use_keyed_state(format!("select-{key}"), cx, |window, cx| {
+    let state = cx.new(|cx| {
+      SelectState::new(SearchableVec::new(choices.clone()), None, window, cx).searchable(true)
+    });
+    let _subscription = cx.subscribe(&state, move |_, _, event: &SelectEvent<Choices>, cx| {
+      let SelectEvent::Confirm(Some(value)) = event else {
+        return;
+      };
+      on_pick(value.clone(), cx);
+    });
+    Searchable {
+      state,
+      _subscription,
+    }
+  });
 
   let state = field.read(cx).state.clone();
   if state.read(cx).selected_value() != selected.as_ref() {
@@ -436,7 +425,7 @@ pub(super) fn searchable(
   }
   Select::new(&state)
     .placeholder(placeholder)
-    .search_placeholder("Search…")
+    .search_placeholder(t!("app.settings.search"))
 }
 
 #[cfg(test)]

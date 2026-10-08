@@ -18,6 +18,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::NetworkPanel;
+use rust_i18n::t;
 
 impl NetworkPanel {
   pub fn vpns(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -41,7 +42,7 @@ impl NetworkPanel {
             .flex()
             .gap_2()
             .items_center()
-            .child(div().font_bold().text_sm().child("VPNs")),
+            .child(div().font_bold().text_sm().child(t!("app.network.vpns"))),
         )
         .child(
           div()
@@ -91,7 +92,7 @@ impl NetworkPanel {
           Tag::new()
             .small()
             .with_variant(TagVariant::Success)
-            .child("Connected"),
+            .child(t!("app.network.connected")),
         )
       })
       .child(

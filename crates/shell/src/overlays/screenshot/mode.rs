@@ -1,6 +1,8 @@
 use clap::ValueEnum;
 use gpui_kit::assets::IconName;
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum Mode {
@@ -12,11 +14,19 @@ pub enum Mode {
 impl Mode {
   pub const ALL: [Mode; 3] = [Mode::Selection, Mode::Monitor, Mode::Window];
 
-  pub fn label(self) -> &'static str {
+  pub fn id(self) -> &'static str {
     match self {
-      Mode::Selection => "Selection",
-      Mode::Monitor => "Monitor",
-      Mode::Window => "Window",
+      Mode::Selection => "screenshot-selection",
+      Mode::Monitor => "screenshot-monitor",
+      Mode::Window => "screenshot-window",
+    }
+  }
+
+  pub fn label(self) -> Cow<'static, str> {
+    match self {
+      Mode::Selection => t!("app.screenshot.selection"),
+      Mode::Monitor => t!("app.screenshot.monitor"),
+      Mode::Window => t!("app.screenshot.window"),
     }
   }
 
@@ -28,11 +38,11 @@ impl Mode {
     }
   }
 
-  pub fn hint(self) -> &'static str {
+  pub fn hint(self) -> Cow<'static, str> {
     match self {
-      Mode::Selection => "Drag an area (S)",
-      Mode::Monitor => "Monitor under the cursor (M)",
-      Mode::Window => "Window under the cursor (W)",
+      Mode::Selection => t!("app.screenshot.selection_hint"),
+      Mode::Monitor => t!("app.screenshot.monitor_hint"),
+      Mode::Window => t!("app.screenshot.window_hint"),
     }
   }
 }

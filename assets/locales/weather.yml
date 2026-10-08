@@ -1,0 +1,135 @@
+_version: 2
+app:
+  weather:
+    refresh:
+      en: Refresh
+      de: Aktualisieren
+    loading:
+      en: Loading the weather…
+      de: Wetter wird geladen …
+    current_location:
+      en: Current location
+      de: Aktueller Standort
+    feels_like:
+      en: Feels like
+      de: Gefühlt
+    temperature_min:
+      en: Temperature min
+      de: Tiefsttemperatur
+    temperature_max:
+      en: Temperature max
+      de: Höchsttemperatur
+    wind:
+      en: Wind
+      de: Wind
+    humidity:
+      en: Humidity
+      de: Luftfeuchtigkeit
+    sunrise:
+      en: Sunrise
+      de: Sonnenaufgang
+    sunset:
+      en: Sunset
+      de: Sonnenuntergang
+    elevation:
+      en: Elevation
+      de: Höhe
+    uv_index:
+      en: UV index
+      de: UV-Index
+    timezone:
+      en: Timezone
+      de: Zeitzone
+    daily:
+      en: Daily
+      de: Täglich
+    hourly:
+      en: Hourly
+      de: Stündlich
+    today:
+      en: Today
+      de: Heute
+    rain_chance:
+      en: "%{percent}% rain"
+      de: "%{percent} % Regen"
+    unit:
+      kmh:
+        en: "%{value} km/h"
+        de: "%{value} km/h"
+      mph:
+        en: "%{value} mph"
+        de: "%{value} mph"
+    compass:
+      "n":
+        en: "N"
+        de: "N"
+      ne:
+        en: NE
+        de: "NO"
+      e:
+        en: E
+        de: O
+      se:
+        en: SE
+        de: SO
+      s:
+        en: S
+        de: S
+      sw:
+        en: SW
+        de: SW
+      w:
+        en: W
+        de: W
+      nw:
+        en: NW
+        de: NW
+    condition:
+      clear:
+        en: Clear sky
+        de: Klarer Himmel
+      mainly_clear:
+        en: Mainly clear
+        de: Überwiegend klar
+      partly_cloudy:
+        en: Partly cloudy
+        de: Teilweise bewölkt
+      overcast:
+        en: Overcast
+        de: Bedeckt
+      fog:
+        en: Fog
+        de: Nebel
+      drizzle:
+        en: Drizzle
+        de: Nieselregen
+      freezing_drizzle:
+        en: Freezing drizzle
+        de: Gefrierender Nieselregen
+      rain:
+        en: Rain
+        de: Regen
+      freezing_rain:
+        en: Freezing rain
+        de: Gefrierender Regen
+      snow:
+        en: Snow
+        de: Schnee
+      snow_grains:
+        en: Snow grains
+        de: Schneegriesel
+      rain_showers:
+        en: Rain showers
+        de: Regenschauer
+      snow_showers:
+        en: Snow showers
+        de: Schneeschauer
+      thunderstorm:
+        en: Thunderstorm
+        de: Gewitter
+      thunderstorm_hail:
+        en: Thunderstorm with hail
+        de: Gewitter mit Hagel
+      unknown:
+        en: Unknown
+        de: Unbekannt

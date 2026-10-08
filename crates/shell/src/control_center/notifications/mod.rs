@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
 
 use corona_components::components::card::CardExt;
@@ -18,6 +19,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
+use rust_i18n::t;
 
 mod notification;
 
@@ -79,7 +81,7 @@ impl ControlCenterPanel for NotificationsPanel {
         } else {
           IconName::Moon
         })
-        .tooltip("Do not disturb")
+        .tooltip(t!("app.notifications.dnd"))
         .cursor_pointer()
         .when(dnd, |b| b.primary())
         .on_click(move |_, _, cx| {
@@ -88,7 +90,7 @@ impl ControlCenterPanel for NotificationsPanel {
         .into_any_element(),
       Button::new("notifications-clear")
         .icon(IconName::Trash)
-        .tooltip("Clear all")
+        .tooltip(t!("app.notifications.clear_all"))
         .cursor_pointer()
         .with_variant(ButtonVariant::Danger)
         .disabled(empty)
@@ -113,15 +115,27 @@ fn today(notification: &Notification) -> bool {
 impl NotificationsPanel {
   fn filters(&self, total: usize, cx: &Context<'_, Self>) -> impl IntoElement {
     let filters = [
-      (Filter::All, format!("All ({total})")),
-      (Filter::Today, "Today".into()),
-      (Filter::Earlier, "Earlier".into()),
+      (
+        Filter::All,
+        "notifications-all",
+        t!("app.notifications.all", count = total),
+      ),
+      (
+        Filter::Today,
+        "notifications-today",
+        t!("app.notifications.today"),
+      ),
+      (
+        Filter::Earlier,
+        "notifications-earlier",
+        t!("app.notifications.earlier"),
+      ),
     ];
     div()
       .flex()
       .gap_1()
-      .children(filters.into_iter().map(|(filter, label)| {
-        Button::new(label.clone())
+      .children(filters.into_iter().map(|(filter, id, label)| {
+        Button::new(id)
           .label(label)
           .small()
           .cursor_pointer()
@@ -147,7 +161,7 @@ impl Render for NotificationsPanel {
         Filter::Earlier => !today(n),
       })
       .collect();
-    let muted = |text: &'static str| {
+    let muted = |text: Cow<'static, str>| {
       div()
         .text_xs()
         .text_color(theme.colors.muted_foreground)
@@ -161,9 +175,7 @@ impl Render for NotificationsPanel {
       .gap_2()
       .child(self.filters(all.len(), cx))
       .when(!notifications.active(cx), |d| {
-        d.child(card(cx).child(muted(
-          "Another notification daemon is running, corona takes over when it exits",
-        )))
+        d.child(card(cx).child(muted(t!("app.notifications.other_daemon"))))
       })
       .when_else(
         shown.is_empty(),
@@ -174,7 +186,7 @@ impl Render for NotificationsPanel {
                 .flex()
                 .justify_center()
                 .p_2()
-                .child(muted("No notifications")),
+                .child(muted(t!("app.notifications.empty"))),
             ),
           )
         },

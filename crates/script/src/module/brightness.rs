@@ -32,7 +32,8 @@ enum Unavailable {
 struct Display {
   id: String,
   output: Option<String>,
-  name: String,
+  /// `None` when the display does not tell its model
+  name: Option<String>,
   kind: DisplayKind,
   brightness: u32,
   max: u32,

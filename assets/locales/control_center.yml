@@ -1,0 +1,590 @@
+_version: 2
+app:
+  control_center:
+    dashboard:
+      en: Dashboard
+      de: Übersicht
+    audio:
+      en: Audio
+      de: Audio
+    network:
+      en: Network
+      de: Netzwerk
+    bluetooth:
+      en: Bluetooth
+      de: Bluetooth
+    power:
+      en: Power
+      de: Energie
+    brightness:
+      en: Brightness
+      de: Helligkeit
+    notifications:
+      en: Notifications
+      de: Benachrichtigungen
+    sysinfo:
+      en: System
+      de: System
+    weather:
+      en: Weather
+      de: Wetter
+    calendar:
+      en: Calendar
+      de: Kalender
+    media:
+      en: Media
+      de: Medien
+    no_content:
+      en: No content
+      de: Kein Inhalt
+  dashboard:
+    wifi:
+      en: Wi-Fi
+      de: WLAN
+    bluetooth:
+      en: Bluetooth
+      de: Bluetooth
+    dnd:
+      en: DND
+      de: Nicht stören
+    dark_mode:
+      en: Dark mode
+      de: Dunkelmodus
+    airplane:
+      en: Airplane
+      de: Flugmodus
+    devices:
+      one:
+        en: 1 device
+        de: 1 Gerät
+      other:
+        en: "%{count} devices"
+        de: "%{count} Geräte"
+    settings:
+      en: Settings
+      de: Einstellungen
+    uptime:
+      minutes:
+        en: "up %{minutes}m"
+        de: "seit %{minutes} min"
+      hours:
+        en: "up %{hours}h %{minutes}m"
+        de: "seit %{hours} h %{minutes} min"
+      days:
+        en: "up %{days}d %{hours}h"
+        de: "seit %{days} T %{hours} h"
+  session:
+    lock:
+      en: Lock
+      de: Sperren
+    logout:
+      en: Logout
+      de: Abmelden
+    suspend:
+      en: Suspend
+      de: Bereitschaft
+    hibernate:
+      en: Hibernate
+      de: Ruhezustand
+    suspend_then_hibernate:
+      en: Suspend then hibernate
+      de: "Bereitschaft, dann Ruhezustand"
+    reboot:
+      en: Reboot
+      de: Neustart
+    shutdown:
+      en: Shutdown
+      de: Herunterfahren
+    reboot_to_firmware:
+      en: Reboot to UEFI
+      de: Neustart ins UEFI
+    reboot_to:
+      en: Reboot to…
+      de: Neustart in …
+    nixos_generation:
+      en: "NixOS generation %{generation}"
+      de: "NixOS-Generation %{generation}"
+  audio:
+    input:
+      en: Input
+      de: Eingang
+    output:
+      en: Output
+      de: Ausgang
+    applications:
+      en: Applications
+      de: Anwendungen
+    default:
+      en: Default
+      de: Standard
+  bluetooth:
+    title:
+      en: Bluetooth
+      de: Bluetooth
+    no_adapter:
+      en: No Bluetooth adapter
+      de: Kein Bluetooth-Adapter
+    connected:
+      none:
+        en: No devices connected
+        de: Keine Geräte verbunden
+      one:
+        en: 1 device connected
+        de: 1 Gerät verbunden
+      other:
+        en: "%{count} devices connected"
+        de: "%{count} Geräte verbunden"
+    scan:
+      en: Scan for devices
+      de: Nach Geräten suchen
+    scanning:
+      en: Scanning…
+      de: Suche läuft …
+    discoverable:
+      en: Discoverable by nearby devices
+      de: Für Geräte in der Nähe sichtbar
+    paired:
+      en: Paired devices
+      de: Gekoppelte Geräte
+    no_paired:
+      en: No paired devices
+      de: Keine gekoppelten Geräte
+    available:
+      en: Available devices
+      de: Verfügbare Geräte
+    pair:
+      en: Pair
+      de: Koppeln
+    prompt:
+      title:
+        en: "Pair %{name}"
+        de: "%{name} koppeln"
+      code:
+        en: Code
+        de: Code
+      confirm_hint:
+        en: Confirm the code matches the one on the device
+        de: "Bestätige, dass der Code mit dem auf dem Gerät übereinstimmt"
+      authorize_hint:
+        en: Allow this device to pair?
+        de: Darf sich dieses Gerät koppeln?
+      pin_hint:
+        en: Enter the PIN for the device
+        de: Gib die PIN des Geräts ein
+      passkey_hint:
+        en: Enter the passkey shown on the device
+        de: Gib den auf dem Gerät angezeigten Schlüssel ein
+      display_hint:
+        en: Type this code on the device
+        de: Gib diesen Code auf dem Gerät ein
+    type:
+      device:
+        en: Device
+        de: Gerät
+      headset:
+        en: Headset
+        de: Headset
+      headphones:
+        en: Headphones
+        de: Kopfhörer
+      speaker:
+        en: Speaker
+        de: Lautsprecher
+      gamepad:
+        en: Gamepad
+        de: Gamepad
+      keyboard:
+        en: Keyboard
+        de: Tastatur
+      mouse:
+        en: Mouse
+        de: Maus
+      tablet:
+        en: Tablet
+        de: Tablet
+      phone:
+        en: Phone
+        de: Telefon
+      computer:
+        en: Computer
+        de: Computer
+      display:
+        en: Display
+        de: Bildschirm
+      printer:
+        en: Printer
+        de: Drucker
+  brightness:
+    displays:
+      en: Displays
+      de: Bildschirme
+    keyboard:
+      en: Keyboard
+      de: Tastatur
+    keyboard_backlight:
+      en: Keyboard backlight
+      de: Tastaturbeleuchtung
+    builtin_display:
+      en: Built-in display
+      de: Integrierter Bildschirm
+    external_display:
+      en: External display
+      de: Externer Bildschirm
+    unavailable:
+      ddcutil_disabled:
+        en: "Set enable_ddcutil under [brightness]"
+        de: "enable_ddcutil unter [brightness] setzen"
+      ddcutil_missing:
+        en: Install ddcutil
+        de: ddcutil installieren
+      detecting:
+        en: Detecting…
+        de: Wird erkannt …
+      unsupported:
+        en: No DDC/CI
+        de: Kein DDC/CI
+      failed:
+        en: Not responding
+        de: Reagiert nicht
+  media:
+    active_player:
+      en: Active player
+      de: Aktiver Player
+    nothing_playing:
+      en: Nothing is playing
+      de: Es wird nichts abgespielt
+    unknown_title:
+      en: Unknown title
+      de: Unbekannter Titel
+    repeat:
+      en: Repeat
+      de: Wiederholen
+    previous:
+      en: Previous
+      de: Zurück
+    next:
+      en: Next
+      de: Weiter
+    shuffle:
+      en: Shuffle
+      de: Zufällig
+  network:
+    interfaces:
+      en: Interfaces
+      de: Schnittstellen
+    state:
+      unmanaged:
+        en: Unmanaged
+        de: Nicht verwaltet
+      disconnected:
+        en: Disconnected
+        de: Getrennt
+      preparing:
+        en: Preparing
+        de: Wird vorbereitet
+      configuring:
+        en: Configuring
+        de: Wird konfiguriert
+      needs_auth:
+        en: Needs authentication
+        de: Anmeldung erforderlich
+      getting_address:
+        en: Getting address
+        de: Adresse wird bezogen
+      checking:
+        en: Checking connection
+        de: Verbindung wird geprüft
+      dependencies:
+        en: Starting dependencies
+        de: Abhängigkeiten werden gestartet
+      disconnecting:
+        en: Disconnecting
+        de: Wird getrennt
+      failed:
+        en: Failed
+        de: Fehlgeschlagen
+    online:
+      en: Online
+      de: Online
+    portal:
+      en: Sign-in required
+      de: Anmeldung nötig
+    limited:
+      en: Limited
+      de: Eingeschränkt
+    offline:
+      en: Offline
+      de: Offline
+    no_connection:
+      en: No active connection
+      de: Keine aktive Verbindung
+    recheck:
+      en: Recheck
+      de: Erneut prüfen
+    check_off:
+      en: "Connectivity check is off, captive portals aren't detected"
+      de: "Verbindungsprüfung ist aus, Anmeldeportale werden nicht erkannt"
+    sign_in:
+      en: Sign in to the network to get online
+      de: "Melde dich im Netzwerk an, um online zu gehen"
+    no_address:
+      en: No address
+      de: Keine Adresse
+    fail:
+      not_found:
+        en: Network not found
+        de: Netzwerk nicht gefunden
+      no_secrets:
+        en: No password provided
+        de: Kein Passwort angegeben
+      other:
+        en: "Connection failed: %{code}"
+        de: "Verbindung fehlgeschlagen: %{code}"
+    hidden:
+      title:
+        en: Join hidden network
+        de: Verborgenem Netzwerk beitreten
+      ssid:
+        en: Network name
+        de: Netzwerkname
+      open:
+        en: Open
+        de: Offen
+    password:
+      en: Password
+      de: Passwort
+    username:
+      en: Username
+      de: Benutzername
+    password_for:
+      en: "Password for %{name}"
+      de: "Passwort für %{name}"
+    wrong_password:
+      en: "Wrong password, try again"
+      de: "Falsches Passwort, versuche es erneut"
+    vpns:
+      en: VPNs
+      de: VPNs
+    connected:
+      en: Connected
+      de: Verbunden
+    wifi:
+      title:
+        en: Wi-Fi
+        de: WLAN
+      unsupported:
+        en: Wi-Fi not supported
+        de: WLAN wird nicht unterstützt
+      disabled:
+        en: Wi-Fi is disabled
+        de: WLAN ist deaktiviert
+      none_found:
+        en: No networks found
+        de: Keine Netzwerke gefunden
+      scan:
+        en: Scan for networks
+        de: Nach Netzwerken suchen
+      saved:
+        en: Saved
+        de: Gespeichert
+  notifications:
+    dnd:
+      en: Do not disturb
+      de: Nicht stören
+    clear_all:
+      en: Clear all
+      de: Alle löschen
+    all:
+      en: "All (%{count})"
+      de: "Alle (%{count})"
+    today:
+      en: Today
+      de: Heute
+    earlier:
+      en: Earlier
+      de: Früher
+    other_daemon:
+      en: "Another notification daemon is running, corona takes over when it exits"
+      de: "Ein anderer Benachrichtigungsdienst läuft, corona übernimmt, sobald er beendet wird"
+    empty:
+      en: No notifications
+      de: Keine Benachrichtigungen
+    dismiss:
+      en: Dismiss
+      de: Verwerfen
+    ago:
+      now:
+        en: now
+        de: jetzt
+      minutes:
+        en: "%{count}m"
+        de: "%{count} min"
+      hours:
+        en: "%{count}h"
+        de: "%{count} h"
+      days:
+        en: "%{count}d"
+        de: "%{count} T"
+  power:
+    battery:
+      en: Battery
+      de: Akku
+    health:
+      en: Health
+      de: Zustand
+    current_draw:
+      en: Current draw
+      de: Aktueller Verbrauch
+    capacity:
+      en: Capacity
+      de: Kapazität
+    charge_limit:
+      en: "Limit charging to %{percent}%"
+      de: "Laden auf %{percent} % begrenzen"
+    remaining:
+      en: "%{duration} remaining"
+      de: "%{duration} verbleibend"
+    until_full:
+      en: "%{duration} until full"
+      de: "%{duration} bis voll"
+    duration:
+      minutes:
+        en: "%{minutes} min"
+        de: "%{minutes} min"
+      hours:
+        en: "%{hours} h %{minutes} min"
+        de: "%{hours} h %{minutes} min"
+    state:
+      charging:
+        en: charging
+        de: lädt
+      discharging:
+        en: discharging
+        de: entlädt
+      empty:
+        en: empty
+        de: leer
+      fully_charged:
+        en: fully charged
+        de: voll geladen
+      pending_charge:
+        en: pending charge
+        de: Laden ausstehend
+      pending_discharge:
+        en: pending discharge
+        de: Entladen ausstehend
+      unknown:
+        en: unknown
+        de: unbekannt
+    level:
+      full:
+        en: Full
+        de: Voll
+      high:
+        en: High
+        de: Hoch
+      normal:
+        en: Normal
+        de: Normal
+      low:
+        en: Low
+        de: Niedrig
+      critical:
+        en: Critical
+        de: Kritisch
+    connected_devices:
+      en: Connected devices
+      de: Verbundene Geräte
+    profile:
+      title:
+        en: Power profile
+        de: Energieprofil
+      power_saver:
+        en: Power saver
+        de: Energiesparen
+      balanced:
+        en: Balanced
+        de: Ausgewogen
+      performance:
+        en: Performance
+        de: Leistung
+      degraded:
+        en: "Performance is limited: %{reason}"
+        de: "Leistung ist eingeschränkt: %{reason}"
+  sysinfo:
+    system:
+      en: System
+      de: System
+    resources:
+      en: Resources
+      de: Ressourcen
+    uptime:
+      en: "Up %{duration}"
+      de: "Seit %{duration} aktiv"
+    cpu_load:
+      en: CPU load
+      de: CPU-Last
+    cpu:
+      en: CPU
+      de: CPU
+    memory:
+      en: Memory
+      de: Arbeitsspeicher
+    network:
+      en: Network
+      de: Netzwerk
+    gpu:
+      en: GPU
+      de: GPU
+    usage:
+      en: Usage
+      de: Auslastung
+    temperature:
+      en: Temperature
+      de: Temperatur
+    used:
+      en: Used
+      de: Belegt
+    download:
+      en: Download
+      de: Download
+    upload:
+      en: Upload
+      de: Upload
+    duration:
+      year:
+        en: "%{count} year"
+        de: "%{count} Jahr"
+      years:
+        en: "%{count} years"
+        de: "%{count} Jahre"
+      month:
+        en: "%{count} month"
+        de: "%{count} Monat"
+      months:
+        en: "%{count} months"
+        de: "%{count} Monate"
+      day:
+        en: "%{count} day"
+        de: "%{count} Tag"
+      days:
+        en: "%{count} days"
+        de: "%{count} Tage"
+      hour:
+        en: "%{count} hour"
+        de: "%{count} Stunde"
+      hours:
+        en: "%{count} hours"
+        de: "%{count} Stunden"
+      minute:
+        en: "%{count} minute"
+        de: "%{count} Minute"
+      minutes:
+        en: "%{count} minutes"
+        de: "%{count} Minuten"
+      second:
+        en: "%{count} second"
+        de: "%{count} Sekunde"
+      seconds:
+        en: "%{count} seconds"
+        de: "%{count} Sekunden"

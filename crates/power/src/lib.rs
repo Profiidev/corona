@@ -10,7 +10,7 @@ use crate::{
   profiles::PowerProfilesProxy,
 };
 
-pub use crate::session::{SessionAction, SessionCapabilities, entry_title};
+pub use crate::session::{EntryTitle, SessionAction, SessionCapabilities, entry_title};
 pub use crate::state::{
   Battery, BatteryLevel, BatteryState, BatteryType, ChargeThreshold, KeyboardBacklight,
   PowerDevice, Profiles, Status,

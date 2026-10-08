@@ -13,7 +13,10 @@ use jiff::{Zoned, civil::Date};
 
 use corona_components::components::progress_ring::ring;
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
+use crate::{
+  control_center::{ControlCenterPanel, variants::ControlCenterType, weather::place_name},
+  i18n::format_time,
+};
 
 mod month;
 
@@ -53,8 +56,8 @@ fn gmt_offset(seconds: i32) -> String {
 }
 
 fn place(cx: &App) -> Option<String> {
-  let name = &cx.weather().current(cx)?.location.name;
-  Some(name.split(',').next().unwrap_or(name).trim().to_string())
+  let name = place_name(&cx.weather().current(cx)?.location);
+  Some(name.split(',').next().unwrap_or(&name).trim().to_string())
 }
 
 impl CalendarPanel {
@@ -92,7 +95,7 @@ impl CalendarPanel {
                 div()
                   .text_xl()
                   .font_bold()
-                  .child(now.strftime("%B").to_string().to_uppercase()),
+                  .child(format_time("%B", &now).to_uppercase()),
               )
               .child(
                 div()

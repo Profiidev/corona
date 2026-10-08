@@ -1,0 +1,53 @@
+_version: 2
+app:
+  # the language in itself, for picking it
+  language_name:
+    en: English
+    de: Deutsch
+  config_not_loaded:
+    en: Corona config not loaded
+    de: Corona-Konfiguration nicht geladen
+  common:
+    "on":
+      en: "On"
+      de: An
+    "off":
+      en: "Off"
+      de: Aus
+    back:
+      en: Back
+      de: Zurück
+    cancel:
+      en: Cancel
+      de: Abbrechen
+    confirm:
+      en: Confirm
+      de: Bestätigen
+    connect:
+      en: Connect
+      de: Verbinden
+    disconnect:
+      en: Disconnect
+      de: Trennen
+    forget:
+      en: Forget
+      de: Vergessen
+    open:
+      en: Open
+      de: Öffnen
+    unavailable:
+      en: Unavailable
+      de: Nicht verfügbar
+    unknown:
+      en: Unknown
+      de: Unbekannt
+  privacy:
+    microphone:
+      en: Microphone
+      de: Mikrofon
+    camera:
+      en: Camera
+      de: Kamera
+    screen_share:
+      en: Screen share
+      de: Bildschirmfreigabe

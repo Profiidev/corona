@@ -20,6 +20,7 @@ use crate::overlays::{
   },
   wallpaper,
 };
+use rust_i18n::t;
 
 const FPS: u32 = 5;
 const LABEL: f32 = 20.;
@@ -356,7 +357,7 @@ impl Render for Switcher {
         .map(|w| w.title.clone()),
       Mode::Workspace => selected
         .and_then(|id| workspaces.iter().find(|(ws, _)| &ws.id == id))
-        .map(|(ws, _)| format!("Workspace {}", ws.name)),
+        .map(|(ws, _)| t!("app.switcher.workspace", name = ws.name).into()),
     }
     .unwrap_or_default();
 

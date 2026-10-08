@@ -8,6 +8,7 @@ use crate::{
     view::{ToggleOsd, show},
   },
 };
+use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
   let profiles = cx.power().profiles.clone();
@@ -21,8 +22,8 @@ pub fn init(cx: &mut App) {
         |k| k.power_profile,
         ToggleOsd {
           icon,
-          label: "Power profile".into(),
-          state: label.into(),
+          label: t!("app.power.profile.title"),
+          state: label,
           active: true,
         },
         cx,

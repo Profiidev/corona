@@ -13,6 +13,9 @@
 # avatar = "~/.face"
 # Where plugins live, ~/.config/corona/plugins when unset. Read at startup.
 # plugin_dir = "~/.config/corona/plugins"
+# Language of the interface, like "de"; unset follows LC_MESSAGES/LANG. Dates
+# follow LC_TIME and numbers LC_NUMERIC.
+# language = "de"
 
 # Apps the privacy widget, its log and OSD leave out: case-insensitive regexes
 # against the app's name, empty for none.

@@ -1,0 +1,32 @@
+_version: 2
+app:
+  screenshot:
+    selection:
+      en: Selection
+      de: Auswahl
+    monitor:
+      en: Monitor
+      de: Monitor
+    window:
+      en: Window
+      de: Fenster
+    selection_hint:
+      en: Drag an area (S)
+      de: Bereich aufziehen (S)
+    monitor_hint:
+      en: Monitor under the cursor (M)
+      de: Monitor unter dem Zeiger (M)
+    window_hint:
+      en: Window under the cursor (W)
+      de: Fenster unter dem Zeiger (W)
+  taskbar:
+    close_window:
+      en: Close window
+      de: Fenster schließen
+    close_windows:
+      en: "Close %{count} windows"
+      de: "%{count} Fenster schließen"
+  switcher:
+    workspace:
+      en: "Workspace %{name}"
+      de: "Arbeitsfläche %{name}"

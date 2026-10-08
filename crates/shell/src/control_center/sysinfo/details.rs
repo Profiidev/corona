@@ -9,7 +9,11 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::control_center::sysinfo::{SysinfoPanel, card};
+use crate::{
+  control_center::sysinfo::{SysinfoPanel, card},
+  i18n::decimal,
+};
+use rust_i18n::t;
 
 const DETAIL_TEXT: f32 = 10.;
 const DETAIL_LINE: f32 = 14.;
@@ -23,37 +27,63 @@ fn size(bytes: u64) -> String {
     value /= 1024.;
     unit += 1;
   }
-  format!("{value:.1} {}", UNITS[unit])
+  format!("{} {}", decimal(value, 1), UNITS[unit])
 }
 
 pub(super) fn rate(bytes_per_second: f64) -> String {
   match bytes_per_second {
-    r if r >= 1e6 => format!("{:.1} MB/s", r / 1e6),
-    r => format!("{:.1} kB/s", r / 1e3),
+    r if r >= 1e6 => format!("{} MB/s", decimal(r / 1e6, 1)),
+    r => format!("{} kB/s", decimal(r / 1e3, 1)),
   }
 }
 
 fn duration(duration: Duration) -> String {
-  const UNITS: [(u64, &str); 6] = [
-    (365 * 86400, "year"),
-    (30 * 86400, "month"),
-    (86400, "day"),
-    (3600, "hour"),
-    (60, "minute"),
-    (1, "second"),
+  // seconds per unit, keys for one and for more of it
+  const UNITS: [(u64, &str, &str); 6] = [
+    (
+      365 * 86400,
+      "app.sysinfo.duration.year",
+      "app.sysinfo.duration.years",
+    ),
+    (
+      30 * 86400,
+      "app.sysinfo.duration.month",
+      "app.sysinfo.duration.months",
+    ),
+    (
+      86400,
+      "app.sysinfo.duration.day",
+      "app.sysinfo.duration.days",
+    ),
+    (
+      3600,
+      "app.sysinfo.duration.hour",
+      "app.sysinfo.duration.hours",
+    ),
+    (
+      60,
+      "app.sysinfo.duration.minute",
+      "app.sysinfo.duration.minutes",
+    ),
+    (
+      1,
+      "app.sysinfo.duration.second",
+      "app.sysinfo.duration.seconds",
+    ),
   ];
   let mut seconds = duration.as_secs();
   let parts: Vec<String> = UNITS
     .iter()
-    .filter_map(|(size, name)| {
+    .filter_map(|(size, one, other)| {
       let count = seconds / size;
       seconds %= size;
-      (count > 0).then(|| format!("{count} {name}{}", if count == 1 { "" } else { "s" }))
+      let key = if count == 1 { *one } else { *other };
+      (count > 0).then(|| t!(key, count = count).to_string())
     })
     .take(2)
     .collect();
   if parts.is_empty() {
-    "0 seconds".into()
+    t!("app.sysinfo.duration.seconds", count = 0).into()
   } else {
     parts.join(" ")
   }
@@ -98,7 +128,7 @@ impl SysinfoPanel {
   pub(super) fn system(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
     let mut system = card(cx)
       .gap_1()
-      .child(div().text_sm().font_bold().child("System"));
+      .child(div().text_sm().font_bold().child(t!("app.sysinfo.system")));
     let Some(info) = cx.system_monitor().info(cx) else {
       return system;
     };
@@ -125,14 +155,21 @@ impl SysinfoPanel {
     if let Some(compositor) = &info.compositor {
       system = system.child(line(theme, IconName::AppWindow, compositor.clone()));
     }
-    let uptime = format!("Up {}", duration(since(info.booted)));
+    let uptime = t!(
+      "app.sysinfo.uptime",
+      duration = duration(since(info.booted))
+    )
+    .to_string();
     system.child(line(theme, IconName::Clock, uptime))
   }
 
   pub(super) fn resources(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
-    let mut resources = card(cx)
-      .gap_1()
-      .child(div().text_sm().font_bold().child("Resources"));
+    let mut resources = card(cx).gap_1().child(
+      div()
+        .text_sm()
+        .font_bold()
+        .child(t!("app.sysinfo.resources")),
+    );
     let monitor = cx.system_monitor();
     let Some(sample) = monitor.sample(cx) else {
       return resources;
@@ -143,8 +180,13 @@ impl SysinfoPanel {
       .child(value(
         theme,
         IconName::Activity,
-        "CPU load".into(),
-        format!("{one:.2} / {five:.2} / {fifteen:.2}"),
+        t!("app.sysinfo.cpu_load").into(),
+        format!(
+          "{} / {} / {}",
+          decimal(one, 2),
+          decimal(five, 2),
+          decimal(fifteen, 2)
+        ),
       ))
       .child(value(
         theme,
@@ -159,7 +201,7 @@ impl SysinfoPanel {
       .child(value(
         theme,
         IconName::ArrowLeftRight,
-        "Swap".into(),
+        t!("app.resource.swap").into(),
         format!("{} / {}", size(sample.swap_used), size(sample.swap_total)),
       ));
 

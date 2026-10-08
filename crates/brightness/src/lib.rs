@@ -69,7 +69,7 @@ impl Brightness {
       .with_context(|| format!("no display {id}"))
       .and_then(|d| match d.unavailable {
         None => Ok((d.kind, d.max)),
-        Some(reason) => bail!("{} cannot be changed: {reason:?}", d.name),
+        Some(reason) => bail!("{} cannot be changed: {reason:?}", d.id),
       });
     let id = id.to_string();
     async move {
@@ -138,7 +138,7 @@ fn merge(
       None => Display {
         id: format!("output/{}", output.name),
         output: Some(output.name.clone()),
-        name: output.model.clone().unwrap_or_else(|| output.name.clone()),
+        name: Some(output.model.clone().unwrap_or_else(|| output.name.clone())),
         kind: DisplayKind::External,
         brightness: 0,
         max: 0,
@@ -285,7 +285,7 @@ mod tests {
     Display {
       id: id.into(),
       output: Some(output.into()),
-      name: id.into(),
+      name: Some(id.into()),
       kind,
       brightness: 40,
       max: 100,
@@ -314,9 +314,12 @@ mod tests {
     assert_eq!(
       unavailable(&Ddc::Off(Unavailable::DdcutilMissing), &none),
       [
-        ("backlight/intel_backlight".into(), None),
-        ("DELL U2720Q".into(), Some(Unavailable::DdcutilMissing)),
-        ("LG TV".into(), Some(Unavailable::DdcutilMissing)),
+        (Some("backlight/intel_backlight".into()), None),
+        (
+          Some("DELL U2720Q".into()),
+          Some(Unavailable::DdcutilMissing)
+        ),
+        (Some("LG TV".into()), Some(Unavailable::DdcutilMissing)),
       ]
     );
 
@@ -325,9 +328,9 @@ mod tests {
     assert_eq!(
       unavailable(&detected, &none),
       [
-        ("backlight/intel_backlight".into(), None),
-        ("ddc/5".into(), None),
-        ("LG TV".into(), Some(Unavailable::Unsupported)),
+        (Some("backlight/intel_backlight".into()), None),
+        (Some("ddc/5".into()), None),
+        (Some("LG TV".into()), Some(Unavailable::Unsupported)),
       ]
     );
 

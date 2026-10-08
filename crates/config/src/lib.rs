@@ -90,6 +90,8 @@ pub struct ShellConfig {
   pub avatar: Option<String>,
   /// Unset: `~/.config/corona/plugins`; may start with `~/`. Read at startup only
   pub plugin_dir: Option<PathBuf>,
+  /// Language of the interface, like `de`; unset follows `LC_MESSAGES`/`LANG`
+  pub language: Option<String>,
   pub animation: AnimationConfig,
   pub privacy: PrivacyConfig,
 }
@@ -571,6 +573,20 @@ mod tests {
     assert!(
       missing.is_empty(),
       "missing from config.example.toml: {missing:?}"
+    );
+  }
+
+  #[test]
+  fn language_parses() {
+    use crate::ShellConfig;
+    let shell: ShellConfig = toml::from_str("").unwrap();
+    assert_eq!(shell.language, None);
+    let shell: ShellConfig = toml::from_str(r#"language = "de""#).unwrap();
+    assert_eq!(shell.language.as_deref(), Some("de"));
+    assert!(
+      toml::to_string(&shell)
+        .unwrap()
+        .starts_with(r#"language = "de""#)
     );
   }
 }

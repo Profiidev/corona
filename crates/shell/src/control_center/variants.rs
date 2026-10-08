@@ -1,4 +1,5 @@
 use gpui_kit::{App, Window, assets::IconName};
+use std::borrow::Cow;
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
@@ -6,6 +7,7 @@ use crate::control_center::{
   media::MediaPanel, network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
   sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlCenterType {
@@ -55,19 +57,19 @@ impl ControlCenterType {
     }
   }
 
-  pub fn title(&self) -> &'static str {
+  pub fn title(&self) -> Cow<'static, str> {
     match self {
-      ControlCenterType::Dashboard => "Dashboard",
-      ControlCenterType::Audio => "Audio",
-      ControlCenterType::Network => "Network",
-      ControlCenterType::Bluetooth => "Bluetooth",
-      ControlCenterType::Power => "Power",
-      ControlCenterType::Brightness => "Brightness",
-      ControlCenterType::Notifications => "Notifications",
-      ControlCenterType::Sysinfo => "System",
-      ControlCenterType::Weather => "Weather",
-      ControlCenterType::Calendar => "Calendar",
-      ControlCenterType::Media => "Media",
+      ControlCenterType::Dashboard => t!("app.control_center.dashboard"),
+      ControlCenterType::Audio => t!("app.control_center.audio"),
+      ControlCenterType::Network => t!("app.control_center.network"),
+      ControlCenterType::Bluetooth => t!("app.control_center.bluetooth"),
+      ControlCenterType::Power => t!("app.control_center.power"),
+      ControlCenterType::Brightness => t!("app.control_center.brightness"),
+      ControlCenterType::Notifications => t!("app.control_center.notifications"),
+      ControlCenterType::Sysinfo => t!("app.control_center.sysinfo"),
+      ControlCenterType::Weather => t!("app.control_center.weather"),
+      ControlCenterType::Calendar => t!("app.control_center.calendar"),
+      ControlCenterType::Media => t!("app.control_center.media"),
     }
   }
 

@@ -15,6 +15,7 @@ use crate::control_center::{
   },
   variants::ControlCenterType,
 };
+use rust_i18n::t;
 
 mod listener;
 mod state;
@@ -83,8 +84,8 @@ impl Render for AudioPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .child(audio_node("Input", theme, &self.source, true))
-      .child(audio_node("Output", theme, &self.sink, false))
+      .child(audio_node(t!("app.audio.input"), theme, &self.source, true))
+      .child(audio_node(t!("app.audio.output"), theme, &self.sink, false))
       .child(
         div()
           .w_full()
@@ -98,7 +99,12 @@ impl Render for AudioPanel {
           .rounded_xl()
           .p_2()
           .gap_2()
-          .child(div().child("Applications").text_sm().font_bold())
+          .child(
+            div()
+              .child(t!("app.audio.applications"))
+              .text_sm()
+              .font_bold(),
+          )
           .child(
             div().w_full().flex_grow_1().min_h_0().child(
               div()

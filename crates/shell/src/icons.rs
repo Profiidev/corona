@@ -1,6 +1,8 @@
 use corona_network_manager::{Interface, InterfaceType};
 use corona_pipewire::CaptureKind;
 use gpui_kit::assets::IconName;
+use rust_i18n::t;
+use std::borrow::Cow;
 
 pub fn volume_icon(volume: f32, muted: bool) -> IconName {
   if muted {
@@ -22,12 +24,12 @@ pub fn interface_icon(primary: Option<&Interface>) -> IconName {
   }
 }
 
-pub fn power_profile(name: &str) -> (IconName, String) {
+pub fn power_profile(name: &str) -> (IconName, Cow<'static, str>) {
   match name {
-    "power-saver" => (IconName::Leaf, "Power saver".into()),
-    "balanced" => (IconName::Gauge, "Balanced".into()),
-    "performance" => (IconName::Zap, "Performance".into()),
-    other => (IconName::Gauge, other.into()),
+    "power-saver" => (IconName::Leaf, t!("app.power.profile.power_saver")),
+    "balanced" => (IconName::Gauge, t!("app.power.profile.balanced")),
+    "performance" => (IconName::Zap, t!("app.power.profile.performance")),
+    other => (IconName::Gauge, other.to_string().into()),
   }
 }
 
@@ -39,10 +41,10 @@ pub fn capture_icon(kind: CaptureKind) -> IconName {
   }
 }
 
-pub fn capture_label(kind: CaptureKind) -> &'static str {
+pub fn capture_label(kind: CaptureKind) -> Cow<'static, str> {
   match kind {
-    CaptureKind::Microphone => "Microphone",
-    CaptureKind::Camera => "Camera",
-    CaptureKind::Screen => "Screen share",
+    CaptureKind::Microphone => t!("app.privacy.microphone"),
+    CaptureKind::Camera => t!("app.privacy.camera"),
+    CaptureKind::Screen => t!("app.privacy.screen_share"),
   }
 }

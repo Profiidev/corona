@@ -6,7 +6,7 @@ use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 use zbus::Connection;
 
-pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass, weekday};
+pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass};
 pub use corona_config::Units;
 
 mod api;

@@ -9,9 +9,11 @@ use gpui_kit::{
   px, relative,
 };
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use uuid::Uuid;
 
 use crate::control_center::{Standalone, SysinfoPanel};
+use rust_i18n::t;
 
 const METER_HEIGHT: f32 = 14.;
 const METER_WIDTH: f32 = 3.;
@@ -202,19 +204,19 @@ impl Render for Resource {
 }
 
 /// A stat as people say it, like "GPU temperature"
-pub(crate) fn stat_name(stat: Stat) -> &'static str {
+pub(crate) fn stat_name(stat: Stat) -> Cow<'static, str> {
   match stat {
-    Stat::Cpu => "CPU",
-    Stat::Load => "Load",
-    Stat::Temperature => "CPU temperature",
-    Stat::Memory => "Memory",
-    Stat::Swap => "Swap",
-    Stat::Gpu => "GPU",
-    Stat::GpuTemperature => "GPU temperature",
-    Stat::Vram => "VRAM",
-    Stat::Disk => "Disk",
-    Stat::Download => "Download",
-    Stat::Upload => "Upload",
+    Stat::Cpu => t!("app.sysinfo.cpu"),
+    Stat::Load => t!("app.resource.load"),
+    Stat::Temperature => t!("app.resource.cpu_temperature"),
+    Stat::Memory => t!("app.sysinfo.memory"),
+    Stat::Swap => t!("app.resource.swap"),
+    Stat::Gpu => t!("app.sysinfo.gpu"),
+    Stat::GpuTemperature => t!("app.resource.gpu_temperature"),
+    Stat::Vram => "VRAM".into(),
+    Stat::Disk => t!("app.resource.disk"),
+    Stat::Download => t!("app.sysinfo.download"),
+    Stat::Upload => t!("app.sysinfo.upload"),
   }
 }
 

@@ -17,6 +17,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::{NetworkPanel, utils::address};
+use rust_i18n::t;
 
 impl NetworkPanel {
   pub fn interfaces(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -35,11 +36,12 @@ impl NetworkPanel {
       .p_2()
       .card(cx)
       .child(
-        div()
-          .flex()
-          .gap_2()
-          .items_center()
-          .child(div().font_bold().text_sm().child("Interfaces")),
+        div().flex().gap_2().items_center().child(
+          div()
+            .font_bold()
+            .text_sm()
+            .child(t!("app.network.interfaces")),
+        ),
       )
       .child(
         div()
@@ -61,18 +63,18 @@ impl NetworkPanel {
   ) -> impl IntoElement {
     let status = match interface.state {
       DeviceState::Activated => address(interface),
-      DeviceState::Unmanaged => "Unmanaged".into(),
-      DeviceState::Unavailable => "Unavailable".into(),
-      DeviceState::Disconnected => "Disconnected".into(),
-      DeviceState::Prepare => "Preparing".into(),
-      DeviceState::Config => "Configuring".into(),
-      DeviceState::NeedAuth => "Needs authentication".into(),
-      DeviceState::IpConfig => "Getting address".into(),
-      DeviceState::IpCheck => "Checking connection".into(),
-      DeviceState::Secondaries => "Starting dependencies".into(),
-      DeviceState::Deactivating => "Disconnecting".into(),
-      DeviceState::Failed => "Failed".into(),
-      DeviceState::Unknown => "Unknown".into(),
+      DeviceState::Unmanaged => t!("app.network.state.unmanaged").into(),
+      DeviceState::Unavailable => t!("app.common.unavailable").into(),
+      DeviceState::Disconnected => t!("app.network.state.disconnected").into(),
+      DeviceState::Prepare => t!("app.network.state.preparing").into(),
+      DeviceState::Config => t!("app.network.state.configuring").into(),
+      DeviceState::NeedAuth => t!("app.network.state.needs_auth").into(),
+      DeviceState::IpConfig => t!("app.network.state.getting_address").into(),
+      DeviceState::IpCheck => t!("app.network.state.checking").into(),
+      DeviceState::Secondaries => t!("app.network.state.dependencies").into(),
+      DeviceState::Deactivating => t!("app.network.state.disconnecting").into(),
+      DeviceState::Failed => t!("app.network.state.failed").into(),
+      DeviceState::Unknown => t!("app.common.unknown").into(),
     };
     // Some(true): disconnect, also cancels an attempt still in progress, Some(false): connect,
     // None: NM can't act on the device right now
@@ -127,7 +129,11 @@ impl NetworkPanel {
             } else {
               ButtonVariant::Primary
             })
-            .tooltip(if disconnect { "Disconnect" } else { "Connect" })
+            .tooltip(if disconnect {
+              t!("app.common.disconnect")
+            } else {
+              t!("app.common.connect")
+            })
             .cursor_pointer()
             .ml_auto()
             .on_click(cx.async_listener(

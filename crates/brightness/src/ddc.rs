@@ -133,7 +133,7 @@ fn detect() -> Result<Vec<Display>> {
       Ok((brightness, max)) => displays.push(Display {
         id: format!("ddc/{}", found.bus),
         output: found.output,
-        name: found.model.unwrap_or_else(|| "External display".into()),
+        name: found.model,
         kind: DisplayKind::External,
         brightness,
         max,

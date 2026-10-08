@@ -8,7 +8,7 @@ use corona_pipewire::{
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, AppContext, Context, Div, Entity, ParentElement, SharedString, Styled, Subscription, Window,
+  App, AppContext, Context, Div, Entity, ParentElement, Styled, Subscription, Window,
   assets::IconName,
   base::{
     Disableable,
@@ -242,7 +242,7 @@ fn row(
   page: ControlCenterType,
   cx: &App,
 ) -> Div {
-  let id = SharedString::from(format!("dashboard-open-{}", slider.entity_id()));
+  let id = format!("dashboard-open-{}", slider.entity_id());
   div()
     .flex()
     .items_center()

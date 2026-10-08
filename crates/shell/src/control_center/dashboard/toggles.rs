@@ -15,12 +15,15 @@ use gpui_kit::{
   prelude::FluentBuilder,
   px,
 };
+use std::borrow::Cow;
 
 use crate::control_center::{
   ControlCenter,
   dashboard::{DashboardPanel, spawn_logged},
   variants::ControlCenterType,
 };
+use crate::icons::power_profile;
+use rust_i18n::t;
 
 const COLUMNS: usize = 3;
 
@@ -29,7 +32,7 @@ type Action = Box<dyn Fn(&mut App)>;
 struct Toggle {
   id: &'static str,
   icon: IconName,
-  label: &'static str,
+  label: Cow<'static, str>,
   status: String,
   active: bool,
   on_click: Option<Action>,
@@ -98,8 +101,8 @@ fn tile(toggle: Toggle) -> Button {
 
 fn on_off(on: bool) -> String {
   match on {
-    true => "On",
-    false => "Off",
+    true => t!("app.common.on"),
+    false => t!("app.common.off"),
   }
   .into()
 }
@@ -119,7 +122,7 @@ fn wifi(cx: &App) -> Toggle {
     } else {
       IconName::WifiOff
     },
-    label: "Wi-Fi",
+    label: t!("app.dashboard.wifi"),
     status: connected
       .filter(|_| enabled)
       .unwrap_or_else(|| on_off(enabled)),
@@ -148,11 +151,11 @@ fn bluetooth(cx: &App) -> Toggle {
       Some(true) => IconName::Bluetooth,
       _ => IconName::BluetoothOff,
     },
-    label: "Bluetooth",
+    label: t!("app.dashboard.bluetooth"),
     status: match (powered, connected) {
-      (None, _) => "Unavailable".into(),
-      (Some(true), 1) => "1 device".into(),
-      (Some(true), n) if n > 1 => format!("{n} devices"),
+      (None, _) => t!("app.common.unavailable").into(),
+      (Some(true), 1) => t!("app.dashboard.devices.one").into(),
+      (Some(true), n) if n > 1 => t!("app.dashboard.devices.other", count = n).into(),
       (Some(on), _) => on_off(on),
     },
     active: powered == Some(true),
@@ -175,7 +178,7 @@ fn dnd(cx: &App) -> Toggle {
     } else {
       IconName::Bell
     },
-    label: "DND",
+    label: t!("app.dashboard.dnd"),
     status: on_off(enabled),
     active: enabled,
     on_click: Some(Box::new(move |cx| {
@@ -190,7 +193,7 @@ fn dark_mode(cx: &App) -> Toggle {
   Toggle {
     id: "toggle-dark-mode",
     icon: if dark { IconName::Moon } else { IconName::Sun },
-    label: "Dark mode",
+    label: t!("app.dashboard.dark_mode"),
     status: on_off(dark),
     active: dark,
     on_click: Some(Box::new(toggle_mode)),
@@ -210,13 +213,10 @@ fn profile(cx: &App) -> Toggle {
       Some("power-saver") => IconName::Leaf,
       _ => IconName::Scale,
     },
-    label: "Power profile",
+    label: t!("app.power.profile.title"),
     status: match active.as_deref() {
-      Some("performance") => "Performance".into(),
-      Some("power-saver") => "Power saver".into(),
-      Some("balanced") => "Balanced".into(),
-      Some(other) => other.to_string(),
-      None => "Unavailable".into(),
+      Some(name) => power_profile(name).1.into(),
+      None => t!("app.common.unavailable").into(),
     },
     active: active.as_deref().is_some_and(|a| a != "balanced"),
     on_click: next.map(|next| {
@@ -236,7 +236,7 @@ fn airplane(cx: &App) -> Toggle {
   Toggle {
     id: "toggle-airplane",
     icon: IconName::Plane,
-    label: "Airplane",
+    label: t!("app.dashboard.airplane"),
     status: on_off(on),
     active: on,
     on_click: Some(Box::new(move |cx| {

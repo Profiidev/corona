@@ -39,7 +39,7 @@ pub(crate) fn list(backlight_dir: &Path, drm_dir: &Path) -> Vec<Display> {
       Some(Display {
         id: format!("backlight/{name}"),
         output: output(drm_dir, &name),
-        name: "Built-in display".into(),
+        name: None,
         kind: DisplayKind::Backlight,
         brightness: read("brightness")?,
         max: read("max_brightness")?,

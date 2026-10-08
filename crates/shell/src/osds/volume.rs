@@ -8,6 +8,7 @@ use crate::{
     view::{LevelOsd, show},
   },
 };
+use rust_i18n::t;
 
 fn level(node: Option<&AudioNode>) -> Option<(u32, u32, bool)> {
   let node = node?;
@@ -33,7 +34,7 @@ pub fn init(cx: &mut App) {
           |k| k.volume,
           LevelOsd {
             icon,
-            label: "Volume".into(),
+            label: t!("app.osd.volume"),
             percent: percent as f32,
             muted,
           },
@@ -57,7 +58,7 @@ pub fn init(cx: &mut App) {
           |k| k.volume,
           LevelOsd {
             icon,
-            label: "Microphone".into(),
+            label: t!("app.privacy.microphone"),
             percent: percent as f32,
             muted,
           },

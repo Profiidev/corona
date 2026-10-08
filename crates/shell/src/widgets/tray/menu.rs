@@ -4,14 +4,15 @@ use crate::widgets::popup::{self, ROW, SEPARATOR};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement,
-  KeyDownEvent, ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement,
-  Styled, Subscription, Window,
+  KeyDownEvent, ParentElement, Pixels, Render, Size, StatefulInteractiveElement, Styled,
+  Subscription, Window,
   assets::IconName,
   component::{ActiveTheme, Icon, Sizable},
   div,
   prelude::FluentBuilder,
   px,
 };
+use rust_i18n::t;
 
 fn spawn(cx: &mut App, action: impl Future<Output = anyhow::Result<()>> + Send + 'static) {
   cx.background_spawn(async move {
@@ -103,7 +104,7 @@ impl TrayMenu {
     let (id, enabled) = (entry.id, entry.enabled);
     let hover = theme.tokens.button_hover;
 
-    popup::row(SharedString::from(format!("entry-{id}")), cx)
+    popup::row(format!("entry-{id}"), cx)
       .when(!enabled, |d| d.text_color(theme.muted_foreground))
       .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(hover)))
       .when(toggles, |d| {
@@ -164,7 +165,7 @@ impl Render for TrayMenu {
             .cursor_pointer()
             .hover(|d| d.bg(hover))
             .child(Icon::new(IconName::ChevronLeft).with_size(px(14.)))
-            .child("Back")
+            .child(t!("app.common.back"))
             .on_click(cx.listener(|this, _, window, cx| {
               let mut path = this.path.clone();
               path.pop();

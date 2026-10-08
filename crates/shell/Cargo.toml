@@ -35,4 +35,14 @@ zbus.workspace = true
 futures.workspace = true
 tracing.workspace = true
 jiff = "0.2.37"
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = ["playback", "vorbis", "pipewire"] }
+rust-i18n.workspace = true
+jiff-icu = { version = "0.2.2", default-features = false, features = ["std", "time"] }
+icu_calendar = "2.3"
+icu_datetime = "2.3"
+icu_decimal = "2.3"
+icu_locale = "2.3"
+rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
+  "playback",
+  "vorbis",
+  "pipewire",
+] }

@@ -27,9 +27,10 @@ use crate::{
     variants::ControlCenterType,
     weather,
   },
+  i18n::format_time,
   overlays::wallpaper,
-  widgets::clock::format_time,
 };
+use rust_i18n::t;
 
 const ART: f32 = 64.;
 
@@ -52,9 +53,9 @@ fn uptime(booted: SystemTime) -> String {
     .as_secs()
     / 60;
   match (minutes / 1440, minutes / 60 % 24, minutes % 60) {
-    (0, 0, m) => format!("up {m}m"),
-    (0, h, m) => format!("up {h}h {m}m"),
-    (d, h, _) => format!("up {d}d {h}h"),
+    (0, 0, m) => t!("app.dashboard.uptime.minutes", minutes = m).into(),
+    (0, h, m) => t!("app.dashboard.uptime.hours", hours = h, minutes = m).into(),
+    (d, h, _) => t!("app.dashboard.uptime.days", days = d, hours = h).into(),
   }
 }
 
@@ -209,7 +210,11 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
     let condition = current.condition();
     (
       weather::icon(condition, current.is_day),
-      format!("{:.0}° · {}", current.temperature, condition.description()),
+      format!(
+        "{:.0}° · {}",
+        current.temperature,
+        weather::describe(condition)
+      ),
     )
   });
 

@@ -5,6 +5,7 @@ use crate::osds::{
   on_change,
   view::{ToggleOsd, show},
 };
+use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
   let enabled = cx.network_manager().wifi_enabled.clone();
@@ -21,7 +22,11 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::WifiOff
       };
-      show(|k| k.wifi, ToggleOsd::on_off(icon, "Wi-Fi", on), cx);
+      show(
+        |k| k.wifi,
+        ToggleOsd::on_off(icon, t!("app.dashboard.wifi"), on),
+        cx,
+      );
     },
   );
 }

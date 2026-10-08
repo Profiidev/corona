@@ -20,6 +20,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::network::{LoadingState, NetworkPanel};
+use rust_i18n::t;
 
 impl NetworkPanel {
   pub fn wifi(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -29,11 +30,11 @@ impl NetworkPanel {
     let networks = cx.network_manager().list_wifi_networks(cx);
 
     let placeholder_text = if !supported {
-      Some("Wi-Fi not supported")
+      Some(t!("app.network.wifi.unsupported"))
     } else if device.is_none() {
-      Some("Wi-Fi is disabled")
+      Some(t!("app.network.wifi.disabled"))
     } else if networks.is_empty() {
-      Some("No networks found")
+      Some(t!("app.network.wifi.none_found"))
     } else {
       None
     };
@@ -52,7 +53,12 @@ impl NetworkPanel {
           .flex()
           .gap_2()
           .items_center()
-          .child(div().font_bold().text_sm().child("Wi-Fi"))
+          .child(
+            div()
+              .font_bold()
+              .text_sm()
+              .child(t!("app.network.wifi.title")),
+          )
           .child(
             Button::new("join-hidden-network")
               .icon(IconName::Plus)
@@ -61,7 +67,7 @@ impl NetworkPanel {
               .small()
               .ml_auto()
               .cursor_pointer()
-              .tooltip("Join hidden network")
+              .tooltip(t!("app.network.hidden.title"))
               .on_click(cx.listener(|this, _, window, cx| this.open_hidden_prompt(window, cx))),
           )
           .child(
@@ -70,7 +76,7 @@ impl NetworkPanel {
               .disabled(device.is_none())
               .small()
               .cursor_pointer()
-              .tooltip("Scan for networks")
+              .tooltip(t!("app.network.wifi.scan"))
               .loading(self.wifi_scanning == LoadingState::Loading)
               .when_else(
                 self.wifi_scanning == LoadingState::Error,
@@ -102,7 +108,7 @@ impl NetworkPanel {
               )),
           ),
       )
-      .when_some(placeholder_text, |d, text| {
+      .when_some(placeholder_text.clone(), |d, text| {
         d.child(
           div()
             .flex()
@@ -168,7 +174,7 @@ impl NetworkPanel {
           Tag::new()
             .small()
             .with_variant(TagVariant::Success)
-            .child("Connected"),
+            .child(t!("app.network.connected")),
         )
       })
       .when(network.status == WifiStatus::Connecting, |d| {
@@ -179,7 +185,7 @@ impl NetworkPanel {
           Tag::new()
             .small()
             .with_variant(TagVariant::Warning)
-            .child("Password"),
+            .child(t!("app.network.password")),
         )
       })
       .when(network.status == WifiStatus::Saved, |d| {
@@ -187,7 +193,7 @@ impl NetworkPanel {
           Tag::new()
             .small()
             .with_variant(TagVariant::Secondary)
-            .child("Saved"),
+            .child(t!("app.network.wifi.saved")),
         )
       })
       .when_else(
@@ -198,7 +204,7 @@ impl NetworkPanel {
               .icon(IconName::Unplug)
               .small()
               .with_variant(ButtonVariant::Danger)
-              .tooltip("Disconnect")
+              .tooltip(t!("app.common.disconnect"))
               .cursor_pointer()
               .on_click(cx.async_listener(
                 move |_, _, _, cx| cx.network_manager().disconnect(&interface, cx),
@@ -230,7 +236,7 @@ impl NetworkPanel {
             .icon(IconName::Trash)
             .small()
             .with_variant(ButtonVariant::Danger)
-            .tooltip("Forget")
+            .tooltip(t!("app.common.forget"))
             .cursor_pointer()
             .on_click(cx.async_listener(
               {

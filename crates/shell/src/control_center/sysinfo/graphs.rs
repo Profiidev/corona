@@ -1,8 +1,9 @@
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use corona_sysinfo::SystemMonitorExt;
 use gpui_kit::{
-  Background, Context, Hsla, IntoElement, ParentElement, SharedString, Styled,
+  Background, Context, Hsla, IntoElement, ParentElement, Styled,
   assets::IconName,
   base::StyledExt,
   component::{Icon, Sizable, Theme, chart::AreaChart},
@@ -11,13 +12,17 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::sysinfo::{SysinfoPanel, card, details::rate};
+use crate::{
+  control_center::sysinfo::{SysinfoPanel, card, details::rate},
+  i18n::decimal,
+};
+use rust_i18n::t;
 
 const MIN_GRAPH: f32 = 40.;
 
 #[derive(Clone)]
 struct Point {
-  x: SharedString,
+  x: String,
   values: Vec<f64>,
 }
 
@@ -32,7 +37,7 @@ fn points(series: &[&VecDeque<f64>]) -> Vec<Point> {
   };
   (0..len)
     .map(|i| Point {
-      x: i.to_string().into(),
+      x: i.to_string(),
       values: series.iter().map(|values| at(values, i)).collect(),
     })
     .collect()
@@ -64,14 +69,14 @@ impl Unit {
 }
 
 struct Series {
-  name: &'static str,
+  name: Cow<'static, str>,
   color: Hsla,
   unit: Unit,
 }
 
 fn graph(
   id: &'static str,
-  title: &'static str,
+  title: Cow<'static, str>,
   points: Vec<Point>,
   series: &[Series],
   percent: bool,
@@ -83,14 +88,14 @@ fn graph(
     .x_axis(false)
     .grid(false)
     .y_axis(false)
-    .tooltip_title(move |_| title.into())
+    .tooltip_title(move |_| title.clone().into())
     .tooltip_value(move |_, i, value| units[i].format(value).into());
   for (i, s) in series.iter().enumerate() {
     chart = chart
       .y(move |p: &Point| p.values[i])
       .stroke(s.color)
       .fill(gradient(s.color))
-      .name(s.name)
+      .name(s.name.clone())
       .natural();
   }
   if percent {
@@ -122,19 +127,19 @@ impl SysinfoPanel {
     let (usage, temperature) = (theme.chart_1, theme.danger);
 
     card(cx)
-      .child(div().text_sm().font_bold().child("CPU"))
+      .child(div().text_sm().font_bold().child(t!("app.sysinfo.cpu")))
       .child(graph(
         "system-cpu",
-        "CPU",
+        t!("app.sysinfo.cpu"),
         points(&[&as_f64(&history.cpu), &as_f64(&history.cpu_temperature)]),
         &[
           Series {
-            name: "Usage",
+            name: t!("app.sysinfo.usage"),
             color: usage,
             unit: Unit::Percent,
           },
           Series {
-            name: "Temperature",
+            name: t!("app.sysinfo.temperature"),
             color: temperature,
             unit: Unit::Celsius,
           },
@@ -161,13 +166,13 @@ impl SysinfoPanel {
     let color = theme.chart_2;
 
     card(cx)
-      .child(div().text_sm().font_bold().child("Memory"))
+      .child(div().text_sm().font_bold().child(t!("app.sysinfo.memory")))
       .child(graph(
         "system-memory",
-        "Memory",
+        t!("app.sysinfo.memory"),
         points(&[&memory]),
         &[Series {
-          name: "Used",
+          name: t!("app.sysinfo.used"),
           color,
           unit: Unit::Percent,
         }],
@@ -182,7 +187,7 @@ impl SysinfoPanel {
             d.child(stat(
               color,
               IconName::MemoryStick,
-              format!("{:.1} GiB · {percent:.0}%", gib(s.memory_used)),
+              format!("{} GiB · {percent:.0}%", decimal(gib(s.memory_used), 1)),
             ))
           }),
       )
@@ -194,19 +199,19 @@ impl SysinfoPanel {
     let (down, up) = (theme.chart_1, theme.chart_2);
 
     card(cx)
-      .child(div().text_sm().font_bold().child("Network"))
+      .child(div().text_sm().font_bold().child(t!("app.sysinfo.network")))
       .child(graph(
         "system-network",
-        "Network",
+        t!("app.sysinfo.network"),
         points(&[&history.network_rx, &history.network_tx]),
         &[
           Series {
-            name: "Download",
+            name: t!("app.sysinfo.download"),
             color: down,
             unit: Unit::Rate,
           },
           Series {
-            name: "Upload",
+            name: t!("app.sysinfo.upload"),
             color: up,
             unit: Unit::Rate,
           },
@@ -239,10 +244,10 @@ impl SysinfoPanel {
 
     Some(
       card(cx)
-        .child(div().text_sm().font_bold().child("GPU"))
+        .child(div().text_sm().font_bold().child(t!("app.sysinfo.gpu")))
         .child(graph(
           "system-gpu",
-          "GPU",
+          t!("app.sysinfo.gpu"),
           points(&[
             &as_f64(&history.gpu),
             &as_f64(&history.gpu_memory),
@@ -250,17 +255,17 @@ impl SysinfoPanel {
           ]),
           &[
             Series {
-              name: "Usage",
+              name: t!("app.sysinfo.usage"),
               color: usage,
               unit: Unit::Percent,
             },
             Series {
-              name: "VRAM",
+              name: "VRAM".into(),
               color: memory,
               unit: Unit::Percent,
             },
             Series {
-              name: "Temperature",
+              name: t!("app.sysinfo.temperature"),
               color: temperature,
               unit: Unit::Celsius,
             },
@@ -280,7 +285,7 @@ impl SysinfoPanel {
                 d.child(stat(
                   memory,
                   IconName::MemoryStick,
-                  format!("{:.1} GiB", gib(used)),
+                  format!("{} GiB", decimal(gib(used), 1)),
                 ))
               })
               .when_some(gpu.temperature, |d, t| {

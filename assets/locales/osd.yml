@@ -1,0 +1,9 @@
+_version: 2
+app:
+  osd:
+    volume:
+      en: Volume
+      de: Lautstärke
+    in_use:
+      en: In use
+      de: In Verwendung

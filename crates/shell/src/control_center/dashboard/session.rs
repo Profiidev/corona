@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use corona_power::{PowerExt, SessionAction, SessionCapabilities, entry_title};
+use corona_power::{EntryTitle, PowerExt, SessionAction, SessionCapabilities, entry_title};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Context, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-  Render, SharedString, StatefulInteractiveElement, Styled, Task, Window,
+  Render, StatefulInteractiveElement, Styled, Task, Window,
   assets::IconName,
   component::{ActiveTheme, Icon, scroll::ScrollableElement},
   div,
@@ -13,6 +13,7 @@ use gpui_kit::{
 };
 
 use crate::lock::LockState;
+use rust_i18n::t;
 
 const ROW: f32 = 40.;
 const ROWS: usize = 9;
@@ -29,20 +30,25 @@ enum Item {
 impl Item {
   fn label(&self) -> String {
     match self {
-      Item::Lock => "Lock".into(),
+      Item::Lock => t!("app.session.lock").into(),
       Item::Action(action) => match action {
-        SessionAction::Logout => "Logout",
-        SessionAction::Suspend => "Suspend",
-        SessionAction::Hibernate => "Hibernate",
-        SessionAction::SuspendThenHibernate => "Suspend then hibernate",
-        SessionAction::Reboot => "Reboot",
-        SessionAction::PowerOff => "Shutdown",
-        SessionAction::RebootToFirmware => "Reboot to UEFI",
+        SessionAction::Logout => t!("app.session.logout"),
+        SessionAction::Suspend => t!("app.session.suspend"),
+        SessionAction::Hibernate => t!("app.session.hibernate"),
+        SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+        SessionAction::Reboot => t!("app.session.reboot"),
+        SessionAction::PowerOff => t!("app.session.shutdown"),
+        SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
       }
       .into(),
-      Item::RebootTo => "Reboot to…".into(),
-      Item::BootEntry(entry) => entry_title(entry),
-      Item::Back => "Back".into(),
+      Item::RebootTo => t!("app.session.reboot_to").into(),
+      Item::BootEntry(entry) => match entry_title(entry) {
+        EntryTitle::NixosGeneration(generation) => {
+          t!("app.session.nixos_generation", generation = generation).into()
+        }
+        EntryTitle::Other(title) => title,
+      },
+      Item::Back => t!("app.common.back").into(),
     }
   }
 
@@ -208,7 +214,7 @@ impl SessionMenu {
     let hover = theme.tokens.button_hover;
 
     div()
-      .id(SharedString::from(format!("session-{index}")))
+      .id(format!("session-{index}"))
       .h(px(ROW))
       .flex_none()
       .flex()

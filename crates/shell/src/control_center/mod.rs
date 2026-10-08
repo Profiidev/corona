@@ -1,6 +1,6 @@
 mod audio;
 mod bluetooth;
-mod brightness;
+pub(crate) mod brightness;
 mod calendar;
 pub(crate) mod dashboard;
 mod layout;

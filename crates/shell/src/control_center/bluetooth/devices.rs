@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::pin::Pin;
 
 use corona_bluez::{BluetoothExt, Device};
@@ -19,29 +20,59 @@ use gpui_kit::{
 };
 
 use crate::control_center::bluetooth::BluetoothPanel;
+use rust_i18n::t;
 
 const TYPES: [(&str, IconName, &str); 11] = [
-  ("audio-headset", IconName::Headphones, "Headset"),
-  ("audio-headphones", IconName::Headphones, "Headphones"),
-  ("audio-card", IconName::Speaker, "Speaker"),
-  ("input-gaming", IconName::Gamepad2, "Gamepad"),
-  ("input-keyboard", IconName::Keyboard, "Keyboard"),
-  ("input-mouse", IconName::Mouse, "Mouse"),
-  ("input-tablet", IconName::Tablet, "Tablet"),
-  ("phone", IconName::Smartphone, "Phone"),
-  ("computer", IconName::Laptop, "Computer"),
-  ("video-display", IconName::Monitor, "Display"),
-  ("printer", IconName::Printer, "Printer"),
+  (
+    "audio-headset",
+    IconName::Headphones,
+    "app.bluetooth.type.headset",
+  ),
+  (
+    "audio-headphones",
+    IconName::Headphones,
+    "app.bluetooth.type.headphones",
+  ),
+  (
+    "audio-card",
+    IconName::Speaker,
+    "app.bluetooth.type.speaker",
+  ),
+  (
+    "input-gaming",
+    IconName::Gamepad2,
+    "app.bluetooth.type.gamepad",
+  ),
+  (
+    "input-keyboard",
+    IconName::Keyboard,
+    "app.bluetooth.type.keyboard",
+  ),
+  ("input-mouse", IconName::Mouse, "app.bluetooth.type.mouse"),
+  (
+    "input-tablet",
+    IconName::Tablet,
+    "app.bluetooth.type.tablet",
+  ),
+  ("phone", IconName::Smartphone, "app.bluetooth.type.phone"),
+  ("computer", IconName::Laptop, "app.bluetooth.type.computer"),
+  (
+    "video-display",
+    IconName::Monitor,
+    "app.bluetooth.type.display",
+  ),
+  ("printer", IconName::Printer, "app.bluetooth.type.printer"),
 ];
 
-fn device_type(device: &Device) -> (IconName, &'static str) {
+fn device_type(device: &Device) -> (IconName, Cow<'static, str>) {
   let icon = device.icon.as_deref().unwrap_or_default();
   TYPES
     .iter()
     .find(|(prefix, ..)| icon.starts_with(prefix))
-    .map_or((IconName::Bluetooth, "Device"), |(_, icon, label)| {
-      (*icon, *label)
-    })
+    .map_or(
+      (IconName::Bluetooth, t!("app.bluetooth.type.device")),
+      |(_, icon, key)| (*icon, t!(*key)),
+    )
 }
 
 impl BluetoothPanel {
@@ -54,8 +85,15 @@ impl BluetoothPanel {
       .collect();
     let empty = devices
       .is_empty()
-      .then(|| placeholder(theme, "No paired devices"));
-    self.devices(theme, "Paired devices", devices, empty, cx)
+      .then(|| placeholder(theme, t!("app.bluetooth.no_paired")));
+    self.devices(
+      theme,
+      "bt-paired",
+      t!("app.bluetooth.paired"),
+      devices,
+      empty,
+      cx,
+    )
   }
 
   pub fn available(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -81,16 +119,24 @@ impl BluetoothPanel {
           div()
             .text_xs()
             .text_color(theme.colors.muted_foreground)
-            .child("Scanning…"),
+            .child(t!("app.bluetooth.scanning")),
         )
     });
-    Some(self.devices(theme, "Available devices", devices, empty, cx))
+    Some(self.devices(
+      theme,
+      "bt-available",
+      t!("app.bluetooth.available"),
+      devices,
+      empty,
+      cx,
+    ))
   }
 
   fn devices(
     &self,
     theme: &Theme,
-    title: &'static str,
+    id: &'static str,
+    title: impl IntoElement,
     devices: Vec<&Device>,
     empty: Option<impl IntoElement>,
     cx: &Context<'_, Self>,
@@ -116,7 +162,7 @@ impl BluetoothPanel {
           .gap_1()
           .h_auto()
           .overflow_y_scrollbar()
-          .id(title)
+          .id(id)
           .children(devices.into_iter().map(|d| self.device(theme, d, cx))),
       )
   }
@@ -132,17 +178,17 @@ impl BluetoothPanel {
     let action = if !device.paired {
       Button::new(format!("bt-pair-{address}"))
         .icon(IconName::Link)
-        .tooltip("Pair")
+        .tooltip(t!("app.bluetooth.pair"))
         .with_variant(ButtonVariant::Primary)
     } else if device.connected {
       Button::new(format!("bt-disconnect-{address}"))
         .icon(IconName::Unplug)
-        .tooltip("Disconnect")
+        .tooltip(t!("app.common.disconnect"))
         .with_variant(ButtonVariant::Danger)
     } else {
       Button::new(format!("bt-connect-{address}"))
         .icon(IconName::Plug)
-        .tooltip("Connect")
+        .tooltip(t!("app.common.connect"))
         .with_variant(ButtonVariant::Primary)
     };
     let (paired, connected) = (device.paired, device.connected);
@@ -198,7 +244,7 @@ impl BluetoothPanel {
             .icon(IconName::Trash)
             .small()
             .with_variant(ButtonVariant::Danger)
-            .tooltip("Forget")
+            .tooltip(t!("app.common.forget"))
             .cursor_pointer()
             .on_click(cx.async_listener(
               move |_, _, _, cx| cx.bluetooth().forget(&address, cx),
@@ -209,7 +255,7 @@ impl BluetoothPanel {
   }
 }
 
-fn placeholder(theme: &Theme, text: &'static str) -> impl IntoElement {
+fn placeholder(theme: &Theme, text: impl IntoElement) -> impl IntoElement {
   div()
     .flex()
     .justify_center()

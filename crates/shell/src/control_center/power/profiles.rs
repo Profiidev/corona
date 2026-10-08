@@ -15,6 +15,7 @@ use crate::{
   control_center::power::{PowerPanel, card},
   icons::power_profile,
 };
+use rust_i18n::t;
 
 impl PowerPanel {
   pub fn profiles(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -22,7 +23,12 @@ impl PowerPanel {
 
     Some(
       card(cx)
-        .child(div().text_sm().font_bold().child("Power profile"))
+        .child(
+          div()
+            .text_sm()
+            .font_bold()
+            .child(t!("app.power.profile.title")),
+        )
         .child(
           div()
             .flex()
@@ -50,9 +56,9 @@ impl PowerPanel {
             div()
               .text_xs()
               .text_color(theme.colors.muted_foreground)
-              .child(format!(
-                "Performance is limited: {}",
-                reason.replace('-', " ")
+              .child(t!(
+                "app.power.profile.degraded",
+                reason = reason.replace('-', " ")
               )),
           )
         }),

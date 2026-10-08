@@ -3,7 +3,7 @@ use corona_desktop::entry::name_for_names;
 use corona_pipewire::{AudioNode, PipewireExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Div, IntoElement, ParentElement, SharedString, Styled,
+  Div, IntoElement, ParentElement, Styled,
   assets::IconName,
   base::{Disableable, FocusableExt, StyledExt},
   component::{
@@ -80,7 +80,7 @@ fn audio_slider(state: &NodeState, node: Option<&AudioNode>, theme: &Theme) -> D
         .w_10()
         .flex()
         .justify_end()
-        .child(SharedString::from(format!("{:.0}%", state.volume * 100.))),
+        .child(format!("{:.0}%", state.volume * 100.)),
     )
 }
 

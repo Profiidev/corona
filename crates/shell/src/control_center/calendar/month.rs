@@ -10,19 +10,13 @@ use gpui_kit::{
   px,
 };
 use jiff::{ToSpan, civil::Date};
+use std::borrow::Cow;
 
-use crate::control_center::calendar::{CalendarPanel, today};
-
-const WEEKDAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
-
-/// The weekday labels, from the first day of the week
-fn weekdays(start: Weekday) -> impl Iterator<Item = &'static str> {
-  let skip = match start {
-    Weekday::Monday => 0,
-    Weekday::Sunday => 6,
-  };
-  WEEKDAYS.iter().cycle().skip(skip).take(7).copied()
-}
+use crate::{
+  control_center::calendar::{CalendarPanel, today},
+  i18n::format_time,
+};
+use rust_i18n::t;
 
 fn grid(first: Date, start: Weekday) -> Vec<Date> {
   let back = i64::from(match start {
@@ -46,7 +40,7 @@ impl CalendarPanel {
     let start = cx.config().control_center.week_start;
     let days = grid(self.shown, start);
 
-    let nav = |id: &'static str, icon: IconName, tooltip: &'static str| {
+    let nav = |id: &'static str, icon: IconName, tooltip: Cow<'static, str>| {
       Button::new(id)
         .icon(icon)
         .small()
@@ -70,27 +64,38 @@ impl CalendarPanel {
             div()
               .text_sm()
               .font_bold()
-              .child(self.shown.strftime("%B %Y").to_string().to_uppercase()),
+              .child(format_time("%B %Y", self.shown).to_uppercase()),
           )
           .child(div().flex_1().h(px(1.)).bg(theme.border))
           .child(
-            nav("calendar-previous", IconName::ChevronLeft, "Previous month")
-              .on_click(cx.listener(|this, _, _, cx| this.shift(-1, cx))),
+            nav(
+              "calendar-previous",
+              IconName::ChevronLeft,
+              t!("app.calendar.previous_month"),
+            )
+            .on_click(cx.listener(|this, _, _, cx| this.shift(-1, cx))),
           )
           .child(
-            nav("calendar-today", IconName::CalendarDays, "Today").on_click(cx.listener(
-              |this, _, _, cx| {
-                this.shown = today().first_of_month();
-                cx.notify();
-              },
-            )),
+            nav(
+              "calendar-today",
+              IconName::CalendarDays,
+              t!("app.calendar.today"),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+              this.shown = today().first_of_month();
+              cx.notify();
+            })),
           )
           .child(
-            nav("calendar-next", IconName::ChevronRight, "Next month")
-              .on_click(cx.listener(|this, _, _, cx| this.shift(1, cx))),
+            nav(
+              "calendar-next",
+              IconName::ChevronRight,
+              t!("app.calendar.next_month"),
+            )
+            .on_click(cx.listener(|this, _, _, cx| this.shift(1, cx))),
           ),
       )
-      .child(div().flex().children(weekdays(start).map(|day| {
+      .child(div().flex().children(days[..7].iter().map(|day| {
         div()
           .flex_1()
           .flex()
@@ -98,7 +103,7 @@ impl CalendarPanel {
           .text_xs()
           .font_bold()
           .text_color(theme.colors.primary)
-          .child(day)
+          .child(format_time("%a", *day).to_uppercase())
       })))
       .children(days.chunks(7).map(|week| {
         div().flex().children(week.iter().map(|day| {
@@ -129,7 +134,7 @@ mod tests {
   use corona_config::Weekday;
   use jiff::civil::{Weekday as Day, date};
 
-  use super::{grid, weekdays};
+  use super::grid;
 
   #[test]
   fn month_grid() {
@@ -146,7 +151,5 @@ mod tests {
     let first = date(2026, 10, 1);
     assert_eq!(grid(first, Weekday::Monday)[0].weekday(), Day::Monday);
     assert_eq!(grid(first, Weekday::Sunday)[0].weekday(), Day::Sunday);
-    assert_eq!(weekdays(Weekday::Sunday).next(), Some("SU"));
-    assert_eq!(weekdays(Weekday::Sunday).last(), Some("SA"));
   }
 }

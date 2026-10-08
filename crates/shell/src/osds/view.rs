@@ -2,19 +2,21 @@ use corona_config::{ConfigProvider, OsdKinds};
 use corona_surface::osd::{Osd, OsdExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Context, IntoElement, ParentElement, Pixels, Render, SharedString, Size, Styled, Window,
+  App, Context, IntoElement, ParentElement, Pixels, Render, Size, Styled, Window,
   assets::IconName,
   component::{ActiveTheme, Icon, Sizable},
   div,
   prelude::FluentBuilder,
   px, relative, size,
 };
+use rust_i18n::t;
+use std::borrow::Cow;
 
 const ICON: f32 = 20.;
 
 pub struct LevelOsd {
   pub icon: IconName,
-  pub label: SharedString,
+  pub label: Cow<'static, str>,
   pub percent: f32,
   pub muted: bool,
 }
@@ -87,17 +89,21 @@ impl Osd for LevelOsd {
 
 pub struct ToggleOsd {
   pub icon: IconName,
-  pub label: SharedString,
-  pub state: SharedString,
+  pub label: Cow<'static, str>,
+  pub state: Cow<'static, str>,
   pub active: bool,
 }
 
 impl ToggleOsd {
-  pub fn on_off(icon: IconName, label: &'static str, on: bool) -> Self {
+  pub fn on_off(icon: IconName, label: Cow<'static, str>, on: bool) -> Self {
     Self {
       icon,
-      label: label.into(),
-      state: if on { "On" } else { "Off" }.into(),
+      label,
+      state: if on {
+        t!("app.common.on")
+      } else {
+        t!("app.common.off")
+      },
       active: on,
     }
   }

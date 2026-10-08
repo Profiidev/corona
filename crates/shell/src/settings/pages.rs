@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{iter, path::PathBuf};
 
 use corona_components::assets::{set_theme, theme_font, theme_names};
 use corona_config::{
@@ -14,10 +14,12 @@ use gpui_kit::{
   },
 };
 
+use crate::i18n;
 use crate::settings::{
   bar,
   fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
 };
+use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
 pub const PAGES: [&str; 13] = [
@@ -54,27 +56,23 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
   ]
 }
 
-fn page(title: &'static str, icon: IconName, groups: Vec<SettingGroup>) -> SettingPage {
+fn page(title: impl Into<SharedString>, icon: IconName, groups: Vec<SettingGroup>) -> SettingPage {
   SettingPage::new(title)
     .icon(Icon::new(icon))
     .resettable(true)
     .groups(groups)
 }
 
-fn group(title: &'static str, items: Vec<SettingItem>) -> SettingGroup {
+fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> SettingGroup {
   SettingGroup::new().title(title).items(items)
 }
 
 fn item(
-  title: &'static str,
-  description: &'static str,
+  title: impl Into<SharedString>,
+  description: impl Into<String>,
   field: SettingField<impl Clone + PartialEq + Send + Sync + 'static>,
 ) -> SettingItem {
-  let item = SettingItem::new(title, field);
-  match description.is_empty() {
-    true => item,
-    false => item.description(description),
-  }
+  SettingItem::new(title, field).description(description.into())
 }
 
 /// `Option<String>` settings as text, empty for unset
@@ -88,28 +86,28 @@ fn appearance(cx: &App) -> SettingPage {
   let themes: Vec<Choice> = theme_names(cx)
     .into_iter()
     .map(|name| Choice {
-      value: name.clone().into(),
-      label: name.into(),
+      value: name.to_string(),
+      label: name.to_string(),
     })
     .collect();
   page(
-    "Appearance",
+    t!("app.settings.appearance.title"),
     IconName::Palette,
     vec![
       group(
-        "Theme",
+        t!("app.settings.appearance.groups.theme"),
         vec![
           item(
-            "Theme",
-            "Its Dark/Light counterpart serves the other mode.",
+            t!("app.settings.appearance.theme.title"),
+            t!("app.settings.appearance.theme.description"),
             SettingField::render(
               move |options: &RenderOptions, window: &mut Window, cx: &mut App| {
-                let current: SharedString = cx.config().theme.name.clone().into();
+                let current = cx.config().theme.name.clone();
                 searchable(
                   "theme.name",
                   themes.clone(),
                   Some(current),
-                  "Theme",
+                  t!("app.settings.appearance.theme.title"),
                   window,
                   cx,
                   |name, cx| {
@@ -130,21 +128,36 @@ fn appearance(cx: &App) -> SettingPage {
             ),
           ),
           item(
-            "Mode",
-            "Follow the theme, or force dark or light.",
+            t!("app.settings.appearance.language.title"),
+            t!("app.settings.appearance.language.description"),
+            choice(
+              // each language under its own name
+              &iter::once((None, t!("app.settings.options.language_auto")))
+                .chain(i18n::languages().into_iter().map(|language| {
+                  let name = t!("app.language_name", locale = &language);
+                  (Some(language), name)
+                }))
+                .collect::<Vec<_>>(),
+              |c| c.shell.language.clone(),
+              |c, v| c.shell.language = v,
+            ),
+          ),
+          item(
+            t!("app.settings.appearance.mode.title"),
+            t!("app.settings.appearance.mode.description"),
             choice(
               &[
-                (None, "Theme's own"),
-                (Some(ThemeMode::Dark), "Dark"),
-                (Some(ThemeMode::Light), "Light"),
+                (None, t!("app.settings.options.theme_default")),
+                (Some(ThemeMode::Dark), t!("app.settings.options.dark")),
+                (Some(ThemeMode::Light), t!("app.settings.options.light")),
               ],
               |c| c.theme.mode,
               |c, v| c.theme.mode = v,
             ),
           ),
           item(
-            "Font family",
-            "Used for all text.",
+            t!("app.settings.appearance.font_family.title"),
+            t!("app.settings.appearance.font_family.description"),
             optional_text(
               "theme.font_family",
               |c| c.theme.font_family.clone(),
@@ -153,8 +166,8 @@ fn appearance(cx: &App) -> SettingPage {
             ),
           ),
           item(
-            "Font scale",
-            "Text, and the spacing measured in it.",
+            t!("app.settings.appearance.font_scale.title"),
+            t!("app.settings.appearance.font_scale.description"),
             slider(
               "theme.font_scale",
               (0.5, 2., 0.05),
@@ -163,8 +176,8 @@ fn appearance(cx: &App) -> SettingPage {
             ),
           ),
           item(
-            "Corner radius scale",
-            "0 for square corners.",
+            t!("app.settings.appearance.corner_radius_scale.title"),
+            t!("app.settings.appearance.corner_radius_scale.description"),
             slider(
               "theme.corner_radius_scale",
               (0., 3., 0.1),
@@ -175,39 +188,39 @@ fn appearance(cx: &App) -> SettingPage {
         ],
       ),
       group(
-        "Surfaces",
+        t!("app.settings.appearance.groups.surfaces"),
         vec![
           item(
-            "Shadows",
-            "Under popovers.",
+            t!("app.settings.appearance.shadows.title"),
+            t!("app.settings.appearance.shadows.description"),
             switch(|c| c.theme.shadow, |c, v| c.theme.shadow = v),
           ),
           item(
-            "Popup borders",
-            "Around OSDs, tooltips, menus and the window switcher.",
+            t!("app.settings.appearance.popup_borders.title"),
+            t!("app.settings.appearance.popup_borders.description"),
             switch(|c| c.theme.popup_borders, |c, v| c.theme.popup_borders = v),
           ),
           item(
-            "Card borders",
-            "Around the cards in panels.",
+            t!("app.settings.appearance.card_borders.title"),
+            t!("app.settings.appearance.card_borders.description"),
             switch(|c| c.theme.card_borders, |c, v| c.theme.card_borders = v),
           ),
         ],
       ),
       group(
-        "Animation",
+        t!("app.settings.appearance.groups.animation"),
         vec![
           item(
-            "Animations",
-            "Turn every animation off, or on.",
+            t!("app.settings.appearance.animations.title"),
+            t!("app.settings.appearance.animations.description"),
             switch(
               |c| c.shell.animation.enabled,
               |c, v| c.shell.animation.enabled = v,
             ),
           ),
           item(
-            "Speed",
-            "2 is twice as fast.",
+            t!("app.settings.appearance.speed.title"),
+            t!("app.settings.appearance.speed.description"),
             slider(
               "shell.animation.speed",
               (0.25, 4., 0.25),
@@ -223,14 +236,14 @@ fn appearance(cx: &App) -> SettingPage {
 
 fn wallpaper() -> SettingPage {
   page(
-    "Wallpaper",
+    t!("app.settings.wallpaper.title"),
     IconName::Image,
     vec![group(
-      "Wallpaper",
+      t!("app.settings.wallpaper.groups.wallpaper"),
       vec![
         item(
-          "Picture",
-          "Path, ~/ path or http(s) URL.",
+          t!("app.settings.wallpaper.picture.title"),
+          t!("app.settings.wallpaper.picture.description"),
           text(
             "wallpaper.path",
             |c| c.wallpaper.path.clone().unwrap_or_default(),
@@ -245,14 +258,14 @@ fn wallpaper() -> SettingPage {
 
 fn notifications() -> SettingPage {
   page(
-    "Notifications",
+    t!("app.settings.notifications.title"),
     IconName::Bell,
     vec![
       group(
-        "Daemon",
+        t!("app.settings.notifications.groups.daemon"),
         vec![item(
-          "Notification daemon",
-          "Applies after a restart.",
+          t!("app.settings.notifications.notification_daemon.title"),
+          t!("app.settings.notifications.notification_daemon.description"),
           switch(
             |c| c.notification.enabled,
             |c, v| c.notification.enabled = v,
@@ -260,23 +273,29 @@ fn notifications() -> SettingPage {
         )],
       ),
       group(
-        "Popups",
+        t!("app.settings.notifications.groups.popups"),
         vec![
           item(
-            "Position",
-            "Which top corner notifications appear in.",
+            t!("app.settings.notifications.position.title"),
+            t!("app.settings.notifications.position.description"),
             choice(
               &[
-                (NotificationPosition::TopLeft, "Top left"),
-                (NotificationPosition::TopRight, "Top right"),
+                (
+                  NotificationPosition::TopLeft,
+                  t!("app.settings.options.top_left"),
+                ),
+                (
+                  NotificationPosition::TopRight,
+                  t!("app.settings.options.top_right"),
+                ),
               ],
               |c| c.notification.position,
               |c, v| c.notification.position = v,
             ),
           ),
           item(
-            "Width",
-            "Of a notification popup, in pixels.",
+            t!("app.settings.notifications.width.title"),
+            t!("app.settings.notifications.width.description"),
             number(
               "notification.width",
               (200., 800., 10.),
@@ -285,8 +304,8 @@ fn notifications() -> SettingPage {
             ),
           ),
           item(
-            "Offset",
-            "Distance from the screen edges.",
+            t!("app.settings.notifications.offset.title"),
+            t!("app.settings.notifications.offset.description"),
             number(
               "notification.offset",
               (0., 200., 1.),
@@ -295,8 +314,8 @@ fn notifications() -> SettingPage {
             ),
           ),
           item(
-            "Timeout",
-            "Milliseconds.",
+            t!("app.settings.notifications.timeout.title"),
+            t!("app.settings.notifications.timeout.description"),
             number(
               "notification.timeout_ms",
               (500., 60000., 500.),
@@ -305,8 +324,8 @@ fn notifications() -> SettingPage {
             ),
           ),
           item(
-            "Critical timeout",
-            "Milliseconds.",
+            t!("app.settings.notifications.critical_timeout.title"),
+            t!("app.settings.notifications.critical_timeout.description"),
             number(
               "notification.critical_timeout_ms",
               (500., 120000., 500.),
@@ -315,8 +334,8 @@ fn notifications() -> SettingPage {
             ),
           ),
           item(
-            "Background opacity",
-            "Of notification popups; under 1 lets the desktop show through.",
+            t!("app.settings.notifications.background_opacity.title"),
+            t!("app.settings.notifications.background_opacity.description"),
             slider(
               "notification.background_opacity",
               OPACITY,
@@ -332,34 +351,34 @@ fn notifications() -> SettingPage {
 
 fn osd() -> SettingPage {
   page(
-    "OSD",
+    t!("app.settings.osd.title"),
     IconName::Gauge,
     vec![
       group(
-        "On-screen display",
+        t!("app.settings.osd.groups.on_screen_display"),
         vec![
           item(
-            "OSD",
-            "Show a popup when volume, brightness and the like change.",
+            t!("app.settings.osd.osd.title"),
+            t!("app.settings.osd.osd.description"),
             switch(|c| c.osd.enabled, |c, v| c.osd.enabled = v),
           ),
           item(
-            "Position",
-            "Which screen edge the OSD sits at.",
+            t!("app.settings.osd.position.title"),
+            t!("app.settings.osd.position.description"),
             choice(
               &[
-                (OsdPosition::TopCenter, "Top"),
-                (OsdPosition::BottomCenter, "Bottom"),
-                (OsdPosition::CenterLeft, "Left"),
-                (OsdPosition::CenterRight, "Right"),
+                (OsdPosition::TopCenter, t!("app.settings.options.top")),
+                (OsdPosition::BottomCenter, t!("app.settings.options.bottom")),
+                (OsdPosition::CenterLeft, t!("app.settings.options.left")),
+                (OsdPosition::CenterRight, t!("app.settings.options.right")),
               ],
               |c| c.osd.position,
               |c, v| c.osd.position = v,
             ),
           ),
           item(
-            "Offset",
-            "Distance from the screen edge.",
+            t!("app.settings.osd.offset.title"),
+            t!("app.settings.osd.offset.description"),
             number(
               "osd.offset",
               (0., 400., 1.),
@@ -368,8 +387,8 @@ fn osd() -> SettingPage {
             ),
           ),
           item(
-            "Hide after",
-            "Milliseconds.",
+            t!("app.settings.osd.hide_after.title"),
+            t!("app.settings.osd.hide_after.description"),
             number(
               "osd.hide_delay_ms",
               (250., 10000., 250.),
@@ -378,8 +397,8 @@ fn osd() -> SettingPage {
             ),
           ),
           item(
-            "Background opacity",
-            "Of the OSD; under 1 lets the desktop show through.",
+            t!("app.settings.osd.background_opacity.title"),
+            t!("app.settings.osd.background_opacity.description"),
             slider(
               "osd.background_opacity",
               OPACITY,
@@ -390,47 +409,47 @@ fn osd() -> SettingPage {
         ],
       ),
       group(
-        "Shown for",
+        t!("app.settings.osd.groups.shown_for"),
         vec![
           item(
-            "Volume",
-            "When output or input volume changes.",
+            t!("app.settings.osd.volume.title"),
+            t!("app.settings.osd.volume.description"),
             switch(|c| c.osd.kinds.volume, |c, v| c.osd.kinds.volume = v),
           ),
           item(
-            "Brightness",
-            "When screen brightness changes.",
+            t!("app.settings.osd.brightness.title"),
+            t!("app.settings.osd.brightness.description"),
             switch(
               |c| c.osd.kinds.brightness,
               |c, v| c.osd.kinds.brightness = v,
             ),
           ),
           item(
-            "Wi-Fi",
-            "When Wi-Fi is turned on or off.",
+            t!("app.settings.osd.wi_fi.title"),
+            t!("app.settings.osd.wi_fi.description"),
             switch(|c| c.osd.kinds.wifi, |c, v| c.osd.kinds.wifi = v),
           ),
           item(
-            "Bluetooth",
-            "When Bluetooth is turned on or off.",
+            t!("app.settings.osd.bluetooth.title"),
+            t!("app.settings.osd.bluetooth.description"),
             switch(|c| c.osd.kinds.bluetooth, |c, v| c.osd.kinds.bluetooth = v),
           ),
           item(
-            "Do not disturb",
-            "When do not disturb is turned on or off.",
+            t!("app.settings.osd.do_not_disturb.title"),
+            t!("app.settings.osd.do_not_disturb.description"),
             switch(|c| c.osd.kinds.dnd, |c, v| c.osd.kinds.dnd = v),
           ),
           item(
-            "Power profile",
-            "When the power profile changes.",
+            t!("app.settings.osd.power_profile.title"),
+            t!("app.settings.osd.power_profile.description"),
             switch(
               |c| c.osd.kinds.power_profile,
               |c, v| c.osd.kinds.power_profile = v,
             ),
           ),
           item(
-            "Privacy",
-            "Microphone, camera and screen access.",
+            t!("app.settings.osd.privacy.title"),
+            t!("app.settings.osd.privacy.description"),
             switch(|c| c.osd.kinds.privacy, |c, v| c.osd.kinds.privacy = v),
           ),
         ],
@@ -441,14 +460,14 @@ fn osd() -> SettingPage {
 
 fn control_center() -> SettingPage {
   page(
-    "Control Center",
+    t!("app.settings.control_center.title"),
     IconName::LayoutDashboard,
     vec![group(
-      "Control center",
+      t!("app.settings.control_center.groups.control_center"),
       vec![
         item(
-          "Time format",
-          "strftime pattern of the dashboard clock.",
+          t!("app.settings.control_center.time_format.title"),
+          t!("app.settings.control_center.time_format.description"),
           text(
             "control_center.time_format",
             |c| c.control_center.time_format.clone(),
@@ -456,8 +475,8 @@ fn control_center() -> SettingPage {
           ),
         ),
         item(
-          "Date format",
-          "strftime pattern.",
+          t!("app.settings.control_center.date_format.title"),
+          t!("app.settings.control_center.date_format.description"),
           text(
             "control_center.date_format",
             |c| c.control_center.date_format.clone(),
@@ -465,17 +484,20 @@ fn control_center() -> SettingPage {
           ),
         ),
         item(
-          "Week starts on",
-          "The first column of the calendar.",
+          t!("app.settings.control_center.week_starts_on.title"),
+          t!("app.settings.control_center.week_starts_on.description"),
           choice(
-            &[(Weekday::Monday, "Monday"), (Weekday::Sunday, "Sunday")],
+            &[
+              (Weekday::Monday, t!("app.settings.options.monday")),
+              (Weekday::Sunday, t!("app.settings.options.sunday")),
+            ],
             |c| c.control_center.week_start,
             |c, v| c.control_center.week_start = v,
           ),
         ),
         item(
-          "Background opacity",
-          "Of the panels.",
+          t!("app.settings.control_center.background_opacity.title"),
+          t!("app.settings.control_center.background_opacity.description"),
           slider(
             "control_center.background_opacity",
             OPACITY,
@@ -490,19 +512,19 @@ fn control_center() -> SettingPage {
 
 fn taskbar() -> SettingPage {
   page(
-    "Taskbar",
+    t!("app.settings.taskbar.title"),
     IconName::PanelBottom,
     vec![group(
-      "Taskbar",
+      t!("app.settings.taskbar.groups.taskbar"),
       vec![
         item(
-          "Taskbar",
-          "The dock that rises from the bottom edge.",
+          t!("app.settings.taskbar.taskbar.title"),
+          t!("app.settings.taskbar.taskbar.description"),
           switch(|c| c.taskbar.enabled, |c, v| c.taskbar.enabled = v),
         ),
         item(
-          "Icon size",
-          "Of the app icons, in pixels.",
+          t!("app.settings.taskbar.icon_size.title"),
+          t!("app.settings.taskbar.icon_size.description"),
           number(
             "taskbar.icon_size",
             (16., 96., 2.),
@@ -511,13 +533,13 @@ fn taskbar() -> SettingPage {
           ),
         ),
         item(
-          "Window previews",
-          "Show live previews of an app's windows on hover.",
+          t!("app.settings.taskbar.window_previews.title"),
+          t!("app.settings.taskbar.window_previews.description"),
           switch(|c| c.taskbar.previews, |c, v| c.taskbar.previews = v),
         ),
         item(
-          "Previews at most",
-          "Windows shown in one preview.",
+          t!("app.settings.taskbar.previews_at_most.title"),
+          t!("app.settings.taskbar.previews_at_most.description"),
           number(
             "taskbar.preview_max_windows",
             (1., 20., 1.),
@@ -526,8 +548,8 @@ fn taskbar() -> SettingPage {
           ),
         ),
         item(
-          "Background opacity",
-          "Of the taskbar; under 1 lets the desktop show through.",
+          t!("app.settings.taskbar.background_opacity.title"),
+          t!("app.settings.taskbar.background_opacity.description"),
           slider(
             "taskbar.background_opacity",
             OPACITY,
@@ -542,22 +564,22 @@ fn taskbar() -> SettingPage {
 
 fn window_switcher() -> SettingPage {
   page(
-    "Window Switcher",
+    t!("app.settings.window_switcher.title"),
     IconName::AppWindow,
     vec![group(
-      "Window switcher",
+      t!("app.settings.window_switcher.groups.window_switcher"),
       vec![
         item(
-          "Focused monitor only",
-          "Even without --current-monitor.",
+          t!("app.settings.window_switcher.focused_monitor_only.title"),
+          t!("app.settings.window_switcher.focused_monitor_only.description"),
           switch(
             |c| c.window_switcher.current_monitor_only,
             |c, v| c.window_switcher.current_monitor_only = v,
           ),
         ),
         item(
-          "Card height",
-          "Of each workspace card, in pixels.",
+          t!("app.settings.window_switcher.card_height.title"),
+          t!("app.settings.window_switcher.card_height.description"),
           number(
             "window_switcher.card_height",
             (80., 480., 10.),
@@ -566,8 +588,8 @@ fn window_switcher() -> SettingPage {
           ),
         ),
         item(
-          "Backdrop",
-          "How much the screen behind darkens.",
+          t!("app.settings.window_switcher.backdrop.title"),
+          t!("app.settings.window_switcher.backdrop.description"),
           slider(
             "window_switcher.backdrop_opacity",
             OPACITY,
@@ -582,22 +604,22 @@ fn window_switcher() -> SettingPage {
 
 fn lockscreen() -> SettingPage {
   page(
-    "Lock Screen",
+    t!("app.settings.lockscreen.title"),
     IconName::Lock,
     vec![group(
-      "Lock screen",
+      t!("app.settings.lockscreen.groups.lock_screen"),
       vec![
         item(
-          "Lock before suspend",
-          "Lock the screen whenever the system suspends.",
+          t!("app.settings.lockscreen.lock_before_suspend.title"),
+          t!("app.settings.lockscreen.lock_before_suspend.description"),
           switch(
             |c| c.lockscreen.lock_before_suspend,
             |c, v| c.lockscreen.lock_before_suspend = v,
           ),
         ),
         item(
-          "Blur",
-          "Of the screen behind the lock, 0 for none.",
+          t!("app.settings.lockscreen.blur.title"),
+          t!("app.settings.lockscreen.blur.description"),
           slider(
             "lockscreen.blur",
             (0., 10., 0.5),
@@ -612,14 +634,14 @@ fn lockscreen() -> SettingPage {
 
 fn screenshot() -> SettingPage {
   page(
-    "Screenshot",
+    t!("app.settings.screenshot.title"),
     IconName::Camera,
     vec![group(
-      "Saving",
+      t!("app.settings.screenshot.groups.saving"),
       vec![
         item(
-          "Directory",
-          "Where screenshots are saved; may start with ~/.",
+          t!("app.settings.screenshot.directory.title"),
+          t!("app.settings.screenshot.directory.description"),
           optional_text(
             "screenshot.directory",
             |c| {
@@ -638,8 +660,8 @@ fn screenshot() -> SettingPage {
         )
         .layout(Axis::Vertical),
         item(
-          "File name",
-          "strftime pattern.",
+          t!("app.settings.screenshot.file_name.title"),
+          t!("app.settings.screenshot.file_name.description"),
           text(
             "screenshot.filename_pattern",
             |c| c.screenshot.filename_pattern.clone(),
@@ -654,15 +676,15 @@ fn screenshot() -> SettingPage {
 
 fn location() -> SettingPage {
   page(
-    "Location & Weather",
+    t!("app.settings.location.title"),
     IconName::CloudSun,
     vec![
       group(
-        "Location",
+        t!("app.settings.location.groups.location"),
         vec![
           item(
-            "City",
-            "Looked up when no coordinates are set.",
+            t!("app.settings.location.city.title"),
+            t!("app.settings.location.city.description"),
             text(
               "location.city",
               |c| c.location.city.clone().unwrap_or_default(),
@@ -670,8 +692,8 @@ fn location() -> SettingPage {
             ),
           ),
           item(
-            "Coordinates",
-            "Latitude, longitude; used over the city.",
+            t!("app.settings.location.coordinates.title"),
+            t!("app.settings.location.coordinates.description"),
             text(
               "location.coordinates",
               |c| match (c.location.latitude, c.location.longitude) {
@@ -690,8 +712,8 @@ fn location() -> SettingPage {
             ),
           ),
           item(
-            "Locate automatically",
-            "Ask GeoClue first.",
+            t!("app.settings.location.locate_automatically.title"),
+            t!("app.settings.location.locate_automatically.description"),
             switch(
               |c| c.location.auto_locate,
               |c, v| c.location.auto_locate = v,
@@ -700,20 +722,23 @@ fn location() -> SettingPage {
         ],
       ),
       group(
-        "Weather",
+        t!("app.settings.location.groups.weather"),
         vec![
           item(
-            "Units",
-            "For temperatures, wind and rain.",
+            t!("app.settings.location.units.title"),
+            t!("app.settings.location.units.description"),
             choice(
-              &[(Units::Metric, "Metric"), (Units::Imperial, "Imperial")],
+              &[
+                (Units::Metric, t!("app.settings.options.metric")),
+                (Units::Imperial, t!("app.settings.options.imperial")),
+              ],
               |c| c.weather.units,
               |c, v| c.weather.units = v,
             ),
           ),
           item(
-            "Refresh every",
-            "Minutes.",
+            t!("app.settings.location.refresh_every.title"),
+            t!("app.settings.location.refresh_every.description"),
             number(
               "weather.refresh_minutes",
               (5., 240., 5.),
@@ -729,23 +754,39 @@ fn location() -> SettingPage {
 
 fn privacy() -> SettingPage {
   page(
-    "Privacy",
+    t!("app.settings.privacy.title"),
     IconName::Shield,
     vec![group(
-      "Hidden apps",
+      t!("app.settings.privacy.groups.hidden_apps"),
       vec![
         item(
-          "Microphone",
-          "Case-insensitive regex against the app's name; matches are left out of the privacy widget, its log and OSD.",
-          text("shell.privacy.mic", |c| c.shell.privacy.mic_filter_regex.clone(), |c, v| c.shell.privacy.mic_filter_regex = v),
+          t!("app.settings.privacy.microphone.title"),
+          t!("app.settings.privacy.microphone.description"),
+          text(
+            "shell.privacy.mic",
+            |c| c.shell.privacy.mic_filter_regex.clone(),
+            |c, v| c.shell.privacy.mic_filter_regex = v,
+          ),
         )
         .layout(Axis::Vertical),
-        item("Camera", "Same, for camera access.", text("shell.privacy.cam", |c| c.shell.privacy.cam_filter_regex.clone(), |c, v| c.shell.privacy.cam_filter_regex = v))
-          .layout(Axis::Vertical),
         item(
-          "Screen",
-          "Same, for screen sharing and recording.",
-          text("shell.privacy.screen", |c| c.shell.privacy.screen_filter_regex.clone(), |c, v| c.shell.privacy.screen_filter_regex = v),
+          t!("app.settings.privacy.camera.title"),
+          t!("app.settings.privacy.camera.description"),
+          text(
+            "shell.privacy.cam",
+            |c| c.shell.privacy.cam_filter_regex.clone(),
+            |c, v| c.shell.privacy.cam_filter_regex = v,
+          ),
+        )
+        .layout(Axis::Vertical),
+        item(
+          t!("app.settings.privacy.screen.title"),
+          t!("app.settings.privacy.screen.description"),
+          text(
+            "shell.privacy.screen",
+            |c| c.shell.privacy.screen_filter_regex.clone(),
+            |c, v| c.shell.privacy.screen_filter_regex = v,
+          ),
         )
         .layout(Axis::Vertical),
       ],
@@ -755,15 +796,15 @@ fn privacy() -> SettingPage {
 
 fn system() -> SettingPage {
   page(
-    "System",
+    t!("app.settings.system.title"),
     IconName::Cpu,
     vec![
       group(
-        "Profile",
+        t!("app.settings.system.groups.profile"),
         vec![
           item(
-            "Avatar",
-            "Path, ~/ path or http(s) URL of the dashboard picture.",
+            t!("app.settings.system.avatar.title"),
+            t!("app.settings.system.avatar.description"),
             text(
               "shell.avatar",
               |c| c.shell.avatar.clone().unwrap_or_default(),
@@ -774,11 +815,11 @@ fn system() -> SettingPage {
         ],
       ),
       group(
-        "Polling",
+        t!("app.settings.system.groups.polling"),
         vec![
           item(
-            "System monitor",
-            "Seconds between samples.",
+            t!("app.settings.system.system_monitor.title"),
+            t!("app.settings.system.system_monitor.description"),
             number(
               "system.monitor.poll_seconds",
               (1., 60., 1.),
@@ -787,8 +828,8 @@ fn system() -> SettingPage {
             ),
           ),
           item(
-            "Brightness",
-            "Seconds between checks.",
+            t!("app.settings.system.brightness.title"),
+            t!("app.settings.system.brightness.description"),
             number(
               "brightness.poll_seconds",
               (1., 60., 1.),
@@ -799,19 +840,19 @@ fn system() -> SettingPage {
         ],
       ),
       group(
-        "Applies after a restart",
+        t!("app.settings.system.groups.applies_after_a_restart"),
         vec![
           item(
-            "ddcutil",
-            "Brightness of external monitors.",
+            t!("app.settings.system.ddcutil.title"),
+            t!("app.settings.system.ddcutil.description"),
             switch(
               |c| c.brightness.enable_ddcutil,
               |c, v| c.brightness.enable_ddcutil = v,
             ),
           ),
           item(
-            "Plugin directory",
-            "Where plugins are loaded from; may start with ~/.",
+            t!("app.settings.system.plugin_directory.title"),
+            t!("app.settings.system.plugin_directory.description"),
             optional_text(
               "shell.plugin_dir",
               |c| {

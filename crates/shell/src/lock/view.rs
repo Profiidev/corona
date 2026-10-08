@@ -6,6 +6,7 @@ use gpui_kit::{
 };
 
 use crate::lock::state::LockState;
+use rust_i18n::t;
 
 pub struct Lock {
   pub focus: FocusHandle,
@@ -41,6 +42,6 @@ impl Render for Lock {
       .when_some(self.background.clone(), |d, image| {
         d.child(img(image).absolute().size_full())
       })
-      .child("Locked — press Escape")
+      .child(t!("app.lock.locked"))
   }
 }

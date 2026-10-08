@@ -1,0 +1,253 @@
+_version: 2
+gpui_component:
+  Attachment:
+    Remove:
+      en: Remove
+      de: Entfernen
+    Retry:
+      en: Retry
+      de: Erneut versuchen
+  Calendar:
+    week.0:
+      en: Su
+      de: So
+    week.1:
+      en: Mo
+      de: Mo
+    week.2:
+      en: Tu
+      de: Di
+    week.3:
+      en: We
+      de: Mi
+    week.4:
+      en: Th
+      de: Do
+    week.5:
+      en: Fr
+      de: Fr
+    week.6:
+      en: Sa
+      de: Sa
+    month.January:
+      en: January
+      de: Januar
+    month.February:
+      en: February
+      de: Februar
+    month.March:
+      en: March
+      de: März
+    month.April:
+      en: April
+      de: April
+    month.May:
+      en: May
+      de: Mai
+    month.June:
+      en: June
+      de: Juni
+    month.July:
+      en: July
+      de: Juli
+    month.August:
+      en: August
+      de: August
+    month.September:
+      en: September
+      de: September
+    month.October:
+      en: October
+      de: Oktober
+    month.November:
+      en: November
+      de: November
+    month.December:
+      en: December
+      de: Dezember
+  DatePicker:
+    placeholder:
+      en: Select date
+      de: Datum auswählen
+    time:
+      en: Time
+      de: Uhrzeit
+  Select:
+    placeholder:
+      en: Please select
+      de: Bitte auswählen
+  ComboBox:
+    placeholder:
+      en: Please select
+      de: Bitte auswählen
+    search_placeholder:
+      en: Search...
+      de: Suchen …
+    empty:
+      en: No results
+      de: Keine Ergebnisse
+  Dock:
+    Unnamed:
+      en: Unnamed
+      de: Unbenannt
+    Close:
+      en: Close
+      de: Schließen
+    Zoom In:
+      en: Zoom In
+      de: Vergrößern
+    Zoom Out:
+      en: Zoom Out
+      de: Verkleinern
+    Collapse:
+      en: Collapse
+      de: Einklappen
+    Expand:
+      en: Expand
+      de: Ausklappen
+  ColorPicker:
+    Palette:
+      en: Palette
+      de: Palette
+    HSLA:
+      en: HSLA
+      de: HSLA
+    Hue:
+      en: Hue
+      de: Farbton
+    Saturation:
+      en: Saturation
+      de: Sättigung
+    Lightness:
+      en: Lightness
+      de: Helligkeit
+    Alpha:
+      en: Alpha
+      de: Deckkraft
+  Dialog:
+    ok:
+      en: OK
+      de: OK
+    cancel:
+      en: Cancel
+      de: Abbrechen
+  Command:
+    placeholder:
+      en: Type a command or search...
+      de: Befehl eingeben oder suchen …
+    empty:
+      en: No results found.
+      de: Keine Ergebnisse gefunden.
+  List:
+    search_placeholder:
+      en: Search...
+      de: Suchen …
+  Input:
+    Decrement:
+      en: Decrement
+      de: Verringern
+    Increment:
+      en: Increment
+      de: Erhöhen
+    Replace:
+      en: Replace
+      de: Ersetzen
+    Replace All:
+      en: Replace All
+      de: Alle ersetzen
+    Cut:
+      en: Cut
+      de: Ausschneiden
+    Copy:
+      en: Copy
+      de: Kopieren
+    Paste:
+      en: Paste
+      de: Einfügen
+    Select All:
+      en: Select All
+      de: Alles auswählen
+    Go to Definition:
+      en: Go to Definition
+      de: Zur Definition
+    Show Code Actions:
+      en: Show Code Actions
+      de: Code-Aktionen anzeigen
+  Settings:
+    search_placeholder:
+      en: Search...
+      de: Suchen …
+    Reset All:
+      en: Reset All
+      de: Alle zurücksetzen
+  Pagination:
+    previous:
+      en: Previous
+      de: Zurück
+    next:
+      en: Next
+      de: Weiter
+  Carousel:
+    label:
+      en: Carousel
+      de: Karussell
+    previous:
+      en: Previous slide
+      de: Vorherige Folie
+    next:
+      en: Next slide
+      de: Nächste Folie
+    slide:
+      en: "Slide %{current} of %{total}"
+      de: "Folie %{current} von %{total}"
+    pagination:
+      en: Carousel pagination
+      de: Karussell-Seiten
+    go_to_slide:
+      en: "Go to slide %{current}"
+      de: "Zu Folie %{current}"
+  Chart:
+    open:
+      en: Open
+      de: Eröffnung
+    high:
+      en: High
+      de: Hoch
+    low:
+      en: Low
+      de: Tief
+    close:
+      en: Close
+      de: Schluss
+  Questionnaire:
+    progress:
+      en: "Question %{current} of %{total}"
+      de: "Frage %{current} von %{total}"
+    previous:
+      en: Previous
+      de: Zurück
+    next:
+      en: Next
+      de: Weiter
+    skip:
+      en: Skip
+      de: Überspringen
+    submit:
+      en: Submit
+      de: Absenden
+    error.required:
+      en: Choose an answer to continue.
+      de: "Wähle eine Antwort, um fortzufahren."
+    error.optional:
+      en: Choose an answer or skip this question.
+      de: Wähle eine Antwort oder überspringe diese Frage.
+  Speech:
+    Start:
+      en: Dictate
+      de: Diktieren
+    Stop:
+      en: Stop dictation
+      de: Diktat beenden
+    Unavailable:
+      en: Dictation unavailable
+      de: Diktat nicht verfügbar

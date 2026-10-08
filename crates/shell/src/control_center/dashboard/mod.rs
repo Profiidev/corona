@@ -25,6 +25,7 @@ use crate::control_center::{
   dashboard::{session::SessionMenu, sliders::Sliders},
   variants::ControlCenterType,
 };
+use rust_i18n::t;
 
 mod cards;
 mod session;
@@ -114,7 +115,7 @@ impl ControlCenterPanel for DashboardPanel {
       Button::new("settings")
         .icon(IconName::Settings)
         .cursor_pointer()
-        .tooltip("Settings")
+        .tooltip(t!("app.dashboard.settings"))
         .on_click(|_, _, cx| {
           // the dashboard is in the control center, or a panel of its own
           let _ = cx.close_panel::<ControlCenter>().log_err();

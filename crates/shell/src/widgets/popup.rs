@@ -2,8 +2,8 @@ use corona_config::{ConfigProvider, placement::Placement};
 use corona_surface::{bar::BarState, popup::popup_options};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, Div, Focusable, Global, InteractiveElement,
-  KeyDownEvent, ParentElement, Pixels, Render, SharedString, Size, Stateful, Styled, Window,
+  AnyWindowHandle, App, AppContext, Bounds, Context, Div, ElementId, Focusable, Global,
+  InteractiveElement, KeyDownEvent, ParentElement, Pixels, Render, Size, Stateful, Styled, Window,
   component::{ActiveTheme, Root},
   div, px,
 };
@@ -94,9 +94,9 @@ pub fn frame<V: Focusable>(view: &V, cx: &mut Context<V>) -> Div {
     .text_color(theme.foreground)
 }
 
-pub fn row(id: impl Into<SharedString>, cx: &App) -> Stateful<Div> {
+pub fn row(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
   div()
-    .id(id.into())
+    .id(id)
     .flex()
     .items_center()
     .gap_2()

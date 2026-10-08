@@ -1,0 +1,6 @@
+_version: 2
+app:
+  lock:
+    locked:
+      en: Locked — press Escape
+      de: Gesperrt – Escape drücken

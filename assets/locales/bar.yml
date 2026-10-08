@@ -1,0 +1,41 @@
+_version: 2
+app:
+  privacy:
+    recording:
+      en: Recording
+      de: Aufnahme läuft
+    recent_access:
+      en: Recent access
+      de: Letzte Zugriffe
+    nothing_recorded:
+      en: Nothing recorded yet
+      de: Noch nichts aufgezeichnet
+    ago:
+      now:
+        en: just now
+        de: gerade eben
+      minutes:
+        en: "%{count} min ago"
+        de: "vor %{count} min"
+      hours:
+        en: "%{count} h ago"
+        de: "vor %{count} h"
+      days:
+        en: "%{count} d ago"
+        de: "vor %{count} T"
+  resource:
+    load:
+      en: Load
+      de: Last
+    cpu_temperature:
+      en: CPU temperature
+      de: CPU-Temperatur
+    gpu_temperature:
+      en: GPU temperature
+      de: GPU-Temperatur
+    swap:
+      en: Swap
+      de: Auslagerung
+    disk:
+      en: Disk
+      de: Datenträger

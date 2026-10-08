@@ -13,6 +13,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::bluetooth::BluetoothPanel;
+use rust_i18n::t;
 
 pub struct PairingPrompt {
   code: Entity<InputState>,
@@ -32,7 +33,8 @@ impl BluetoothPanel {
     if self.prompt.is_some() {
       return;
     }
-    let code = cx.new(|cx| InputState::new(window, cx).placeholder("Code"));
+    let code =
+      cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.bluetooth.prompt.code")));
     code.update(cx, |input, cx| input.focus(window, cx));
     let submit = on_enter(&code, window, cx, |this, _, cx| this.answer(true, cx));
     self.prompt = Some(PairingPrompt {
@@ -67,19 +69,18 @@ impl BluetoothPanel {
       .map_or_else(|| request.device.clone(), |d| d.name.clone());
 
     let (hint, passkey) = match request.kind {
-      PairingKind::Confirm { passkey } => (
-        "Confirm the code matches the one on the device",
-        Some(passkey),
-      ),
-      PairingKind::Authorize => ("Allow this device to pair?", None),
-      PairingKind::PinCode => ("Enter the PIN for the device", None),
-      PairingKind::Passkey => ("Enter the passkey shown on the device", None),
-      PairingKind::DisplayPasskey { passkey } => ("Type this code on the device", Some(passkey)),
+      PairingKind::Confirm { passkey } => (t!("app.bluetooth.prompt.confirm_hint"), Some(passkey)),
+      PairingKind::Authorize => (t!("app.bluetooth.prompt.authorize_hint"), None),
+      PairingKind::PinCode => (t!("app.bluetooth.prompt.pin_hint"), None),
+      PairingKind::Passkey => (t!("app.bluetooth.prompt.passkey_hint"), None),
+      PairingKind::DisplayPasskey { passkey } => {
+        (t!("app.bluetooth.prompt.display_hint"), Some(passkey))
+      }
     };
     let accept_label = match request.kind {
-      PairingKind::Confirm { .. } => Some("Confirm"),
+      PairingKind::Confirm { .. } => Some(t!("app.common.confirm")),
       PairingKind::DisplayPasskey { .. } => None,
-      _ => Some("Pair"),
+      _ => Some(t!("app.bluetooth.pair")),
     };
 
     Some(modal(
@@ -90,7 +91,7 @@ impl BluetoothPanel {
             .font_bold()
             .text_sm()
             .truncate()
-            .child(format!("Pair {name}")),
+            .child(t!("app.bluetooth.prompt.title", name = name)),
         )
         .child(
           div()
@@ -119,7 +120,7 @@ impl BluetoothPanel {
             .justify_end()
             .child(
               Button::new("bt-pair-cancel")
-                .label("Cancel")
+                .label(t!("app.common.cancel"))
                 .small()
                 .cursor_pointer()
                 .on_click(cx.listener(|this, _, _, cx| this.answer(false, cx))),

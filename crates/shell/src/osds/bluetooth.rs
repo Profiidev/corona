@@ -5,6 +5,7 @@ use crate::osds::{
   on_change,
   view::{ToggleOsd, show},
 };
+use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
   let adapter = cx.bluetooth().adapter.clone();
@@ -20,7 +21,7 @@ pub fn init(cx: &mut App) {
       };
       show(
         |k| k.bluetooth,
-        ToggleOsd::on_off(icon, "Bluetooth", on),
+        ToggleOsd::on_off(icon, t!("app.bluetooth.title"), on),
         cx,
       );
     },

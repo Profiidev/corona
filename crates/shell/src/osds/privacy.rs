@@ -9,6 +9,7 @@ use crate::{
   },
   widgets::privacy::hidden,
 };
+use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
   let captures = cx.pipewire().captures.clone();
@@ -34,7 +35,7 @@ pub fn init(cx: &mut App) {
         .max_by_key(|(_, name)| !name.is_empty());
       if let Some((kind, name)) = started {
         let state = if name.is_empty() {
-          "In use".into()
+          t!("app.osd.in_use")
         } else {
           name.clone().into()
         };
@@ -42,7 +43,7 @@ pub fn init(cx: &mut App) {
           |k| k.privacy,
           ToggleOsd {
             icon: capture_icon(*kind),
-            label: capture_label(*kind).into(),
+            label: capture_label(*kind),
             state,
             active: true,
           },

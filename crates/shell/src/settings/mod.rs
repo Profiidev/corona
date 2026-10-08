@@ -14,6 +14,7 @@ use gpui_kit::{
   },
   px, size,
 };
+use rust_i18n::t;
 
 pub use pages::PAGES;
 
@@ -70,7 +71,7 @@ pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
 
   let options = WindowOptions {
     titlebar: Some(TitlebarOptions {
-      title: Some("Corona Settings".into()),
+      title: Some(t!("app.settings.window_title").into()),
       ..Default::default()
     }),
     window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

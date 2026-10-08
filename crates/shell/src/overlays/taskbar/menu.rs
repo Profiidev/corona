@@ -8,6 +8,7 @@ use tracing::error;
 
 use super::{Taskbar, focus_window};
 use crate::widgets::popup::{self, ROW, SEPARATOR};
+use rust_i18n::t;
 
 pub fn size(windows: &[types::Window]) -> Size<Pixels> {
   popup::size(ROW * (windows.len() + 1) as f32 + SEPARATOR)
@@ -45,9 +46,9 @@ impl Render for TaskbarMenu {
   fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let hover = cx.theme().tokens.button_hover;
     let close = if self.windows.len() == 1 {
-      "Close window".to_string()
+      t!("app.taskbar.close_window")
     } else {
-      format!("Close {} windows", self.windows.len())
+      t!("app.taskbar.close_windows", count = self.windows.len())
     };
     let addresses = self
       .windows

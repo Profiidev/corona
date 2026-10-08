@@ -1,4 +1,4 @@
-use corona_weather::{Weather, weekday};
+use corona_weather::Weather;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   base::StyledExt,
@@ -11,7 +11,11 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::weather::{Tab, WeatherPanel, card, current::clock, icon};
+use crate::{
+  control_center::weather::{Tab, WeatherPanel, card, current::clock, describe, icon},
+  i18n::format_time,
+};
+use rust_i18n::t;
 
 impl WeatherPanel {
   pub(super) fn forecast(
@@ -20,23 +24,24 @@ impl WeatherPanel {
     weather: &Weather,
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
-    let tabs = div()
-      .flex()
-      .gap_1()
-      .children(
-        [(Tab::Daily, "Daily"), (Tab::Hourly, "Hourly")].map(|(tab, label)| {
-          Button::new(label)
-            .label(label)
-            .small()
-            .flex_1()
-            .cursor_pointer()
-            .when(tab == self.tab, |b| b.primary())
-            .on_click(cx.listener(move |this, _, _, cx| {
-              this.tab = tab;
-              cx.notify();
-            }))
-        }),
-      );
+    let tabs = div().flex().gap_1().children(
+      [
+        (Tab::Daily, "weather-tab-daily", t!("app.weather.daily")),
+        (Tab::Hourly, "weather-tab-hourly", t!("app.weather.hourly")),
+      ]
+      .map(|(tab, id, label)| {
+        Button::new(id)
+          .label(label)
+          .small()
+          .flex_1()
+          .cursor_pointer()
+          .when(tab == self.tab, |b| b.primary())
+          .on_click(cx.listener(move |this, _, _, cx| {
+            this.tab = tab;
+            cx.notify();
+          }))
+      }),
+    );
 
     let row = || {
       div()
@@ -83,8 +88,15 @@ impl WeatherPanel {
         .enumerate()
         .map(|(i, day)| {
           let name = match i {
-            0 => "Today".to_string(),
-            _ => weekday(&day.date).unwrap_or(&day.date).to_string(),
+            0 => t!("app.weather.today").to_string(),
+            _ => match day
+              .date
+              .get(..10)
+              .and_then(|d| d.parse::<jiff::civil::Date>().ok())
+            {
+              Some(date) => format_time("%A", date),
+              None => day.date.clone(),
+            },
           };
           row()
             .child(heading(
@@ -92,7 +104,7 @@ impl WeatherPanel {
               name,
               format!("{:.0}° / {:.0}°", day.min, day.max),
             ))
-            .child(muted(day.condition().description().into()))
+            .child(muted(describe(day.condition())))
         })
         .collect(),
       Tab::Hourly => weather
@@ -106,9 +118,12 @@ impl WeatherPanel {
               format!("{:.0}°", hour.temperature),
             ))
             .child(muted(format!(
-              "{} · {:.0}% rain",
-              hour.condition().description(),
-              hour.precipitation_probability
+              "{} · {}",
+              describe(hour.condition()),
+              t!(
+                "app.weather.rain_chance",
+                percent = format!("{:.0}", hour.precipitation_probability)
+              )
             )))
         })
         .collect(),

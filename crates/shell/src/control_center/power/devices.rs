@@ -8,6 +8,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::power::{PowerPanel, card};
+use rust_i18n::t;
 
 fn icon(kind: BatteryType) -> IconName {
   match kind {
@@ -29,12 +30,12 @@ fn charge(device: &PowerDevice) -> String {
     return format!("{:.0}%", device.percentage);
   }
   match device.level {
-    BatteryLevel::Full => "Full",
-    BatteryLevel::High => "High",
-    BatteryLevel::Normal => "Normal",
-    BatteryLevel::Low => "Low",
-    BatteryLevel::Critical => "Critical",
-    BatteryLevel::None | BatteryLevel::Unknown => "Unknown",
+    BatteryLevel::Full => t!("app.power.level.full"),
+    BatteryLevel::High => t!("app.power.level.high"),
+    BatteryLevel::Normal => t!("app.power.level.normal"),
+    BatteryLevel::Low => t!("app.power.level.low"),
+    BatteryLevel::Critical => t!("app.power.level.critical"),
+    BatteryLevel::None | BatteryLevel::Unknown => t!("app.common.unknown"),
   }
   .into()
 }
@@ -48,7 +49,12 @@ impl PowerPanel {
 
     Some(
       card(cx)
-        .child(div().text_sm().font_bold().child("Connected devices"))
+        .child(
+          div()
+            .text_sm()
+            .font_bold()
+            .child(t!("app.power.connected_devices")),
+        )
         .children(devices.iter().map(|device| {
           div()
             .flex()

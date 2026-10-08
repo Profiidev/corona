@@ -35,7 +35,7 @@ pub(crate) async fn locate(
 
   let location = LocationProxy::builder(conn).path(fix?)?.build().await?;
   Ok(Location {
-    name: "Current location".into(),
+    name: String::new(),
     latitude: location.latitude().await?,
     longitude: location.longitude().await?,
     query: None,

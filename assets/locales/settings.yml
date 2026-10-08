@@ -1,0 +1,757 @@
+_version: 2
+app:
+  settings:
+    window_title:
+      en: Corona Settings
+      de: Corona-Einstellungen
+    search:
+      en: Search…
+      de: Suchen …
+    options:
+      theme_default:
+        en: "Theme's own"
+        de: Wie das Theme
+      dark:
+        en: Dark
+        de: Dunkel
+      light:
+        en: Light
+        de: Hell
+      top_left:
+        en: Top left
+        de: Oben links
+      top_right:
+        en: Top right
+        de: Oben rechts
+      top:
+        en: Top
+        de: Oben
+      bottom:
+        en: Bottom
+        de: Unten
+      left:
+        en: Left
+        de: Links
+      right:
+        en: Right
+        de: Rechts
+      monday:
+        en: Monday
+        de: Montag
+      sunday:
+        en: Sunday
+        de: Sonntag
+      metric:
+        en: Metric
+        de: Metrisch
+      imperial:
+        en: Imperial
+        de: Imperial
+      language_auto:
+        en: Automatic
+        de: Automatisch
+    appearance:
+      title:
+        en: Appearance
+        de: Darstellung
+      groups:
+        theme:
+          en: Theme
+          de: Theme
+        surfaces:
+          en: Surfaces
+          de: Flächen
+        animation:
+          en: Animation
+          de: Animation
+      theme:
+        title:
+          en: Theme
+          de: Theme
+        description:
+          en: Its Dark/Light counterpart serves the other mode.
+          de: Sein Dark-/Light-Gegenstück dient dem anderen Modus.
+      language:
+        title:
+          en: Language
+          de: Sprache
+        description:
+          en: Of the interface. Automatic follows LC_MESSAGES and LANG; dates and numbers follow LC_TIME and LC_NUMERIC.
+          de: Der Oberfläche. Automatisch folgt LC_MESSAGES und LANG; Datumsangaben und Zahlen folgen LC_TIME und LC_NUMERIC.
+      mode:
+        title:
+          en: Mode
+          de: Modus
+        description:
+          en: "Follow the theme, or force dark or light."
+          de: Dem Theme folgen oder dunkel bzw. hell erzwingen.
+      font_family:
+        title:
+          en: Font family
+          de: Schriftart
+        description:
+          en: Used for all text.
+          de: Für jeden Text.
+      font_scale:
+        title:
+          en: Font scale
+          de: Schriftgröße
+        description:
+          en: "Text, and the spacing measured in it."
+          de: Text und die daran gemessenen Abstände.
+      corner_radius_scale:
+        title:
+          en: Corner radius scale
+          de: Eckenradius
+        description:
+          en: 0 for square corners.
+          de: 0 für eckige Ecken.
+      shadows:
+        title:
+          en: Shadows
+          de: Schatten
+        description:
+          en: Under popovers.
+          de: Unter Popovers.
+      popup_borders:
+        title:
+          en: Popup borders
+          de: Popup-Rahmen
+        description:
+          en: "Around OSDs, tooltips, menus and the window switcher."
+          de: "Um OSDs, Tooltips, Menüs und den Fensterwechsler."
+      card_borders:
+        title:
+          en: Card borders
+          de: Kartenrahmen
+        description:
+          en: Around the cards in panels.
+          de: Um die Karten in Panels.
+      animations:
+        title:
+          en: Animations
+          de: Animationen
+        description:
+          en: "Turn every animation off, or on."
+          de: Alle Animationen aus- oder einschalten.
+      speed:
+        title:
+          en: Speed
+          de: Geschwindigkeit
+        description:
+          en: 2 is twice as fast.
+          de: 2 ist doppelt so schnell.
+    bar:
+      title:
+        en: Bar
+        de: Leiste
+      groups:
+        bars:
+          en: Bars
+          de: Leisten
+        bar:
+          en: "Bar “%{name}”"
+          de: "Leiste „%{name}“"
+      position:
+        title:
+          en: Position
+          de: Position
+        description:
+          en: Which screen edge the bar sits at.
+          de: An welchem Bildschirmrand die Leiste sitzt.
+      thickness:
+        title:
+          en: Thickness
+          de: Stärke
+        description:
+          en: "Height of a horizontal bar, width of a vertical one."
+          de: "Höhe einer waagerechten, Breite einer senkrechten Leiste."
+      background_opacity:
+        title:
+          en: Background opacity
+          de: Hintergrunddeckkraft
+        description:
+          en: Under 1 lets the desktop show through.
+          de: Unter 1 scheint der Desktop durch.
+      capsules:
+        title:
+          en: Capsules
+          de: Kapseln
+        description:
+          en: A pill behind each widget.
+          de: Eine Pille hinter jedem Widget.
+      widget_spacing:
+        title:
+          en: Widget spacing
+          de: Widget-Abstand
+        description:
+          en: Space between widgets.
+          de: Abstand zwischen Widgets.
+      padding_start:
+        title:
+          en: Padding at the start
+          de: Innenabstand am Anfang
+        description:
+          en: Space before the first widget.
+          de: Abstand vor dem ersten Widget.
+      padding_end:
+        title:
+          en: Padding at the end
+          de: Innenabstand am Ende
+        description:
+          en: Space after the last widget.
+          de: Abstand nach dem letzten Widget.
+      add_bar:
+        en: Add bar
+        de: Leiste hinzufügen
+      remove_bar:
+        en: Remove this bar
+        de: Diese Leiste entfernen
+      drag_hint:
+        en: "Drag a widget between others to move it, onto one to group them."
+        de: "Ziehe ein Widget zwischen andere, um es zu verschieben, oder auf eines, um sie zu gruppieren."
+      group:
+        en: Group
+        de: Gruppe
+      add_widget:
+        en: Add widget
+        de: Widget hinzufügen
+      section:
+        start:
+          en: Start
+          de: Anfang
+        center:
+          en: Center
+          de: Mitte
+        end:
+          en: End
+          de: Ende
+      form:
+        format:
+          en: Format (strftime)
+          de: Format (strftime)
+        shows:
+          en: Shows
+          de: Zeigt
+        warning_at:
+          en: Warning at
+          de: Warnung ab
+        critical_at:
+          en: Critical at
+          de: Kritisch ab
+        mount:
+          en: Mount (disk)
+          de: Einhängepunkt (Datenträger)
+        hidden_items:
+          en: "Hidden items: case-insensitive regexes against id and title"
+          de: "Ausgeblendete Einträge: Regexe ohne Groß-/Kleinschreibung gegen ID und Titel"
+        add_pattern:
+          en: Add pattern
+          de: Muster hinzufügen
+        hide_idle:
+          en: Hide when nothing records
+          de: "Ausblenden, wenn nichts aufnimmt"
+      widget:
+        control_center:
+          en: Control center
+          de: Kontrollzentrum
+        audio:
+          en: Audio
+          de: Audio
+        network:
+          en: Network
+          de: Netzwerk
+        bluetooth:
+          en: Bluetooth
+          de: Bluetooth
+        power:
+          en: Power
+          de: Energie
+        battery:
+          en: Battery
+          de: Akku
+        brightness:
+          en: Brightness
+          de: Helligkeit
+        notifications:
+          en: Notifications
+          de: Benachrichtigungen
+        sysinfo:
+          en: System info
+          de: Systeminfo
+        weather:
+          en: Weather
+          de: Wetter
+        calendar:
+          en: Calendar
+          de: Kalender
+        media:
+          en: Media
+          de: Medien
+        clock:
+          en: Clock
+          de: Uhr
+        workspaces:
+          en: Workspaces
+          de: Arbeitsflächen
+        active_window:
+          en: Active window
+          de: Aktives Fenster
+        player:
+          en: Player
+          de: Player
+        resource:
+          en: Resource
+          de: Ressource
+        privacy:
+          en: Privacy
+          de: Datenschutz
+        tray:
+          en: Tray
+          de: Infobereich
+    wallpaper:
+      title:
+        en: Wallpaper
+        de: Hintergrundbild
+      groups:
+        wallpaper:
+          en: Wallpaper
+          de: Hintergrundbild
+      picture:
+        title:
+          en: Picture
+          de: Bild
+        description:
+          en: "Path, ~/ path or http(s) URL."
+          de: "Pfad, ~/-Pfad oder http(s)-URL."
+    notifications:
+      title:
+        en: Notifications
+        de: Benachrichtigungen
+      groups:
+        daemon:
+          en: Daemon
+          de: Dienst
+        popups:
+          en: Popups
+          de: Popups
+      notification_daemon:
+        title:
+          en: Notification daemon
+          de: Benachrichtigungsdienst
+        description:
+          en: Applies after a restart.
+          de: Gilt nach einem Neustart.
+      position:
+        title:
+          en: Position
+          de: Position
+        description:
+          en: Which top corner notifications appear in.
+          de: In welcher oberen Ecke Benachrichtigungen erscheinen.
+      width:
+        title:
+          en: Width
+          de: Breite
+        description:
+          en: "Of a notification popup, in pixels."
+          de: "Eines Benachrichtigungs-Popups, in Pixeln."
+      offset:
+        title:
+          en: Offset
+          de: Versatz
+        description:
+          en: Distance from the screen edges.
+          de: Abstand zu den Bildschirmrändern.
+      timeout:
+        title:
+          en: Timeout
+          de: Anzeigedauer
+        description:
+          en: Milliseconds.
+          de: Millisekunden.
+      critical_timeout:
+        title:
+          en: Critical timeout
+          de: Anzeigedauer kritisch
+        description:
+          en: Milliseconds.
+          de: Millisekunden.
+      background_opacity:
+        title:
+          en: Background opacity
+          de: Hintergrunddeckkraft
+        description:
+          en: Of notification popups; under 1 lets the desktop show through.
+          de: Der Benachrichtigungs-Popups; unter 1 scheint der Desktop durch.
+    osd:
+      title:
+        en: OSD
+        de: OSD
+      groups:
+        on_screen_display:
+          en: On-screen display
+          de: Bildschirmanzeige
+        shown_for:
+          en: Shown for
+          de: Angezeigt für
+      osd:
+        title:
+          en: OSD
+          de: OSD
+        description:
+          en: "Show a popup when volume, brightness and the like change."
+          de: "Ein Popup zeigen, wenn sich Lautstärke, Helligkeit und Ähnliches ändern."
+      position:
+        title:
+          en: Position
+          de: Position
+        description:
+          en: Which screen edge the OSD sits at.
+          de: An welchem Bildschirmrand das OSD sitzt.
+      offset:
+        title:
+          en: Offset
+          de: Versatz
+        description:
+          en: Distance from the screen edge.
+          de: Abstand zum Bildschirmrand.
+      hide_after:
+        title:
+          en: Hide after
+          de: Ausblenden nach
+        description:
+          en: Milliseconds.
+          de: Millisekunden.
+      background_opacity:
+        title:
+          en: Background opacity
+          de: Hintergrunddeckkraft
+        description:
+          en: Of the OSD; under 1 lets the desktop show through.
+          de: Des OSD; unter 1 scheint der Desktop durch.
+      volume:
+        title:
+          en: Volume
+          de: Lautstärke
+        description:
+          en: When output or input volume changes.
+          de: Wenn sich die Aus- oder Eingangslautstärke ändert.
+      brightness:
+        title:
+          en: Brightness
+          de: Helligkeit
+        description:
+          en: When screen brightness changes.
+          de: Wenn sich die Bildschirmhelligkeit ändert.
+      wi_fi:
+        title:
+          en: Wi-Fi
+          de: WLAN
+        description:
+          en: When Wi-Fi is turned on or off.
+          de: Wenn WLAN ein- oder ausgeschaltet wird.
+      bluetooth:
+        title:
+          en: Bluetooth
+          de: Bluetooth
+        description:
+          en: When Bluetooth is turned on or off.
+          de: Wenn Bluetooth ein- oder ausgeschaltet wird.
+      do_not_disturb:
+        title:
+          en: Do not disturb
+          de: Nicht stören
+        description:
+          en: When do not disturb is turned on or off.
+          de: Wenn „Nicht stören“ ein- oder ausgeschaltet wird.
+      power_profile:
+        title:
+          en: Power profile
+          de: Energieprofil
+        description:
+          en: When the power profile changes.
+          de: Wenn sich das Energieprofil ändert.
+      privacy:
+        title:
+          en: Privacy
+          de: Datenschutz
+        description:
+          en: "Microphone, camera and screen access."
+          de: "Zugriff auf Mikrofon, Kamera und Bildschirm."
+    control_center:
+      title:
+        en: Control Center
+        de: Kontrollzentrum
+      groups:
+        control_center:
+          en: Control center
+          de: Kontrollzentrum
+      time_format:
+        title:
+          en: Time format
+          de: Zeitformat
+        description:
+          en: strftime pattern of the dashboard clock.
+          de: strftime-Muster der Uhr in der Übersicht.
+      date_format:
+        title:
+          en: Date format
+          de: Datumsformat
+        description:
+          en: strftime pattern.
+          de: strftime-Muster.
+      week_starts_on:
+        title:
+          en: Week starts on
+          de: Woche beginnt am
+        description:
+          en: The first column of the calendar.
+          de: Die erste Spalte des Kalenders.
+      background_opacity:
+        title:
+          en: Background opacity
+          de: Hintergrunddeckkraft
+        description:
+          en: Of the panels.
+          de: Der Panels.
+    taskbar:
+      title:
+        en: Taskbar
+        de: Taskleiste
+      groups:
+        taskbar:
+          en: Taskbar
+          de: Taskleiste
+      taskbar:
+        title:
+          en: Taskbar
+          de: Taskleiste
+        description:
+          en: The dock that rises from the bottom edge.
+          de: "Das Dock, das vom unteren Rand aufsteigt."
+      icon_size:
+        title:
+          en: Icon size
+          de: Symbolgröße
+        description:
+          en: "Of the app icons, in pixels."
+          de: "Der App-Symbole, in Pixeln."
+      window_previews:
+        title:
+          en: Window previews
+          de: Fenstervorschau
+        description:
+          en: "Show live previews of an app's windows on hover."
+          de: Beim Überfahren Live-Vorschauen der Fenster einer App zeigen.
+      previews_at_most:
+        title:
+          en: Previews at most
+          de: Höchstens Vorschauen
+        description:
+          en: Windows shown in one preview.
+          de: Fenster in einer Vorschau.
+      background_opacity:
+        title:
+          en: Background opacity
+          de: Hintergrunddeckkraft
+        description:
+          en: Of the taskbar; under 1 lets the desktop show through.
+          de: Der Taskleiste; unter 1 scheint der Desktop durch.
+    window_switcher:
+      title:
+        en: Window Switcher
+        de: Fensterwechsler
+      groups:
+        window_switcher:
+          en: Window switcher
+          de: Fensterwechsler
+      focused_monitor_only:
+        title:
+          en: Focused monitor only
+          de: Nur fokussierter Monitor
+        description:
+          en: Even without --current-monitor.
+          de: Auch ohne --current-monitor.
+      card_height:
+        title:
+          en: Card height
+          de: Kartenhöhe
+        description:
+          en: "Of each workspace card, in pixels."
+          de: "Jeder Arbeitsflächenkarte, in Pixeln."
+      backdrop:
+        title:
+          en: Backdrop
+          de: Abdunkelung
+        description:
+          en: How much the screen behind darkens.
+          de: Wie stark der Bildschirm dahinter abgedunkelt wird.
+    lockscreen:
+      title:
+        en: Lock Screen
+        de: Sperrbildschirm
+      groups:
+        lock_screen:
+          en: Lock screen
+          de: Sperrbildschirm
+      lock_before_suspend:
+        title:
+          en: Lock before suspend
+          de: Vor Bereitschaft sperren
+        description:
+          en: Lock the screen whenever the system suspends.
+          de: "Den Bildschirm sperren, wann immer das System in Bereitschaft geht."
+      blur:
+        title:
+          en: Blur
+          de: Unschärfe
+        description:
+          en: "Of the screen behind the lock, 0 for none."
+          de: "Des Bildschirms hinter der Sperre, 0 für keine."
+    screenshot:
+      title:
+        en: Screenshot
+        de: Bildschirmfoto
+      groups:
+        saving:
+          en: Saving
+          de: Speichern
+      directory:
+        title:
+          en: Directory
+          de: Verzeichnis
+        description:
+          en: Where screenshots are saved; may start with ~/.
+          de: Wo Bildschirmfotos gespeichert werden; darf mit ~/ beginnen.
+      file_name:
+        title:
+          en: File name
+          de: Dateiname
+        description:
+          en: strftime pattern.
+          de: strftime-Muster.
+    location:
+      title:
+        en: "Location & Weather"
+        de: "Standort & Wetter"
+      groups:
+        location:
+          en: Location
+          de: Standort
+        weather:
+          en: Weather
+          de: Wetter
+      city:
+        title:
+          en: City
+          de: Stadt
+        description:
+          en: Looked up when no coordinates are set.
+          de: "Wird gesucht, wenn keine Koordinaten gesetzt sind."
+      coordinates:
+        title:
+          en: Coordinates
+          de: Koordinaten
+        description:
+          en: "Latitude, longitude; used over the city."
+          de: "Breite, Länge; haben Vorrang vor der Stadt."
+      locate_automatically:
+        title:
+          en: Locate automatically
+          de: Automatisch orten
+        description:
+          en: Ask GeoClue first.
+          de: Zuerst GeoClue fragen.
+      units:
+        title:
+          en: Units
+          de: Einheiten
+        description:
+          en: "For temperatures, wind and rain."
+          de: "Für Temperaturen, Wind und Regen."
+      refresh_every:
+        title:
+          en: Refresh every
+          de: Aktualisieren alle
+        description:
+          en: Minutes.
+          de: Minuten.
+    privacy:
+      title:
+        en: Privacy
+        de: Datenschutz
+      groups:
+        hidden_apps:
+          en: Hidden apps
+          de: Ausgeblendete Apps
+      microphone:
+        title:
+          en: Microphone
+          de: Mikrofon
+        description:
+          en: "Case-insensitive regex against the app's name; matches are left out of the privacy widget, its log and OSD."
+          de: "Regex ohne Groß-/Kleinschreibung gegen den Namen der App; Treffer fehlen im Datenschutz-Widget, seinem Protokoll und OSD."
+      camera:
+        title:
+          en: Camera
+          de: Kamera
+        description:
+          en: "Same, for camera access."
+          de: "Ebenso, für Kamerazugriff."
+      screen:
+        title:
+          en: Screen
+          de: Bildschirm
+        description:
+          en: "Same, for screen sharing and recording."
+          de: "Ebenso, für Bildschirmfreigabe und -aufnahme."
+    system:
+      title:
+        en: System
+        de: System
+      groups:
+        profile:
+          en: Profile
+          de: Profil
+        polling:
+          en: Polling
+          de: Abfrage
+        applies_after_a_restart:
+          en: Applies after a restart
+          de: Gilt nach einem Neustart
+      avatar:
+        title:
+          en: Avatar
+          de: Avatar
+        description:
+          en: "Path, ~/ path or http(s) URL of the dashboard picture."
+          de: "Pfad, ~/-Pfad oder http(s)-URL des Bilds in der Übersicht."
+      system_monitor:
+        title:
+          en: System monitor
+          de: Systemmonitor
+        description:
+          en: Seconds between samples.
+          de: Sekunden zwischen Messungen.
+      brightness:
+        title:
+          en: Brightness
+          de: Helligkeit
+        description:
+          en: Seconds between checks.
+          de: Sekunden zwischen Prüfungen.
+      ddcutil:
+        title:
+          en: ddcutil
+          de: ddcutil
+        description:
+          en: Brightness of external monitors.
+          de: Helligkeit externer Monitore.
+      plugin_directory:
+        title:
+          en: Plugin directory
+          de: Plugin-Verzeichnis
+        description:
+          en: Where plugins are loaded from; may start with ~/.
+          de: Woher Plugins geladen werden; darf mit ~/ beginnen.

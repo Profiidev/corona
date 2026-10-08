@@ -13,13 +13,10 @@ use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::{CalendarPanel, Standalone};
-
-/// `time` in the strftime `pattern`; a pattern from the settings may be bad, then
-/// the error shows instead, where a plain `strftime` would panic
-pub(crate) fn format_time(pattern: &str, time: &Zoned) -> String {
-  jiff::fmt::strtime::format(pattern, time).unwrap_or_else(|e| format!("bad format: {e}"))
-}
+use crate::{
+  control_center::{CalendarPanel, Standalone},
+  i18n::format_time,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]

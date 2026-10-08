@@ -17,7 +17,8 @@ pub enum Unavailable {
 pub struct Display {
   pub id: String,
   pub output: Option<String>,
-  pub name: String,
+  /// The model, `None` when the display does not tell; the shell then names it by kind
+  pub name: Option<String>,
   pub kind: DisplayKind,
   pub brightness: u32,
   pub max: u32,

@@ -11,6 +11,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::bluetooth::BluetoothPanel;
+use rust_i18n::t;
 
 impl BluetoothPanel {
   pub fn status(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -24,11 +25,11 @@ impl BluetoothPanel {
       .filter(|d| d.connected)
       .count();
     let subtitle = match (adapter, connected) {
-      (None, _) => "No Bluetooth adapter".to_string(),
-      (Some(a), _) if !a.powered => "Off".to_string(),
-      (_, 0) => "No devices connected".to_string(),
-      (_, 1) => "1 device connected".to_string(),
-      (_, n) => format!("{n} devices connected"),
+      (None, _) => t!("app.bluetooth.no_adapter").to_string(),
+      (Some(a), _) if !a.powered => t!("app.common.off").to_string(),
+      (_, 0) => t!("app.bluetooth.connected.none").to_string(),
+      (_, 1) => t!("app.bluetooth.connected.one").to_string(),
+      (_, n) => t!("app.bluetooth.connected.other", count = n).to_string(),
     };
 
     div()
@@ -54,7 +55,7 @@ impl BluetoothPanel {
               .flex_col()
               .flex_1()
               .min_w_0()
-              .child(div().text_sm().font_bold().child("Bluetooth"))
+              .child(div().text_sm().font_bold().child(t!("app.bluetooth.title")))
               .child(
                 div()
                   .text_xs()
@@ -68,7 +69,7 @@ impl BluetoothPanel {
               .icon(IconName::RefreshCw)
               .small()
               .cursor_pointer()
-              .tooltip("Scan for devices")
+              .tooltip(t!("app.bluetooth.scan"))
               .disabled(!powered)
               .loading(scanning)
               .on_click(cx.async_listener(|_, _, _, cx| Self::start_scan(cx), Self::show_error)),
@@ -93,7 +94,7 @@ impl BluetoothPanel {
                 .flex_1()
                 .text_xs()
                 .text_color(theme.colors.muted_foreground)
-                .child("Discoverable by nearby devices"),
+                .child(t!("app.bluetooth.discoverable")),
             )
             .child(
               Switch::new("bt-discoverable")

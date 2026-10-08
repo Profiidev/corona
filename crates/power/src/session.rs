@@ -162,37 +162,50 @@ pub(crate) async fn before_sleep(
   }
 }
 
-/// `nixos-generation-848-3f7m….efi` as "NixOS generation 848", `auto-windows` as
-/// "Windows", other ids without their extension
-pub fn entry_title(entry: &str) -> String {
+/// What a boot entry is called, for the shell to word
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EntryTitle {
+  /// `nixos-generation-848-3f7m….efi` as generation `848`
+  NixosGeneration(String),
+  /// `auto-windows` as "Windows", other ids without their extension
+  Other(String),
+}
+
+pub fn entry_title(entry: &str) -> EntryTitle {
   let id = entry.trim_end_matches(".conf").trim_end_matches(".efi");
   if let Some(rest) = id.strip_prefix("nixos-generation-") {
     let generation = rest.split('-').next().unwrap_or(rest);
-    return format!("NixOS generation {generation}");
+    return EntryTitle::NixosGeneration(generation.to_string());
   }
   let id = id.strip_prefix("auto-").unwrap_or(id);
   let mut title = id.replace(['-', '_'], " ");
   if let Some(first) = title.get_mut(..1) {
     first.make_ascii_uppercase();
   }
-  title
+  EntryTitle::Other(title)
 }
 
 #[cfg(test)]
 mod tests {
-  use super::entry_title;
+  use super::{EntryTitle, entry_title};
 
   #[test]
   fn titles() {
     assert_eq!(
       entry_title("nixos-generation-848-3f7mucq7oo66hfrwx4646wg5ugctdvn3hevnd5yzqvej7mpb5zta.efi"),
-      "NixOS generation 848"
+      EntryTitle::NixosGeneration("848".into())
     );
     assert_eq!(
       entry_title("nixos-generation-169.conf"),
-      "NixOS generation 169"
+      EntryTitle::NixosGeneration("169".into())
     );
-    assert_eq!(entry_title("auto-windows"), "Windows");
-    assert_eq!(entry_title("rescue.efi"), "Rescue");
+    assert_eq!(
+      entry_title("auto-windows"),
+      EntryTitle::Other("Windows".into())
+    );
+    assert_eq!(
+      entry_title("rescue.efi"),
+      EntryTitle::Other("Rescue".into())
+    );
   }
 }

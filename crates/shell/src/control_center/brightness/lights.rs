@@ -7,8 +7,10 @@ use gpui_kit::{
   component::{Icon, Sizable, Theme, slider::Slider},
   div,
 };
+use std::borrow::Cow;
 
-use crate::control_center::brightness::{BrightnessPanel, KEYBOARD, card};
+use crate::control_center::brightness::{BrightnessPanel, KEYBOARD, card, display_name};
+use rust_i18n::t;
 
 pub struct Light {
   pub id: String,
@@ -35,7 +37,7 @@ pub(super) fn displays(cx: &App) -> Vec<Light> {
     .iter()
     .map(|d| Light {
       id: d.id.clone(),
-      name: d.name.clone(),
+      name: display_name(d),
       output: d.output.clone(),
       icon: match d.kind {
         DisplayKind::Backlight => IconName::Laptop,
@@ -52,7 +54,7 @@ pub(super) fn keyboard(cx: &App) -> Option<Light> {
   let backlight = cx.power().keyboard_backlight(cx)?;
   Some(Light {
     id: KEYBOARD.into(),
-    name: "Keyboard backlight".into(),
+    name: t!("app.brightness.keyboard_backlight").into(),
     output: None,
     icon: IconName::Keyboard,
     brightness: backlight.brightness.max(0) as u32,
@@ -61,13 +63,13 @@ pub(super) fn keyboard(cx: &App) -> Option<Light> {
   })
 }
 
-fn reason(unavailable: Unavailable) -> &'static str {
+fn reason(unavailable: Unavailable) -> Cow<'static, str> {
   match unavailable {
-    Unavailable::DdcutilDisabled => "Set enable_ddcutil under [brightness]",
-    Unavailable::DdcutilMissing => "Install ddcutil",
-    Unavailable::Detecting => "Detecting…",
-    Unavailable::Unsupported => "No DDC/CI",
-    Unavailable::Failed => "Not responding",
+    Unavailable::DdcutilDisabled => t!("app.brightness.unavailable.ddcutil_disabled"),
+    Unavailable::DdcutilMissing => t!("app.brightness.unavailable.ddcutil_missing"),
+    Unavailable::Detecting => t!("app.brightness.unavailable.detecting"),
+    Unavailable::Unsupported => t!("app.brightness.unavailable.unsupported"),
+    Unavailable::Failed => t!("app.brightness.unavailable.failed"),
   }
 }
 
@@ -75,7 +77,7 @@ impl BrightnessPanel {
   pub fn lights(
     &self,
     theme: &Theme,
-    title: &'static str,
+    title: impl IntoElement,
     lights: Vec<Light>,
     cx: &Context<'_, Self>,
   ) -> Option<impl IntoElement> {

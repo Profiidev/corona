@@ -31,6 +31,7 @@ fn run_shell() {
     .with_http_client(Arc::new(http));
 
   app.run(move |cx| {
+    corona_shell::i18n::extend_components();
     gpui_component_shell::init(cx);
     corona_shell::init(cx);
   });

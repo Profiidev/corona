@@ -19,6 +19,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::media::MediaPanel;
+use rust_i18n::t;
 
 fn time(duration: Duration) -> String {
   let seconds = duration.as_secs();
@@ -74,7 +75,7 @@ impl MediaPanel {
             .p_2()
             .text_sm()
             .text_color(theme.colors.muted_foreground)
-            .child("Nothing is playing"),
+            .child(t!("app.media.nothing_playing")),
         )
       })
       .when_some(player, |d, player| {
@@ -109,10 +110,12 @@ impl MediaPanel {
           .min_w_0()
           .gap_0p5()
           .child(
-            div()
-              .font_bold()
-              .truncate()
-              .child(player.title.clone().unwrap_or("Unknown title".into())),
+            div().font_bold().truncate().child(
+              player
+                .title
+                .clone()
+                .unwrap_or_else(|| t!("app.media.unknown_title").into()),
+            ),
           )
           .child(
             div()
@@ -184,7 +187,7 @@ impl MediaPanel {
           },
           loop_status.is_some_and(|s| s != LoopStatus::None),
         )
-        .tooltip("Repeat")
+        .tooltip(t!("app.media.repeat"))
         .disabled(!player.can_control || loop_status.is_none())
         .on_click(cx.async_listener(
           {
@@ -203,7 +206,7 @@ impl MediaPanel {
       )
       .child(
         action("media-previous", IconName::SkipBack, false)
-          .tooltip("Previous")
+          .tooltip(t!("app.media.previous"))
           .disabled(!player.can_go_previous)
           .on_click(cx.async_listener(
             {
@@ -238,7 +241,7 @@ impl MediaPanel {
       )
       .child(
         action("media-next", IconName::SkipForward, false)
-          .tooltip("Next")
+          .tooltip(t!("app.media.next"))
           .disabled(!player.can_go_next)
           .on_click(cx.async_listener(
             {
@@ -250,7 +253,7 @@ impl MediaPanel {
       )
       .child(
         action("media-shuffle", IconName::Shuffle, shuffle == Some(true))
-          .tooltip("Shuffle")
+          .tooltip(t!("app.media.shuffle"))
           .disabled(!player.can_control || shuffle.is_none())
           .on_click(cx.async_listener(
             move |_, _, _, cx| cx.mpris().set_shuffle(&name, shuffle != Some(true)),

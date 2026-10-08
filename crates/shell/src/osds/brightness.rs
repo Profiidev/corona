@@ -1,9 +1,12 @@
 use corona_brightness::BrightnessExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::osds::{
-  on_change,
-  view::{LevelOsd, show},
+use crate::{
+  control_center::brightness::display_name,
+  osds::{
+    on_change,
+    view::{LevelOsd, show},
+  },
 };
 
 pub fn init(cx: &mut App) {
@@ -17,7 +20,7 @@ pub fn init(cx: &mut App) {
         .list_displays(cx)
         .iter()
         .filter(|d| d.unavailable.is_none())
-        .map(|d| (d.id.clone(), d.name.clone(), d.percent().round() as u32))
+        .map(|d| (d.id.clone(), display_name(d), d.percent().round() as u32))
         .collect();
       Some(levels)
     },

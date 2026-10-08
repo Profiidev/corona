@@ -3,6 +3,7 @@ use gpui_kit::{App, base::IndexPath, component::select::SelectItem};
 use corona_pipewire::{AudioNode, PipewireExt};
 
 use crate::control_center::audio::state::DEFAULT_SINK_ID;
+use rust_i18n::t;
 
 #[derive(Clone, Debug)]
 pub struct NodeSelectItem {
@@ -39,7 +40,7 @@ pub fn select_items(options: &[AudioNode], default_option: bool) -> Vec<NodeSele
       0,
       NodeSelectItem {
         id: DEFAULT_SINK_ID,
-        name: "Default".to_string(),
+        name: t!("app.audio.default").into(),
       },
     );
   }

@@ -1,6 +1,6 @@
 use corona_config::ConfigProvider;
 use gpui_kit::{
-  App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window,
+  App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window,
   assets::IconName,
   component::{ActiveTheme, Sizable, button::Button},
   div,
@@ -30,12 +30,12 @@ type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct ErrorCard {
   id: ElementId,
-  message: SharedString,
+  message: String,
   on_dismiss: Option<ClickHandler>,
 }
 
 impl ErrorCard {
-  pub fn new(id: impl Into<ElementId>, message: impl Into<SharedString>) -> Self {
+  pub fn new(id: impl Into<ElementId>, message: impl Into<String>) -> Self {
     Self {
       id: id.into(),
       message: message.into(),

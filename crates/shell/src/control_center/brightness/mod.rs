@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use corona_brightness::BrightnessExt;
+use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
@@ -23,8 +23,17 @@ use crate::control_center::{
   brightness::lights::{Light, displays, keyboard},
   variants::ControlCenterType,
 };
+use rust_i18n::t;
 
 mod lights;
+
+pub(crate) fn display_name(display: &Display) -> String {
+  match (&display.name, display.kind) {
+    (Some(name), _) => name.clone(),
+    (None, DisplayKind::Backlight) => t!("app.brightness.builtin_display").into(),
+    (None, DisplayKind::External) => t!("app.brightness.external_display").into(),
+  }
+}
 
 const KEYBOARD: &str = "keyboard";
 const THROTTLE: Duration = Duration::from_millis(100);
@@ -181,11 +190,16 @@ impl Render for BrightnessPanel {
       .gap_2()
       .when_some(self.error(cx), |d, error| d.child(error))
       .when_some(
-        self.lights(theme, "Displays", displays(cx), cx),
+        self.lights(theme, t!("app.brightness.displays"), displays(cx), cx),
         |d, displays| d.child(displays),
       )
       .when_some(
-        self.lights(theme, "Keyboard", keyboard(cx).into_iter().collect(), cx),
+        self.lights(
+          theme,
+          t!("app.brightness.keyboard"),
+          keyboard(cx).into_iter().collect(),
+          cx,
+        ),
         |d, keyboard| d.child(keyboard),
       )
   }

@@ -10,7 +10,7 @@ use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
   App, Bounds, Context, FocusHandle, Focusable, Global, InteractiveElement, IntoElement,
-  MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Subscription, Task, Window,
+  MouseButton, ParentElement, Pixels, Render, Styled, Subscription, Task, Window,
   assets::IconName,
   base::ElementExt,
   component::{ActiveTheme, Icon, Sizable},
@@ -29,6 +29,7 @@ use crate::{
     popup::{self, ROW, SEPARATOR},
   },
 };
+use rust_i18n::t;
 
 const ICON_SIZE: f32 = 16.;
 const LOG_ROWS: usize = 10;
@@ -211,10 +212,10 @@ fn log_size(entries: usize) -> gpui_kit::Size<Pixels> {
 fn ago(time: SystemTime, now: SystemTime) -> String {
   let secs = now.duration_since(time).unwrap_or_default().as_secs();
   match secs {
-    0..60 => "just now".to_string(),
-    60..3600 => format!("{} min ago", secs / 60),
-    3600..86400 => format!("{} h ago", secs / 3600),
-    _ => format!("{} d ago", secs / 86400),
+    0..60 => t!("app.privacy.ago.now").into(),
+    60..3600 => t!("app.privacy.ago.minutes", count = secs / 60).into(),
+    3600..86400 => t!("app.privacy.ago.hours", count = secs / 3600).into(),
+    _ => t!("app.privacy.ago.days", count = secs / 86400).into(),
   }
 }
 
@@ -242,11 +243,11 @@ impl PrivacyLog {
     let theme = cx.theme();
     let (active, idle) = (theme.primary, theme.muted_foreground);
     let (when, color) = match app.ended {
-      None => ("Recording".to_string(), active),
+      None => (t!("app.privacy.recording").into(), active),
       Some(ended) => (ago(ended, now), idle),
     };
 
-    popup::row(SharedString::from(format!("access-{index}")), cx)
+    popup::row(format!("access-{index}"), cx)
       .child(
         div()
           .flex()
@@ -278,14 +279,14 @@ impl Render for PrivacyLog {
       .child(
         popup::row("title", cx)
           .font_weight(gpui_kit::FontWeight::BOLD)
-          .child("Recent access"),
+          .child(t!("app.privacy.recent_access")),
       )
       .child(popup::separator(cx))
       .when(apps.is_empty(), |d| {
         d.child(
           popup::row("empty", cx)
             .text_color(muted)
-            .child("Nothing recorded yet"),
+            .child(t!("app.privacy.nothing_recorded")),
         )
       })
       .children(

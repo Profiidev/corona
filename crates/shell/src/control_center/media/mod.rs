@@ -17,6 +17,7 @@ use gpui_kit::{
 };
 
 use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
+use rust_i18n::t;
 
 mod player;
 
@@ -27,14 +28,14 @@ const TICK: Duration = Duration::from_secs(1);
 struct PlayerItem {
   /// None: follow whichever player is active
   name: Option<String>,
-  title: SharedString,
+  title: String,
 }
 
 impl SelectItem for PlayerItem {
   type Value = Option<String>;
 
   fn title(&self) -> SharedString {
-    self.title.clone()
+    self.title.clone().into()
   }
 
   fn value(&self) -> &Self::Value {
@@ -45,12 +46,12 @@ impl SelectItem for PlayerItem {
 fn player_items(players: &[Player]) -> Vec<PlayerItem> {
   let active = PlayerItem {
     name: None,
-    title: "Active player".into(),
+    title: t!("app.media.active_player").into(),
   };
   iter::once(active)
     .chain(players.iter().map(|p| PlayerItem {
       name: Some(p.name.clone()),
-      title: p.identity.clone().into(),
+      title: p.identity.clone(),
     }))
     .collect()
 }

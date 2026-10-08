@@ -17,6 +17,7 @@ use gpui_kit::{
 
 use crate::control_center::network::{LoadingState, NetworkPanel, utils::address};
 use crate::icons::interface_icon;
+use rust_i18n::t;
 
 impl NetworkPanel {
   pub fn status(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -27,11 +28,11 @@ impl NetworkPanel {
     let icon = interface_icon(primary);
 
     let (label, variant) = match state {
-      NmConnectivityState::Full => ("Online", TagVariant::Success),
-      NmConnectivityState::Portal => ("Sign-in required", TagVariant::Warning),
-      NmConnectivityState::Loss => ("Limited", TagVariant::Warning),
-      NmConnectivityState::None => ("Offline", TagVariant::Danger),
-      NmConnectivityState::Unknown => ("Unknown", TagVariant::Secondary),
+      NmConnectivityState::Full => (t!("app.network.online"), TagVariant::Success),
+      NmConnectivityState::Portal => (t!("app.network.portal"), TagVariant::Warning),
+      NmConnectivityState::Loss => (t!("app.network.limited"), TagVariant::Warning),
+      NmConnectivityState::None => (t!("app.network.offline"), TagVariant::Danger),
+      NmConnectivityState::Unknown => (t!("app.common.unknown"), TagVariant::Secondary),
     };
 
     div()
@@ -47,26 +48,24 @@ impl NetworkPanel {
           .gap_2()
           .items_center()
           .child(Icon::new(icon))
-          .child(
-            div()
-              .flex()
-              .text_sm()
-              .font_bold()
-              .child(primary.map_or("Disconnected".to_string(), |i| i.name.clone())),
-          )
+          .child(div().flex().text_sm().font_bold().child(
+            primary.map_or(t!("app.network.state.disconnected").into(), |i| {
+              i.name.clone()
+            }),
+          ))
           .child(
             div()
               .flex()
               .text_xs()
               .text_color(theme.colors.muted_foreground)
-              .child(primary.map_or("No active connection".to_string(), address)),
+              .child(primary.map_or(t!("app.network.no_connection").into(), address)),
           )
           .child(
             Button::new("connectivity-check")
               .small()
               .ml_auto()
               .cursor_pointer()
-              .tooltip("Recheck")
+              .tooltip(t!("app.network.recheck"))
               .disabled(!connectivity_check_enabled)
               .loading(self.connectivity_checking == LoadingState::Loading)
               .when_else(
@@ -93,7 +92,7 @@ impl NetworkPanel {
             .flex()
             .text_xs()
             .text_color(theme.colors.muted_foreground)
-            .child("Connectivity check is off, captive portals aren't detected"),
+            .child(t!("app.network.check_off")),
         )
       })
       .when(state == NmConnectivityState::Portal, |d| {
@@ -104,12 +103,12 @@ impl NetworkPanel {
               div()
                 .text_xs()
                 .text_color(theme.colors.muted_foreground)
-                .child("Sign in to the network to get online"),
+                .child(t!("app.network.sign_in")),
             )
             .child(
               Button::new("open-portal")
                 .small()
-                .label("Open")
+                .label(t!("app.common.open"))
                 .cursor_pointer()
                 .ml_auto()
                 .icon(IconName::ExternalLink)

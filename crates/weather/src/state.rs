@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Location {
+  /// Empty for the device's own position, which the shell names
   pub name: String,
   pub latitude: f64,
   pub longitude: f64,
@@ -53,24 +54,44 @@ impl Condition {
     }
   }
 
-  pub fn description(self) -> &'static str {
+  pub const ALL: [Self; 16] = [
+    Self::Clear,
+    Self::MainlyClear,
+    Self::PartlyCloudy,
+    Self::Overcast,
+    Self::Fog,
+    Self::Drizzle,
+    Self::FreezingDrizzle,
+    Self::Rain,
+    Self::FreezingRain,
+    Self::Snow,
+    Self::SnowGrains,
+    Self::RainShowers,
+    Self::SnowShowers,
+    Self::Thunderstorm,
+    Self::ThunderstormHail,
+    Self::Unknown,
+  ];
+
+  /// Translation key, like `partly_cloudy`
+  pub fn key(self) -> &'static str {
     match self {
-      Self::Clear => "Clear sky",
-      Self::MainlyClear => "Mainly clear",
-      Self::PartlyCloudy => "Partly cloudy",
-      Self::Overcast => "Overcast",
-      Self::Fog => "Fog",
-      Self::Drizzle => "Drizzle",
-      Self::FreezingDrizzle => "Freezing drizzle",
-      Self::Rain => "Rain",
-      Self::FreezingRain => "Freezing rain",
-      Self::Snow => "Snow",
-      Self::SnowGrains => "Snow grains",
-      Self::RainShowers => "Rain showers",
-      Self::SnowShowers => "Snow showers",
-      Self::Thunderstorm => "Thunderstorm",
-      Self::ThunderstormHail => "Thunderstorm with hail",
-      Self::Unknown => "Unknown",
+      Self::Clear => "clear",
+      Self::MainlyClear => "mainly_clear",
+      Self::PartlyCloudy => "partly_cloudy",
+      Self::Overcast => "overcast",
+      Self::Fog => "fog",
+      Self::Drizzle => "drizzle",
+      Self::FreezingDrizzle => "freezing_drizzle",
+      Self::Rain => "rain",
+      Self::FreezingRain => "freezing_rain",
+      Self::Snow => "snow",
+      Self::SnowGrains => "snow_grains",
+      Self::RainShowers => "rain_showers",
+      Self::SnowShowers => "snow_showers",
+      Self::Thunderstorm => "thunderstorm",
+      Self::ThunderstormHail => "thunderstorm_hail",
+      Self::Unknown => "unknown",
     }
   }
 }
@@ -122,29 +143,9 @@ pub struct Weather {
   pub fetched: SystemTime,
 }
 
-pub fn weekday(date: &str) -> Option<&'static str> {
-  const NAMES: [&str; 7] = [
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-  ];
-  let mut parts = date.get(..10)?.split('-').map(|p| p.parse::<i64>().ok());
-  let (y, m, d) = (parts.next()??, parts.next()??, parts.next()??);
-  let y = if m <= 2 { y - 1 } else { y };
-  let era = y.div_euclid(400);
-  let yoe = y - era * 400;
-  let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
-  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-  let days = era * 146097 + doe - 719468;
-  Some(NAMES[days.rem_euclid(7) as usize])
-}
-
+/// Compass point as translation key, like `ne`
 pub fn compass(degrees: f64) -> &'static str {
-  const POINTS: [&str; 8] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const POINTS: [&str; 8] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
   POINTS[((degrees.rem_euclid(360.) + 22.5) / 45.) as usize % 8]
 }
 
@@ -172,13 +173,9 @@ mod tests {
 
   #[test]
   fn calendar() {
-    assert_eq!(weekday("2026-10-01"), Some("Thursday"));
-    assert_eq!(weekday("2024-02-29"), Some("Thursday"));
-    assert_eq!(weekday("2000-01-01"), Some("Saturday"));
-    assert_eq!(weekday("garbage"), None);
-    assert_eq!(compass(250.), "W");
-    assert_eq!(compass(359.), "N");
-    assert_eq!(compass(135.), "SE");
+    assert_eq!(compass(250.), "w");
+    assert_eq!(compass(359.), "n");
+    assert_eq!(compass(135.), "se");
   }
 
   #[test]
@@ -187,5 +184,14 @@ mod tests {
     assert_eq!(Condition::from_code(81), Condition::RainShowers);
     assert_eq!(Condition::from_code(99), Condition::ThunderstormHail);
     assert_eq!(Condition::from_code(42), Condition::Unknown);
+    assert_eq!(Condition::PartlyCloudy.key(), "partly_cloudy");
+  }
+
+  #[test]
+  fn keys_are_unique() {
+    let mut keys: Vec<_> = Condition::ALL.iter().map(|c| c.key()).collect();
+    keys.sort();
+    keys.dedup();
+    assert_eq!(keys.len(), Condition::ALL.len());
   }
 }

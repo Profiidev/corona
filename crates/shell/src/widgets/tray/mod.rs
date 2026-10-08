@@ -5,8 +5,7 @@ use corona_tray::{Orientation, TrayExt, TrayItem};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-  ParentElement, Pixels, Render, ScrollWheelEvent, SharedString, Styled, StyledImage, Subscription,
-  Window,
+  ParentElement, Pixels, Render, ScrollWheelEvent, Styled, StyledImage, Subscription, Window,
   assets::IconName,
   base::ElementExt,
   component::{ActiveTheme, Icon, Sizable},
@@ -126,7 +125,7 @@ impl Tray {
     };
 
     div()
-      .id(SharedString::from(item.address.clone()))
+      .id(item.address.clone())
       .relative()
       .size(px(SLOT_SIZE))
       .flex()
