@@ -3,7 +3,7 @@ gpui_crates := "gpui-pre gpui-pre-linux gpui-pre-wgpu"
 # Keep in sync with the gpui-kit tag in Cargo.toml.
 gpui_kit_tag := "v0.7.1"
 
-layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })'
+layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_unlock" }, no_anim = true })'
 
 # Always this checkout's debug build, never a corona on PATH.
 corona := justfile_directory() / "target/debug/corona"

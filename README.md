@@ -11,6 +11,7 @@ Add the following layerrules to your config:
 ```lua
 hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })
+hl.layer_rule({ match = { namespace = "corona_unlock" }, no_anim = true })
 ```
 
 Bind the window switcher. It stays open while SUPER is held, Tab moves the selection, Shift reverses it and

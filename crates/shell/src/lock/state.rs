@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+  cell::Cell,
+  rc::Rc,
+  time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use corona_capture::{
@@ -13,12 +17,18 @@ use futures::{
   future::{Either, FutureExt, Shared, select},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Global, RenderImage, Size, Task,
-  WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, base::Root, point, px,
+  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Global, Size, Styled, Task,
+  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  base::Root,
+  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  point, px, transparent_black,
 };
 
-use crate::lock::view::Lock;
+use corona_components::animation::animation_duration;
 
+use crate::lock::view::{Background, Lock, Unlock, ZOOM_SPEED};
+
+const UNLOCK_NAMESPACE: &str = "corona_unlock";
 const BLUR_SCALE: u32 = 4;
 const CAPTURE_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -27,6 +37,15 @@ pub struct LockState {
   windows: Vec<AnyWindowHandle>,
   /// The lock in progress, kept so a second caller can wait for it too.
   locking: Option<Shared<Task<()>>>,
+  /// The display each lock window covers, and what it showed
+  screens: Vec<(DisplayId, Option<Background>)>,
+  /// Click-through overlays under the lock, waiting to play the unlock animation.
+  /// Opened up front so they already cover the screens when the lock goes
+  overlays: Vec<AnyWindowHandle>,
+  /// When the unlock animation started, shared by the overlays
+  unlock_start: Rc<Cell<Option<Instant>>>,
+  /// When the current animation started, shared so every display plays it in sync
+  animation_start: Option<Instant>,
 }
 
 impl Global for LockState {}
@@ -65,7 +84,7 @@ impl LockState {
             .spawn(async move {
               frames?
                 .into_iter()
-                .map(|(name, frame)| Ok((name, blur(&frame, sigma)?)))
+                .map(|(name, frame)| Ok((name, background(&frame, sigma)?)))
                 .collect::<Result<Vec<_>>>()
             })
             .await
@@ -79,9 +98,12 @@ impl LockState {
         let Some(locked) = cx.update(|cx| Self::engage(frames, cx)) else {
           return;
         };
-        if let Err(e) = locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
-          tracing::error!("session lock refused: {e:#}");
-          cx.update(Self::unlock);
+        match locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
+          Ok(()) => cx.update(Self::open_overlays),
+          Err(e) => {
+            tracing::error!("session lock refused: {e:#}");
+            cx.update(Self::unlock);
+          }
         }
       })
       .shared();
@@ -90,16 +112,14 @@ impl LockState {
   }
 
   fn engage(
-    frames: Vec<(String, Arc<RenderImage>)>,
+    frames: Vec<(String, Background)>,
     cx: &mut App,
   ) -> Option<oneshot::Receiver<Result<()>>> {
     if !cx.has_global::<Self>() {
       return None;
     }
 
-    let locked = cx.lock_session();
-
-    let windows = cx
+    let screens: Vec<_> = cx
       .displays()
       .into_iter()
       .map(|display| {
@@ -108,8 +128,16 @@ impl LockState {
           .iter()
           .find(|(name, _)| Some(display_uuid(name)) == uuid)
           .map(|(_, image)| image.clone());
-        Self::open(display.id(), background, cx)
+        (display.id(), background)
       })
+      .collect();
+
+    cx.global_mut::<Self>().screens = screens.clone();
+    let locked = cx.lock_session();
+
+    let windows = screens
+      .into_iter()
+      .map(|(display, background)| Self::open(display, background, cx))
       .collect::<Result<Vec<_>>>();
 
     match windows {
@@ -124,20 +152,75 @@ impl LockState {
     Some(locked)
   }
 
+  /// Starts the clock on the first display to draw
+  pub fn animation_start(cx: &mut App) -> Instant {
+    *cx
+      .global_mut::<Self>()
+      .animation_start
+      .get_or_insert_with(Instant::now)
+  }
+
+  /// Opened once the lock covers the screens, so they first draw hidden, already
+  /// showing the lock. The compositor sends no frame callbacks under the lock, so
+  /// they could not redraw for it later
+  fn open_overlays(cx: &mut App) {
+    let Some(state) = cx.try_global::<Self>() else {
+      return;
+    };
+    let screens = state.screens.clone();
+    let start = state.unlock_start.clone();
+    for (display, background) in screens {
+      match Self::open_unlock(display, background, start.clone(), cx) {
+        Ok(overlay) => cx.global_mut::<Self>().overlays.push(overlay),
+        Err(e) => tracing::warn!("unlock: no animation overlay: {e:#}"),
+      }
+    }
+  }
+
+  /// Unlocks right away, the overlays then play the lock animation backwards
+  pub fn unlock_animated(cx: &mut App) {
+    let Some(state) = cx.try_global::<Self>() else {
+      return;
+    };
+    let duration = animation_duration(ZOOM_SPEED, cx);
+    let overlays = state.overlays.clone();
+    if !overlays.is_empty() && !duration.is_zero() {
+      state.unlock_start.set(Some(Instant::now()));
+      cx.refresh_windows();
+      cx.spawn(async move |cx| {
+        cx.background_executor().timer(duration).await;
+        cx.update(|cx| {
+          for overlay in overlays {
+            let _ = overlay.update(cx, |_, window, _| window.remove_window());
+          }
+        });
+      })
+      .detach();
+    }
+    // deferred, so it also closes the window whose key press got us here
+    cx.defer(Self::unlock);
+  }
+
   pub fn unlock(cx: &mut App) {
     if !cx.has_global::<Self>() {
       return;
     }
     cx.unlock_session();
 
-    for window in cx.remove_global::<LockState>().windows {
+    let state = cx.remove_global::<LockState>();
+    let mut windows = state.windows;
+    // a playing animation closes its overlays itself
+    if state.unlock_start.get().is_none() {
+      windows.extend(state.overlays);
+    }
+    for window in windows {
       let _ = window.update(cx, |_, window, _| window.remove_window());
     }
   }
 
   fn open(
     display: gpui_kit::DisplayId,
-    background: Option<Arc<RenderImage>>,
+    background: Option<Background>,
     cx: &mut App,
   ) -> Result<AnyWindowHandle> {
     let window = cx.open_window(
@@ -149,6 +232,7 @@ impl LockState {
           size: Size::new(px(640.), px(480.)),
         })),
         window_background: WindowBackgroundAppearance::Opaque,
+        inactive_frame_interval: None,
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,
         ..Default::default()
@@ -163,12 +247,56 @@ impl LockState {
 
     Ok(window.into())
   }
+
+  fn open_unlock(
+    display: DisplayId,
+    background: Option<Background>,
+    start: Rc<Cell<Option<Instant>>>,
+    cx: &mut App,
+  ) -> Result<AnyWindowHandle> {
+    let window = cx.open_window(
+      WindowOptions {
+        kind: WindowKind::LayerShell(LayerShellOptions {
+          anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+          exclusive_zone: Some(px(-1.)),
+          exclusive_edge: None,
+          margin: None,
+          layer: Layer::Overlay,
+          namespace: UNLOCK_NAMESPACE.to_string(),
+          keyboard_interactivity: KeyboardInteractivity::None,
+        }),
+        display_id: Some(display),
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+          origin: point(px(0.), px(0.)),
+          size: Size::new(px(0.), px(0.)),
+        })),
+        window_background: WindowBackgroundAppearance::Transparent,
+        window_decorations: Some(WindowDecorations::Client),
+        inactive_frame_interval: None,
+        app_id: Some(APP_NAME.to_string()),
+        titlebar: None,
+        ..Default::default()
+      },
+      |window, cx| {
+        window.set_input_region(Some(&[]));
+        let view = cx.new(|_| Unlock::new(background, start));
+        cx.new(|cx| Root::new(view, window, cx).bg(transparent_black()))
+      },
+    )?;
+
+    Ok(window.into())
+  }
 }
 
-fn blur(frame: &Frame, sigma: f32) -> Result<Arc<RenderImage>> {
+/// `frame` sharp, and blurred by `sigma` for behind the lock
+fn background(frame: &Frame, sigma: f32) -> Result<Background> {
   let image = frame.read_all()?;
+  let sharp = image.to_gpui();
   if sigma <= 0. {
-    return Ok(image.to_gpui());
+    return Ok(Background {
+      blurred: sharp.clone(),
+      sharp,
+    });
   }
   let small = imageops::resize(
     &image,
@@ -176,5 +304,8 @@ fn blur(frame: &Frame, sigma: f32) -> Result<Arc<RenderImage>> {
     (image.height() / BLUR_SCALE).max(1),
     FilterType::Triangle,
   );
-  Ok(imageops::fast_blur(&small, sigma).to_gpui())
+  Ok(Background {
+    sharp,
+    blurred: imageops::fast_blur(&small, sigma).to_gpui(),
+  })
 }

@@ -63,6 +63,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
       "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
+      "rodio-0.22.2" = "sha256-ihFMFGWPacxEpH0L4wX9P2GPY6rfZSLzMITFJ65qvvk=";
     };
   };
 
