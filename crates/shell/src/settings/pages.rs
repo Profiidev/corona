@@ -205,6 +205,14 @@ fn appearance(cx: &App) -> SettingPage {
             t!("app.settings.appearance.card_borders.description"),
             switch(|c| c.theme.card_borders, |c, v| c.theme.card_borders = v),
           ),
+          item(
+            t!("app.settings.appearance.screen_corners.title"),
+            t!("app.settings.appearance.screen_corners.description"),
+            switch(
+              |c| c.theme.screen_corners,
+              |c, v| c.theme.screen_corners = v,
+            ),
+          ),
         ],
       ),
       group(

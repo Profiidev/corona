@@ -29,6 +29,7 @@ pub fn init(cx: &mut App) {
   overlays::notification::init(cx);
   overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
+  overlays::screen_corners::init(cx);
 
   BarState::spawn_bars(cx);
   watch_config(cx);

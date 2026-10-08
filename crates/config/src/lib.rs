@@ -174,6 +174,8 @@ pub struct ThemeConfig {
   pub popup_borders: bool,
   /// Borders around the cards in panels
   pub card_borders: bool,
+  /// Round the screen corners no bar rounds
+  pub screen_corners: bool,
 }
 
 impl ThemeConfig {
@@ -204,6 +206,7 @@ impl Default for ThemeConfig {
       shadow: true,
       popup_borders: true,
       card_borders: true,
+      screen_corners: true,
     }
   }
 }

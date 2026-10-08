@@ -46,6 +46,8 @@ shadow = true
 popup_borders = true
 # Borders around the cards in panels.
 card_borders = true
+# Round the screen corners no bar rounds.
+screen_corners = true
 
 [wallpaper]
 # Path, ~/ path or http(s) URL; no wallpaper when unset.

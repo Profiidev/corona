@@ -9,6 +9,7 @@ use gpui_kit::{
 
 pub mod colorpicker;
 pub mod notification;
+pub mod screen_corners;
 pub mod screenshot;
 pub mod switcher;
 pub mod taskbar;
