@@ -10,8 +10,10 @@ use std::{
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition};
-use corona_notifications::{NotificationsExt, Urgency};
+use corona_config::{
+  APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition, observe_section,
+};
+use corona_notifications::{Filter, NotificationsExt, Urgency};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
@@ -25,7 +27,7 @@ use gpui_kit::{
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
 
-use crate::control_center::NotificationsPanel;
+use crate::{control_center::NotificationsPanel, widgets::filter_regex};
 
 const NAMESPACE: &str = "corona_notification";
 const STACK_OFFSET: f32 = 12.;
@@ -83,8 +85,26 @@ struct PopupWindow {
 
 impl Global for NotificationPopups {}
 
+/// `[notification] filter_regex` as a [`Filter`]
+fn filter(config: &NotificationConfig) -> Filter {
+  let re = filter_regex(&config.filter_regex);
+  Filter(Box::new(move |n| {
+    re.as_ref().is_some_and(|re| {
+      [&n.app_name, &n.summary, &n.body]
+        .iter()
+        .any(|text| re.is_match(text))
+    })
+  }))
+}
+
 pub fn init(cx: &mut App) {
   cx.set_global(NotificationPopups::default());
+  cx.set_global(filter(&cx.config().notification));
+  observe_section(
+    cx,
+    |c| &c.notification,
+    |config, cx| cx.set_global(filter(config)),
+  );
 
   let notifications = cx.notifications().notifications.clone();
   let mut old: Vec<u32> = notifications.read(cx).iter().map(|n| n.id).collect();

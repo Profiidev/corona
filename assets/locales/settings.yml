@@ -342,6 +342,9 @@ app:
         popups:
           en: Popups
           de: Popups
+        filter:
+          en: Filter
+          de: Filter
       notification_daemon:
         title:
           en: Notification daemon
@@ -391,6 +394,13 @@ app:
         description:
           en: Of notification popups; under 1 lets the desktop show through.
           de: Der Benachrichtigungs-Popups; unter 1 scheint der Desktop durch.
+      filter:
+        title:
+          en: Hidden notifications
+          de: Ausgeblendete Benachrichtigungen
+        description:
+          en: "Case-insensitive regex against the app name, summary and body; matches are dropped."
+          de: "Regex ohne Groß-/Kleinschreibung gegen App-Name, Titel und Text; Treffer werden verworfen."
     osd:
       keyboard_layout:
         title:

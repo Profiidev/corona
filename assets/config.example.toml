@@ -102,6 +102,8 @@ offset = 20.0
 timeout_ms = 5000
 critical_timeout_ms = 10000
 background_opacity = 1.0
+# Case-insensitive regex against app name, summary and body; matches are dropped.
+filter_regex = "" # e.g. "spotify|discord"
 
 [osd]
 enabled = true

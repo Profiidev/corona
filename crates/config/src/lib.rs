@@ -247,6 +247,8 @@ pub struct NotificationConfig {
   pub timeout_ms: u64,
   pub critical_timeout_ms: u64,
   pub background_opacity: f32,
+  /// Case-insensitive regex against app name, summary and body; a match is dropped
+  pub filter_regex: String,
 }
 
 impl Default for NotificationConfig {
@@ -259,6 +261,7 @@ impl Default for NotificationConfig {
       timeout_ms: 5000,
       critical_timeout_ms: 10000,
       background_opacity: 1.,
+      filter_regex: String::new(),
     }
   }
 }

@@ -27,6 +27,10 @@ pub struct Notifications {
 
 impl Global for Notifications {}
 
+pub struct Filter(pub Box<dyn Fn(&Notification) -> bool>);
+
+impl Global for Filter {}
+
 pub trait NotificationsExt {
   fn notifications(&self) -> &Notifications;
 }
@@ -203,15 +207,25 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   };
 
   let notifications = state.notifications.clone();
+  let conn_events = conn.clone();
   cx.spawn(async move |cx| {
     while let Ok(event) = events.recv_async().await {
-      notifications.update(cx, |list, cx| {
+      let dropped = notifications.update(cx, |list, cx| {
         match event {
+          Event::Notify(n) if cx.try_global::<Filter>().is_some_and(|f| (f.0)(&n)) => {
+            return Some(n.id);
+          }
           Event::Notify(notification) => state::insert(list, notification),
           Event::Close(id) => list.retain(|n| n.id != id),
         }
         cx.notify();
+        None
       });
+      if let Some(id) = dropped
+        && let Ok(emitter) = SignalEmitter::new(&conn_events, PATH)
+      {
+        let _ = closed_signals(&emitter, vec![id]).await;
+      }
     }
   })
   .detach();
@@ -378,6 +392,19 @@ mod tests {
 
     cx.update(|cx| cx.notifications().clone().set_do_not_disturb(true, cx));
     cx.read(|cx| assert!(cx.notifications().do_not_disturb(cx)));
+  }
+
+  #[gpui::test]
+  fn filtered_notifications_are_dropped(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    cx.update(|cx| cx.set_global(Filter(Box::new(|n| n.summary == "spam"))));
+    let spam = notify(&running.client, "spam", 0, &[], HashMap::new());
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), spam, "2".into())
+    );
+    let kept = notify(&running.client, "ham", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [kept]);
   }
 
   #[gpui::test]
@@ -554,11 +581,13 @@ mod tests {
     wait_until(cx, |cx| ids(cx) == [id]);
 
     // Close invalid ID 0
-    block_on(
-      running
-        .client
-        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(0u32,)),
-    )
+    block_on(running.client.call_method(
+      Some(NAME),
+      PATH,
+      Some(NAME),
+      "CloseNotification",
+      &(0u32,),
+    ))
     .unwrap();
     assert_eq!(
       next_signal(cx, &mut running),
@@ -568,11 +597,13 @@ mod tests {
     assert_eq!(ids(cx), [id]);
 
     // Close non-existent ID 9999
-    block_on(
-      running
-        .client
-        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(9999u32,)),
-    )
+    block_on(running.client.call_method(
+      Some(NAME),
+      PATH,
+      Some(NAME),
+      "CloseNotification",
+      &(9999u32,),
+    ))
     .unwrap();
     assert_eq!(
       next_signal(cx, &mut running),

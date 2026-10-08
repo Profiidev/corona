@@ -356,6 +356,21 @@ fn notifications() -> SettingPage {
           ),
         ],
       ),
+      group(
+        t!("app.settings.notifications.groups.filter"),
+        vec![
+          item(
+            t!("app.settings.notifications.filter.title"),
+            t!("app.settings.notifications.filter.description"),
+            text(
+              "notification.filter_regex",
+              |c| c.notification.filter_regex.clone(),
+              |c, v| c.notification.filter_regex = v,
+            ),
+          )
+          .layout(Axis::Vertical),
+        ],
+      ),
     ],
   )
 }
