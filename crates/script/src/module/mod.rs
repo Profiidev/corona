@@ -1,9 +1,15 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::{
+  cell::RefCell,
+  collections::{BTreeSet, HashSet},
+  rc::Rc,
+};
 
 use anyhow::Result;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, Entity, Subscription};
-use gpui_shell::{ShellRoot, ShellRuntime, policy::Policy};
+use gpui_shell::{HostModule, ShellRoot, ShellRuntime, policy::Policy};
+use schemars::JsonSchema;
+use serde::Deserialize;
 
 use corona_macros::named;
 
@@ -20,6 +26,50 @@ pub mod power;
 pub mod sysinfo;
 pub mod tray;
 pub mod weather;
+
+/// A corona module a plugin may import, as `corona/<name>`. Plugins list the
+/// ones they use under `capabilities.corona`; the others are not there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CoronaModule {
+  /// Workspaces, monitors and windows.
+  Compositor,
+  /// Audio devices, streams and who records.
+  Pipewire,
+  /// Network interfaces, Wi-Fi and VPNs.
+  Network,
+  /// Media players.
+  Mpris,
+  Bluetooth,
+  /// Battery, power profiles and the session (suspend, reboot, …).
+  Power,
+  /// Screen brightness.
+  Brightness,
+  Notifications,
+  /// System tray items.
+  Tray,
+  /// System information and usage.
+  Sysinfo,
+  Weather,
+}
+
+impl CoronaModule {
+  fn module(self, reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
+    match self {
+      Self::Compositor => compositor::module(reads, subs, cx),
+      Self::Pipewire => pipewire::module(reads, subs, cx),
+      Self::Network => network::module(reads, subs, cx),
+      Self::Mpris => mpris::module(reads, subs, cx),
+      Self::Bluetooth => bluetooth::module(reads, subs, cx),
+      Self::Power => power::module(reads, subs, cx),
+      Self::Brightness => brightness::module(reads, subs, cx),
+      Self::Notifications => notifications::module(reads, subs, cx),
+      Self::Tray => tray::module(reads, subs, cx),
+      Self::Sysinfo => sysinfo::module(reads, subs, cx),
+      Self::Weather => weather::module(reads, subs, cx),
+    }
+  }
+}
 
 #[derive(Clone, Default)]
 pub struct Subscriptions(Rc<RefCell<HashSet<Updates>>>);
@@ -84,27 +134,27 @@ impl Subscriptions {
 }
 
 pub trait ModuleExt: Sized {
-  fn with_corona_modules(self, cx: &mut App) -> Result<(Self, Vec<Subscribe>)>;
+  /// Adds the `granted` corona modules; importing any other fails.
+  fn with_corona_modules(
+    self,
+    granted: &BTreeSet<CoronaModule>,
+    cx: &mut App,
+  ) -> Result<(Self, Vec<Subscribe>)>;
 }
 
 impl ModuleExt for Policy {
-  fn with_corona_modules(self, cx: &mut App) -> Result<(Self, Vec<Subscribe>)> {
+  fn with_corona_modules(
+    self,
+    granted: &BTreeSet<CoronaModule>,
+    cx: &mut App,
+  ) -> Result<(Self, Vec<Subscribe>)> {
     let reads = Subscriptions::default();
     let mut subs = Vec::new();
 
-    let policy = self
-      .with_host_module(compositor::module(&reads, &mut subs, cx))?
-      .with_host_module(pipewire::module(&reads, &mut subs, cx))?
-      .with_host_module(network::module(&reads, &mut subs, cx))?
-      .with_host_module(mpris::module(&reads, &mut subs, cx))?
-      .with_host_module(bluetooth::module(&reads, &mut subs, cx))?
-      .with_host_module(power::module(&reads, &mut subs, cx))?
-      .with_host_module(brightness::module(&reads, &mut subs, cx))?
-      .with_host_module(notifications::module(&reads, &mut subs, cx))?
-      .with_host_module(tray::module(&reads, &mut subs, cx))?
-      .with_host_module(sysinfo::module(&reads, &mut subs, cx))?
-      .with_host_module(weather::module(&reads, &mut subs, cx))?;
-
+    let mut policy = self;
+    for module in granted {
+      policy = policy.with_host_module(module.module(&reads, &mut subs, cx))?;
+    }
     Ok((policy, subs))
   }
 }

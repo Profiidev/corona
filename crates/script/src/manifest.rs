@@ -1,11 +1,13 @@
 use std::{
-  collections::HashMap,
+  collections::{BTreeSet, HashMap},
   path::{Path, PathBuf},
 };
 
 use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
 use schemars::JsonSchema;
 use serde::Deserialize;
+
+use crate::module::CoronaModule;
 
 pub struct PluginManifest {
   pub id: String,
@@ -15,6 +17,8 @@ pub struct PluginManifest {
   pub version: Option<String>,
   pub views: HashMap<String, String>,
   pub capabilities: Capabilities,
+  /// The corona modules it may import
+  pub modules: BTreeSet<CoronaModule>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -66,9 +70,17 @@ pub struct CapabilitiesFile {
   /// Process-level host requests, separate from filesystem execution.
   #[serde(default)]
   process: Option<ProcessGrantFile>,
+  /// Corona modules the plugin imports, e.g. `["weather"]` for
+  /// `corona/weather`. Importing one not listed fails.
+  #[serde(default)]
+  corona: BTreeSet<CoronaModule>,
 }
 
 impl CapabilitiesFile {
+  pub fn modules(&self) -> BTreeSet<CoronaModule> {
+    self.corona.clone()
+  }
+
   pub fn grant(&self, plugin_dir: &Path, data_dir: &Path) -> Capabilities {
     let fs = self.fs.clone().unwrap_or_default();
     let clipboard = self.clipboard.clone().unwrap_or_default();
@@ -198,4 +210,34 @@ struct ProcessGrantFile {
 
 fn granted() -> bool {
   true
+}
+
+#[cfg(test)]
+mod tests {
+  use std::collections::BTreeSet;
+
+  use super::ManifestFile;
+  use crate::module::CoronaModule;
+
+  fn parse(json: &str) -> serde_json::Result<ManifestFile> {
+    serde_json::from_str(json)
+  }
+
+  #[test]
+  fn corona_modules() {
+    let manifest = parse(r#"{ "id": "a", "name": "A" }"#).unwrap();
+    assert!(manifest.capabilities.modules().is_empty());
+
+    let manifest = parse(
+      r#"{ "id": "a", "name": "A", "capabilities": { "corona": ["weather", "sysinfo", "weather"] } }"#,
+    )
+    .unwrap();
+    assert_eq!(
+      manifest.capabilities.modules(),
+      BTreeSet::from([CoronaModule::Sysinfo, CoronaModule::Weather])
+    );
+
+    let unknown = r#"{ "id": "a", "name": "A", "capabilities": { "corona": ["camera"] } }"#;
+    assert!(parse(unknown).is_err());
+  }
 }

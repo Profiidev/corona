@@ -68,6 +68,7 @@ impl ScriptManager {
             version: data.version,
             views: data.views,
             capabilities: data.capabilities.grant(&self.plugin_dir, &self.data_dir),
+            modules: data.capabilities.modules(),
           },
         ))
       })
@@ -80,7 +81,7 @@ impl ScriptManager {
       .plugins
       .get(id)
       .with_context(|| format!("Plugin `{id}` not found"))?;
-    let id = manifest.id.clone();
+    let (id, modules) = (manifest.id.clone(), manifest.modules.clone());
     let view = manifest
       .views
       .get(view)
@@ -98,7 +99,7 @@ impl ScriptManager {
       .with_application(&id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
-      .with_corona_modules(cx)?;
+      .with_corona_modules(&modules, cx)?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
