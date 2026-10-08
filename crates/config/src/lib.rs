@@ -303,6 +303,8 @@ pub struct OsdKinds {
   pub dnd: bool,
   pub power_profile: bool,
   pub privacy: bool,
+  pub keyboard_layout: bool,
+  pub lock_keys: bool,
 }
 
 impl Default for OsdKinds {
@@ -315,6 +317,8 @@ impl Default for OsdKinds {
       dnd: true,
       power_profile: true,
       privacy: true,
+      keyboard_layout: true,
+      lock_keys: true,
     }
   }
 }

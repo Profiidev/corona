@@ -452,6 +452,19 @@ fn osd() -> SettingPage {
             t!("app.settings.osd.privacy.description"),
             switch(|c| c.osd.kinds.privacy, |c, v| c.osd.kinds.privacy = v),
           ),
+          item(
+            t!("app.settings.osd.keyboard_layout.title"),
+            t!("app.settings.osd.keyboard_layout.description"),
+            switch(
+              |c| c.osd.kinds.keyboard_layout,
+              |c, v| c.osd.kinds.keyboard_layout = v,
+            ),
+          ),
+          item(
+            t!("app.settings.osd.lock_keys.title"),
+            t!("app.settings.osd.lock_keys.description"),
+            switch(|c| c.osd.kinds.lock_keys, |c, v| c.osd.kinds.lock_keys = v),
+          ),
         ],
       ),
     ],

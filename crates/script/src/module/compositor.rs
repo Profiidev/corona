@@ -18,6 +18,7 @@ pub enum Updates {
   ActiveMonitor,
   Windows,
   ActiveWindow,
+  KeyboardLayout,
 }
 
 impl From<Updates> for super::Updates {
@@ -105,6 +106,14 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       Updates::ActiveWindow,
       compositor.active_window.clone(),
       |cx| cx.compositor().active_window(cx).cloned(),
+    ))
+    .func(read(
+      reads,
+      subs,
+      "keyboardLayout",
+      Updates::KeyboardLayout,
+      compositor.keyboard_layout.clone(),
+      |cx| cx.compositor().keyboard_layout(cx).map(str::to_string),
     ))
     .func(focus_workspace)
     .func(focus_window)

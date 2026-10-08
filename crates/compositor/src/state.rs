@@ -15,6 +15,7 @@ pub struct Compositor {
   pub windows: Entity<Vec<types::Window>>,
   pub active_window: Entity<Option<types::Window>>,
   pub urgent: Entity<HashSet<String>>,
+  pub keyboard_layout: Entity<Option<String>>,
 }
 
 impl Global for Compositor {}
@@ -33,6 +34,7 @@ impl Compositor {
     let windows = init_state(cx, || inner.list_windows())?;
     let active_window = init_state(cx, || inner.active_window())?;
     let urgent = cx.new(|_| HashSet::new());
+    let keyboard_layout = init_state(cx, || inner.keyboard_layout())?;
 
     Ok(Self {
       inner,
@@ -43,6 +45,7 @@ impl Compositor {
       windows,
       active_window,
       urgent,
+      keyboard_layout,
     })
   }
 
@@ -94,6 +97,10 @@ impl Compositor {
     self.active_window.read(cx).as_ref()
   }
 
+  pub fn keyboard_layout<'c>(&self, cx: &'c App) -> Option<&'c str> {
+    self.keyboard_layout.read(cx).as_deref()
+  }
+
   pub fn is_urgent(&self, address: &str, cx: &App) -> bool {
     self.urgent.read(cx).contains(address)
   }
@@ -114,6 +121,8 @@ pub(crate) trait CompositorImpl {
   fn close_window(&self, address: &str) -> Result<()>;
 
   fn cursor_position(&self) -> Result<(i32, i32)>;
+
+  fn keyboard_layout(&self) -> Result<Option<String>>;
 }
 
 pub trait CompositorExt {

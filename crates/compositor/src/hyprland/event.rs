@@ -23,6 +23,7 @@ enum CompositorEvent {
   ActiveMonitor(types::Monitor),
   Window(Vec<types::Window>),
   ActiveWindow(Option<types::Window>),
+  KeyboardLayout(Option<String>),
   Urgent(String),
   Attended(String),
 }
@@ -77,6 +78,9 @@ impl Hyprland {
             CompositorEvent::Window(windows) => compositor.windows.write_changed(cx, windows),
             CompositorEvent::ActiveWindow(window) => {
               compositor.active_window.write_changed(cx, window)
+            }
+            CompositorEvent::KeyboardLayout(layout) => {
+              compositor.keyboard_layout.write_changed(cx, layout)
             }
             CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
               if urgent.insert(address) {
@@ -158,6 +162,7 @@ impl Ipc {
           CompositorEvent::ActiveMonitor(monitor),
         ]
       }
+      "activelayout" => vec![CompositorEvent::KeyboardLayout(self.keyboard_layout()?)],
       "monitorremoved" | "monitoradded" => {
         let monitors = self.list_monitors()?;
         vec![CompositorEvent::Monitor(monitors)]

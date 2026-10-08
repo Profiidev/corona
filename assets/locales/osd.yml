@@ -1,6 +1,18 @@
 _version: 2
 app:
   osd:
+    keyboard_layout:
+      en: Keyboard layout
+      de: Tastaturbelegung
+    caps_lock:
+      en: Caps Lock
+      de: Feststelltaste
+    num_lock:
+      en: Num Lock
+      de: Num-Taste
+    scroll_lock:
+      en: Scroll Lock
+      de: Rollen-Taste
     volume:
       en: Volume
       de: Lautstärke

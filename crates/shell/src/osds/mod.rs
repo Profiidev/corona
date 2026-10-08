@@ -5,6 +5,8 @@ use gpui_kit::{App, Entity};
 mod bluetooth;
 mod brightness;
 mod dnd;
+mod keyboard;
+pub(crate) mod lock_keys;
 mod power_profile;
 mod privacy;
 mod view;
@@ -24,6 +26,7 @@ pub fn init(cx: &mut App) {
       power_profile::init(cx);
       dnd::init(cx);
       privacy::init(cx);
+      keyboard::init(cx);
     });
   })
   .detach();

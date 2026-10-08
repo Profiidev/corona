@@ -9,6 +9,7 @@ mod command;
 mod cursor;
 mod encoding;
 mod event;
+mod keyboard;
 mod monitor;
 mod windows;
 mod workspace;
@@ -70,5 +71,9 @@ impl CompositorImpl for Hyprland {
 
   fn cursor_position(&self) -> Result<(i32, i32)> {
     self.ipc.cursor_position()
+  }
+
+  fn keyboard_layout(&self) -> Result<Option<String>> {
+    self.ipc.keyboard_layout()
   }
 }

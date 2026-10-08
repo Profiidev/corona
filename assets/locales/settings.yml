@@ -385,6 +385,20 @@ app:
           en: Of notification popups; under 1 lets the desktop show through.
           de: Der Benachrichtigungs-Popups; unter 1 scheint der Desktop durch.
     osd:
+      keyboard_layout:
+        title:
+          en: Keyboard layout
+          de: Tastaturbelegung
+        description:
+          en: When the keyboard layout changes.
+          de: Wenn sich die Tastaturbelegung ändert.
+      lock_keys:
+        title:
+          en: Lock keys
+          de: Feststelltasten
+        description:
+          en: "Caps, num and scroll lock. Bind `corona ipc lock-key caps` (num, scroll) to the keys in Hyprland."
+          de: "Feststell-, Num- und Rollen-Taste. Binde `corona ipc lock-key caps` (num, scroll) in Hyprland an die Tasten."
       title:
         en: OSD
         de: OSD
