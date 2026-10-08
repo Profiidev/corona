@@ -351,4 +351,48 @@ mod tests {
     let players = [player("a", Playing), player("b", Playing)];
     assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
   }
+
+  #[test]
+  fn infinite_rate_in_position_after_panics() {
+    let mut p = player("a", PlaybackStatus::Playing);
+    p.rate = f64::INFINITY;
+    let res = std::panic::catch_unwind(|| {
+      p.position_after(Duration::from_secs(1));
+    });
+    assert!(res.is_err());
+  }
+
+  #[test]
+  fn position_addition_overflow_panics_without_length() {
+    let mut p = player("a", PlaybackStatus::Playing);
+    p.length = None;
+    p.position = Duration::MAX - Duration::from_secs(10);
+    let res = std::panic::catch_unwind(|| {
+      p.position_after(Duration::from_secs(20));
+    });
+    assert!(res.is_err());
+  }
+
+  #[test]
+  fn paused_player_scrub_under_slack_is_reverted() {
+    let old = player("a", PlaybackStatus::Paused);
+    let mut fresh = old.clone();
+    fresh.position_at = old.position_at + Duration::from_millis(100);
+    // Scrub by 200ms while paused (within 500ms SLACK)
+    fresh.position = old.position + Duration::from_millis(200);
+    keep_positions(std::slice::from_mut(&mut fresh), std::slice::from_ref(&old));
+    // Overwritten back to old.position because 200ms <= SLACK (500ms)
+    assert_eq!(fresh.position, old.position);
+
+    // Scrub by 600ms while paused (> 500ms SLACK)
+    let mut fresh_large = old.clone();
+    fresh_large.position_at = old.position_at + Duration::from_millis(100);
+    fresh_large.position = old.position + Duration::from_millis(600);
+    keep_positions(std::slice::from_mut(&mut fresh_large), std::slice::from_ref(&old));
+    // Kept because 600ms > SLACK
+    assert_eq!(
+      fresh_large.position,
+      old.position + Duration::from_millis(600)
+    );
+  }
 }

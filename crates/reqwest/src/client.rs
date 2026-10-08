@@ -559,4 +559,156 @@ mod tests {
     fs::write(&file, b"").unwrap();
     assert!(CachedHttpClient::new(Fake::default(), file.join("cache")).is_err());
   }
+
+  #[test]
+  fn exact_expiration_boundary_revalidates() {
+    let dir = temp_dir("exact-boundary");
+    let base = store::base(&dir, URL);
+    let now = store::unix_now();
+    let meta = store::Meta {
+      url: URL.into(),
+      expires: now,
+      etag: Some("\"v1\"".into()),
+      last_modified: None,
+      content_type: None,
+    };
+    store::write_entry(&base, &meta, b"art").unwrap();
+    let client = client(dir.clone(), vec![response(304, &[], "")]);
+    assert_eq!(get(&client), (StatusCode::OK, "art".into()));
+    let requests = client.inner.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0][header::IF_NONE_MATCH], "\"v1\"");
+    drop(requests);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn corrupted_validators_are_skipped() {
+    let dir = temp_dir("corrupted-validators");
+    let base = store::base(&dir, URL);
+    let meta = store::Meta {
+      url: URL.into(),
+      expires: 0,
+      etag: Some("invalid\netag".into()),
+      last_modified: Some("invalid\r\ndate".into()),
+      content_type: None,
+    };
+    store::write_entry(&base, &meta, b"art").unwrap();
+    let client = client(dir.clone(), vec![response(200, &[], "fresh art")]);
+    assert_eq!(get(&client).1, "fresh art");
+    let requests = client.inner.requests.lock().unwrap();
+    assert!(requests[0].get(header::IF_NONE_MATCH).is_none());
+    assert!(requests[0].get(header::IF_MODIFIED_SINCE).is_none());
+    drop(requests);
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn network_error_with_missing_cached_body_propagates_network_error() {
+    let dir = temp_dir("missing-body-offline");
+    let base = store::base(&dir, URL);
+    let meta = store::Meta {
+      url: URL.into(),
+      expires: 0,
+      etag: Some("\"v1\"".into()),
+      last_modified: None,
+      content_type: None,
+    };
+    store::write_meta(&base, &meta).unwrap();
+    let client = client_with(dir.clone(), vec![Err(anyhow::anyhow!("network offline"))]);
+    let err = send(&client, plain_get()).unwrap_err();
+    assert_eq!(err.to_string(), "network offline");
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  #[cfg(unix)]
+  fn not_modified_write_meta_failure_returns_cached_response() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = temp_dir("304-write-fail");
+    let client = client(
+      dir.clone(),
+      vec![
+        response(200, &[("cache-control", "no-cache"), ("etag", "\"v1\"")], "art"),
+        response(304, &[], ""),
+      ],
+    );
+    get(&client);
+    let mut perms = fs::metadata(&dir).unwrap().permissions();
+    perms.set_mode(0o555);
+    fs::set_permissions(&dir, perms.clone()).unwrap();
+
+    let res = get(&client);
+    assert_eq!(res, (StatusCode::OK, "art".into()));
+
+    perms.set_mode(0o755);
+    fs::set_permissions(&dir, perms).unwrap();
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn not_modified_with_missing_body_retry_network_failure() {
+    let dir = temp_dir("304-retry-fail");
+    let client = client_with(
+      dir.clone(),
+      vec![
+        Ok(response(200, &[("cache-control", "no-cache"), ("etag", "\"v1\"")], "art")),
+        Ok(response(304, &[("etag", "\"v1\"")], "")),
+        Err(anyhow::anyhow!("retry connection reset")),
+      ],
+    );
+    get(&client);
+    fs::remove_file(store::path(&store::base(&dir, URL), "body")).unwrap();
+    let err = send(&client, plain_get()).unwrap_err();
+    assert_eq!(err.to_string(), "retry connection reset");
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn stream_error_during_body_read_fails() {
+    struct FailingReader;
+    impl futures::AsyncRead for FailingReader {
+      fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &mut [u8],
+      ) -> std::task::Poll<io::Result<usize>> {
+        std::task::Poll::Ready(Err(io::Error::other("stream interrupted")))
+      }
+    }
+
+    let dir = temp_dir("body-stream-error");
+    let resp = Response::builder()
+      .status(200)
+      .header("cache-control", "max-age=3600")
+      .body(AsyncBody::from_reader(FailingReader))
+      .unwrap();
+    let client = client(dir.clone(), vec![resp]);
+    let err = send(&client, plain_get()).unwrap_err();
+    assert!(err.to_string().contains("stream interrupted"));
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  #[cfg(unix)]
+  fn storing_failure_on_unwritable_directory_returns_response() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = temp_dir("unwritable-store");
+    let mut perms = fs::metadata(&dir).unwrap().permissions();
+    perms.set_mode(0o555);
+    fs::set_permissions(&dir, perms.clone()).unwrap();
+
+    let client = client(
+      dir.clone(),
+      vec![response(200, &[("cache-control", "max-age=3600")], "uncached body")],
+    );
+    let (status, body) = get(&client);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "uncached body");
+
+    perms.set_mode(0o755);
+    fs::set_permissions(&dir, perms).unwrap();
+    assert_eq!(files(&dir), 0);
+    fs::remove_dir_all(dir).ok();
+  }
 }

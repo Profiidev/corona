@@ -95,6 +95,19 @@ mod tests {
   }
 
   #[gpui::test]
+  fn broken_socket_path_fails(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+      env::set_var("XDG_RUNTIME_DIR", dir.path());
+      env::set_var("HYPRLAND_INSTANCE_SIGNATURE", "stale_sig");
+    }
+    cx.update(|cx| {
+      assert!(init(cx).is_err());
+      assert!(!cx.has_global::<Compositor>());
+    });
+  }
+
+  #[gpui::test]
   fn events_update_the_state(cx: &mut TestAppContext) {
     let hypr = start(cx);
     cx.read(|cx| assert_eq!(cx.compositor().active_workspace(cx).name, "1"));

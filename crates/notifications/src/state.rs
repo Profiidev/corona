@@ -112,4 +112,54 @@ mod tests {
     assert_eq!(list.iter().map(|n| n.id).collect::<Vec<_>>(), [9, 1]);
     assert!(Urgency::Critical > Urgency::Normal && Urgency::Normal > Urgency::Low);
   }
+
+  #[test]
+  fn actions_duplicate_keys_and_empty_entries() {
+    let parsed = actions(vec![
+      "".into(),
+      "".into(),
+      "dup".into(),
+      "First".into(),
+      "dup".into(),
+      "Second".into(),
+    ]);
+    assert_eq!(parsed.len(), 3);
+    assert_eq!(
+      parsed,
+      [
+        Action {
+          key: "".into(),
+          label: "".into(),
+        },
+        Action {
+          key: "dup".into(),
+          label: "First".into(),
+        },
+        Action {
+          key: "dup".into(),
+          label: "Second".into(),
+        },
+      ]
+    );
+  }
+
+  #[test]
+  fn unbounded_insert_and_collision_replacement() {
+    let mut list = Vec::new();
+    for i in 1..=100 {
+      insert(&mut list, notification(i, &format!("notif {i}")));
+    }
+    assert_eq!(list.len(), 100);
+    // MRU order: last inserted is at index 0
+    assert_eq!(list[0].id, 100);
+    assert_eq!(list[99].id, 1);
+
+    // If a wraparound collision occurs and ID 1 is re-inserted:
+    insert(&mut list, notification(1, "wrapped notification 1"));
+    assert_eq!(list.len(), 100);
+    assert_eq!(list[0].id, 1);
+    assert_eq!(list[0].summary, "wrapped notification 1");
+    // ID 1 should only appear once in the list
+    assert_eq!(list.iter().filter(|n| n.id == 1).count(), 1);
+  }
 }

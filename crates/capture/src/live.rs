@@ -107,3 +107,18 @@ fn run(address: u64, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
   source.destroy();
   result
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use futures::StreamExt;
+
+  #[test]
+  fn capture_window_ends_when_no_compositor() {
+    let rx = capture_window(0x1234, 0);
+    assert!(rx.is_ok());
+    let mut rx = rx.unwrap();
+    let frame = futures::executor::block_on(rx.next());
+    assert!(frame.is_none());
+  }
+}

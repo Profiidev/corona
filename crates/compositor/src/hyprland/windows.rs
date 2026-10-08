@@ -125,6 +125,27 @@ mod tests {
     assert!(hypr.ipc().active_window().is_err());
     hypr.answer("j/activewindow", "");
     assert!(hypr.ipc().active_window().is_err());
+    hypr.answer("j/activewindow", "null");
+    assert!(hypr.ipc().active_window().is_err());
+  }
+
+  #[test]
+  fn negative_monitor_deserialization_fails() {
+    let raw = r#"{
+      "address": "0x1",
+      "monitor": -1,
+      "class": "test",
+      "title": "test",
+      "workspace": {"address": "0x1"},
+      "at": [0, 0],
+      "size": [100, 100],
+      "floating": false,
+      "pinned": false,
+      "fullscreen": 0,
+      "hidden": false,
+      "focusHistoryID": 0
+    }"#;
+    assert!(serde_json::from_str::<super::Window>(raw).is_err());
   }
 
   #[test]

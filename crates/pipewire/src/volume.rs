@@ -27,4 +27,17 @@ mod tests {
     assert!(to_slider(2.) > 1.);
     assert!(to_slider(-1.) < 0.);
   }
+
+  #[test]
+  fn cubic_slider_boundary_values() {
+    assert!(to_slider(f32::NAN).is_nan());
+    assert!(to_linear(f32::NAN).is_nan());
+    assert_eq!(to_slider(f32::INFINITY), f32::INFINITY);
+    assert_eq!(to_linear(f32::INFINITY), f32::INFINITY);
+    assert_eq!(to_slider(f32::NEG_INFINITY), f32::NEG_INFINITY);
+    assert_eq!(to_linear(f32::NEG_INFINITY), f32::NEG_INFINITY);
+    assert!(to_slider(f32::MIN_POSITIVE) > 0.0);
+    assert_eq!(to_linear(f32::MIN_POSITIVE), 0.0);
+    assert!(to_linear(1e-10) > 0.0);
+  }
 }

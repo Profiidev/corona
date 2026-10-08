@@ -333,6 +333,8 @@ Display 4
   #[test]
   fn getvcp_edges() {
     assert_eq!(parse_getvcp("  VCP 10 C 0 0 extra\n").unwrap(), (0, 0));
+    // unvalidated current > max parses successfully without clamping
+    assert_eq!(parse_getvcp("VCP 10 C 120 100\n").unwrap(), (120, 100));
     for bad in [
       "",
       "VCP 10 C 50",
@@ -378,6 +380,13 @@ Display 4
     let error = run(&["--bus", "5", "setvcp", BRIGHTNESS, "1"]).unwrap_err();
     assert!(error.to_string().ends_with("timed out"), "{error}");
     assert!(started.elapsed() < TIMEOUT * 4);
+  }
+
+  #[test]
+  fn run_pipe_buffer_exhaustion_times_out() {
+    let _fake = FakeDdcutil::install();
+    let error = run(&["flood"]).unwrap_err();
+    assert!(error.to_string().ends_with("timed out"), "{error}");
   }
 
   #[test]
@@ -452,6 +461,31 @@ Display 4
       updates.recv_timeout(Duration::from_secs(10)),
       Err(flume::RecvTimeoutError::Disconnected)
     ));
+  }
+
+  #[test]
+  fn worker_coalesces_multiple_buses() {
+    let _fake = FakeDdcutil::install();
+    let (commands, commands_rx) = flume::unbounded();
+    let (updates_tx, updates) = flume::unbounded();
+    // Burst across bus 5 and bus 7 queued during detection delay
+    for (bus, brightness) in [(5, 10), (7, 20), (5, 30), (7, 40)] {
+      commands
+        .send(DdcCommand::Set { bus, brightness })
+        .unwrap();
+    }
+    worker(commands_rx, updates_tx);
+    assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));
+
+    // Both buses are processed with their latest coalesced value (5 -> 30, 7 -> 40)
+    let mut results = vec![];
+    for _ in 0..2 {
+      if let Update::Brightness { bus, brightness } = next(&updates) {
+        results.push((bus, brightness));
+      }
+    }
+    results.sort_by_key(|(bus, _)| *bus);
+    assert_eq!(results, [(5, 30), (7, 40)]);
   }
 
   #[test]

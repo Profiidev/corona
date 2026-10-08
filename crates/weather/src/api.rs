@@ -512,4 +512,138 @@ pub(crate) mod tests {
       )));
     }
   }
+
+  #[test]
+  fn geocode_multiple_commas_falls_back_to_first() {
+    let (client, urls) = fake(|_| {
+      (
+        200,
+        r#"{"results": [
+          {"name": "Springfield", "latitude": 39.78, "longitude": -89.65, "country": "United States", "country_code": "US", "admin1": "Illinois"},
+          {"name": "Springfield", "latitude": 37.21, "longitude": -93.29, "country": "United States", "country_code": "US", "admin1": "Missouri"}
+        ]}"#
+          .into(),
+      )
+    });
+    // With multiple commas, region is "Illinois, US" which does not match admin1 "Illinois"
+    let loc = block_on(geocode(&*client, "Springfield, Illinois, US")).unwrap();
+    assert_eq!(loc.name, "Springfield, United States");
+    assert_eq!(loc.latitude, 39.78);
+    assert!(urls.lock().unwrap()[0].contains("name=Springfield&count=10"));
+  }
+
+  #[test]
+  fn geocode_empty_before_comma() {
+    let (client, urls) = fake(|_| {
+      (
+        200,
+        r#"{"results": [
+          {"name": "Texas City", "latitude": 29.38, "longitude": -94.90, "country": "United States"}
+        ]}"#
+          .into(),
+      )
+    });
+    let loc = block_on(geocode(&*client, ", Texas")).unwrap();
+    assert_eq!(loc.name, "Texas City, United States");
+    assert!(urls.lock().unwrap()[0].contains("name=&count=10"));
+  }
+
+  #[test]
+  fn geocode_non_ascii_region_case_folding() {
+    // eq_ignore_ascii_case does not fold non-ASCII letters like è/È
+    let (client, _) = fake(|_| {
+      (
+        200,
+        r#"{"results": [
+          {"name": "Genève", "latitude": 46.20, "longitude": 6.14, "country": "Suisse", "admin1": "Genève"},
+          {"name": "Autre", "latitude": 10.0, "longitude": 20.0, "country": "Suisse", "admin1": "GENÈVE"}
+        ]}"#
+          .into(),
+      )
+    });
+    // Exact match matches
+    let exact = block_on(geocode(&*client, "Ville, Genève")).unwrap();
+    assert_eq!(exact.latitude, 46.20);
+    // Non-ASCII uppercase with different case does not match via eq_ignore_ascii_case, falls back to first place
+    let upper = block_on(geocode(&*client, "Ville, genève")).unwrap();
+    assert_eq!(upper.latitude, 46.20);
+  }
+
+  #[test]
+  fn geocode_empty_country_string() {
+    let (client, _) = fake(|_| {
+      (
+        200,
+        r#"{"results": [
+          {"name": "Vatican", "latitude": 41.90, "longitude": 12.45, "country": ""}
+        ]}"#
+          .into(),
+      )
+    });
+    let loc = block_on(geocode(&*client, "Vatican")).unwrap();
+    // Some("") formats as "Vatican, "
+    assert_eq!(loc.name, "Vatican, ");
+  }
+
+  #[test]
+  fn ragged_precipitation_probability_drops_hour() {
+    // hourly precipitation_probability has 1 entry while time has 2 entries
+    let json = FORECAST_JSON.replace(
+      r#""precipitation_probability": [10, null]"#,
+      r#""precipitation_probability": [10]"#,
+    );
+    let weather = parse(&json);
+    // The second hour is dropped because precipitation_probability.get(1) is None
+    assert_eq!(weather.hourly.len(), 1);
+    assert_eq!(weather.hourly[0].precipitation_probability, 10.0);
+  }
+
+  #[test]
+  fn null_or_ragged_sunset_drops_day() {
+    // null sunset drops day
+    let null_sunset = FORECAST_JSON.replace(
+      r#""sunset": ["2026-10-01T18:54"]"#,
+      r#""sunset": [null]"#,
+    );
+    let weather = parse(&null_sunset);
+    assert!(weather.daily.is_empty());
+
+    // ragged/empty sunset drops day
+    let empty_sunset = FORECAST_JSON.replace(
+      r#""sunset": ["2026-10-01T18:54"]"#,
+      r#""sunset": []"#,
+    );
+    let weather2 = parse(&empty_sunset);
+    assert!(weather2.daily.is_empty());
+  }
+
+  #[test]
+  fn body_streaming_io_failure() {
+    use std::io;
+    use futures_lite::io::AsyncRead;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    struct FailingBody;
+    impl AsyncRead for FailingBody {
+      fn poll_read(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buf: &mut [u8],
+      ) -> Poll<io::Result<usize>> {
+        Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionReset, "body read stream reset")))
+      }
+    }
+
+    let client = FakeHttpClient::create(|_| async {
+      Ok(
+        Response::builder()
+          .status(200)
+          .body(AsyncBody::from_reader(FailingBody))
+          .unwrap(),
+      )
+    });
+    let err = block_on(super::forecast(&*client, here(), Units::Metric)).unwrap_err();
+    assert!(err.to_string().contains("body read stream reset"), "{err}");
+  }
 }

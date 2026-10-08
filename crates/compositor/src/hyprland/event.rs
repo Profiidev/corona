@@ -207,6 +207,9 @@ mod tests {
       address("abc,1,title, with commas").as_deref(),
       Some("0xabc")
     );
+    assert_eq!(address("5BA3").as_deref(), Some("0x5BA3"));
+    assert_eq!(address("0x5BA3").as_deref(), Some("0x5BA3"));
+    assert_ne!(address("5ba3"), address("5BA3"));
     assert_eq!(address(""), None);
     assert_eq!(address(","), None);
     assert_eq!(address("0x"), None);
@@ -276,6 +279,32 @@ mod tests {
     assert_eq!(closed[2], CompositorEvent::Attended("0xabc".into()));
     let active = parse(&hypr, "activewindow>>firefox,title").unwrap();
     assert_eq!(names(&active), ["ActiveWindow"]);
+  }
+
+  #[test]
+  fn kill_does_not_clear_urgency() {
+    let hypr = FakeHyprland::start();
+    // kill emits Window and ActiveWindow, but NOT Attended (leaving urgent addresses intact)
+    let killed = parse(&hypr, "kill>>abc").unwrap();
+    assert_eq!(names(&killed), ["Window", "ActiveWindow"]);
+    assert!(!killed.iter().any(|e| matches!(e, CompositorEvent::Attended(_))));
+  }
+
+  #[test]
+  fn activewindowv2_does_not_update_active_window() {
+    let hypr = FakeHyprland::start();
+    // activewindowv2 only attends urgency; it does not query or emit ActiveWindow
+    let events = parse(&hypr, "activewindowv2>>abc").unwrap();
+    assert_eq!(names(&events), ["Attended"]);
+    assert!(!events.iter().any(|e| matches!(e, CompositorEvent::ActiveWindow(_))));
+  }
+
+  #[test]
+  fn monitorremoved_does_not_refresh_active_monitor() {
+    let hypr = FakeHyprland::start();
+    let events = parse(&hypr, "monitorremoved>>DP-1").unwrap();
+    assert_eq!(names(&events), ["Monitor"]);
+    assert!(!events.iter().any(|e| matches!(e, CompositorEvent::ActiveMonitor(_))));
   }
 
   #[test]

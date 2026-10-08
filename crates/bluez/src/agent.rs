@@ -277,6 +277,15 @@ mod tests {
       pin_shown.kind,
       PairingKind::DisplayPasskey { passkey: 1234 }
     );
+
+    let pin_zeros = request(Message::DisplayPinCode {
+      device: dev(),
+      pincode: "0000".into(),
+    });
+    assert_eq!(
+      pin_zeros.kind,
+      PairingKind::DisplayPasskey { passkey: 0 }
+    );
   }
 
   #[test]
@@ -290,11 +299,18 @@ mod tests {
       })
       .is_none()
     );
-    // not a number: nothing to show
+    // not a number: alphanumeric PIN code fails to parse into u32, dropping message so pairing hangs
     assert!(
       event(Message::DisplayPinCode {
         device: dev(),
         pincode: "abcd".into(),
+      })
+      .is_none()
+    );
+    assert!(
+      event(Message::DisplayPinCode {
+        device: dev(),
+        pincode: "ABCD".into(),
       })
       .is_none()
     );

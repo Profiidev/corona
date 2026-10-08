@@ -178,6 +178,11 @@ mod tests {
       ipc.dsp("nope()").unwrap_err().to_string(),
       "Hyprland dsp call failed: no such dispatcher"
     );
+    hypr.answer(r#"/eval hl.dispatch(hl.dsp.trailing())"#, "ok\n");
+    assert_eq!(
+      ipc.dsp("trailing()").unwrap_err().to_string(),
+      "Hyprland dsp call failed: ok\n"
+    );
   }
 
   #[test]
@@ -211,5 +216,24 @@ mod tests {
     };
     assert!(ipc.eval("x").is_err());
     assert!(ipc.dsp("x").is_err());
+  }
+
+  #[test]
+  fn abrupt_socket_eof() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".socket.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    let held = std::thread::spawn(move || {
+      let (mut stream, _) = listener.accept().unwrap();
+      let mut buf = [0u8; 128];
+      let _ = stream.read(&mut buf);
+    });
+    let ipc = Ipc { cmd_socket: path };
+    let res = ipc.send_cmd(&Command {
+      command: "version".into(),
+      flags: CommandFlags::empty(),
+    });
+    assert_eq!(res.unwrap(), "");
+    drop(held.join());
   }
 }

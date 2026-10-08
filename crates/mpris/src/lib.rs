@@ -209,6 +209,8 @@ mod tests {
     volume: f64,
     shuffle: bool,
     loop_status: String,
+    fail_seek: bool,
+    fail_volume: bool,
   }
 
   impl MockPlayer {
@@ -234,8 +236,12 @@ mod tests {
     fn previous(&self) {
       self.record("Previous".into());
     }
-    fn set_position(&self, track: ObjectPath<'_>, position: i64) {
+    fn set_position(&self, track: ObjectPath<'_>, position: i64) -> zbus::fdo::Result<()> {
+      if self.fail_seek {
+        return Err(zbus::fdo::Error::Failed("Cannot seek".into()));
+      }
       self.record(format!("SetPosition {track} {position}"));
+      Ok(())
     }
 
     #[zbus(property)]
@@ -273,9 +279,13 @@ mod tests {
       self.volume
     }
     #[zbus(property)]
-    fn set_volume(&mut self, volume: f64) {
+    fn set_volume(&mut self, volume: f64) -> zbus::fdo::Result<()> {
+      if self.fail_volume {
+        return Err(zbus::fdo::Error::Failed("Volume is read-only".into()));
+      }
       self.volume = volume;
       self.record(format!("Volume {volume}"));
+      Ok(())
     }
     #[zbus(property)]
     fn shuffle(&self) -> bool {
@@ -338,14 +348,27 @@ mod tests {
   }
 
   fn spawn_player(bus: &TestBus, name: &str, status: &str) -> Mock {
+    spawn_custom_player(bus, name, status, 0.5, false, false)
+  }
+
+  fn spawn_custom_player(
+    bus: &TestBus,
+    name: &str,
+    status: &str,
+    volume: f64,
+    fail_seek: bool,
+    fail_volume: bool,
+  ) -> Mock {
     let calls = Calls::default();
     let player = MockPlayer {
       calls: calls.clone(),
       status: status.into(),
       title: "Song".into(),
-      volume: 0.5,
+      volume,
       shuffle: false,
       loop_status: "None".into(),
+      fail_seek,
+      fail_volume,
     };
     let conn = block_on(async {
       let conn = bus.conn().await;
@@ -593,5 +616,91 @@ mod tests {
     wait_until(cx, |cx| names(cx).len() == 3);
     settle(cx);
     assert_eq!(active(cx).as_deref(), Some(chosen));
+  }
+
+  #[gpui::test]
+  fn set_position_overflow_fails(cx: &mut TestAppContext) {
+    let bus = start(cx);
+    let _mock = spawn_player(&bus, "Spotify", "Playing");
+    wait_until(cx, |cx| names(cx).len() == 1);
+    let name = "org.mpris.MediaPlayer2.Spotify";
+    let seek = cx.read(|cx| cx.mpris().set_position(name, Duration::MAX, cx));
+    assert!(block_on(seek).is_err());
+  }
+
+  #[gpui::test]
+  fn set_position_remote_rejection_propagates_error(cx: &mut TestAppContext) {
+    let bus = start(cx);
+    let _mock = spawn_custom_player(&bus, "Failing", "Playing", 0.5, true, false);
+    wait_until(cx, |cx| names(cx).len() == 1);
+    let name = "org.mpris.MediaPlayer2.Failing";
+    let seek = cx.read(|cx| cx.mpris().set_position(name, Duration::from_secs(1), cx));
+    let err = block_on(seek).unwrap_err();
+    assert!(err.to_string().contains("Cannot seek"));
+  }
+
+  #[gpui::test]
+  fn infinite_and_readonly_volume(cx: &mut TestAppContext) {
+    let bus = start(cx);
+    let mock = spawn_custom_player(&bus, "Spotify", "Playing", 0.5, false, false);
+    wait_until(cx, |cx| names(cx).len() == 1);
+    let name = "org.mpris.MediaPlayer2.Spotify";
+    let mpris = cx.read(|cx| cx.mpris().clone());
+    // Positive infinity clamps to 1.0
+    block_on(mpris.set_volume(name, f64::INFINITY)).unwrap();
+    // Negative infinity clamps to 0.0
+    block_on(mpris.set_volume(name, f64::NEG_INFINITY)).unwrap();
+    assert_eq!(
+      *mock.calls.lock().unwrap(),
+      ["Volume 1", "Volume 0"]
+    );
+
+    // Read-only volume error propagation
+    let _readonly = spawn_custom_player(&bus, "ReadOnly", "Playing", 0.5, false, true);
+    wait_until(cx, |cx| names(cx).len() == 2);
+    let ro_name = "org.mpris.MediaPlayer2.ReadOnly";
+    let res = block_on(mpris.set_volume(ro_name, 0.8));
+    assert!(res.unwrap_err().to_string().contains("Volume is read-only"));
+  }
+
+  #[gpui::test]
+  fn unvalidated_dbus_volume_stored_as_is(cx: &mut TestAppContext) {
+    let bus = start(cx);
+    // Player reporting out-of-range volume -0.5
+    let _p1 = spawn_custom_player(&bus, "NegativeVol", "Playing", -0.5, false, false);
+    wait_until(cx, |cx| names(cx).len() == 1);
+    cx.read(|cx| {
+      let p = cx.mpris().active_player(cx).unwrap();
+      assert_eq!(p.volume, Some(-0.5));
+    });
+  }
+
+  #[gpui::test]
+  fn active_observer_before_players_update(cx: &mut TestAppContext) {
+    let bus = start(cx);
+    let observed_active = Arc::new(Mutex::new(Vec::new()));
+    let obs = observed_active.clone();
+    cx.update(|cx| {
+      let active = cx.mpris().active.clone();
+      let mpris = cx.mpris().clone();
+      cx.observe(&active, move |_active, cx| {
+        obs.lock().unwrap().push(mpris.active_player(cx).map(|p| p.name.clone()));
+      })
+      .detach();
+    });
+    let _player = spawn_player(&bus, "Spotify", "Playing");
+    wait_until(cx, |cx| names(cx).len() == 1);
+    settle(cx);
+    let list = observed_active.lock().unwrap().clone();
+    // Because state.active is written before state.players in listener,
+    // the observer runs before players is updated, seeing None:
+    assert_eq!(list, [None]);
+    // After settle, active_player is resolved properly:
+    cx.read(|cx| {
+      assert_eq!(
+        cx.mpris().active_player(cx).map(|p| p.name.as_str()),
+        Some("org.mpris.MediaPlayer2.Spotify")
+      );
+    });
   }
 }

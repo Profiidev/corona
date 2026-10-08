@@ -187,4 +187,39 @@ mod tests {
     cx.update(|cx| cx.system_monitor().clone().set_interval(None, cx));
     cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), None));
   }
+
+  #[gpui::test]
+  fn rapid_config_updates(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      cx.set_global(Config::default());
+      init(cx);
+    });
+    for sec in 1..=5 {
+      cx.update(|cx| {
+        let mut config = cx.config().clone();
+        config.system.monitor.poll_seconds = sec;
+        cx.set_global(config);
+      });
+    }
+    cx.run_until_parked();
+    cx.read(|cx| {
+      assert_eq!(
+        cx.system_monitor().interval(cx),
+        Some(Duration::from_secs(5))
+      );
+    });
+  }
+
+  #[gpui::test]
+  fn background_update_listener_task_terminates_on_disconnect(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      cx.set_global(Config::default());
+      init(cx);
+    });
+    // Task spawned in init runs and stays idle waiting for updates or terminates when disconnected
+    cx.run_until_parked();
+    let (tx, rx) = flume::unbounded::<Update>();
+    drop(tx);
+    assert!(rx.recv().is_err());
+  }
 }

@@ -47,6 +47,13 @@ mod tests {
   }
 
   #[test]
+  fn to_gpui_empty_image() {
+    let empty = RgbaImage::new(0, 0);
+    let render = empty.to_gpui();
+    assert!(render.as_bytes(0).map_or(true, |b| b.is_empty()));
+  }
+
+  #[test]
   fn png_round_trip() {
     let png = image().to_png().unwrap();
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");

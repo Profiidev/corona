@@ -587,4 +587,14 @@ mod tests {
     );
     assert!(serde_json::from_str::<EnterpriseConfig>(r#"{"eap": "md5"}"#).is_err());
   }
+
+  #[test]
+  fn eap_tls_missing_client_cert_and_private_key() {
+    let tls_bare = config(EapMethod::Tls);
+    let settings = super::enterprise_settings(tls_bare).unwrap();
+    let enterprise = &settings[ENTERPRISE_SETTING];
+    assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TLS.to_owned()]));
+    assert!(!enterprise.contains_key(CLIENT_CERT_KEY));
+    assert!(!enterprise.contains_key(PRIVATE_KEY_KEY));
+  }
 }

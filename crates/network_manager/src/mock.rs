@@ -67,6 +67,7 @@ pub(crate) struct World {
   pub last_scan: i64,
   /// RequestScan finishes the scan right away
   pub scan_finishes: bool,
+  pub scan_fails: bool,
   pub profiles: Vec<Profile>,
   /// profiles the wifi device may use, by path
   pub available: Vec<String>,
@@ -119,6 +120,7 @@ impl Default for World {
       ],
       last_scan: 1000,
       scan_finishes: true,
+      scan_fails: false,
       profiles: vec![
         profile(1, "Wired", "802-3-ethernet", None),
         profile(2, "home", "802-11-wireless", Some(b"home")),
@@ -335,6 +337,11 @@ impl Wireless {
     let finishes = {
       let mut world = self.0.lock().unwrap();
       world.calls.push("RequestScan".into());
+      if world.scan_fails {
+        return Err(zbus::fdo::Error::Failed(
+          "org.freedesktop.NetworkManager.Device.Busy: Scanning not allowed so quickly".into(),
+        ));
+      }
       if world.scan_finishes {
         world.last_scan += 1;
       }

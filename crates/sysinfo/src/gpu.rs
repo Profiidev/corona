@@ -582,4 +582,36 @@ mod tests {
     assert_eq!(drm_usage("other", &previous, &current), 0.);
     assert_eq!(drm_usage(pci, &Engines::new(), &Engines::new()), 0.);
   }
+
+  #[test]
+  fn fdinfo_capacity_multiplication() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
+    write(
+      root,
+      &[
+        (
+          "1/fdinfo/3",
+          "drm-pdev:\tB\ndrm-client-id:\t1\ndrm-engine-render:\t10 ns\ndrm-engine-capacity-render:\t5\n",
+        ),
+      ],
+    );
+    // 100 ns now, capacity 5 -> total = 100 * 5 = 500
+    assert_eq!(engines(root, 100), engine(&[("B", "1", "render", 10, 500)]));
+  }
+
+  #[test]
+  fn hwmon_multiple_subdirectories() {
+    let root = tempfile::tempdir().unwrap();
+    let hwmon = root.path().join("hwmon");
+    write(
+      &hwmon,
+      &[
+        ("hwmon0/temp1_input", "50000"),
+        ("hwmon1/temp1_input", "70000"),
+      ],
+    );
+    let temp = hwmon_temperature(&hwmon).unwrap();
+    assert!(temp == 50. || temp == 70.);
+  }
 }

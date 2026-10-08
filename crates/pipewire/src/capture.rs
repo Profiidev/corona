@@ -545,4 +545,36 @@ mod tests {
       Some("a")
     );
   }
+
+  #[test]
+  fn active_captures_exceeding_log_limit() {
+    let mut log = Vec::new();
+    let captures: Vec<_> = (0..55)
+      .map(|i| Capture {
+        id: i,
+        kind: CaptureKind::Microphone,
+        name: format!("App {i}"),
+        active: true,
+      })
+      .collect();
+    record(&mut log, &captures, SystemTime::now());
+    assert_eq!(log.len(), 55);
+  }
+
+  #[test]
+  fn screen_source_recovers_from_error_to_idle_active() {
+    let (tx, rx) = flume::unbounded();
+    let state = CaptureState::default();
+    let screen = props(&[("application.name", "OBS")]);
+    state.insert(3, "Stream/Output/Video", screen.dict());
+    assert!(state.list()[0].active);
+
+    state.update(3, &NodeState::Error("device disconnected"), None, &tx);
+    assert!(!state.list()[0].active);
+    rx.drain().for_each(drop);
+
+    state.update(3, &NodeState::Idle, None, &tx);
+    assert!(state.list()[0].active);
+    assert_eq!(rx.drain().count(), 1);
+  }
 }

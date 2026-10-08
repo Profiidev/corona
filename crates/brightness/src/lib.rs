@@ -296,6 +296,9 @@ case "$2" in
     [ -f "$dir/detect-fails" ] && exit 1
     cat "$dir/detect"
     exit 0 ;;
+  flood)
+    dd if=/dev/zero bs=1k count=128 2>/dev/null
+    exit 0 ;;
 esac
 bus="$3"
 case "$4" in
@@ -469,6 +472,39 @@ mod tests {
     let merged = super::merge(&[panel], &outputs, &Ddc::Detecting, &none);
     assert_eq!(merged.len(), 2);
     assert!(super::merge(&[], &[], &Ddc::Detecting, &none).is_empty());
+
+    // a backlight whose output is None does not match any output name in builtin(output),
+    // causing an unmapped laptop backlight to coexist with its DRM connector as an external unsupported display
+    let mut panel_unmapped = display("backlight/intel_backlight", "", DisplayKind::Backlight);
+    panel_unmapped.output = None;
+    let edp_outputs = [output("eDP-1", Some("Internal Panel"))];
+    let merged = super::merge(&[panel_unmapped], &edp_outputs, &Ddc::Detecting, &none);
+    assert_eq!(merged.len(), 2);
+    assert_eq!(merged[0].id, "backlight/intel_backlight");
+    assert_eq!(merged[1].id, "output/eDP-1");
+    assert_eq!(merged[1].unavailable, Some(Unavailable::Detecting));
+  }
+
+  #[test]
+  fn brightness_update_ignored_when_not_detected() {
+    let mut ddc = Ddc::Detecting;
+    let bus = 5;
+    let brightness = 80;
+    let id = format!("ddc/{bus}");
+    if let Ddc::Detected(list) = &mut ddc
+      && let Some(display) = list.iter_mut().find(|d| d.id == id)
+    {
+      display.brightness = brightness;
+    }
+    assert_eq!(ddc, Ddc::Detecting);
+
+    let mut ddc = Ddc::DetectFailed;
+    if let Ddc::Detected(list) = &mut ddc
+      && let Some(display) = list.iter_mut().find(|d| d.id == id)
+    {
+      display.brightness = brightness;
+    }
+    assert_eq!(ddc, Ddc::DetectFailed);
   }
 
   #[test]
@@ -607,14 +643,15 @@ mod global_tests {
     assert!(set(cx, "ddc/x", 1).is_err());
     assert!(rx.is_empty());
 
-    // clamped to the display's maximum
+    // clamped to the display's maximum and zero allowed
     set(cx, "ddc/5", 500).unwrap();
     set(cx, "ddc/5", 30).unwrap();
+    set(cx, "ddc/5", 0).unwrap();
     let sent: Vec<_> = rx
       .try_iter()
       .map(|DdcCommand::Set { bus, brightness }| (bus, brightness))
       .collect();
-    assert_eq!(sent, [(5, 100), (5, 30)]);
+    assert_eq!(sent, [(5, 100), (5, 30), (5, 0)]);
   }
 
   #[gpui::test]
@@ -652,9 +689,14 @@ mod global_tests {
     let root = sysfs();
     state(cx, &conn, None);
     set(cx, "backlight/intel_backlight", 5000).unwrap();
+    // zero brightness passes through to logind as minimum
+    set(cx, "backlight/intel_backlight", 0).unwrap();
     assert_eq!(
       calls.lock().unwrap().as_slice(),
-      [("backlight".to_string(), "intel_backlight".to_string(), 1200)]
+      [
+        ("backlight".to_string(), "intel_backlight".to_string(), 1200),
+        ("backlight".to_string(), "intel_backlight".to_string(), 0),
+      ]
     );
     // sysfs untouched
     let file = root

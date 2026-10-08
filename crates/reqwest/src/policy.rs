@@ -250,4 +250,36 @@ mod tests {
     // a 304 does not change the stored body's type
     assert_eq!(meta.content_type.as_deref(), Some("image/png"));
   }
+
+  #[test]
+  fn cacheable_request_with_other_conditional_headers() {
+    let request = |(name, value)| {
+      let mut builder = Request::builder().method(Method::GET);
+      builder = builder.header(name, value);
+      builder.body(AsyncBody::empty()).unwrap()
+    };
+    assert!(super::cacheable_request(&request((header::IF_MATCH, "\"xyz\""))));
+    assert!(super::cacheable_request(&request((header::IF_UNMODIFIED_SINCE, "yesterday"))));
+    assert!(super::cacheable_request(&request((header::IF_RANGE, "\"xyz\""))));
+  }
+
+  #[test]
+  fn expires_whitespace_edges() {
+    let cache_control = |value| headers(&[(header::CACHE_CONTROL, value)]);
+    assert_eq!(super::expires(&cache_control("max-age = 60"), 100), 100);
+    assert_eq!(super::expires(&cache_control("max-age=\" 60 \""), 100), 100);
+  }
+
+  #[test]
+  fn refresh_without_cache_control_expires_at_now() {
+    let mut meta = Meta {
+      url: "u".into(),
+      expires: 1000,
+      etag: Some("\"v1\"".into()),
+      last_modified: None,
+      content_type: None,
+    };
+    super::refresh(&mut meta, &HeaderMap::new(), 50);
+    assert_eq!(meta.expires, 50);
+  }
 }

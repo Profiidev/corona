@@ -137,9 +137,10 @@ fn parse_icon_theme(settings: &str) -> Option<String> {
 /// Memoized: a name nothing answers to costs a full walk of the theme chain
 /// (~17ms here), and every render of every window icon repeats it. Misses are
 /// cached too; icons installed while corona runs are not picked up.
+#[allow(clippy::type_complexity)]
+static CACHE: OnceLock<Mutex<HashMap<(String, u16), Option<PathBuf>>>> = OnceLock::new();
+
 fn lookup(name: &str, size: u16) -> Option<PathBuf> {
-  #[allow(clippy::type_complexity)]
-  static CACHE: OnceLock<Mutex<HashMap<(String, u16), Option<PathBuf>>>> = OnceLock::new();
   let cache = CACHE.get_or_init(Mutex::default);
 
   let key = (name.to_string(), size);
@@ -181,7 +182,10 @@ pub fn name_for_names<'n>(names: impl IntoIterator<Item = &'n str>) -> Option<St
 
 fn entry_icon(name: &str, size: u16) -> Option<PathBuf> {
   let icon = entries().get(name)?.icon.as_ref()?;
+  resolve_icon_path(icon, size)
+}
 
+fn resolve_icon_path(icon: &str, size: u16) -> Option<PathBuf> {
   // `Icon=` may be an absolute path. Look its stem up in the theme first so a
   // themed replacement still wins, then fall back to the file the app shipped.
   let name = Path::new(icon)
@@ -277,5 +281,171 @@ mod tests {
     if let Some(path) = icon_for_names_or_default([class.as_str()], 24) {
       assert!(path.exists(), "{path:?} does not exist");
     }
+  }
+
+  #[test]
+  fn exec_binary_quoted_paths_and_escapes() {
+    // Quoted executable paths with whitespace split prematurely on whitespace
+    assert_eq!(
+      exec_binary(r#""/opt/My App/bin/foo" %U"#),
+      Some("My")
+    );
+    // Backslash escaped paths
+    assert_eq!(
+      exec_binary(r#"/usr/bin/foo\sbar --arg"#),
+      Some(r#"foo\sbar"#)
+    );
+  }
+
+  #[test]
+  fn keys_positional_index_shifting() {
+    let mut full = DesktopEntry {
+      appid: "org.example.app".into(),
+      groups: freedesktop_desktop_entry::Groups::default(),
+      path: PathBuf::new(),
+      ubuntu_gettext_domain: None,
+    };
+    full.add_desktop_entry("Name".into(), "My App".into());
+    full.add_desktop_entry("Exec".into(), "my-bin %U".into());
+    full.add_desktop_entry("StartupWMClass".into(), "MyAppClass".into());
+    let k_full = keys(&full, &[]);
+    assert_eq!(
+      k_full,
+      vec!["my app", "my-bin", "app", "org.example.app", "myappclass"]
+    );
+    assert_eq!(k_full.len(), 5);
+
+    // Missing Name shifts exec to index 0 and startup_wm_class to index 3
+    let mut no_name = DesktopEntry {
+      appid: "org.example.app".into(),
+      groups: freedesktop_desktop_entry::Groups::default(),
+      path: PathBuf::new(),
+      ubuntu_gettext_domain: None,
+    };
+    no_name.add_desktop_entry("Exec".into(), "my-bin %U".into());
+    no_name.add_desktop_entry("StartupWMClass".into(), "MyAppClass".into());
+    let k_no_name = keys(&no_name, &[]);
+    assert_eq!(
+      k_no_name,
+      vec!["my-bin", "app", "org.example.app", "myappclass"]
+    );
+    assert_eq!(k_no_name[0], "my-bin"); // shifted to rank 0!
+    assert_eq!(k_no_name.get(4), None); // rank 4 missing!
+
+    // Missing both Name and Exec shifts appid.rsplit to index 0
+    let no_name_no_exec = DesktopEntry {
+      appid: "org.example.app".into(),
+      groups: freedesktop_desktop_entry::Groups::default(),
+      path: PathBuf::new(),
+      ubuntu_gettext_domain: None,
+    };
+    let k_minimal = keys(&no_name_no_exec, &[]);
+    assert_eq!(k_minimal, vec!["app", "org.example.app"]);
+    assert_eq!(k_minimal.len(), 2);
+  }
+
+  #[test]
+  fn ranking_loop_overwrites_strongest_key_with_weakest() {
+    // Simulate entries ranking loop from lines 81-89:
+    // Entry A has StartupWMClass = "shared" at rank 4 (strongest key)
+    let keys_a = vec![
+      "name_a".to_string(),
+      "bin_a".to_string(),
+      "app_a".to_string(),
+      "org.app.a".to_string(),
+      "shared".to_string(), // rank 4
+    ];
+    let entry_a = Entry {
+      icon: Some("icon_a".into()),
+      name: Some("App A".into()),
+    };
+
+    // Entry B has display Name = "shared" at rank 0 (weakest key)
+    let keys_b = vec![
+      "shared".to_string(), // rank 0
+      "bin_b".to_string(),
+      "app_b".to_string(),
+      "org.app.b".to_string(),
+      "class_b".to_string(),
+    ];
+    let entry_b = Entry {
+      icon: Some("icon_b".into()),
+      name: Some("App B".into()),
+    };
+
+    let entries = vec![(keys_a, entry_a), (keys_b, entry_b)];
+
+    let mut names = HashMap::new();
+    for rank in (0..KEY_RANKS).rev() {
+      for (keys, entry) in &entries {
+        if let Some(key) = keys.get(rank) {
+          names.insert(key.clone(), entry.clone());
+        }
+      }
+    }
+
+    // Because (0..KEY_RANKS).rev() iterates rank 4 down to 0, rank 0 is inserted LAST,
+    // overwriting rank 4! So "shared" maps to App B (the weakest key) instead of App A.
+    assert_eq!(names.get("shared").unwrap().name.as_deref(), Some("App B"));
+  }
+
+  #[test]
+  fn hidden_and_no_display_entries_not_filtered() {
+    let mut entry = DesktopEntry {
+      appid: "org.example.Hidden".into(),
+      groups: freedesktop_desktop_entry::Groups::default(),
+      path: PathBuf::new(),
+      ubuntu_gettext_domain: None,
+    };
+    entry.add_desktop_entry("Name".into(), "Hidden App".into());
+    entry.add_desktop_entry("Hidden".into(), "true".into());
+    entry.add_desktop_entry("NoDisplay".into(), "true".into());
+    assert!(entry.hidden());
+    assert!(entry.no_display());
+    // keys() still produces keys for hidden and no_display entries
+    let k = keys(&entry, &[]);
+    assert_eq!(k[0], "hidden app");
+  }
+
+  #[test]
+  fn absolute_icon_path_returned_without_verifying_existence() {
+    let nonexistent = "/opt/apps/nonexistent_icon_12345.png";
+    let resolved = resolve_icon_path(nonexistent, 24);
+    assert_eq!(resolved, Some(PathBuf::from(nonexistent)));
+    assert!(!resolved.unwrap().exists());
+  }
+
+  #[test]
+  fn parse_icon_theme_edges() {
+    // Prefix collision: gtk-icon-theme-name-backup matched before gtk-icon-theme-name
+    let backup_settings = "[Settings]\ngtk-icon-theme-name-backup=my-other-theme\ngtk-icon-theme-name=kora\n";
+    assert_eq!(
+      parse_icon_theme(backup_settings).as_deref(),
+      Some("my-other-theme")
+    );
+
+    // Single-quoted theme name is not stripped of single quotes
+    let single_quoted = "[Settings]\ngtk-icon-theme-name='kora'\n";
+    assert_eq!(parse_icon_theme(single_quoted).as_deref(), Some("'kora'"));
+
+    // Double-quoted theme name is stripped
+    let double_quoted = "[Settings]\ngtk-icon-theme-name=\"kora\"\n";
+    assert_eq!(parse_icon_theme(double_quoted).as_deref(), Some("kora"));
+
+    // Spaces around =
+    let spaced = "[Settings]\ngtk-icon-theme-name = kora\n";
+    assert_eq!(parse_icon_theme(spaced).as_deref(), Some("kora"));
+  }
+
+  #[test]
+  fn mutex_poisoning_silences_lookup() {
+    let cache = CACHE.get_or_init(Mutex::default);
+    let _ = std::panic::catch_unwind(|| {
+      let _guard = cache.lock().unwrap();
+      panic!("poison cache");
+    });
+    assert!(cache.is_poisoned());
+    // All lookups immediately return None when mutex is poisoned
+    assert_eq!(lookup("any-app", 24), None);
   }
 }

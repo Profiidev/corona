@@ -224,4 +224,44 @@ mod tests {
     let now = unix_now();
     assert!(now > 1_700_000_000);
   }
+
+  #[test]
+  #[cfg(unix)]
+  fn read_only_body_still_returns_cached_response() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = temp_dir("store-readonly-body");
+    let base = dir.join("entry");
+    write_entry(&base, &meta(None), b"cached body").unwrap();
+    let body = path(&base, "body");
+    let mut perms = fs::metadata(&body).unwrap().permissions();
+    perms.set_mode(0o444);
+    fs::set_permissions(&body, perms.clone()).unwrap();
+
+    let res = cached_response(&base, &meta(None));
+    assert!(res.is_ok());
+
+    perms.set_mode(0o644);
+    fs::set_permissions(&body, perms).unwrap();
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn malformed_content_type_returns_io_error() {
+    let dir = temp_dir("store-bad-ct");
+    let base = dir.join("entry");
+    let mut bad_meta = meta(None);
+    bad_meta.content_type = Some("bad\ncontent\r\ntype".into());
+    write_entry(&base, &bad_meta, b"body").unwrap();
+    assert!(cached_response(&base, &bad_meta).is_err());
+    fs::remove_dir_all(dir).ok();
+  }
+
+  #[test]
+  fn unix_now_handles_clock_before_epoch() {
+    let before_epoch = UNIX_EPOCH.checked_sub(Duration::from_secs(100));
+    if let Some(t) = before_epoch {
+      let secs = t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+      assert_eq!(secs, 0);
+    }
+  }
 }

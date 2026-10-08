@@ -87,7 +87,7 @@ impl Props {
   }
 }
 
-async fn can_activate(conn: &Connection, bus: &str, path: &str) -> Result<bool> {
+pub(crate) async fn can_activate(conn: &Connection, bus: &str, path: &str) -> Result<bool> {
   let xml = IntrospectableProxy::builder(conn)
     .destination(bus.to_string())?
     .path(path.to_string())?
@@ -328,6 +328,9 @@ pub(crate) mod tests {
       .unwrap();
     assert_eq!(image.dimensions(), (2, 1));
     assert_eq!(image.as_raw(), &[4, 5, 6, 0x80, 7, 8, 9, 0x40]);
+    let zero = (0, 0, vec![]);
+    let image_zero = pixmaps(vec![zero]).pixmap("IconPixmap").unwrap();
+    assert_eq!(image_zero.dimensions(), (0, 0));
     // broken ones are none
     assert!(pixmaps(vec![]).pixmap("IconPixmap").is_none());
     assert!(
@@ -364,6 +367,7 @@ pub(crate) mod tests {
     };
     assert_eq!(tooltip("Title", "Body").as_deref(), Some("Title"));
     assert_eq!(tooltip("", "Body").as_deref(), Some("Body"));
+    assert_eq!(tooltip("", "   ").as_deref(), Some("   "));
     assert_eq!(tooltip("", ""), None);
     assert_eq!(props(vec![("ToolTip", "plain".into())]).tooltip(), None);
     assert_eq!(props(vec![]).tooltip(), None);
@@ -489,5 +493,28 @@ pub(crate) mod tests {
     ]);
     assert_eq!(icon(&p, "IconName", "IconPixmap", None), Some(path));
     assert_eq!(icon(&props(vec![]), "IconName", "IconPixmap", None), None);
+  }
+
+  #[test]
+  fn pixmap_cache_write_failure() {
+    let runtime = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
+    // Create a regular file where cache_dir should be, so create_dir_all fails
+    std::fs::create_dir_all(runtime.path().join("corona")).unwrap();
+    std::fs::write(runtime.path().join("corona").join("tray"), b"not a dir").unwrap();
+    let image = RgbaImage::from_raw(1, 1, vec![1, 2, 3, 4]).unwrap();
+    assert!(pixmap_file(&image).is_err());
+    let p = props(vec![
+      ("IconPixmap", vec![(1i32, 1i32, vec![4u8, 1, 2, 3])].into()),
+    ]);
+    assert_eq!(icon(&p, "IconName", "IconPixmap", None), None);
+  }
+
+  #[test]
+  fn non_existent_absolute_icon_path() {
+    assert_eq!(
+      named_icon("/path/does/not/exist.png", None),
+      Some(PathBuf::from("/path/does/not/exist.png"))
+    );
   }
 }

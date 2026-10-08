@@ -284,6 +284,7 @@ mod tests {
     address: String,
     connected: bool,
     trusted: bool,
+    fail_pair: bool,
   }
 
   #[interface(name = "org.bluez.Device1")]
@@ -304,12 +305,16 @@ mod tests {
         .unwrap()
         .push(format!("Disconnect {}", self.address));
     }
-    fn pair(&self) {
+    fn pair(&self) -> zbus::fdo::Result<()> {
       self
         .calls
         .lock()
         .unwrap()
         .push(format!("Pair {}", self.address));
+      if self.fail_pair {
+        return Err(zbus::fdo::Error::Failed("org.bluez.Error.AlreadyExists".into()));
+      }
+      Ok(())
     }
     #[zbus(property)]
     fn address(&self) -> String {
@@ -439,11 +444,27 @@ mod tests {
           address: address.into(),
           connected: false,
           trusted: false,
+          fail_pair: false,
         };
         server.at(path.as_str(), device).await.unwrap();
         if battery {
           server.at(path.as_str(), Battery).await.unwrap();
         }
+      });
+    }
+
+    fn add_failing_device(&self, address: &str) {
+      let path = format!("{HCI0}/dev_{address}");
+      block_on(async {
+        let server = self.conn.object_server();
+        let device = MockDevice {
+          calls: self.calls.clone(),
+          address: address.into(),
+          connected: false,
+          trusted: false,
+          fail_pair: true,
+        };
+        server.at(path.as_str(), device).await.unwrap();
       });
     }
 
@@ -752,6 +773,18 @@ mod tests {
         .answer_pairing(cx, PairingAnswer::Reject)
     });
     assert!(reply.join().unwrap().is_err());
+
+    // whitespace-only PIN code is trimmed to "" and sent as Some("")
+    let reply = bluez.ask("RequestPinCode", (device(),));
+    wait_until(cx, |cx| pending(cx).is_some());
+    answer(cx, PairingAnswer::Code("    ".into()));
+    assert_eq!(reply.join().unwrap().unwrap(), "");
+
+    // whitespace-only passkey fails parsing into u32, sending None / error
+    let reply = bluez.ask("RequestPasskey", (device(),));
+    wait_until(cx, |cx| pending(cx).is_some());
+    answer(cx, PairingAnswer::Code("    ".into()));
+    assert!(reply.join().unwrap().is_err());
   }
 
   #[gpui::test]
@@ -796,5 +829,39 @@ mod tests {
     wait_until(cx, |cx| pending(cx).is_some());
     let _cancel = bluez.ask("Cancel", ());
     wait_until(cx, |cx| pending(cx).is_none());
+  }
+
+  #[gpui::test]
+  fn pair_already_exists_fails_without_trusting_or_connecting(cx: &mut TestAppContext) {
+    let (_bus, bluez) = start(cx);
+    let bluez = bluez.unwrap();
+    bluez.add_failing_device("FAIL");
+    wait_until(cx, |cx| addresses(cx).contains(&"FAIL".to_string()));
+
+    let task = cx.read(|cx| cx.bluetooth().pair("FAIL", cx));
+    let result = block_on(task);
+    assert!(result.is_err());
+    let calls = bluez.calls();
+    assert!(calls.contains(&"Pair FAIL".to_string()));
+    assert!(!calls.contains(&"Trusted true".to_string()));
+    assert!(!calls.contains(&"Connect FAIL".to_string()));
+  }
+
+  #[gpui::test]
+  fn bluetoothd_restart_does_not_reregister_agent(cx: &mut TestAppContext) {
+    let (bus, bluez) = start(cx);
+    let bluez = bluez.unwrap();
+    wait_until(cx, |cx| addresses(cx) == ["AA"]);
+    let calls = bluez.calls();
+    assert!(calls.iter().any(|c| c.starts_with("RegisterAgent")));
+    drop(bluez);
+    wait_until(cx, |cx| cx.read(|cx| cx.bluetooth().adapter(cx).is_none()));
+
+    // Restart bluez daemon
+    let bluez2 = Bluez::start(&bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.bluetooth().adapter(cx).is_some()));
+    // The restarted bluez never receives RegisterAgent because corona registers agent only in init()
+    let calls2 = bluez2.calls();
+    assert!(!calls2.iter().any(|c| c.starts_with("RegisterAgent")));
   }
 }

@@ -78,4 +78,23 @@ mod tests {
     assert_eq!(names, ["weak", "alpha", "Beta", "Zed"]);
     sort_devices(&mut []);
   }
+
+  #[test]
+  fn sort_identical_names_and_properties() {
+    let mut devices = vec![
+      device("beacon", false, false, Some(-60)),
+      device("BEACON", false, false, Some(-60)),
+    ];
+    devices[0].address = "11:11".into();
+    devices[1].address = "22:22".into();
+    sort_devices(&mut devices);
+    assert_eq!(devices[0].address, "11:11");
+    assert_eq!(devices[1].address, "22:22");
+
+    let mut reversed = vec![devices[1].clone(), devices[0].clone()];
+    sort_devices(&mut reversed);
+    // Relative input order is retained without secondary tie-breaker
+    assert_eq!(reversed[0].address, "22:22");
+    assert_eq!(reversed[1].address, "11:11");
+  }
 }

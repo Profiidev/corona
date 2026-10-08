@@ -642,6 +642,9 @@ mod tests {
     block_on(tray.context_menu(&address, 5, 6)).unwrap();
     block_on(tray.scroll(&address, -1, Orientation::Vertical)).unwrap();
     block_on(tray.scroll(&address, 2, Orientation::Horizontal)).unwrap();
+    block_on(tray.scroll(&address, 0, Orientation::Vertical)).unwrap();
+    block_on(tray.scroll(&address, i32::MIN, Orientation::Vertical)).unwrap();
+    block_on(tray.scroll(&address, i32::MAX, Orientation::Horizontal)).unwrap();
     let task = cx.read(|cx| tray.about_to_show(&address, 7, cx));
     block_on(task).unwrap();
     let task = cx.read(|cx| tray.menu_click(&address, 7, cx));
@@ -654,6 +657,9 @@ mod tests {
         "ContextMenu 5 6",
         "Scroll -1 vertical",
         "Scroll 2 horizontal",
+        "Scroll 0 vertical",
+        &format!("Scroll {} vertical", i32::MIN),
+        &format!("Scroll {} horizontal", i32::MAX),
         "AboutToShow 7",
         "Event 7 clicked",
       ]
@@ -661,6 +667,12 @@ mod tests {
     let task = cx.read(|cx| tray.menu_click("nope", 1, cx));
     assert_eq!(block_on(task).unwrap_err().to_string(), "unknown tray item");
     assert!(block_on(tray.activate(":1.9999/StatusNotifierItem", 0, 0)).is_err());
+    // malformed addresses fail across all actions
+    assert!(block_on(tray.activate("/only/path", 0, 0)).is_err());
+    assert!(block_on(tray.secondary_activate("/only/path", 0, 0)).is_err());
+    assert!(block_on(tray.context_menu("/only/path", 0, 0)).is_err());
+    assert!(block_on(tray.scroll("/only/path", 0, Orientation::Vertical)).is_err());
+    assert!(block_on(tray.activate(":1.42//invalid//path", 0, 0)).is_err());
   }
 
   #[gpui::test]
@@ -798,5 +810,152 @@ mod tests {
         .unwrap()
     });
     assert!(cached.exists());
+  }
+
+  #[gpui::test]
+  fn duplicate_registration_suppresses_signals(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let watcher = block_on(bus.conn());
+    let rule = MatchRule::builder()
+      .msg_type(Type::Signal)
+      .interface(WATCHER_NAME)
+      .unwrap()
+      .member("StatusNotifierItemRegistered")
+      .unwrap()
+      .build();
+    let mut stream = block_on(MessageStream::for_match_rule(rule, &watcher, None)).unwrap();
+    let app = app(&bus, "dup");
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    wait_until(cx, |cx| items(cx).len() == 1);
+    // First registration signal received
+    assert!(block_on(stream.next()).is_some());
+    // Register the same item again
+    app
+      .register(app.conn.unique_name().unwrap().as_str())
+      .unwrap();
+    settle(cx);
+    // Item count remains 1 and no extra items added
+    assert_eq!(items(cx).len(), 1);
+  }
+
+  #[gpui::test]
+  fn multi_items_leave_with_their_app(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let watcher = block_on(bus.conn());
+    let rule = MatchRule::builder()
+      .msg_type(Type::Signal)
+      .interface(WATCHER_NAME)
+      .unwrap()
+      .member("StatusNotifierItemUnregistered")
+      .unwrap()
+      .build();
+    let mut unregistered = block_on(MessageStream::for_match_rule(rule, &watcher, None)).unwrap();
+    let conn = block_on(async {
+      let conn = bus.conn().await;
+      for path in ["/Item1", "/Item2"] {
+        conn
+          .object_server()
+          .at(
+            path,
+            Item {
+              calls: Calls::default(),
+              id: "multi",
+              status: "Active",
+              icon: "/icons/app.png".into(),
+              menu: "/MenuBar",
+            },
+          )
+          .await
+          .unwrap();
+        conn
+          .call_method(
+            Some(WATCHER_NAME),
+            WATCHER_PATH,
+            Some(WATCHER_NAME),
+            "RegisterStatusNotifierItem",
+            &(path,),
+          )
+          .await
+          .unwrap();
+      }
+      conn
+    });
+    wait_until(cx, |cx| items(cx).len() == 2);
+    drop(conn);
+    wait_until(cx, |cx| items(cx).is_empty());
+    let sig1 = block_on(unregistered.next()).unwrap().unwrap();
+    let sig2 = block_on(unregistered.next()).unwrap().unwrap();
+    let mut left = vec![
+      sig1.body().deserialize::<String>().unwrap(),
+      sig2.body().deserialize::<String>().unwrap(),
+    ];
+    left.sort();
+    assert_eq!(left.len(), 2);
+  }
+
+  struct NeedsAttentionItemNoAttentionIcon;
+
+  #[interface(name = "org.kde.StatusNotifierItem")]
+  impl NeedsAttentionItemNoAttentionIcon {
+    #[zbus(property)]
+    fn id(&self) -> String {
+      "fallback_test".into()
+    }
+    #[zbus(property)]
+    fn status(&self) -> String {
+      "NeedsAttention".into()
+    }
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+      "/icons/standard_fallback.png".into()
+    }
+  }
+
+  #[gpui::test]
+  fn attention_falls_back_to_standard_icon(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _runtime = start(cx, &bus);
+    let conn = block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at("/StatusNotifierItem", NeedsAttentionItemNoAttentionIcon)
+        .await
+        .unwrap();
+      conn
+        .call_method(
+          Some(WATCHER_NAME),
+          WATCHER_PATH,
+          Some(WATCHER_NAME),
+          "RegisterStatusNotifierItem",
+          &(conn.unique_name().unwrap().as_str(),),
+        )
+        .await
+        .unwrap();
+      conn
+    });
+    wait_until(cx, |cx| items(cx).len() == 1);
+    cx.read(|cx| {
+      let list = cx.tray().list_items(cx);
+      assert_eq!(list[0].status, Status::NeedsAttention);
+      assert_eq!(
+        list[0].icon.as_deref(),
+        Some(std::path::Path::new("/icons/standard_fallback.png"))
+      );
+    });
+  }
+
+  #[test]
+  fn can_activate_fallback_on_introspection_failure() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let result = crate::snapshot::can_activate(&conn, ":1.9999", "/none").await;
+      assert!(result.is_err());
+    });
   }
 }

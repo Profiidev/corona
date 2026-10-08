@@ -242,4 +242,64 @@ pub(crate) mod tests {
     }
     assert_eq!(history.gpu, [30., 30., 30.]);
   }
+
+  #[test]
+  fn history_memory_used_exceeds_total() {
+    let mut history = History::default();
+    let mut s = sample();
+    s.memory_used = 6;
+    s.memory_total = 4;
+    history.push(&s, 60);
+    assert_eq!(history.memory, [150.]);
+  }
+
+  #[test]
+  fn history_repeats_vram_when_vram_total_is_none_or_zero() {
+    let mut history = History::default();
+    // first sample with valid vram
+    history.push(&sample(), 60);
+    assert_eq!(history.gpu_memory, [25.]);
+
+    // second sample with vram_used Some(10) but vram_total None
+    let mut s = sample();
+    s.gpus[0].vram_used = Some(10);
+    s.gpus[0].vram_total = None;
+    history.push(&s, 60);
+    // repeats previous 25.
+    assert_eq!(history.gpu_memory, [25., 25.]);
+
+    // third sample with vram_total Some(0)
+    let mut s2 = sample();
+    s2.gpus[0].vram_used = Some(10);
+    s2.gpus[0].vram_total = Some(0);
+    history.push(&s2, 60);
+    // repeats previous 25.
+    assert_eq!(history.gpu_memory, [25., 25., 25.]);
+  }
+
+  #[test]
+  fn history_ignores_secondary_gpus() {
+    let mut history = History::default();
+    let mut s = sample();
+    s.gpus = vec![
+      GpuSample {
+        pci: "gpu0".into(),
+        usage: Some(10.),
+        temperature: Some(40.),
+        vram_used: Some(1),
+        vram_total: Some(4),
+      },
+      GpuSample {
+        pci: "gpu1".into(),
+        usage: Some(90.),
+        temperature: Some(80.),
+        vram_used: Some(3),
+        vram_total: Some(4),
+      },
+    ];
+    history.push(&s, 60);
+    assert_eq!(history.gpu, [10.]);
+    assert_eq!(history.gpu_temperature, [40.]);
+    assert_eq!(history.gpu_memory, [25.]);
+  }
 }

@@ -649,5 +649,24 @@ pub(crate) mod tests {
   fn a_target_survives_either_spelling() {
     assert_eq!(unquote("alsa_output.hdmi"), "alsa_output.hdmi");
     assert_eq!(unquote(r#""alsa_output.hdmi""#), "alsa_output.hdmi");
+    assert_eq!(unquote("null"), "null");
+  }
+
+  #[test]
+  fn device_removal_leaves_audio_nodes_with_dangling_device_ref() {
+    let (tx, _rx) = flume::unbounded();
+    let state = PipewireState::new();
+    let handles = with_route(7, 1, 3);
+    let mut sink_node = sink(54, "speaker", "62");
+    sink_node.device = Some(7);
+    sink_node.profile_device = Some(1);
+    state.audio.nodes.insert(54, sink_node);
+    let remove = global_remove_listener(handles.clone(), state.clone(), tx);
+
+    // When Device 7 global is removed, node 54 is untouched and retains its device reference
+    remove(7);
+    let node = state.audio.nodes.get(&54).unwrap();
+    assert_eq!(node.device, Some(7));
+    assert_eq!(node.profile_device, Some(1));
   }
 }

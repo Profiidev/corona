@@ -276,6 +276,60 @@ mod tests {
   }
 
   #[test]
+  fn id_wraparound_and_replaces_id_across_boundary() {
+    let (server, _rx) = server(u32::MAX);
+    let id_max = notify(&server, 0, HashMap::new());
+    assert_eq!(id_max, u32::MAX);
+    let id_1 = notify(&server, 0, HashMap::new());
+    assert_eq!(id_1, 1);
+    let id_2 = notify(&server, 0, HashMap::new());
+    assert_eq!(id_2, 2);
+
+    // After wrapping around, next_id is 3.
+    // replaces_id for 1 succeeds because 1 < 3.
+    let rep_1 = notify(&server, 1, HashMap::new());
+    assert_eq!(rep_1, 1);
+
+    // replaces_id for u32::MAX fails because u32::MAX < 3 is false!
+    // So it gets a fresh ID (3).
+    let rep_max = notify(&server, u32::MAX, HashMap::new());
+    assert_eq!(rep_max, 3);
+  }
+
+  #[test]
+  fn replaces_id_for_issued_id_even_if_closed() {
+    let (server, rx) = server(1);
+    let id1 = notify(&server, 0, HashMap::new());
+    assert_eq!(id1, 1);
+    let _ = rx.drain();
+    // Replacing id 1 is accepted by server because 1 < next_id (2)
+    let rep = notify(&server, 1, HashMap::new());
+    assert_eq!(rep, 1);
+    let n = received(&rx);
+    assert_eq!(n.id, 1);
+  }
+
+  #[test]
+  fn expire_timeout_parameter_accepted() {
+    let (server, rx) = server(1);
+    for timeout in [-1, 0, 1000, i32::MAX, i32::MIN] {
+      let id = server.notify(
+        "app".into(),
+        0,
+        "".into(),
+        "title".into(),
+        "body".into(),
+        vec![],
+        HashMap::new(),
+        timeout,
+      );
+      assert!(id > 0);
+      let n = received(&rx);
+      assert_eq!(n.id, id);
+    }
+  }
+
+  #[test]
   fn server_information() {
     let (server, _) = server(1);
     assert_eq!(

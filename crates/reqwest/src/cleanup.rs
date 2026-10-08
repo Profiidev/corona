@@ -199,4 +199,25 @@ mod tests {
     assert!(super::cleanup(&dir.join("missing"), 0, 0).is_err());
     fs::remove_dir_all(dir).ok();
   }
+
+  #[test]
+  fn remove_broken_fails_on_missing_dir() {
+    assert!(super::remove_broken(Path::new("/nonexistent/directory/path"), 0).is_err());
+  }
+
+  #[test]
+  fn temp_files_with_future_mtime_survive() {
+    let dir = temp_dir("cleanup-tmp-future");
+    let future_tmp = dir.join("future.tmp");
+    fs::write(&future_tmp, b"x").unwrap();
+    fs::File::options()
+      .write(true)
+      .open(&future_tmp)
+      .unwrap()
+      .set_modified(SystemTime::now() + Duration::from_secs(3600))
+      .unwrap();
+    super::cleanup(&dir, MAX_SIZE, 0).unwrap();
+    assert_eq!(names(&dir), ["future.tmp"]);
+    fs::remove_dir_all(dir).ok();
+  }
 }

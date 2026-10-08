@@ -26,3 +26,15 @@ fn temp_dir(name: &str) -> std::path::PathBuf {
   std::fs::create_dir_all(&dir).unwrap();
   dir
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn default_client_constructs() {
+    let client = client();
+    assert!(client.is_ok());
+  }
+}
+

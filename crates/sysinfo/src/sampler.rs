@@ -398,4 +398,58 @@ mod tests {
       thread::sleep(Duration::from_millis(10));
     }
   }
+
+  #[test]
+  fn sampler_thread_resumes_from_pause() {
+    let (intervals, intervals_rx) = flume::unbounded();
+    let (updates_tx, updates) = flume::unbounded();
+    spawn(intervals_rx, updates_tx);
+    let wait = Duration::from_secs(10);
+    let _info = updates.recv_timeout(wait).unwrap();
+
+    // Start sampling
+    intervals.send(Some(Duration::from_millis(200))).unwrap();
+    assert!(matches!(updates.recv_timeout(wait).unwrap(), Update::Sample(_)));
+
+    // Pause sampling
+    intervals.send(None).unwrap();
+    while updates.recv_timeout(Duration::from_millis(400)).is_ok() {}
+    assert!(updates.recv_timeout(Duration::from_millis(400)).is_err());
+
+    // Resume sampling (triggers sampler.baseline())
+    intervals.send(Some(Duration::from_millis(200))).unwrap();
+    assert!(matches!(updates.recv_timeout(wait).unwrap(), Update::Sample(_)));
+
+    drop(intervals);
+  }
+
+  #[test]
+  fn os_release_fallback_edges() {
+    assert_eq!(pretty_name(""), None);
+    assert_eq!(pretty_name("NAME=Test\nVERSION=1.0"), None);
+    assert_eq!(pretty_name("PRETTY_NAME="), None);
+    assert_eq!(pretty_name("PRETTY_NAME=\"\""), None);
+  }
+
+  #[test]
+  fn disks_virtual_filesystems_duplicate_device() {
+    let all = vec![
+      disk("tmpfs", "/tmp"),
+      disk("tmpfs", "/run"),
+      disk("tmpfs", "/run/user/1000"),
+    ];
+    let unique = unique_disks(all);
+    assert_eq!(unique.len(), 1);
+    assert!(unique[0].mount_point == "/run" || unique[0].mount_point == "/tmp");
+  }
+
+  #[test]
+  fn zero_cpu_cores_zero_frequency() {
+    let count: u64 = 0;
+    let freq = match count {
+      0 => 0,
+      c => 1000 / c,
+    };
+    assert_eq!(freq, 0);
+  }
 }

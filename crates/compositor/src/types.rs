@@ -120,6 +120,20 @@ mod tests {
   }
 
   #[test]
+  fn stacking_negative_focus_history_and_tie_breaks() {
+    let unmapped = window("1", false, -1);
+    let focused = window("1", false, 0);
+    let unfocused_tied1 = window("1", false, 2);
+    let unfocused_tied2 = window("1", false, 2);
+
+    // Negative ID (-1) under Reverse(-1) compares greater than Reverse(0)
+    assert!(unmapped.stacking() > focused.stacking());
+
+    // Identical stacking properties result in total equality (tie)
+    assert!(unfocused_tied1.stacking() == unfocused_tied2.stacking());
+  }
+
+  #[test]
   fn display_ids_follow_the_monitor() {
     let workspace = |monitor: &str| super::Workspace {
       id: "0x1".into(),

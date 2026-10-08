@@ -250,6 +250,8 @@ mod tests {
     state: u32,
     time_to_empty: i64,
     threshold: bool,
+    fail_threshold: bool,
+    fail_percentage: bool,
   }
 
   impl Device {
@@ -264,17 +266,23 @@ mod tests {
         state: BatteryState::Discharging as u32,
         time_to_empty: 0,
         threshold: false,
+        fail_threshold: false,
+        fail_percentage: false,
       }
     }
   }
 
   #[interface(name = "org.freedesktop.UPower.Device")]
   impl Device {
-    fn enable_charge_threshold(&self, enabled: bool) {
+    fn enable_charge_threshold(&self, enabled: bool) -> zbus::fdo::Result<()> {
+      if self.fail_threshold {
+        return Err(zbus::fdo::Error::Failed("threshold failed".into()));
+      }
       record(
         &self.calls,
         format!("EnableChargeThreshold {} {enabled}", self.model),
       );
+      Ok(())
     }
     #[zbus(property, name = "Type")]
     fn kind(&self) -> u32 {
@@ -293,8 +301,11 @@ mod tests {
       self.model.into()
     }
     #[zbus(property)]
-    fn percentage(&self) -> f64 {
-      self.percentage
+    fn percentage(&self) -> zbus::fdo::Result<f64> {
+      if self.fail_percentage {
+        return Err(zbus::fdo::Error::Failed("read failed".into()));
+      }
+      Ok(self.percentage)
     }
     #[zbus(property)]
     fn state(&self) -> u32 {
@@ -353,6 +364,7 @@ mod tests {
   struct Kbd {
     calls: Calls,
     max: i32,
+    fail: bool,
   }
 
   #[interface(name = "org.freedesktop.UPower.KbdBacklight")]
@@ -363,8 +375,12 @@ mod tests {
     fn get_max_brightness(&self) -> i32 {
       self.max
     }
-    fn set_brightness(&self, value: i32) {
+    fn set_brightness(&self, value: i32) -> zbus::fdo::Result<()> {
+      if self.fail {
+        return Err(zbus::fdo::Error::Failed("hardware error".into()));
+      }
       record(&self.calls, format!("SetBrightness {value}"));
+      Ok(())
     }
   }
 
@@ -379,8 +395,12 @@ mod tests {
       self.active.clone()
     }
     #[zbus(property)]
-    fn set_active_profile(&mut self, profile: String) {
+    fn set_active_profile(&mut self, profile: String) -> zbus::fdo::Result<()> {
+      if profile == "invalid-profile" {
+        return Err(zbus::fdo::Error::InvalidArgs("unknown profile".into()));
+      }
       self.active = profile;
+      Ok(())
     }
     #[zbus(property)]
     fn profiles(&self) -> Vec<HashMap<String, OwnedValue>> {
@@ -416,12 +436,21 @@ mod tests {
   struct Services {
     upower: zbus::Connection,
     calls: Calls,
-    _profiles: zbus::Connection,
+    profiles: zbus::Connection,
   }
 
   /// a laptop: a battery with thresholds, line power, a mouse, a gone keyboard
   /// and a second system battery, plus a keyboard backlight and power profiles
   fn services(bus: &TestBus) -> Services {
+    services_custom(bus, false, false, false)
+  }
+
+  fn services_custom(
+    bus: &TestBus,
+    fail_kbd: bool,
+    fail_threshold: bool,
+    fail_display: bool,
+  ) -> Services {
     let calls = Calls::default();
     let upower = block_on(async {
       let conn = bus.conn().await;
@@ -447,9 +476,11 @@ mod tests {
         .unwrap();
       let mut battery = Device::new(&calls, BatteryType::Battery, true, "BAT0");
       battery.threshold = true;
+      battery.fail_threshold = fail_threshold;
       let mut display = Device::new(&calls, BatteryType::Battery, true, "display");
       display.percentage = 73.;
       display.time_to_empty = 5400;
+      display.fail_percentage = fail_display;
       let mut gone = Device::new(&calls, BatteryType::Keyboard, false, "Keyboard");
       gone.present = false;
       for (path, device) in [
@@ -481,6 +512,7 @@ mod tests {
           Kbd {
             calls: calls.clone(),
             max: 3,
+            fail: fail_kbd,
           },
         )
         .await
@@ -509,7 +541,7 @@ mod tests {
     Services {
       upower,
       calls,
-      _profiles: profiles,
+      profiles,
     }
   }
 
@@ -690,6 +722,8 @@ mod tests {
     answers: HashMap<&'static str, &'static str>,
     /// our ends of the inhibitor fds handed out
     inhibitors: Arc<Mutex<Vec<UnixStream>>>,
+    fail_reboot: bool,
+    fail_inhibit: Arc<std::sync::atomic::AtomicBool>,
   }
 
   impl Manager {
@@ -703,8 +737,12 @@ mod tests {
     fn power_off(&self, interactive: bool) {
       record(&self.calls, format!("PowerOff {interactive}"));
     }
-    fn reboot(&self, interactive: bool) {
+    fn reboot(&self, interactive: bool) -> zbus::fdo::Result<()> {
+      if self.fail_reboot {
+        return Err(zbus::fdo::Error::Failed("reboot rejected".into()));
+      }
       record(&self.calls, format!("Reboot {interactive}"));
+      Ok(())
     }
     fn suspend(&self, interactive: bool) {
       record(&self.calls, format!("Suspend {interactive}"));
@@ -757,12 +795,15 @@ mod tests {
         _ => Err(zbus::fdo::Error::Failed("no such session".into())),
       }
     }
-    fn inhibit(&self, what: String, who: String, why: String, mode: String) -> zvariant::OwnedFd {
+    fn inhibit(&self, what: String, who: String, why: String, mode: String) -> zbus::fdo::Result<zvariant::OwnedFd> {
+      if self.fail_inhibit.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(zbus::fdo::Error::Failed("inhibit failed".into()));
+      }
       record(&self.calls, format!("Inhibit {what} {who} {why} {mode}"));
       let (ours, theirs) = UnixStream::pair().unwrap();
       ours.set_nonblocking(true).unwrap();
       self.inhibitors.lock().unwrap().push(ours);
-      zvariant::OwnedFd::from(std::os::fd::OwnedFd::from(theirs))
+      Ok(zvariant::OwnedFd::from(std::os::fd::OwnedFd::from(theirs)))
     }
   }
 
@@ -770,12 +811,24 @@ mod tests {
     conn: zbus::Connection,
     calls: Calls,
     inhibitors: Arc<Mutex<Vec<UnixStream>>>,
+    fail_inhibit: Arc<std::sync::atomic::AtomicBool>,
   }
 
   impl Logind {
     fn start(bus: &TestBus, answers: HashMap<&'static str, &'static str>) -> Self {
+      Self::start_with_flags(bus, answers, false, false)
+    }
+
+    fn start_with_flags(
+      bus: &TestBus,
+      answers: HashMap<&'static str, &'static str>,
+      fail_reboot: bool,
+      fail_inhibit: bool,
+    ) -> Self {
       let calls = Calls::default();
       let inhibitors = Arc::<Mutex<Vec<UnixStream>>>::default();
+      let fail_inhibit = Arc::new(std::sync::atomic::AtomicBool::new(fail_inhibit));
+      let fail_inhibit_mgr = fail_inhibit.clone();
       let conn = block_on(async {
         let conn = bus.conn().await;
         conn
@@ -786,6 +839,8 @@ mod tests {
               calls: calls.clone(),
               answers,
               inhibitors: inhibitors.clone(),
+              fail_reboot,
+              fail_inhibit: fail_inhibit_mgr,
             },
           )
           .await
@@ -797,6 +852,7 @@ mod tests {
         conn,
         calls,
         inhibitors,
+        fail_inhibit,
       }
     }
 
@@ -1023,5 +1079,174 @@ mod tests {
     );
     settle(cx);
     assert_eq!(*requests.lock().unwrap(), [true, false]);
+  }
+
+  #[gpui::test]
+  fn sleep_watch_recovers_after_mid_session_failure(cx: &mut TestAppContext) {
+    use std::sync::atomic::Ordering;
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    let power = power_on(cx, &bus);
+    cx.update(|cx| power.before_sleep(cx, |cx| cx.background_spawn(async {})));
+    wait_until(cx, |_| logind.held() == [true]);
+    logind.fail_inhibit.store(true, Ordering::Relaxed);
+    logind.prepare_for_sleep(true);
+    logind.prepare_for_sleep(false);
+    settle(cx);
+    logind.fail_inhibit.store(false, Ordering::Relaxed);
+    cx.executor().advance_clock(RETRY);
+    wait_until(cx, |_| logind.held().len() >= 2 && *logind.held().last().unwrap());
+  }
+
+  #[gpui::test]
+  fn lock_requests_retries_after_missing_session_id(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    let power = power_on(cx, &bus);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    unsafe { std::env::remove_var("XDG_SESSION_ID") };
+    cx.update(|cx| power.lock_requests(cx, move |lock, _| seen.lock().unwrap().push(lock)));
+    settle(cx);
+    unsafe { std::env::set_var("XDG_SESSION_ID", "31") };
+    cx.executor().advance_clock(RETRY);
+    settle(cx);
+    let session = "/org/freedesktop/login1/session/_331";
+    logind.emit(session, "org.freedesktop.login1.Session", "Lock", &());
+    wait_until(cx, |_| *requests.lock().unwrap() == [true]);
+    unsafe { std::env::remove_var("XDG_SESSION_ID") };
+  }
+
+  #[gpui::test]
+  fn set_keyboard_brightness_dbus_failure(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _services = services_custom(&bus, true, false, false);
+    let power = power_on(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().keyboard_backlight(cx).is_some()));
+    let task = cx.read(|cx| power.set_keyboard_brightness(1, cx));
+    assert!(block_on(task).is_err());
+  }
+
+  #[gpui::test]
+  fn set_charge_threshold_failure(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _services = services_custom(&bus, false, true, false);
+    let power = power_on(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().battery(cx).is_some()));
+    let task = cx.read(|cx| power.set_charge_threshold(false, cx));
+    assert!(block_on(task).is_err());
+  }
+
+  #[gpui::test]
+  fn set_profile_invalid_profile_rejected(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _services = services(&bus);
+    let power = power_on(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().profiles(cx).is_some()));
+    assert!(block_on(power.set_profile("invalid-profile".into())).is_err());
+  }
+
+  #[gpui::test]
+  fn power_profiles_restart_is_noticed(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let services = services(&bus);
+    start(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().profiles(cx).is_some()));
+    drop(services.profiles);
+    let _restarted = block_on(async {
+      let conn = bus.conn().await;
+      conn
+        .object_server()
+        .at(
+          "/org/freedesktop/UPower/PowerProfiles",
+          PowerProfiles {
+            active: "power-saver".into(),
+          },
+        )
+        .await
+        .unwrap();
+      conn
+        .request_name("org.freedesktop.UPower.PowerProfiles")
+        .await
+        .unwrap();
+      conn
+    });
+    wait_until(cx, |cx| {
+      cx.read(|cx| cx.power().profiles(cx).unwrap().active == "power-saver")
+    });
+  }
+
+  #[gpui::test]
+  fn upower_crash_retains_stale_power_state(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let services = services(&bus);
+    start(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().status(cx).is_some()));
+    let status_before = cx.read(|cx| cx.power().status(cx).cloned()).unwrap();
+    let battery_before = cx.read(|cx| cx.power().battery(cx).cloned()).unwrap();
+    drop(services.upower);
+    settle(cx);
+    // State is retained rather than cleared to None
+    cx.read(|cx| {
+      assert_eq!(cx.power().status(cx), Some(&status_before));
+      assert_eq!(cx.power().battery(cx), Some(&battery_before));
+    });
+  }
+
+  #[gpui::test]
+  fn reboot_to_firmware_incomplete_transaction_on_reboot_failure(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start_with_flags(&bus, HashMap::new(), true, false);
+    let power = power_on(cx, &bus);
+    let err = block_on(power.session_action(SessionAction::RebootToFirmware)).unwrap_err();
+    assert!(err.to_string().contains("reboot rejected"));
+    assert_eq!(logind.calls(), ["SetRebootToFirmwareSetup true"]);
+  }
+
+  #[gpui::test]
+  fn reboot_to_entry_incomplete_transaction_on_reboot_failure(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start_with_flags(&bus, HashMap::new(), true, false);
+    let power = power_on(cx, &bus);
+    let err = block_on(power.reboot_to("auto-windows".into())).unwrap_err();
+    assert!(err.to_string().contains("reboot rejected"));
+    assert_eq!(logind.calls(), ["SetRebootToBootLoaderEntry auto-windows"]);
+  }
+
+  #[gpui::test]
+  fn before_sleep_inhibit_failure(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _logind = Logind::start_with_flags(&bus, HashMap::new(), false, true);
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      let mut async_app = cx.to_async();
+      let res = block_on(session::before_sleep(conn, &mut async_app, |_| Task::ready(())));
+      assert!(res.is_err());
+    });
+  }
+
+  #[gpui::test]
+  fn secondary_system_battery_is_omitted(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _services = services(&bus);
+    start(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().battery(cx).is_some()));
+    cx.read(|cx| {
+      let power = cx.power();
+      assert!(power.list_devices(cx).iter().all(|d| d.model != "BAT1"));
+    });
+  }
+
+  #[gpui::test]
+  fn display_failure_drops_battery_status(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let _services = services_custom(&bus, false, false, true);
+    start(cx, &bus);
+    wait_until(cx, |cx| cx.read(|cx| cx.power().status(cx).is_some()));
+    cx.read(|cx| {
+      let power = cx.power();
+      assert!(power.status(cx).is_some());
+      assert!(power.battery(cx).is_none());
+    });
   }
 }

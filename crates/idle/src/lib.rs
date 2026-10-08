@@ -292,6 +292,10 @@ mod tests {
 
   impl Compositor {
     fn start(with_notifier: bool) -> Self {
+      Self::start_with_config(with_notifier, 1)
+    }
+
+    fn start_with_config(with_notifier: bool, seat_count: usize) -> Self {
       let dir = tempfile::tempdir().unwrap();
       unsafe {
         std::env::set_var("XDG_RUNTIME_DIR", dir.path());
@@ -305,7 +309,9 @@ mod tests {
       thread::spawn(move || {
         let mut display = Display::<Shared>::new().unwrap();
         let handle = display.handle();
-        handle.create_global::<Shared, ServerSeat, ()>(7, ());
+        for _ in 0..seat_count {
+          handle.create_global::<Shared, ServerSeat, ()>(7, ());
+        }
         if with_notifier {
           handle.create_global::<Shared, Notifier, ()>(1, ());
         }
@@ -532,5 +538,82 @@ mod tests {
       error.to_string(),
       "the compositor has no ext_idle_notifier_v1"
     );
+  }
+
+  #[test]
+  fn the_watcher_reports_a_missing_seat() {
+    let _compositor = Compositor::start_with_config(true, 0);
+    let (_timeouts, timeouts_rx) = flume::unbounded();
+    let (events, _events_rx) = flume::unbounded();
+    let error = watch(timeouts_rx, events).unwrap_err();
+    assert!(!error.to_string().is_empty());
+  }
+
+  #[gpui::test]
+  fn multiple_seats_binds_first_seat(cx: &mut TestAppContext) {
+    let compositor = Compositor::start_with_config(true, 2);
+    let events = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live().len() == 1);
+    compositor.send(1000, true);
+    wait(cx, || events.borrow().len() == 1);
+    assert_eq!(*events.borrow(), [("lock".to_string(), true)]);
+  }
+
+  #[gpui::test]
+  fn watcher_failure_leaves_idle_handle_as_zombie(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+      std::env::set_var("WAYLAND_DISPLAY", "nothing-running-here");
+    }
+    let events = start(cx);
+    settle(cx);
+    // Setting timeouts when the watcher thread exited does not panic
+    set(cx, &[("lock", 1000), ("dim", 500)]);
+    settle(cx);
+    assert!(events.borrow().is_empty());
+  }
+
+  #[gpui::test]
+  fn events_of_destroyed_notifications_are_dropped_when_name_is_reused(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let events = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live() == [1000]);
+
+    // Replace timeout with a different duration under the same name "lock"
+    set(cx, &[("lock", 3000)]);
+    wait(cx, || compositor.live() == [3000]);
+
+    // Emit idled on the old notification
+    for watched in compositor.shared.notifications.lock().unwrap().iter() {
+      if watched.timeout == 1000 {
+        watched.resource.idled();
+      }
+    }
+    settle(cx);
+    // The old notification was destroyed, so its events must be dropped even though
+    // "lock" exists in state.notifications with the new timeout.
+    assert!(events.borrow().is_empty());
+  }
+
+  #[test]
+  fn abrupt_connection_drop_terminates_watcher() {
+    let compositor = Compositor::start(true);
+    let (timeouts, timeouts_rx) = flume::unbounded();
+    let (events, _events_rx) = flume::unbounded();
+    let watcher = thread::spawn(move || watch(timeouts_rx, events));
+    timeouts
+      .send(vec![("lock".into(), Duration::from_millis(500))])
+      .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while compositor.live().is_empty() {
+      assert!(Instant::now() < deadline);
+      thread::sleep(Duration::from_millis(5));
+    }
+    drop(compositor);
+    let res = watcher.join().unwrap();
+    assert!(res.is_err(), "expected watch to return error when compositor drops abruptly");
   }
 }

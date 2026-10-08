@@ -118,6 +118,8 @@ mod tests {
   #[test]
   fn mnemonic_edges() {
     assert_eq!(strip_mnemonic(""), "");
+    assert_eq!(strip_mnemonic("_"), "");
+    assert_eq!(strip_mnemonic("_a_b"), "ab");
     assert_eq!(strip_mnemonic("a_"), "a");
     assert_eq!(strip_mnemonic("___"), "_");
     assert_eq!(strip_mnemonic("____"), "__");
@@ -129,6 +131,19 @@ mod tests {
   fn pixmap_edges() {
     let mut empty: [u8; 0] = [];
     argb_to_rgba(&mut empty);
+    // sub-4-byte pixel buffers are left untouched
+    let mut one = [0xaa];
+    argb_to_rgba(&mut one);
+    assert_eq!(one, [0xaa]);
+
+    let mut two = [0xaa, 0xbb];
+    argb_to_rgba(&mut two);
+    assert_eq!(two, [0xaa, 0xbb]);
+
+    let mut three = [0xaa, 0xbb, 0xcc];
+    argb_to_rgba(&mut three);
+    assert_eq!(three, [0xaa, 0xbb, 0xcc]);
+
     // a partial pixel at the end is left alone
     let mut px = [0xff, 1, 2, 3, 9, 8];
     argb_to_rgba(&mut px);

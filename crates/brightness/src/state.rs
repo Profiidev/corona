@@ -55,5 +55,8 @@ mod tests {
     assert_eq!(display(255, 255).percent(), 100.);
     assert!((display(1, 3).percent() - 100. / 3.).abs() < 1e-4);
     assert_eq!(display(u32::MAX, u32::MAX).percent(), 100.);
+    // brightness exceeding max produces percentage > 100% without clamping
+    assert!((display(120, 100).percent() - 120.).abs() < 1e-4);
+    assert!((display(200, 100).percent() - 200.).abs() < 1e-4);
   }
 }

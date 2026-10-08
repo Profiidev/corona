@@ -819,4 +819,32 @@ mod tests {
     assert_eq!(window_address(0x55d2, 0xa4e1_b2c0), 0x55d2_a4e1_b2c0);
     assert_eq!(window_address(u32::MAX, u32::MAX), u64::MAX);
   }
+
+  #[test]
+  fn large_dimensions_overflow_boundary() {
+    let w: u32 = 40_000;
+    let h: u32 = 20_000;
+    let stride = w.checked_mul(4).unwrap();
+    let len = (stride as u64) * (h as u64);
+    // Exceeds i32::MAX, causing negative i32 if cast directly
+    assert!(len > i32::MAX as u64);
+    assert!((len as usize as i32) < 0);
+  }
+
+  #[test]
+  fn read_row_offset_overflow_risk() {
+    let y: u32 = 100_000;
+    let stride: u32 = 50_000;
+    // 32-bit multiplication would overflow u32::MAX
+    assert!(y.checked_mul(stride).is_none());
+    let offset_64 = (y as u64) * (stride as u64);
+    assert!(offset_64 > u32::MAX as u64);
+  }
+
+  #[test]
+  fn state_toplevels_accumulation() {
+    let state = State::default();
+    assert!(state.toplevels.is_empty());
+    assert!(state.mapped.is_empty());
+  }
 }

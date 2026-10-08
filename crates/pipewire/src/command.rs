@@ -282,4 +282,31 @@ mod tests {
     )
     .unwrap();
   }
+
+  #[test]
+  fn serializes_empty_volumes_array() {
+    let object = props(Property::new(
+      sys::SPA_PROP_channelVolumes,
+      Value::ValueArray(ValueArray::Float(vec![])),
+    ));
+    let bytes = pod_bytes(object.clone());
+    assert_eq!(crate::listener::tests::parse(pod(&bytes)), Some(object));
+  }
+
+  #[test]
+  fn route_fallback_when_route_index_unmapped() {
+    let mute = || Property::new(sys::SPA_PROP_mute, Value::Bool(true));
+    let route = Target::Route {
+      node: 42,
+      device: 99,
+      profile_device: 1,
+    };
+    // Handles has route for device 99, but profile_device 2, not 1
+    let handles = with_route(99, 2, 5);
+    // Because (99, 1) is not found, target.route(&handles) is None, falling back to set_node_param(42)
+    assert_eq!(
+      set_prop(&handles, route, mute()).unwrap_err().to_string(),
+      "No such node"
+    );
+  }
 }

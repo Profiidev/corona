@@ -923,12 +923,112 @@ mod tests {
   #[gpui::test]
   fn networkmanager_restarts_are_noticed(cx: &mut TestAppContext) {
     let (bus, mock) = start(cx, World::default());
+    assert!(mock.world().agent.is_some());
     drop(mock);
     let mut world = World::default();
     world.connectivity = 1;
-    let _restarted = MockNm::start(&bus, world);
+    let restarted = MockNm::start(&bus, world);
     wait_until(cx, |cx| {
       cx.read(|cx| cx.network_manager().connectivity(cx) == NmConnectivityState::None)
     });
+    // The secret agent is not re-registered after daemon restart
+    assert!(restarted.world().agent.is_none());
+  }
+
+  #[gpui::test]
+  fn transient_primary_connection_deactivation_crashes_snapshot(_cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let mut world = World::default();
+    world.primary = format!("{NM}/ActiveConnection/999");
+    let _mock = MockNm::start(&bus, world);
+    let conn = block_on(bus.conn());
+    let res = block_on(snapshot::snapshot(&conn));
+    assert!(res.is_err());
+  }
+
+  #[gpui::test]
+  fn wireless_without_active_ap(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.active_ap = "/".into();
+    let (_bus, _mock) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    for (_, _, _, status) in networks(cx) {
+      assert_ne!(status, WifiStatus::Connected);
+      assert_ne!(status, WifiStatus::Connecting);
+    }
+  }
+
+  #[gpui::test]
+  fn merging_disparate_security_flags_on_identical_ssid(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    let mut enterprise_ap = ap(2, b"hybrid", 80, 0x200);
+    enterprise_ap.wpa = 0x100;
+    world.aps = vec![
+      ap(1, b"hybrid", 30, 0),
+      enterprise_ap,
+    ];
+    let (_bus, _mock) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 1);
+    let (strength, secured, enterprise) = cx.read(|cx| {
+      let net = cx
+        .network_manager()
+        .list_wifi_networks(cx)
+        .iter()
+        .find(|n| n.ssid == "hybrid")
+        .unwrap();
+      (net.strength, net.secured, net.enterprise)
+    });
+    assert_eq!(strength, 80);
+    assert!(secured);
+    assert!(enterprise);
+  }
+
+  #[gpui::test]
+  fn scan_rate_limiting_error_propagates(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.scan_fails = true;
+    let (_bus, mock) = start(cx, world);
+    let nm = nm(cx);
+    let scan_task = cx.read(|cx| nm.rescan(cx));
+    let result = block_on(scan_task);
+    assert!(result.is_err());
+    assert!(mock.calls().contains(&"RequestScan".to_string()));
+  }
+
+  #[gpui::test]
+  fn connect_wifi_fails_if_not_in_range_even_if_saved(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.aps.retain(|a| a.ssid != b"home");
+    let (_bus, mock) = start(cx, world);
+    let nm = nm(cx);
+    let err = block_on(cx.read(|cx| nm.connect_wifi("home".into(), cx))).unwrap_err();
+    assert!(err.to_string().contains("home is not in range"));
+    assert!(!mock.calls().iter().any(|c| c.starts_with("ActivateConnection")));
+  }
+
+  #[gpui::test]
+  fn forget_wifi_when_no_connections_available(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.available = Vec::new();
+    let (_bus, mock) = start(cx, world);
+    let nm = nm(cx);
+    block_on(cx.read(|cx| nm.forget_wifi("home".into(), cx))).unwrap();
+    assert!(!mock.calls().iter().any(|c| c.starts_with("Delete")));
+  }
+
+  #[gpui::test]
+  fn non_utf8_ssid_collision_resolves_to_first(cx: &mut TestAppContext) {
+    let mut world = World::default();
+    world.aps = vec![
+      ap(4, b"caf\xe9", 60, 0),
+      ap(5, b"caf\xfa", 40, 0),
+    ];
+    let (_bus, mock) = start(cx, world);
+    wait_until(cx, |cx| networks(cx).len() == 2);
+    let nm = nm(cx);
+    let lossy_name = "caf\u{fffd}".to_string();
+    block_on(cx.read(|cx| nm.connect_wifi(lossy_name, cx))).unwrap();
+    assert!(mock.calls().iter().any(|c| c.ends_with("AccessPoint/4")));
+    assert!(!mock.calls().iter().any(|c| c.ends_with("AccessPoint/5")));
   }
 }

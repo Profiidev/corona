@@ -49,22 +49,34 @@ impl WeatherService {
   }
 }
 
+fn cache_path_in(cache_dir: Option<PathBuf>) -> Option<PathBuf> {
+  Some(cache_dir?.join("corona").join("weather.json"))
+}
+
 fn cache_path() -> Option<PathBuf> {
-  Some(dirs::cache_dir()?.join("corona").join("weather.json"))
+  cache_path_in(dirs::cache_dir())
+}
+
+fn load_cache_from(path: Option<PathBuf>) -> Option<Weather> {
+  serde_json::from_slice(&fs::read(path?).ok()?).ok()
 }
 
 fn load_cache() -> Option<Weather> {
-  serde_json::from_slice(&fs::read(cache_path()?).ok()?).ok()
+  load_cache_from(cache_path())
 }
 
-fn save_cache(weather: &Weather) -> Result<()> {
-  let Some(path) = cache_path() else {
+fn save_cache_to(path: Option<PathBuf>, weather: &Weather) -> Result<()> {
+  let Some(path) = path else {
     return Ok(());
   };
   if let Some(dir) = path.parent() {
     fs::create_dir_all(dir)?;
   }
   Ok(fs::write(path, serde_json::to_vec(weather)?)?)
+}
+
+fn save_cache(weather: &Weather) -> Result<()> {
+  save_cache_to(cache_path(), weather)
 }
 
 async fn location(
@@ -728,5 +740,124 @@ mod tests {
     cx.update(|cx| cx.weather().refresh());
     cx.run_until_parked();
     assert_eq!(requests(&running), 3);
+  }
+
+  #[test]
+  fn missing_cache_dir_handled_gracefully() {
+    assert!(cache_path_in(None).is_none());
+    assert!(load_cache_from(None).is_none());
+    assert!(save_cache_to(None, &sample()).is_ok());
+  }
+
+  #[test]
+  fn non_finite_and_extreme_coordinates() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let (client, _) = fake(|_| unreachable!());
+      let nan_loc = location(
+        &*client,
+        &conn,
+        &place(None, Some((f64::NAN, f64::INFINITY)), false),
+        None,
+        ready(()),
+      )
+      .await
+      .unwrap();
+      assert_eq!(nan_loc.name, "NaN, inf");
+      assert!(nan_loc.latitude.is_nan());
+      assert_eq!(nan_loc.longitude, f64::INFINITY);
+
+      let extreme = location(
+        &*client,
+        &conn,
+        &place(None, Some((999.0, -999.0)), false),
+        None,
+        ready(()),
+      )
+      .await
+      .unwrap();
+      assert_eq!(extreme.name, "999.00, -999.00");
+    });
+  }
+
+  #[test]
+  fn empty_string_city_with_coordinates() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let (client, _) = fake(|_| unreachable!());
+      let empty_city = location(
+        &*client,
+        &conn,
+        &place(Some(""), Some((12.34, 56.78)), false),
+        None,
+        ready(()),
+      )
+      .await
+      .unwrap();
+      assert_eq!(empty_city.name, "");
+      assert_eq!(empty_city.latitude, 12.34);
+      assert_eq!(empty_city.longitude, 56.78);
+    });
+  }
+
+  #[gpui::test]
+  fn huge_refresh_minutes_boundary(cx: &mut TestAppContext) {
+    let mut config = berlin();
+    config.weather.refresh_minutes = 24 * 60; // 1 full day
+    let running = start(cx, config);
+    assert_eq!(requests(&running), 2);
+  }
+
+  #[gpui::test]
+  fn refresh_burst_buffering(cx: &mut TestAppContext) {
+    let running = start(cx, berlin());
+    cx.update(|cx| {
+      let service = cx.weather();
+      service.refresh();
+      service.refresh();
+    });
+    cx.run_until_parked();
+    assert!(requests(&running) >= 4);
+  }
+
+  #[gpui::test]
+  fn background_task_terminates_on_disconnect(cx: &mut TestAppContext) {
+    start(cx, berlin());
+    cx.update(|cx| {
+      let (dummy_tx, _) = flume::unbounded();
+      let dummy_service = WeatherService {
+        weather: cx.new(|_| None),
+        error: cx.new(|_| None),
+        refresh: dummy_tx,
+      };
+      cx.set_global(dummy_service);
+    });
+    cx.executor().advance_clock(Duration::from_secs(10 * 60));
+  }
+
+  #[test]
+  fn geoclue_stream_closed_errors() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let service = geoclue(&bus, None).await;
+      drop(service);
+      let result = locate::locate(&conn, pending()).await;
+      assert!(result.is_err());
+    });
+  }
+
+  #[test]
+  fn geoclue_property_read_failure() {
+    let bus = TestBus::new();
+    block_on(async {
+      // Points to a path that does not exist on object server
+      let _service = geoclue(&bus, Some("/org/freedesktop/GeoClue2/Location/nonexistent")).await;
+      let conn = bus.conn().await;
+      let result = locate::locate(&conn, pending()).await;
+      assert!(result.is_err());
+    });
   }
 }

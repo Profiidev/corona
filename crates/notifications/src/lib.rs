@@ -546,4 +546,170 @@ mod tests {
     wait_until(cx, |cx| !cx.read(|cx| cx.notifications().active(cx)));
     drop(replacing);
   }
+
+  #[gpui::test]
+  fn close_nonexistent_or_invalid_id(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let id = notify(&running.client, "real", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [id]);
+
+    // Close invalid ID 0
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(0u32,)),
+    )
+    .unwrap();
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), 0, "3".into())
+    );
+    // Real notification still intact
+    assert_eq!(ids(cx), [id]);
+
+    // Close non-existent ID 9999
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(9999u32,)),
+    )
+    .unwrap();
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), 9999, "3".into())
+    );
+    assert_eq!(ids(cx), [id]);
+
+    // Close real ID
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(id,)),
+    )
+    .unwrap();
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), id, "3".into())
+    );
+    wait_until(cx, |cx| ids(cx).is_empty());
+
+    // Close already-closed ID
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(id,)),
+    )
+    .unwrap();
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), id, "3".into())
+    );
+    assert!(ids(cx).is_empty());
+  }
+
+  #[gpui::test]
+  fn invoke_nonexistent_action_key(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let plain = notify(
+      &running.client,
+      "plain",
+      0,
+      &["default", "Open"],
+      HashMap::new(),
+    );
+    let resident = notify(
+      &running.client,
+      "resident",
+      0,
+      &["play", "Play"],
+      HashMap::from([("resident", Value::from(true))]),
+    );
+    wait_until(cx, |cx| ids(cx).len() == 2);
+
+    // Invoke unknown action on resident notification
+    cx.update(|cx| {
+      cx.notifications()
+        .clone()
+        .invoke_action(resident, "nonexistent", cx)
+    });
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("ActionInvoked".into(), resident, "nonexistent".into())
+    );
+    // Resident notification is kept
+    assert_eq!(ids(cx).len(), 2);
+
+    // Invoke unknown action on non-resident notification
+    cx.update(|cx| {
+      cx.notifications()
+        .clone()
+        .invoke_action(plain, "nonexistent", cx)
+    });
+    let mut signals = vec![next_signal(cx, &mut running), next_signal(cx, &mut running)];
+    signals.sort();
+    assert_eq!(
+      signals,
+      [
+        ("ActionInvoked".into(), plain, "nonexistent".into()),
+        ("NotificationClosed".into(), plain, "2".into()),
+      ]
+    );
+    // Non-resident notification is removed
+    assert_eq!(ids(cx), [resident]);
+  }
+
+  #[gpui::test]
+  fn replaces_closed_notification_in_ui_state(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let id = notify(&running.client, "initial", 0, &[], HashMap::new());
+    wait_until(cx, |cx| ids(cx) == [id]);
+
+    // App closes it
+    block_on(
+      running
+        .client
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(id,)),
+    )
+    .unwrap();
+    wait_until(cx, |cx| ids(cx).is_empty());
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), id, "3".into())
+    );
+
+    // App replaces the previously closed ID
+    let rep_id = notify(&running.client, "resurrected", id, &[], HashMap::new());
+    assert_eq!(rep_id, id);
+    wait_until(cx, |cx| ids(cx) == [id]);
+    cx.read(|cx| {
+      assert_eq!(cx.notifications().list(cx)[0].summary, "resurrected");
+    });
+  }
+
+  #[gpui::test]
+  fn expire_timeout_retains_notification(cx: &mut TestAppContext) {
+    let running = start(cx, true);
+    for timeout in [-1i32, 0, 500, 10000] {
+      let reply = block_on(running.client.call_method(
+        Some(NAME),
+        PATH,
+        Some(NAME),
+        "Notify",
+        &(
+          "app",
+          0u32,
+          "",
+          format!("timeout {timeout}"),
+          "body",
+          Vec::<&str>::new(),
+          HashMap::<&str, Value<'_>>::new(),
+          timeout,
+        ),
+      ))
+      .unwrap();
+      let id: u32 = reply.body().deserialize().unwrap();
+      assert!(id > 0);
+    }
+    wait_until(cx, |cx| ids(cx).len() == 4);
+  }
 }
