@@ -35,9 +35,18 @@ impl Default for Options {
 
 /// Whether `format` shows seconds, so the clock ticks every second instead of every minute
 fn needs_seconds(format: &str) -> bool {
-  ["%S", "%T", "%s", "%r", "%X", "%c"]
-    .iter()
-    .any(|s| format.contains(s))
+  let mut chars = format.chars();
+  while let Some(c) = chars.next() {
+    if c != '%' {
+      continue;
+    }
+    // skip flags, width, precision and colons between `%` and the specifier
+    let spec = chars.find(|c| !matches!(c, '-' | '_' | '0'..='9' | '^' | '#' | '.' | ':'));
+    if matches!(spec, Some('S' | 'T' | 's' | 'r' | 'X' | 'c')) {
+      return true;
+    }
+  }
+  false
 }
 
 pub struct Clock {
@@ -103,9 +112,12 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: padding flags like %-S hide seconds from the check, the clock ticks per minute"]
-  fn bug_needs_seconds_with_flags() {
+  fn needs_seconds_with_flags() {
     assert!(super::needs_seconds("%H:%M:%-S"));
     assert!(super::needs_seconds("%_S"));
+    assert!(super::needs_seconds("%0S"));
+    assert!(super::needs_seconds("%^5T"));
+    // an escaped percent sign is not a specifier
+    assert!(!super::needs_seconds("100%%S"));
   }
 }

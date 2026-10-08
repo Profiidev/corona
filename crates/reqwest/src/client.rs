@@ -629,7 +629,11 @@ mod tests {
     let client = client(
       dir.clone(),
       vec![
-        response(200, &[("cache-control", "no-cache"), ("etag", "\"v1\"")], "art"),
+        response(
+          200,
+          &[("cache-control", "no-cache"), ("etag", "\"v1\"")],
+          "art",
+        ),
         response(304, &[], ""),
       ],
     );
@@ -652,7 +656,11 @@ mod tests {
     let client = client_with(
       dir.clone(),
       vec![
-        Ok(response(200, &[("cache-control", "no-cache"), ("etag", "\"v1\"")], "art")),
+        Ok(response(
+          200,
+          &[("cache-control", "no-cache"), ("etag", "\"v1\"")],
+          "art",
+        )),
         Ok(response(304, &[("etag", "\"v1\"")], "")),
         Err(anyhow::anyhow!("retry connection reset")),
       ],
@@ -700,7 +708,11 @@ mod tests {
 
     let client = client(
       dir.clone(),
-      vec![response(200, &[("cache-control", "max-age=3600")], "uncached body")],
+      vec![response(
+        200,
+        &[("cache-control", "max-age=3600")],
+        "uncached body",
+      )],
     );
     let (status, body) = get(&client);
     assert_eq!(status, StatusCode::OK);

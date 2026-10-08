@@ -6,7 +6,7 @@ use toml::Value;
 
 use crate::{
   Config, ConfigProvider,
-  read::{apply, config_dir, config_files, read, read_files, settings_file},
+  read::{UNSET, apply, config_dir, config_files, read, read_files, settings_file},
 };
 
 /// Changes settings from inside the shell, from IPC or the settings app.
@@ -18,14 +18,23 @@ pub fn update(cx: &mut App, edit: impl FnOnce(&mut Config)) -> Result<()> {
   let mut config = cx.config().clone();
   edit(&mut config);
 
-  let base = read_files(&config_files(&config_dir()?)?)?.config;
-  let mut overrides = diff(&Value::try_from(&base)?, &Value::try_from(&config)?)
-    .unwrap_or_else(|| Value::Table(Default::default()));
+  let base = Value::try_from(read_files(&config_files(&config_dir()?)?)?.config)?;
+  let new = Value::try_from(&config)?;
+  let Value::Table(mut overrides) =
+    diff(&base, &new).unwrap_or_else(|| Value::Table(Default::default()))
+  else {
+    unreachable!("a config is a table");
+  };
+  // what the user's files set but no longer is, like an option back to `None`
+  let mut unset = Vec::new();
+  removed(&base, &new, &mut Vec::new(), &mut unset);
   // bars are read whole from one layer, so they are written whole too
-  if let Value::Table(overrides) = &mut overrides
-    && overrides.contains_key("bar")
-  {
+  if overrides.contains_key("bar") || unset.iter().any(|path| path[0] == "bar") {
+    unset.retain(|path| path[0] != "bar");
     overrides.insert("bar".to_string(), Value::try_from(&config.bar)?);
+  }
+  if !unset.is_empty() {
+    overrides.insert(UNSET.to_string(), Value::try_from(unset)?);
   }
 
   let file = settings_file()?;
@@ -60,6 +69,21 @@ fn diff(base: &Value, new: &Value) -> Option<Value> {
   }
 }
 
+/// The paths of keys `base` has and `new` does not
+fn removed(base: &Value, new: &Value, path: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+  let (Value::Table(base), Value::Table(new)) = (base, new) else {
+    return;
+  };
+  for (key, old) in base {
+    path.push(key.clone());
+    match new.get(key) {
+      Some(value) => removed(old, value, path, out),
+      None => out.push(path.clone()),
+    }
+    path.pop();
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
@@ -86,8 +110,12 @@ mod tests {
     let base = value("c = [1, 2, 3]\n[t]\nx = 1\n");
     let new = value("c = [1, 2]\nt = 5\n");
     assert_eq!(diff(&base, &new).unwrap(), value("c = [1, 2]\nt = 5\n"));
-    // a key only `base` has is not expressed
-    assert_eq!(diff(&value("a = 1\nb = 2\n"), &value("a = 1\n")), None);
+    // a key only `base` has is not a change, but a removal
+    let (base, new) = (value("a = 1\nb = 2\n[t]\nx = 1\n"), value("a = 1\n[t]\n"));
+    assert_eq!(diff(&base, &new), None);
+    let mut out = Vec::new();
+    removed(&base, &new, &mut Vec::new(), &mut out);
+    assert_eq!(out, [vec!["b"], vec!["t", "x"]]);
   }
 
   struct Env {
@@ -99,6 +127,7 @@ mod tests {
     /// Config and state dirs in temp dirs, the user's file holding `user`, and
     /// the [`Config`] global loaded from them
     fn new(cx: &mut TestAppContext, user: &str) -> Self {
+      crate::read::tests::no_env();
       let env = Env {
         config: tempfile::tempdir().unwrap(),
         state: tempfile::tempdir().unwrap(),
@@ -181,12 +210,21 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "bug: diff cannot express removal, unsetting an option the user's file sets is lost"]
-  fn bug_unsetting_a_user_option_is_lost(cx: &mut TestAppContext) {
-    let _env = Env::new(cx, "[theme]\nmode = \"dark\"\n");
+  fn unsetting_a_user_option_sticks(cx: &mut TestAppContext) {
+    let env = Env::new(cx, "[theme]\nmode = \"dark\"\n");
     assert_eq!(config(cx).theme.mode, Some(ThemeMode::Dark));
     cx.update(|cx| update(cx, |c| c.theme.mode = None)).unwrap();
     assert_eq!(config(cx).theme.mode, None);
+    assert_eq!(env.settings(), value("unset = [[\"theme\", \"mode\"]]\n"));
+    // a reread keeps it unset
+    cx.update(|cx| apply(read().unwrap(), cx));
+    assert_eq!(config(cx).theme.mode, None);
+
+    // set back to the user's value leaves the settings file again
+    cx.update(|cx| update(cx, |c| c.theme.mode = Some(ThemeMode::Dark)))
+      .unwrap();
+    assert_eq!(env.settings(), value(""));
+    assert_eq!(config(cx).theme.mode, Some(ThemeMode::Dark));
   }
 
   #[gpui::test]

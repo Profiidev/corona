@@ -116,6 +116,9 @@ pub struct ScrollingTextState {
   hovered: bool,
   hover_at: Option<Instant>,
   shift: f32,
+  // the text's, set on render
+  speed: f32,
+  return_duration: Duration,
 }
 
 pub trait ScrollingTextExt {
@@ -133,19 +136,17 @@ impl ScrollingTextExt for Entity<ScrollingTextState> {
           this.hover_at = Some(Instant::now());
           this.return_from = None;
         } else {
-          let cycle = this.shift / SCROLL_SPEED;
+          let cycle = this.shift / this.speed;
           let elapsed = this
             .hover_at
             .take()
             .map_or(0., |t| t.elapsed().as_secs_f32());
           this.return_from = (cycle > 0.).then(|| (elapsed / cycle).fract());
 
-          let anim = cx.config().shell.animation.clone();
+          let ret = cx.config().shell.animation.duration(this.return_duration);
 
           cx.spawn(async move |this, cx| {
-            cx.background_executor()
-              .timer(anim.duration(SCROLL_RETURN))
-              .await;
+            cx.background_executor().timer(ret).await;
             this
               .update(cx, |this, cx| {
                 this.return_from = None;
@@ -182,7 +183,11 @@ impl RenderOnce for ScrollingText {
     let width = px(self.text_width(window));
     let shift = f32::from(width) + self.gap;
 
-    self.state.update(cx, |s, _| s.shift = shift);
+    self.state.update(cx, |s, _| {
+      s.shift = shift;
+      s.speed = self.speed;
+      s.return_duration = self.return_duration;
+    });
 
     let state = self.state.read(cx);
     let theme = cx.theme();
@@ -364,8 +369,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "bug: on_hover measures the scroll cycle with SCROLL_SPEED, not the text's speed"]
-  fn bug_return_ignores_custom_speed(cx: &mut TestAppContext) {
+  fn return_uses_custom_speed(cx: &mut TestAppContext) {
     let speed = 100.;
     let (handle, state) = setup(cx, move |s| {
       ScrollingText::new(s).content(LONG).speed(speed)

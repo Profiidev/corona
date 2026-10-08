@@ -139,10 +139,12 @@ pub struct AnimationConfig {
 }
 
 impl AnimationConfig {
-  /// `base` at this speed, zero when animations are off
+  /// `base` at this speed, zero when animations are off. Slower than a
+  /// hundredth is a hundredth.
   pub fn duration(&self, base: Duration) -> Duration {
     match self.enabled && self.speed > 0. {
-      true => base.div_f32(self.speed),
+      true => Duration::try_from_secs_f64(base.as_secs_f64() / f64::from(self.speed).max(0.01))
+        .unwrap_or(Duration::MAX),
       false => Duration::ZERO,
     }
   }
@@ -737,14 +739,14 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: a tiny positive speed overflows Duration::div_f32 and panics"]
-  fn bug_tiny_animation_speed_panics() {
+  fn tiny_animation_speed_is_clamped() {
     let anim = AnimationConfig {
       enabled: true,
       speed: 1e-30,
     };
     let result = std::panic::catch_unwind(|| anim.duration(Duration::from_millis(200)));
-    assert!(result.is_ok(), "duration panicked");
+    assert_eq!(result.expect("duration panicked"), Duration::from_secs(20));
+    assert_eq!(anim.duration(Duration::MAX), Duration::MAX);
   }
 
   #[test]

@@ -36,9 +36,15 @@ pub fn all_tuples(input: TokenStream2) -> TokenStream2 {
     Ok(input) => input,
     Err(e) => return e.into_compile_error(),
   };
-  let len = 1 + input.end - input.start;
-  let mut ident_tuples = Vec::with_capacity(len);
-  for i in 0..=len {
+  if input.start > input.end {
+    return syn::Error::new(
+      proc_macro2::Span::call_site(),
+      "all_tuples: start must not be after end",
+    )
+    .into_compile_error();
+  }
+  let mut ident_tuples = Vec::with_capacity(input.end);
+  for i in 0..input.end {
     let idents = input
       .idents
       .iter()
@@ -141,16 +147,14 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: start > end underflows `1 + end - start` and panics"]
-  fn bug_start_after_end_panics() {
+  fn start_after_end_is_compile_error() {
     let out = std::panic::catch_unwind(|| all_tuples(quote!(m, 3, 1, F)).to_string());
     let out = out.expect("all_tuples panicked");
     assert!(out.is_empty() || out.contains("compile_error"), "{out}");
   }
 
   #[test]
-  #[ignore = "bug: only end - start + 2 tuples are built, so start > 2 slices out of range"]
-  fn bug_start_above_two_slices_out_of_range() {
+  fn any_start_works() {
     let calls = std::panic::catch_unwind(|| invocations(all_tuples(quote!(m, 3, 4, F))));
     let calls = calls.expect("all_tuples panicked");
     assert_eq!(calls.iter().map(Vec::len).collect::<Vec<_>>(), [3, 4]);

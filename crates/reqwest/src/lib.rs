@@ -37,4 +37,3 @@ mod tests {
     assert!(client.is_ok());
   }
 }
-

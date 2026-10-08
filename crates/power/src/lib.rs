@@ -795,7 +795,13 @@ mod tests {
         _ => Err(zbus::fdo::Error::Failed("no such session".into())),
       }
     }
-    fn inhibit(&self, what: String, who: String, why: String, mode: String) -> zbus::fdo::Result<zvariant::OwnedFd> {
+    fn inhibit(
+      &self,
+      what: String,
+      who: String,
+      why: String,
+      mode: String,
+    ) -> zbus::fdo::Result<zvariant::OwnedFd> {
       if self.fail_inhibit.load(std::sync::atomic::Ordering::Relaxed) {
         return Err(zbus::fdo::Error::Failed("inhibit failed".into()));
       }
@@ -1091,7 +1097,9 @@ mod tests {
     settle(cx);
     logind.fail_inhibit.store(false, Ordering::Relaxed);
     cx.executor().advance_clock(RETRY);
-    wait_until(cx, |_| logind.held().len() >= 2 && *logind.held().last().unwrap());
+    wait_until(cx, |_| {
+      logind.held().len() >= 2 && *logind.held().last().unwrap()
+    });
   }
 
   #[gpui::test]
@@ -1118,7 +1126,9 @@ mod tests {
     let bus = TestBus::new();
     let _services = services_custom(&bus, true, false, false);
     let power = power_on(cx, &bus);
-    wait_until(cx, |cx| cx.read(|cx| cx.power().keyboard_backlight(cx).is_some()));
+    wait_until(cx, |cx| {
+      cx.read(|cx| cx.power().keyboard_backlight(cx).is_some())
+    });
     let task = cx.read(|cx| power.set_keyboard_brightness(1, cx));
     assert!(block_on(task).is_err());
   }
@@ -1216,7 +1226,9 @@ mod tests {
     let conn = block_on(bus.conn());
     cx.update(|cx| {
       let mut async_app = cx.to_async();
-      let res = block_on(session::before_sleep(conn, &mut async_app, |_| Task::ready(())));
+      let res = block_on(session::before_sleep(conn, &mut async_app, |_| {
+        Task::ready(())
+      }));
       assert!(res.is_err());
     });
   }

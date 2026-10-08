@@ -29,6 +29,7 @@ pub fn init(cx: &mut App) {
   idle::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
+  overlays::switcher::init(cx);
   overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
   overlays::screen_corners::init(cx);

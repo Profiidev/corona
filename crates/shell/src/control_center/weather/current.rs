@@ -14,8 +14,13 @@ use crate::{
 };
 use rust_i18n::t;
 
+/// Rounds to a whole number, `+ 0.` turns -0 into 0 so (-0.5, 0) doesn't render as "-0"
+pub(super) fn whole(value: f64) -> f64 {
+  value.round() + 0.
+}
+
 fn degrees(value: f64) -> String {
-  format!("{value:.0}°")
+  format!("{:.0}°", whole(value))
 }
 
 fn speed(value: f64, units: Units) -> String {
@@ -85,7 +90,7 @@ impl WeatherPanel {
               div()
                 .text_sm()
                 .text_color(theme.colors.primary)
-                .child(format!("{:.0} / {}C", day.min, degrees(day.max)))
+                .child(format!("{:.0} / {}C", whole(day.min), degrees(day.max)))
             }))
             .child(div().text_sm().child(describe(current.condition())))
             .child(
@@ -198,8 +203,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: values in (-0.5, 0) render as \"-0°\""]
-  fn bug_degrees_negative_zero() {
+  fn degrees_negative_zero() {
     assert_eq!(super::degrees(-0.4), "0°");
   }
 

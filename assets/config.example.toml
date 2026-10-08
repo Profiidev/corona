@@ -3,7 +3,8 @@
 # Corona reads every *.toml in ~/.config/corona (in alphabetical order, later
 # files win), then ~/.local/state/corona/settings.toml, where the shell keeps
 # what it changes itself (theme mode from the CLI, the settings app). A file only
-# needs the keys it changes. Edits apply while the shell runs.
+# needs the keys it changes. Edits apply while the shell runs. Unsetting an
+# option your files set writes `unset = [["theme", "mode"]]` to the settings file.
 #
 # Environment variables win over both: CORONA_SHELL__PLUGIN_DIR sets
 # shell.plugin_dir. Check a config with `corona config validate [path]`.
@@ -26,7 +27,7 @@ screen_filter_regex = "" # e.g. "noctalia|obs"
 
 [shell.animation]
 enabled = true
-# 2 is twice as fast.
+# 2 is twice as fast, at most 100 times slower (0.01).
 speed = 1.0
 
 [theme]

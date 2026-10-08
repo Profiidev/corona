@@ -12,7 +12,11 @@ use gpui_kit::{
 };
 
 use crate::{
-  control_center::weather::{Tab, WeatherPanel, card, current::clock, describe, icon},
+  control_center::weather::{
+    Tab, WeatherPanel, card,
+    current::{clock, whole},
+    describe, icon,
+  },
   i18n::format_time,
 };
 use rust_i18n::t;
@@ -102,7 +106,7 @@ impl WeatherPanel {
             .child(heading(
               icon(day.condition(), true),
               name,
-              format!("{:.0}° / {:.0}°", day.min, day.max),
+              format!("{:.0}° / {:.0}°", whole(day.min), whole(day.max)),
             ))
             .child(muted(describe(day.condition())))
         })
@@ -115,7 +119,7 @@ impl WeatherPanel {
             .child(heading(
               icon(hour.condition(), hour.is_day),
               clock(&hour.time).to_string(),
-              format!("{:.0}°", hour.temperature),
+              format!("{:.0}°", whole(hour.temperature)),
             ))
             .child(muted(format!(
               "{} · {}",

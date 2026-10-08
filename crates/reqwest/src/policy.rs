@@ -258,9 +258,18 @@ mod tests {
       builder = builder.header(name, value);
       builder.body(AsyncBody::empty()).unwrap()
     };
-    assert!(super::cacheable_request(&request((header::IF_MATCH, "\"xyz\""))));
-    assert!(super::cacheable_request(&request((header::IF_UNMODIFIED_SINCE, "yesterday"))));
-    assert!(super::cacheable_request(&request((header::IF_RANGE, "\"xyz\""))));
+    assert!(super::cacheable_request(&request((
+      header::IF_MATCH,
+      "\"xyz\""
+    ))));
+    assert!(super::cacheable_request(&request((
+      header::IF_UNMODIFIED_SINCE,
+      "yesterday"
+    ))));
+    assert!(super::cacheable_request(&request((
+      header::IF_RANGE,
+      "\"xyz\""
+    ))));
   }
 
   #[test]

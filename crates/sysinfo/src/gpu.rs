@@ -589,12 +589,10 @@ mod tests {
     let root = root.path();
     write(
       root,
-      &[
-        (
-          "1/fdinfo/3",
-          "drm-pdev:\tB\ndrm-client-id:\t1\ndrm-engine-render:\t10 ns\ndrm-engine-capacity-render:\t5\n",
-        ),
-      ],
+      &[(
+        "1/fdinfo/3",
+        "drm-pdev:\tB\ndrm-client-id:\t1\ndrm-engine-render:\t10 ns\ndrm-engine-capacity-render:\t5\n",
+      )],
     );
     // 100 ns now, capacity 5 -> total = 100 * 5 = 500
     assert_eq!(engines(root, 100), engine(&[("B", "1", "render", 10, 500)]));

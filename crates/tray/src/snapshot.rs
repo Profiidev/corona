@@ -504,9 +504,10 @@ pub(crate) mod tests {
     std::fs::write(runtime.path().join("corona").join("tray"), b"not a dir").unwrap();
     let image = RgbaImage::from_raw(1, 1, vec![1, 2, 3, 4]).unwrap();
     assert!(pixmap_file(&image).is_err());
-    let p = props(vec![
-      ("IconPixmap", vec![(1i32, 1i32, vec![4u8, 1, 2, 3])].into()),
-    ]);
+    let p = props(vec![(
+      "IconPixmap",
+      vec![(1i32, 1i32, vec![4u8, 1, 2, 3])].into(),
+    )]);
     assert_eq!(icon(&p, "IconName", "IconPixmap", None), None);
   }
 

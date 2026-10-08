@@ -5,10 +5,10 @@ use corona_components::components::window_icon::WindowIcon;
 use corona_compositor::{CompositorExt, types};
 use corona_config::ConfigProvider;
 use gpui_kit::{
-  App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-  ModifiersChangedEvent, MouseButton, ObjectFit, ParentElement, Render, StatefulInteractiveElement,
-  Styled, StyledImage, Subscription, Window, black, component::ActiveTheme, div, img,
-  prelude::FluentBuilder, px,
+  App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyBinding,
+  KeyDownEvent, ModifiersChangedEvent, MouseButton, ObjectFit, ParentElement, Render,
+  StatefulInteractiveElement, Styled, StyledImage, Subscription, Window, black,
+  component::ActiveTheme, div, img, prelude::FluentBuilder, px,
 };
 use tracing::error;
 
@@ -32,6 +32,20 @@ const INSET: f32 = 3.;
 const ICON_SIZE: u16 = 48;
 const CORNER_ICON_SIZE: u16 = 20;
 const CORNER_INSET: f32 = 4.;
+const CONTEXT: &str = "Switcher";
+
+gpui_kit::actions!(switcher, [Next, Prev]);
+
+/// Tab steps as actions: Root binds tab to focus navigation, which would run before a
+/// key-down listener, and this deeper context outranks it
+pub(super) fn bind_keys(cx: &mut App) {
+  for held in ["", "super-", "alt-", "ctrl-"] {
+    cx.bind_keys([
+      KeyBinding::new(&format!("{held}tab"), Next, Some(CONTEXT)),
+      KeyBinding::new(&format!("{held}shift-tab"), Prev, Some(CONTEXT)),
+    ]);
+  }
+}
 
 pub(super) fn order(mode: Mode, monitor: Option<&str>, cx: &App) -> Vec<String> {
   let compositor = cx.compositor();
@@ -183,7 +197,6 @@ impl Switcher {
 
   fn on_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
     match e.keystroke.key.as_str() {
-      "tab" => self.step(e.keystroke.modifiers.shift, cx),
       "enter" => self.commit(window, cx),
       "escape" => SwitcherState::close(Some(window), cx),
       _ => {}
@@ -394,7 +407,10 @@ impl Render for Switcher {
     let config = cx.config();
 
     div()
+      .key_context(CONTEXT)
       .track_focus(&self.focus)
+      .on_action(cx.listener(|this, _: &Next, _, cx| this.step(false, cx)))
+      .on_action(cx.listener(|this, _: &Prev, _, cx| this.step(true, cx)))
       .on_key_down(cx.listener(Self::on_key))
       .on_modifiers_changed(cx.listener(Self::on_modifiers))
       .on_mouse_down(
@@ -566,6 +582,7 @@ mod tests {
       ..Default::default()
     };
     let (handle, view) = cx.update(|cx| {
+      bind_keys(cx);
       let mut view = None;
       let handle: WindowHandle<Root> = cx
         .open_window(WindowOptions::default(), |window, cx| {
@@ -626,8 +643,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "bug: Root's tab binding eats tab before Switcher::on_key sees it"]
-  fn bug_tab_steps_the_switcher(cx: &mut TestAppContext) {
+  fn tab_steps_the_switcher(cx: &mut TestAppContext) {
     let (_, handle, view) = open(Mode::Window, cx);
     press(handle, "tab", cx);
     assert_eq!(selected(&view, cx), "c");

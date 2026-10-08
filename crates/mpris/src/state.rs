@@ -388,7 +388,10 @@ mod tests {
     let mut fresh_large = old.clone();
     fresh_large.position_at = old.position_at + Duration::from_millis(100);
     fresh_large.position = old.position + Duration::from_millis(600);
-    keep_positions(std::slice::from_mut(&mut fresh_large), std::slice::from_ref(&old));
+    keep_positions(
+      std::slice::from_mut(&mut fresh_large),
+      std::slice::from_ref(&old),
+    );
     // Kept because 600ms > SLACK
     assert_eq!(
       fresh_large.position,

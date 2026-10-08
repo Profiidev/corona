@@ -435,15 +435,14 @@ fn from_host(value: &HostValue) -> Value {
 
 // JS has only f64; integral numbers must become ints or integer params fail to deserialize.
 fn number(n: f64) -> Value {
-  let rounded = n.round();
-  if (n - rounded).abs() >= f64::EPSILON {
+  if n.fract() != 0.0 {
     return Value::from(n);
   }
   // `MAX as f64` rounds up to 2^63 / 2^64, so the upper bounds are exclusive.
-  if rounded >= i64::MIN as f64 && rounded < i64::MAX as f64 {
-    Value::from(rounded as i64)
-  } else if rounded >= 0.0 && rounded < u64::MAX as f64 {
-    Value::from(rounded as u64)
+  if n >= i64::MIN as f64 && n < i64::MAX as f64 {
+    Value::from(n as i64)
+  } else if n >= 0.0 && n < u64::MAX as f64 {
+    Value::from(n as u64)
   } else {
     Value::from(n)
   }
@@ -761,8 +760,7 @@ mod conversion {
   }
 
   #[test]
-  #[ignore = "bug: number() uses an absolute EPSILON, tiny fractions like 1e-20 become the integer 0"]
-  fn bug_tiny_fraction_becomes_zero() {
+  fn tiny_fraction_stays_a_float() {
     let args = HostArguments::new([HostValue::Number(1e-20)]);
     assert_eq!(deserialize::<f64>(&args, 0).unwrap(), 1e-20);
   }

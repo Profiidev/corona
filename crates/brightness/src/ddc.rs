@@ -470,9 +470,7 @@ Display 4
     let (updates_tx, updates) = flume::unbounded();
     // Burst across bus 5 and bus 7 queued during detection delay
     for (bus, brightness) in [(5, 10), (7, 20), (5, 30), (7, 40)] {
-      commands
-        .send(DdcCommand::Set { bus, brightness })
-        .unwrap();
+      commands.send(DdcCommand::Set { bus, brightness }).unwrap();
     }
     worker(commands_rx, updates_tx);
     assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));

@@ -5,12 +5,14 @@ use std::{
 
 use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de::Error as _};
 
 use crate::module::CoronaModule;
 
 pub struct PluginManifest {
   pub id: String,
+  /// The directory it was discovered in, not necessarily named after the id
+  pub dir: PathBuf,
   #[allow(dead_code)]
   pub name: String,
   #[allow(dead_code)]
@@ -22,9 +24,15 @@ pub struct PluginManifest {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ManifestFile {
+  /// The JSON schema an editor validates this file against.
+  #[serde(rename = "$schema", default)]
+  #[allow(dead_code)]
+  pub schema: Option<String>,
   /// Reverse-DNS identity, e.g. `com.example.inbox`. Also the namespace for
   /// panels, storage and capability records.
+  #[serde(deserialize_with = "plugin_id")]
   pub id: String,
   /// Human-readable name, shown in menus and in the permission prompt.
   pub name: String,
@@ -37,10 +45,38 @@ pub struct ManifestFile {
   pub capabilities: CapabilitiesFile,
 }
 
+/// The id names the plugin's storage directory, so it must be one path segment.
+fn plugin_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+  let id = String::deserialize(deserializer)?;
+  if matches!(id.as_str(), "" | "." | "..") || id.contains(['/', '\\', '\0']) {
+    return Err(D::Error::custom(format!(
+      "invalid plugin id `{id}`: must be a single path segment"
+    )));
+  }
+  Ok(id)
+}
+
 const PLUGIN_DIR_PLACEHOLDER: &str = "${pluginDir}";
 const DATA_DIR_PLACEHOLDER: &str = "${dataDir}";
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Default, JsonSchema)]
+/// Rejects placeholders other than `${pluginDir}` and `${dataDir}`, which would
+/// otherwise be granted as a literal directory.
+fn grant_paths<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+  let paths = Vec::<String>::deserialize(deserializer)?;
+  for path in &paths {
+    let rest = path
+      .replace(PLUGIN_DIR_PLACEHOLDER, "")
+      .replace(DATA_DIR_PLACEHOLDER, "");
+    if rest.contains("${") {
+      return Err(D::Error::custom(format!(
+        "unknown placeholder in `{path}`, only {PLUGIN_DIR_PLACEHOLDER} and {DATA_DIR_PLACEHOLDER} exist"
+      )));
+    }
+  }
+  Ok(paths)
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilitiesFile {
   /// Filesystem and subprocess access.
@@ -74,6 +110,20 @@ pub struct CapabilitiesFile {
   /// `corona/weather`. Importing one not listed fails.
   #[serde(default)]
   corona: BTreeSet<CoronaModule>,
+}
+
+// Same as `{}`: an omitted `capabilities` still grants storage.
+impl Default for CapabilitiesFile {
+  fn default() -> Self {
+    Self {
+      fs: None,
+      network: None,
+      storage: granted(),
+      clipboard: None,
+      process: None,
+      corona: BTreeSet::new(),
+    }
+  }
 }
 
 impl CapabilitiesFile {
@@ -145,21 +195,38 @@ fn expand(raw: &str, plugin_dir: &Path, data_dir: &Path) -> PathBuf {
 struct FsGrantFile {
   /// Directories that may be read. `${pluginDir}` and `${dataDir}` expand to
   /// the plugin's own directory and its storage directory.
-  #[serde(default)]
+  #[serde(default, deserialize_with = "grant_paths")]
   read: Vec<String>,
   /// Directories that may be written.
-  #[serde(default)]
+  #[serde(default, deserialize_with = "grant_paths")]
   write: Vec<String>,
   /// Commands `process.run` may start.
   #[serde(default)]
   execute: Option<ExecuteFile>,
 }
 
+/// Either an allowlist of command names, or the string `"*"`.
 #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(untagged)]
 enum ExecuteFile {
   Allowed(Vec<String>),
-  Unrestricted(String),
+  Unrestricted(
+    #[serde(deserialize_with = "wildcard")]
+    #[schemars(extend("const" = "*"))]
+    String,
+  ),
+}
+
+/// Only `"*"` grants every command, so a forgotten `[]` around `"git"` is an
+/// error instead of unrestricted execution.
+fn wildcard<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+  let value = String::deserialize(deserializer)?;
+  if value != "*" {
+    return Err(D::Error::custom(format!(
+      "execute must be a list of commands or \"*\", not `{value}`"
+    )));
+  }
+  Ok(value)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
@@ -294,8 +361,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: derived Default gives storage false when `capabilities` is omitted, `{}` gives true"]
-  fn bug_omitted_capabilities_lose_storage() {
+  fn omitted_capabilities_keep_storage() {
     let capabilities = parse(r#"{ "id": "a", "name": "A" }"#)
       .unwrap()
       .capabilities
@@ -347,17 +413,9 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: any execute string, not just \"*\", grants unrestricted execution"]
-  fn bug_execute_string_other_than_wildcard_is_unrestricted() {
+  fn execute_string_must_be_wildcard() {
     let json = r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "execute": "git" } } }"#;
-    let unrestricted = parse(json).is_ok_and(|manifest| {
-      manifest
-        .capabilities
-        .grant(Path::new("/p"), Path::new("/d"))
-        .execute_grant()
-        == &ExecuteGrant::Unrestricted
-    });
-    assert!(!unrestricted, "`\"git\"` must not mean `\"*\"`");
+    assert!(parse(json).is_err());
   }
 
   #[test]
@@ -412,34 +470,26 @@ mod tests {
     );
     assert_eq!(expand_raw("${dataDir}/cache"), Path::new("/data/a/cache"));
     assert_eq!(expand_raw("/etc/os-release"), Path::new("/etc/os-release"));
-    // relative paths are inside the plugin directory
+    // relative paths resolve against the plugin directory
     assert_eq!(expand_raw("assets"), Path::new("/plugins/a/assets"));
     assert_eq!(expand_raw(""), Path::new("/plugins/a"));
+    // but are not confined to it: `..` reaches outside, like an absolute path
+    assert_eq!(expand_raw("../other"), Path::new("/plugins/a/../other"));
   }
 
   #[test]
-  #[ignore = "bug: a relative `..` path is granted outside the plugin directory"]
-  fn bug_relative_path_escapes_plugin_dir() {
-    let path = expand_raw("../other");
-    let escapes = path
-      .components()
-      .any(|component| component == std::path::Component::ParentDir);
-    assert!(!escapes, "{} leaves /plugins/a", path.display());
-  }
-
-  #[test]
-  #[ignore = "bug: unknown placeholders like ${homeDir} are granted as a literal directory"]
-  fn bug_unknown_placeholder_is_accepted() {
+  fn unknown_placeholder_is_rejected() {
     let json =
       r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "read": ["${homeDir}"] } } }"#;
     assert!(parse(json).is_err());
   }
 
   #[test]
-  #[ignore = "bug: a misspelled top-level key like `capabilites` is ignored, the plugin silently gets the default grant"]
-  fn bug_top_level_unknown_fields_are_accepted() {
+  fn top_level_unknown_fields_are_rejected() {
     let json = r#"{ "id": "a", "name": "A", "capabilites": { "clipboard": { "read": true } } }"#;
     assert!(parse(json).is_err());
+    // the editor's schema pointer is the one extra key
+    assert!(parse(r#"{ "$schema": "plugin.schema.json", "id": "a", "name": "A" }"#).is_ok());
   }
 
   #[test]

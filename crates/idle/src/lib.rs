@@ -614,6 +614,9 @@ mod tests {
     }
     drop(compositor);
     let res = watcher.join().unwrap();
-    assert!(res.is_err(), "expected watch to return error when compositor drops abruptly");
+    assert!(
+      res.is_err(),
+      "expected watch to return error when compositor drops abruptly"
+    );
   }
 }

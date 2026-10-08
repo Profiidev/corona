@@ -287,7 +287,11 @@ mod tests {
     // kill emits Window and ActiveWindow, but NOT Attended (leaving urgent addresses intact)
     let killed = parse(&hypr, "kill>>abc").unwrap();
     assert_eq!(names(&killed), ["Window", "ActiveWindow"]);
-    assert!(!killed.iter().any(|e| matches!(e, CompositorEvent::Attended(_))));
+    assert!(
+      !killed
+        .iter()
+        .any(|e| matches!(e, CompositorEvent::Attended(_)))
+    );
   }
 
   #[test]
@@ -296,7 +300,11 @@ mod tests {
     // activewindowv2 only attends urgency; it does not query or emit ActiveWindow
     let events = parse(&hypr, "activewindowv2>>abc").unwrap();
     assert_eq!(names(&events), ["Attended"]);
-    assert!(!events.iter().any(|e| matches!(e, CompositorEvent::ActiveWindow(_))));
+    assert!(
+      !events
+        .iter()
+        .any(|e| matches!(e, CompositorEvent::ActiveWindow(_)))
+    );
   }
 
   #[test]
@@ -304,7 +312,11 @@ mod tests {
     let hypr = FakeHyprland::start();
     let events = parse(&hypr, "monitorremoved>>DP-1").unwrap();
     assert_eq!(names(&events), ["Monitor"]);
-    assert!(!events.iter().any(|e| matches!(e, CompositorEvent::ActiveMonitor(_))));
+    assert!(
+      !events
+        .iter()
+        .any(|e| matches!(e, CompositorEvent::ActiveMonitor(_)))
+    );
   }
 
   #[test]

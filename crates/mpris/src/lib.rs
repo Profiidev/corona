@@ -650,10 +650,7 @@ mod tests {
     block_on(mpris.set_volume(name, f64::INFINITY)).unwrap();
     // Negative infinity clamps to 0.0
     block_on(mpris.set_volume(name, f64::NEG_INFINITY)).unwrap();
-    assert_eq!(
-      *mock.calls.lock().unwrap(),
-      ["Volume 1", "Volume 0"]
-    );
+    assert_eq!(*mock.calls.lock().unwrap(), ["Volume 1", "Volume 0"]);
 
     // Read-only volume error propagation
     let _readonly = spawn_custom_player(&bus, "ReadOnly", "Playing", 0.5, false, true);
@@ -684,7 +681,10 @@ mod tests {
       let active = cx.mpris().active.clone();
       let mpris = cx.mpris().clone();
       cx.observe(&active, move |_active, cx| {
-        obs.lock().unwrap().push(mpris.active_player(cx).map(|p| p.name.clone()));
+        obs
+          .lock()
+          .unwrap()
+          .push(mpris.active_player(cx).map(|p| p.name.clone()));
       })
       .detach();
     });

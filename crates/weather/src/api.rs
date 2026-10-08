@@ -601,26 +601,22 @@ pub(crate) mod tests {
   #[test]
   fn null_or_ragged_sunset_drops_day() {
     // null sunset drops day
-    let null_sunset = FORECAST_JSON.replace(
-      r#""sunset": ["2026-10-01T18:54"]"#,
-      r#""sunset": [null]"#,
-    );
+    let null_sunset =
+      FORECAST_JSON.replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": [null]"#);
     let weather = parse(&null_sunset);
     assert!(weather.daily.is_empty());
 
     // ragged/empty sunset drops day
-    let empty_sunset = FORECAST_JSON.replace(
-      r#""sunset": ["2026-10-01T18:54"]"#,
-      r#""sunset": []"#,
-    );
+    let empty_sunset =
+      FORECAST_JSON.replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": []"#);
     let weather2 = parse(&empty_sunset);
     assert!(weather2.daily.is_empty());
   }
 
   #[test]
   fn body_streaming_io_failure() {
-    use std::io;
     use futures_lite::io::AsyncRead;
+    use std::io;
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
@@ -631,7 +627,10 @@ pub(crate) mod tests {
         _cx: &mut Context<'_>,
         _buf: &mut [u8],
       ) -> Poll<io::Result<usize>> {
-        Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionReset, "body read stream reset")))
+        Poll::Ready(Err(io::Error::new(
+          io::ErrorKind::ConnectionReset,
+          "body read stream reset",
+        )))
       }
     }
 

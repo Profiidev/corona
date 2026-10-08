@@ -108,9 +108,9 @@ impl From<&mpris::Player> for Player {
   }
 }
 
-/// A negative position is the track start.
+/// A negative position is the track start, one past `Duration::MAX` saturates.
 fn seek_target(seconds: f64) -> Duration {
-  Duration::from_secs_f64(seconds.max(0.0))
+  Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Duration::MAX)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -278,8 +278,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "bug: setPosition with a huge number panics in Duration::from_secs_f64"]
-  fn bug_seek_to_huge_position_panics() {
+  fn seek_to_huge_position_saturates() {
     assert!(std::panic::catch_unwind(|| seek_target(1e300)).is_ok());
   }
 }

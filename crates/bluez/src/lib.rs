@@ -312,7 +312,9 @@ mod tests {
         .unwrap()
         .push(format!("Pair {}", self.address));
       if self.fail_pair {
-        return Err(zbus::fdo::Error::Failed("org.bluez.Error.AlreadyExists".into()));
+        return Err(zbus::fdo::Error::Failed(
+          "org.bluez.Error.AlreadyExists".into(),
+        ));
       }
       Ok(())
     }

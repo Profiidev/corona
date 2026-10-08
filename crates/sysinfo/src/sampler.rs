@@ -409,7 +409,10 @@ mod tests {
 
     // Start sampling
     intervals.send(Some(Duration::from_millis(200))).unwrap();
-    assert!(matches!(updates.recv_timeout(wait).unwrap(), Update::Sample(_)));
+    assert!(matches!(
+      updates.recv_timeout(wait).unwrap(),
+      Update::Sample(_)
+    ));
 
     // Pause sampling
     intervals.send(None).unwrap();
@@ -418,7 +421,10 @@ mod tests {
 
     // Resume sampling (triggers sampler.baseline())
     intervals.send(Some(Duration::from_millis(200))).unwrap();
-    assert!(matches!(updates.recv_timeout(wait).unwrap(), Update::Sample(_)));
+    assert!(matches!(
+      updates.recv_timeout(wait).unwrap(),
+      Update::Sample(_)
+    ));
 
     drop(intervals);
   }

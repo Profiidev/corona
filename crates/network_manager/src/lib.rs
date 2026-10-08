@@ -963,10 +963,7 @@ mod tests {
     let mut world = World::default();
     let mut enterprise_ap = ap(2, b"hybrid", 80, 0x200);
     enterprise_ap.wpa = 0x100;
-    world.aps = vec![
-      ap(1, b"hybrid", 30, 0),
-      enterprise_ap,
-    ];
+    world.aps = vec![ap(1, b"hybrid", 30, 0), enterprise_ap];
     let (_bus, _mock) = start(cx, world);
     wait_until(cx, |cx| networks(cx).len() == 1);
     let (strength, secured, enterprise) = cx.read(|cx| {
@@ -1003,7 +1000,12 @@ mod tests {
     let nm = nm(cx);
     let err = block_on(cx.read(|cx| nm.connect_wifi("home".into(), cx))).unwrap_err();
     assert!(err.to_string().contains("home is not in range"));
-    assert!(!mock.calls().iter().any(|c| c.starts_with("ActivateConnection")));
+    assert!(
+      !mock
+        .calls()
+        .iter()
+        .any(|c| c.starts_with("ActivateConnection"))
+    );
   }
 
   #[gpui::test]
@@ -1019,10 +1021,7 @@ mod tests {
   #[gpui::test]
   fn non_utf8_ssid_collision_resolves_to_first(cx: &mut TestAppContext) {
     let mut world = World::default();
-    world.aps = vec![
-      ap(4, b"caf\xe9", 60, 0),
-      ap(5, b"caf\xfa", 40, 0),
-    ];
+    world.aps = vec![ap(4, b"caf\xe9", 60, 0), ap(5, b"caf\xfa", 40, 0)];
     let (_bus, mock) = start(cx, world);
     wait_until(cx, |cx| networks(cx).len() == 2);
     let nm = nm(cx);

@@ -24,6 +24,10 @@ pub struct SwitcherState {
 
 impl Global for SwitcherState {}
 
+pub fn init(cx: &mut App) {
+  view::bind_keys(cx);
+}
+
 impl OverlayState for SwitcherState {
   fn overlays(&self) -> &[AnyWindowHandle] {
     &self.overlays

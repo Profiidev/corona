@@ -282,10 +282,7 @@ mod tests {
       device: dev(),
       pincode: "0000".into(),
     });
-    assert_eq!(
-      pin_zeros.kind,
-      PairingKind::DisplayPasskey { passkey: 0 }
-    );
+    assert_eq!(pin_zeros.kind, PairingKind::DisplayPasskey { passkey: 0 });
   }
 
   #[test]

@@ -63,11 +63,14 @@ impl ScriptManager {
         Some((
           data.id.clone(),
           PluginManifest {
+            capabilities: data
+              .capabilities
+              .grant(&path, &self.data_dir.join(&data.id)),
             id: data.id,
+            dir: path,
             name: data.name,
             version: data.version,
             views: data.views,
-            capabilities: data.capabilities.grant(&self.plugin_dir, &self.data_dir),
             modules: data.capabilities.modules(),
           },
         ))
@@ -93,7 +96,7 @@ impl ScriptManager {
     }
 
     let runtime = manager.runtime.clone();
-    let root = manager.plugin_dir.join(&id).join(view);
+    let root = manifest.dir.join(view);
 
     let (policy, subscribes) = Policy::new()
       .with_application(&id)
@@ -104,8 +107,9 @@ impl ScriptManager {
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
     policy::set_default(policy);
-    let root = runtime.try_load_entry(root, window, cx)?;
+    let root = runtime.try_load_entry(root, window, cx);
     policy::set_default(Policy::new());
+    let root = root?;
 
     let subscriptions = subscribes
       .into_iter()
@@ -260,11 +264,12 @@ export default class Main extends View {
   }
 
   #[test]
-  #[ignore = "bug: manifest ids are not validated, `../x` makes load() reach outside the plugin and data dirs"]
-  fn bug_path_like_id_is_accepted() {
+  fn path_like_ids_are_rejected() {
     let plugins = Plugins::new();
     plugins.add("a", &manifest("../escape", ""), &[]);
     plugins.add("b", &manifest("/abs", ""), &[]);
+    plugins.add("c", &manifest("..", ""), &[]);
+    plugins.add("d", &manifest("", ""), &[]);
     assert!(plugins.manager().plugins.is_empty());
   }
 
@@ -325,8 +330,7 @@ export default class Main extends View {
   }
 
   #[gpui::test]
-  #[ignore = "bug: load() finds the view under the manifest id, not the directory it was discovered in"]
-  fn bug_plugin_dir_named_differently_than_id_fails_to_load(cx: &mut TestAppContext) {
+  fn loads_from_the_discovered_dir(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
     plugins.add(
       "folder",
@@ -338,8 +342,7 @@ export default class Main extends View {
   }
 
   #[gpui::test]
-  #[ignore = "bug: a failed load leaves the plugin's policy as the default for the next view"]
-  fn bug_failed_load_leaks_policy(cx: &mut TestAppContext) {
+  fn failed_load_resets_policy(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
     let extra = r#", "capabilities": { "clipboard": { "read": true } }"#;
     // the view file is missing, so mounting it fails

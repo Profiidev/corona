@@ -238,20 +238,14 @@ mod tests {
         "/org/bluez/hci0",
         vec![(
           ADAPTER,
-          vec![
-            ("Name", "broken_onboard".into()),
-            ("Powered", false.into()),
-          ],
+          vec![("Name", "broken_onboard".into()), ("Powered", false.into())],
         )],
       ),
       (
         "/org/bluez/hci1",
         vec![(
           ADAPTER,
-          vec![
-            ("Name", "active_dongle".into()),
-            ("Powered", true.into()),
-          ],
+          vec![("Name", "active_dongle".into()), ("Powered", true.into())],
         )],
       ),
       (
@@ -268,29 +262,28 @@ mod tests {
     assert_eq!(adapter.path.as_str(), "/org/bluez/hci0");
     assert!(!adapter.powered);
     // Devices on hci1 are discarded
-    let addresses: Vec<_> = snapshot.devices.iter().map(|d| d.address.as_str()).collect();
+    let addresses: Vec<_> = snapshot
+      .devices
+      .iter()
+      .map(|d| d.address.as_str())
+      .collect();
     assert_eq!(addresses, ["AA:AA"]);
   }
 
   #[test]
   fn empty_alias_or_name_does_not_fall_back_to_address() {
     let snapshot = read(&objects(vec![
-      ("/org/bluez/hci0", vec![(ADAPTER, vec![("Powered", true.into())])]),
+      (
+        "/org/bluez/hci0",
+        vec![(ADAPTER, vec![("Powered", true.into())])],
+      ),
       (
         "/org/bluez/hci0/dev_A",
-        device(
-          "/org/bluez/hci0",
-          Some("AA:AA"),
-          vec![("Alias", "".into())],
-        ),
+        device("/org/bluez/hci0", Some("AA:AA"), vec![("Alias", "".into())]),
       ),
       (
         "/org/bluez/hci0/dev_B",
-        device(
-          "/org/bluez/hci0",
-          Some("BB:BB"),
-          vec![("Name", "".into())],
-        ),
+        device("/org/bluez/hci0", Some("BB:BB"), vec![("Name", "".into())]),
       ),
     ]));
     // Empty Alias/Name produces empty name instead of falling back to Address

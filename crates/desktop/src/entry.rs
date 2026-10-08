@@ -286,10 +286,7 @@ mod tests {
   #[test]
   fn exec_binary_quoted_paths_and_escapes() {
     // Quoted executable paths with whitespace split prematurely on whitespace
-    assert_eq!(
-      exec_binary(r#""/opt/My App/bin/foo" %U"#),
-      Some("My")
-    );
+    assert_eq!(exec_binary(r#""/opt/My App/bin/foo" %U"#), Some("My"));
     // Backslash escaped paths
     assert_eq!(
       exec_binary(r#"/usr/bin/foo\sbar --arg"#),
@@ -418,7 +415,8 @@ mod tests {
   #[test]
   fn parse_icon_theme_edges() {
     // Prefix collision: gtk-icon-theme-name-backup matched before gtk-icon-theme-name
-    let backup_settings = "[Settings]\ngtk-icon-theme-name-backup=my-other-theme\ngtk-icon-theme-name=kora\n";
+    let backup_settings =
+      "[Settings]\ngtk-icon-theme-name-backup=my-other-theme\ngtk-icon-theme-name=kora\n";
     assert_eq!(
       parse_icon_theme(backup_settings).as_deref(),
       Some("my-other-theme")
