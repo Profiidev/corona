@@ -1,6 +1,8 @@
 use corona_compositor::{Compositor, CompositorExt};
 use gpui_kit::App;
 use gpui_shell::HostModule;
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::{
   host_fn::{Glob, Module},
@@ -27,6 +29,29 @@ impl From<Updates> for super::Updates {
 #[host_fn]
 fn focus_workspace(compositor: Glob<Compositor>, workspace: String) -> anyhow::Result<()> {
   compositor.focus_workspace(&workspace)
+}
+
+#[host_fn]
+fn focus_window(compositor: Glob<Compositor>, address: String) -> anyhow::Result<()> {
+  compositor.focus_window(&address)
+}
+
+#[host_fn]
+fn close_window(compositor: Glob<Compositor>, address: String) -> anyhow::Result<()> {
+  compositor.close_window(&address)
+}
+
+/// In global layout coordinates.
+#[derive(Serialize, TS)]
+struct Position {
+  x: i32,
+  y: i32,
+}
+
+#[host_fn]
+fn cursor_position(compositor: Glob<Compositor>) -> anyhow::Result<Position> {
+  let (x, y) = compositor.cursor_position()?;
+  Ok(Position { x, y })
 }
 
 pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
@@ -82,5 +107,8 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       |cx| cx.compositor().active_window(cx).cloned(),
     ))
     .func(focus_workspace)
+    .func(focus_window)
+    .func(close_window)
+    .func(cursor_position)
     .into()
 }

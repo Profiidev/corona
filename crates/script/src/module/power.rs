@@ -2,7 +2,7 @@ use corona_power as pw;
 use corona_power::{Power, PowerExt};
 use gpui_kit::App;
 use gpui_shell::HostModule;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
@@ -21,6 +21,60 @@ enum BatteryState {
   FullyCharged,
   PendingCharge,
   PendingDischarge,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+enum SessionAction {
+  Logout,
+  Suspend,
+  Hibernate,
+  SuspendThenHibernate,
+  Reboot,
+  PowerOff,
+  /// Reboot into the firmware setup.
+  RebootToFirmware,
+}
+
+impl From<SessionAction> for pw::SessionAction {
+  fn from(action: SessionAction) -> Self {
+    match action {
+      SessionAction::Logout => Self::Logout,
+      SessionAction::Suspend => Self::Suspend,
+      SessionAction::Hibernate => Self::Hibernate,
+      SessionAction::SuspendThenHibernate => Self::SuspendThenHibernate,
+      SessionAction::Reboot => Self::Reboot,
+      SessionAction::PowerOff => Self::PowerOff,
+      SessionAction::RebootToFirmware => Self::RebootToFirmware,
+    }
+  }
+}
+
+/// What this machine allows.
+#[derive(Serialize, TS)]
+struct SessionCapabilities {
+  suspend: bool,
+  hibernate: bool,
+  suspend_then_hibernate: bool,
+  reboot: bool,
+  power_off: bool,
+  reboot_to_firmware: bool,
+  /// Boot loader entries `rebootTo` takes, empty when the boot loader can't be told.
+  boot_entries: Vec<String>,
+}
+
+impl From<pw::SessionCapabilities> for SessionCapabilities {
+  fn from(c: pw::SessionCapabilities) -> Self {
+    Self {
+      suspend: c.suspend,
+      hibernate: c.hibernate,
+      suspend_then_hibernate: c.suspend_then_hibernate,
+      reboot: c.reboot,
+      power_off: c.power_off,
+      reboot_to_firmware: c.reboot_to_firmware,
+      boot_entries: c.boot_entries,
+    }
+  }
 }
 
 #[derive(Serialize, TS)]
@@ -243,9 +297,70 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "setKeyboardBrightness",
       |cx: Cx, power: Glob<Power>, brightness: i32| power.set_keyboard_brightness(brightness, &cx)
     ))
+    .func(named!("sessionCapabilities", |power: Glob<Power>| {
+      let capabilities = power.session_capabilities();
+      async move { capabilities.await.map(SessionCapabilities::from) }
+    }))
+    .func(named!(
+      "sessionAction",
+      |power: Glob<Power>, action: SessionAction| power.session_action(action.into())
+    ))
+    .func(named!(
+      "rebootTo",
+      /// Reboots into one of `sessionCapabilities().boot_entries`.
+      |power: Glob<Power>, entry: String| power.reboot_to(entry)
+    ))
     .func(named!(
       "setChargeThreshold",
       |cx: Cx, power: Glob<Power>, enabled: bool| power.set_charge_threshold(enabled, &cx)
     ))
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use corona_power as pw;
+
+  use super::SessionAction;
+
+  #[test]
+  fn session_actions() {
+    let all = [
+      (SessionAction::Logout, "logout", pw::SessionAction::Logout),
+      (
+        SessionAction::Suspend,
+        "suspend",
+        pw::SessionAction::Suspend,
+      ),
+      (
+        SessionAction::Hibernate,
+        "hibernate",
+        pw::SessionAction::Hibernate,
+      ),
+      (
+        SessionAction::SuspendThenHibernate,
+        "suspend_then_hibernate",
+        pw::SessionAction::SuspendThenHibernate,
+      ),
+      (SessionAction::Reboot, "reboot", pw::SessionAction::Reboot),
+      (
+        SessionAction::PowerOff,
+        "power_off",
+        pw::SessionAction::PowerOff,
+      ),
+      (
+        SessionAction::RebootToFirmware,
+        "reboot_to_firmware",
+        pw::SessionAction::RebootToFirmware,
+      ),
+    ];
+    for (action, name, session) in all {
+      assert_eq!(serde_json::to_value(action).unwrap(), name);
+      assert_eq!(
+        serde_json::from_value::<SessionAction>(name.into()).unwrap(),
+        action
+      );
+      assert_eq!(pw::SessionAction::from(action), session);
+    }
+  }
 }

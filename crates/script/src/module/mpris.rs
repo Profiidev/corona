@@ -153,6 +153,9 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     .func(named!("playPause", |mpris: Glob<Mpris>, name: String| {
       mpris.play_pause(&name)
     }))
+    .func(named!("play", |mpris: Glob<Mpris>, name: String| mpris.play(&name)))
+    .func(named!("pause", |mpris: Glob<Mpris>, name: String| mpris
+      .pause(&name)))
     .func(named!("next", |mpris: Glob<Mpris>, name: String| mpris.next(&name)))
     .func(named!("previous", |mpris: Glob<Mpris>, name: String| mpris
       .previous(&name)))

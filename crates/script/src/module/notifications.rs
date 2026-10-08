@@ -8,7 +8,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::{
-  host_fn::Module,
+  host_fn::{Glob, Module},
   module::{Subscribe, Subscriptions, read},
 };
 use corona_macros::named;
@@ -38,7 +38,10 @@ struct Notification {
   actions: Vec<Action>,
   urgency: Urgency,
   desktop_entry: Option<String>,
+  /// Unix time in seconds.
   time: f64,
+  /// Seen in the notification panel.
+  read: bool,
 }
 
 impl From<&nt::Notification> for Notification {
@@ -67,6 +70,7 @@ impl From<&nt::Notification> for Notification {
         .time
         .duration_since(UNIX_EPOCH)
         .map_or(0., |d| d.as_secs_f64()),
+      read: n.read,
     }
   }
 }
@@ -102,6 +106,14 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     .func(read(
       reads,
       subs,
+      "hasUnread",
+      Updates::Notifications,
+      state.notifications.clone(),
+      |cx| cx.notifications().has_unread(cx),
+    ))
+    .func(read(
+      reads,
+      subs,
       "doNotDisturb",
       Updates::DoNotDisturb,
       state.do_not_disturb.clone(),
@@ -124,6 +136,20 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       .notifications()
       .clone()
       .dismiss(id, cx)))
+    .func(named!("markRead", |cx: &mut App, id: u32| cx
+      .notifications()
+      .clone()
+      .mark_read(id, cx)))
+    .func(named!("markAllRead", |cx: &mut App| cx
+      .notifications()
+      .clone()
+      .mark_all_read(cx)))
+    .func(named!(
+      "send",
+      /// Shows a notification from corona.
+      |notifications: Glob<nt::Notifications>, summary: String, body: String| notifications
+        .send(summary, body)
+    ))
     .func(named!("clearAll", |cx: &mut App| cx
       .notifications()
       .clone()
