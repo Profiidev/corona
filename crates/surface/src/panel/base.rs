@@ -2,16 +2,23 @@ use std::time::Duration;
 
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_config::{
-  ConfigProvider,
+  APP_NAME, ConfigProvider,
   placement::{Placement, PlacementStyle, PlacmentBounds},
 };
 use gpui_kit::{
-  AnyView, Background, Bounds, Canvas, Context, InteractiveElement, MouseButton, ParentElement,
-  Path, PathBuilder, Pixels, Render, Styled, Window, canvas, component::ActiveTheme, div,
-  prelude::FluentBuilder, px,
+  AnyView, AnyWindowHandle, AppContext, Background, Bounds, Canvas, Context, DisplayId,
+  InteractiveElement, IntoElement, MouseButton, ParentElement, Path, PathBuilder, Pixels, Render,
+  Size, Styled, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+  WindowKind, WindowOptions, canvas,
+  component::ActiveTheme,
+  div,
+  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  point,
+  prelude::FluentBuilder,
+  px,
 };
 
-use crate::panel::{align::Align, style::PanelStyle, variants::PanelData};
+use crate::panel::{PANEL_NAME, align::Align, style::PanelStyle, variants::PanelData};
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 
@@ -26,6 +33,8 @@ pub struct BasePanel {
   blocks_input: bool,
   removing: bool,
   anim: SmoothRetarget,
+  display: Option<DisplayId>,
+  blockers: Vec<AnyWindowHandle>,
 }
 
 impl BasePanel {
@@ -33,10 +42,17 @@ impl BasePanel {
     data: &PanelData,
     align: Align,
     placement: Placement,
+    display: Option<DisplayId>,
     window: &mut Window,
     cx: &mut Context<'_, BasePanel>,
   ) -> Self {
+    // Opening windows while this one is still being built is not allowed.
+    cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.block(cx)))
+      .detach();
+
     Self {
+      display,
+      blockers: Vec::new(),
       panel: data.init(window, cx),
       width: data.width,
       height: data.height,
@@ -51,12 +67,36 @@ impl BasePanel {
 
   pub fn close(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = false;
+    let blockers = std::mem::take(&mut self.blockers);
+    cx.defer(move |cx| {
+      for handle in blockers {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+      }
+    });
     cx.notify();
   }
 
   pub fn open(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = true;
+    self.block(cx);
     cx.notify();
+  }
+
+  fn block(&mut self, cx: &mut Context<'_, BasePanel>) {
+    if !self.open || !self.blockers.is_empty() {
+      return;
+    }
+    let panel = cx.weak_entity();
+    for id in cx.displays().iter().map(|d| d.id()) {
+      if Some(id) == self.display {
+        continue;
+      }
+      let panel = panel.clone();
+      match cx.open_window(blocker_options(id), |_, cx| cx.new(|_| Blocker { panel })) {
+        Ok(handle) => self.blockers.push(handle.into()),
+        Err(e) => tracing::warn!("panel: no click catcher on {id:?}: {e:#}"),
+      }
+    }
   }
 
   pub fn is_open(&self) -> bool {
@@ -161,6 +201,48 @@ impl Render for BasePanel {
               .child(self.panel.clone()),
           ),
       )
+  }
+}
+
+struct Blocker {
+  panel: WeakEntity<BasePanel>,
+}
+
+impl Render for Blocker {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    div().size_full().on_mouse_down(
+      MouseButton::Left,
+      cx.listener(|this, _, _, cx| {
+        if let Some(panel) = this.panel.upgrade() {
+          panel.update(cx, |panel, cx| panel.close(cx));
+        }
+      }),
+    )
+  }
+}
+
+fn blocker_options(display_id: DisplayId) -> WindowOptions {
+  WindowOptions {
+    kind: WindowKind::LayerShell(LayerShellOptions {
+      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+      exclusive_zone: None,
+      exclusive_edge: None,
+      margin: None,
+      layer: Layer::Top,
+      namespace: format!("{PANEL_NAME}_blocker"),
+      keyboard_interactivity: KeyboardInteractivity::None,
+    }),
+    window_background: WindowBackgroundAppearance::Transparent,
+    window_decorations: Some(WindowDecorations::Client),
+    inactive_frame_interval: None,
+    app_id: Some(APP_NAME.to_string()),
+    titlebar: None,
+    window_bounds: Some(WindowBounds::Windowed(Bounds {
+      origin: point(px(0.), px(0.)),
+      size: Size::new(px(0.), px(0.)),
+    })),
+    display_id: Some(display_id),
+    ..Default::default()
   }
 }
 

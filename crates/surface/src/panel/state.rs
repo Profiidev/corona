@@ -188,7 +188,7 @@ impl PanelState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| BasePanel::new(&data, align, placement, window, cx));
+        let view = cx.new(|cx| BasePanel::new(&data, align, placement, display_id, window, cx));
         let state = cx.global_mut::<PanelState>();
         state.panels.insert(
           data.name,
