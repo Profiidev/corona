@@ -44,11 +44,17 @@ pub struct SecretRequest {
   /// the previous secret was rejected
   pub retry: bool,
   pub(crate) reply: flume::Sender<Secret>,
+  /// what NM asked for, a cancel names the same
+  pub(crate) connection: OwnedObjectPath,
+  pub(crate) setting: String,
 }
 
 pub(crate) enum AgentEvent {
   Request(SecretRequest),
-  Cancel,
+  Cancel {
+    connection: OwnedObjectPath,
+    setting: String,
+  },
 }
 
 #[derive(Debug, zbus::DBusError)]
@@ -71,7 +77,7 @@ impl SecretAgent {
   async fn get_secrets(
     &self,
     connection: SettingsMap,
-    _connection_path: OwnedObjectPath,
+    connection_path: OwnedObjectPath,
     setting_name: String,
     hints: Vec<String>,
     flags: u32,
@@ -109,6 +115,8 @@ impl SecretAgent {
       identity,
       retry: flags & FLAG_REQUEST_NEW != 0,
       reply,
+      connection: connection_path,
+      setting: setting_name.clone(),
     };
     self
       .events
@@ -134,8 +142,12 @@ impl SecretAgent {
     Ok(HashMap::from([(setting_name, secrets)]))
   }
 
-  async fn cancel_get_secrets(&self, _connection_path: OwnedObjectPath, _setting_name: String) {
-    let _ = self.events.send_async(AgentEvent::Cancel).await;
+  async fn cancel_get_secrets(&self, connection_path: OwnedObjectPath, setting_name: String) {
+    let cancel = AgentEvent::Cancel {
+      connection: connection_path,
+      setting: setting_name,
+    };
+    let _ = self.events.send_async(cancel).await;
   }
 
   // NM stores the returned secrets itself, nothing is agent owned
@@ -398,7 +410,10 @@ mod tests {
     let (events, received) = flume::unbounded();
     let agent = SecretAgent { events };
     block_on(agent.cancel_get_secrets(OwnedObjectPath::default(), WIFI_SECURITY_SETTING.into()));
-    assert!(matches!(received.try_recv(), Ok(AgentEvent::Cancel)));
+    assert!(matches!(
+      received.try_recv(),
+      Ok(AgentEvent::Cancel { setting, .. }) if setting == WIFI_SECURITY_SETTING
+    ));
     // nothing is stored by the agent
     block_on(agent.save_secrets(SettingsMap::new(), OwnedObjectPath::default()));
     block_on(agent.delete_secrets(SettingsMap::new(), OwnedObjectPath::default()));

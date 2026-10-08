@@ -2,7 +2,7 @@ use anyhow::Result;
 use bluez_zbus::agent1::Message;
 use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use futures_channel::mpsc;
-use futures_lite::{StreamExt, future::poll_once};
+use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::{App, Entity};
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
 
@@ -12,15 +12,32 @@ use crate::{
   snapshot::snapshot,
 };
 
-pub async fn subscribe(conn: &Connection) -> Result<MessageStream> {
-  let rule = MatchRule::builder()
+const BLUEZ: &str = "org.bluez";
+
+/// fires on bluez's signals and on bluetoothd starting or quitting
+pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unpin + use<>> {
+  let signals = MatchRule::builder()
     .msg_type(Type::Signal)
-    .sender("org.bluez")?
+    .sender(BLUEZ)?
     .build();
-  Ok(MessageStream::for_match_rule(rule, conn, None).await?)
+  let owner = MatchRule::builder()
+    .msg_type(Type::Signal)
+    .sender("org.freedesktop.DBus")?
+    .interface("org.freedesktop.DBus")?
+    .member("NameOwnerChanged")?
+    .arg(0, BLUEZ)?
+    .build();
+  let signals = MessageStream::for_match_rule(signals, conn, None).await?;
+  let owner = MessageStream::for_match_rule(owner, conn, None).await?;
+  Ok(signals.map(|_| ()).or(owner.map(|_| ())))
 }
 
-pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, state: Bluetooth) {
+pub fn listener(
+  cx: &mut App,
+  conn: Connection,
+  mut changes: impl Stream<Item = ()> + Unpin + 'static,
+  state: Bluetooth,
+) {
   cx.spawn(async move |cx| {
     loop {
       let snapshot = snapshot(&conn).await.log_err().ok();
@@ -40,7 +57,7 @@ pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, stat
 
 pub fn agent_listener(
   cx: &mut App,
-  mut messages: mpsc::Receiver<Message>,
+  mut messages: mpsc::UnboundedReceiver<Message>,
   request: Entity<Option<PairingRequest>>,
 ) {
   cx.spawn(async move |cx| {

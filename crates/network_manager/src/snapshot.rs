@@ -46,7 +46,10 @@ pub enum WifiStatus {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct WifiNetwork {
+  /// for display, invalid UTF-8 replaced
   pub ssid: String,
+  /// the SSID as broadcast, what connecting and forgetting match on
+  pub raw_ssid: Vec<u8>,
   pub strength: u8,
   /// needs a password or 802.1X credentials, open and OWE networks don't
   pub secured: bool,
@@ -291,8 +294,7 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
     } else {
       WifiStatus::New
     };
-    let ssid = String::from_utf8_lossy(&ssid).into_owned();
-    match networks.iter_mut().find(|n| n.ssid == ssid) {
+    match networks.iter_mut().find(|n| n.raw_ssid == ssid) {
       Some(n) => {
         n.strength = n.strength.max(strength);
         n.secured |= secured;
@@ -300,7 +302,8 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
         n.status = n.status.min(status);
       }
       None => networks.push(WifiNetwork {
-        ssid,
+        ssid: String::from_utf8_lossy(&ssid).into_owned(),
+        raw_ssid: ssid,
         strength,
         secured,
         enterprise,
@@ -309,7 +312,10 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
     }
   }
 
-  networks.sort_by_key(|n| (n.status, Reverse(n.strength)));
+  // the SSID last, so equal networks keep their order whatever order NM lists them in
+  networks.sort_by(|a, b| {
+    (a.status, Reverse(a.strength), &a.raw_ssid).cmp(&(b.status, Reverse(b.strength), &b.raw_ssid))
+  });
   Ok(networks)
 }
 

@@ -89,10 +89,15 @@ impl History {
         queue.pop_front();
       }
     }
-    push(&mut self.cpu, sample.cpu, capacity);
-    if let Some(temperature) = sample.cpu_temperature {
-      push(&mut self.cpu_temperature, temperature, capacity);
+    // a reading that is missing this once repeats the last one, so the series stay
+    // aligned with the others; one that never came keeps its series empty
+    fn push_or_repeat<T: Copy>(queue: &mut VecDeque<T>, value: Option<T>, capacity: usize) {
+      if let Some(value) = value.or_else(|| queue.back().copied()) {
+        push(queue, value, capacity);
+      }
     }
+    push(&mut self.cpu, sample.cpu, capacity);
+    push_or_repeat(&mut self.cpu_temperature, sample.cpu_temperature, capacity);
     let memory = match sample.memory_total {
       0 => 0.,
       total => sample.memory_used as f32 / total as f32 * 100.,
@@ -100,21 +105,18 @@ impl History {
     push(&mut self.memory, memory, capacity);
     push(&mut self.network_rx, sample.network_rx, capacity);
     push(&mut self.network_tx, sample.network_tx, capacity);
-    if let Some(gpu) = sample.gpus.first() {
-      if let Some(usage) = gpu.usage {
-        push(&mut self.gpu, usage, capacity);
-      }
-      if let (Some(used), Some(total)) = (gpu.vram_used, gpu.vram_total.filter(|t| *t > 0)) {
-        push(
-          &mut self.gpu_memory,
-          used as f32 / total as f32 * 100.,
-          capacity,
-        );
-      }
-      if let Some(temperature) = gpu.temperature {
-        push(&mut self.gpu_temperature, temperature, capacity);
-      }
-    }
+    let gpu = sample.gpus.first();
+    push_or_repeat(&mut self.gpu, gpu.and_then(|g| g.usage), capacity);
+    let gpu_memory = gpu.and_then(|g| {
+      let total = g.vram_total.filter(|t| *t > 0)?;
+      Some(g.vram_used? as f32 / total as f32 * 100.)
+    });
+    push_or_repeat(&mut self.gpu_memory, gpu_memory, capacity);
+    push_or_repeat(
+      &mut self.gpu_temperature,
+      gpu.and_then(|g| g.temperature),
+      capacity,
+    );
   }
 }
 
@@ -224,18 +226,20 @@ pub(crate) mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: a sample without a temperature is skipped, so older temperatures drift against cpu in the end-aligned charts"]
-  fn bug_series_stay_aligned() {
+  fn series_stay_aligned() {
     let mut history = History::default();
     history.push(&sample(), 60);
-    history.push(
-      &Sample {
-        cpu_temperature: None,
-        ..sample()
-      },
-      60,
-    );
+    let gone = Sample {
+      cpu_temperature: None,
+      gpus: vec![],
+      ..sample()
+    };
+    history.push(&gone, 60);
     history.push(&sample(), 60);
-    assert_eq!(history.cpu.len(), history.cpu_temperature.len());
+    assert_eq!(history.cpu_temperature, [40., 40., 40.]);
+    for series in [&history.gpu, &history.gpu_memory, &history.gpu_temperature] {
+      assert_eq!(series.len(), history.cpu.len());
+    }
+    assert_eq!(history.gpu, [30., 30., 30.]);
   }
 }

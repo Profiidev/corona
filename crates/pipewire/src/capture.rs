@@ -72,7 +72,13 @@ pub(crate) fn record(log: &mut Vec<CaptureAccess>, captures: &[Capture], now: Sy
     changed = true;
   }
 
-  log.truncate(LOG_LIMIT);
+  // over the limit the oldest ended entries go, a capture still running stays
+  while log.len() > LOG_LIMIT {
+    match log.iter().rposition(|e| e.ended.is_some()) {
+      Some(oldest) => _ = log.remove(oldest),
+      None => break,
+    }
+  }
   changed
 }
 
@@ -447,8 +453,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: capping the log can drop a still running capture, which then reappears with a new start time"]
-  fn bug_the_cap_keeps_running_captures() {
+  fn the_cap_keeps_running_captures() {
     use CaptureKind::*;
     let mut log = Vec::new();
     let long = capture(1000, Microphone, "call", true);

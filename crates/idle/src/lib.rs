@@ -96,7 +96,10 @@ fn watch(
       for (name, timeout) in next.into_iter().filter(|(_, t)| !t.is_zero()) {
         let millis = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
         let notification = notifier.get_idle_notification(millis, &seat, &qh, name.clone());
-        state.notifications.insert(name, (notification, false));
+        // a name given twice: the later timeout wins, the earlier one must not leak
+        if let Some((earlier, _)) = state.notifications.insert(name, (notification, false)) {
+          earlier.destroy();
+        }
       }
     }
 
@@ -468,8 +471,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: a name given twice leaks the first notification, it is never destroyed"]
-  fn bug_duplicate_names_are_cleaned_up(cx: &mut TestAppContext) {
+  fn duplicate_names_are_cleaned_up(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
     let _events = start(cx);
     set(cx, &[("lock", 1000), ("lock", 2000)]);

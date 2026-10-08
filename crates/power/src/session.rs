@@ -163,7 +163,8 @@ pub(crate) async fn before_sleep(
   let mut signals = manager.receive_prepare_for_sleep().await?;
   let mut next = async |start| loop {
     let signal = signals.next().await.context("logind went away")?;
-    if signal.args()?.start == start {
+    // a malformed signal is skipped, not the end of the watch
+    if signal.args().is_ok_and(|args| args.start == start) {
       return anyhow::Ok(());
     }
   };

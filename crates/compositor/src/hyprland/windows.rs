@@ -1,18 +1,20 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, hypr_dsp, types};
+use crate::{hypr_data_cmd, types};
 
-hypr_dsp!(
-  close_window,
-  "window.close({{ window = \"address:{}\" }})",
-  address: &str
-);
+impl crate::hyprland::command::Ipc {
+  pub fn close_window(&self, address: &str) -> anyhow::Result<()> {
+    self.dsp(format!("window.close({{ window = {} }})", window(address)))
+  }
 
-hypr_dsp!(
-  focus_window,
-  "focus({{ window = \"address:{}\" }})",
-  address: &str
-);
+  pub fn focus_window(&self, address: &str) -> anyhow::Result<()> {
+    self.dsp(format!("focus({{ window = {} }})", window(address)))
+  }
+}
+
+fn window(address: &str) -> String {
+  crate::hyprland::command::lua_string(&format!("address:{address}"))
+}
 
 hypr_data_cmd!(
   list_windows,
@@ -140,15 +142,19 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: the address goes into a Lua string unescaped, a quote ends it and runs any Lua"]
-  fn bug_focus_window_cannot_inject_lua() {
+  fn focus_window_cannot_inject_lua() {
     let hypr = FakeHyprland::start();
     hypr
       .ipc()
       .focus_window("0xa\" }) hl.exec_cmd(\"x\") --")
-      .ok();
-    for command in hypr.commands() {
-      assert!(!command.contains("hl.exec_cmd"), "sent {command}");
-    }
+      .unwrap();
+    hypr.ipc().close_window("0xa\\\" }) --").unwrap();
+    assert_eq!(
+      hypr.commands(),
+      [
+        r#"/eval hl.dispatch(hl.dsp.focus({ window = "address:0xa\" }) hl.exec_cmd(\"x\") --" }))"#,
+        r#"/eval hl.dispatch(hl.dsp.window.close({ window = "address:0xa\\\" }) --" }))"#,
+      ]
+    );
   }
 }

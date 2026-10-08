@@ -175,7 +175,7 @@ pub(crate) async fn check_connectivity(conn: &Connection) -> Result<NmConnectivi
 async fn strongest_access_point(
   conn: &Connection,
   device: &OwnedObjectPath,
-  ssid: &str,
+  ssid: &[u8],
 ) -> Result<OwnedObjectPath> {
   let wireless = proxy::<WirelessDeviceProxy, WirelessDevice>(conn, device.clone()).await?;
   let mut strongest = None;
@@ -183,7 +183,7 @@ async fn strongest_access_point(
     let Ok(ap_info) = read_access_point(&ap).await else {
       continue;
     };
-    if ap_info.ssid == ssid.as_bytes()
+    if ap_info.ssid == ssid
       && strongest
         .as_ref()
         .is_none_or(|(s, _)| ap_info.strength > *s)
@@ -191,19 +191,20 @@ async fn strongest_access_point(
       strongest = Some((ap_info.strength, ap.inner().path().to_owned()));
     }
   }
-  let (_, path) = strongest.with_context(|| format!("{ssid} is not in range"))?;
+  let (_, path) =
+    strongest.with_context(|| format!("{} is not in range", String::from_utf8_lossy(ssid)))?;
   Ok(path.into())
 }
 
 pub(crate) async fn connect_wifi(
   conn: &Connection,
   device: OwnedObjectPath,
-  ssid: String,
+  ssid: Vec<u8>,
 ) -> Result<()> {
   let nm = NetworkManager::new(conn).await?;
   let access_point = strongest_access_point(conn, &device, &ssid).await?;
   let device = proxy::<DeviceProxy, Device>(conn, device).await?;
-  let saved = saved_connections(&device, ssid.as_bytes()).await?;
+  let saved = saved_connections(&device, &ssid).await?;
   if let Some(connection) = saved.first() {
     nm.activate_connection(connection, &device).await?;
     return Ok(());
@@ -211,7 +212,7 @@ pub(crate) async fn connect_wifi(
 
   let settings = Settings {
     wifi: Some(WifiSettings {
-      ssid: Some(ssid.into_bytes()),
+      ssid: Some(ssid),
       ..Default::default()
     }),
     ..Default::default()
@@ -299,7 +300,7 @@ pub(crate) async fn connect_enterprise_wifi(
   let access_point = if config.hidden {
     OwnedObjectPath::default()
   } else {
-    strongest_access_point(conn, &device, &config.ssid).await?
+    strongest_access_point(conn, &device, config.ssid.as_bytes()).await?
   };
   let settings = enterprise_settings(config)?;
   let nm = NetworkManager::new(conn).await?;
@@ -406,10 +407,10 @@ pub(crate) async fn disconnect_vpn(conn: &Connection, uuid: String) -> Result<()
 pub(crate) async fn forget_wifi(
   conn: &Connection,
   device: OwnedObjectPath,
-  ssid: String,
+  ssid: Vec<u8>,
 ) -> Result<()> {
   let device = proxy::<DeviceProxy, Device>(conn, device).await?;
-  for connection in saved_connections(&device, ssid.as_bytes()).await? {
+  for connection in saved_connections(&device, &ssid).await? {
     connection.delete().await?;
   }
   Ok(())

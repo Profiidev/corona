@@ -21,9 +21,30 @@ pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unp
         .build(),
     )
   };
-  let upower = MessageStream::for_match_rule(signals(UPOWER)?, conn, None).await?;
-  let power_profiles = MessageStream::for_match_rule(signals(POWER_PROFILES)?, conn, None).await?;
-  Ok(upower.map(|_| ()).or(power_profiles.map(|_| ())))
+  // a daemon (re)starting sends no signal of its own, its name changing owner says it
+  let owner = |name| -> Result<MatchRule<'static>> {
+    Ok(
+      MatchRule::builder()
+        .msg_type(Type::Signal)
+        .sender("org.freedesktop.DBus")?
+        .interface("org.freedesktop.DBus")?
+        .member("NameOwnerChanged")?
+        .arg(0, name)?
+        .build(),
+    )
+  };
+  let stream = async |rule| MessageStream::for_match_rule(rule, conn, None).await;
+  let upower = stream(signals(UPOWER)?).await?;
+  let power_profiles = stream(signals(POWER_PROFILES)?).await?;
+  let upower_owner = stream(owner(UPOWER)?).await?;
+  let power_profiles_owner = stream(owner(POWER_PROFILES)?).await?;
+  Ok(
+    upower
+      .map(|_| ())
+      .or(power_profiles.map(|_| ()))
+      .or(upower_owner.map(|_| ()))
+      .or(power_profiles_owner.map(|_| ())),
+  )
 }
 
 pub fn listener(

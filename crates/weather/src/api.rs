@@ -36,15 +36,37 @@ pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Locat
     latitude: f64,
     longitude: f64,
     country: Option<String>,
+    country_code: Option<String>,
+    admin1: Option<String>,
   }
 
-  let name = city.split(',').next().unwrap_or(city).trim();
-  let url = format!("{GEOCODING}?name={}&count=1&format=json", encode(name));
-  let place = get::<Results>(client, &url)
+  // Open-Meteo searches names only: "Paris, Texas" asks for Paris and picks the one in Texas
+  let (name, region) = match city.split_once(',') {
+    Some((name, region)) => (name.trim(), Some(region.trim()).filter(|r| !r.is_empty())),
+    None => (city.trim(), None),
+  };
+  let count = if region.is_some() { 10 } else { 1 };
+  let url = format!(
+    "{GEOCODING}?name={}&count={count}&format=json",
+    encode(name)
+  );
+  let places = get::<Results>(client, &url)
     .await?
     .results
-    .and_then(|places| places.into_iter().next())
-    .with_context(|| format!("no place named {city}"))?;
+    .unwrap_or_default();
+  let in_region = |place: &Place| {
+    region.is_some_and(|region| {
+      [&place.admin1, &place.country, &place.country_code]
+        .into_iter()
+        .flatten()
+        .any(|part| part.eq_ignore_ascii_case(region))
+    })
+  };
+  let place = match places.iter().position(in_region) {
+    Some(at) => places.into_iter().nth(at),
+    None => places.into_iter().next(),
+  }
+  .with_context(|| format!("no place named {city}"))?;
   Ok(Location {
     name: match place.country {
       Some(country) => format!("{}, {country}", place.name),
@@ -112,25 +134,26 @@ struct CurrentResponse {
   is_day: u8,
 }
 
+/// Open-Meteo answers `null` where a model has no value: those hours and days are left out
 #[derive(Deserialize)]
 struct HourlyResponse {
   time: Vec<String>,
-  temperature_2m: Vec<f64>,
-  relative_humidity_2m: Vec<f64>,
+  temperature_2m: Vec<Option<f64>>,
+  relative_humidity_2m: Vec<Option<f64>>,
   precipitation_probability: Vec<Option<f64>>,
-  wind_speed_10m: Vec<f64>,
-  weather_code: Vec<u8>,
-  is_day: Vec<u8>,
+  wind_speed_10m: Vec<Option<f64>>,
+  weather_code: Vec<Option<u8>>,
+  is_day: Vec<Option<u8>>,
 }
 
 #[derive(Deserialize)]
 struct DailyResponse {
   time: Vec<String>,
-  temperature_2m_max: Vec<f64>,
-  temperature_2m_min: Vec<f64>,
-  weather_code: Vec<u8>,
-  sunrise: Vec<String>,
-  sunset: Vec<String>,
+  temperature_2m_max: Vec<Option<f64>>,
+  temperature_2m_min: Vec<Option<f64>>,
+  weather_code: Vec<Option<u8>>,
+  sunrise: Vec<Option<String>>,
+  sunset: Vec<Option<String>>,
 }
 
 impl Forecast {
@@ -156,27 +179,27 @@ impl Forecast {
         is_day: c.is_day == 1,
       },
       hourly: (0..h.time.len())
-        .map_while(|i| {
+        .filter_map(|i| {
           Some(Hour {
             time: h.time.get(i)?.clone(),
-            temperature: *h.temperature_2m.get(i)?,
-            humidity: *h.relative_humidity_2m.get(i)?,
+            temperature: (*h.temperature_2m.get(i)?)?,
+            humidity: (*h.relative_humidity_2m.get(i)?)?,
             precipitation_probability: h.precipitation_probability.get(i)?.unwrap_or_default(),
-            wind_speed: *h.wind_speed_10m.get(i)?,
-            code: *h.weather_code.get(i)?,
-            is_day: *h.is_day.get(i)? == 1,
+            wind_speed: (*h.wind_speed_10m.get(i)?)?,
+            code: (*h.weather_code.get(i)?)?,
+            is_day: (*h.is_day.get(i)?)? == 1,
           })
         })
         .collect(),
       daily: (0..d.time.len())
-        .map_while(|i| {
+        .filter_map(|i| {
           Some(Day {
             date: d.time.get(i)?.clone(),
-            max: *d.temperature_2m_max.get(i)?,
-            min: *d.temperature_2m_min.get(i)?,
-            code: *d.weather_code.get(i)?,
-            sunrise: d.sunrise.get(i)?.clone(),
-            sunset: d.sunset.get(i)?.clone(),
+            max: (*d.temperature_2m_max.get(i)?)?,
+            min: (*d.temperature_2m_min.get(i)?)?,
+            code: (*d.weather_code.get(i)?)?,
+            sunrise: d.sunrise.get(i)?.clone()?,
+            sunset: d.sunset.get(i)?.clone()?,
           })
         })
         .collect(),
@@ -338,14 +361,18 @@ pub(crate) mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: one null hourly temperature fails the whole forecast"]
-  fn bug_null_hourly_values_keep_the_forecast() {
-    let json = FORECAST_JSON.replace(
-      r#""temperature_2m": [14.0, 14.4]"#,
-      r#""temperature_2m": [14.0, null]"#,
-    );
-    let forecast = serde_json::from_str::<Forecast>(&json);
-    assert!(forecast.is_ok());
+  fn null_values_drop_only_their_hour_or_day() {
+    let json = FORECAST_JSON
+      .replace(
+        r#""temperature_2m": [14.0, 14.4]"#,
+        r#""temperature_2m": [null, 14.4]"#,
+      )
+      .replace(r#""sunrise": ["2026-10-01T07:12"]"#, r#""sunrise": [null]"#);
+    let weather = parse(&json);
+    assert_eq!(weather.hourly.len(), 1);
+    assert_eq!(weather.hourly[0].temperature, 14.4);
+    assert!(weather.daily.is_empty());
+    assert_eq!(weather.current.temperature, 14.2);
   }
 
   #[test]
@@ -372,7 +399,7 @@ pub(crate) mod tests {
     assert_eq!(
       urls.as_slice(),
       [format!(
-        "{GEOCODING}?name=Bad%20Aibling&count=1&format=json"
+        "{GEOCODING}?name=Bad%20Aibling&count=10&format=json"
       )]
     );
   }
@@ -401,11 +428,38 @@ pub(crate) mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: the region after the comma is dropped, \"Paris, Texas\" can resolve to Paris, France"]
-  fn bug_geocode_keeps_the_region() {
-    let (client, urls) = fake(|_| (200, r#"{"results": []}"#.into()));
-    block_on(geocode(&*client, "Paris, Texas")).ok();
-    assert!(urls.lock().unwrap()[0].contains("Texas"));
+  fn geocode_picks_the_region() {
+    let (client, urls) = fake(|_| {
+      (
+        200,
+        r#"{"results": [
+          {"name": "Paris", "latitude": 48.85, "longitude": 2.35, "country": "France", "country_code": "FR", "admin1": "Ile-de-France"},
+          {"name": "Paris", "latitude": 33.66, "longitude": -95.55, "country": "United States", "country_code": "US", "admin1": "Texas"}
+        ]}"#
+          .into(),
+      )
+    });
+    let texas = block_on(geocode(&*client, "Paris, texas")).unwrap();
+    assert_eq!(
+      (texas.latitude, texas.name.as_str()),
+      (33.66, "Paris, United States")
+    );
+    assert_eq!(texas.query.as_deref(), Some("Paris, texas"));
+    assert!(urls.lock().unwrap()[0].contains("name=Paris&count=10"));
+    // by country code too, and the first place when nothing matches
+    assert_eq!(
+      block_on(geocode(&*client, "Paris, FR")).unwrap().latitude,
+      48.85
+    );
+    assert_eq!(
+      block_on(geocode(&*client, "Paris, Atlantis"))
+        .unwrap()
+        .latitude,
+      48.85
+    );
+    // a trailing comma is no region
+    block_on(geocode(&*client, "Paris,")).unwrap();
+    assert!(urls.lock().unwrap()[3].contains("count=1&"));
   }
 
   #[test]

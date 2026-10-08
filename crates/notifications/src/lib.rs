@@ -116,34 +116,52 @@ impl Notifications {
       return;
     };
     let resident = notification.resident;
+    // apps may tear down on NotificationClosed: the action has to arrive first, so both go
+    // out from one task
+    let closed = match resident {
+      true => Vec::new(),
+      false => self.take(cx, |n| n.id == id),
+    };
     let (conn, key) = (self.conn.clone(), key.to_string());
     cx.background_spawn(async move {
       let emitter = SignalEmitter::new(&conn, PATH)?;
-      Server::action_invoked(&emitter, id, &key).await
+      Server::action_invoked(&emitter, id, &key).await?;
+      closed_signals(&emitter, closed).await
     })
     .detach();
-    if !resident {
-      self.dismiss(id, cx);
-    }
   }
 
   fn remove(&self, cx: &mut App, matches: impl Fn(&Notification) -> bool) {
-    let removed: Vec<u32> = self.notifications.update(cx, |list, cx| {
-      let removed = list.iter().filter(|n| matches(n)).map(|n| n.id).collect();
-      list.retain(|n| !matches(n));
-      cx.notify();
-      removed
-    });
+    let removed = self.take(cx, matches);
+    if removed.is_empty() {
+      return;
+    }
     let conn = self.conn.clone();
     cx.background_spawn(async move {
       let emitter = SignalEmitter::new(&conn, PATH)?;
-      for id in removed {
-        Server::notification_closed(&emitter, id, CloseReason::Dismissed as u32).await?;
-      }
-      zbus::Result::Ok(())
+      closed_signals(&emitter, removed).await
     })
     .detach();
   }
+
+  /// removes the matching notifications, their ids
+  fn take(&self, cx: &mut App, matches: impl Fn(&Notification) -> bool) -> Vec<u32> {
+    self.notifications.update(cx, |list, cx| {
+      let removed: Vec<u32> = list.iter().filter(|n| matches(n)).map(|n| n.id).collect();
+      if !removed.is_empty() {
+        list.retain(|n| !matches(n));
+        cx.notify();
+      }
+      removed
+    })
+  }
+}
+
+async fn closed_signals(emitter: &SignalEmitter<'_>, ids: Vec<u32>) -> zbus::Result<()> {
+  for id in ids {
+    Server::notification_closed(emitter, id, CloseReason::Dismissed as u32).await?;
+  }
+  Ok(())
 }
 
 /// `serve`: be the notification daemon. Without it the state stays empty, for
@@ -453,8 +471,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: ActionInvoked and NotificationClosed go out from two tasks, the close can arrive first"]
-  fn bug_action_comes_before_close(cx: &mut TestAppContext) {
+  fn action_comes_before_close(cx: &mut TestAppContext) {
     let mut running = start(cx, true);
     let plain = notify(
       &running.client,

@@ -100,13 +100,12 @@ pub(crate) async fn serve(conn: &Connection, cx: &mut App) -> Result<()> {
   let watcher = Watcher::default();
   let items = watcher.items.clone();
   conn.object_server().at(WATCHER_PATH, watcher).await?;
-  match conn.request_name(WATCHER_NAME).await {
-    Ok(_) => {}
-    Err(zbus::Error::NameTaken) => {
-      info!("another status notifier watcher runs, using it");
-      return Ok(());
-    }
-    Err(e) => return Err(e.into()),
+  // queued behind a running watcher: the bus hands corona the name once that one exits
+  let reply = conn
+    .request_name_with_flags(WATCHER_NAME, fdo::RequestNameFlags::AllowReplacement.into())
+    .await?;
+  if reply == fdo::RequestNameReply::InQueue {
+    info!("another status notifier watcher runs, using it until it exits");
   }
 
   let mut gone = fdo::DBusProxy::new(conn)

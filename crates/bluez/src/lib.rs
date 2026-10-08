@@ -550,8 +550,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: the listener only hears signals sent by org.bluez, a bluetoothd that quits or crashes leaves the old adapter and devices on screen"]
-  fn bug_bluetoothd_quitting_is_noticed(cx: &mut TestAppContext) {
+  fn bluetoothd_quitting_is_noticed(cx: &mut TestAppContext) {
     let (_bus, bluez) = start(cx);
     wait_until(cx, |cx| addresses(cx) == ["AA"]);
     drop(bluez);
@@ -690,6 +689,31 @@ mod tests {
   }
 
   #[gpui::test]
+  fn services_of_untrusted_devices_are_asked_for(cx: &mut TestAppContext) {
+    let (_bus, bluez) = start(cx);
+    let bluez = bluez.unwrap();
+    wait_until(cx, |cx| addresses(cx).len() == 1);
+    let device = || ObjectPath::try_from(dev("AA")).unwrap().into_owned();
+    let reply = bluez.ask(
+      "AuthorizeService",
+      (device(), "0000110b-0000-1000-8000-00805f9b34fb"),
+    );
+    wait_until(cx, |cx| pending(cx).is_some());
+    assert_eq!(pending(cx).unwrap().1, PairingKind::Authorize);
+    answer(cx, PairingAnswer::Reject);
+    let error = reply.join().unwrap().unwrap_err().to_string();
+    assert!(error.contains("org.bluez.Error.Rejected"), "{error}");
+
+    let reply = bluez.ask(
+      "AuthorizeService",
+      (device(), "0000110b-0000-1000-8000-00805f9b34fb"),
+    );
+    wait_until(cx, |cx| pending(cx).is_some());
+    answer(cx, PairingAnswer::Accept);
+    assert!(reply.join().unwrap().is_ok());
+  }
+
+  #[gpui::test]
   fn entering_codes(cx: &mut TestAppContext) {
     let (_bus, bluez) = start(cx);
     let bluez = bluez.unwrap();
@@ -763,8 +787,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: the agent holds its lock while waiting for an answer, bluetoothd's Cancel only arrives after the user answered"]
-  fn bug_cancel_reaches_a_waiting_prompt(cx: &mut TestAppContext) {
+  fn cancel_reaches_a_waiting_prompt(cx: &mut TestAppContext) {
     let (_bus, bluez) = start(cx);
     let bluez = bluez.unwrap();
     wait_until(cx, |cx| addresses(cx).len() == 1);

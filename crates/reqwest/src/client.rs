@@ -71,6 +71,14 @@ async fn send_cached<C: HttpClient>(
     return Ok(response);
   }
 
+  // the request as the caller sent it, for when a 304 finds the body gone
+  let (method, uri, headers, extensions) = (
+    req.method().clone(),
+    req.uri().clone(),
+    req.headers().clone(),
+    req.extensions().clone(),
+  );
+
   if let Some(meta) = cached.as_ref().filter(|meta| meta.revalidatable()) {
     let headers = req.headers_mut();
     if let Some(etag) = meta
@@ -106,7 +114,20 @@ async fn send_cached<C: HttpClient>(
     if let Err(e) = write_meta(&base, &meta) {
       tracing::warn!("http cache: keeping {url} failed: {e}");
     }
-    return cached_response(&base, &meta).map_err(Into::into);
+    match cached_response(&base, &meta) {
+      Ok(response) => return Ok(response),
+      Err(e) => {
+        tracing::warn!("http cache: {url} lost its body ({e}), fetching it again");
+        store::remove_entry(&base);
+        let mut retry = Request::builder()
+          .method(method)
+          .uri(uri)
+          .body(AsyncBody::empty())?;
+        *retry.headers_mut() = headers;
+        *retry.extensions_mut() = extensions;
+        return inner.send(retry).await;
+      }
+    }
   }
 
   if response.status() != StatusCode::OK {
@@ -340,8 +361,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: a 304 for an entry whose body file is gone returns an error instead of refetching"]
-  fn bug_not_modified_with_a_missing_body_refetches() {
+  fn not_modified_with_a_missing_body_refetches() {
     let dir = temp_dir("304-no-body");
     let client = client(
       dir.clone(),
@@ -363,6 +383,11 @@ mod tests {
     fs::remove_file(store::path(&store::base(&dir, URL), "body")).unwrap();
     let (status, _, body) = send(&client, plain_get()).unwrap();
     assert_eq!((status, body.as_str()), (StatusCode::OK, "art"));
+    // asked again unconditionally, the broken entry is gone
+    let requests = client.inner.requests.lock().unwrap();
+    assert!(requests[2].get(header::IF_NONE_MATCH).is_none());
+    assert!(read_meta(&store::base(&dir, URL)).is_none());
+    drop(requests);
     fs::remove_dir_all(dir).ok();
   }
 

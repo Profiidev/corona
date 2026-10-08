@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, hypr_dsp, types};
+use crate::{hypr_data_cmd, types};
 
 hypr_data_cmd!(
   list_workspaces,
@@ -18,11 +18,12 @@ hypr_data_cmd!(
   }
 );
 
-hypr_dsp!(
-  focus_workspace,
-  "focus({{ workspace = {} }})",
-  workspace: &str
-);
+impl crate::hyprland::command::Ipc {
+  pub fn focus_workspace(&self, workspace: &str) -> anyhow::Result<()> {
+    let workspace = crate::hyprland::command::lua_value(workspace);
+    self.dsp(format!("focus({{ workspace = {workspace} }})"))
+  }
+}
 
 hypr_data_cmd!(
   active_workspace,
@@ -102,15 +103,26 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: the workspace goes into Lua unescaped, a plugin can run any Lua inside Hyprland"]
-  fn bug_focus_workspace_cannot_inject_lua() {
+  fn focus_workspace_cannot_inject_lua() {
     let hypr = FakeHyprland::start();
     hypr
       .ipc()
       .focus_workspace("1 }) hl.exec_cmd(\"rm -rf ~\") --")
-      .ok();
-    for command in hypr.commands() {
-      assert!(!command.contains("hl.exec_cmd"), "sent {command}");
-    }
+      .unwrap();
+    hypr.ipc().focus_workspace("0x1f").unwrap();
+    hypr.ipc().focus_workspace("-2").unwrap();
+    hypr.ipc().focus_workspace("name:mail\n").unwrap();
+    hypr.ipc().focus_workspace("").unwrap();
+    // anything but a number stays inside a string
+    assert_eq!(
+      hypr.commands(),
+      [
+        r#"/eval hl.dispatch(hl.dsp.focus({ workspace = "1 }) hl.exec_cmd(\"rm -rf ~\") --" }))"#,
+        "/eval hl.dispatch(hl.dsp.focus({ workspace = 0x1f }))",
+        "/eval hl.dispatch(hl.dsp.focus({ workspace = -2 }))",
+        r#"/eval hl.dispatch(hl.dsp.focus({ workspace = "name:mail\n" }))"#,
+        r#"/eval hl.dispatch(hl.dsp.focus({ workspace = "" }))"#,
+      ]
+    );
   }
 }

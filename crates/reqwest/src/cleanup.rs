@@ -26,7 +26,9 @@ fn remove_broken(dir: &Path, now: u64) -> io::Result<()> {
     let file = entry?.path();
     match extension(&file) {
       Some("meta") => {
-        let expired = read_meta(&file).is_none_or(|meta| meta.expires <= now);
+        // stale but revalidatable entries stay, a 304 makes them fresh again
+        let expired =
+          read_meta(&file).is_none_or(|meta| meta.expires <= now && !meta.revalidatable());
         if expired || !path(&file, "body").exists() {
           remove_entry(&file);
         }
@@ -170,8 +172,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: cleanup deletes expired entries that could still be revalidated (no-cache + ETag)"]
-  fn bug_revalidatable_entries_survive_cleanup() {
+  fn revalidatable_entries_survive_cleanup() {
     let dir = temp_dir("cleanup-revalidatable");
     // what `storable` keeps for `no-cache` + ETag: expires == now
     write_entry(&dir.join("art"), &meta(100, Some("\"v1\"")), b"x").unwrap();

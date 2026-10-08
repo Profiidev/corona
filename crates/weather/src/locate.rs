@@ -2,12 +2,13 @@
 
 use anyhow::{Context, Result};
 use futures_lite::StreamExt;
-use geoclue2::{Accuracy, LocationProxy, ManagerProxy};
+use geoclue2::{LocationProxy, ManagerProxy};
 use zbus::Connection;
 
 use crate::state::Location;
 
 const DESKTOP_ID: &str = "corona";
+const CITY_ACCURACY: u32 = 4;
 
 pub(crate) async fn locate(
   conn: &Connection,
@@ -16,9 +17,7 @@ pub(crate) async fn locate(
   let manager = ManagerProxy::new(conn).await?;
   let client = manager.get_client().await?;
   client.set_desktop_id(DESKTOP_ID).await?;
-  client
-    .set_requested_accuracy_level(Accuracy::City.into())
-    .await?;
+  client.set_requested_accuracy_level(CITY_ACCURACY).await?;
   let mut updates = client.receive_location_updated().await?;
   client.start().await?;
 

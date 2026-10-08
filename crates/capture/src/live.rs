@@ -59,8 +59,11 @@ fn run(address: u64, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
       }
     }
 
+    let Some((frame, buffer)) = buffers.get(next) else {
+      // the compositor finished the session without a buffer size
+      break Err(anyhow::anyhow!("the compositor gave no buffer size"));
+    };
     let started = Instant::now();
-    let (frame, buffer) = &buffers[next];
     if let Err(e) = capturer.copy(&session, buffer) {
       if capturer.size() != size {
         continue;

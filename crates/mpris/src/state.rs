@@ -1,4 +1,6 @@
 use std::{
+  ffi::OsString,
+  os::unix::ffi::OsStringExt,
   path::PathBuf,
   time::{Duration, Instant},
 };
@@ -42,7 +44,8 @@ impl Player {
   pub fn art_source(&self) -> Option<ImageSource> {
     let url = self.art_url.as_deref()?;
     if let Some(path) = url.strip_prefix("file://") {
-      Some(PathBuf::from(path).into())
+      let path = path.strip_prefix("localhost").unwrap_or(path);
+      Some(PathBuf::from(OsString::from_vec(percent_decode(path))).into())
     } else if url.starts_with("https://") || url.starts_with("http://") {
       Some(url.into())
     } else {
@@ -62,6 +65,30 @@ impl Player {
     let position = self.position + elapsed.mul_f64(self.rate.max(0.0));
     self.length.map_or(position, |length| position.min(length))
   }
+}
+
+/// `%20` and friends as their bytes; a stray `%` stays as it is
+fn percent_decode(text: &str) -> Vec<u8> {
+  let bytes = text.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut i = 0;
+  while i < bytes.len() {
+    let hex = bytes
+      .get(i + 1..i + 3)
+      .and_then(|h| std::str::from_utf8(h).ok())
+      .and_then(|h| u8::from_str_radix(h, 16).ok());
+    match (bytes[i], hex) {
+      (b'%', Some(byte)) => {
+        out.push(byte);
+        i += 3;
+      }
+      (byte, _) => {
+        out.push(byte);
+        i += 1;
+      }
+    }
+  }
+  out
 }
 
 /// keeps the current player unless another one started playing, so pausing does not jump away
@@ -225,12 +252,21 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: file:// art URLs are not percent-decoded, covers in paths with spaces or umlauts never load"]
-  fn bug_file_urls_are_decoded() {
+  fn file_urls_are_decoded() {
     assert_eq!(
-      art(with_art(Some("file:///home/u/My%20Music/cover.jpg"))).as_deref(),
-      Some("path /home/u/My Music/cover.jpg")
+      art(with_art(Some("file:///home/u/My%20Music/%C3%84rzte.jpg"))).as_deref(),
+      Some("path /home/u/My Music/Ärzte.jpg")
     );
+    assert_eq!(
+      art(with_art(Some("file://localhost/a.png"))).as_deref(),
+      Some("path /a.png")
+    );
+    // broken escapes stay as they are
+    assert_eq!(
+      art(with_art(Some("file:///100%/%zz%2"))).as_deref(),
+      Some("path /100%/%zz%2")
+    );
+    assert_eq!(percent_decode("%ff"), [0xff]);
   }
 
   #[test]

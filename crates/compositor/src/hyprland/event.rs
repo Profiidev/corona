@@ -39,7 +39,8 @@ impl Hyprland {
     let (tx, rx) = flume::bounded(100);
 
     thread::spawn(move || {
-      loop {
+      // ends once nobody listens anymore
+      'listen: loop {
         let socket = match UnixStream::connect(&event_path) {
           Ok(socket) => socket,
           Err(e) => {
@@ -60,7 +61,7 @@ impl Hyprland {
 
           for event in events {
             if tx.send(event).is_err() {
-              break; // Channel closed, exit the loop
+              break 'listen;
             }
           }
         }
@@ -102,9 +103,11 @@ fn apply(compositor: &Compositor, event: CompositorEvent, cx: &mut App) {
   }
 }
 
-fn window_address(data: &str) -> String {
+/// The window an event names, None when it names none
+fn window_address(data: &str) -> Option<String> {
   let address = data.split(',').next().unwrap_or_default();
-  format!("0x{}", address.trim_start_matches("0x"))
+  let address = address.trim_start_matches("0x");
+  (!address.is_empty()).then(|| format!("0x{address}"))
 }
 
 impl Ipc {
@@ -126,7 +129,9 @@ impl Ipc {
         ]
       }
       "activespecial" => vec![CompositorEvent::Monitor(self.list_monitors()?)],
-      "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" => {
+      // fullscreen, floating and pinned change how windows stack
+      "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" | "fullscreen"
+      | "changefloatingmode" | "pin" => {
         let windows = self.list_windows()?;
         let window = self.active_window()?;
 
@@ -135,15 +140,19 @@ impl Ipc {
           CompositorEvent::ActiveWindow(window),
         ];
         if name == "closewindow" {
-          events.push(CompositorEvent::Attended(window_address(data)));
+          events.extend(window_address(data).map(CompositorEvent::Attended));
         }
         events
       }
-      "urgent" => vec![CompositorEvent::Urgent(window_address(data))],
-      "activewindowv2" if !data.is_empty() && data != "," => {
-        vec![CompositorEvent::Attended(window_address(data))]
-      }
-      "activewindowv2" => vec![],
+      "urgent" => window_address(data)
+        .map(CompositorEvent::Urgent)
+        .into_iter()
+        .collect(),
+      // focus left every window when it names none
+      "activewindowv2" => window_address(data)
+        .map(CompositorEvent::Attended)
+        .into_iter()
+        .collect(),
       "activewindow" => {
         let window = self.active_window()?;
         vec![CompositorEvent::ActiveWindow(window)]
@@ -190,12 +199,17 @@ mod tests {
 
   #[test]
   fn window_address() {
-    assert_eq!(super::window_address("5ba3a8eef560"), "0x5ba3a8eef560");
-    assert_eq!(super::window_address("0x5ba3a8eef560"), "0x5ba3a8eef560");
-    assert_eq!(super::window_address("5ba3a8eef560,1"), "0x5ba3a8eef560");
-    assert_eq!(super::window_address("abc,1,title, with commas"), "0xabc");
-    assert_eq!(super::window_address(""), "0x");
-    assert_eq!(super::window_address(","), "0x");
+    let address = |data| super::window_address(data);
+    assert_eq!(address("5ba3a8eef560").as_deref(), Some("0x5ba3a8eef560"));
+    assert_eq!(address("0x5ba3a8eef560").as_deref(), Some("0x5ba3a8eef560"));
+    assert_eq!(address("5ba3a8eef560,1").as_deref(), Some("0x5ba3a8eef560"));
+    assert_eq!(
+      address("abc,1,title, with commas").as_deref(),
+      Some("0xabc")
+    );
+    assert_eq!(address(""), None);
+    assert_eq!(address(","), None);
+    assert_eq!(address("0x"), None);
   }
 
   fn parse(hypr: &FakeHyprland, line: &str) -> Result<Vec<CompositorEvent>> {
@@ -283,15 +297,19 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: an urgent event without an address marks the bogus window 0x urgent"]
-  fn bug_empty_urgent_addresses_are_ignored() {
+  fn empty_addresses_are_ignored() {
     let hypr = FakeHyprland::start();
     assert!(parse(&hypr, "urgent>>").unwrap().is_empty());
+    assert!(parse(&hypr, "urgent>>,").unwrap().is_empty());
+    // a close without an address still refreshes the windows
+    assert_eq!(
+      names(&parse(&hypr, "closewindow>>").unwrap()),
+      ["Window", "ActiveWindow"]
+    );
   }
 
   #[test]
-  #[ignore = "BUG: fullscreen, floating and pin changes are not handled, the windows' flags go stale"]
-  fn bug_window_state_changes_refresh_windows() {
+  fn window_state_changes_refresh_windows() {
     let hypr = FakeHyprland::start();
     for line in ["fullscreen>>1", "changefloatingmode>>abc,1", "pin>>abc,1"] {
       assert!(

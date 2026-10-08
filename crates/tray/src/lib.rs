@@ -7,7 +7,7 @@ use zbus::{Connection, proxy::CacheProperties, zvariant::Value};
 use crate::{
   listener::{listener, subscribe},
   proxy::{ItemProxy, WatcherProxy, parse_address},
-  snapshot::{cache_dir, menu_proxy},
+  snapshot::menu_proxy,
 };
 
 pub use crate::state::{Category, MenuItem, Status, Toggle, TrayItem};
@@ -189,8 +189,8 @@ impl Tray {
 }
 
 pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
-  let _ = std::fs::remove_dir_all(cache_dir());
-
+  // the icon cache is not cleared: its files are named by their pixels, another corona may be
+  // showing them, and the runtime dir goes with the session
   watcher::serve(conn, cx).await?;
 
   let state = Tray {
@@ -222,9 +222,7 @@ mod tests {
   use futures_lite::{StreamExt, future::block_on};
   use gpui_kit::{self as gpui, TestAppContext};
   use zbus::{
-    MatchRule, MessageStream, interface,
-    message::Type,
-    object_server::SignalEmitter,
+    MatchRule, MessageStream, interface, message::Type, object_server::SignalEmitter,
     zvariant::ObjectPath,
   };
 
@@ -768,8 +766,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: when the other watcher exits corona does not take over, the tray stays empty"]
-  fn bug_takes_over_from_a_watcher_that_exits(cx: &mut TestAppContext) {
+  fn takes_over_from_a_watcher_that_exits(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let other = other_watcher(&bus, vec![]);
     let _runtime = start(cx, &bus);
@@ -785,8 +782,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: init deletes the shared icon cache, a second corona (like `just nested`) wipes the running one's icons"]
-  fn bug_init_keeps_other_instances_icons(cx: &mut TestAppContext) {
+  fn init_keeps_other_instances_icons(cx: &mut TestAppContext) {
     let runtime = tempfile::tempdir().unwrap();
     unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
     let cached = crate::snapshot::cache_dir().join("0123456789abcdef.png");

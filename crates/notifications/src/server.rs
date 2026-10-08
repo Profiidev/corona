@@ -28,6 +28,29 @@ pub(crate) struct Server {
   pub next_id: AtomicU32,
 }
 
+impl Server {
+  /// counts up from 1, skipping 0 which the spec reserves for "no notification"
+  fn fresh_id(&self) -> u32 {
+    let next = |id: u32| Some(id.checked_add(1).unwrap_or(1));
+    self
+      .next_id
+      .try_update(Ordering::Relaxed, Ordering::Relaxed, next)
+      .unwrap_or(1)
+  }
+}
+
+/// The spec says byte, plenty of clients send another integer type
+fn urgency(hints: &HashMap<String, OwnedValue>) -> Option<i64> {
+  hint::<u8>(hints, "urgency")
+    .map(i64::from)
+    .or_else(|| hint::<i32>(hints, "urgency").map(i64::from))
+    .or_else(|| hint::<u32>(hints, "urgency").map(i64::from))
+    .or_else(|| hint::<i16>(hints, "urgency").map(i64::from))
+    .or_else(|| hint::<u16>(hints, "urgency").map(i64::from))
+    .or_else(|| hint::<i64>(hints, "urgency"))
+    .or_else(|| hint::<u64>(hints, "urgency").and_then(|u| i64::try_from(u).ok()))
+}
+
 fn hint<T: TryFrom<OwnedValue>>(hints: &HashMap<String, OwnedValue>, key: &str) -> Option<T> {
   T::try_from(hints.get(key)?.try_clone().ok()?).ok()
 }
@@ -50,11 +73,13 @@ impl Server {
     hints: HashMap<String, OwnedValue>,
     _expire_timeout: i32,
   ) -> u32 {
+    // only an id this server handed out is replaced, any other one gets a new id
+    let issued = |id: u32| id != 0 && id < self.next_id.load(Ordering::Relaxed);
     let id = match replaces_id {
-      0 => self.next_id.fetch_add(1, Ordering::Relaxed),
-      id => id,
+      id if issued(id) => id,
+      _ => self.fresh_id(),
     };
-    let urgency = match hint::<u8>(&hints, "urgency") {
+    let urgency = match urgency(&hints) {
       Some(0) => Urgency::Low,
       Some(2) => Urgency::Critical,
       _ => Urgency::Normal,
@@ -210,16 +235,28 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: urgency sent as int32/uint32 (some clients do) is read as normal, critical notifications lose their urgency"]
-  fn bug_urgency_accepts_any_integer() {
+  fn urgency_accepts_any_integer() {
     let (server, rx) = server(1);
-    notify(&server, 0, hints(vec![("urgency", 2i32.into())]));
-    assert_eq!(received(&rx).urgency, Urgency::Critical);
+    let values: Vec<Value<'_>> = vec![
+      2i32.into(),
+      2u32.into(),
+      2i16.into(),
+      2u16.into(),
+      2i64.into(),
+      2u64.into(),
+    ];
+    for value in values {
+      notify(&server, 0, hints(vec![("urgency", value)]));
+      assert_eq!(received(&rx).urgency, Urgency::Critical);
+    }
+    notify(&server, 0, hints(vec![("urgency", 0i32.into())]));
+    assert_eq!(received(&rx).urgency, Urgency::Low);
+    notify(&server, 0, hints(vec![("urgency", "2".into())]));
+    assert_eq!(received(&rx).urgency, Urgency::Normal);
   }
 
   #[test]
-  #[ignore = "BUG: an unknown replaces_id is taken as the new id, a later fresh id can then replace another app's notification"]
-  fn bug_unknown_replace_ids_get_a_fresh_id() {
+  fn unknown_replace_ids_get_a_fresh_id() {
     let (server, _rx) = server(1);
     let foreign = notify(&server, 2, HashMap::new());
     let fresh = notify(&server, 0, HashMap::new());
@@ -231,11 +268,11 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: the id counter wraps to 0, which the spec reserves for no notification"]
-  fn bug_ids_never_wrap_to_zero() {
+  fn ids_never_wrap_to_zero() {
     let (server, _rx) = server(u32::MAX);
-    notify(&server, 0, HashMap::new());
-    assert_ne!(notify(&server, 0, HashMap::new()), 0);
+    assert_eq!(notify(&server, 0, HashMap::new()), u32::MAX);
+    assert_eq!(notify(&server, 0, HashMap::new()), 1);
+    assert_eq!(notify(&server, 0, HashMap::new()), 2);
   }
 
   #[test]

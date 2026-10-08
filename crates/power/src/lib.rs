@@ -23,6 +23,9 @@ mod session;
 mod snapshot;
 mod state;
 
+/// how long before a session watch that failed starts over
+const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[derive(Clone)]
 pub struct Power {
   pub status: Entity<Option<Status>>,
@@ -78,12 +81,16 @@ impl Power {
     session::reboot_to(self.conn.clone(), entry)
   }
 
+  /// Watches again after any error, an unlocked sleep is worse than a retry
   pub fn before_sleep(&self, cx: &mut App, before_sleep: impl Fn(&mut App) -> Task<()> + 'static) {
     let conn = self.conn.clone();
     cx.spawn(async move |cx| {
-      let _ = session::before_sleep(conn, cx, before_sleep)
-        .await
-        .log_err();
+      loop {
+        let _ = session::before_sleep(conn.clone(), cx, &before_sleep)
+          .await
+          .log_err();
+        cx.background_executor().timer(RETRY).await;
+      }
     })
     .detach();
   }
@@ -92,7 +99,12 @@ impl Power {
   pub fn lock_requests(&self, cx: &mut App, on: impl Fn(bool, &mut App) + 'static) {
     let conn = self.conn.clone();
     cx.spawn(async move |cx| {
-      let _ = session::lock_requests(conn, cx, on).await.log_err();
+      loop {
+        let _ = session::lock_requests(conn.clone(), cx, &on)
+          .await
+          .log_err();
+        cx.background_executor().timer(RETRY).await;
+      }
     })
     .detach();
   }
@@ -645,8 +657,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: only signals sent by UPower trigger a refresh, a restarted upowerd's new state is never read"]
-  fn bug_upower_restarts_are_noticed(cx: &mut TestAppContext) {
+  fn upower_restarts_are_noticed(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let services = services(&bus);
     start(cx, &bus);
@@ -953,8 +964,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: one malformed PrepareForSleep signal ends the watcher for good, later sleeps happen unlocked"]
-  fn bug_sleep_watch_survives_a_bad_signal(cx: &mut TestAppContext) {
+  fn sleep_watch_survives_a_bad_signal(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let logind = Logind::start(&bus, HashMap::new());
     let power = power_on(cx, &bus);
@@ -975,6 +985,18 @@ mod tests {
     );
     logind.prepare_for_sleep(true);
     wait_until(cx, |_| *locked.lock().unwrap() == 1);
+  }
+
+  #[gpui::test]
+  fn sleep_watch_starts_over_when_logind_comes_late(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let power = power_on(cx, &bus);
+    cx.update(|cx| power.before_sleep(cx, |cx| cx.background_spawn(async {})));
+    settle(cx);
+    let logind = Logind::start(&bus, HashMap::new());
+    assert!(logind.held().is_empty());
+    cx.executor().advance_clock(RETRY);
+    wait_until(cx, |_| logind.held() == [true]);
   }
 
   #[gpui::test]

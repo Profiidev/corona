@@ -128,38 +128,39 @@ fn merge(
       .any(|b| b.output.as_ref() == Some(&output.name))
   };
 
-  let monitors = outputs.iter().filter(|o| !builtin(o)).map(|output| {
-    match detected
-      .iter()
-      .find(|d| d.output.as_ref() == Some(&output.name))
-    {
-      Some(display) => mark_failed(display.clone()),
-      None => Display {
-        id: format!("output/{}", output.name),
-        output: Some(output.name.clone()),
-        name: Some(output.model.clone().unwrap_or_else(|| output.name.clone())),
-        kind: DisplayKind::External,
-        brightness: 0,
-        max: 0,
-        unavailable: Some(match ddc {
-          Ddc::Off(reason) => *reason,
-          Ddc::Detecting => Unavailable::Detecting,
-          Ddc::Detected(_) => Unavailable::Unsupported,
-          Ddc::DetectFailed => Unavailable::Failed,
-        }),
-      },
-    }
-  });
-  // monitors `ddcutil` could not tie to an output still work
+  let monitors: Vec<Display> = outputs
+    .iter()
+    .filter(|o| !builtin(o))
+    .map(|output| {
+      match detected
+        .iter()
+        .find(|d| d.output.as_ref() == Some(&output.name))
+      {
+        Some(display) => mark_failed(display.clone()),
+        None => Display {
+          id: format!("output/{}", output.name),
+          output: Some(output.name.clone()),
+          name: Some(output.model.clone().unwrap_or_else(|| output.name.clone())),
+          kind: DisplayKind::External,
+          brightness: 0,
+          max: 0,
+          unavailable: Some(match ddc {
+            Ddc::Off(reason) => *reason,
+            Ddc::Detecting => Unavailable::Detecting,
+            Ddc::Detected(_) => Unavailable::Unsupported,
+            Ddc::DetectFailed => Unavailable::Failed,
+          }),
+        },
+      }
+    })
+    .collect();
+  // monitors `ddcutil` could not tie to an output, or that share one, still work
   let unmatched = detected
     .iter()
-    .filter(|d| {
-      !d.output
-        .as_ref()
-        .is_some_and(|o| outputs.iter().any(|out| &out.name == o))
-    })
+    .filter(|d| !monitors.iter().any(|m| m.id == d.id))
     .cloned()
-    .map(mark_failed);
+    .map(mark_failed)
+    .collect::<Vec<_>>();
 
   backlights
     .iter()
@@ -471,8 +472,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: two DDC monitors reporting the same output, the second disappears"]
-  fn bug_merge_keeps_every_detected_monitor() {
+  fn merge_keeps_every_detected_monitor() {
     let detected = Ddc::Detected(vec![
       display("ddc/5", "DP-1", DisplayKind::External),
       display("ddc/6", "DP-1", DisplayKind::External),

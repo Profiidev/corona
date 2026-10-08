@@ -3,11 +3,18 @@ use std::{
   io::{Read, Write},
   os::unix::net::UnixStream,
   path::PathBuf,
+  time::Duration,
 };
 
 use anyhow::Result;
 
 use crate::hyprland::encoding::decode_ipc_response;
+
+/// A hung Hyprland must not hang the UI thread that asked
+#[cfg(not(any(test, feature = "test-support")))]
+const TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(any(test, feature = "test-support"))]
+const TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Clone)]
 pub struct Ipc {
@@ -17,6 +24,8 @@ pub struct Ipc {
 impl Ipc {
   pub(super) fn send_cmd(&self, cmd: &Command) -> Result<String> {
     let mut socket = UnixStream::connect(&self.cmd_socket)?;
+    socket.set_read_timeout(Some(TIMEOUT))?;
+    socket.set_write_timeout(Some(TIMEOUT))?;
     socket.write_all(cmd.to_string().as_bytes())?;
     let mut res = Vec::new();
     socket.read_to_end(&mut res)?;
@@ -37,6 +46,41 @@ impl Ipc {
     }
     Ok(())
   }
+}
+
+/// `value` as a Lua literal: whole numbers as they are, anything else as a quoted string, so
+/// a workspace or window from a plugin can never end the expression it is put in
+pub(crate) fn lua_value(value: &str) -> String {
+  let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+  let hex = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit());
+  let number =
+    digits(value.strip_prefix('-').unwrap_or(value)) || value.strip_prefix("0x").is_some_and(hex);
+  if number {
+    return value.to_string();
+  }
+  lua_string(value)
+}
+
+/// `value` as a double quoted Lua string
+pub(crate) fn lua_string(value: &str) -> String {
+  let mut out = String::with_capacity(value.len() + 2);
+  out.push('"');
+  for c in value.chars() {
+    match c {
+      '"' => out.push_str("\\\""),
+      '\\' => out.push_str("\\\\"),
+      '\n' => out.push_str("\\n"),
+      '\r' => out.push_str("\\r"),
+      c if c.is_control() => {
+        for b in c.to_string().bytes() {
+          out.push_str(&format!("\\{b:03}"));
+        }
+      }
+      c => out.push(c),
+    }
+  }
+  out.push('"');
+  out
 }
 
 /// https://github.com/hyprland-community/hyprland-rs/blob/master/src/data/regular.rs
@@ -76,18 +120,6 @@ macro_rules! hypr_data_cmd {
         let res = self.send_cmd(&cmd)?;
         let output: $output = serde_json::from_str(&res)?;
         Ok($convert(output))
-      }
-    }
-  };
-}
-
-#[macro_export]
-macro_rules! hypr_dsp {
-  ($cmd:ident, $arg:literal, $($var:ident: $type:ty),*) => {
-    impl $crate::hyprland::command::Ipc {
-      pub fn $cmd(&self, $($var: $type),*) -> anyhow::Result<()> {
-        let call = format!($arg, $($var),*);
-        self.dsp(call)
       }
     }
   };
@@ -146,6 +178,30 @@ mod tests {
       ipc.dsp("nope()").unwrap_err().to_string(),
       "Hyprland dsp call failed: no such dispatcher"
     );
+  }
+
+  #[test]
+  fn lua_literals() {
+    assert_eq!(lua_value("12"), "12");
+    assert_eq!(lua_value("-1"), "-1");
+    assert_eq!(lua_value("0xAbC"), "0xAbC");
+    for text in ["", "-", "0x", "1.5", "1e3", " 1", "special:magic", "0xg"] {
+      assert!(lua_value(text).starts_with('"'), "{text}");
+    }
+    assert_eq!(lua_string("a\"b\\c\n\r\t\0ü"), r#""a\"b\\c\n\r\009\000ü""#);
+  }
+
+  #[test]
+  fn a_hung_hyprland_times_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".socket.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    // accepts, then never answers
+    let held = std::thread::spawn(move || listener.accept().map(|(stream, _)| stream));
+    let started = std::time::Instant::now();
+    assert!(Ipc { cmd_socket: path }.eval("x").is_err());
+    assert!(started.elapsed() < TIMEOUT * 10);
+    drop(held.join());
   }
 
   #[test]

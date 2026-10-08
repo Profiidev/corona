@@ -145,13 +145,30 @@ impl NetworkManager {
     cx.open_url(url);
   }
 
+  /// The SSID as listed broadcasts these bytes; one not in the list is taken as it is
+  fn raw_ssid(&self, ssid: String, cx: &App) -> Vec<u8> {
+    self
+      .list_wifi_networks(cx)
+      .iter()
+      .find(|n| n.ssid == ssid)
+      .map_or_else(|| ssid.into_bytes(), |n| n.raw_ssid.clone())
+  }
+
   pub fn connect_wifi(&self, ssid: String, cx: &App) -> impl Future<Output = Result<()>> + use<> {
-    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    let (conn, device, ssid) = (
+      self.conn.clone(),
+      self.wifi_path(cx),
+      self.raw_ssid(ssid, cx),
+    );
     async move { actions::connect_wifi(&conn, device?, ssid).await }
   }
 
   pub fn forget_wifi(&self, ssid: String, cx: &App) -> impl Future<Output = Result<()>> + use<> {
-    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    let (conn, device, ssid) = (
+      self.conn.clone(),
+      self.wifi_path(cx),
+      self.raw_ssid(ssid, cx),
+    );
     async move { actions::forget_wifi(&conn, device?, ssid).await }
   }
 
@@ -816,8 +833,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: CancelGetSecrets ignores which request it cancels, a late cancel for an old request closes a newer one"]
-  fn bug_late_cancel_keeps_the_newer_request(cx: &mut TestAppContext) {
+  fn late_cancel_keeps_the_newer_request(cx: &mut TestAppContext) {
     let (_bus, mock) = start(cx, World::default());
     let _old = get_secrets(&mock, b"home", "/s/2");
     wait_until(cx, |cx| requested(cx).as_deref() == Some("home"));
@@ -879,8 +895,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: a non-UTF-8 SSID is shown lossily and can then never be connected"]
-  fn bug_non_utf8_ssids_connect(cx: &mut TestAppContext) {
+  fn non_utf8_ssids_connect(cx: &mut TestAppContext) {
     let mut world = World::default();
     world.aps.push(ap(4, b"caf\xe9", 50, 0));
     let (_bus, mock) = start(cx, world);
@@ -896,8 +911,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: networks of equal status and strength have no tie-break, their order follows NM's access point order and flips between snapshots"]
-  fn bug_network_order_is_stable(cx: &mut TestAppContext) {
+  fn network_order_is_stable(cx: &mut TestAppContext) {
     let mut world = World::default();
     world.aps = vec![ap(1, b"b", 50, 0), ap(2, b"a", 50, 0)];
     let (_bus, _mock) = start(cx, world);
@@ -907,8 +921,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: the listener only hears signals sent by NetworkManager, a restarted NetworkManager's new state is not read"]
-  fn bug_networkmanager_restarts_are_noticed(cx: &mut TestAppContext) {
+  fn networkmanager_restarts_are_noticed(cx: &mut TestAppContext) {
     let (bus, mock) = start(cx, World::default());
     drop(mock);
     let mut world = World::default();

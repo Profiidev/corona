@@ -1,10 +1,13 @@
 use anyhow::Result;
 use bluez_zbus::{
   agent_manager1::AgentManager1Proxy,
-  agent1::{self, Capability, Message},
+  agent1::{Capability, Message},
 };
 use futures_channel::{mpsc, oneshot};
-use zbus::{Connection, zvariant::ObjectPath};
+use zbus::{
+  Connection,
+  zvariant::{ObjectPath, OwnedObjectPath},
+};
 
 const AGENT_PATH: &str = "/io/corona/bluez/agent";
 
@@ -35,9 +38,124 @@ pub(crate) enum AgentEvent {
   Cancel,
 }
 
-pub async fn register(conn: &Connection) -> Result<mpsc::Receiver<Message>> {
-  let (agent, messages) = agent1::create();
-  conn.object_server().at(AGENT_PATH, agent).await?;
+#[derive(Debug, zbus::DBusError)]
+#[zbus(prefix = "org.bluez.Error")]
+enum AgentError {
+  #[zbus(error)]
+  ZBus(zbus::Error),
+  Rejected(String),
+  Canceled(String),
+}
+
+/// `org.bluez.Agent1`. Every method takes `&self`, so a `Cancel` reaches the shell while a
+/// prompt still waits for its answer, which an agent taking `&mut self` would hold off.
+struct Agent {
+  messages: mpsc::UnboundedSender<Message>,
+}
+
+impl Agent {
+  fn send(&self, message: Message) -> Result<(), AgentError> {
+    self
+      .messages
+      .unbounded_send(message)
+      .map_err(|_| AgentError::Canceled("the shell is gone".into()))
+  }
+
+  async fn ask<T>(
+    &self,
+    message: impl FnOnce(oneshot::Sender<T>) -> Message,
+  ) -> Result<T, AgentError> {
+    let (response, answer) = oneshot::channel();
+    self.send(message(response))?;
+    answer
+      .await
+      .map_err(|_| AgentError::Canceled("the prompt was closed".into()))
+  }
+}
+
+#[zbus::interface(name = "org.bluez.Agent1")]
+impl Agent {
+  fn release(&self) -> Result<(), AgentError> {
+    self.send(Message::Release)
+  }
+
+  async fn request_pin_code(&self, device: OwnedObjectPath) -> Result<String, AgentError> {
+    self
+      .ask(|response| Message::RequestPinCode { device, response })
+      .await?
+      .ok_or_else(|| AgentError::Rejected("no PIN".into()))
+  }
+
+  fn display_pin_code(&self, device: OwnedObjectPath, pincode: String) -> Result<(), AgentError> {
+    self.send(Message::DisplayPinCode { device, pincode })
+  }
+
+  async fn request_passkey(&self, device: OwnedObjectPath) -> Result<u32, AgentError> {
+    self
+      .ask(|response| Message::RequestPasskey { device, response })
+      .await?
+      .ok_or_else(|| AgentError::Rejected("no passkey".into()))
+  }
+
+  fn display_passkey(
+    &self,
+    device: OwnedObjectPath,
+    passkey: u32,
+    entered: u16,
+  ) -> Result<(), AgentError> {
+    self.send(Message::DisplayPasskey {
+      device,
+      passkey,
+      entered,
+    })
+  }
+
+  async fn request_confirmation(
+    &self,
+    device: OwnedObjectPath,
+    passkey: u32,
+  ) -> Result<(), AgentError> {
+    let accepted = self
+      .ask(|response| Message::RequestConfirmation {
+        device,
+        passkey,
+        response,
+      })
+      .await?;
+    accepted
+      .then_some(())
+      .ok_or_else(|| AgentError::Rejected("not confirmed".into()))
+  }
+
+  async fn request_authorization(&self, device: OwnedObjectPath) -> Result<(), AgentError> {
+    let accepted = self
+      .ask(|response| Message::RequestAuthorization { device, response })
+      .await?;
+    accepted
+      .then_some(())
+      .ok_or_else(|| AgentError::Rejected("not authorized".into()))
+  }
+
+  /// A device that is not trusted wants a service: asked like a pairing, never assumed
+  async fn authorize_service(
+    &self,
+    device: OwnedObjectPath,
+    _uuid: String,
+  ) -> Result<(), AgentError> {
+    self.request_authorization(device).await
+  }
+
+  fn cancel(&self) -> Result<(), AgentError> {
+    self.send(Message::Cancel)
+  }
+}
+
+pub async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Message>> {
+  let (sender, messages) = mpsc::unbounded();
+  conn
+    .object_server()
+    .at(AGENT_PATH, Agent { messages: sender })
+    .await?;
   let path = ObjectPath::try_from(AGENT_PATH)?;
   let manager = AgentManager1Proxy::new(conn).await?;
   manager

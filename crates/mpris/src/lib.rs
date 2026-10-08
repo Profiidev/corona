@@ -110,6 +110,7 @@ impl Mpris {
   pub fn set_volume(&self, name: &str, volume: f64) -> impl Future<Output = Result<()>> + use<> {
     let (conn, name) = (self.conn.clone(), bus_name(name));
     async move {
+      anyhow::ensure!(!volume.is_nan(), "the volume is not a number");
       let volume = volume.clamp(0.0, 1.0);
       Ok(player_proxy(&conn, name?).await?.set_volume(volume).await?)
     }
@@ -562,8 +563,7 @@ mod tests {
   }
 
   #[gpui::test]
-  #[ignore = "BUG: set_volume(NaN) sends NaN to the player, clamp lets it through"]
-  fn bug_nan_volume_is_not_sent(cx: &mut TestAppContext) {
+  fn nan_volume_is_not_sent(cx: &mut TestAppContext) {
     let bus = start(cx);
     let mock = spawn_player(&bus, "Spotify", "Playing");
     wait_until(cx, |cx| names(cx).len() == 1);

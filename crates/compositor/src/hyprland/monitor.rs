@@ -1,9 +1,14 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, hypr_dsp, types};
+use crate::{hypr_data_cmd, types};
 
-// every monitor's power, `on` or `off`
-hypr_dsp!(dpms, "dpms({{ action = \"{}\" }})", action: &str);
+impl crate::hyprland::command::Ipc {
+  /// every monitor's power, `on` or `off`
+  pub fn dpms(&self, action: &str) -> anyhow::Result<()> {
+    let action = crate::hyprland::command::lua_string(action);
+    self.dsp(format!("dpms({{ action = {action} }})"))
+  }
+}
 
 hypr_data_cmd!(
   list_monitors,

@@ -8,7 +8,7 @@ use cosmic_dbus_networkmanager::interface::{
   enums::DeviceState,
   settings::{SettingsProxy, connection::ConnectionSettingsProxy},
 };
-use futures_lite::{StreamExt, future::poll_once};
+use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::{App, Entity};
 use zbus::{
   Connection, MatchRule, Message, MessageStream, fdo::PropertiesChanged, message::Type,
@@ -43,16 +43,34 @@ struct StateChange {
   reason: u32,
 }
 
-pub async fn subscribe(conn: &Connection) -> Result<MessageStream> {
+/// NM's signals, and NM starting or quitting
+pub async fn subscribe(
+  conn: &Connection,
+) -> Result<impl Stream<Item = zbus::Result<Message>> + Unpin + use<>> {
+  let name = NetworkManagerProxy::DESTINATION.clone().unwrap();
   let rule = MatchRule::builder()
     .msg_type(Type::Signal)
-    .sender(NetworkManagerProxy::DESTINATION.clone().unwrap())?
+    .sender(name.clone())?
     .path_namespace(NetworkManagerProxy::PATH.clone().unwrap())?
     .build();
-  Ok(MessageStream::for_match_rule(rule, conn, None).await?)
+  let owner = MatchRule::builder()
+    .msg_type(Type::Signal)
+    .sender("org.freedesktop.DBus")?
+    .interface("org.freedesktop.DBus")?
+    .member("NameOwnerChanged")?
+    .arg(0, name.as_str())?
+    .build();
+  let signals = MessageStream::for_match_rule(rule, conn, None).await?;
+  let owner = MessageStream::for_match_rule(owner, conn, None).await?;
+  Ok(signals.or(owner))
 }
 
-pub fn listener(cx: &mut App, conn: Connection, mut changes: MessageStream, state: NetworkManager) {
+pub fn listener(
+  cx: &mut App,
+  conn: Connection,
+  mut changes: impl Stream<Item = zbus::Result<Message>> + Unpin + 'static,
+  state: NetworkManager,
+) {
   cx.spawn(async move |cx| {
     let mut wifi_path = None;
     let mut connecting_ssid = None;
@@ -127,20 +145,33 @@ pub fn agent_listener(
 ) {
   cx.spawn(async move |cx| {
     while let Ok(event) = events.recv_async().await {
-      let request = match event {
+      match event {
         AgentEvent::Request(request) => {
           wifi_failure.write_changed(cx, None);
-          Some(request)
+          secret_request.write(cx, Some(request));
         }
-        AgentEvent::Cancel => None,
-      };
-      secret_request.write(cx, request);
+        // only the request NM gives up on closes, a newer one may be showing already
+        AgentEvent::Cancel {
+          connection,
+          setting,
+        } => secret_request.update(cx, |request, cx| {
+          if request
+            .as_ref()
+            .is_some_and(|r| r.connection == connection && r.setting == setting)
+          {
+            *request = None;
+            cx.notify();
+          }
+        }),
+      }
     }
   })
   .detach();
 }
 
-async fn next_changes(changes: &mut MessageStream) -> Option<Vec<StateChange>> {
+async fn next_changes(
+  changes: &mut (impl Stream<Item = zbus::Result<Message>> + Unpin),
+) -> Option<Vec<StateChange>> {
   let mut state_changes = Vec::new();
   while let Some(msg) = changes.next().await {
     let Ok(msg) = msg else { continue };
@@ -171,7 +202,12 @@ fn state_change(msg: &Message) -> Option<StateChange> {
 }
 
 fn is_relevant(msg: &Message) -> bool {
-  let interface = msg.header().interface().cloned();
+  let header = msg.header();
+  // NetworkManager (re)started or quit
+  if header.member().is_some_and(|m| m == "NameOwnerChanged") {
+    return true;
+  }
+  let interface = header.interface().cloned();
   if SIGNAL_INTERFACES
     .iter()
     .any(|i| i.as_ref() == interface.as_ref())

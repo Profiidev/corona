@@ -447,8 +447,7 @@ mod tests {
   }
 
   #[test]
-  #[ignore = "BUG: corona-zbus-geoclue2 Accuracy has no explicit values, City is sent as 2 instead of GClueAccuracyLevel CITY = 4"]
-  fn bug_geoclue_is_asked_for_city_accuracy() {
+  fn geoclue_is_asked_for_city_accuracy() {
     let bus = TestBus::new();
     block_on(async {
       let service = geoclue(&bus, Some("/org/freedesktop/GeoClue2/Location/1")).await;
