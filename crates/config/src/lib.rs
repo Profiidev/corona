@@ -558,7 +558,7 @@ mod tests {
   /// The example lists every setting at its default, so it cannot go stale.
   #[test]
   fn example_is_the_defaults() {
-    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config.example.toml");
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/config.example.toml");
     let text = std::fs::read_to_string(example).unwrap();
     let mut unknown = Vec::new();
     let config: Config =
