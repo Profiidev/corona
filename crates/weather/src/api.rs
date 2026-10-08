@@ -513,39 +513,3 @@ pub(crate) mod tests {
     }
   }
 }
-
-#[cfg(test)]
-mod live {
-  use super::*;
-
-  /// asks Open-Meteo for real: `cargo test -p corona_weather -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn bad_aibling() {
-    let client = corona_reqwest::client().unwrap();
-    futures_lite::future::block_on(async {
-      let location = geocode(&client, "Bad Aibling, Germany").await.unwrap();
-      println!("{location:?}");
-      let weather = forecast(&client, location, Units::Metric).await.unwrap();
-      println!(
-        "{} {}°C ({}) feels {}°C, elevation {}m, {} {}",
-        weather.current.time,
-        weather.current.temperature,
-        weather.current.condition().key(),
-        weather.current.apparent_temperature,
-        weather.elevation,
-        weather.timezone,
-        weather.timezone_abbreviation
-      );
-      for day in &weather.daily {
-        println!(
-          "{} {}/{} {}",
-          day.date,
-          day.min,
-          day.max,
-          day.condition().key()
-        );
-      }
-    });
-  }
-}

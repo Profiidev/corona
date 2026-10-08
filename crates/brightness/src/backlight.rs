@@ -15,7 +15,7 @@ pub(crate) const DRM: &str = "/sys/class/drm";
 
 /// `path` under sysfs; tests point `CORONA_TEST_SYSFS` at a fixture tree instead
 pub(crate) fn sys(path: &str) -> PathBuf {
-  #[cfg(any(test, feature = "test-support"))]
+  #[cfg(test)]
   if let Some(root) = std::env::var_os("CORONA_TEST_SYSFS") {
     return Path::new(&root).join(path.trim_start_matches("/sys/"));
   }

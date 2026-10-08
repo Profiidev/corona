@@ -159,21 +159,3 @@ pub async fn profiles(conn: &Connection) -> Option<Profiles> {
       .filter(|reason| !reason.is_empty()),
   })
 }
-
-#[cfg(test)]
-mod tests {
-  /// reads this machine's power state: `cargo test -p corona_power -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_snapshot() {
-    zbus::block_on(async {
-      let conn = zbus::Connection::system().await.unwrap();
-      let snapshot = super::snapshot(&conn).await.unwrap();
-      println!("{:#?}", snapshot.status);
-      println!("{:#?}", snapshot.battery);
-      println!("{:#?}", snapshot.devices);
-      println!("{:#?}", snapshot.keyboard_backlight);
-      println!("{:#?}", super::profiles(&conn).await);
-    });
-  }
-}

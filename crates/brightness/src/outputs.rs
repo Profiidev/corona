@@ -127,11 +127,4 @@ mod tests {
     );
     assert!(connected(&root.path().join("missing")).is_empty());
   }
-
-  /// this machine's monitors: `cargo test -p corona_brightness -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_outputs() {
-    println!("{:#?}", connected(Path::new("/sys/class/drm")));
-  }
 }

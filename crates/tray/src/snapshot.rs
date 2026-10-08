@@ -490,19 +490,4 @@ pub(crate) mod tests {
     assert_eq!(icon(&p, "IconName", "IconPixmap", None), Some(path));
     assert_eq!(icon(&props(vec![]), "IconName", "IconPixmap", None), None);
   }
-
-  /// reads the tray items on this session bus: `cargo test -p corona_tray -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_snapshot() {
-    zbus::block_on(async {
-      let conn = zbus::Connection::session().await.unwrap();
-      for item in super::snapshot(&conn, &mut Default::default())
-        .await
-        .unwrap()
-      {
-        println!("{item:#?}");
-      }
-    });
-  }
 }

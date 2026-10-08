@@ -819,15 +819,4 @@ mod tests {
     assert_eq!(window_address(0x55d2, 0xa4e1_b2c0), 0x55d2_a4e1_b2c0);
     assert_eq!(window_address(u32::MAX, u32::MAX), u64::MAX);
   }
-
-  /// needs a running Wayland compositor with ext-image-copy-capture
-  #[test]
-  #[ignore]
-  fn live_capture_all() {
-    let mut capturer = Capturer::new().unwrap();
-    let name = capturer.state.outputs[0].1.clone().unwrap();
-    let frame = capturer.capture(&name).unwrap();
-    let image = frame.read_all().unwrap();
-    println!("{name}: {:?}", image.dimensions());
-  }
 }

@@ -230,15 +230,4 @@ mod tests {
     let snapshot = read(&objects(vec![("/a/dev", device("/a", Some("AA"), vec![]))]));
     assert!(snapshot.devices.is_empty());
   }
-
-  /// reads this machine's adapter and devices: `cargo test -p corona_bluez -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_snapshot() {
-    zbus::block_on(async {
-      let conn = zbus::Connection::system().await.unwrap();
-      let snapshot = super::snapshot(&conn).await.unwrap();
-      println!("{:#?}\n{:#?}", snapshot.adapter, snapshot.devices);
-    });
-  }
 }

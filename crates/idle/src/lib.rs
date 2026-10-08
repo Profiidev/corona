@@ -14,9 +14,9 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 /// How often the watcher looks for new timeouts while the compositor is quiet
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const COMMAND_POLL: Duration = Duration::from_millis(250);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const COMMAND_POLL: Duration = Duration::from_millis(10);
 
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch

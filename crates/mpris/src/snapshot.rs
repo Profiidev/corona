@@ -84,18 +84,3 @@ async fn read_player(conn: &Connection, name: OwnedBusName) -> Result<Player> {
     name: name.to_string(),
   })
 }
-
-#[cfg(test)]
-mod tests {
-  /// reads the players on this session bus: `cargo test -p corona_mpris -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_snapshot() {
-    zbus::block_on(async {
-      let conn = zbus::Connection::session().await.unwrap();
-      for player in super::snapshot(&conn).await.unwrap() {
-        println!("{player:#?}");
-      }
-    });
-  }
-}

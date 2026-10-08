@@ -102,18 +102,3 @@ fn init_loop() -> Result<(MainLoopRc, RegistryRc)> {
 
   Ok((mainloop, registry))
 }
-
-#[cfg(test)]
-mod tests {
-  /// lists the captures on this pipewire: `cargo test -p corona_pipewire -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_captures() {
-    let (events, _rx) = flume::unbounded();
-    let (_commands, state) = super::spawn(events).unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    for capture in state.captures.list() {
-      println!("{capture:?}");
-    }
-  }
-}

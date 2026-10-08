@@ -13,17 +13,17 @@ use crate::state::{Display, DisplayKind};
 
 /// the brightness VCP feature
 const BRIGHTNESS: &str = "10";
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const TIMEOUT: Duration = Duration::from_secs(5);
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const QUARANTINE: Duration = Duration::from_secs(5 * 60);
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const STARTUP_DELAY: Duration = Duration::from_secs(3);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(500);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const QUARANTINE: Duration = Duration::from_millis(400);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const STARTUP_DELAY: Duration = Duration::ZERO;
 
 pub(crate) enum DdcCommand {

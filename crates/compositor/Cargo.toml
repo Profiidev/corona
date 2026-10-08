@@ -16,9 +16,6 @@ tracing.workspace = true
 flume.workspace = true
 chardetng = "1.0.0"
 
-[features]
-test-support = []
-
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
-tempfile = "3"
+tempfile.workspace = true

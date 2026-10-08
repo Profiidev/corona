@@ -11,9 +11,9 @@ use anyhow::Result;
 use crate::hyprland::encoding::decode_ipc_response;
 
 /// A hung Hyprland must not hang the UI thread that asked
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const TIMEOUT: Duration = Duration::from_secs(2);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Clone)]

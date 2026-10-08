@@ -11,7 +11,7 @@ gpui-kit.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 zbus = { workspace = true, optional = true }
-tempfile = { version = "3", optional = true }
+tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

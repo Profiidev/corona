@@ -398,32 +398,4 @@ mod tests {
       thread::sleep(Duration::from_millis(10));
     }
   }
-
-  /// this machine's numbers: `cargo test -p corona_sysinfo -- --ignored --nocapture`
-  #[test]
-  #[ignore]
-  fn live_sample() {
-    let mut sampler = Sampler::new();
-    println!("{:#?}", sampler.info());
-    sampler.baseline();
-    thread::sleep(Duration::from_secs(1));
-    let sample = sampler.sample();
-    println!(
-      "cpu {:.1}% {} MHz {:?}°C, memory {}/{} MiB, swap {}/{} MiB, load {:?}",
-      sample.cpu,
-      sample.cpu_frequency,
-      sample.cpu_temperature,
-      sample.memory_used >> 20,
-      sample.memory_total >> 20,
-      sample.swap_used >> 20,
-      sample.swap_total >> 20,
-      sample.load
-    );
-    println!(
-      "network rx {:.1} kB/s tx {:.1} kB/s",
-      sample.network_rx / 1000.,
-      sample.network_tx / 1000.
-    );
-    println!("{:#?}\n{:#?}", sample.disks, sample.gpus);
-  }
 }

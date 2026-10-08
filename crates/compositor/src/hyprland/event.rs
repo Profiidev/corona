@@ -29,9 +29,9 @@ enum CompositorEvent {
   Attended(String),
 }
 
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(test))]
 const RECONNECT: std::time::Duration = std::time::Duration::from_secs(1);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 const RECONNECT: std::time::Duration = std::time::Duration::from_millis(20);
 
 impl Hyprland {
