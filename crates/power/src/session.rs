@@ -99,8 +99,10 @@ async fn manager(conn: &Connection) -> Result<LoginManagerProxy<'_>> {
   )
 }
 
-fn session_id() -> Result<String> {
-  env::var("XDG_SESSION_ID").context("XDG_SESSION_ID is not set")
+/// Started outside the login session, like from a systemd user service, logind
+/// resolves `auto` to the user's graphical session
+fn session_id() -> String {
+  env::var("XDG_SESSION_ID").unwrap_or_else(|_| "auto".into())
 }
 
 /// `challenge` counts too, polkit asks for the password then
@@ -133,7 +135,7 @@ pub(crate) async fn capabilities(conn: Connection) -> Result<SessionCapabilities
 pub(crate) async fn run(conn: Connection, action: SessionAction) -> Result<()> {
   let manager = manager(&conn).await?;
   match action {
-    SessionAction::Logout => manager.terminate_session(&session_id()?).await?,
+    SessionAction::Logout => manager.terminate_session(&session_id()).await?,
     SessionAction::Suspend => manager.suspend(true).await?,
     SessionAction::Hibernate => manager.hibernate(true).await?,
     SessionAction::SuspendThenHibernate => manager.suspend_then_hibernate(true).await?,
@@ -185,7 +187,7 @@ pub(crate) async fn lock_requests(
   cx: &mut AsyncApp,
   on: impl Fn(bool, &mut gpui_kit::App),
 ) -> Result<()> {
-  let path = manager(&conn).await?.get_session(&session_id()?).await?;
+  let path = manager(&conn).await?.get_session(&session_id()).await?;
   let session = LoginSessionProxy::builder(&conn)
     .path(path)?
     .cache_properties(CacheProperties::No)

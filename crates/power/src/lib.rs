@@ -974,12 +974,8 @@ mod tests {
       ]
     );
     unsafe { std::env::remove_var("XDG_SESSION_ID") };
-    assert_eq!(
-      block_on(power.session_action(SessionAction::Logout))
-        .unwrap_err()
-        .to_string(),
-      "XDG_SESSION_ID is not set"
-    );
+    block_on(power.session_action(SessionAction::Logout)).unwrap();
+    assert_eq!(logind.calls().last().unwrap(), "TerminateSession auto");
   }
 
   #[gpui::test]

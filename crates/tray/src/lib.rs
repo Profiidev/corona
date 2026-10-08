@@ -889,7 +889,7 @@ mod tests {
     wait_until(cx, |cx| items(cx).is_empty());
     let sig1 = block_on(unregistered.next()).unwrap().unwrap();
     let sig2 = block_on(unregistered.next()).unwrap().unwrap();
-    let mut left = vec![
+    let mut left = [
       sig1.body().deserialize::<String>().unwrap(),
       sig2.body().deserialize::<String>().unwrap(),
     ];
@@ -919,7 +919,7 @@ mod tests {
   fn attention_falls_back_to_standard_icon(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let _runtime = start(cx, &bus);
-    let conn = block_on(async {
+    let _conn = block_on(async {
       let conn = bus.conn().await;
       conn
         .object_server()
