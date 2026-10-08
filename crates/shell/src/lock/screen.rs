@@ -1,0 +1,466 @@
+use corona_config::ConfigProvider;
+use corona_power::{PowerExt, SessionAction, SessionCapabilities};
+use corona_utils::error::ErrorLogExt;
+use gpui_kit::{
+  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, InteractiveElement,
+  IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
+  Subscription, Window,
+  assets::IconName,
+  component::{
+    ActiveTheme, Icon, Sizable,
+    avatar::Avatar,
+    button::Button,
+    form::field,
+    input::{
+      InputEvent, InputGroup, InputGroupAddon, InputGroupAddonAlignment, InputGroupButton,
+      InputState,
+    },
+    popover::Popover,
+    separator::Separator,
+    spinner::Spinner,
+  },
+  div,
+  prelude::FluentBuilder,
+  px,
+};
+use rust_i18n::t;
+
+use crate::overlays::wallpaper;
+
+const WIDTH: f32 = 320.;
+const MENU_WIDTH: f32 = 248.;
+const INSET: f32 = 32.;
+
+/// What the screen is for. The greeter adds `Login`: no switch user or log out,
+/// "Power" for the menu and "log in" wording
+#[derive(Clone, Copy, PartialEq)]
+pub enum Purpose {
+  Unlock,
+}
+
+impl Purpose {
+  fn submit(self) -> SharedString {
+    match self {
+      Purpose::Unlock => t!("app.lock.unlock").into(),
+    }
+  }
+
+  fn idle(self) -> SharedString {
+    match self {
+      Purpose::Unlock => t!("app.lock.idle").into(),
+    }
+  }
+
+  fn groups(self) -> Vec<Vec<Item>> {
+    use SessionAction as A;
+    let sleep = vec![
+      Item::Action(A::Suspend),
+      Item::Action(A::Hibernate),
+      Item::Action(A::SuspendThenHibernate),
+    ];
+    let power = vec![Item::Action(A::Reboot), Item::Action(A::PowerOff)];
+    match self {
+      Purpose::Unlock => vec![
+        vec![Item::SwitchUser],
+        vec![Item::Action(A::Logout)],
+        sleep,
+        power,
+      ],
+    }
+  }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Item {
+  SwitchUser,
+  Action(SessionAction),
+}
+
+impl Item {
+  fn label(self) -> SharedString {
+    match self {
+      Item::SwitchUser => t!("app.lock.switch_user"),
+      Item::Action(action) => match action {
+        SessionAction::Logout => t!("app.session.logout"),
+        SessionAction::Suspend => t!("app.session.suspend"),
+        SessionAction::Hibernate => t!("app.session.hibernate"),
+        SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+        SessionAction::Reboot => t!("app.session.reboot"),
+        SessionAction::PowerOff => t!("app.session.shutdown"),
+        SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
+      },
+    }
+    .into()
+  }
+
+  fn busy(action: SessionAction) -> SharedString {
+    match action {
+      SessionAction::Logout => t!("app.lock.busy.logout"),
+      SessionAction::Suspend => t!("app.lock.busy.suspend"),
+      SessionAction::Hibernate => t!("app.lock.busy.hibernate"),
+      SessionAction::SuspendThenHibernate => t!("app.lock.busy.suspend_then_hibernate"),
+      SessionAction::Reboot | SessionAction::RebootToFirmware => t!("app.lock.busy.reboot"),
+      SessionAction::PowerOff => t!("app.lock.busy.shutdown"),
+    }
+    .into()
+  }
+
+  fn icon(self) -> IconName {
+    match self {
+      Item::SwitchUser => IconName::ArrowLeftRight,
+      Item::Action(action) => match action {
+        SessionAction::Logout => IconName::LogOut,
+        SessionAction::Suspend => IconName::Moon,
+        SessionAction::Hibernate => IconName::Snowflake,
+        SessionAction::SuspendThenHibernate => IconName::Hourglass,
+        SessionAction::Reboot | SessionAction::RebootToFirmware => IconName::RotateCw,
+        SessionAction::PowerOff => IconName::Power,
+      },
+    }
+  }
+}
+
+/// Whether `item` shows, and whether it can be picked. Hibernating hides when
+/// the machine can't, the rest only disable. Nothing runs before the
+/// capabilities loaded, except logging out
+fn availability(item: Item, capabilities: Option<&SessionCapabilities>) -> (bool, bool) {
+  use SessionAction as A;
+  let Item::Action(action) = item else {
+    // TODO: switch user
+    return (true, false);
+  };
+  let Some(c) = capabilities else {
+    let hidden = matches!(action, A::Hibernate | A::SuspendThenHibernate);
+    return (!hidden, action == A::Logout);
+  };
+  match action {
+    A::Logout => (true, true),
+    A::Suspend => (c.suspend, true),
+    A::Hibernate => (c.hibernate, true),
+    A::SuspendThenHibernate => (c.suspend_then_hibernate, true),
+    A::Reboot => (true, c.reboot),
+    A::PowerOff => (true, c.power_off),
+    A::RebootToFirmware => (c.reboot_to_firmware, true),
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Log {
+  Idle,
+  Busy(SharedString),
+  Error(SharedString),
+}
+
+pub struct User {
+  pub name: SharedString,
+  pub avatar: Option<String>,
+}
+
+impl User {
+  pub fn current(cx: &App) -> Self {
+    Self {
+      name: std::env::var("USER").unwrap_or_default().into(),
+      avatar: cx.config().shell.avatar.clone(),
+    }
+  }
+}
+
+/// The user, password field, log line and session menu over the lock and login
+/// backdrop
+pub struct AuthScreen {
+  purpose: Purpose,
+  user: User,
+  input: Entity<InputState>,
+  log: Log,
+  invalid: bool,
+  capabilities: Option<SessionCapabilities>,
+  _subscription: Subscription,
+}
+
+impl AuthScreen {
+  pub fn new(purpose: Purpose, user: User, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    let input = cx.new(|cx| InputState::new(window, cx).masked(true));
+    let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
+      InputEvent::PressEnter { .. } => this.submit(window, cx),
+      // typing clears an auth error
+      InputEvent::Change if matches!(this.log, Log::Error(_)) || this.invalid => {
+        this.log = Log::Idle;
+        this.invalid = false;
+        cx.notify();
+      }
+      _ => {}
+    });
+    Self {
+      purpose,
+      user,
+      input,
+      log: Log::Idle,
+      invalid: false,
+      capabilities: None,
+      _subscription: subscription,
+    }
+  }
+
+  pub fn focus_handle(&self, cx: &App) -> FocusHandle {
+    self.input.read(cx).focus_handle(cx)
+  }
+
+  fn submit(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    if self.input.read(cx).value().is_empty() {
+      self.log = Log::Error(t!("app.lock.empty").into());
+      cx.notify();
+    }
+    // TODO: authenticate with PAM, on failure set `invalid`, clear the field and
+    // log "Wrong password — N attempts left"
+  }
+
+  /// Reads what the machine allows on every open
+  fn load_capabilities(&mut self, cx: &mut Context<Self>) {
+    let capabilities = cx.power().session_capabilities();
+    cx.spawn(async move |this, cx| {
+      let capabilities = capabilities.await.log_err().unwrap_or_default();
+      let _ = this.update(cx, |this, cx| {
+        this.capabilities = Some(capabilities);
+        cx.notify();
+      });
+    })
+    .detach();
+  }
+
+  fn activate(&mut self, item: Item, cx: &mut Context<Self>) {
+    let Item::Action(action) = item else {
+      return;
+    };
+    self.log = Log::Busy(Item::busy(action));
+    cx.notify();
+    let task = cx.power().session_action(action);
+    cx.spawn(async move |this, cx| {
+      let result = task.await;
+      let _ = this.update(cx, |this, cx| {
+        this.log = match result {
+          Err(e) => {
+            tracing::warn!("lock: {action:?} failed: {e:#}");
+            Log::Error(t!("app.lock.failed", action = item.label()).into())
+          }
+          // back from sleep, or the request only got queued
+          Ok(()) => Log::Idle,
+        };
+        cx.notify();
+      });
+    })
+    .detach();
+  }
+
+  fn header(&self, cx: &App) -> impl IntoElement + use<> {
+    div()
+      .flex()
+      .flex_col()
+      .items_center()
+      .gap(px(14.))
+      .child(
+        Avatar::new()
+          .name(self.user.name.clone())
+          .when_some(self.user.avatar.as_deref(), |a, src| {
+            a.src(wallpaper::source(src))
+          })
+          .with_size(px(96.))
+          .text_size(px(30.))
+          .font_weight(gpui_kit::FontWeight::MEDIUM),
+      )
+      .child(
+        div()
+          .text_size(px(20.))
+          .line_height(px(28.))
+          .font_weight(gpui_kit::FontWeight::MEDIUM)
+          .text_color(cx.theme().foreground)
+          .child(self.user.name.clone()),
+      )
+  }
+
+  fn password(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    let submit = InputGroupButton::new("auth-submit")
+      .icon(IconName::ArrowRight)
+      .accessibility_label(self.purpose.submit())
+      .cursor_pointer()
+      .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)));
+
+    field().label(t!("app.lock.password").to_string()).child(
+      InputGroup::new("auth-password")
+        .input(gpui_kit::component::input::Input::new(&self.input))
+        .invalid(self.invalid)
+        .addon(
+          InputGroupAddon::new("auth-actions")
+            .align(InputGroupAddonAlignment::InlineEnd)
+            .child(submit),
+        ),
+    )
+  }
+
+  fn log_line(&self, cx: &App) -> impl IntoElement + use<> {
+    let theme = cx.theme();
+    let (text, color, busy): (SharedString, Hsla, bool) = match &self.log {
+      Log::Idle => (self.purpose.idle(), theme.muted_foreground, false),
+      Log::Busy(text) => (text.clone(), theme.muted_foreground, true),
+      Log::Error(text) => (text.clone(), theme.danger, false),
+    };
+    div()
+      .min_h(px(20.))
+      .flex()
+      .items_center()
+      .justify_center()
+      .gap_2()
+      .text_size(px(12.))
+      .font_family(theme.mono_font_family.clone())
+      .text_color(color)
+      .when(busy, |d| {
+        d.child(Spinner::new().with_size(px(12.)).color(color))
+      })
+      .child(div().truncate().child(text))
+  }
+
+  fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    let capabilities = self.capabilities.as_ref();
+    let groups: Vec<Vec<(Item, bool)>> = self
+      .purpose
+      .groups()
+      .into_iter()
+      .map(|group| {
+        group
+          .into_iter()
+          .filter_map(|item| {
+            let (shown, enabled) = availability(item, capabilities);
+            shown.then_some((item, enabled))
+          })
+          .collect()
+      })
+      .filter(|group: &Vec<_>| !group.is_empty())
+      .collect();
+    let this = cx.entity();
+    let on_open = this.clone();
+
+    div().absolute().right(px(INSET)).bottom(px(INSET)).child(
+      Popover::new("auth-menu")
+        .anchor(Anchor::BottomRight)
+        .offset(px(8.))
+        .p_1()
+        .rounded_xl()
+        .on_open_change(move |open, _, cx| {
+          if *open {
+            on_open.update(cx, |this, cx| this.load_capabilities(cx));
+          }
+        })
+        .trigger(
+          Button::new("auth-menu-trigger")
+            .icon(IconName::Power)
+            .cursor_pointer(),
+        )
+        .content(move |_, _, cx| {
+          let hover = cx.theme().accent;
+          let popover = cx.entity();
+          let mut panel = div().w(px(MENU_WIDTH)).flex().flex_col();
+          for (i, group) in groups.iter().enumerate() {
+            if i > 0 {
+              panel = panel.child(Separator::horizontal().my_1());
+            }
+            panel = panel.children(group.iter().map(|&(item, enabled)| {
+              let (this, popover) = (this.clone(), popover.clone());
+              div()
+                .id(SharedString::from(format!("auth-menu-{item:?}")))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py_1p5()
+                .rounded_md()
+                .child(Icon::new(item.icon()).size_4())
+                .child(item.label())
+                .when(!enabled, |d| d.opacity(0.5))
+                .when(enabled, |d| {
+                  d.cursor_pointer()
+                    .hover(move |d| d.bg(hover))
+                    .on_click(move |_, window, cx| {
+                      popover.update(cx, |popover, cx| popover.dismiss(window, cx));
+                      this.update(cx, |this, cx| this.activate(item, cx));
+                    })
+                })
+            }));
+          }
+          panel
+        }),
+    )
+  }
+}
+
+impl Render for AuthScreen {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    div()
+      .size_full()
+      .relative()
+      .text_sm()
+      .child(
+        div()
+          .absolute()
+          .size_full()
+          .flex()
+          .items_center()
+          .justify_center()
+          .child(
+            div()
+              .w(px(WIDTH))
+              .flex()
+              .flex_col()
+              .gap_4()
+              .child(self.header(cx))
+              .child(
+                div()
+                  .flex()
+                  .flex_col()
+                  .gap(px(14.))
+                  .child(self.password(cx))
+                  .child(self.log_line(cx)),
+              ),
+          ),
+      )
+      .child(self.menu(cx))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn hibernating_hides_until_supported() {
+    use SessionAction as A;
+    for action in [A::Hibernate, A::SuspendThenHibernate] {
+      assert_eq!(availability(Item::Action(action), None), (false, false));
+      let none = SessionCapabilities::default();
+      assert!(!availability(Item::Action(action), Some(&none)).0);
+    }
+    // suspending hides too once known unsupported
+    let none = SessionCapabilities::default();
+    assert!(!availability(Item::Action(A::Suspend), Some(&none)).0);
+    assert_eq!(availability(Item::Action(A::Suspend), None), (true, false));
+    // the rest show disabled
+    for action in [A::Reboot, A::PowerOff] {
+      assert_eq!(
+        availability(Item::Action(action), Some(&none)),
+        (true, false)
+      );
+      assert_eq!(availability(Item::Action(action), None), (true, false));
+    }
+    assert_eq!(availability(Item::Action(A::Logout), None), (true, true));
+    assert_eq!(availability(Item::SwitchUser, None), (true, false));
+  }
+
+  #[test]
+  fn unlock_menu_groups() {
+    let groups = Purpose::Unlock.groups();
+    assert_eq!(groups.len(), 4);
+    assert_eq!(groups[0], [Item::SwitchUser]);
+    assert_eq!(
+      groups[3].last(),
+      Some(&Item::Action(SessionAction::PowerOff))
+    );
+  }
+}

@@ -238,8 +238,8 @@ impl LockState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| Lock::new(background, cx));
-        let focus = view.read(cx).focus.clone();
+        let view = cx.new(|cx| Lock::new(background, window, cx));
+        let focus = view.read(cx).screen.read(cx).focus_handle(cx);
         window.focus(&focus, cx);
         cx.new(|cx| Root::new(view, window, cx))
       },

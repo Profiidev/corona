@@ -4,6 +4,7 @@ use gpui_kit::{App, Task};
 
 pub use state::LockState;
 
+mod screen;
 mod state;
 mod view;
 

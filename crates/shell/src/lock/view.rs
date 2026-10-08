@@ -7,16 +7,20 @@ use std::{
 
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  App, BoxShadow, Context, Div, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+  App, AppContext, BoxShadow, Context, Div, Entity, InteractiveElement, IntoElement, ParentElement,
   Pixels, Render, RenderImage, Size, Styled, Window, black, component::ActiveTheme, div,
   ease_out_quint, img, prelude::FluentBuilder, px, relative,
 };
 
-use crate::lock::state::LockState;
-use rust_i18n::t;
+use crate::lock::{
+  screen::{AuthScreen, Purpose, User},
+  state::LockState,
+};
 
 const ZOOM: f32 = 0.96;
 const FEATHER: f32 = 10.;
+/// Darkens the blurred screen under the lock UI
+const DIM: f32 = 0.1;
 pub(super) const ZOOM_SPEED: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
@@ -26,14 +30,15 @@ pub struct Background {
 }
 
 pub struct Lock {
-  pub focus: FocusHandle,
+  pub screen: Entity<AuthScreen>,
   background: Option<Background>,
 }
 
 impl Lock {
-  pub fn new(background: Option<Background>, cx: &mut Context<Self>) -> Self {
+  pub fn new(background: Option<Background>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    let user = User::current(cx);
     Self {
-      focus: cx.focus_handle(),
+      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, user, window, cx)),
       background,
     }
   }
@@ -81,6 +86,12 @@ fn screen(background: Background, progress: f32, size: Size<Pixels>) -> Div {
         .child(image(background.sharp).opacity(1. - progress)),
     )
     .child(vignette)
+    .child(
+      div()
+        .absolute()
+        .size_full()
+        .bg(black().opacity(DIM * progress)),
+    )
 }
 
 /// How far an animation started at `start` is, eased. Keeps the frames coming
@@ -103,24 +114,27 @@ impl Render for Lock {
 
     let theme = cx.theme();
     let size = window.viewport_size();
-    let label = div().relative().child(t!("app.lock.locked"));
     div()
-      .track_focus(&self.focus)
+      // TODO: remove once the password unlocks
       .on_key_down(cx.listener(|_, event: &gpui_kit::KeyDownEvent, _, cx| {
         if event.keystroke.key == "escape" {
           LockState::unlock_animated(cx);
         }
       }))
       .size_full()
-      .flex()
-      .items_center()
-      .justify_center()
+      .relative()
       .bg(theme.background)
       .text_color(theme.foreground)
       .when_some(self.background.clone(), |d, background| {
         d.child(screen(background, progress, size))
       })
-      .child(label.opacity(progress))
+      .child(
+        div()
+          .absolute()
+          .size_full()
+          .opacity(progress)
+          .child(self.screen.clone()),
+      )
   }
 }
 
@@ -148,18 +162,12 @@ impl Render for Unlock {
 
     let theme = cx.theme();
     let size = window.viewport_size();
-    let label = div().relative().child(t!("app.lock.locked"));
     div()
       .size_full()
-      .flex()
-      .items_center()
-      .justify_center()
       .bg(theme.background)
-      .text_color(theme.foreground)
       .opacity(progress)
       .when_some(self.background.clone(), |d, background| {
         d.child(screen(background, progress, size))
       })
-      .child(label.opacity(progress))
   }
 }

@@ -1,6 +1,43 @@
 _version: 2
 app:
   lock:
-    locked:
-      en: Locked — press Escape
-      de: Gesperrt – Escape drücken
+    password:
+      en: Password
+      de: Passwort
+    unlock:
+      en: Unlock
+      de: Entsperren
+    session:
+      en: Session
+      de: Sitzung
+    switch_user:
+      en: Switch user
+      de: Benutzer wechseln
+    idle:
+      en: Enter your password to unlock
+      de: Passwort eingeben zum Entsperren
+    empty:
+      en: Enter your password.
+      de: Passwort eingeben.
+    failed:
+      en: "%{action} failed"
+      de: "%{action} fehlgeschlagen"
+    busy:
+      logout:
+        en: Logging out…
+        de: Abmelden…
+      suspend:
+        en: Suspending…
+        de: Bereitschaft…
+      hibernate:
+        en: Hibernating…
+        de: Ruhezustand…
+      suspend_then_hibernate:
+        en: Suspending, then hibernating…
+        de: Bereitschaft, dann Ruhezustand…
+      reboot:
+        en: Rebooting…
+        de: Neustart…
+      shutdown:
+        en: Shutting down…
+        de: Herunterfahren…
