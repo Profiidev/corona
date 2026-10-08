@@ -21,14 +21,31 @@ impl Widget for BluetoothButton {
   }
 }
 
+/// The icon and whether it shows as an error; `powered` is None without an adapter
+fn icon(powered: Option<bool>) -> (IconName, bool) {
+  match powered {
+    None => (IconName::BluetoothOff, true),
+    Some(true) => (IconName::Bluetooth, false),
+    Some(false) => (IconName::BluetoothOff, false),
+  }
+}
+
 impl Render for BluetoothButton {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let (icon, unavailable) = match cx.bluetooth().adapter(cx) {
-      None => (IconName::BluetoothOff, true),
-      Some(a) if a.powered => (IconName::Bluetooth, false),
-      Some(_) => (IconName::BluetoothOff, false),
-    };
+    let (icon, unavailable) = icon(cx.bluetooth().adapter(cx).map(|a| a.powered));
 
     Button::<_, Standalone<BluetoothPanel>>::new(cx, "bluetooth-button", icon).danger(unavailable)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn icon() {
+    assert_eq!(super::icon(None), (IconName::BluetoothOff, true));
+    assert_eq!(super::icon(Some(true)), (IconName::Bluetooth, false));
+    assert_eq!(super::icon(Some(false)), (IconName::BluetoothOff, false));
   }
 }

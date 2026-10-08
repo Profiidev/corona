@@ -264,3 +264,46 @@ fn placeholder(theme: &Theme, text: impl IntoElement) -> impl IntoElement {
     .text_color(theme.colors.muted_foreground)
     .child(text)
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn device(icon: Option<&str>) -> Device {
+    Device {
+      path: zbus::zvariant::OwnedObjectPath::try_from("/test").unwrap(),
+      address: "00:11:22:33:44:55".into(),
+      name: "Test".into(),
+      icon: icon.map(Into::into),
+      paired: false,
+      connected: false,
+      trusted: false,
+      battery: None,
+      rssi: None,
+    }
+  }
+
+  #[test]
+  fn device_type() {
+    let kind = |icon| super::device_type(&device(icon));
+    assert_eq!(kind(Some("audio-headset")).0, IconName::Headphones);
+    assert_eq!(kind(Some("input-gaming")).0, IconName::Gamepad2);
+    // bluez icons are matched by prefix
+    assert_eq!(kind(Some("phone-apple")).0, IconName::Smartphone);
+    assert_eq!(kind(Some("audio-headset")).1, "Headset");
+    assert_eq!(
+      kind(Some("unknown")),
+      (IconName::Bluetooth, "Device".into())
+    );
+    assert_eq!(kind(None), kind(Some("unknown")));
+    assert_eq!(kind(Some("")), kind(None));
+  }
+
+  #[test]
+  fn device_type_labels_distinct() {
+    let mut labels: Vec<_> = TYPES.iter().map(|(_, _, key)| t!(*key)).collect();
+    labels.sort();
+    labels.dedup();
+    assert_eq!(labels.len(), TYPES.len());
+  }
+}

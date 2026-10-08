@@ -74,3 +74,40 @@ impl IpcCommand for ListThemes {
     Ok(theme_names(cx))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::test_support::temp_config;
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  fn modes(cx: &mut TestAppContext) {
+    let _dir = temp_config();
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(corona_config::Config::default());
+      corona_components::assets::load(cx).unwrap();
+    });
+    let mode = |m, cx: &mut TestAppContext| cx.update(|cx| SetMode::handle(m, cx)).unwrap();
+    assert_eq!(mode(Mode::Dark, cx), "dark");
+    cx.run_until_parked();
+    assert_eq!(mode(Mode::Get, cx), "dark");
+    assert_eq!(mode(Mode::Toggle, cx), "light");
+    cx.run_until_parked();
+    assert_eq!(mode(Mode::Get, cx), "light");
+    assert_eq!(mode(Mode::Light, cx), "light");
+  }
+
+  #[gpui::test]
+  fn unknown_theme_errors(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(corona_config::Config::default());
+      corona_components::assets::load(cx).unwrap();
+      let names = ListThemes::handle((), cx).unwrap();
+      assert!(!names.is_empty() && names.is_sorted());
+      assert!(SetTheme::handle("No Such Theme".into(), cx).is_err());
+    });
+  }
+}

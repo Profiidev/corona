@@ -47,11 +47,11 @@ fn muted(text: impl Into<String>, cx: &App) -> Div {
 }
 
 fn uptime(booted: SystemTime) -> String {
-  let minutes = SystemTime::now()
-    .duration_since(booted)
-    .unwrap_or_default()
-    .as_secs()
-    / 60;
+  uptime_at(booted, SystemTime::now())
+}
+
+fn uptime_at(booted: SystemTime, now: SystemTime) -> String {
+  let minutes = now.duration_since(booted).unwrap_or_default().as_secs() / 60;
   match (minutes / 1440, minutes / 60 % 24, minutes % 60) {
     (0, 0, m) => t!("app.dashboard.uptime.minutes", minutes = m).into(),
     (0, h, m) => t!("app.dashboard.uptime.hours", hours = h, minutes = m).into(),
@@ -251,4 +251,37 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
           }),
       )
     })
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  use super::*;
+
+  fn after(minutes: u64) -> String {
+    uptime_at(
+      SystemTime::UNIX_EPOCH,
+      SystemTime::UNIX_EPOCH + Duration::from_secs(minutes * 60 + 59),
+    )
+  }
+
+  #[test]
+  fn uptime() {
+    assert_eq!(after(0), "up 0m");
+    assert_eq!(after(59), "up 59m");
+    assert_eq!(after(60), "up 1h 0m");
+    assert_eq!(after(23 * 60 + 5), "up 23h 5m");
+    // minutes are dropped once it runs for days
+    assert_eq!(after(2 * 1440 + 3 * 60 + 7), "up 2d 3h");
+  }
+
+  #[test]
+  fn uptime_future_boot() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(3600);
+    assert_eq!(
+      uptime_at(now + Duration::from_secs(600), now),
+      uptime_at(now, now)
+    );
+  }
 }

@@ -76,3 +76,25 @@ impl RenderOnce for ErrorCard {
       })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, TestAppContext, px};
+
+  use super::*;
+  use crate::test_view;
+
+  #[gpui::test]
+  fn cards_render_with_and_without_borders(cx: &mut TestAppContext) {
+    let (handle, _) = test_view::open(cx, |_, cx| {
+      div()
+        .child(div().size(px(10.)).card(cx))
+        .child(ErrorCard::new("e1", "went wrong"))
+        .child(ErrorCard::new("e2", "dismissable").on_dismiss(|_, _, _| {}))
+        .into_any_element()
+    });
+    test_view::draw(handle, cx);
+    cx.update(|cx| cx.global_mut::<corona_config::Config>().theme.card_borders = false);
+    test_view::draw(handle, cx);
+  }
+}

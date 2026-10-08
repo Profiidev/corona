@@ -156,3 +156,63 @@ pub fn show(kind: fn(&OsdKinds) -> bool, osd: impl Osd, cx: &mut App) {
     let _ = cx.show_osd(osd).log_err();
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn on_off_state() {
+    let on = ToggleOsd::on_off(IconName::Wifi, "Wi-Fi".into(), true);
+    let off = ToggleOsd::on_off(IconName::Wifi, "Wi-Fi".into(), false);
+    assert!(on.active && !off.active);
+    assert_ne!(on.state, off.state);
+    assert!(!on.state.is_empty() && !on.state.starts_with("app."));
+  }
+
+  use gpui_kit::{
+    self as gpui, AppContext as _, TestAppContext, WindowOptions, test::TestWindowExt,
+  };
+
+  #[gpui::test]
+  fn osds_render(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(corona_config::Config::default());
+    });
+    for (percent, muted) in [(-10., false), (50., true), (150., false)] {
+      let handle = cx.update(|cx| {
+        cx.open_window(WindowOptions::default(), |_, cx| {
+          cx.new(|_| LevelOsd {
+            icon: IconName::Volume2,
+            label: "Volume".into(),
+            percent,
+            muted,
+          })
+        })
+        .unwrap()
+      });
+      cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+        .unwrap();
+    }
+    let handle = cx.update(|cx| {
+      cx.open_window(WindowOptions::default(), |_, cx| {
+        cx.new(|_| ToggleOsd::on_off(IconName::Wifi, "Wi-Fi".into(), true))
+      })
+      .unwrap()
+    });
+    cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+      .unwrap();
+    let sizes = cx.update(|cx| {
+      let level = LevelOsd {
+        icon: IconName::Sun,
+        label: "".into(),
+        percent: 0.,
+        muted: false,
+      };
+      let toggle = ToggleOsd::on_off(IconName::Wifi, "".into(), false);
+      (level.size(cx), toggle.size(cx))
+    });
+    assert!(sizes.0.width > px(0.) && sizes.1.height > px(0.));
+  }
+}

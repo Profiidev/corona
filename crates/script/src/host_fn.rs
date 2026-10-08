@@ -719,6 +719,191 @@ mod tests {
 }
 
 #[cfg(test)]
+mod conversion {
+  use corona_macros::named;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use gpui_shell::HostObject;
+
+  use super::*;
+
+  #[test]
+  fn integral_numbers_become_ints() {
+    let int = |n: f64| number(n).as_i64();
+    assert_eq!(int(3.0), Some(3));
+    assert_eq!(int(-3.0), Some(-3));
+    assert_eq!(int(-0.0), Some(0));
+    assert_eq!(int(i64::MIN as f64), Some(i64::MIN));
+
+    // 2^63 is past `i64::MAX`, so a u64
+    let two_63 = 2f64.powi(63);
+    assert_eq!(number(two_63).as_u64(), Some(1 << 63));
+    assert_eq!(number(two_63).as_i64(), None);
+  }
+
+  #[test]
+  fn other_numbers_stay_floats() {
+    assert_eq!(number(2.5).as_f64(), Some(2.5));
+    assert!(number(2.5).is_f64());
+    assert_eq!(number(-2.5).as_f64(), Some(-2.5));
+
+    // out of every integer range
+    for n in [2f64.powi(64), 1e300, -2f64.powi(64), -1e300] {
+      assert!(number(n).is_f64(), "{n}");
+      assert_eq!(number(n).as_f64(), Some(n));
+    }
+  }
+
+  #[test]
+  fn non_finite_numbers_are_null() {
+    for n in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+      assert_eq!(number(n), Value::Null, "{n}");
+    }
+  }
+
+  #[test]
+  #[ignore = "bug: number() uses an absolute EPSILON, tiny fractions like 1e-20 become the integer 0"]
+  fn bug_tiny_fraction_becomes_zero() {
+    let args = HostArguments::new([HostValue::Number(1e-20)]);
+    assert_eq!(deserialize::<f64>(&args, 0).unwrap(), 1e-20);
+  }
+
+  #[test]
+  fn host_values_round_trip() {
+    let value: HostValue = HostObject::new()
+      .field("null", HostValue::Null)
+      .field("bool", true)
+      .field("int", 3)
+      .field("float", 2.5)
+      .field("str", "s")
+      .field(
+        "list",
+        HostValue::Array(vec![
+          HostValue::Number(-1.0),
+          HostObject::new().field("nested", false).into(),
+        ]),
+      )
+      .into();
+    let json = from_host(&value);
+    assert_eq!(json["int"], 3);
+    assert!(json["int"].is_i64());
+    assert_eq!(json["list"][1]["nested"], false);
+    assert_eq!(to_host(json), value);
+  }
+
+  #[test]
+  fn deserialize_errors_name_the_argument() {
+    let args = HostArguments::new([HostValue::Str("x".into()), HostValue::Bool(true)]);
+    let error = deserialize::<u32>(&args, 1).unwrap_err();
+    assert!(
+      error.message().contains("argument 1"),
+      "{}",
+      error.message()
+    );
+    // a missing argument is null
+    assert!(deserialize::<u32>(&args, 5).is_err());
+    assert_eq!(deserialize::<Option<u32>>(&args, 5).unwrap(), None);
+    assert_eq!(deserialize::<()>(&args, 5).unwrap(), ());
+  }
+
+  #[test]
+  fn async_result_read_synchronously_fails() {
+    let error = async { 3 }.result().unwrap_err();
+    assert!(error.message().contains("synchronously"));
+  }
+
+  #[test]
+  fn jsdoc_lines() {
+    assert_eq!(jsdoc(""), "");
+    assert_eq!(jsdoc("One line."), "/** One line. */\n");
+    assert_eq!(
+      jsdoc("First.\nSecond."),
+      "/**\n * First.\n * Second.\n */\n"
+    );
+  }
+
+  #[test]
+  fn documented_function() {
+    let module: HostModule = Module::new("test")
+      .func(named!("id", |id: u32| id).docs("Returns `id`."))
+      .into();
+    assert_eq!(
+      module.declared().unwrap(),
+      "/** Returns `id`. */\nexport function id(id: number): number;"
+    );
+  }
+
+  #[test]
+  fn calls_outside_an_app_fail() {
+    let module: HostModule = Module::new("test")
+      .func(named!("plain", |id: u32| id))
+      .func(named!("mut_app", |_cx: &mut App, id: u32| id))
+      .func(named!("later", async |id: u32| id))
+      .into();
+    let args = HostArguments::new([HostValue::Number(1.0)]);
+    for name in ["plain", "mut_app"] {
+      let error = module.call(name, &args).unwrap_err();
+      assert!(error.message().contains("app scope"), "{name}");
+    }
+    let Err(error) = module.begin("later", &args) else {
+      panic!("an async fn outside an app fails before its future");
+    };
+    assert!(error.message().contains("app scope"));
+  }
+
+  struct Missing;
+  impl Global for Missing {}
+
+  #[gpui::test]
+  fn missing_global(cx: &mut TestAppContext) {
+    let args = HostArguments::new([]);
+    cx.update(|cx| {
+      let mut pos = 0;
+      let Err(error) = Glob::<Missing>::get_param(&args, &mut pos, cx) else {
+        panic!("the global is not set");
+      };
+      assert!(error.message().contains("Missing"));
+      // context params take no script argument
+      assert_eq!(pos, 0);
+      assert!(Cx::get_param(&args, &mut pos, cx).is_ok());
+      assert_eq!(pos, 0);
+
+      cx.set_global(Missing);
+      assert!(Glob::<Missing>::get_param(&args, &mut pos, cx).is_ok());
+    });
+  }
+
+  mod a {
+    #[derive(serde::Serialize, ts_rs::TS)]
+    pub struct Same {
+      pub a: u32,
+    }
+  }
+
+  mod b {
+    #[derive(serde::Serialize, ts_rs::TS)]
+    pub struct Same {
+      pub b: u32,
+    }
+  }
+
+  #[test]
+  fn same_named_types_are_declared_once() {
+    let mut types = Types::default();
+    assert_eq!(types.add::<a::Same>(), "Same");
+    assert_eq!(types.add::<b::Same>(), "Same");
+    assert_eq!(types.decls.len(), 1);
+    // the first one wins
+    assert!(types.decls["Same"].contains("a: number"));
+  }
+
+  #[test]
+  #[should_panic(expected = "names 2 params but takes 1")]
+  fn param_name_count_must_match() {
+    let _ = Module::new("test").func(Named::new("f", &["a", "b"], |a: u32| a));
+  }
+}
+
+#[cfg(test)]
 mod recursion {
   use super::*;
 

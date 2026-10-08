@@ -46,3 +46,25 @@ pub fn ring(progress: f32, color: Hsla, width: f32) -> impl IntoElement {
   .absolute()
   .size_full()
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, ParentElement, TestAppContext, div, red};
+
+  use super::*;
+  use crate::test_view;
+
+  #[gpui::test]
+  fn paints_any_progress(cx: &mut TestAppContext) {
+    let (handle, _) = test_view::open(cx, |_, _| {
+      div()
+        .children(
+          [-1., 0., 0.5, 1., 2.].map(|p| div().relative().size(px(40.)).child(ring(p, red(), 4.))),
+        )
+        // thicker than the ring is wide
+        .child(div().relative().size(px(4.)).child(ring(0.5, red(), 10.)))
+        .into_any_element()
+    });
+    test_view::draw(handle, cx);
+  }
+}

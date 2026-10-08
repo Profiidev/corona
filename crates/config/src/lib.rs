@@ -624,11 +624,16 @@ pub fn observe_section<T: Clone + PartialEq + 'static>(
 
 #[cfg(test)]
 mod tests {
-  use std::path::Path;
+  use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+    time::Duration,
+  };
 
+  use gpui_kit::{self as gpui, TestAppContext};
   use toml::Value;
 
-  use crate::Config;
+  use super::*;
 
   /// Every key path in `value`, like `osd.kinds.volume`
   fn keys(value: &Value, prefix: &str, out: &mut Vec<String>) {
@@ -687,5 +692,224 @@ mod tests {
         .unwrap()
         .starts_with(r#"language = "de""#)
     );
+  }
+
+  #[test]
+  fn expand_home_only_expands_a_tilde_component() {
+    let home = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("HOME", home.path()) };
+    assert_eq!(expand_home(Path::new("~/x/y")), home.path().join("x/y"));
+    assert_eq!(expand_home(Path::new("~")), home.path());
+    for unchanged in ["~foo/x", "/abs/~/x", "rel/x", ""] {
+      assert_eq!(expand_home(Path::new(unchanged)), PathBuf::from(unchanged));
+    }
+  }
+
+  #[test]
+  fn plugin_dir_expands_or_defaults() {
+    let home = tempfile::tempdir().unwrap();
+    let xdg = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("HOME", home.path());
+      std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+    }
+    let mut shell = ShellConfig::default();
+    assert_eq!(shell.plugin_dir(), xdg.path().join("corona/plugins"));
+    shell.plugin_dir = Some("~/plugins".into());
+    assert_eq!(shell.plugin_dir(), home.path().join("plugins"));
+    shell.plugin_dir = Some("/opt/p".into());
+    assert_eq!(shell.plugin_dir(), PathBuf::from("/opt/p"));
+  }
+
+  #[test]
+  fn animation_duration() {
+    let base = Duration::from_millis(200);
+    let anim = |enabled, speed| AnimationConfig { enabled, speed };
+    assert_eq!(AnimationConfig::default().duration(base), base);
+    assert_eq!(anim(true, 2.).duration(base), base / 2);
+    assert_eq!(anim(true, 0.5).duration(base), base * 2);
+    assert_eq!(anim(true, f32::INFINITY).duration(base), Duration::ZERO);
+    for speed in [0., -0., -1., f32::NAN, f32::NEG_INFINITY] {
+      assert_eq!(anim(true, speed).duration(base), Duration::ZERO, "{speed}");
+    }
+    assert_eq!(anim(false, 1.).duration(base), Duration::ZERO);
+    assert_eq!(anim(true, 1.).duration(Duration::ZERO), Duration::ZERO);
+  }
+
+  #[test]
+  #[ignore = "bug: a tiny positive speed overflows Duration::div_f32 and panics"]
+  fn bug_tiny_animation_speed_panics() {
+    let anim = AnimationConfig {
+      enabled: true,
+      speed: 1e-30,
+    };
+    let result = std::panic::catch_unwind(|| anim.duration(Duration::from_millis(200)));
+    assert!(result.is_ok(), "duration panicked");
+  }
+
+  #[test]
+  fn popup_border_follows_the_toggle() {
+    let red = gpui_kit::red();
+    let mut theme = ThemeConfig::default();
+    assert_eq!(theme.popup_border(2.), 2.);
+    assert_eq!(theme.popup_border_color(red), red);
+    theme.popup_borders = false;
+    assert_eq!(theme.popup_border(2.), 0.);
+    assert_eq!(theme.popup_border_color(red).a, 0.);
+  }
+
+  #[test]
+  fn idle_after() {
+    let behavior = |enabled, timeout| IdleBehavior {
+      enabled,
+      timeout,
+      ..Default::default()
+    };
+    assert_eq!(
+      behavior(true, 1.5).after(),
+      Some(Duration::from_millis(1500))
+    );
+    assert_eq!(behavior(false, 60.).after(), None);
+    for timeout in [0., -0., -1., f64::NAN, f64::INFINITY, f64::MAX] {
+      assert_eq!(behavior(true, timeout).after(), None, "{timeout}");
+    }
+    // the defaults all fire, in order
+    let defaults = IdleConfig::default().behavior;
+    let after = |name: &str| defaults[name].after().unwrap();
+    assert!(after("lock") < after("screen-off"));
+    assert!(after("screen-off") < after("lock-and-suspend"));
+  }
+
+  #[test]
+  fn to_toml_round_trips() {
+    let text = Config::default().to_toml().unwrap();
+    assert_eq!(toml::from_str::<Config>(&text).unwrap(), Config::default());
+    // an empty file is the defaults too
+    assert_eq!(toml::from_str::<Config>("").unwrap(), Config::default());
+  }
+
+  /// The name `value` is written as
+  fn spelled<T: Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .to_string()
+  }
+
+  /// `value` written, then read back
+  fn round_trip<T: Serialize + serde::de::DeserializeOwned>(value: T) -> T {
+    serde_json::from_value(serde_json::to_value(value).unwrap()).unwrap()
+  }
+
+  #[test]
+  fn enum_spellings() {
+    use crate::placement::Placement;
+    let cases = [
+      (spelled(Placement::Top), "top"),
+      (spelled(Placement::Bottom), "bottom"),
+      (spelled(Placement::Left), "left"),
+      (spelled(Placement::Right), "right"),
+      (spelled(ThemeMode::Dark), "dark"),
+      (spelled(ThemeMode::Light), "light"),
+      (spelled(NotificationPosition::TopLeft), "top_left"),
+      (spelled(NotificationPosition::TopRight), "top_right"),
+      (spelled(OsdPosition::TopCenter), "top_center"),
+      (spelled(OsdPosition::BottomCenter), "bottom_center"),
+      (spelled(OsdPosition::CenterLeft), "center_left"),
+      (spelled(OsdPosition::CenterRight), "center_right"),
+      (spelled(Weekday::Monday), "monday"),
+      (spelled(Weekday::Sunday), "sunday"),
+      (spelled(Units::Metric), "metric"),
+      (spelled(Units::Imperial), "imperial"),
+      (spelled(IdleAction::Lock), "lock"),
+      (spelled(IdleAction::ScreenOff), "screen_off"),
+      (spelled(IdleAction::Suspend), "suspend"),
+      (spelled(IdleAction::LockAndSuspend), "lock_and_suspend"),
+      (
+        spelled(IdleAction::LockAndSuspendThenHibernate),
+        "lock_and_suspend_then_hibernate",
+      ),
+      (spelled(IdleAction::Command), "command"),
+    ];
+    for (have, want) in cases {
+      assert_eq!(have, want);
+    }
+    assert_eq!(round_trip(IdleAction::ScreenOff), IdleAction::ScreenOff);
+    assert!(serde_json::from_str::<Placement>(r#""Top""#).is_err());
+    assert!(serde_json::from_str::<OsdPosition>(r#""topCenter""#).is_err());
+  }
+
+  #[test]
+  fn enum_defaults() {
+    assert_eq!(
+      NotificationPosition::default(),
+      NotificationPosition::TopRight
+    );
+    assert_eq!(OsdPosition::default(), OsdPosition::BottomCenter);
+    assert_eq!(Weekday::default(), Weekday::Monday);
+    assert_eq!(Units::default(), Units::Metric);
+    assert_eq!(IdleAction::default(), IdleAction::Command);
+    assert_eq!(ThemeConfig::default().mode, None);
+  }
+
+  #[test]
+  fn sections_default_per_field() {
+    let config: Config =
+      toml::from_str("[osd]\noffset = 3.0\n[osd.kinds]\nwifi = false\n").unwrap();
+    assert_eq!(config.osd.offset, 3.);
+    assert!(!config.osd.kinds.wifi);
+    assert!(config.osd.kinds.volume);
+    assert_eq!(config.osd.hide_delay_ms, OsdConfig::default().hide_delay_ms);
+    // a file that names any bar replaces the default ones
+    let config: Config = toml::from_str("[bar.side]\nposition = \"left\"\n").unwrap();
+    assert_eq!(config.bar.keys().collect::<Vec<_>>(), ["side"]);
+  }
+
+  #[gpui::test]
+  fn observe_section_fires_on_change_only(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Config::default()));
+    let seen = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let s = seen.clone();
+    cx.update(|cx| {
+      observe_section(
+        cx,
+        |c| &c.theme.name,
+        move |name, _| s.borrow_mut().push(name.clone()),
+      )
+    });
+    let set = |cx: &mut TestAppContext, edit: fn(&mut Config)| {
+      cx.update(|cx| {
+        let mut config = cx.config().clone();
+        edit(&mut config);
+        cx.set_global(config);
+      });
+    };
+    set(cx, |c| c.osd.offset = 1.);
+    assert!(seen.borrow().is_empty());
+    set(cx, |c| c.theme.name = "X".into());
+    set(cx, |c| c.theme.name = "X".into());
+    set(cx, |c| c.theme.shadow = false);
+    set(cx, |c| c.theme.name = "Y".into());
+    assert_eq!(*seen.borrow(), ["X", "Y"]);
+  }
+
+  #[gpui::test]
+  fn load_falls_back_to_defaults(cx: &mut TestAppContext) {
+    let config = tempfile::tempdir().unwrap();
+    let state = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("XDG_CONFIG_HOME", config.path());
+      std::env::set_var("XDG_STATE_HOME", state.path());
+    }
+    let dir = config.path().join("corona");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.toml"), "[osd]\noffset = 7.0\n").unwrap();
+    cx.update(load).unwrap();
+    assert_eq!(cx.update(|cx| cx.config().osd.offset), 7.);
+
+    std::fs::write(dir.join("b.toml"), "[osd\n").unwrap();
+    assert!(cx.update(load).is_err());
+    assert_eq!(cx.update(|cx| cx.config().clone()), Config::default());
   }
 }

@@ -309,3 +309,40 @@ fn background(frame: &Frame, sigma: f32) -> Result<Background> {
     blurred: imageops::fast_blur(&small, sigma).to_gpui(),
   })
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::test_support::{FakeCompositor, setup};
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  fn no_capture() {
+    // capture fails fast without a compositor
+    unsafe { std::env::set_var("WAYLAND_DISPLAY", "/nonexistent/corona-test") };
+  }
+
+  #[gpui::test]
+  fn refused_lock_unlocks(cx: &mut TestAppContext) {
+    no_capture();
+    setup(FakeCompositor::default(), cx);
+    let task = cx.update(LockState::lock);
+    assert!(cx.update(|cx| cx.has_global::<LockState>()));
+    // a second caller waits for the same lock
+    let second = cx.update(LockState::lock);
+    cx.run_until_parked();
+    // the test platform refuses session locks
+    assert!(!cx.update(|cx| cx.has_global::<LockState>()));
+    assert!(cx.update(|cx| cx.windows().is_empty()));
+    assert!(task.now_or_never().is_some());
+    assert!(second.now_or_never().is_some());
+  }
+
+  #[gpui::test]
+  fn unlock_without_lock_is_noop(cx: &mut TestAppContext) {
+    setup(FakeCompositor::default(), cx);
+    cx.update(LockState::unlock);
+    cx.update(LockState::unlock_animated);
+    cx.run_until_parked();
+    assert!(!cx.update(|cx| cx.has_global::<LockState>()));
+  }
+}

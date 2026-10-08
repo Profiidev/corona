@@ -24,3 +24,18 @@ pub(crate) fn send(command: &str, data: Value) -> Result<Value> {
   let res: Result<Value, String> = serde_json::from_str(&line)?;
   res.map_err(|e| anyhow!(e))
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn no_server_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+      std::env::remove_var("WAYLAND_DISPLAY");
+    }
+    assert!(send("anything", Value::Null).is_err());
+  }
+}

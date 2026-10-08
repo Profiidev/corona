@@ -71,21 +71,31 @@ impl Preview {
     cx.notify();
   }
 
+  fn widths(&self) -> Vec<f32> {
+    self.windows.iter().map(|(w, _)| width(w)).collect()
+  }
+
   fn card_width(&self) -> f32 {
-    let more = if self.more > 0 { MORE_WIDTH } else { 0. };
-    let widths: f32 = self.windows.iter().map(|(w, _)| width(w)).sum::<f32>() + more;
-    let tiles = self.windows.len() + usize::from(self.more > 0);
-    let gaps = GAP * tiles.saturating_sub(1) as f32;
-    widths + gaps + (PADDING + BORDER) * 2.
+    card_width(&self.widths(), self.more)
   }
 
   fn tile(&self, index: usize) -> [f32; 2] {
-    let left: f32 = self.windows[..index]
-      .iter()
-      .map(|(w, _)| width(w) + GAP)
-      .sum();
-    [PADDING + left, width(&self.windows[index].0)]
+    tile(&self.widths(), index)
   }
+}
+
+/// The whole card around tiles of `widths` and a `+more` tile when more is set
+fn card_width(widths: &[f32], more: usize) -> f32 {
+  let more_width = if more > 0 { MORE_WIDTH } else { 0. };
+  let tiles = widths.len() + usize::from(more > 0);
+  let gaps = GAP * tiles.saturating_sub(1) as f32;
+  widths.iter().sum::<f32>() + more_width + gaps + (PADDING + BORDER) * 2.
+}
+
+/// Left edge and width of tile `index`
+fn tile(widths: &[f32], index: usize) -> [f32; 2] {
+  let left: f32 = widths[..index].iter().map(|w| w + GAP).sum();
+  [PADDING + left, widths[index]]
 }
 
 fn max_windows(cx: &App) -> usize {
@@ -220,5 +230,48 @@ impl Render for Preview {
           )
         }),
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::overlays::taskbar::tests::window;
+
+  #[test]
+  fn width_follows_aspect_within_limits() {
+    assert_eq!(width(&window("a", "a", 1600, 900)), HEIGHT * 16. / 9.);
+    assert_eq!(width(&window("a", "a", 900, 900)), HEIGHT);
+    assert_eq!(width(&window("a", "a", 100, 900)), MIN_WIDTH);
+    assert_eq!(width(&window("a", "a", 9000, 900)), MAX_WIDTH);
+  }
+
+  #[test]
+  fn width_degenerate_sizes() {
+    for (w, h) in [(0, 0), (-5, -5), (0, 900), (900, 0)] {
+      let v = width(&window("a", "a", w, h));
+      assert!((MIN_WIDTH..=MAX_WIDTH).contains(&v), "{w}x{h}: {v}");
+    }
+  }
+
+  #[test]
+  fn card_width_sums_tiles_and_gaps() {
+    let frame = (PADDING + BORDER) * 2.;
+    assert_eq!(card_width(&[], 0), frame);
+    assert_eq!(card_width(&[100.], 0), frame + 100.);
+    assert_eq!(card_width(&[100., 200.], 0), frame + 300. + GAP);
+    assert_eq!(card_width(&[100.], 3), frame + 100. + MORE_WIDTH + GAP);
+    assert_eq!(card_width(&[], 1), frame + MORE_WIDTH);
+  }
+
+  #[test]
+  fn tiles_are_laid_out_left_to_right() {
+    let widths = [100., 200., 80.];
+    assert_eq!(tile(&widths, 0), [PADDING, 100.]);
+    assert_eq!(tile(&widths, 1), [PADDING + 100. + GAP, 200.]);
+    assert_eq!(tile(&widths, 2), [PADDING + 300. + 2. * GAP, 80.]);
+    // the last tile ends one padding and the borders before the card does
+    let [left, w] = tile(&widths, 2);
+    assert_eq!(left + w + PADDING + BORDER * 2., card_width(&widths, 0));
   }
 }

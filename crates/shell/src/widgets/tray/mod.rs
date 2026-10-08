@@ -37,11 +37,15 @@ pub struct Tray {
 
 impl Tray {
   fn hidden(&self, item: &TrayItem) -> bool {
-    self
-      .blacklist
-      .iter()
-      .any(|re| re.is_match(&item.id) || item.title.as_deref().is_some_and(|t| re.is_match(t)))
+    hidden(&self.blacklist, &item.id, item.title.as_deref())
   }
+}
+
+/// Whether any regex matches the item's id or title
+fn hidden(blacklist: &[Regex], id: &str, title: Option<&str>) -> bool {
+  blacklist
+    .iter()
+    .any(|re| re.is_match(id) || title.is_some_and(|t| re.is_match(t)))
 }
 
 impl Widget for Tray {
@@ -188,5 +192,28 @@ impl Render for Tray {
           .collect::<Vec<_>>(),
       )
       .into_any_element()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn hidden() {
+    let blacklist: Vec<_> = ["^nm-applet$", "steam"]
+      .iter()
+      .filter_map(|p| filter_regex(p))
+      .collect();
+    assert!(super::hidden(&blacklist, "nm-applet", None));
+    assert!(!super::hidden(&blacklist, "nm-applet-2", None));
+    // titles match too, case-insensitive
+    assert!(super::hidden(
+      &blacklist,
+      "chrome_status_icon_1",
+      Some("Steam")
+    ));
+    assert!(!super::hidden(&blacklist, "discord", Some("Discord")));
+    assert!(!super::hidden(&[], "steam", Some("steam")));
   }
 }

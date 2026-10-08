@@ -33,3 +33,23 @@ pub fn modal(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
     )
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, IntoElement, TestAppContext, component::ActiveTheme, px};
+
+  use super::*;
+  use crate::test_view;
+
+  #[gpui::test]
+  fn renders(cx: &mut TestAppContext) {
+    let (handle, _) = test_view::open(cx, |_, cx| {
+      div()
+        .relative()
+        .size(px(100.))
+        .child(modal(cx.theme(), div(), |_, _, _| {}))
+        .into_any_element()
+    });
+    test_view::draw(handle, cx);
+  }
+}

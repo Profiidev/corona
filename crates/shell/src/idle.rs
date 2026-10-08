@@ -81,7 +81,10 @@ fn run(command: &str) {
 mod tests {
   use std::time::Duration;
 
-  use corona_config::{IdleBehavior, IdleConfig};
+  use corona_config::{Config, IdleAction, IdleBehavior, IdleConfig};
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use crate::test_support::{FakeCompositor, setup};
 
   #[test]
   fn timeouts() {
@@ -118,5 +121,35 @@ mod tests {
       timeouts,
       [("custom".to_string(), Duration::from_millis(90_500)),]
     );
+  }
+
+  #[gpui::test]
+  fn screen_off_and_back(cx: &mut TestAppContext) {
+    let fake = setup(FakeCompositor::default(), cx);
+    cx.update(|cx| {
+      let mut config = Config::default();
+      config.idle.behavior.clear();
+      let behavior = |action| IdleBehavior {
+        action,
+        ..Default::default()
+      };
+      config
+        .idle
+        .behavior
+        .insert("off".into(), behavior(IdleAction::ScreenOff));
+      // no command set, so nothing runs
+      config
+        .idle
+        .behavior
+        .insert("cmd".into(), behavior(IdleAction::Command));
+      cx.set_global(config);
+
+      super::changed("off", true, cx);
+      super::changed("off", false, cx);
+      super::changed("cmd", true, cx);
+      super::changed("cmd", false, cx);
+      super::changed("unknown", true, cx);
+    });
+    assert_eq!(*fake.calls.borrow(), ["dpms false", "dpms true"]);
   }
 }

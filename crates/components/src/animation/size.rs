@@ -71,3 +71,55 @@ impl SizeAnimation {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_config::Config;
+  use gpui_kit::{self as gpui, TestAppContext, div};
+
+  use super::*;
+
+  #[test]
+  fn start_and_reset() {
+    let anim = SizeAnimation::new(Duration::from_secs(1)).start(5.);
+    assert_eq!(anim.current_target, 5.);
+    assert!(anim.from.is_none());
+    let mut anim = anim;
+    anim.from = Some((1., Instant::now()));
+    anim.reset();
+    assert_eq!(anim.current_target, 0.);
+    assert!(anim.from.is_none());
+  }
+
+  #[gpui::test]
+  fn animate_restarts_only_on_a_new_target(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      cx.set_global(Config::default());
+      let mut anim = SizeAnimation::new(Duration::from_secs(1)).start(10.);
+      let _ = anim.animate("a", Axis::Horizontal, 10., cx, div());
+      assert!(anim.from.is_none());
+      assert_eq!(anim.generation, 0);
+
+      let _ = anim.animate("a", Axis::Vertical, 20., cx, div());
+      assert_eq!(anim.from.map(|f| f.0), Some(10.));
+      assert_eq!(anim.current_target, 20.);
+      assert_eq!(anim.generation, 1);
+
+      let _ = anim.animate("a", Axis::Vertical, 20., cx, div());
+      assert_eq!(anim.generation, 1);
+      let _ = anim.animate("a", Axis::Horizontal, 0., cx, div());
+      assert_eq!(anim.generation, 2);
+    });
+  }
+
+  #[gpui::test]
+  fn duration_follows_the_config(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      let mut config = Config::default();
+      config.shell.animation.speed = 2.;
+      cx.set_global(config);
+      let anim = SizeAnimation::new(Duration::from_secs(1));
+      assert_eq!(anim.duration(cx), Duration::from_millis(500));
+    });
+  }
+}

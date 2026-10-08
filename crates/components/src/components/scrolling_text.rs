@@ -254,3 +254,130 @@ impl RenderOnce for ScrollingText {
       .refine_style(&self.style)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, AppContext, Entity, IntoElement, TestAppContext};
+
+  use super::*;
+  use crate::test_view;
+
+  const LONG: &str = "a title far too long to fit in the hundred pixels it gets";
+
+  fn setup(
+    cx: &mut TestAppContext,
+    text: impl Fn(Entity<ScrollingTextState>) -> ScrollingText + 'static,
+  ) -> (gpui_kit::AnyWindowHandle, Entity<ScrollingTextState>) {
+    let state = cx.new(|_| ScrollingTextState::default());
+    let s = state.clone();
+    let (handle, _) = test_view::open(cx, move |_, _| text(s.clone()).into_any_element());
+    test_view::draw(handle, cx);
+    (handle, state)
+  }
+
+  fn hover(
+    handle: gpui_kit::AnyWindowHandle,
+    state: &Entity<ScrollingTextState>,
+    on: bool,
+    cx: &mut TestAppContext,
+  ) {
+    let f = state.on_hover();
+    cx.update_window(handle, |_, window, cx| f(&on, window, cx))
+      .unwrap();
+  }
+
+  #[gpui::test]
+  fn render_measures_the_shift(cx: &mut TestAppContext) {
+    let (handle, state) = setup(cx, |s| ScrollingText::new(s).content(LONG));
+    state.read_with(cx, |s, _| assert!(s.shift >= SCROLL_GAP));
+    // never wider than its max
+    let width = cx
+      .update_window(handle, |_, window, _| {
+        ScrollingText::new(state.clone())
+          .content(LONG)
+          .max_width(5.)
+          .width(window)
+      })
+      .unwrap();
+    assert!(width <= 5.);
+  }
+
+  #[gpui::test]
+  fn hover_starts_and_leave_returns_then_settles(cx: &mut TestAppContext) {
+    let (handle, state) = setup(cx, |s| ScrollingText::new(s).content(LONG));
+    hover(handle, &state, true, cx);
+    state.read_with(cx, |s, _| {
+      assert!(s.hovered);
+      assert!(s.hover_at.is_some());
+      assert!(s.return_from.is_none());
+    });
+    test_view::draw(handle, cx);
+
+    hover(handle, &state, false, cx);
+    state.read_with(cx, |s, _| {
+      assert!(!s.hovered);
+      assert!(s.hover_at.is_none());
+      let from = s.return_from.expect("returning");
+      assert!((0. ..1.).contains(&from));
+    });
+    test_view::draw(handle, cx);
+    cx.executor().advance_clock(SCROLL_RETURN);
+    state.read_with(cx, |s, _| assert!(s.return_from.is_none()));
+  }
+
+  #[gpui::test]
+  fn leave_without_shift_does_not_return(cx: &mut TestAppContext) {
+    let (handle, state) = setup(cx, |s| ScrollingText::new(s).content("x"));
+    state.update(cx, |s, _| s.shift = 0.);
+    hover(handle, &state, false, cx);
+    state.read_with(cx, |s, _| assert!(s.return_from.is_none()));
+  }
+
+  #[gpui::test]
+  fn reset_hover_clears_everything(cx: &mut TestAppContext) {
+    let (handle, state) = setup(cx, |s| ScrollingText::new(s).content(LONG));
+    hover(handle, &state, true, cx);
+    cx.update(|cx| state.reset_hover(cx));
+    state.read_with(cx, |s, _| {
+      assert!(!s.hovered && s.hover_at.is_none() && s.return_from.is_none());
+      assert_eq!(s.shift, 0.);
+    });
+  }
+
+  #[gpui::test]
+  fn builders_render(cx: &mut TestAppContext) {
+    let (handle, state) = setup(cx, |s| {
+      ScrollingText::new(s)
+        .content(LONG)
+        .font_size(20.)
+        .max_width(10.)
+        .fade_width(4.)
+        .speed(10.)
+        .gap(8.)
+        .return_duration(Duration::from_millis(10))
+    });
+    hover(handle, &state, true, cx);
+    test_view::draw(handle, cx);
+    hover(handle, &state, false, cx);
+    test_view::draw(handle, cx);
+    state.read_with(cx, |s, _| assert!(s.shift >= 8.));
+  }
+
+  #[gpui::test]
+  #[ignore = "bug: on_hover measures the scroll cycle with SCROLL_SPEED, not the text's speed"]
+  fn bug_return_ignores_custom_speed(cx: &mut TestAppContext) {
+    let speed = 100.;
+    let (handle, state) = setup(cx, move |s| {
+      ScrollingText::new(s).content(LONG).speed(speed)
+    });
+    hover(handle, &state, true, cx);
+    // hovered for one and a half scroll cycles at this text's speed
+    state.update(cx, |s, _| {
+      let cycle = Duration::from_secs_f32(s.shift / speed);
+      s.hover_at = Instant::now().checked_sub(cycle.mul_f32(1.5));
+    });
+    hover(handle, &state, false, cx);
+    let from = state.read_with(cx, |s, _| s.return_from.unwrap());
+    assert!((from - 0.5).abs() < 0.05, "{from}");
+  }
+}

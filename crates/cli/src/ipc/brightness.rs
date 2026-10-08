@@ -58,3 +58,22 @@ impl BrightnessCommands {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use serde_json::json;
+
+  use super::*;
+  use corona_ipc::IpcCommand;
+
+  use crate::ipc::tests::request;
+
+  #[test]
+  fn monitor_completion_adds_all() {
+    let mut names = vec![];
+    let got = request(json!(["DP-1"]), || names = monitor_names());
+    assert_eq!(got["command"], ListMonitors::COMMAND);
+    let names: Vec<_> = names.iter().map(|c| c.get_value().to_owned()).collect();
+    assert_eq!(names, ["DP-1", "*"]);
+  }
+}

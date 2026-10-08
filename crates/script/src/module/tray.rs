@@ -70,6 +70,15 @@ enum Orientation {
   Horizontal,
 }
 
+impl From<Orientation> for tray::Orientation {
+  fn from(orientation: Orientation) -> Self {
+    match orientation {
+      Orientation::Vertical => tray::Orientation::Vertical,
+      Orientation::Horizontal => tray::Orientation::Horizontal,
+    }
+  }
+}
+
 impl From<&tray::MenuItem> for MenuItem {
   fn from(item: &tray::MenuItem) -> Self {
     let (toggle, checked) = match item.toggle {
@@ -157,11 +166,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     .func(named!(
       "scroll",
       |tray: Glob<Tray>, address: String, delta: i32, orientation: Orientation| {
-        let orientation = match orientation {
-          Orientation::Vertical => tray::Orientation::Vertical,
-          Orientation::Horizontal => tray::Orientation::Horizontal,
-        };
-        tray.scroll(&address, delta, orientation)
+        tray.scroll(&address, delta, orientation.into())
       }
     ))
     .func(named!(
@@ -175,4 +180,74 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       |cx: Cx, tray: Glob<Tray>, address: String, id: i32| tray.menu_click(&address, id, &cx)
     ))
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn item(id: i32, toggle: tray::Toggle, children: Vec<tray::MenuItem>) -> tray::MenuItem {
+    tray::MenuItem {
+      id,
+      label: format!("item {id}"),
+      separator: false,
+      enabled: true,
+      visible: true,
+      toggle,
+      icon_name: None,
+      children,
+    }
+  }
+
+  #[test]
+  fn toggles() {
+    let all = [
+      (tray::Toggle::None, "none", false),
+      (tray::Toggle::Checkmark(false), "checkmark", false),
+      (tray::Toggle::Checkmark(true), "checkmark", true),
+      (tray::Toggle::Radio(false), "radio", false),
+      (tray::Toggle::Radio(true), "radio", true),
+    ];
+    for (toggle, name, checked) in all {
+      let json = serde_json::to_value(MenuItem::from(&item(1, toggle, vec![]))).unwrap();
+      assert_eq!(json["toggle"], name);
+      assert_eq!(json["checked"], checked);
+    }
+  }
+
+  #[test]
+  fn menus_are_recursive() {
+    let menu = item(
+      0,
+      tray::Toggle::None,
+      vec![
+        item(
+          1,
+          tray::Toggle::Radio(true),
+          vec![item(3, tray::Toggle::None, vec![])],
+        ),
+        item(2, tray::Toggle::None, vec![]),
+      ],
+    );
+    let json = serde_json::to_value(MenuItem::from(&menu)).unwrap();
+    assert_eq!(json["children"][0]["id"], 1);
+    assert_eq!(json["children"][0]["checked"], true);
+    assert_eq!(json["children"][0]["children"][0]["label"], "item 3");
+    assert_eq!(json["children"][1]["id"], 2);
+    assert!(
+      json["children"][1]["children"]
+        .as_array()
+        .unwrap()
+        .is_empty()
+    );
+  }
+
+  #[test]
+  fn orientations() {
+    let parse = |name: &str| serde_json::from_value::<Orientation>(name.into());
+    let from = |name| tray::Orientation::from(parse(name).unwrap());
+    assert_eq!(from("vertical"), tray::Orientation::Vertical);
+    assert_eq!(from("horizontal"), tray::Orientation::Horizontal);
+    assert!(parse("diagonal").is_err());
+  }
 }

@@ -167,3 +167,167 @@ impl PlacmentBounds for Bounds<Pixels> {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{Length, div, size};
+
+  use super::*;
+
+  const ALL: [Placement; 4] = [
+    Placement::Top,
+    Placement::Bottom,
+    Placement::Left,
+    Placement::Right,
+  ];
+
+  fn edge(p: Placement) -> Anchor {
+    match p {
+      Placement::Top => Anchor::TOP,
+      Placement::Bottom => Anchor::BOTTOM,
+      Placement::Left => Anchor::LEFT,
+      Placement::Right => Anchor::RIGHT,
+    }
+  }
+
+  fn opposite(p: Placement) -> Placement {
+    match p {
+      Placement::Top => Placement::Bottom,
+      Placement::Bottom => Placement::Top,
+      Placement::Left => Placement::Right,
+      Placement::Right => Placement::Left,
+    }
+  }
+
+  #[test]
+  fn anchors_to_its_edge_and_both_sides() {
+    for p in ALL {
+      let anchor = p.anchor();
+      assert!(anchor.contains(edge(p)), "{p:?}");
+      assert!(!anchor.contains(edge(opposite(p))), "{p:?}");
+      assert_eq!(anchor.bits().count_ones(), 3, "{p:?}");
+    }
+  }
+
+  #[test]
+  fn orientation() {
+    for p in ALL {
+      assert_ne!(p.is_horizontal(), p.is_vertical(), "{p:?}");
+      assert_eq!(p.is_horizontal(), opposite(p).is_horizontal());
+      // exactly one of each pair of opposite edges mirrors
+      assert_ne!(p.mirrored(), opposite(p).mirrored(), "{p:?}");
+    }
+    assert!(Placement::Top.is_horizontal() && Placement::Left.is_vertical());
+  }
+
+  #[test]
+  fn axes_swap_for_vertical_bars() {
+    let s = size(px(100.), px(30.));
+    let at = point(px(7.), px(9.));
+    for p in ALL {
+      let bar = p.size(30., 100.);
+      let v = p.vec(px(100.), px(30.));
+      assert_eq!(p.len(bar), px(100.), "{p:?}");
+      assert_eq!(p.along(point(v.x, v.y)), px(100.), "{p:?}");
+      assert_eq!(
+        Bounds::new(point(px(0.), px(0.)), bar).extent_p(p),
+        (px(100.), px(30.))
+      );
+      if p.is_horizontal() {
+        assert_eq!(bar, s);
+        assert_eq!(p.along(at), px(7.));
+        assert_eq!(p.len(s), px(100.));
+      } else {
+        assert_eq!(bar, size(px(30.), px(100.)));
+        assert_eq!(p.along(at), px(9.));
+        assert_eq!(p.len(s), px(30.));
+      }
+    }
+  }
+
+  #[test]
+  fn rect_sits_on_the_anchored_edge() {
+    let viewport = size(px(800.), px(600.));
+    let window = Bounds::new(point(px(0.), px(0.)), viewport);
+    for p in ALL {
+      let rect = p.rect(viewport, px(10.), px(50.), px(4.));
+      assert_eq!(rect.extent_p(p), (px(50.), px(4.)), "{p:?}");
+      // its corner on the anchored edge is the point that far along, zero across
+      let start = window.point_p(p, px(10.), px(0.));
+      let inner = window.point_p(p, px(10.), px(4.));
+      for corner in [start, inner] {
+        let on_x = corner.x == rect.left() || corner.x == rect.right();
+        let on_y = corner.y == rect.top() || corner.y == rect.bottom();
+        assert!(on_x && on_y, "{p:?} {corner:?} {rect:?}");
+      }
+    }
+    assert_eq!(
+      Placement::Bottom
+        .rect(viewport, px(10.), px(50.), px(4.))
+        .origin,
+      point(px(10.), px(596.))
+    );
+    assert_eq!(
+      Placement::Right
+        .rect(viewport, px(10.), px(50.), px(4.))
+        .origin,
+      point(px(796.), px(10.))
+    );
+  }
+
+  #[test]
+  fn point_p_measures_from_the_anchored_edge() {
+    let b = Bounds::new(point(px(10.), px(20.)), size(px(100.), px(50.)));
+    let cases = [
+      (Placement::Top, point(px(13.), px(25.))),
+      (Placement::Bottom, point(px(13.), px(65.))),
+      (Placement::Left, point(px(15.), px(23.))),
+      (Placement::Right, point(px(105.), px(23.))),
+    ];
+    for (p, want) in cases {
+      assert_eq!(b.point_p(p, px(3.), px(5.)), want, "{p:?}");
+    }
+  }
+
+  #[test]
+  fn style_helpers_follow_the_axis() {
+    let len = |l: Option<Length>| l.unwrap();
+    for p in ALL {
+      let mut el = div().size_p(p, px(10.), px(3.));
+      let style = el.style();
+      let (along, across) = if p.is_horizontal() {
+        (style.size.width, style.size.height)
+      } else {
+        (style.size.height, style.size.width)
+      };
+      assert_eq!(len(along), px(10.).into(), "{p:?}");
+      assert_eq!(len(across), px(3.).into(), "{p:?}");
+
+      let mut el = div().anchor_p(p).along_p(p, px(2.));
+      let inset = &el.style().inset;
+      let anchored = match p {
+        Placement::Top => inset.top,
+        Placement::Bottom => inset.bottom,
+        Placement::Left => inset.left,
+        Placement::Right => inset.right,
+      };
+      assert!(anchored.is_some(), "{p:?}");
+      let start = if p.is_horizontal() {
+        inset.left
+      } else {
+        inset.top
+      };
+      assert_eq!(start, Some(px(2.).into()), "{p:?}");
+
+      let mut el = div().along_start_p(p).along_end_p(p);
+      let inset = &el.style().inset;
+      let set = [inset.top, inset.bottom, inset.left, inset.right].map(|e| e.is_some());
+      let want = if p.is_horizontal() {
+        [false, false, true, true]
+      } else {
+        [true, true, false, false]
+      };
+      assert_eq!(set, want, "{p:?}");
+    }
+  }
+}

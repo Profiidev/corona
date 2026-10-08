@@ -62,4 +62,24 @@ mod tests {
     assert!(parse_level("-5").is_err());
     assert!(parse_level("loud").is_err());
   }
+
+  fn near(s: &str, expected: f32) {
+    let v = parse_level(s).unwrap();
+    assert!((v - expected).abs() < 1e-6, "{s:?}: {v}");
+  }
+
+  #[test]
+  fn levels_edge_cases() {
+    near(" 65 % ", 0.65);
+    near("0", 0.);
+    near("100%", 1.);
+    near("100", 1.);
+    near("1.0", 1.);
+    // above 1 without `%` is read as a percentage
+    near("1.5", 0.015);
+    near("150%", 1.5);
+    for bad in ["", "%", "65%%", "inf", "-inf", "NaN", "-1%", "6 5"] {
+      assert!(parse_level(bad).is_err(), "{bad:?}");
+    }
+  }
 }

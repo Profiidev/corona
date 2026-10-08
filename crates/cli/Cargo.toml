@@ -12,3 +12,9 @@ corona_shell.workspace = true
 tracing.workspace = true
 clap.workspace = true
 clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+corona_utils = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true

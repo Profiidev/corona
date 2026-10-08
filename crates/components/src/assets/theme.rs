@@ -152,3 +152,199 @@ pub fn set_theme(name: String, cx: &mut App) -> Result<()> {
     c.theme.mode = None;
   })
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_config::Config;
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use super::*;
+
+  const DEFAULT: &str = "shadcn Zinc Blue Dark";
+
+  fn setup(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(Config::default());
+      load(cx).unwrap();
+    });
+  }
+
+  /// Keeps `corona_config::update` inside a temp dir
+  fn temp_dirs() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+      std::env::set_var("XDG_CONFIG_HOME", dir.path().join("config"));
+      std::env::set_var("XDG_STATE_HOME", dir.path().join("state"));
+    }
+    dir
+  }
+
+  #[test]
+  fn counterpart_swaps_the_mode_suffix() {
+    for (name, other) in [
+      ("Ayu Dark", Some("Ayu Light")),
+      ("Ayu Light", Some("Ayu Dark")),
+      ("A B Dark", Some("A B Light")),
+      ("Dark", None),
+      ("Light", None),
+      ("Ayu", None),
+      ("Ayu dark", None),
+      ("", None),
+    ] {
+      assert_eq!(counterpart(name).as_deref(), other, "{name}");
+    }
+  }
+
+  #[gpui::test]
+  fn every_embedded_theme_loads(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let names = names(cx);
+      assert!(names.len() >= THEMES.files().count());
+      assert!(names.is_sorted());
+      assert!(names.iter().any(|n| n == DEFAULT));
+      // the default config applies without error
+      assert_eq!(cx.theme().theme_name(), DEFAULT);
+    });
+  }
+
+  #[gpui::test]
+  fn apply_unknown_theme_fails(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let err = apply("No Such Theme", cx).unwrap_err();
+      assert!(err.to_string().contains("No Such Theme"));
+      assert_eq!(cx.theme().theme_name(), DEFAULT);
+    });
+  }
+
+  #[gpui::test]
+  fn apply_pairs_the_counterpart(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let names = names(cx);
+      let pair = names
+        .iter()
+        .find_map(|n| {
+          let other = counterpart(n)?;
+          (n.ends_with(" Dark") && names.contains(&other)).then(|| (n.clone(), other))
+        })
+        .expect("a Dark/Light theme pair");
+      for name in [&pair.0, &pair.1] {
+        apply(name, cx).unwrap();
+        assert_eq!(cx.theme().dark_theme.name.as_ref(), pair.0);
+        assert_eq!(cx.theme().light_theme.name.as_ref(), pair.1);
+      }
+    });
+  }
+
+  #[gpui::test]
+  fn style_values_are_clamped(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let base_size = cx.theme().dark_theme.font_size.unwrap_or(16.);
+      let style = ThemeConfig {
+        corner_radius_scale: -2.,
+        font_scale: 0.,
+        shadow: false,
+        ..Default::default()
+      };
+      apply_style(&style, cx);
+      assert_eq!(cx.theme().radius, px(0.));
+      assert_eq!(cx.theme().radius_lg, px(0.));
+      assert!((cx.theme().font_size.as_f32() - base_size * 0.1).abs() < 1e-3);
+      assert!(!cx.theme().shadow);
+
+      apply_style(&ThemeConfig::default(), cx);
+      assert!(cx.theme().radius > px(0.));
+      assert!((cx.theme().font_size.as_f32() - base_size).abs() < 1e-3);
+    });
+  }
+
+  #[gpui::test]
+  fn font_override_keeps_the_theme_font(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let own = theme_font(cx);
+      let style = ThemeConfig {
+        font_family: Some("Some Font".into()),
+        ..Default::default()
+      };
+      apply_style(&style, cx);
+      assert_eq!(cx.theme().font_family.as_ref(), "Some Font");
+      assert_eq!(theme_font(cx), own);
+      apply_style(&ThemeConfig::default(), cx);
+      assert_eq!(cx.theme().font_family, own);
+    });
+  }
+
+  #[gpui::test]
+  fn theme_font_falls_back_to_the_active_font(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      assert_eq!(theme_font(cx), cx.theme().font_family);
+    });
+  }
+
+  #[gpui::test]
+  fn config_changes_reapply(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      let mut config = cx.config().clone();
+      config.theme.corner_radius_scale = 0.;
+      config.theme.mode = Some(corona_config::ThemeMode::Light);
+      cx.set_global(config);
+    });
+    cx.run_until_parked();
+    cx.update(|cx| {
+      assert_eq!(cx.theme().radius, px(0.));
+      assert!(!cx.theme().is_dark());
+      // a bad name keeps the theme it had
+      let mut config = cx.config().clone();
+      config.theme.name = "No Such Theme".into();
+      cx.set_global(config);
+    });
+    cx.run_until_parked();
+    cx.update(|cx| assert!(!cx.theme().is_dark()));
+  }
+
+  #[gpui::test]
+  fn set_theme_rejects_unknown_and_clears_mode(cx: &mut TestAppContext) {
+    let _dir = temp_dirs();
+    setup(cx);
+    cx.update(|cx| {
+      assert!(set_theme("No Such Theme".into(), cx).is_err());
+      set_mode(false, cx).unwrap();
+      assert_eq!(
+        cx.config().theme.mode,
+        Some(corona_config::ThemeMode::Light)
+      );
+      let other = names(cx).into_iter().find(|n| n != DEFAULT).unwrap();
+      set_theme(other.clone(), cx).unwrap();
+      assert_eq!(cx.config().theme.name, other);
+      assert_eq!(cx.config().theme.mode, None);
+    });
+  }
+
+  #[gpui::test]
+  fn toggle_mode_flips_and_persists(cx: &mut TestAppContext) {
+    let dir = temp_dirs();
+    setup(cx);
+    cx.update(|cx| assert!(cx.theme().is_dark()));
+    cx.update(toggle_mode);
+    cx.run_until_parked();
+    cx.update(|cx| {
+      assert_eq!(
+        cx.config().theme.mode,
+        Some(corona_config::ThemeMode::Light)
+      );
+      assert!(!cx.theme().is_dark());
+    });
+    cx.update(toggle_mode);
+    cx.run_until_parked();
+    cx.update(|cx| assert!(cx.theme().is_dark()));
+    let settings = std::fs::read_to_string(dir.path().join("state/corona/settings.toml")).unwrap();
+    assert!(settings.contains("dark"), "{settings}");
+  }
+}

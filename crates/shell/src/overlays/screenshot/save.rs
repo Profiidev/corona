@@ -143,3 +143,47 @@ pub fn commit_selection(area: Bounds<Pixels>, cx: &mut App) {
   })
   .detach();
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use gpui_kit::{Size, point, px};
+
+  fn sized(w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds {
+      origin: point(px(3.), px(4.)),
+      size: Size::new(px(w), px(h)),
+    }
+  }
+
+  #[test]
+  fn empty_bounds() {
+    assert!(is_empty(&sized(0., 0.)));
+    assert!(is_empty(&sized(10., 0.)));
+    assert!(is_empty(&sized(0., 10.)));
+    assert!(is_empty(&sized(-1., 10.)));
+    assert!(!is_empty(&sized(0.5, 0.5)));
+  }
+
+  #[test]
+  fn save_writes_into_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ScreenshotConfig {
+      directory: Some(dir.path().join("nested")),
+      filename_pattern: "shot.png".into(),
+    };
+    let path = save(b"png", &config).unwrap();
+    assert_eq!(path, dir.path().join("nested/shot.png"));
+    assert_eq!(fs::read(path).unwrap(), b"png");
+  }
+
+  #[test]
+  fn save_bad_pattern_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ScreenshotConfig {
+      directory: Some(dir.path().into()),
+      filename_pattern: "%Q".into(),
+    };
+    assert!(save(b"png", &config).is_err());
+  }
+}

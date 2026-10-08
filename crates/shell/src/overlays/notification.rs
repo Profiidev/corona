@@ -438,3 +438,70 @@ impl Render for Popups {
     el
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::time::SystemTime;
+
+  fn item(app_name: &str, summary: &str, body: &str, urgency: Urgency) -> Item {
+    Item {
+      id: 1,
+      app_name: app_name.into(),
+      app_icon: String::new(),
+      summary: summary.into(),
+      body: body.into(),
+      actions: Vec::new(),
+      urgency,
+      desktop_entry: None,
+      resident: false,
+      time: SystemTime::UNIX_EPOCH,
+      read: false,
+    }
+  }
+
+  fn drops(pattern: &str, n: &Item) -> bool {
+    let config = NotificationConfig {
+      filter_regex: pattern.into(),
+      ..Default::default()
+    };
+    (filter(&config).0)(n)
+  }
+
+  #[test]
+  fn empty_or_broken_regex_keeps_everything() {
+    let n = item("Spotify", "Now playing", "Song", Urgency::Normal);
+    assert!(!drops("", &n));
+    assert!(!drops("(", &n));
+  }
+
+  #[test]
+  fn regex_matches_any_text_field_case_insensitively() {
+    let n = item("Spotify", "Now playing", "Some Song", Urgency::Normal);
+    assert!(drops("^spotify$", &n));
+    assert!(drops("now PLAYING", &n));
+    assert!(drops("song", &n));
+    assert!(!drops("discord", &n));
+    // the fields are matched one by one, not joined
+    assert!(!drops("Spotify Now", &n));
+  }
+
+  #[test]
+  fn popup_timeout_by_urgency() {
+    let config = NotificationConfig {
+      timeout_ms: 1000,
+      critical_timeout_ms: 9000,
+      ..Default::default()
+    };
+    for (urgency, ms) in [
+      (Urgency::Low, 1000),
+      (Urgency::Normal, 1000),
+      (Urgency::Critical, 9000),
+    ] {
+      let popup = Popup::new(item("a", "b", "c", urgency), 0, &config);
+      assert_eq!(popup.timeout, Duration::from_millis(ms), "{urgency:?}");
+      assert_eq!(popup.remaining, popup.timeout);
+      assert!(popup.open && !popup.hovered);
+    }
+  }
+}

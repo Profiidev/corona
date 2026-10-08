@@ -51,3 +51,57 @@ fn on_change<E: 'static, K: PartialEq + 'static>(
   })
   .detach();
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use gpui_kit::{self as gpui, AppContext as _, TestAppContext};
+  use std::{cell::RefCell, rc::Rc};
+
+  type Shown = Rc<RefCell<Vec<(i32, i32)>>>;
+
+  fn watch(cx: &mut TestAppContext, start: Option<i32>) -> (Entity<Option<i32>>, Shown) {
+    let shown = Shown::default();
+    let entity = cx.new(|_| start);
+    let (e, s) = (entity.clone(), shown.clone());
+    cx.update(|cx| {
+      on_change(
+        &e.clone(),
+        cx,
+        move |cx| *e.read(cx),
+        move |prev, next, _| s.borrow_mut().push((*prev, *next)),
+      )
+    });
+    (entity, shown)
+  }
+
+  fn set(entity: &Entity<Option<i32>>, value: Option<i32>, cx: &mut TestAppContext) {
+    entity.update(cx, |v, cx| {
+      *v = value;
+      cx.notify();
+    });
+    cx.run_until_parked();
+  }
+
+  #[gpui::test]
+  fn shows_changes_only(cx: &mut TestAppContext) {
+    let (entity, shown) = watch(cx, Some(1));
+    set(&entity, Some(1), cx);
+    assert!(shown.borrow().is_empty());
+    set(&entity, Some(2), cx);
+    set(&entity, Some(5), cx);
+    assert_eq!(*shown.borrow(), [(1, 2), (2, 5)]);
+  }
+
+  #[gpui::test]
+  fn appearing_or_vanishing_is_not_shown(cx: &mut TestAppContext) {
+    let (entity, shown) = watch(cx, None);
+    set(&entity, Some(3), cx);
+    set(&entity, None, cx);
+    assert!(shown.borrow().is_empty());
+    // the last value was still kept
+    set(&entity, Some(4), cx);
+    set(&entity, Some(6), cx);
+    assert_eq!(*shown.borrow(), [(4, 6)]);
+  }
+}

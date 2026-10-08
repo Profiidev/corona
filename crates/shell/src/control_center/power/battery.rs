@@ -166,5 +166,65 @@ mod tests {
     assert_eq!(super::duration(Duration::from_secs(25 * 60)), "25 min");
     // rounded to the nearest minute
     assert_eq!(super::duration(Duration::from_secs(3599)), "1 h 0 min");
+    assert_eq!(super::duration(Duration::ZERO), "0 min");
+  }
+
+  fn battery(percentage: f64, state: BatteryState) -> Battery {
+    Battery {
+      percentage,
+      state,
+      time_to_empty: None,
+      time_to_full: None,
+      energy_rate: 0.,
+      energy: 0.,
+      energy_full: 0.,
+      energy_full_design: 0.,
+      capacity: 0.,
+      charge_threshold: None,
+    }
+  }
+
+  #[test]
+  fn icon_levels() {
+    let discharging = |p| icon(&battery(p, BatteryState::Discharging));
+    assert_eq!(discharging(0.), IconName::BatteryWarning);
+    assert_eq!(discharging(10.), IconName::BatteryWarning);
+    assert_eq!(discharging(10.1), IconName::BatteryLow);
+    assert_eq!(discharging(30.), IconName::BatteryLow);
+    assert_eq!(discharging(70.), IconName::BatteryMedium);
+    assert_eq!(discharging(70.1), IconName::BatteryFull);
+    assert_eq!(discharging(100.), IconName::BatteryFull);
+  }
+
+  #[test]
+  fn icon_charging_wins() {
+    for p in [0., 50., 100.] {
+      assert_eq!(
+        icon(&battery(p, BatteryState::Charging)),
+        IconName::BatteryCharging
+      );
+    }
+  }
+
+  #[test]
+  fn state_labels_distinct() {
+    let states = [
+      BatteryState::Charging,
+      BatteryState::Discharging,
+      BatteryState::Empty,
+      BatteryState::FullyCharged,
+      BatteryState::PendingCharge,
+      BatteryState::PendingDischarge,
+      BatteryState::Unknown,
+    ];
+    let mut labels: Vec<_> = states.iter().map(|s| state(*s).to_string()).collect();
+    assert!(
+      labels
+        .iter()
+        .all(|l| !l.is_empty() && !l.starts_with("app."))
+    );
+    labels.sort();
+    labels.dedup();
+    assert_eq!(labels.len(), states.len());
   }
 }

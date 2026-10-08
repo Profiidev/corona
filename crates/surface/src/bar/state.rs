@@ -202,3 +202,197 @@ impl BarExt for App {
     self.global_mut::<BarState>()
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_config::bar::{WidgetConfig, WidgetEntry};
+  use gpui_kit::TestAppContext;
+
+  use super::*;
+  use crate::test_support::{self, Label, Toggle, draw_all, plain_window, windows};
+
+  fn entry(widget_type: &str, options: Option<serde_json::Value>) -> WidgetEntry {
+    WidgetEntry {
+      widget_type: widget_type.into(),
+      options,
+    }
+  }
+
+  fn widget(widget_type: &str) -> WidgetConfig {
+    WidgetConfig::Widget(entry(widget_type, None))
+  }
+
+  fn group(types: &[&str]) -> WidgetConfig {
+    WidgetConfig::Group {
+      group: types.iter().map(|t| entry(t, None)).collect(),
+    }
+  }
+
+  fn config(position: Placement) -> BarConfig {
+    BarConfig {
+      position,
+      start: vec![widget("label"), widget("unknown")],
+      center: vec![
+        group(&["unknown"]),
+        widget("toggle"),
+        WidgetConfig::Widget(entry("toggle", Some(serde_json::json!(true)))),
+      ],
+      end: vec![group(&["label", "toggle", "unknown"])],
+      ..Default::default()
+    }
+  }
+
+  fn setup(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    cx.update(|cx| {
+      cx.bar_mut().register::<Toggle>().register::<Label>();
+    });
+  }
+
+  fn create(config: BarConfig, cx: &mut TestAppContext) -> AnyWindowHandle {
+    cx.update(|cx| {
+      let display = cx.displays()[0].id();
+      BarState::create(cx, config, display).unwrap()
+    })
+  }
+
+  fn bar(handle: AnyWindowHandle, cx: &mut TestAppContext) -> Option<Entity<Bar>> {
+    cx.update_window(handle, |_, window, cx| BarState::get(window, cx))
+      .unwrap()
+  }
+
+  #[gpui_kit::test]
+  fn widget_names_are_sorted(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      assert_eq!(BarState::widget_names(cx), ["label", "toggle"]);
+      assert!(cx.bar().widget("label").is_some());
+      assert!(cx.bar().widget("nope").is_none());
+    });
+  }
+
+  #[gpui_kit::test]
+  fn a_window_without_a_bar_gets_defaults(cx: &mut TestAppContext) {
+    setup(cx);
+    let handle = plain_window(cx);
+    cx.update_window(handle, |_, window, cx| {
+      assert!(BarState::get(window, cx).is_none());
+      assert_eq!(BarState::placement(window, cx), Placement::Top);
+      assert_eq!(BarState::bar_axis(window, cx), Axis::Horizontal);
+      let id = cx.new(|_| ()).entity_id();
+      assert!(!BarState::is_bare(window, cx, id));
+    })
+    .unwrap();
+    cx.update(|cx| {
+      let display = cx.displays()[0].id();
+      assert!(BarState::bars_on(display, cx).is_empty());
+    });
+  }
+
+  #[gpui_kit::test]
+  fn create_drops_unknown_widgets_and_empty_groups(cx: &mut TestAppContext) {
+    setup(cx);
+    let handle = create(config(Placement::Left), cx);
+    let bar = bar(handle, cx).expect("registered");
+    cx.update_window(handle, |_, window, cx| {
+      assert_eq!(BarState::placement(window, cx), Placement::Left);
+      assert_eq!(BarState::bar_axis(window, cx), Axis::Vertical);
+    })
+    .unwrap();
+    bar.read_with(cx, |bar, _| {
+      let [start, center, end] = bar.sections();
+      assert_eq!(start.len(), 1);
+      // the group of only unknown widgets is gone
+      assert_eq!(center.len(), 2);
+      assert_eq!(end.len(), 1);
+      assert_eq!(end[0].len(), 2);
+      for view in &end[0] {
+        assert!(bar.is_bare(view.entity_id()));
+      }
+      assert!(!bar.is_bare(start[0][0].entity_id()));
+      assert!(!bar.is_bare(center[0][0].entity_id()));
+    });
+  }
+
+  #[gpui_kit::test]
+  fn without_capsules_every_widget_is_bare(cx: &mut TestAppContext) {
+    setup(cx);
+    let handle = create(
+      BarConfig {
+        capsule: false,
+        ..config(Placement::Top)
+      },
+      cx,
+    );
+    let bar = bar(handle, cx).unwrap();
+    bar.read_with(cx, |bar, _| {
+      assert!(bar.is_bare(bar.sections()[0][0][0].entity_id()))
+    });
+  }
+
+  #[gpui_kit::test]
+  fn bars_render_on_every_side_and_track_widgets(cx: &mut TestAppContext) {
+    setup(cx);
+    for placement in [
+      Placement::Top,
+      Placement::Bottom,
+      Placement::Left,
+      Placement::Right,
+    ] {
+      let handle = create(config(placement), cx);
+      // a layer surface gets its length from the compositor
+      cx.simulate_window_resize(handle, gpui_kit::size(px(800.), px(800.)));
+      draw_all(cx);
+      let bar = bar(handle, cx).unwrap();
+      bar.read_with(cx, |bar, _| {
+        assert!(bar.bounds().size.width > px(0.));
+        assert!(
+          bar
+            .widget_bounds(bar.sections()[0][0][0].entity_id())
+            .is_some()
+        );
+        assert!(bar.widget_bounds(EntityId::from(u64::MAX)).is_none());
+      });
+    }
+  }
+
+  #[gpui_kit::test]
+  fn closed_bars_are_forgotten(cx: &mut TestAppContext) {
+    setup(cx);
+    let first = create(config(Placement::Top), cx);
+    let _ = cx.update_window(first, |_, window, _| window.remove_window());
+    cx.run_until_parked();
+    create(config(Placement::Top), cx);
+    cx.update(|cx| {
+      let bars = &cx.bar().bars;
+      assert_eq!(bars.len(), 1);
+      assert!(!bars.contains_key(&first.window_id()));
+    });
+  }
+
+  #[gpui_kit::test]
+  fn spawn_bars_reopens_on_bar_settings(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(BarState::spawn_bars);
+    cx.run_until_parked();
+    let before = windows(cx);
+    let first = cx.update(|cx| cx.bar().displays.clone().unwrap());
+    cx.update(|cx| {
+      let mut config = cx.config().clone();
+      config.bar.clear();
+      cx.set_global(config);
+    });
+    cx.run_until_parked();
+    let second = cx.update(|cx| cx.bar().displays.clone().unwrap());
+    assert_ne!(first, second);
+    // a theme change that keeps the radius keeps the bars
+    cx.update(|cx| {
+      let mut config = cx.config().clone();
+      config.theme.shadow = !config.theme.shadow;
+      cx.set_global(config);
+    });
+    cx.run_until_parked();
+    assert_eq!(cx.update(|cx| cx.bar().displays.clone().unwrap()), second);
+    assert!(windows(cx) <= before);
+  }
+}

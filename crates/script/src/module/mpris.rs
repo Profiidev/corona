@@ -108,6 +108,11 @@ impl From<&mpris::Player> for Player {
   }
 }
 
+/// A negative position is the track start.
+fn seek_target(seconds: f64) -> Duration {
+  Duration::from_secs_f64(seconds.max(0.0))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
   Players,
@@ -163,7 +168,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       "setPosition",
       /// Jumps to `seconds` into the current track.
       |cx: Cx, mpris: Glob<Mpris>, name: String, seconds: f64| {
-        mpris.set_position(&name, Duration::from_secs_f64(seconds.max(0.0)), &cx)
+        mpris.set_position(&name, seek_target(seconds), &cx)
       }
     ))
     .func(named!(
@@ -182,4 +187,99 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       }
     ))
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Instant;
+
+  use super::*;
+
+  fn player(status: mpris::PlaybackStatus) -> mpris::Player {
+    mpris::Player {
+      name: "org.mpris.MediaPlayer2.spotify".into(),
+      identity: "Spotify".into(),
+      desktop_entry: None,
+      status,
+      title: Some("Song".into()),
+      artists: vec!["A".into(), "B".into()],
+      album: None,
+      art_url: None,
+      length: Some(Duration::from_millis(180_500)),
+      track_id: None,
+      position: Duration::from_secs(42),
+      position_at: Instant::now(),
+      rate: 1.0,
+      volume: Some(0.5),
+      shuffle: None,
+      loop_status: Some(mpris::LoopStatus::Track),
+      can_control: true,
+      can_play: true,
+      can_pause: false,
+      can_go_next: true,
+      can_go_previous: false,
+      can_seek: true,
+    }
+  }
+
+  #[test]
+  fn loop_status_both_ways() {
+    let all = [
+      (mpris::LoopStatus::None, "none"),
+      (mpris::LoopStatus::Track, "track"),
+      (mpris::LoopStatus::Playlist, "playlist"),
+    ];
+    for (status, name) in all {
+      assert_eq!(
+        serde_json::to_value(LoopStatus::from(status)).unwrap(),
+        name
+      );
+      let parsed: LoopStatus = serde_json::from_value(name.into()).unwrap();
+      assert_eq!(mpris::LoopStatus::from(parsed), status);
+    }
+  }
+
+  #[test]
+  fn players() {
+    let all = [
+      (mpris::PlaybackStatus::Paused, "paused"),
+      (mpris::PlaybackStatus::Stopped, "stopped"),
+      (mpris::PlaybackStatus::Playing, "playing"),
+    ];
+    for (status, name) in all {
+      let json = serde_json::to_value(Player::from(&player(status))).unwrap();
+      assert_eq!(json["status"], name);
+      assert_eq!(json["identity"], "Spotify");
+      assert_eq!(json["length"], 180.5);
+      assert_eq!(json["loop_status"], "track");
+      assert_eq!(json["artists"][1], "B");
+      assert!(json["shuffle"].is_null());
+      assert_eq!(json["can_pause"], false);
+      // moves on only while playing
+      let position = json["position"].as_f64().unwrap();
+      assert!((42.0..=180.5).contains(&position), "{position}");
+    }
+
+    let mut paused = player(mpris::PlaybackStatus::Paused);
+    paused.length = None;
+    paused.loop_status = None;
+    let json = serde_json::to_value(Player::from(&paused)).unwrap();
+    assert!(json["length"].is_null());
+    assert!(json["loop_status"].is_null());
+    assert_eq!(json["position"], 42.0);
+  }
+
+  #[test]
+  fn seek_targets() {
+    assert_eq!(seek_target(12.5), Duration::from_millis(12_500));
+    assert_eq!(seek_target(0.0), Duration::ZERO);
+    assert_eq!(seek_target(-5.0), Duration::ZERO);
+    assert_eq!(seek_target(f64::NAN), Duration::ZERO);
+  }
+
+  #[test]
+  #[ignore = "bug: setPosition with a huge number panics in Duration::from_secs_f64"]
+  fn bug_seek_to_huge_position_panics() {
+    assert!(std::panic::catch_unwind(|| seek_target(1e300)).is_ok());
+  }
 }

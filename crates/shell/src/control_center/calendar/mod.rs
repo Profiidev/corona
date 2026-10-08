@@ -171,4 +171,13 @@ mod tests {
     assert_eq!(super::gmt_offset(5 * 3600 + 30 * 60), "GMT+5:30");
     assert_eq!(super::gmt_offset(0), "GMT+0");
   }
+
+  #[test]
+  fn gmt_offset_fractional() {
+    assert_eq!(super::gmt_offset(-(3 * 3600 + 30 * 60)), "GMT-3:30");
+    assert_eq!(super::gmt_offset(5 * 3600 + 45 * 60), "GMT+5:45");
+    assert_eq!(super::gmt_offset(-30 * 60), "GMT-0:30");
+    // stray seconds are dropped
+    assert_eq!(super::gmt_offset(3600 + 59), "GMT+1");
+  }
 }

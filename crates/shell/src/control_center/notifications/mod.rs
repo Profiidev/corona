@@ -105,11 +105,12 @@ fn card(cx: &App) -> Div {
 }
 
 fn today(notification: &Notification) -> bool {
-  notification
-    .time
-    .elapsed()
-    .is_ok_and(|elapsed| elapsed < DAY)
-    || notification.time > SystemTime::now()
+  today_at(notification.time, SystemTime::now())
+}
+
+/// Within the last 24 hours; a clock that jumped back counts as today too
+fn today_at(time: SystemTime, now: SystemTime) -> bool {
+  now.duration_since(time).is_ok_and(|elapsed| elapsed < DAY) || time > now
 }
 
 impl NotificationsPanel {
@@ -203,5 +204,22 @@ impl Render for NotificationsPanel {
           )
         },
       )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn today_at() {
+    let now = SystemTime::UNIX_EPOCH + DAY * 10;
+    let secs = Duration::from_secs;
+    assert!(super::today_at(now, now));
+    assert!(super::today_at(now - secs(3600), now));
+    assert!(super::today_at(now - DAY + secs(1), now));
+    assert!(!super::today_at(now - DAY, now));
+    assert!(!super::today_at(now - DAY * 3, now));
+    assert!(super::today_at(now + secs(600), now));
   }
 }

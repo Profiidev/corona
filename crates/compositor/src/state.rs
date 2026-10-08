@@ -26,7 +26,7 @@ fn init_state<T: 'static>(cx: &mut App, f: impl FnOnce() -> Result<T>) -> Result
 }
 
 impl Compositor {
-  pub(crate) fn new(cx: &mut App, inner: Rc<dyn CompositorImpl>) -> Result<Self> {
+  pub fn new(cx: &mut App, inner: Rc<dyn CompositorImpl>) -> Result<Self> {
     let workspaces = init_state(cx, || inner.list_workspaces())?;
     let active_workspace = init_state(cx, || inner.active_workspace())?;
     let monitors = init_state(cx, || inner.list_monitors())?;
@@ -111,7 +111,7 @@ impl Compositor {
   }
 }
 
-pub(crate) trait CompositorImpl {
+pub trait CompositorImpl {
   fn list_workspaces(&self) -> Result<Vec<types::Workspace>>;
   fn active_workspace(&self) -> Result<types::Workspace>;
 

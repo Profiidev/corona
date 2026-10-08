@@ -113,3 +113,19 @@ pub fn separator(cx: &App) -> Div {
     .items_center()
     .child(div().h(px(1.)).w_full().bg(cx.theme().border))
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn size_keeps_one_row() {
+    assert_eq!(size(0.), size(ROW));
+    assert_eq!(size(-5.), size(ROW));
+    let tall = size(100.);
+    assert_eq!(tall.width, px(WIDTH));
+    // the frame adds padding and border on both sides
+    assert_eq!(tall.height - size(50.).height, px(50.));
+    assert!(tall.height > px(100.));
+  }
+}

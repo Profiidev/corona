@@ -469,3 +469,156 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     ))
     .into()
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_network_manager as nm;
+
+  use super::*;
+
+  fn json(value: impl Serialize) -> serde_json::Value {
+    serde_json::to_value(value).unwrap()
+  }
+
+  fn interface(kind: nm::InterfaceType, state: nm::DeviceState) -> nm::Interface {
+    nm::Interface {
+      path: Default::default(),
+      name: "wlan0".into(),
+      ip: None,
+      kind,
+      state,
+    }
+  }
+
+  #[test]
+  fn interfaces() {
+    let states = [
+      (nm::DeviceState::Unmanaged, "unmanaged"),
+      (nm::DeviceState::Unavailable, "unavailable"),
+      (nm::DeviceState::Disconnected, "disconnected"),
+      (nm::DeviceState::Prepare, "prepare"),
+      (nm::DeviceState::Config, "config"),
+      (nm::DeviceState::NeedAuth, "need_auth"),
+      (nm::DeviceState::IpConfig, "ip_config"),
+      (nm::DeviceState::IpCheck, "ip_check"),
+      (nm::DeviceState::Secondaries, "secondaries"),
+      (nm::DeviceState::Activated, "activated"),
+      (nm::DeviceState::Deactivating, "deactivating"),
+      (nm::DeviceState::Failed, "failed"),
+      (nm::DeviceState::Unknown, "unknown"),
+    ];
+    for (state, name) in states {
+      let json = json(Interface::from(&interface(nm::InterfaceType::Wired, state)));
+      assert_eq!(json["state"], name);
+      assert_eq!(json["kind"], "wired");
+      assert_eq!(json["name"], "wlan0");
+      assert!(json["ip"].is_null());
+    }
+    let wireless = interface(nm::InterfaceType::Wireless, nm::DeviceState::Activated);
+    assert_eq!(json(Interface::from(&wireless))["kind"], "wireless");
+  }
+
+  #[test]
+  fn connectivity() {
+    let all = [
+      (nm::NmConnectivityState::None, "none"),
+      (nm::NmConnectivityState::Portal, "portal"),
+      (nm::NmConnectivityState::Loss, "limited"),
+      (nm::NmConnectivityState::Full, "full"),
+      (nm::NmConnectivityState::Unknown, "unknown"),
+    ];
+    for (state, name) in all {
+      assert_eq!(json(Connectivity::from(state)), name);
+    }
+  }
+
+  #[test]
+  fn wifi_networks() {
+    let all = [
+      (nm::WifiStatus::Connected, "connected"),
+      (nm::WifiStatus::NeedAuth, "need_auth"),
+      (nm::WifiStatus::Connecting, "connecting"),
+      (nm::WifiStatus::Saved, "saved"),
+      (nm::WifiStatus::New, "new"),
+    ];
+    for (status, name) in all {
+      let network = nm::WifiNetwork {
+        ssid: "home".into(),
+        raw_ssid: b"home".to_vec(),
+        strength: 70,
+        secured: true,
+        enterprise: false,
+        status,
+      };
+      let json = json(WifiNetwork::from(&network));
+      assert_eq!(json["status"], name);
+      assert_eq!(json["ssid"], "home");
+      assert_eq!(json["strength"], 70);
+      assert_eq!(json["secured"], true);
+      assert_eq!(json["enterprise"], false);
+      // the raw SSID stays in the shell
+      assert!(json.get("raw_ssid").is_none());
+    }
+  }
+
+  #[test]
+  fn wifi_failures() {
+    let all = [
+      (nm::FailReason::NoSecrets, "no_secrets"),
+      (nm::FailReason::SsidNotFound, "ssid_not_found"),
+      (nm::FailReason::Other(0), "other"),
+      (nm::FailReason::Other(53), "other"),
+    ];
+    for (reason, name) in all {
+      let failure = nm::WifiFailure {
+        ssid: Some("home".into()),
+        reason,
+      };
+      let json = json(WifiFailure::from(&failure));
+      assert_eq!(json["reason"], name);
+      assert_eq!(json["ssid"], "home");
+    }
+  }
+
+  #[test]
+  fn vpns() {
+    let states = [
+      (nm::ActiveConnectionState::Activating, "activating"),
+      (nm::ActiveConnectionState::Activated, "activated"),
+      (nm::ActiveConnectionState::Deactivating, "deactivating"),
+      (nm::ActiveConnectionState::Deactivated, "deactivated"),
+      (nm::ActiveConnectionState::Unknown, "unknown"),
+    ];
+    for (kind, kind_name) in [
+      (nm::VpnKind::Plugin, "plugin"),
+      (nm::VpnKind::WireGuard, "wireguard"),
+    ] {
+      for (state, name) in states {
+        let vpn = nm::Vpn {
+          uuid: "u".into(),
+          name: "work".into(),
+          kind,
+          state,
+        };
+        let json = json(Vpn::from(&vpn));
+        assert_eq!(json["kind"], kind_name);
+        assert_eq!(json["state"], name);
+        assert_eq!(json["uuid"], "u");
+      }
+    }
+  }
+
+  #[test]
+  fn hidden_security() {
+    let all = [
+      ("open", nm::HiddenSecurity::Open),
+      ("wpa", nm::HiddenSecurity::Wpa),
+      ("wpa3", nm::HiddenSecurity::Wpa3),
+    ];
+    for (name, security) in all {
+      let parsed: HiddenSecurity = serde_json::from_value(name.into()).unwrap();
+      assert_eq!(nm::HiddenSecurity::from(parsed), security);
+    }
+    assert!(serde_json::from_value::<HiddenSecurity>("wep".into()).is_err());
+  }
+}

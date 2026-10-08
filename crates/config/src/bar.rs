@@ -135,4 +135,68 @@ mod tests {
     // unset fields keep their defaults
     assert_eq!(bar.thickness, BarConfig::default().thickness);
   }
+
+  #[test]
+  fn default_bar_layout() {
+    let bar = BarConfig::default();
+    assert_eq!(bar.position, Placement::Top);
+    let groups: Vec<_> = bar
+      .end
+      .iter()
+      .filter_map(|w| match w {
+        WidgetConfig::Group { group } => Some(group),
+        WidgetConfig::Widget(_) => None,
+      })
+      .collect();
+    assert_eq!(groups.len(), 1);
+    let stats: Vec<_> = groups[0]
+      .iter()
+      .map(|e| {
+        assert_eq!(e.widget_type, "resource");
+        e.options.as_ref().unwrap()["stat"].as_str().unwrap()
+      })
+      .collect();
+    assert_eq!(
+      stats,
+      ["cpu", "temperature", "memory", "download", "upload", "disk"]
+    );
+    assert_eq!(
+      bar.end.last(),
+      Some(&WidgetConfig::widget("control_center"))
+    );
+    // only widgets in start and center
+    assert!(
+      bar
+        .start
+        .iter()
+        .chain(&bar.center)
+        .all(|w| matches!(w, WidgetConfig::Widget(_)))
+    );
+  }
+
+  #[test]
+  fn widget_config_untagged_edges() {
+    let parse = |s: &str| serde_json::from_str::<WidgetConfig>(s);
+    // a group wins over a widget_type next to it
+    let both = parse(r#"{"group": [], "widget_type": "clock"}"#).unwrap();
+    assert_eq!(both, WidgetConfig::group([]));
+    assert!(parse(r#"{"options": {}}"#).is_err());
+    assert!(parse(r#"{"group": [{"options": 1}]}"#).is_err());
+    assert!(parse(r#""clock""#).is_err());
+
+    // unset options are left out, set ones kept
+    let plain = serde_json::to_value(WidgetConfig::widget("clock")).unwrap();
+    assert_eq!(plain, serde_json::json!({ "widget_type": "clock" }));
+    let with = WidgetConfig::Widget(WidgetEntry::resource("cpu"));
+    let value = serde_json::to_value(&with).unwrap();
+    assert_eq!(value["options"]["stat"], "cpu");
+    assert_eq!(serde_json::from_value::<WidgetConfig>(value).unwrap(), with);
+  }
+
+  #[test]
+  fn default_bar_round_trips_through_toml() {
+    let bar = BarConfig::default();
+    let text = toml::to_string(&bar).unwrap();
+    assert_eq!(toml::from_str::<BarConfig>(&text).unwrap(), bar);
+  }
 }

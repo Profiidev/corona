@@ -86,3 +86,78 @@ impl RenderOnce for ControlCenterLayout {
       )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{
+    self as gpui, AppContext as _, Global, InteractiveElement, Render, TestAppContext,
+    WindowOptions,
+    test::{TestSupportExt, TestWindowExt},
+  };
+
+  use super::*;
+
+  struct Closed;
+  impl Global for Closed {}
+
+  struct Host(bool);
+
+  impl Render for Host {
+    fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
+      let mut layout = ControlCenterLayout::new(ControlCenterType::Media)
+        .buttons([Button::new("extra")].into_iter());
+      layout.close = |cx| {
+        cx.set_global(Closed);
+        Ok(())
+      };
+      if self.0 {
+        layout = layout.content(div().id("content").test_support().size_4());
+      }
+      layout
+    }
+  }
+
+  fn open(cx: &mut TestAppContext, content: bool) -> gpui_kit::AnyWindowHandle {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
+        cx.new(|_| Host(content))
+      })
+      .unwrap()
+      .0
+    })
+  }
+
+  #[gpui::test]
+  fn renders_buttons_and_closes(cx: &mut TestAppContext) {
+    let window = open(cx, true);
+    cx.update_window(window, |_, window, cx| {
+      window.render_frame(cx);
+      assert!(window.try_find("extra").is_some());
+      assert!(window.try_find("content").is_some());
+      assert!(!cx.has_global::<Closed>());
+      // the test platform never hovers a window, so clicks miss; the keyboard presses instead
+      for _ in 0..10 {
+        if window.find("close").focused() == Some(true) {
+          break;
+        }
+        window.focus_next(cx);
+        window.render_frame(cx);
+      }
+      window.press("space", cx);
+      assert!(cx.has_global::<Closed>());
+    })
+    .unwrap();
+  }
+
+  #[gpui::test]
+  fn without_content(cx: &mut TestAppContext) {
+    let window = open(cx, false);
+    cx.update_window(window, |_, window, cx| {
+      window.render_frame(cx);
+      assert!(window.try_find("content").is_none());
+      assert!(window.try_find("close").is_some());
+    })
+    .unwrap();
+  }
+}

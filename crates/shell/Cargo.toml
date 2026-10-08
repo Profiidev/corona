@@ -47,3 +47,7 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb5
   "vorbis",
   "pipewire",
 ] }
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

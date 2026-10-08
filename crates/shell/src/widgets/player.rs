@@ -183,3 +183,63 @@ impl Render for ActivePlayer {
       .into_any_element()
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::time::Instant;
+
+  use super::*;
+
+  fn player(title: Option<&str>, artists: &[&str]) -> Player {
+    Player {
+      name: "org.mpris.MediaPlayer2.test".into(),
+      identity: "Test".into(),
+      desktop_entry: None,
+      // paused, so the position does not move on with the wall clock
+      status: PlaybackStatus::Paused,
+      title: title.map(Into::into),
+      artists: artists.iter().map(|a| a.to_string()).collect(),
+      album: None,
+      art_url: None,
+      length: None,
+      track_id: None,
+      position: Duration::ZERO,
+      position_at: Instant::now(),
+      rate: 1.,
+      volume: None,
+      shuffle: None,
+      loop_status: None,
+      can_control: false,
+      can_play: false,
+      can_pause: false,
+      can_go_next: false,
+      can_go_previous: false,
+      can_seek: false,
+    }
+  }
+
+  #[test]
+  fn title() {
+    assert_eq!(
+      super::title(&player(Some("Song"), &["A", "B"])),
+      "Song - A, B"
+    );
+    assert_eq!(super::title(&player(Some("Song"), &[])), "Song");
+    // no title shows the player, even with artists
+    assert_eq!(super::title(&player(None, &["A"])), "Test");
+  }
+
+  #[test]
+  fn progress() {
+    let at = |position: u64, length: Option<u64>| {
+      let mut p = player(None, &[]);
+      p.position = Duration::from_secs(position);
+      p.length = length.map(Duration::from_secs);
+      super::progress(&p)
+    };
+    assert_eq!(at(10, None), 0.);
+    assert_eq!(at(10, Some(0)), 0.);
+    assert!((at(30, Some(120)) - 0.25).abs() < 1e-6);
+    assert_eq!(at(200, Some(100)), 1.);
+  }
+}

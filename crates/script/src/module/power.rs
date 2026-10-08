@@ -319,9 +319,100 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
 
 #[cfg(test)]
 mod tests {
+  use std::time::Duration;
+
   use corona_power as pw;
 
-  use super::SessionAction;
+  use super::{Battery, BatteryState, DeviceKind, SessionAction, SessionCapabilities};
+
+  fn json(value: impl serde::Serialize) -> serde_json::Value {
+    serde_json::to_value(value).unwrap()
+  }
+
+  #[test]
+  fn battery_states() {
+    let all = [
+      (pw::BatteryState::Unknown, "unknown"),
+      (pw::BatteryState::Charging, "charging"),
+      (pw::BatteryState::Discharging, "discharging"),
+      (pw::BatteryState::Empty, "empty"),
+      (pw::BatteryState::FullyCharged, "fully_charged"),
+      (pw::BatteryState::PendingCharge, "pending_charge"),
+      (pw::BatteryState::PendingDischarge, "pending_discharge"),
+    ];
+    for (state, name) in all {
+      assert_eq!(json(BatteryState::from(state)), name);
+    }
+  }
+
+  #[test]
+  fn device_kinds() {
+    let all = [
+      (pw::BatteryType::Mouse, "mouse"),
+      (pw::BatteryType::Keyboard, "keyboard"),
+      (pw::BatteryType::Headset, "headset"),
+      (pw::BatteryType::Headphones, "headphones"),
+      (pw::BatteryType::Speakers, "speakers"),
+      (pw::BatteryType::GamingInput, "gaming_input"),
+      (pw::BatteryType::Phone, "phone"),
+      (pw::BatteryType::Tablet, "tablet"),
+      (pw::BatteryType::Pen, "pen"),
+      (pw::BatteryType::Touchpad, "touchpad"),
+      (pw::BatteryType::Wearable, "wearable"),
+      (pw::BatteryType::RemoteControl, "remote_control"),
+      // everything else
+      (pw::BatteryType::Unknown, "other"),
+      (pw::BatteryType::Battery, "other"),
+      (pw::BatteryType::Printer, "other"),
+    ];
+    for (kind, name) in all {
+      assert_eq!(json(DeviceKind::from(kind)), name, "{kind:?}");
+    }
+  }
+
+  #[test]
+  fn battery() {
+    let battery = pw::Battery {
+      percentage: 55.5,
+      state: pw::BatteryState::Discharging,
+      time_to_empty: Some(Duration::from_millis(90_500)),
+      time_to_full: None,
+      energy_rate: 7.5,
+      energy: 30.,
+      energy_full: 50.,
+      energy_full_design: 60.,
+      capacity: 83.3,
+      charge_threshold: None,
+    };
+    let json = json(Battery::from(&battery));
+    assert_eq!(json["percentage"], 55.5);
+    assert_eq!(json["state"], "discharging");
+    // in seconds
+    assert_eq!(json["time_to_empty"], 90.5);
+    assert!(json["time_to_full"].is_null());
+    assert_eq!(json["energy_full_design"], 60.);
+    assert!(json["charge_threshold"].is_null());
+  }
+
+  #[test]
+  fn session_capabilities() {
+    let capabilities = pw::SessionCapabilities {
+      suspend: true,
+      hibernate: false,
+      suspend_then_hibernate: true,
+      reboot: true,
+      power_off: false,
+      reboot_to_firmware: true,
+      boot_entries: vec!["arch.conf".into()],
+    };
+    let json = json(SessionCapabilities::from(capabilities));
+    assert_eq!(json["suspend"], true);
+    assert_eq!(json["hibernate"], false);
+    assert_eq!(json["suspend_then_hibernate"], true);
+    assert_eq!(json["power_off"], false);
+    assert_eq!(json["reboot_to_firmware"], true);
+    assert_eq!(json["boot_entries"][0], "arch.conf");
+  }
 
   #[test]
   fn session_actions() {

@@ -40,3 +40,35 @@ impl IpcCommand for SettingsWindow {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  fn open_toggle_close(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(corona_config::Config::default());
+    });
+    let windows = |cx: &mut TestAppContext| cx.update(|cx| cx.windows().len());
+    let run = |action, cx: &mut TestAppContext| {
+      cx.update(|cx| SettingsWindow::handle((action, Some("idle".into())), cx))
+        .unwrap();
+      cx.run_until_parked();
+    };
+    run(Action::Open, cx);
+    assert_eq!(windows(cx), 1);
+    run(Action::Open, cx);
+    assert_eq!(windows(cx), 1);
+    run(Action::Toggle, cx);
+    assert_eq!(windows(cx), 0);
+    run(Action::Toggle, cx);
+    assert_eq!(windows(cx), 1);
+    run(Action::Close, cx);
+    assert_eq!(windows(cx), 0);
+    run(Action::Close, cx);
+    assert_eq!(windows(cx), 0);
+  }
+}

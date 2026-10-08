@@ -3,9 +3,10 @@ use std::{env, path::Path, rc::Rc};
 use anyhow::{Context, Result, bail};
 use gpui_kit::App;
 
-use crate::{hyprland::Hyprland, state::CompositorImpl};
+use crate::hyprland::Hyprland;
 
-pub use state::{Compositor, CompositorExt};
+/// `CompositorImpl` is public so other crates can install a fake in their tests.
+pub use state::{Compositor, CompositorExt, CompositorImpl};
 
 mod hyprland;
 mod state;

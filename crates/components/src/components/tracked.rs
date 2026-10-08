@@ -75,3 +75,28 @@ impl Element for Tracked {
     self.child.paint(window, cx);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, ParentElement, Styled, TestAppContext, div, px};
+
+  use super::*;
+  use crate::test_view;
+
+  #[gpui::test]
+  fn records_the_child_bounds(cx: &mut TestAppContext) {
+    let bounds = Rc::new(Cell::new(Bounds::default()));
+    let b = bounds.clone();
+    let (handle, _) = test_view::open(cx, move |_, _| {
+      div()
+        .pl(px(10.))
+        .child(Tracked::new(div().w(px(30.)).h(px(20.)), b.clone()))
+        .into_any_element()
+    });
+    test_view::draw(handle, cx);
+    let got = bounds.get();
+    assert_eq!(got.origin.x, px(10.));
+    assert_eq!(got.size.width, px(30.));
+    assert_eq!(got.size.height, px(20.));
+  }
+}

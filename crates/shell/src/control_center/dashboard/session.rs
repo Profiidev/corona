@@ -127,31 +127,41 @@ impl SessionMenu {
   }
 }
 
+/// The boot menu once capabilities loaded, the main menu otherwise
+fn entries(boot_menu: bool, capabilities: Option<&SessionCapabilities>) -> Vec<Item> {
+  match (boot_menu, capabilities) {
+    (true, Some(capabilities)) => std::iter::once(Item::Back)
+      .chain(boot_entries(capabilities))
+      .collect(),
+    _ => vec![
+      Item::Lock,
+      Item::Action(SessionAction::Logout),
+      Item::Action(SessionAction::Suspend),
+      Item::Action(SessionAction::Hibernate),
+      Item::Action(SessionAction::SuspendThenHibernate),
+      Item::Action(SessionAction::Reboot),
+      Item::RebootTo,
+      Item::Action(SessionAction::RebootToFirmware),
+      Item::Action(SessionAction::PowerOff),
+    ],
+  }
+}
+
+/// Only locking and logging out work before capabilities loaded
+fn enabled(capabilities: Option<&SessionCapabilities>, entry: &Item) -> bool {
+  match capabilities {
+    Some(capabilities) => entry.enabled(capabilities),
+    None => matches!(entry, Item::Lock | Item::Action(SessionAction::Logout)),
+  }
+}
+
 impl SessionMenu {
   fn entries(&self) -> Vec<Item> {
-    match (self.boot_menu, &self.capabilities) {
-      (true, Some(capabilities)) => std::iter::once(Item::Back)
-        .chain(boot_entries(capabilities))
-        .collect(),
-      _ => vec![
-        Item::Lock,
-        Item::Action(SessionAction::Logout),
-        Item::Action(SessionAction::Suspend),
-        Item::Action(SessionAction::Hibernate),
-        Item::Action(SessionAction::SuspendThenHibernate),
-        Item::Action(SessionAction::Reboot),
-        Item::RebootTo,
-        Item::Action(SessionAction::RebootToFirmware),
-        Item::Action(SessionAction::PowerOff),
-      ],
-    }
+    entries(self.boot_menu, self.capabilities.as_ref())
   }
 
   fn enabled(&self, entry: &Item) -> bool {
-    match &self.capabilities {
-      Some(capabilities) => entry.enabled(capabilities),
-      None => matches!(entry, Item::Lock | Item::Action(SessionAction::Logout)),
-    }
+    enabled(self.capabilities.as_ref(), entry)
   }
 
   fn activate(&mut self, entry: Item, window: &mut Window, cx: &mut Context<Self>) {
@@ -266,5 +276,133 @@ impl Render for SessionMenu {
           .overflow_y_scrollbar()
           .children(rows),
       )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn all() -> SessionCapabilities {
+    SessionCapabilities {
+      suspend: true,
+      hibernate: true,
+      suspend_then_hibernate: true,
+      reboot: true,
+      power_off: true,
+      reboot_to_firmware: true,
+      boot_entries: vec!["windows.conf".into()],
+    }
+  }
+
+  #[test]
+  fn main_menu_fits() {
+    let main = entries(false, Some(&all()));
+    assert_eq!(main.len(), ROWS);
+    assert_eq!(main[0], Item::Lock);
+    assert_eq!(main.last(), Some(&Item::Action(SessionAction::PowerOff)));
+    // the boot menu needs capabilities
+    assert_eq!(entries(true, None), main);
+    assert_eq!(entries(false, None), main);
+  }
+
+  #[test]
+  fn boot_menu() {
+    let mut caps = all();
+    caps.boot_entries = vec![
+      "a.conf".into(),
+      "auto-reboot-to-firmware-setup".into(),
+      "b.conf".into(),
+    ];
+    assert_eq!(
+      entries(true, Some(&caps)),
+      [
+        Item::Back,
+        Item::BootEntry("a.conf".into()),
+        Item::BootEntry("b.conf".into())
+      ]
+    );
+  }
+
+  #[test]
+  fn nothing_loaded_allows_lock_and_logout() {
+    for entry in entries(false, None) {
+      let expected = matches!(entry, Item::Lock | Item::Action(SessionAction::Logout));
+      assert_eq!(enabled(None, &entry), expected, "{entry:?}");
+    }
+  }
+
+  #[test]
+  fn each_capability_gates_its_action() {
+    type Flag = fn(&mut SessionCapabilities) -> &mut bool;
+    let cases: [(SessionAction, Flag); 6] = [
+      (SessionAction::Suspend, |c| &mut c.suspend),
+      (SessionAction::Hibernate, |c| &mut c.hibernate),
+      (SessionAction::SuspendThenHibernate, |c| {
+        &mut c.suspend_then_hibernate
+      }),
+      (SessionAction::Reboot, |c| &mut c.reboot),
+      (SessionAction::PowerOff, |c| &mut c.power_off),
+      (SessionAction::RebootToFirmware, |c| {
+        &mut c.reboot_to_firmware
+      }),
+    ];
+    for (action, flag) in cases {
+      let mut caps = all();
+      assert!(Item::Action(action).enabled(&caps), "{action:?}");
+      *flag(&mut caps) = false;
+      assert!(!Item::Action(action).enabled(&caps), "{action:?}");
+      // the others stay enabled
+      let others = cases.iter().filter(|(a, _)| *a != action);
+      assert!(others.clone().all(|(a, _)| Item::Action(*a).enabled(&caps)));
+    }
+    let none = SessionCapabilities::default();
+    for item in [
+      Item::Lock,
+      Item::Action(SessionAction::Logout),
+      Item::Back,
+      Item::BootEntry("x".into()),
+    ] {
+      assert!(item.enabled(&none), "{item:?}");
+    }
+  }
+
+  #[test]
+  fn reboot_to_needs_real_entries() {
+    let mut caps = all();
+    assert!(Item::RebootTo.enabled(&caps));
+    caps.boot_entries = vec!["auto-reboot-to-firmware-setup".into()];
+    assert!(!Item::RebootTo.enabled(&caps));
+    caps.boot_entries.clear();
+    assert!(!Item::RebootTo.enabled(&caps));
+  }
+
+  #[test]
+  fn labels() {
+    assert_eq!(
+      Item::BootEntry("nixos-generation-42.conf".into()).label(),
+      "NixOS generation 42"
+    );
+    assert_eq!(Item::BootEntry("windows.conf".into()).label(), "Windows");
+    let mut labels: Vec<_> = entries(false, None)
+      .iter()
+      .chain([&Item::Back])
+      .map(Item::label)
+      .collect();
+    let count = labels.len();
+    labels.sort();
+    labels.dedup();
+    assert_eq!(labels.len(), count);
+  }
+
+  #[test]
+  fn icons() {
+    let mut icons: Vec<_> = entries(false, None).iter().map(Item::icon).collect();
+    let count = icons.len();
+    icons.sort_by_key(|i| format!("{i:?}"));
+    icons.dedup();
+    assert_eq!(icons.len(), count);
+    assert_eq!(Item::Back.icon(), IconName::ChevronLeft);
+    assert_eq!(Item::BootEntry("x".into()).icon(), IconName::RotateCw);
   }
 }

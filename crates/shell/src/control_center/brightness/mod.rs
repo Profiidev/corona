@@ -204,3 +204,32 @@ impl Render for BrightnessPanel {
       )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn display(name: Option<&str>, kind: DisplayKind) -> Display {
+    Display {
+      id: "test".into(),
+      output: None,
+      name: name.map(Into::into),
+      kind,
+      brightness: 0,
+      max: 100,
+      unavailable: None,
+    }
+  }
+
+  #[test]
+  fn display_name() {
+    assert_eq!(
+      super::display_name(&display(Some("Dell U2720Q"), DisplayKind::Backlight)),
+      "Dell U2720Q"
+    );
+    let builtin = super::display_name(&display(None, DisplayKind::Backlight));
+    let external = super::display_name(&display(None, DisplayKind::External));
+    assert!(!builtin.is_empty() && !external.is_empty());
+    assert_ne!(builtin, external);
+  }
+}

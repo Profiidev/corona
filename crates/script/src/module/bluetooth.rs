@@ -78,23 +78,39 @@ impl From<&bt::Device> for Device {
 fn pairing_request(cx: &App) -> Option<PairingRequest> {
   let bluetooth = cx.bluetooth();
   let request = bluetooth.pairing_request(cx)?;
-  let device = bluetooth
-    .list_devices(cx)
-    .iter()
-    .find(|d| d.path.as_str() == request.device);
-  let (kind, passkey) = match request.kind {
+  Some(describe_pairing(
+    &request.device,
+    request.kind,
+    bluetooth.list_devices(cx),
+  ))
+}
+
+/// The request for the device at the object path `device`, named by the path if it is unknown.
+fn describe_pairing(device: &str, kind: bt::PairingKind, devices: &[bt::Device]) -> PairingRequest {
+  let path = device;
+  let device = devices.iter().find(|d| d.path.as_str() == path);
+  let (kind, passkey) = match kind {
     bt::PairingKind::Confirm { passkey } => (PairingKind::Confirm, Some(passkey)),
     bt::PairingKind::Authorize => (PairingKind::Authorize, None),
     bt::PairingKind::PinCode => (PairingKind::PinCode, None),
     bt::PairingKind::Passkey => (PairingKind::Passkey, None),
     bt::PairingKind::DisplayPasskey { passkey } => (PairingKind::DisplayPasskey, Some(passkey)),
   };
-  Some(PairingRequest {
+  PairingRequest {
     address: device.map(|d| d.address.clone()),
-    name: device.map_or_else(|| request.device.clone(), |d| d.name.clone()),
+    name: device.map_or_else(|| path.to_string(), |d| d.name.clone()),
     kind,
     passkey: passkey.map(|passkey| format!("{passkey:06}")),
-  })
+  }
+}
+
+/// A code accepts with that code; rejecting ignores it.
+fn pairing_answer(accept: bool, code: Option<String>) -> bt::PairingAnswer {
+  match (accept, code) {
+    (false, _) => bt::PairingAnswer::Reject,
+    (true, Some(code)) => bt::PairingAnswer::Code(code),
+    (true, None) => bt::PairingAnswer::Accept,
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -144,12 +160,9 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     .func(named!(
       "answerPairing",
       |cx: &mut App, accept: bool, code: Option<String>| {
-        let answer = match (accept, code) {
-          (false, _) => bt::PairingAnswer::Reject,
-          (true, Some(code)) => bt::PairingAnswer::Code(code),
-          (true, None) => bt::PairingAnswer::Accept,
-        };
-        cx.bluetooth().clone().answer_pairing(cx, answer)
+        cx.bluetooth()
+          .clone()
+          .answer_pairing(cx, pairing_answer(accept, code))
       }
     ))
     .func(named!(
@@ -182,4 +195,121 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       |cx: Cx, bt: Glob<Bluetooth>, address: String| bt.forget(&address, &cx)
     ))
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn device(path: &str, address: &str, name: &str) -> bt::Device {
+    bt::Device {
+      path: path.try_into().unwrap(),
+      address: address.into(),
+      name: name.into(),
+      icon: Some("audio-headset".into()),
+      paired: true,
+      connected: false,
+      trusted: true,
+      battery: Some(80),
+      rssi: None,
+    }
+  }
+
+  fn json(value: impl Serialize) -> serde_json::Value {
+    serde_json::to_value(value).unwrap()
+  }
+
+  #[test]
+  fn pairing_kinds() {
+    let all = [
+      (
+        bt::PairingKind::Confirm { passkey: 42 },
+        "confirm",
+        Some("000042"),
+      ),
+      (bt::PairingKind::Authorize, "authorize", None),
+      (bt::PairingKind::PinCode, "pin_code", None),
+      (bt::PairingKind::Passkey, "passkey", None),
+      (
+        bt::PairingKind::DisplayPasskey { passkey: 123_456 },
+        "display_passkey",
+        Some("123456"),
+      ),
+    ];
+    for (kind, name, passkey) in all {
+      let json = json(describe_pairing("/dev", kind, &[]));
+      assert_eq!(json["kind"], name);
+      assert_eq!(json["passkey"].as_str(), passkey);
+    }
+  }
+
+  #[test]
+  fn pairing_device_lookup() {
+    let devices = [
+      device("/org/bluez/hci0/dev_1", "00:11", "Headset"),
+      device("/org/bluez/hci0/dev_2", "00:22", "Mouse"),
+    ];
+    let request = describe_pairing(
+      "/org/bluez/hci0/dev_2",
+      bt::PairingKind::Authorize,
+      &devices,
+    );
+    assert_eq!(request.address.as_deref(), Some("00:22"));
+    assert_eq!(request.name, "Mouse");
+
+    // an unknown device is named by its path
+    let request = describe_pairing(
+      "/org/bluez/hci0/dev_3",
+      bt::PairingKind::Authorize,
+      &devices,
+    );
+    assert_eq!(request.address, None);
+    assert_eq!(request.name, "/org/bluez/hci0/dev_3");
+  }
+
+  #[test]
+  fn pairing_answers() {
+    assert!(matches!(
+      pairing_answer(false, None),
+      bt::PairingAnswer::Reject
+    ));
+    assert!(matches!(
+      pairing_answer(false, Some("1234".into())),
+      bt::PairingAnswer::Reject
+    ));
+    assert!(matches!(
+      pairing_answer(true, None),
+      bt::PairingAnswer::Accept
+    ));
+    assert!(matches!(
+      pairing_answer(true, Some("1234".into())),
+      bt::PairingAnswer::Code(code) if code == "1234"
+    ));
+  }
+
+  #[test]
+  fn devices_and_adapters() {
+    let converted = json(Device::from(&device(
+      "/org/bluez/hci0/dev_1",
+      "00:11",
+      "Headset",
+    )));
+    assert_eq!(converted["address"], "00:11");
+    assert_eq!(converted["battery"], 80);
+    assert!(converted["rssi"].is_null());
+    assert!(converted.get("path").is_none());
+
+    let adapter = bt::Adapter {
+      path: "/org/bluez/hci0".try_into().unwrap(),
+      name: "hci0".into(),
+      powered: true,
+      discoverable: false,
+      discovering: true,
+    };
+    let converted = json(Adapter::from(&adapter));
+    assert_eq!(converted["name"], "hci0");
+    assert_eq!(converted["powered"], true);
+    assert_eq!(converted["discoverable"], false);
+    assert_eq!(converted["discovering"], true);
+  }
 }

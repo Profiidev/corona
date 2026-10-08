@@ -214,3 +214,54 @@ impl Render for MediaPanel {
       .child(self.player(theme, cx))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::time::Instant;
+
+  use super::*;
+
+  fn player(name: &str, identity: &str) -> Player {
+    Player {
+      name: name.into(),
+      identity: identity.into(),
+      desktop_entry: None,
+      status: PlaybackStatus::Stopped,
+      title: None,
+      artists: vec![],
+      album: None,
+      art_url: None,
+      length: None,
+      track_id: None,
+      position: Duration::ZERO,
+      position_at: Instant::now(),
+      rate: 1.,
+      volume: None,
+      shuffle: None,
+      loop_status: None,
+      can_control: false,
+      can_play: false,
+      can_pause: false,
+      can_go_next: false,
+      can_go_previous: false,
+      can_seek: false,
+    }
+  }
+
+  #[test]
+  fn player_items_active_first() {
+    let items = player_items(&[]);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, None);
+    assert_eq!(items[0].title, "Active player");
+  }
+
+  #[test]
+  fn player_items_keep_order() {
+    let items = player_items(&[player("b.spotify", "Spotify"), player("a.vlc", "VLC")]);
+    let names: Vec<_> = items.iter().map(|i| i.name.as_deref()).collect();
+    assert_eq!(names, [None, Some("b.spotify"), Some("a.vlc")]);
+    assert_eq!(items[1].title(), "Spotify");
+    assert_eq!(items[2].value(), &Some("a.vlc".to_string()));
+  }
+}

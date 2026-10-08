@@ -33,6 +33,13 @@ impl Default for Options {
   }
 }
 
+/// Whether `format` shows seconds, so the clock ticks every second instead of every minute
+fn needs_seconds(format: &str) -> bool {
+  ["%S", "%T", "%s", "%r", "%X", "%c"]
+    .iter()
+    .any(|s| format.contains(s))
+}
+
 pub struct Clock {
   format: String,
   _ticker: Task<()>,
@@ -43,9 +50,7 @@ impl Widget for Clock {
   type Options = Options;
 
   fn init(cx: &mut Context<'_, Self>, _display_id: Uuid, options: Self::Options) -> Self {
-    let seconds = ["%S", "%T", "%s", "%r", "%X", "%c"]
-      .iter()
-      .any(|s| options.format.contains(s));
+    let seconds = needs_seconds(&options.format);
     let ticker = cx.spawn(async move |this, cx| {
       loop {
         let wait = match seconds {
@@ -80,5 +85,27 @@ impl Render for Clock {
           .toggle_panel::<Standalone<CalendarPanel>>(window)
           .log_err();
       }))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn needs_seconds() {
+    for format in ["%H:%M:%S", "%T", "%s", "%r", "%X", "%c"] {
+      assert!(super::needs_seconds(format), "{format}");
+    }
+    for format in ["%H:%M", "%a %b %-d", "", &Options::default().format] {
+      assert!(!super::needs_seconds(format), "{format}");
+    }
+  }
+
+  #[test]
+  #[ignore = "bug: padding flags like %-S hide seconds from the check, the clock ticks per minute"]
+  fn bug_needs_seconds_with_flags() {
+    assert!(super::needs_seconds("%H:%M:%-S"));
+    assert!(super::needs_seconds("%_S"));
   }
 }

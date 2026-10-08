@@ -10,3 +10,7 @@ corona_desktop.workspace = true
 anyhow.workspace = true
 gpui-kit.workspace = true
 include_dir = "0.7.4"
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

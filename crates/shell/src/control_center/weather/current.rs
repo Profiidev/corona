@@ -187,9 +187,38 @@ impl WeatherPanel {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+
+  #[test]
+  fn degrees() {
+    assert_eq!(super::degrees(21.4), "21°");
+    assert_eq!(super::degrees(21.6), "22°");
+    assert_eq!(super::degrees(-3.6), "-4°");
+    assert_eq!(super::degrees(0.0), "0°");
+  }
+
+  #[test]
+  #[ignore = "bug: values in (-0.5, 0) render as \"-0°\""]
+  fn bug_degrees_negative_zero() {
+    assert_eq!(super::degrees(-0.4), "0°");
+  }
+
+  #[test]
+  fn speed() {
+    assert_eq!(super::speed(12.6, Units::Metric), "13 km/h");
+    assert_eq!(super::speed(12.4, Units::Imperial), "12 mph");
+    assert_ne!(
+      super::speed(10., Units::Metric),
+      super::speed(10., Units::Imperial)
+    );
+  }
+
   #[test]
   fn clock() {
     assert_eq!(super::clock("2026-10-01T07:10"), "07:10");
     assert_eq!(super::clock("07:10"), "07:10");
+    assert_eq!(super::clock(""), "");
+    // only the first `T` splits
+    assert_eq!(super::clock("aTbTc"), "bTc");
   }
 }

@@ -180,3 +180,75 @@ impl RenderOnce for WindowIcon {
       .children(self.children)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use super::*;
+  use crate::test_view;
+
+  const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>"#;
+
+  /// The caches are process-wide, so every test asks for names of its own
+  fn names(test: &str) -> Vec<String> {
+    vec![format!("corona-test-{test}-{}", std::process::id())]
+  }
+
+  #[gpui::test]
+  fn first_ask_is_pending_then_resolved_once(cx: &mut TestAppContext) {
+    let key = names("resolve");
+    cx.update(|cx| {
+      assert_eq!(icon(key.clone(), 16, cx), None);
+      // still pending, not started twice
+      assert_eq!(icon(key.clone(), 16, cx), None);
+    });
+    cx.run_until_parked();
+    let expected = icon_for_names_or_default(key.iter().map(String::as_str), 16);
+    cx.update(|cx| assert_eq!(icon(key.clone(), 16, cx), expected));
+  }
+
+  #[gpui::test]
+  fn rasterize_caches_per_path_and_size(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("icon.svg");
+    std::fs::write(&path, SVG).unwrap();
+    cx.update(|cx| {
+      let a = rasterize(&path, 16, cx).expect("rasterized");
+      let b = rasterize(&path, 16, cx).unwrap();
+      assert!(Arc::ptr_eq(&a, &b));
+      let c = rasterize(&path, 32, cx).unwrap();
+      assert!(!Arc::ptr_eq(&a, &c));
+    });
+  }
+
+  #[gpui::test]
+  fn rasterize_rejects_missing_and_broken_files(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let broken = dir.path().join("broken.svg");
+    std::fs::write(&broken, "not svg").unwrap();
+    cx.update(|cx| {
+      assert!(rasterize(&dir.path().join("missing.svg"), 16, cx).is_none());
+      assert!(rasterize(&broken, 16, cx).is_none());
+    });
+  }
+
+  #[gpui::test]
+  fn renders_a_placeholder_then_the_icon(cx: &mut TestAppContext) {
+    let key = names("render");
+    let (handle, _) = test_view::open(cx, move |_, _| {
+      gpui_kit::div()
+        .child(
+          WindowIcon::new("Firefox", "a")
+            .names(key.clone())
+            .size(24)
+            .child(gpui_kit::div()),
+        )
+        .child(WindowIcon::new("", "b").size(24))
+        .into_any_element()
+    });
+    test_view::draw(handle, cx);
+    cx.run_until_parked();
+    test_view::draw(handle, cx);
+  }
+}

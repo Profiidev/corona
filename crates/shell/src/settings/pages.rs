@@ -1045,3 +1045,53 @@ fn system() -> SettingPage {
     ],
   )
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use std::collections::HashSet;
+
+  #[test]
+  fn page_names_unique() {
+    let names: HashSet<_> = PAGES.iter().collect();
+    assert_eq!(names.len(), PAGES.len());
+    assert!(PAGES.iter().all(|p| !p.is_empty() && !p.contains(' ')));
+  }
+
+  #[gpui::test]
+  fn every_name_has_a_page(cx: &mut TestAppContext) {
+    let pages = cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(Config::default());
+      all(cx).len()
+    });
+    assert_eq!(pages, PAGES.len());
+  }
+
+  #[test]
+  fn some_is_none_for_blank() {
+    assert_eq!(some(String::new()), None);
+    assert_eq!(some("  ".into()), None);
+    assert_eq!(some("x".into()), Some("x".into()));
+    // kept as typed
+    assert_eq!(some(" x ".into()), Some(" x ".into()));
+  }
+
+  #[test]
+  fn idle_behavior_creates_or_returns() {
+    let mut c = Config::default();
+    c.idle.behavior.clear();
+    idle_behavior(&mut c, "new").timeout = 42.;
+    assert_eq!(c.idle.behavior["new"].timeout, 42.);
+    assert_eq!(
+      c.idle.behavior["new"].action,
+      IdleBehavior::default().action
+    );
+
+    idle_behavior(&mut c, "new").command = "x".into();
+    assert_eq!(c.idle.behavior.len(), 1);
+    assert_eq!(c.idle.behavior["new"].timeout, 42.);
+    assert_eq!(c.idle.behavior["new"].command, "x");
+  }
+}

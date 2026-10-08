@@ -50,3 +50,35 @@ impl WidgetData {
     (self.init)(cx, display_id, options)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{Entity, TestAppContext};
+
+  use super::*;
+  use crate::test_support::{Label, LabelOptions};
+
+  fn built(options: Option<serde_json::Value>, cx: &mut TestAppContext) -> Option<LabelOptions> {
+    cx.update(|cx| {
+      let view = WidgetData::new::<Label>().init(cx, Uuid::nil(), options.as_ref())?;
+      let label: Entity<Label> = view.downcast().ok()?;
+      Some(label.read(cx).0.clone())
+    })
+  }
+
+  #[gpui_kit::test]
+  fn options_parse_or_default_or_reject(cx: &mut TestAppContext) {
+    assert_eq!(WidgetData::new::<Label>().name, "label");
+    assert_eq!(built(None, cx), Some(LabelOptions::default()));
+    assert_eq!(
+      built(Some(serde_json::json!({ "text": "hi" })), cx),
+      Some(LabelOptions { text: "hi".into() })
+    );
+    assert_eq!(
+      built(Some(serde_json::json!({})), cx),
+      Some(LabelOptions::default())
+    );
+    assert_eq!(built(Some(serde_json::json!({ "text": 3 })), cx), None);
+    assert_eq!(built(Some(serde_json::json!("nope")), cx), None);
+  }
+}

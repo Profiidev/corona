@@ -4,10 +4,11 @@ use gpui_kit::{
   AnyElement, App, Context, ElementId, IntoElement, ParentElement, RenderOnce, Styled, WeakEntity,
   Window,
   base::FocusableExt,
-  component::{self, ActiveTheme, Icon, Sizable, button::ButtonVariants},
-  div,
-  prelude::FluentBuilder,
-  px,
+  component::{
+    self, ActiveTheme, Icon, Sizable,
+    button::{ButtonVariant, ButtonVariants},
+  },
+  div, px,
 };
 
 use crate::{
@@ -74,11 +75,7 @@ impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
     });
 
     let button = component::button::Button::new(self.id)
-      .map(|b| match (self.danger, grouped) {
-        (true, _) => b.danger(),
-        (false, true) => b.ghost(),
-        (false, false) => b.secondary(),
-      })
+      .with_variant(variant(self.danger, grouped))
       .rounded_full()
       .focus_ring(false)
       .with_size(px(ICON_SIZE))
@@ -101,5 +98,27 @@ impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
       });
 
     div().relative().child(button).children(dot)
+  }
+}
+
+/// Danger wins; otherwise no fill of its own inside a group's pill
+fn variant(danger: bool, grouped: bool) -> ButtonVariant {
+  match (danger, grouped) {
+    (true, _) => ButtonVariant::Danger,
+    (false, true) => ButtonVariant::Ghost,
+    (false, false) => ButtonVariant::Secondary,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn variant_by_danger_then_group() {
+    assert_eq!(variant(true, true), ButtonVariant::Danger);
+    assert_eq!(variant(true, false), ButtonVariant::Danger);
+    assert_eq!(variant(false, true), ButtonVariant::Ghost);
+    assert_eq!(variant(false, false), ButtonVariant::Secondary);
   }
 }

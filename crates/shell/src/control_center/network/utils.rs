@@ -33,3 +33,22 @@ impl NetworkPanel {
     Some(ErrorCard::new("wifi-failure", error))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use corona_network_manager::{DeviceState, InterfaceType};
+
+  use super::*;
+
+  #[test]
+  fn address_missing() {
+    let interface = Interface {
+      path: zbus::zvariant::OwnedObjectPath::try_from("/test").unwrap(),
+      name: "eth0".into(),
+      ip: None,
+      kind: InterfaceType::Wired,
+      state: DeviceState::Disconnected,
+    };
+    assert_eq!(address(&interface), "No address");
+  }
+}

@@ -174,4 +174,55 @@ mod tests {
     assert_eq!(super::ago(Duration::from_secs(90 * 60)), "1h");
     assert_eq!(super::ago(Duration::from_secs(3 * 86400)), "3d");
   }
+
+  #[test]
+  fn ago_boundaries() {
+    let ago = |s| super::ago(Duration::from_secs(s));
+    assert_eq!(ago(59), "now");
+    assert_eq!(ago(60), "1m");
+    assert_eq!(ago(3599), "59m");
+    assert_eq!(ago(3600), "1h");
+    assert_eq!(ago(86399), "23h");
+    assert_eq!(ago(86400), "1d");
+  }
+
+  fn notification(app_name: &str, desktop_entry: Option<&str>) -> Notification {
+    Notification {
+      id: 1,
+      app_name: app_name.into(),
+      app_icon: String::new(),
+      summary: String::new(),
+      body: String::new(),
+      actions: vec![],
+      urgency: Urgency::Normal,
+      desktop_entry: desktop_entry.map(Into::into),
+      resident: false,
+      time: std::time::SystemTime::UNIX_EPOCH,
+      read: false,
+    }
+  }
+
+  #[test]
+  fn icon() {
+    let icon = |app, entry| super::icon(&notification(app, entry));
+    assert_eq!(icon("Flameshot", None), IconName::Camera);
+    assert_eq!(
+      icon("Thunderbird", Some("thunderbird-mail")),
+      IconName::MessageSquare
+    );
+    assert_eq!(icon("DISCORD", None), IconName::MessageSquare);
+    assert_eq!(icon("upower", Some("Battery")), IconName::BatteryFull);
+    assert_eq!(icon("nix", None), IconName::Package);
+    assert_eq!(icon("Firefox", None), IconName::Bell);
+    assert_eq!(icon("", None), IconName::Bell);
+  }
+
+  #[test]
+  fn icon_first_row_wins() {
+    // "screen" (camera) and "update" (package) both match
+    assert_eq!(
+      super::icon(&notification("screen update", None)),
+      IconName::Camera
+    );
+  }
 }

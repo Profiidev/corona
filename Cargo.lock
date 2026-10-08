@@ -1846,6 +1846,10 @@ dependencies = [
  "corona_ipc",
  "corona_shell",
  "corona_surface",
+ "corona_utils",
+ "gpui-kit",
+ "serde_json",
+ "tempfile",
  "tracing",
 ]
 
@@ -1858,6 +1862,7 @@ dependencies = [
  "corona_desktop",
  "gpui-kit",
  "include_dir",
+ "tempfile",
  "tracing",
 ]
 
@@ -1893,6 +1898,7 @@ dependencies = [
  "serde",
  "serde_ignored",
  "serde_json",
+ "tempfile",
  "toml 1.1.6+spec-1.1.0",
  "tracing",
 ]
@@ -1926,10 +1932,12 @@ name = "corona_ipc"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_utils",
  "gpui-kit",
  "serde",
  "serde_json",
  "smol",
+ "tempfile",
  "tracing",
 ]
 
@@ -2054,6 +2062,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "ts-rs",
 ]
@@ -2098,6 +2107,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "uuid",
  "zbus",
@@ -2116,6 +2126,7 @@ dependencies = [
  "gpui-kit",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "uuid",
 ]

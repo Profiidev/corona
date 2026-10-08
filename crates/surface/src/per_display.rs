@@ -94,14 +94,129 @@ fn reconcile(this: WeakEntity<PerDisplay>, cx: &mut App) {
     )
   });
 
-  for display in current.difference(&wanted) {
-    let windows = this.update(cx, |this, _| this.windows.remove(display));
+  let (close, add) = diff(&current, &wanted);
+  for display in close {
+    let windows = this.update(cx, |this, _| this.windows.remove(&display));
     for handle in windows.into_iter().flatten() {
       let _ = handle.update(cx, |_, window, _| window.remove_window());
     }
   }
-  for display in wanted.difference(&current) {
-    let windows = open(cx, *display);
-    this.update(cx, |this, _| this.windows.insert(*display, windows));
+  for display in add {
+    let windows = open(cx, display);
+    this.update(cx, |this, _| this.windows.insert(display, windows));
+  }
+}
+
+/// The displays whose windows go, and the ones that get windows
+fn diff(
+  current: &HashSet<DisplayId>,
+  wanted: &HashSet<DisplayId>,
+) -> (Vec<DisplayId>, Vec<DisplayId>) {
+  (
+    current.difference(wanted).copied().collect(),
+    wanted.difference(current).copied().collect(),
+  )
+}
+
+#[cfg(test)]
+mod tests {
+  use std::cell::Cell;
+
+  use gpui_kit::TestAppContext;
+
+  use super::*;
+  use crate::test_support::{self, monitor, plain_window, windows};
+
+  fn ids(ids: &[u64]) -> HashSet<DisplayId> {
+    ids.iter().map(|&i| DisplayId::new(i)).collect()
+  }
+
+  fn sorted(mut v: Vec<DisplayId>) -> Vec<DisplayId> {
+    v.sort_by_key(|d| u64::from(*d));
+    v
+  }
+
+  #[test]
+  fn diff_closes_the_gone_and_opens_the_new() {
+    let (close, open) = diff(&ids(&[1, 2, 3]), &ids(&[2, 3, 4, 5]));
+    assert_eq!(close, [DisplayId::new(1)]);
+    assert_eq!(sorted(open), [DisplayId::new(4), DisplayId::new(5)]);
+    // reconciled already: nothing to do
+    let (close, open) = diff(&ids(&[1, 2]), &ids(&[1, 2]));
+    assert!(close.is_empty() && open.is_empty());
+    let (close, open) = diff(&ids(&[]), &ids(&[]));
+    assert!(close.is_empty() && open.is_empty());
+  }
+
+  fn per_display(cx: &mut TestAppContext) -> (Entity<PerDisplay>, Rc<Cell<usize>>) {
+    let opened = Rc::new(Cell::new(0));
+    let count = opened.clone();
+    let this = cx.update(|cx| {
+      PerDisplay::new(cx, move |_, _| {
+        count.set(count.get() + 1);
+        Vec::new()
+      })
+    });
+    (this, opened)
+  }
+
+  #[gpui_kit::test]
+  fn opens_nothing_without_a_matching_monitor(cx: &mut TestAppContext) {
+    let fake = test_support::setup(cx);
+    fake.monitors.borrow_mut().push(monitor("DP-1"));
+    let (this, opened) = per_display(cx);
+    // waits for the monitor's display, then gives up
+    cx.executor()
+      .advance_clock(DISPLAY_WAIT_TICK * DISPLAY_WAIT_TICKS as u32);
+    cx.run_until_parked();
+    assert_eq!(opened.get(), 0);
+    cx.update(|cx| {
+      let display = cx.displays()[0].id();
+      assert!(this.read(cx).windows(display).is_empty());
+    });
+  }
+
+  #[gpui_kit::test]
+  fn reconcile_closes_windows_on_unwanted_displays(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let (this, opened) = per_display(cx);
+    cx.run_until_parked();
+    let before = windows(cx);
+    let handle = plain_window(cx);
+    let display = DisplayId::new(99);
+    this.update(cx, |this, _| this.windows.insert(display, vec![handle]));
+    assert_eq!(this.read_with(cx, |this, _| this.windows(display).len()), 1);
+
+    cx.update(|cx| reconcile(this.downgrade(), cx));
+    cx.run_until_parked();
+    assert!(this.read_with(cx, |this, _| this.windows(display).is_empty()));
+    assert_eq!(windows(cx), before);
+    assert_eq!(opened.get(), 0);
+  }
+
+  #[gpui_kit::test]
+  fn close_removes_every_window(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let (this, _) = per_display(cx);
+    let before = windows(cx);
+    let handles = vec![plain_window(cx), plain_window(cx)];
+    this.update(cx, |this, _| {
+      this.windows.insert(DisplayId::new(1), handles)
+    });
+    cx.update(|cx| PerDisplay::close(this.clone(), cx));
+    cx.run_until_parked();
+    assert_eq!(windows(cx), before);
+    assert!(this.read_with(cx, |this, _| this.windows.is_empty()));
+  }
+
+  #[gpui_kit::test]
+  fn a_dropped_set_is_not_reconciled(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let (this, opened) = per_display(cx);
+    let weak = this.downgrade();
+    drop(this);
+    cx.update(|cx| reconcile(weak, cx));
+    cx.run_until_parked();
+    assert_eq!(opened.get(), 0);
   }
 }

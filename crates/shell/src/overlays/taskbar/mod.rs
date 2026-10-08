@@ -85,6 +85,11 @@ fn height(icon_size: f32) -> f32 {
   PADDING + icon_size + PADDING
 }
 
+fn width(apps: usize, icon_size: f32) -> f32 {
+  let n = apps as f32;
+  PADDING * 2. + n * icon_size + (n - 1.).max(0.) * GAP
+}
+
 fn create_taskbar(cx: &mut App, display: DisplayId) -> Result<AnyWindowHandle> {
   let handle = cx.open_window(
     WindowOptions {
@@ -170,8 +175,7 @@ impl Taskbar {
   }
 
   fn width(&self) -> f32 {
-    let n = self.apps.len() as f32;
-    PADDING * 2. + n * self.icon_size + (n - 1.).max(0.) * GAP
+    width(self.apps.len(), self.icon_size)
   }
 
   fn set_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
@@ -474,5 +478,187 @@ impl Render for Taskbar {
               .children(apps),
           ),
       )
+  }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+  use super::*;
+
+  pub fn window(address: &str, class: &str, width: i32, height: i32) -> types::Window {
+    types::Window {
+      address: address.into(),
+      monitor: 0,
+      workspace: "1".into(),
+      class: class.into(),
+      title: address.into(),
+      x: 0,
+      y: 0,
+      width,
+      height,
+      floating: false,
+      pinned: false,
+      fullscreen: false,
+      hidden: false,
+      focus_history_id: 0,
+    }
+  }
+
+  #[test]
+  fn group_by_class_sorted() {
+    let windows = [
+      window("1", "kitty", 1, 1),
+      window("2", "firefox", 1, 1),
+      window("3", "kitty", 1, 1),
+      window("4", "", 1, 1),
+    ];
+    let apps = group(&windows);
+    let classes: Vec<_> = apps.iter().map(|a| a.class.as_str()).collect();
+    assert_eq!(classes, ["", "firefox", "kitty"]);
+    // order inside a group is kept
+    let kitty: Vec<_> = apps[2].windows.iter().map(|w| w.address.as_str()).collect();
+    assert_eq!(kitty, ["1", "3"]);
+    assert_eq!(apps.iter().map(|a| a.windows.len()).sum::<usize>(), 4);
+  }
+
+  #[test]
+  fn group_empty() {
+    assert!(group(&[]).is_empty());
+  }
+
+  #[test]
+  fn sizes() {
+    assert_eq!(height(32.), 32. + 2. * PADDING);
+    assert_eq!(width(0, 32.), 2. * PADDING);
+    assert_eq!(width(1, 32.), 2. * PADDING + 32.);
+    assert_eq!(width(3, 32.), 2. * PADDING + 3. * 32. + 2. * GAP);
+  }
+
+  #[test]
+  fn menu_grows_with_windows() {
+    let one = menu::size(&[window("1", "a", 1, 1)]);
+    let two = menu::size(&[window("1", "a", 1, 1), window("2", "a", 1, 1)]);
+    assert!(two.height > one.height);
+    assert_eq!(one.width, two.width);
+    assert!(menu::size(&[]).height > px(0.));
+  }
+
+  use crate::test_support::{FakeCompositor, setup};
+  use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
+
+  fn open_taskbar(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Taskbar>) {
+    unsafe { std::env::set_var("WAYLAND_DISPLAY", "/nonexistent/corona-test") };
+    setup(
+      FakeCompositor {
+        windows: vec![
+          window("1", "kitty", 800, 600),
+          window("2", "firefox", 800, 600),
+          window("3", "kitty", 800, 600),
+        ],
+        ..Default::default()
+      },
+      cx,
+    );
+    let handle = cx.update(|cx| {
+      let display = cx.displays()[0].id();
+      create_taskbar(cx, display).unwrap()
+    });
+    let view = cx
+      .update_window(handle, |root, _, cx| {
+        root
+          .downcast::<Root>()
+          .unwrap()
+          .read(cx)
+          .view()
+          .clone()
+          .downcast::<Taskbar>()
+          .unwrap()
+      })
+      .unwrap();
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+      .unwrap();
+    (handle, view)
+  }
+
+  fn hover(
+    handle: AnyWindowHandle,
+    view: &Entity<Taskbar>,
+    class: &str,
+    hovered: bool,
+    cx: &mut TestAppContext,
+  ) {
+    cx.update_window(handle, |_, window, cx| {
+      view.update(cx, |t, cx| t.icon_hovered(class, hovered, window, cx))
+    })
+    .unwrap();
+  }
+
+  fn preview(view: &Entity<Taskbar>, cx: &mut TestAppContext) -> Option<String> {
+    view.read_with(cx, |t, _| t.preview.as_ref().map(|(c, _, _)| c.clone()))
+  }
+
+  #[gpui::test]
+  fn groups_follow_the_compositor(cx: &mut TestAppContext) {
+    let (_, view) = open_taskbar(cx);
+    let classes = |cx: &mut TestAppContext| {
+      view.read_with(cx, |t, _| {
+        t.apps.iter().map(|a| a.class.clone()).collect::<Vec<_>>()
+      })
+    };
+    assert_eq!(classes(cx), ["firefox", "kitty"]);
+    assert_eq!(view.read_with(cx, |t, _| t.windows("kitty").len()), 2);
+    assert!(view.read_with(cx, |t, _| t.windows("nope").is_empty()));
+
+    let windows = cx.update(|cx| cx.compositor().windows.clone());
+    windows.update(cx, |w, cx| {
+      w.retain(|w| w.class != "firefox");
+      cx.notify();
+    });
+    cx.run_until_parked();
+    assert_eq!(classes(cx), ["kitty"]);
+  }
+
+  #[gpui::test]
+  fn hover_shows_then_hides_preview(cx: &mut TestAppContext) {
+    let (handle, view) = open_taskbar(cx);
+    hover(handle, &view, "kitty", true, cx);
+    // only after a delay
+    assert_eq!(preview(&view, cx), None);
+    cx.executor().advance_clock(PREVIEW_DELAY);
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx).as_deref(), Some("kitty"));
+    assert!(view.read_with(cx, |t, _| t.open()));
+
+    // moving to another icon swaps the shown app
+    hover(handle, &view, "kitty", false, cx);
+    hover(handle, &view, "firefox", true, cx);
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx).as_deref(), Some("firefox"));
+
+    // the preview being hovered keeps it
+    hover(handle, &view, "firefox", false, cx);
+    view.update(cx, |t, cx| t.preview_hovered(true, cx));
+    cx.executor().advance_clock(PREVIEW_HIDE_DELAY * 2);
+    cx.run_until_parked();
+    assert!(preview(&view, cx).is_some());
+
+    view.update(cx, |t, cx| t.preview_hovered(false, cx));
+    cx.executor().advance_clock(PREVIEW_HIDE_DELAY * 2);
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx), None);
+  }
+
+  #[gpui::test]
+  fn no_preview_when_turned_off(cx: &mut TestAppContext) {
+    let (handle, view) = open_taskbar(cx);
+    cx.update(|cx| {
+      let mut config = cx.config().clone();
+      config.taskbar.previews = false;
+      cx.set_global(config);
+    });
+    hover(handle, &view, "kitty", true, cx);
+    cx.executor().advance_clock(PREVIEW_DELAY * 2);
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx), None);
   }
 }

@@ -155,3 +155,50 @@ impl BrightnessPanel {
       }))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn light(brightness: u32, max: u32) -> Light {
+    Light {
+      id: "test".into(),
+      name: "Test".into(),
+      output: None,
+      icon: IconName::Monitor,
+      brightness,
+      max,
+      unavailable: None,
+    }
+  }
+
+  #[test]
+  fn percent() {
+    assert_eq!(light(5, 0).percent(), 0.);
+    assert_eq!(light(0, 255).percent(), 0.);
+    assert_eq!(light(255, 255).percent(), 100.);
+    // rounded to whole percents
+    assert_eq!(light(1, 3).percent(), 33.);
+    assert_eq!(light(2, 3).percent(), 67.);
+  }
+
+  #[test]
+  fn reasons_distinct() {
+    let all = [
+      Unavailable::DdcutilDisabled,
+      Unavailable::DdcutilMissing,
+      Unavailable::Detecting,
+      Unavailable::Unsupported,
+      Unavailable::Failed,
+    ];
+    let mut texts: Vec<_> = all.iter().map(|u| reason(*u).to_string()).collect();
+    assert!(
+      texts
+        .iter()
+        .all(|t| !t.is_empty() && !t.starts_with("app."))
+    );
+    texts.sort();
+    texts.dedup();
+    assert_eq!(texts.len(), all.len());
+  }
+}

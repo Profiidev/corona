@@ -139,25 +139,41 @@ pub(crate) fn apply(loaded: Loaded, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-  use std::fs;
+  use std::{cell::Cell, fs, path::Path, rc::Rc};
 
-  use super::read_files;
-  use crate::{Config, ThemeMode};
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  use super::*;
+  use crate::ThemeMode;
+
+  fn write(dir: &Path, name: &str, content: &str) -> PathBuf {
+    let path = dir.join(name);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, content).unwrap();
+    path
+  }
+
+  /// Points the config and state directories at fresh temp dirs
+  fn xdg() -> (tempfile::TempDir, tempfile::TempDir) {
+    let (config, state) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    unsafe {
+      std::env::set_var("XDG_CONFIG_HOME", config.path());
+      std::env::set_var("XDG_STATE_HOME", state.path());
+    }
+    (config, state)
+  }
 
   #[test]
   fn layers() {
-    let dir = std::env::temp_dir().join(format!("corona-config-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
-    let write = |name: &str, content: &str| {
-      let path = dir.join(name);
-      fs::write(&path, content).unwrap();
-      path
-    };
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
     let a = write(
+      dir,
       "a.toml",
       "[theme]\nname = \"A\"\nmode = \"dark\"\n[osd]\nhide_delay_ms = 900\n",
     );
     let b = write(
+      dir,
       "b.toml",
       "[theme]\nname = \"B\"\n[notification]\ntimout_ms = 1\n",
     );
@@ -179,10 +195,14 @@ mod tests {
     );
 
     // bars come whole from the last layer that has any
-    let bars = write("d.toml", "[bar.side]\nposition = \"left\"\n");
+    let bars = write(dir, "d.toml", "[bar.side]\nposition = \"left\"\n");
     let loaded = read_files(&[a.clone(), bars.clone()]).unwrap();
     assert_eq!(loaded.config.bar.keys().collect::<Vec<_>>(), ["side"]);
-    let more = write("e.toml", "[bar.main]\n[bar.side]\nposition = \"left\"\n");
+    let more = write(
+      dir,
+      "e.toml",
+      "[bar.main]\n[bar.side]\nposition = \"left\"\n",
+    );
     let loaded = read_files(&[bars, more]).unwrap();
     assert_eq!(
       loaded.config.bar.keys().collect::<Vec<_>>(),
@@ -190,20 +210,166 @@ mod tests {
     );
 
     // one idle behavior changed keeps the defaults, its own fields too
-    let idle = write("f.toml", "[idle.behavior.lock]\nenabled = false\n");
+    let idle = write(dir, "f.toml", "[idle.behavior.lock]\nenabled = false\n");
     let loaded = read_files(&[idle]).unwrap();
     let mut defaults = Config::default().idle;
     defaults.behavior.get_mut("lock").unwrap().enabled = false;
     assert_eq!(loaded.config.idle, defaults);
-    let custom = write("g.toml", "[idle.behavior.notify]\ntimeout = 30\n");
+    let custom = write(dir, "g.toml", "[idle.behavior.notify]\ntimeout = 30\n");
     let loaded = read_files(&[custom]).unwrap();
     assert_eq!(loaded.config.idle.behavior.len(), 4);
     assert_eq!(loaded.config.idle.behavior["notify"].timeout, 30.);
 
-    let bad = write("c.toml", "[osd]\nhide_delay_ms = \"soon\"\n");
+    let bad = write(dir, "c.toml", "[osd]\nhide_delay_ms = \"soon\"\n");
     let e = read_files(&[a, b, bad.clone()]).unwrap_err().to_string();
     assert!(e.contains("c.toml"), "{e}");
+  }
 
-    fs::remove_dir_all(dir).unwrap();
+  #[test]
+  fn no_files_is_the_defaults() {
+    let loaded = read_files(&[]).unwrap();
+    assert_eq!(loaded.config, Config::default());
+    assert!(loaded.unknown.is_empty());
+  }
+
+  #[test]
+  fn bad_syntax_names_its_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let good = write(tmp.path(), "good.toml", "[osd]\noffset = 1.0\n");
+    let bad = write(tmp.path(), "broken.toml", "[osd\n");
+    let e = read_files(&[good.clone(), bad]).unwrap_err().to_string();
+    assert!(e.contains("broken.toml"), "{e}");
+    assert!(!e.contains("good.toml"), "{e}");
+  }
+
+  #[test]
+  fn environment_wins_over_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = write(tmp.path(), "a.toml", "[osd]\nhide_delay_ms = 900\n");
+    unsafe { std::env::set_var("CORONA__OSD__HIDE_DELAY_MS", "7") };
+    let loaded = read_files(&[file]).unwrap();
+    assert_eq!(loaded.config.osd.hide_delay_ms, 7);
+  }
+
+  #[test]
+  fn bad_environment_without_files_is_its_own_error() {
+    unsafe { std::env::set_var("CORONA__OSD__HIDE_DELAY_MS", "soon") };
+    let e = read_files(&[]).unwrap_err().to_string();
+    assert!(e.contains("hide_delay_ms"), "{e}");
+  }
+
+  #[test]
+  #[ignore = "bug: a bad CORONA__* value is blamed on the first config file"]
+  fn bug_bad_environment_blamed_on_a_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = write(tmp.path(), "fine.toml", "[osd]\noffset = 1.0\n");
+    unsafe { std::env::set_var("CORONA__OSD__HIDE_DELAY_MS", "soon") };
+    let e = read_files(&[file]).unwrap_err().to_string();
+    assert!(!e.contains("fine.toml"), "{e}");
+  }
+
+  #[test]
+  #[ignore = "bug: documented CORONA_SHELL__PLUGIN_DIR is ignored, config-rs wants CORONA__SHELL__PLUGIN_DIR"]
+  fn bug_documented_env_var_is_ignored() {
+    unsafe { std::env::set_var("CORONA_SHELL__PLUGIN_DIR", "/opt/plugins") };
+    let loaded = read_files(&[]).unwrap();
+    assert_eq!(
+      loaded.config.shell.plugin_dir.as_deref(),
+      Some(Path::new("/opt/plugins"))
+    );
+  }
+
+  #[test]
+  fn config_files_recursive_sorted_toml_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    assert!(config_files(dir).unwrap().is_empty());
+    assert!(config_files(&dir.join("missing")).unwrap().is_empty());
+    for name in [
+      "b.toml",
+      "a.toml",
+      "sub/c.toml",
+      "sub/deep/d.toml",
+      "x.txt",
+      "toml",
+    ] {
+      write(dir, name, "");
+    }
+    let files = config_files(dir).unwrap();
+    let rel: Vec<_> = files.iter().map(|f| f.strip_prefix(dir).unwrap()).collect();
+    assert_eq!(
+      rel,
+      ["a.toml", "b.toml", "sub/c.toml", "sub/deep/d.toml"].map(Path::new)
+    );
+  }
+
+  #[test]
+  fn last_bars_edges() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let bars = write(dir, "a.toml", "[bar.x]\n");
+    let none = write(dir, "b.toml", "[osd]\n");
+    let unreadable = dir.join("missing.toml");
+    let as_dir = dir.join("d.toml");
+    fs::create_dir(&as_dir).unwrap();
+
+    assert!(last_bars(std::slice::from_ref(&none)).unwrap().is_none());
+    let found = last_bars(&[bars.clone(), none.clone(), unreadable, as_dir])
+      .unwrap()
+      .unwrap();
+    assert_eq!(found.keys().collect::<Vec<_>>(), ["x"]);
+
+    let bad = write(dir, "c.toml", "[bar\n");
+    assert!(last_bars(&[bars.clone(), bad]).is_err());
+    let scalar = write(dir, "e.toml", "bar = 5\n");
+    assert!(last_bars(&[bars, scalar]).is_err());
+  }
+
+  #[test]
+  fn read_uses_xdg_dirs_settings_last() {
+    let (config, state) = xdg();
+    assert_eq!(config_dir().unwrap(), config.path().join("corona"));
+    assert_eq!(
+      settings_file().unwrap(),
+      state.path().join("corona/settings.toml")
+    );
+    // nothing there yet
+    assert_eq!(read().unwrap().config, Config::default());
+
+    let dir = config.path().join("corona");
+    write(&dir, "a.toml", "[osd]\noffset = 1.0\nhide_delay_ms = 2\n");
+    write(&dir, "nested/z.toml", "[osd]\noffset = 2.0\n");
+    write(
+      state.path(),
+      "corona/settings.toml",
+      "[osd]\noffset = 3.0\n",
+    );
+    let loaded = read().unwrap();
+    assert_eq!(loaded.config.osd.offset, 3.);
+    assert_eq!(loaded.config.osd.hide_delay_ms, 2);
+  }
+
+  #[gpui::test]
+  fn apply_sets_global_only_on_change(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Config::default()));
+    let count = Rc::new(Cell::new(0));
+    let c = count.clone();
+    cx.update(|cx| {
+      cx.observe_global::<Config>(move |_| c.set(c.get() + 1))
+        .detach()
+    });
+    let loaded = |config| Loaded {
+      config,
+      unknown: vec!["x.y".into()],
+    };
+
+    cx.update(|cx| apply(loaded(Config::default()), cx));
+    assert_eq!(count.get(), 0);
+
+    let mut changed = Config::default();
+    changed.osd.offset = 1.;
+    cx.update(|cx| apply(loaded(changed.clone()), cx));
+    assert_eq!(count.get(), 1);
+    assert_eq!(cx.update(|cx| cx.config().clone()), changed);
   }
 }

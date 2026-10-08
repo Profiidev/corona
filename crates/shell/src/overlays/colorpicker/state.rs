@@ -3,7 +3,8 @@ use corona_capture::{capture_all, image::RgbaImage};
 use corona_compositor::CompositorExt;
 use corona_utils::display::display_uuid;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, ClipboardItem, Global, Window, base::Root, point, px,
+  AnyWindowHandle, App, AppContext, ClipboardItem, Global, Pixels, Point, Window, base::Root,
+  point, px,
 };
 use tracing::{error, warn};
 
@@ -82,11 +83,8 @@ impl ColorPickerState {
       };
 
       let scale = monitor.scale.max(0.1);
-      let (w, h) = (image.width() as f32 / scale, image.height() as f32 / scale);
-      let local = cursor
-        .map(|(x, y)| ((x - monitor.x) as f32, (y - monitor.y) as f32))
-        .filter(|&(x, y)| (0. ..w).contains(&x) && (0. ..h).contains(&y))
-        .map(|(x, y)| point(px(x), px(y)));
+      let origin = (monitor.x, monitor.y);
+      let local = cursor.and_then(|c| cursor_on(c, origin, image.dimensions(), scale));
       if local.is_some()
         && let Some(state) = Self::get(cx)
       {
@@ -115,5 +113,49 @@ impl ColorPickerState {
   pub fn pick(hex: String, window: &mut Window, cx: &mut App) {
     cx.write_to_clipboard(ClipboardItem::new_string(hex));
     Self::close(Some(window), cx);
+  }
+}
+
+/// The global `cursor` relative to a monitor at `origin` whose frame has `size` device
+/// pixels; none when it is elsewhere
+fn cursor_on(
+  cursor: (i32, i32),
+  origin: (i32, i32),
+  size: (u32, u32),
+  scale: f32,
+) -> Option<Point<Pixels>> {
+  let (w, h) = (size.0 as f32 / scale, size.1 as f32 / scale);
+  let (x, y) = ((cursor.0 - origin.0) as f32, (cursor.1 - origin.1) as f32);
+  ((0. ..w).contains(&x) && (0. ..h).contains(&y)).then(|| point(px(x), px(y)))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cursor_inside_is_local() {
+    let p = cursor_on((1930, 15), (1920, 0), (2560, 1440), 1.).unwrap();
+    assert_eq!(p, point(px(10.), px(15.)));
+    assert_eq!(
+      cursor_on((1920, 0), (1920, 0), (10, 10), 1.),
+      Some(point(px(0.), px(0.)))
+    );
+  }
+
+  #[test]
+  fn cursor_outside_is_none() {
+    let size = (100, 100);
+    for c in [(-1, 0), (0, -1), (100, 0), (0, 100), (500, 500)] {
+      assert_eq!(cursor_on(c, (0, 0), size, 1.), None, "{c:?}");
+    }
+    assert_eq!(cursor_on((0, 0), (0, 0), (0, 0), 1.), None);
+  }
+
+  #[test]
+  fn scale_shrinks_logical_area() {
+    // 200 device pixels at scale 2 are 100 logical ones
+    assert!(cursor_on((99, 99), (0, 0), (200, 200), 2.).is_some());
+    assert!(cursor_on((100, 50), (0, 0), (200, 200), 2.).is_none());
   }
 }

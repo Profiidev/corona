@@ -252,11 +252,59 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
 
 #[cfg(test)]
 mod tests {
-  use std::{collections::VecDeque, time::Instant};
+  use std::{
+    collections::VecDeque,
+    time::{Duration, Instant, UNIX_EPOCH},
+  };
 
   use corona_sysinfo as si;
 
-  use super::{History, Sample};
+  use super::{History, Sample, SystemInfo};
+
+  fn gpu(vendor: si::GpuVendor) -> si::Gpu {
+    si::Gpu {
+      pci: "0000:01:00.0".into(),
+      name: "GPU".into(),
+      vendor,
+      driver: None,
+      measurable: true,
+    }
+  }
+
+  #[test]
+  fn converts_info() {
+    let mut info = si::SystemInfo {
+      os: "NixOS".into(),
+      kernel: "7.2".into(),
+      hostname: "host".into(),
+      cpu_model: "CPU".into(),
+      cpu_cores: 16,
+      gpus: [
+        si::GpuVendor::Nvidia,
+        si::GpuVendor::Amd,
+        si::GpuVendor::Intel,
+        si::GpuVendor::Other,
+      ]
+      .map(gpu)
+      .into(),
+      compositor: Some("Hyprland".into()),
+      installed: Some(UNIX_EPOCH + Duration::from_secs(5)),
+      booted: UNIX_EPOCH + Duration::from_millis(1500),
+    };
+    let json = serde_json::to_value(SystemInfo::from(&info)).unwrap();
+    let vendors: Vec<_> = (0..4).map(|i| json["gpus"][i]["vendor"].clone()).collect();
+    assert_eq!(vendors, ["nvidia", "amd", "intel", "other"]);
+    assert_eq!(json["gpus"][0]["measurable"], true);
+    assert_eq!(json["cpu_cores"], 16);
+    assert_eq!(json["installed"], 5.);
+    assert_eq!(json["booted"], 1.5);
+
+    info.installed = None;
+    info.booted = UNIX_EPOCH - Duration::from_secs(1);
+    let json = serde_json::to_value(SystemInfo::from(&info)).unwrap();
+    assert!(json["installed"].is_null());
+    assert_eq!(json["booted"], 0.);
+  }
 
   #[test]
   fn converts_samples() {
@@ -280,9 +328,18 @@ mod tests {
         total: 500 << 30,
         available: 200 << 30,
       }],
-      gpus: vec![],
+      gpus: vec![si::GpuSample {
+        pci: "0000:01:00.0".into(),
+        usage: Some(30.),
+        temperature: None,
+        vram_used: Some(1 << 30),
+        vram_total: Some(8 << 30),
+      }],
     };
     let json = serde_json::to_value(Sample::from(&sample)).unwrap();
+    assert_eq!(json["gpus"][0]["usage"], 30.);
+    assert!(json["gpus"][0]["temperature"].is_null());
+    assert_eq!(json["gpus"][0]["vram_total"], 8u64 << 30);
     assert_eq!(json["memory_total"], 16u64 << 30);
     assert_eq!(json["load"][2], 0.3);
     assert_eq!(json["disks"][0]["mount_point"], "/");
@@ -292,8 +349,23 @@ mod tests {
   fn history_keeps_order() {
     let history = si::History {
       cpu: VecDeque::from([1., 2., 3.]),
-      ..Default::default()
+      cpu_temperature: VecDeque::from([40.]),
+      memory: VecDeque::from([50.]),
+      network_rx: VecDeque::from([1.]),
+      network_tx: VecDeque::from([2.]),
+      gpu: VecDeque::from([3.]),
+      gpu_memory: VecDeque::from([4.]),
+      gpu_temperature: VecDeque::from([5.]),
     };
-    assert_eq!(History::from(&history).cpu, [1., 2., 3.]);
+    let converted = History::from(&history);
+    assert_eq!(converted.cpu, [1., 2., 3.]);
+    assert_eq!(converted.cpu_temperature, [40.]);
+    assert_eq!(converted.memory, [50.]);
+    assert_eq!(converted.network_rx, [1.]);
+    assert_eq!(converted.network_tx, [2.]);
+    assert_eq!(converted.gpu, [3.]);
+    assert_eq!(converted.gpu_memory, [4.]);
+    assert_eq!(converted.gpu_temperature, [5.]);
+    assert!(History::from(&si::History::default()).cpu.is_empty());
   }
 }

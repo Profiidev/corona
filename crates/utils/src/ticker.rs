@@ -142,4 +142,33 @@ mod tests {
     let ticks = window.read_with(cx, |v, _| v.ticks).unwrap();
     assert_eq!(ticks, 2);
   }
+
+  #[gpui::test]
+  fn stops_with_its_window(cx: &mut TestAppContext) {
+    struct View;
+    impl gpui_kit::Render for View {
+      fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui_kit::IntoElement {
+        gpui_kit::div()
+      }
+    }
+    let window = cx.add_window(|_, _| View);
+    let task = window
+      .update(cx, |_, window, cx| {
+        cx.ticker_in(
+          window,
+          EVERY,
+          |_: &mut View, _: &mut Window, _: &mut Context<View>| {},
+        )
+      })
+      .unwrap();
+    window
+      .update(cx, |_, window, _| window.remove_window())
+      .unwrap();
+    cx.run_until_parked();
+    cx.executor().advance_clock(EVERY);
+    assert_eq!(
+      futures_lite::future::block_on(futures_lite::future::poll_once(task)),
+      Some(())
+    );
+  }
 }

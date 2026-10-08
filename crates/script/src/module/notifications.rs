@@ -161,3 +161,56 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     ))
     .into()
 }
+
+#[cfg(test)]
+mod tests {
+  use std::time::{Duration, SystemTime};
+
+  use super::*;
+
+  fn notification(urgency: nt::Urgency, time: SystemTime) -> nt::Notification {
+    nt::Notification {
+      id: 4,
+      app_name: "mail".into(),
+      app_icon: String::new(),
+      summary: "New mail".into(),
+      body: "Hi".into(),
+      actions: vec![nt::Action {
+        key: "default".into(),
+        label: "Open".into(),
+      }],
+      urgency,
+      desktop_entry: Some("thunderbird".into()),
+      resident: true,
+      time,
+      read: false,
+    }
+  }
+
+  #[test]
+  fn converts() {
+    let all = [
+      (nt::Urgency::Low, "low"),
+      (nt::Urgency::Normal, "normal"),
+      (nt::Urgency::Critical, "critical"),
+    ];
+    let time = UNIX_EPOCH + Duration::from_millis(1500);
+    for (urgency, name) in all {
+      let json = serde_json::to_value(Notification::from(&notification(urgency, time))).unwrap();
+      assert_eq!(json["urgency"], name);
+      assert_eq!(json["time"], 1.5);
+      assert_eq!(json["actions"][0]["key"], "default");
+      assert_eq!(json["actions"][0]["label"], "Open");
+      assert_eq!(json["desktop_entry"], "thunderbird");
+      assert_eq!(json["read"], false);
+      assert!(json.get("resident").is_none());
+    }
+  }
+
+  #[test]
+  fn time_before_the_epoch_is_zero() {
+    let time = UNIX_EPOCH - Duration::from_secs(1);
+    let converted = Notification::from(&notification(nt::Urgency::Normal, time));
+    assert_eq!(converted.time, 0.);
+  }
+}

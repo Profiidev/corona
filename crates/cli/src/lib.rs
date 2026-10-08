@@ -36,3 +36,28 @@ pub enum Commands {
     command: ConfigCommands,
   },
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn command_tree_is_valid() {
+    Cli::command().debug_assert();
+  }
+
+  #[test]
+  fn top_level() {
+    let parse = |args: &[&str]| <Cli as Parser>::try_parse_from(["corona"].iter().chain(args));
+    assert!(matches!(
+      parse(&["shell"]).unwrap().command,
+      Commands::Shell
+    ));
+    assert!(matches!(
+      parse(&["config", "validate"]).unwrap().command,
+      Commands::Config { .. }
+    ));
+    assert!(parse(&[]).is_err());
+    assert!(parse(&["nope"]).is_err());
+  }
+}

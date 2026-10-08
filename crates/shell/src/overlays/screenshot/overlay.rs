@@ -342,3 +342,51 @@ fn finishing(cx: &App) -> bool {
   cx.try_global::<ScreenshotState>()
     .is_some_and(|s| s.finishing)
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn b(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds {
+      origin: point(px(x), px(y)),
+      size: Size::new(px(w), px(h)),
+    }
+  }
+
+  fn close(a: Bounds<Pixels>, e: Bounds<Pixels>) -> bool {
+    [
+      (a.left(), e.left()),
+      (a.top(), e.top()),
+      (a.right(), e.right()),
+      (a.bottom(), e.bottom()),
+    ]
+    .iter()
+    .all(|(a, e)| (a.as_f32() - e.as_f32()).abs() < 1e-4)
+  }
+
+  #[test]
+  fn snap_scale_one_rounds_to_whole_pixels() {
+    let s = snap(b(10.4, 20.6, 50.2, 30.), 1.);
+    assert!(close(s, b(10., 21., 51., 30.)), "{s:?}");
+  }
+
+  #[test]
+  fn snap_fractional_scale_lands_on_device_pixels() {
+    for scale in [1., 1.25, 1.5, 2.] {
+      let s = snap(b(10.3, 7.7, 33.3, 21.1), scale);
+      for v in [s.left(), s.top(), s.right(), s.bottom()] {
+        let device = v.as_f32() * scale;
+        assert!((device - device.round()).abs() < 1e-3, "{scale}: {v:?}");
+      }
+    }
+    let s = snap(b(0.4, 0.4, 1., 1.), 2.);
+    assert!(close(s, b(0.5, 0.5, 1., 1.)), "{s:?}");
+  }
+
+  #[test]
+  fn snap_keeps_aligned_bounds() {
+    let aligned = b(1.5, 3., 10.5, 6.);
+    assert!(close(snap(aligned, 2.), aligned));
+  }
+}

@@ -11,13 +11,23 @@ use crate::{
 };
 use rust_i18n::t;
 
+type Capture = (CaptureKind, String);
+
+/// A capture in `next` that is not in `prev`, a named one when there is one
+fn started<'a>(prev: &[Capture], next: &'a [Capture]) -> Option<&'a Capture> {
+  next
+    .iter()
+    .filter(|c| !prev.contains(c))
+    .max_by_key(|(_, name)| !name.is_empty())
+}
+
 pub fn init(cx: &mut App) {
   let captures = cx.pipewire().captures.clone();
   on_change(
     &captures,
     cx,
     |cx| {
-      let mut active: Vec<(CaptureKind, String)> = cx
+      let mut active: Vec<Capture> = cx
         .pipewire()
         .list_captures(cx)
         .iter()
@@ -29,11 +39,7 @@ pub fn init(cx: &mut App) {
       Some(active)
     },
     |prev, next, cx| {
-      let started = next
-        .iter()
-        .filter(|c| !prev.contains(c))
-        .max_by_key(|(_, name)| !name.is_empty());
-      if let Some((kind, name)) = started {
+      if let Some((kind, name)) = started(prev, next) {
         let state = if name.is_empty() {
           t!("app.osd.in_use")
         } else {
@@ -52,4 +58,36 @@ pub fn init(cx: &mut App) {
       }
     },
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn c(kind: CaptureKind, name: &str) -> Capture {
+    (kind, name.into())
+  }
+
+  #[test]
+  fn only_new_captures() {
+    let mic = c(CaptureKind::Microphone, "Discord");
+    assert_eq!(started(&[], std::slice::from_ref(&mic)), Some(&mic));
+    assert_eq!(
+      started(std::slice::from_ref(&mic), std::slice::from_ref(&mic)),
+      None
+    );
+    assert_eq!(started(std::slice::from_ref(&mic), &[]), None);
+  }
+
+  #[test]
+  fn named_capture_wins() {
+    let next = [
+      c(CaptureKind::Camera, ""),
+      c(CaptureKind::Screen, "OBS"),
+      c(CaptureKind::Microphone, ""),
+    ];
+    assert_eq!(started(&[], &next), Some(&next[1]));
+    let unnamed = [c(CaptureKind::Camera, "")];
+    assert_eq!(started(&[], &unnamed), Some(&unnamed[0]));
+  }
 }

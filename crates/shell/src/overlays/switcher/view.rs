@@ -35,16 +35,30 @@ const CORNER_INSET: f32 = 4.;
 
 pub(super) fn order(mode: Mode, monitor: Option<&str>, cx: &App) -> Vec<String> {
   let compositor = cx.compositor();
-  let workspaces: Vec<&types::Workspace> = compositor
-    .list_workspaces(cx)
+  order_of(
+    mode,
+    monitor,
+    compositor.list_workspaces(cx),
+    compositor.list_windows(cx),
+  )
+}
+
+/// Workspace ids, or visible window addresses by workspace, then left to right, then top
+/// to bottom; only on `monitor` when set
+fn order_of(
+  mode: Mode,
+  monitor: Option<&str>,
+  workspaces: &[types::Workspace],
+  windows: &[types::Window],
+) -> Vec<String> {
+  let workspaces: Vec<&types::Workspace> = workspaces
     .iter()
     .filter(|ws| monitor.is_none_or(|m| ws.monitor == m))
     .collect();
   if mode == Mode::Workspace {
     return workspaces.iter().map(|ws| ws.id.clone()).collect();
   }
-  let mut windows: Vec<(usize, &types::Window)> = compositor
-    .list_windows(cx)
+  let mut windows: Vec<(usize, &types::Window)> = windows
     .iter()
     .filter(|w| !w.hidden)
     .filter_map(|w| Some((workspaces.iter().position(|ws| ws.id == w.workspace)?, w)))
@@ -54,6 +68,23 @@ pub(super) fn order(mode: Mode, monitor: Option<&str>, cx: &App) -> Vec<String> 
     .into_iter()
     .map(|(_, w)| w.address.clone())
     .collect()
+}
+
+/// The index after `selected` in `n` items, wrapping both ways; `n` must not be 0
+fn stepped(selected: usize, n: usize, reverse: bool) -> usize {
+  match reverse {
+    false => (selected + 1) % n,
+    true => (selected + n - 1) % n,
+  }
+}
+
+/// Where the selection lands in the pruned, non-empty `order`: on the same id when it is
+/// still there, else on the same index clamped to the end
+fn reselect(previous: Option<&str>, selected: usize, order: &[String]) -> usize {
+  previous
+    .and_then(|s| order.iter().position(|id| id == s))
+    .unwrap_or(selected)
+    .min(order.len() - 1)
 }
 
 pub struct Switcher {
@@ -113,10 +144,7 @@ impl Switcher {
     if self.order.is_empty() {
       return SwitcherState::close(None, cx);
     }
-    self.selected = selected
-      .and_then(|s| self.order.iter().position(|id| *id == s))
-      .unwrap_or(self.selected)
-      .min(self.order.len() - 1);
+    self.selected = reselect(selected.as_deref(), self.selected, &self.order);
     cx.notify();
   }
 
@@ -125,10 +153,7 @@ impl Switcher {
     if n == 0 {
       return;
     }
-    self.selected = match reverse {
-      false => (self.selected + 1) % n,
-      true => (self.selected + n - 1) % n,
-    };
+    self.selected = stepped(self.selected, n, reverse);
     cx.notify();
   }
 
@@ -418,5 +443,241 @@ impl Render for Switcher {
             ),
           ),
       )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{
+    overlays::taskbar::tests::window,
+    test_support::{FakeCompositor, setup, workspace},
+  };
+  use gpui_kit::{
+    self as gpui, AnyWindowHandle, TestAppContext, WindowHandle, WindowOptions, base::Root,
+    test::TestWindowExt,
+  };
+  use std::rc::Rc;
+
+  fn at(address: &str, workspace: &str, x: i32, y: i32) -> types::Window {
+    types::Window {
+      workspace: workspace.into(),
+      x,
+      y,
+      ..window(address, "app", 100, 100)
+    }
+  }
+
+  fn ids(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+  }
+
+  #[test]
+  fn workspace_order_filters_by_monitor() {
+    let workspaces = [
+      workspace("1", "DP-1"),
+      workspace("2", "HDMI-A-1"),
+      workspace("3", "DP-1"),
+    ];
+    assert_eq!(
+      order_of(Mode::Workspace, None, &workspaces, &[]),
+      ["1", "2", "3"]
+    );
+    assert_eq!(
+      order_of(Mode::Workspace, Some("DP-1"), &workspaces, &[]),
+      ["1", "3"]
+    );
+    assert!(order_of(Mode::Workspace, Some("eDP-1"), &workspaces, &[]).is_empty());
+  }
+
+  #[test]
+  fn window_order_by_workspace_then_position() {
+    let workspaces = [workspace("2", "DP-1"), workspace("1", "DP-1")];
+    let windows = [
+      at("a", "1", 0, 0),
+      at("b", "2", 500, 0),
+      at("c", "2", 0, 500),
+      at("d", "2", 0, 0),
+      at("e", "unknown", 0, 0),
+    ];
+    // workspaces keep the compositor's order, windows outside them are left out
+    assert_eq!(
+      order_of(Mode::Window, None, &workspaces, &windows),
+      ["d", "c", "b", "a"]
+    );
+  }
+
+  #[test]
+  fn window_order_skips_hidden_and_other_monitors() {
+    let workspaces = [workspace("1", "DP-1"), workspace("2", "HDMI-A-1")];
+    let mut hidden = at("hidden", "1", 0, 0);
+    hidden.hidden = true;
+    let windows = [hidden, at("here", "1", 10, 0), at("there", "2", 0, 0)];
+    assert_eq!(
+      order_of(Mode::Window, Some("DP-1"), &workspaces, &windows),
+      ["here"]
+    );
+    assert_eq!(
+      order_of(Mode::Window, None, &workspaces, &windows),
+      ["here", "there"]
+    );
+    assert!(order_of(Mode::Window, None, &[], &windows).is_empty());
+  }
+
+  #[test]
+  fn step_wraps_both_ways() {
+    assert_eq!(stepped(0, 3, false), 1);
+    assert_eq!(stepped(2, 3, false), 0);
+    assert_eq!(stepped(0, 3, true), 2);
+    assert_eq!(stepped(1, 3, true), 0);
+    assert_eq!(stepped(0, 1, false), 0);
+    assert_eq!(stepped(0, 1, true), 0);
+  }
+
+  #[test]
+  fn reselect_follows_id_or_clamps() {
+    let order = ids(&["a", "c"]);
+    // "c" moved from index 2 to 1
+    assert_eq!(reselect(Some("c"), 2, &order), 1);
+    // "b" is gone, the index stays
+    assert_eq!(reselect(Some("b"), 1, &order), 1);
+    // "d" at the end is gone, the index is clamped
+    assert_eq!(reselect(Some("d"), 3, &order), 1);
+    assert_eq!(reselect(None, 5, &order), 1);
+    assert_eq!(reselect(None, 0, &order), 0);
+  }
+
+  fn open(
+    mode: Mode,
+    cx: &mut TestAppContext,
+  ) -> (Rc<FakeCompositor>, AnyWindowHandle, Entity<Switcher>) {
+    // live previews fail fast without a compositor
+    unsafe { std::env::set_var("WAYLAND_DISPLAY", "/nonexistent/corona-test") };
+    let fake = setup(
+      FakeCompositor {
+        workspaces: vec![workspace("1", "DP-1"), workspace("2", "DP-1")],
+        windows: vec![at("a", "1", 0, 0), at("b", "2", 0, 0), at("c", "1", 500, 0)],
+        ..Default::default()
+      },
+      cx,
+    );
+    let options = Options {
+      mode,
+      ..Default::default()
+    };
+    let (handle, view) = cx.update(|cx| {
+      let mut view = None;
+      let handle: WindowHandle<Root> = cx
+        .open_window(WindowOptions::default(), |window, cx| {
+          let switcher = cx.new(|cx| Switcher::new(options, None, cx));
+          window.focus(&switcher.read(cx).focus.clone(), cx);
+          view = Some(switcher.clone());
+          cx.new(|cx| Root::new(switcher, window, cx))
+        })
+        .unwrap();
+      let view = view.unwrap();
+      cx.set_global(SwitcherState {
+        overlays: vec![handle.into()],
+        view: view.downgrade(),
+      });
+      (handle.into(), view)
+    });
+    draw(handle, cx);
+    (fake, handle, view)
+  }
+
+  fn draw(handle: AnyWindowHandle, cx: &mut TestAppContext) {
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+      .unwrap();
+  }
+
+  fn press(handle: AnyWindowHandle, key: &str, cx: &mut TestAppContext) {
+    cx.update_window(handle, |_, window, cx| window.press(key, cx))
+      .unwrap();
+    cx.run_until_parked();
+  }
+
+  fn selected(view: &Entity<Switcher>, cx: &mut TestAppContext) -> String {
+    view.read_with(cx, |s, _| s.order[s.selected].clone())
+  }
+
+  fn is_open(cx: &mut TestAppContext) -> bool {
+    cx.update(|cx| cx.has_global::<SwitcherState>())
+  }
+
+  fn step(view: &Entity<Switcher>, reverse: bool, cx: &mut TestAppContext) {
+    view.update(cx, |v, cx| v.step(reverse, cx));
+  }
+
+  #[gpui::test]
+  fn step_and_enter_focuses(cx: &mut TestAppContext) {
+    let (fake, handle, view) = open(Mode::Window, cx);
+    // starts on the active window
+    assert_eq!(selected(&view, cx), "a");
+    step(&view, false, cx);
+    assert_eq!(selected(&view, cx), "c");
+    step(&view, true, cx);
+    step(&view, true, cx);
+    assert_eq!(selected(&view, cx), "b");
+    draw(handle, cx);
+    press(handle, "enter", cx);
+    assert_eq!(*fake.calls.borrow(), ["window b"]);
+    assert!(!is_open(cx));
+  }
+
+  #[gpui::test]
+  #[ignore = "bug: Root's tab binding eats tab before Switcher::on_key sees it"]
+  fn bug_tab_steps_the_switcher(cx: &mut TestAppContext) {
+    let (_, handle, view) = open(Mode::Window, cx);
+    press(handle, "tab", cx);
+    assert_eq!(selected(&view, cx), "c");
+  }
+
+  #[gpui::test]
+  fn escape_closes_without_focusing(cx: &mut TestAppContext) {
+    let (fake, handle, _) = open(Mode::Window, cx);
+    press(handle, "x", cx);
+    assert!(is_open(cx));
+    press(handle, "escape", cx);
+    assert!(fake.calls.borrow().is_empty());
+    assert!(!is_open(cx));
+  }
+
+  #[gpui::test]
+  fn select_focuses_workspace(cx: &mut TestAppContext) {
+    let (fake, handle, view) = open(Mode::Workspace, cx);
+    assert_eq!(selected(&view, cx), "1");
+    draw(handle, cx);
+    cx.update_window(handle, |_, window, cx| {
+      view.update(cx, |v, cx| v.select("2", window, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(*fake.calls.borrow(), ["workspace 2"]);
+    assert!(!is_open(cx));
+  }
+
+  #[gpui::test]
+  fn closed_windows_are_pruned(cx: &mut TestAppContext) {
+    let (_, handle, view) = open(Mode::Window, cx);
+    step(&view, false, cx);
+    assert_eq!(selected(&view, cx), "c");
+    let windows = cx.update(|cx| cx.compositor().windows.clone());
+    windows.update(cx, |w, cx| {
+      w.retain(|w| w.address != "a");
+      cx.notify();
+    });
+    cx.run_until_parked();
+    // the selection stays on c
+    assert_eq!(view.read_with(cx, |s, _| s.order.clone()), ["c", "b"]);
+    assert_eq!(selected(&view, cx), "c");
+    draw(handle, cx);
+
+    windows.update(cx, |w, cx| {
+      w.clear();
+      cx.notify();
+    });
+    cx.run_until_parked();
+    assert!(!is_open(cx));
   }
 }

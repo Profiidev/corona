@@ -48,3 +48,56 @@ pub fn capture_label(kind: CaptureKind) -> Cow<'static, str> {
     CaptureKind::Screen => t!("app.privacy.screen_share"),
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn volume_icons() {
+    assert_eq!(volume_icon(1., true), IconName::VolumeOff);
+    assert_eq!(volume_icon(0., true), IconName::VolumeOff);
+    assert_eq!(volume_icon(0., false), IconName::VolumeX);
+    assert_eq!(volume_icon(f32::EPSILON / 2., false), IconName::VolumeX);
+    assert_eq!(volume_icon(f32::EPSILON, false), IconName::Volume1);
+    assert_eq!(volume_icon(0.49, false), IconName::Volume1);
+    assert_eq!(volume_icon(0.5, false), IconName::Volume2);
+    assert_eq!(volume_icon(1.5, false), IconName::Volume2);
+  }
+
+  #[test]
+  fn power_profiles() {
+    for (name, icon) in [
+      ("power-saver", IconName::Leaf),
+      ("balanced", IconName::Gauge),
+      ("performance", IconName::Zap),
+    ] {
+      let (i, label) = power_profile(name);
+      assert_eq!(i, icon);
+      assert!(!label.is_empty() && !label.starts_with("app."), "{label}");
+    }
+    let (icon, label) = power_profile("custom");
+    assert_eq!(icon, IconName::Gauge);
+    assert_eq!(label, "custom");
+  }
+
+  #[test]
+  fn capture_kinds() {
+    let kinds = [
+      CaptureKind::Microphone,
+      CaptureKind::Camera,
+      CaptureKind::Screen,
+    ];
+    for kind in kinds {
+      let label = capture_label(kind);
+      assert!(!label.is_empty() && !label.starts_with("app."), "{label}");
+    }
+    let icons: std::collections::HashSet<_> = kinds.map(capture_icon).into();
+    assert_eq!(icons.len(), kinds.len());
+  }
+
+  #[test]
+  fn no_interface_is_offline() {
+    assert_eq!(interface_icon(None), IconName::GlobeOff);
+  }
+}

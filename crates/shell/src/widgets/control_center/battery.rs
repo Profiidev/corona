@@ -23,12 +23,17 @@ impl Widget for BatteryButton {
   }
 }
 
+/// Flagged red at the level where the icon warns too, unless it charges
+fn low(percentage: f64, state: BatteryState) -> bool {
+  percentage <= 10. && state != BatteryState::Charging
+}
+
 impl Render for BatteryButton {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let Some(battery) = cx.power().battery(cx).cloned() else {
       return Empty.into_any_element();
     };
-    let low = battery.percentage <= 10. && battery.state != BatteryState::Charging;
+    let low = low(battery.percentage, battery.state);
 
     Button::<_, Standalone<PowerPanel>>::new(cx, "battery-button", battery_icon(&battery))
       .danger(low)
@@ -39,5 +44,18 @@ impl Render for BatteryButton {
           .child(format!("{:.0}%", battery.percentage)),
       )
       .into_any_element()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn low() {
+    assert!(super::low(10., BatteryState::Discharging));
+    assert!(super::low(0., BatteryState::Unknown));
+    assert!(!super::low(10.1, BatteryState::Discharging));
+    assert!(!super::low(5., BatteryState::Charging));
   }
 }

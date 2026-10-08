@@ -70,3 +70,58 @@ impl SwitcherState {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{
+    overlays::{switcher::commands::Mode, taskbar::tests::window},
+    test_support::{FakeCompositor, setup, workspace},
+  };
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  fn nothing_to_switch_opens_nothing(cx: &mut TestAppContext) {
+    setup(FakeCompositor::default(), cx);
+    for mode in [Mode::Window, Mode::Workspace] {
+      let options = Options {
+        mode,
+        ..Default::default()
+      };
+      cx.update(|cx| SwitcherState::cycle(options, cx)).unwrap();
+      assert!(!cx.update(|cx| cx.has_global::<SwitcherState>()));
+    }
+  }
+
+  #[gpui::test]
+  fn other_monitor_only_counts_without_filter(cx: &mut TestAppContext) {
+    // the focused monitor is DP-1, the only window is on HDMI-A-1
+    setup(
+      FakeCompositor {
+        workspaces: vec![workspace("2", "HDMI-A-1")],
+        windows: vec![gpui_window("2")],
+        ..Default::default()
+      },
+      cx,
+    );
+    let options = Options {
+      current_monitor: true,
+      ..Default::default()
+    };
+    cx.update(|cx| SwitcherState::cycle(options, cx)).unwrap();
+    assert!(!cx.update(|cx| cx.has_global::<SwitcherState>()));
+    // without the filter there is a window, but no display for DP-1 in tests
+    assert!(
+      cx.update(|cx| SwitcherState::cycle(Options::default(), cx))
+        .is_err()
+    );
+    assert!(!cx.update(|cx| cx.has_global::<SwitcherState>()));
+  }
+
+  fn gpui_window(workspace: &str) -> corona_compositor::types::Window {
+    corona_compositor::types::Window {
+      workspace: workspace.into(),
+      ..window("0x1", "kitty", 100, 100)
+    }
+  }
+}

@@ -1,23 +1,23 @@
-use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
   Attribute, Expr, ExprClosure, ExprLit, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Token, Type,
   TypeParamBound,
   parse::{Parse, ParseStream},
-  parse_macro_input,
 };
 
 // The generated code names `Named` by its path in the corona crate, the only user of these macros.
 
 /// `#[host_fn] fn set_mute(pw: Glob<Pipewire>, id: u32, mute: bool) -> R { .. }` becomes a
 /// `const set_mute: Named<fn(..) -> R>` carrying the script name `setMute` and the parameter names.
-pub fn attribute(item: TokenStream) -> TokenStream {
-  let item = parse_macro_input!(item as ItemFn);
+pub fn attribute(item: TokenStream2) -> TokenStream2 {
+  let item = match syn::parse2::<ItemFn>(item) {
+    Ok(item) => item,
+    Err(e) => return e.into_compile_error(),
+  };
   if !item.sig.generics.params.is_empty() {
     return syn::Error::new_spanned(&item.sig, "#[host_fn] needs a non-generic fn")
-      .into_compile_error()
-      .into();
+      .into_compile_error();
   }
 
   let vis = &item.vis;
@@ -33,8 +33,7 @@ pub fn attribute(item: TokenStream) -> TokenStream {
       }
       FnArg::Receiver(receiver) => {
         return syn::Error::new_spanned(receiver, "#[host_fn] cannot take `self`")
-          .into_compile_error()
-          .into();
+          .into_compile_error();
       }
     }
   }
@@ -66,8 +65,7 @@ pub fn attribute(item: TokenStream) -> TokenStream {
           crate::host_fn::Named::new(#name, #names, #ident);
         named.docs(#docs)
       };
-    }
-    .into();
+    };
   };
   let future = quote! { ::std::pin::Pin<::std::boxed::Box<dyn #future>> };
   let args: Vec<_> = (0..tys.len()).map(|i| format_ident!("arg{i}")).collect();
@@ -83,7 +81,6 @@ pub fn attribute(item: TokenStream) -> TokenStream {
       named.docs(#docs)
     };
   }
-  .into()
 }
 
 struct NamedClosure {
@@ -110,16 +107,19 @@ impl Parse for NamedClosure {
 /// `named!("setMute", /// docs \n move |pw: Glob<Pipewire>, id: u32| ..)` wraps the closure in a
 /// `Named`. The name is any `&'static str` expression; doc comments before the closure become the
 /// function's JSDoc.
-pub fn closure(input: TokenStream) -> TokenStream {
+pub fn closure(input: TokenStream2) -> TokenStream2 {
   let NamedClosure {
     name,
     attrs,
     closure,
-  } = parse_macro_input!(input as NamedClosure);
+  } = match syn::parse2(input) {
+    Ok(input) => input,
+    Err(e) => return e.into_compile_error(),
+  };
   let names = names(closure.inputs.iter());
   let docs = docs(&attrs);
   if closure.asyncness.is_none() {
-    return quote! { crate::host_fn::Named::new(#name, #names, #closure).docs(#docs) }.into();
+    return quote! { crate::host_fn::Named::new(#name, #names, #closure).docs(#docs) };
   }
 
   let mut args = Vec::new();
@@ -127,8 +127,7 @@ pub fn closure(input: TokenStream) -> TokenStream {
   for (i, pat) in closure.inputs.iter().enumerate() {
     let Pat::Type(typed) = pat else {
       return syn::Error::new_spanned(pat, "named! async closure params need a type")
-        .into_compile_error()
-        .into();
+        .into_compile_error();
     };
     args.push(format_ident!("arg{i}"));
     tys.push(&*typed.ty);
@@ -143,7 +142,6 @@ pub fn closure(input: TokenStream) -> TokenStream {
     })
     .docs(#docs)
   }
-  .into()
 }
 
 /// The `///` lines, joined; each line keeps the leading space `///` leaves.
@@ -193,12 +191,162 @@ fn names<'a>(pats: impl Iterator<Item = &'a Pat>) -> TokenStream2 {
 
 #[cfg(test)]
 mod tests {
+  use quote::quote;
+  use syn::parse_quote;
+
+  use super::*;
+
+  fn names_of(pats: &[Pat]) -> String {
+    names(pats.iter()).to_string()
+  }
+
   #[test]
   fn camel_case() {
-    assert_eq!(super::camel_case("set_mute"), "setMute");
-    assert_eq!(super::camel_case("list_sinks_now"), "listSinksNow");
-    assert_eq!(super::camel_case("target"), "target");
-    assert_eq!(super::camel_case("_private_fn"), "privateFn");
-    assert_eq!(super::camel_case("r#type"), "type");
+    for (snake, camel) in [
+      ("set_mute", "setMute"),
+      ("list_sinks_now", "listSinksNow"),
+      ("target", "target"),
+      ("_private_fn", "privateFn"),
+      ("r#type", "type"),
+      ("a__b", "aB"),
+      ("trailing_", "trailing"),
+      ("_", ""),
+      ("", ""),
+      ("already_Camel", "alreadyCamel"),
+    ] {
+      assert_eq!(super::camel_case(snake), camel, "{snake}");
+    }
+  }
+
+  #[test]
+  fn names_strip_underscores_and_number_patterns() {
+    let f: ExprClosure =
+      parse_quote!(|_cx: Glob<A>, id: u32, (a, b): (u8, u8), _: bool, untyped, __x| ());
+    let pats: Vec<Pat> = f.inputs.into_iter().collect();
+    let want = quote!(&["cx", "id", "arg2", "arg3", "untyped", "x"]).to_string();
+    assert_eq!(names_of(&pats), want);
+    assert_eq!(names_of(&[]), quote!(&[]).to_string());
+  }
+
+  #[test]
+  fn docs_join_trimmed_lines() {
+    let item: ItemFn = parse_quote! {
+      /// First line
+      ///   indented
+      #[doc = "  raw  "]
+      #[inline]
+      #[doc(hidden)]
+      fn f() {}
+    };
+    assert_eq!(docs(&item.attrs), "First line\nindented\nraw");
+    assert_eq!(docs(&[]), "");
+  }
+
+  #[test]
+  fn sync_fn_is_named_const() {
+    let out = attribute(quote! {
+      /// Mutes it
+      pub fn set_mute(_pw: Glob<P>, id: u32, mute: bool) -> R { todo!() }
+    });
+    let item: syn::ItemConst = syn::parse2(out.clone()).unwrap();
+    assert_eq!(item.ident, "set_mute");
+    assert!(matches!(item.vis, syn::Visibility::Public(_)));
+    let ty = &item.ty;
+    let ty = quote!(#ty).to_string();
+    assert!(ty.contains("fn (Glob < P > , u32 , bool) -> R"), "{ty}");
+    let out = out.to_string();
+    assert!(out.contains("\"setMute\""), "{out}");
+    assert!(out.contains(r#"& ["pw" , "id" , "mute"]"#), "{out}");
+    assert!(out.contains("\"Mutes it\""), "{out}");
+    assert!(!out.contains("boxed"), "{out}");
+  }
+
+  #[test]
+  fn async_fn_is_boxed() {
+    let out = attribute(quote! { async fn fetch(a: u32, b: String) -> u8 { 0 } });
+    let item: syn::ItemConst = syn::parse2(out.clone()).unwrap();
+    let ty = &item.ty;
+    let ty = quote!(#ty).to_string();
+    assert!(
+      ty.contains("Pin < :: std :: boxed :: Box < dyn :: std :: future :: Future < Output = u8 >"),
+      "{ty}"
+    );
+    assert!(ty.contains("Send"), "{ty}");
+    let out = out.to_string();
+    assert!(
+      out.contains("fn boxed (arg0 : u32 , arg1 : String)"),
+      "{out}"
+    );
+    assert!(out.contains("fetch (arg0 , arg1)"), "{out}");
+
+    // no return type is `()`
+    let out = attribute(quote! { async fn run() {} }).to_string();
+    assert!(out.contains("Output = ()"), "{out}");
+  }
+
+  #[test]
+  fn impl_future_is_boxed_without_use_bound() {
+    let out = attribute(quote! {
+      fn later(x: u8) -> impl Future<Output = u8> + Send + use<> { async move { x } }
+    });
+    let item: syn::ItemConst = syn::parse2(out).unwrap();
+    let ty = &item.ty;
+    let ty = quote!(#ty).to_string();
+    assert!(ty.contains("dyn Future < Output = u8 > + Send >"), "{ty}");
+    assert!(!ty.contains("use"), "{ty}");
+  }
+
+  #[test]
+  fn attribute_rejects_generic_self_and_non_fn() {
+    for item in [
+      quote! { fn f<T>(t: T) {} },
+      quote! { fn f(&self) {} },
+      quote! { struct S; },
+    ] {
+      let out = attribute(item.clone()).to_string();
+      assert!(out.contains("compile_error"), "{item} -> {out}");
+    }
+  }
+
+  #[test]
+  fn sync_closure_is_wrapped_as_is() {
+    let out = closure(quote! {
+      "setMute",
+      /// Mutes
+      move |_pw: Glob<P>, id| id,
+    })
+    .to_string();
+    assert!(
+      out.starts_with("crate :: host_fn :: Named :: new (\"setMute\""),
+      "{out}"
+    );
+    assert!(out.contains(r#"& ["pw" , "id"]"#), "{out}");
+    assert!(out.contains("move | _pw : Glob < P > , id | id"), "{out}");
+    assert!(out.contains(". docs (\"Mutes\")"), "{out}");
+    assert!(!out.contains("Arc"), "{out}");
+  }
+
+  #[test]
+  fn async_closure_is_shared_behind_arc() {
+    let out = closure(quote! { NAME, async |a: u8, b: String| a }).to_string();
+    assert!(out.contains("Named :: new (NAME"), "{out}");
+    assert!(
+      out.contains("Arc :: new (async | a : u8 , b : String | a)"),
+      "{out}"
+    );
+    assert!(out.contains("move | arg0 : u8 , arg1 : String |"), "{out}");
+    assert!(out.contains("(* f) (arg0 , arg1) . await"), "{out}");
+  }
+
+  #[test]
+  fn closure_errors() {
+    for input in [
+      quote! { "f", async |a: u8, b| a },
+      quote! { "f" async |a: u8| a },
+      quote! { "f", not_a_closure },
+    ] {
+      let out = closure(input.clone()).to_string();
+      assert!(out.contains("compile_error"), "{input} -> {out}");
+    }
   }
 }

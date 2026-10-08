@@ -140,3 +140,19 @@ impl BluetoothPanel {
     ))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn needs_code() {
+    assert!(super::needs_code(PairingKind::PinCode));
+    assert!(super::needs_code(PairingKind::Passkey));
+    assert!(!super::needs_code(PairingKind::Authorize));
+    assert!(!super::needs_code(PairingKind::Confirm { passkey: 1 }));
+    assert!(!super::needs_code(PairingKind::DisplayPasskey {
+      passkey: 1
+    }));
+  }
+}

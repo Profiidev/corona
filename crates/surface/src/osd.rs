@@ -101,15 +101,7 @@ impl OsdState {
   ) -> Result<(AnyWindowHandle, WeakEntity<BaseOsd>)> {
     let mut base = WeakEntity::new_invalid();
     let config = &cx.config().osd;
-    let offset = px(config.offset);
-    let zero = px(0.);
-    // margins go top, right, bottom, left
-    let (anchor, margin) = match config.position {
-      OsdPosition::TopCenter => (Anchor::TOP, (offset, zero, zero, zero)),
-      OsdPosition::BottomCenter => (Anchor::BOTTOM, (zero, zero, offset, zero)),
-      OsdPosition::CenterLeft => (Anchor::LEFT, (zero, zero, zero, offset)),
-      OsdPosition::CenterRight => (Anchor::RIGHT, (zero, offset, zero, zero)),
-    };
+    let (anchor, margin) = edge(config.position, px(config.offset));
     let handle = cx.open_window(
       WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
@@ -164,6 +156,17 @@ impl OsdState {
   }
 }
 
+/// The edge an OSD sits on, and its margins: top, right, bottom, left
+fn edge(position: OsdPosition, offset: Pixels) -> (Anchor, (Pixels, Pixels, Pixels, Pixels)) {
+  let zero = px(0.);
+  match position {
+    OsdPosition::TopCenter => (Anchor::TOP, (offset, zero, zero, zero)),
+    OsdPosition::BottomCenter => (Anchor::BOTTOM, (zero, zero, offset, zero)),
+    OsdPosition::CenterLeft => (Anchor::LEFT, (zero, zero, zero, offset)),
+    OsdPosition::CenterRight => (Anchor::RIGHT, (zero, offset, zero, zero)),
+  }
+}
+
 struct BaseOsd {
   content: AnyView,
 }
@@ -200,5 +203,142 @@ impl OsdExt for App {
 
   fn hide_osd<T: Osd>(&mut self) {
     OsdState::hide_osd::<T>(self)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{TestAppContext, size};
+
+  use super::*;
+  use crate::test_support::{self, OsdA, OsdB, draw_all, windows};
+
+  fn delay(cx: &mut TestAppContext) -> Duration {
+    cx.update(|cx| Duration::from_millis(cx.config().osd.hide_delay_ms))
+  }
+
+  fn shown(cx: &mut TestAppContext) -> Option<(&'static str, AnyWindowHandle, Size<Pixels>)> {
+    cx.update(|cx| {
+      cx.global::<OsdState>()
+        .shown
+        .as_ref()
+        .map(|s| (s.name, s.handle, s.size))
+    })
+  }
+
+  #[test]
+  fn edge_puts_the_offset_on_the_anchored_side() {
+    let o = px(7.);
+    let z = px(0.);
+    assert_eq!(edge(OsdPosition::TopCenter, o), (Anchor::TOP, (o, z, z, z)));
+    assert_eq!(
+      edge(OsdPosition::CenterRight, o),
+      (Anchor::RIGHT, (z, o, z, z))
+    );
+    assert_eq!(
+      edge(OsdPosition::BottomCenter, o),
+      (Anchor::BOTTOM, (z, z, o, z))
+    );
+    assert_eq!(
+      edge(OsdPosition::CenterLeft, o),
+      (Anchor::LEFT, (z, z, z, o))
+    );
+  }
+
+  #[gpui_kit::test]
+  fn show_reuses_the_window_and_follows_the_size(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let before = windows(cx);
+    cx.update(|cx| cx.show_osd(OsdA).unwrap());
+    let (name, handle, size_a) = shown(cx).unwrap();
+    assert_eq!(name, OsdA::NAME);
+    // the popup border goes around the content
+    assert_eq!(size_a, size(px(104.), px(34.)));
+    assert_eq!(windows(cx), before + 1);
+    draw_all(cx);
+
+    cx.update(|cx| cx.show_osd(OsdB).unwrap());
+    let (name, again, size_b) = shown(cx).unwrap();
+    assert_eq!(name, OsdB::NAME);
+    assert!(again == handle);
+    assert_eq!(size_b, size(px(204.), px(34.)));
+    assert_eq!(windows(cx), before + 1);
+    draw_all(cx);
+  }
+
+  #[gpui_kit::test]
+  fn without_borders_the_size_is_the_content(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    cx.update(|cx| {
+      cx.global_mut::<corona_config::Config>().theme.popup_borders = false;
+      cx.show_osd(OsdA).unwrap();
+    });
+    assert_eq!(shown(cx).unwrap().2, size(px(100.), px(30.)));
+  }
+
+  #[gpui_kit::test]
+  fn hides_after_the_delay_and_showing_restarts_it(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let delay = delay(cx);
+    let before = windows(cx);
+    cx.update(|cx| cx.show_osd(OsdA).unwrap());
+    cx.executor().advance_clock(delay / 2);
+    cx.update(|cx| cx.show_osd(OsdA).unwrap());
+    cx.executor().advance_clock(delay / 2 + delay / 4);
+    assert!(shown(cx).is_some());
+    cx.executor().advance_clock(delay);
+    assert!(shown(cx).is_none());
+    assert_eq!(windows(cx), before);
+  }
+
+  #[gpui_kit::test]
+  fn another_display_opens_a_new_window(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let before = windows(cx);
+    cx.update(|cx| cx.show_osd(OsdA).unwrap());
+    let (_, first, _) = shown(cx).unwrap();
+    cx.update(|cx| {
+      cx.global_mut::<OsdState>().shown.as_mut().unwrap().display = Some(DisplayId::new(99));
+      cx.show_osd(OsdA).unwrap();
+    });
+    let (_, second, _) = shown(cx).unwrap();
+    assert!(first != second);
+    cx.run_until_parked();
+    assert_eq!(windows(cx), before + 1);
+  }
+
+  #[gpui_kit::test]
+  fn hide_osd_only_hides_its_own(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let before = windows(cx);
+    cx.update(|cx| {
+      OsdState::hide(cx);
+      cx.hide_osd::<OsdA>();
+      cx.show_osd(OsdA).unwrap();
+      cx.hide_osd::<OsdB>();
+    });
+    assert_eq!(shown(cx).unwrap().0, OsdA::NAME);
+    cx.update(|cx| cx.hide_osd::<OsdA>());
+    assert!(shown(cx).is_none());
+    cx.run_until_parked();
+    assert_eq!(windows(cx), before);
+  }
+
+  #[gpui_kit::test]
+  fn opens_on_every_edge(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    for position in [
+      OsdPosition::TopCenter,
+      OsdPosition::BottomCenter,
+      OsdPosition::CenterLeft,
+      OsdPosition::CenterRight,
+    ] {
+      cx.update(|cx| {
+        cx.global_mut::<corona_config::Config>().osd.position = position;
+        OsdState::hide(cx);
+        cx.show_osd(OsdA).unwrap();
+      });
+      draw_all(cx);
+    }
   }
 }

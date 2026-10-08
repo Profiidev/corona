@@ -68,3 +68,36 @@ pub fn init(cx: &mut App) {
     },
   );
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use corona_pipewire::NodeType;
+
+  fn node(volumes: Vec<f32>, mute: bool) -> AudioNode {
+    AudioNode {
+      id: 7,
+      serial: 0,
+      kind: NodeType::Sink,
+      name: String::new(),
+      description: String::new(),
+      nickname: None,
+      device: None,
+      profile_device: None,
+      volumes,
+      mute,
+      app: Vec::new(),
+    }
+  }
+
+  #[test]
+  fn levels() {
+    assert_eq!(level(None), None);
+    assert_eq!(
+      level(Some(&node(vec![0.125, 1.], true))),
+      Some((7, 50, true))
+    );
+    assert_eq!(level(Some(&node(vec![1.], false))), Some((7, 100, false)));
+    assert_eq!(level(Some(&node(vec![], false))), Some((7, 0, false)));
+  }
+}

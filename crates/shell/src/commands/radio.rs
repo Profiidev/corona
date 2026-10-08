@@ -87,3 +87,18 @@ impl IpcCommand for Bluetooth {
     Ok(powered)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn switch_target() {
+    for current in [false, true] {
+      assert_eq!(Switch::On.target(current), Some(true));
+      assert_eq!(Switch::Off.target(current), Some(false));
+      assert_eq!(Switch::Toggle.target(current), Some(!current));
+      assert_eq!(Switch::Status.target(current), None);
+    }
+  }
+}

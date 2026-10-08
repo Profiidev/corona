@@ -106,3 +106,51 @@ impl ControlCenterType {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn iter_is_complete() {
+    let all: Vec<_> = ControlCenterType::iter().collect();
+    for page in &all {
+      // a new variant fails to compile here until it is listed in `iter`
+      match page {
+        ControlCenterType::Dashboard
+        | ControlCenterType::Audio
+        | ControlCenterType::Network
+        | ControlCenterType::Bluetooth
+        | ControlCenterType::Power
+        | ControlCenterType::Brightness
+        | ControlCenterType::Notifications
+        | ControlCenterType::Sysinfo
+        | ControlCenterType::Weather
+        | ControlCenterType::Calendar
+        | ControlCenterType::Media => {}
+      }
+    }
+    assert_eq!(all.len(), 11);
+    assert_eq!(all[0], ControlCenterType::Dashboard);
+  }
+
+  #[test]
+  fn ids_titles_icons_unique() {
+    let count = ControlCenterType::iter().count();
+    let unique = |mut v: Vec<String>| {
+      v.sort();
+      v.dedup();
+      v.len()
+    };
+    let ids: Vec<_> = ControlCenterType::iter()
+      .map(|p| p.as_str().to_string())
+      .collect();
+    // ids are panel names, the control center itself is another panel
+    assert!(!ids.iter().any(|id| id == "control_center"));
+    assert_eq!(unique(ids), count);
+    let titles = ControlCenterType::iter().map(|p| p.title().to_string());
+    assert_eq!(unique(titles.collect()), count);
+    let icons = ControlCenterType::iter().map(|p| format!("{:?}", p.icon()));
+    assert_eq!(unique(icons.collect()), count);
+  }
+}

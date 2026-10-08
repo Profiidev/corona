@@ -144,6 +144,22 @@ impl Bar {
   }
 }
 
+#[cfg(test)]
+impl Bar {
+  /// The views of the start, center and end sections; a group is one entry
+  pub(crate) fn sections(&self) -> [Vec<Vec<AnyView>>; 3] {
+    [&self.start_widgets, &self.center_widgets, &self.end_widgets].map(|entries| {
+      entries
+        .iter()
+        .map(|entry| match entry {
+          Entry::Widget(view) => vec![view.clone()],
+          Entry::Group(views) => views.clone(),
+        })
+        .collect()
+    })
+  }
+}
+
 impl Render for Bar {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let theme = cx.theme();
@@ -224,4 +240,38 @@ fn bar_path(bounds: Bounds<Pixels>, n: Pixels, placement: Placement) -> Option<P
   p.arc_to(point(n, n), px(0.), false, sweep, at(z, depth));
   p.close();
   p.build().ok()
+}
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::size;
+
+  use super::*;
+
+  const ALL: [Placement; 4] = [
+    Placement::Top,
+    Placement::Bottom,
+    Placement::Left,
+    Placement::Right,
+  ];
+
+  #[test]
+  fn path_fills_its_bounds_on_every_side() {
+    let bounds = Bounds::new(point(px(5.), px(5.)), size(px(400.), px(40.)));
+    for placement in ALL {
+      let path = bar_path(bounds, px(8.), placement).expect("a path");
+      let b = path.bounds;
+      let e = px(0.5);
+      assert!(b.left() >= bounds.left() - e && b.right() <= bounds.right() + e);
+      assert!(b.top() >= bounds.top() - e && b.bottom() <= bounds.bottom() + e);
+    }
+  }
+
+  #[test]
+  fn zero_sized_bounds_do_not_panic() {
+    for placement in ALL {
+      let _ = bar_path(Bounds::default(), px(8.), placement);
+      let _ = bar_path(Bounds::default(), px(0.), placement);
+    }
+  }
 }

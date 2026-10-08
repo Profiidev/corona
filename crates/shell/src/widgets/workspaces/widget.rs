@@ -46,17 +46,7 @@ impl Widget for Workspaces {
     let mut workspaces = compositor.list_workspaces(cx).to_vec();
     workspaces.retain(|w| w.display_id() == display_id);
 
-    let mut windows_by_workspace: HashMap<String, Vec<types::Window>> = HashMap::new();
-    for window in windows {
-      if workspaces.iter().all(|w| w.id != window.workspace) {
-        continue;
-      }
-
-      windows_by_workspace
-        .entry(window.workspace.clone())
-        .or_default()
-        .push(window.clone());
-    }
+    let windows_by_workspace = group_windows(windows, &workspaces);
 
     let workspace = compositor.workspaces.clone();
     let window = compositor.windows.clone();
@@ -100,19 +90,7 @@ impl Widget for Workspaces {
         icons
       };
       let before = icons(&this.windows);
-      this.windows.clear();
-
-      for window in e.read(cx) {
-        if this.workspaces.iter().all(|w| w.id != window.workspace) {
-          continue;
-        }
-
-        this
-          .windows
-          .entry(window.workspace.clone())
-          .or_default()
-          .push(window.clone());
-      }
+      this.windows = group_windows(e.read(cx), &this.workspaces);
 
       if let Some((workspace, address, handle)) = this.current_tooltip.clone() {
         let title = this
@@ -217,10 +195,7 @@ impl Render for Workspaces {
               .child({
                 let icons = workspace_windows(windows, active_window, icon_bounds, ws, theme, cx);
 
-                let target = match icons.len() as f32 {
-                  0. => ICON_SIZE as f32,
-                  count => count * ICON_SIZE as f32 + (count - 1.) * ICON_GAP,
-                };
+                let target = icons_extent(icons.len());
 
                 pill_size
                   .entry(ws.id.clone())
@@ -250,6 +225,31 @@ impl Render for Workspaces {
             workspace_badge(border, urgent, theme, ws)
           })
       }))
+  }
+}
+
+/// The windows on `workspaces` by workspace id, in their order; others are dropped
+fn group_windows(
+  windows: &[types::Window],
+  workspaces: &[types::Workspace],
+) -> HashMap<String, Vec<types::Window>> {
+  let mut grouped: HashMap<String, Vec<types::Window>> = HashMap::new();
+  for window in windows {
+    if workspaces.iter().any(|w| w.id == window.workspace) {
+      grouped
+        .entry(window.workspace.clone())
+        .or_default()
+        .push(window.clone());
+    }
+  }
+  grouped
+}
+
+/// The icon row's length; an empty workspace keeps one icon's room
+fn icons_extent(count: usize) -> f32 {
+  match count as f32 {
+    0. => ICON_SIZE as f32,
+    count => count * ICON_SIZE as f32 + (count - 1.) * ICON_GAP,
   }
 }
 
@@ -350,4 +350,177 @@ fn workspace_windows(
       })
       .collect::<Vec<_>>()
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use anyhow::Result;
+  use corona_compositor::{Compositor, CompositorImpl};
+  use gpui_kit::{self as gpui, AppContext as _, TestAppContext};
+
+  use super::*;
+
+  fn workspace(id: &str, monitor: &str) -> types::Workspace {
+    types::Workspace {
+      id: id.into(),
+      name: id.into(),
+      monitor: monitor.into(),
+      monitor_id: 0,
+    }
+  }
+
+  fn window(address: &str, workspace: &str) -> types::Window {
+    types::Window {
+      address: address.into(),
+      monitor: 0,
+      workspace: workspace.into(),
+      class: "class".into(),
+      title: address.into(),
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      floating: false,
+      pinned: false,
+      fullscreen: false,
+      hidden: false,
+      focus_history_id: 0,
+    }
+  }
+
+  fn addresses(grouped: &HashMap<String, Vec<types::Window>>, id: &str) -> Vec<String> {
+    grouped
+      .get(id)
+      .map_or(vec![], |ws| ws.iter().map(|w| w.address.clone()).collect())
+  }
+
+  #[test]
+  fn group_windows() {
+    let workspaces = [workspace("1", "DP-1"), workspace("2", "DP-1")];
+    let windows = [
+      window("a", "1"),
+      window("b", "3"),
+      window("c", "2"),
+      window("d", "1"),
+    ];
+    let grouped = super::group_windows(&windows, &workspaces);
+    assert_eq!(addresses(&grouped, "1"), ["a", "d"]);
+    assert_eq!(addresses(&grouped, "2"), ["c"]);
+    // a workspace elsewhere drops its windows
+    assert!(!grouped.contains_key("3"));
+    assert!(super::group_windows(&windows, &[]).is_empty());
+  }
+
+  #[test]
+  fn icons_extent() {
+    assert_eq!(super::icons_extent(0), super::icons_extent(1));
+    assert_eq!(super::icons_extent(1), ICON_SIZE as f32);
+    assert_eq!(
+      super::icons_extent(3),
+      3. * ICON_SIZE as f32 + 2. * ICON_GAP
+    );
+  }
+
+  struct Fake;
+
+  impl CompositorImpl for Fake {
+    fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
+      Ok(vec![
+        workspace("1", "DP-1"),
+        workspace("2", "DP-1"),
+        workspace("9", "HDMI-1"),
+      ])
+    }
+    fn active_workspace(&self) -> Result<types::Workspace> {
+      Ok(workspace("1", "DP-1"))
+    }
+    fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
+      Ok(vec![])
+    }
+    fn active_monitor(&self) -> Result<types::Monitor> {
+      Ok(types::Monitor {
+        id: 0,
+        name: "DP-1".into(),
+        width: 1,
+        height: 1,
+        refresh_rate: 60.,
+        x: 0,
+        y: 0,
+        active_scratchpad: None,
+        active_workspace: workspace("1", "DP-1"),
+        scale: 1.,
+        focused: true,
+        disabled: false,
+        mirror_of: "none".into(),
+      })
+    }
+    fn list_windows(&self) -> Result<Vec<types::Window>> {
+      Ok(vec![window("a", "1"), window("b", "9")])
+    }
+    fn active_window(&self) -> Result<Option<types::Window>> {
+      Ok(None)
+    }
+    fn focus_workspace(&self, _: &str) -> Result<()> {
+      Ok(())
+    }
+    fn focus_window(&self, _: &str) -> Result<()> {
+      Ok(())
+    }
+    fn close_window(&self, _: &str) -> Result<()> {
+      Ok(())
+    }
+    fn cursor_position(&self) -> Result<(i32, i32)> {
+      Ok((0, 0))
+    }
+    fn keyboard_layout(&self) -> Result<Option<String>> {
+      Ok(None)
+    }
+    fn set_dpms(&self, _: bool) -> Result<()> {
+      Ok(())
+    }
+  }
+
+  fn ids(widget: &Workspaces) -> Vec<&str> {
+    widget.workspaces.iter().map(|w| w.id.as_str()).collect()
+  }
+
+  #[gpui::test]
+  fn follows_the_compositor(cx: &mut TestAppContext) {
+    let (windows, workspaces) = cx.update(|cx| {
+      let compositor = Compositor::new(cx, std::rc::Rc::new(Fake)).unwrap();
+      let entities = (compositor.windows.clone(), compositor.workspaces.clone());
+      cx.set_global(compositor);
+      entities
+    });
+    let display = workspace("1", "DP-1").display_id();
+    let widget = cx.new(|cx| Workspaces::init(cx, display, ()));
+    widget.read_with(cx, |w, _| {
+      // only this display's workspaces and their windows
+      assert_eq!(ids(w), ["1", "2"]);
+      assert_eq!(addresses(&w.windows, "1"), ["a"]);
+      assert!(!w.windows.contains_key("9"));
+    });
+
+    windows.update(cx, |windows, cx| {
+      *windows = vec![window("c", "2"), window("d", "1"), window("e", "9")];
+      cx.notify();
+    });
+    cx.run_until_parked();
+    widget.read_with(cx, |w, _| {
+      assert_eq!(addresses(&w.windows, "1"), ["d"]);
+      assert_eq!(addresses(&w.windows, "2"), ["c"]);
+      assert!(!w.windows.contains_key("9"));
+    });
+
+    workspaces.update(cx, |workspaces, cx| {
+      workspaces.retain(|w| w.id != "1");
+      cx.notify();
+    });
+    cx.run_until_parked();
+    widget.read_with(cx, |w, _| {
+      assert_eq!(ids(w), ["2"]);
+      assert!(!w.windows.contains_key("1"));
+      assert_eq!(addresses(&w.windows, "2"), ["c"]);
+    });
+  }
 }

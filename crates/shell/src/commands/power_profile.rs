@@ -19,6 +19,16 @@ fn set(name: String, cx: &mut App) {
   .detach();
 }
 
+fn check(name: &str, available: &[String]) -> Result<()> {
+  if !available.iter().any(|p| p == name) {
+    bail!(
+      "unknown profile {name}, expected one of {}",
+      available.join(", ")
+    );
+  }
+  Ok(())
+}
+
 pub struct SetProfile;
 
 impl IpcCommand for SetProfile {
@@ -29,12 +39,7 @@ impl IpcCommand for SetProfile {
 
   fn handle(name: Self::Payload, cx: &mut App) -> Result<Self::Response> {
     let profiles = cx.power().profiles(cx).context("no power profiles")?;
-    if !profiles.available.contains(&name) {
-      bail!(
-        "unknown profile {name}, expected one of {}",
-        profiles.available.join(", ")
-      );
-    }
+    check(&name, &profiles.available)?;
     set(name, cx);
     Ok(())
   }
@@ -74,5 +79,21 @@ impl IpcCommand for ListProfiles {
         .map(|p| p.available.clone())
         .unwrap_or_default(),
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn check_known_and_unknown() {
+    let available = ["power-saver", "balanced"].map(String::from);
+    assert!(check("balanced", &available).is_ok());
+    let err = check("turbo", &available).unwrap_err().to_string();
+    assert!(err.contains("turbo"), "{err}");
+    assert!(err.contains("power-saver, balanced"), "{err}");
+    assert!(check("Balanced", &available).is_err());
+    assert!(check("", &[]).is_err());
   }
 }

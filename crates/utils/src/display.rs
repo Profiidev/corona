@@ -29,4 +29,14 @@ mod tests {
     );
     assert_ne!(display_uuid("ü"), display_uuid("u"));
   }
+
+  #[gpui_kit::test]
+  fn unknown_monitor_has_no_display(cx: &mut gpui_kit::TestAppContext) {
+    // the test display has a random uuid, so no name maps to it
+    cx.update(|cx| {
+      assert!(!cx.displays().is_empty());
+      assert_eq!(display_id_for("DP-1", cx), None);
+      assert_eq!(display_id_for("", cx), None);
+    });
+  }
 }

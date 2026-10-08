@@ -158,3 +158,48 @@ impl ModuleExt for Policy {
     Ok((policy, subs))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn module_names() {
+    let all = [
+      (CoronaModule::Compositor, "compositor"),
+      (CoronaModule::Pipewire, "pipewire"),
+      (CoronaModule::Network, "network"),
+      (CoronaModule::Mpris, "mpris"),
+      (CoronaModule::Bluetooth, "bluetooth"),
+      (CoronaModule::Power, "power"),
+      (CoronaModule::Brightness, "brightness"),
+      (CoronaModule::Notifications, "notifications"),
+      (CoronaModule::Tray, "tray"),
+      (CoronaModule::Sysinfo, "sysinfo"),
+      (CoronaModule::Weather, "weather"),
+    ];
+    for (module, name) in all {
+      assert_eq!(
+        serde_json::from_value::<CoronaModule>(name.into()).unwrap(),
+        module
+      );
+    }
+    assert!(serde_json::from_value::<CoronaModule>("Weather".into()).is_err());
+  }
+
+  #[test]
+  fn subscriptions_are_shared_between_clones() {
+    let reads = Subscriptions::default();
+    let clone = reads.clone();
+    let update = Updates::Tray(tray::Updates::Items);
+    assert!(!reads.contains(update));
+
+    clone.record(update);
+    clone.record(update);
+    assert!(reads.contains(update));
+    assert!(!reads.contains(Updates::Weather(weather::Updates::Error)));
+
+    // a fresh set does not see it
+    assert!(!Subscriptions::default().contains(update));
+  }
+}

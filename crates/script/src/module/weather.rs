@@ -198,8 +198,42 @@ mod tests {
   use super::Weather;
 
   #[test]
+  fn converts_hourly_imperial() {
+    let mut weather = sample();
+    weather.units = wt::Units::Imperial;
+    weather.fetched = UNIX_EPOCH - Duration::from_secs(1);
+    weather.hourly = vec![wt::Hour {
+      time: "2026-10-08T10:00".into(),
+      temperature: 54.,
+      humidity: 70.,
+      precipitation_probability: 20.,
+      wind_speed: 5.,
+      code: 0,
+      is_day: false,
+    }];
+    let json = serde_json::to_value(Weather::from(&weather)).unwrap();
+    assert_eq!(json["units"], "imperial");
+    // before the epoch is clamped, not negative
+    assert_eq!(json["fetched"], 0.);
+    let hour = &json["hourly"][0];
+    assert_eq!(hour["time"], "2026-10-08T10:00");
+    assert_eq!(hour["precipitation_probability"], 20.);
+    assert_eq!(hour["condition"], "clear");
+    assert_eq!(hour["is_day"], false);
+  }
+
+  #[test]
   fn converts() {
-    let weather = wt::Weather {
+    let json = serde_json::to_value(Weather::from(&sample())).unwrap();
+    assert_eq!(json["location"]["name"], "");
+    assert_eq!(json["units"], "metric");
+    assert_eq!(json["current"]["condition"], "partly_cloudy");
+    assert_eq!(json["daily"][0]["condition"], "rain");
+    assert_eq!(json["fetched"], 100.);
+  }
+
+  fn sample() -> wt::Weather {
+    wt::Weather {
       location: wt::Location {
         name: String::new(),
         latitude: 47.86,
@@ -231,12 +265,6 @@ mod tests {
         sunset: "2026-10-08T18:40".into(),
       }],
       fetched: UNIX_EPOCH + Duration::from_secs(100),
-    };
-    let json = serde_json::to_value(Weather::from(&weather)).unwrap();
-    assert_eq!(json["location"]["name"], "");
-    assert_eq!(json["units"], "metric");
-    assert_eq!(json["current"]["condition"], "partly_cloudy");
-    assert_eq!(json["daily"][0]["condition"], "rain");
-    assert_eq!(json["fetched"], 100.);
+    }
   }
 }

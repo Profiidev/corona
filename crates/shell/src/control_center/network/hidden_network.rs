@@ -161,3 +161,21 @@ impl NetworkPanel {
     ))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn security_labels_round_trip() {
+    // the select hands back a label, which must map to one option
+    for security in SECURITY_OPTIONS {
+      let label = security_label(security);
+      let found: Vec<_> = SECURITY_OPTIONS
+        .iter()
+        .filter(|s| security_label(**s) == label)
+        .collect();
+      assert_eq!(found, [&security]);
+    }
+  }
+}

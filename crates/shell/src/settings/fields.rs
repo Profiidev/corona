@@ -71,6 +71,15 @@ fn name<T: Serialize>(value: &T) -> SharedString {
     .unwrap_or_default()
 }
 
+/// The config enum value named `v`, `None` of an optional one for ""
+fn parse<T: DeserializeOwned>(v: &str) -> Option<T> {
+  let json = match v.is_empty() {
+    true => serde_json::Value::Null,
+    false => serde_json::Value::String(v.to_string()),
+  };
+  serde_json::from_value(json).ok()
+}
+
 /// One of a config enum's values, labelled. `None` of an optional one is ""
 pub(super) fn choice<T>(
   options: &[(T, Cow<'static, str>)],
@@ -89,11 +98,7 @@ where
     options,
     move |cx| name(&get(cx.config())),
     move |v, cx| {
-      let json = match v.is_empty() {
-        true => serde_json::Value::Null,
-        false => serde_json::Value::String(v.to_string()),
-      };
-      if let Ok(value) = serde_json::from_value::<T>(json) {
+      if let Some(value) = parse::<T>(&v) {
         save(cx, |c| set(c, value));
       }
     },
@@ -142,7 +147,7 @@ pub(super) fn optional_text(
   let commit = {
     let (get, set) = (get.clone(), set.clone());
     move |value: String, cx: &mut App| {
-      let value = (!value.trim().is_empty() && value != fallback(cx)).then_some(value);
+      let value = optional(value, &fallback(cx));
       if value != get(cx.config()) {
         save(cx, |c| set(c, value));
       }
@@ -152,6 +157,11 @@ pub(super) fn optional_text(
     move |cx: &App| get(cx.config()).is_some(),
     move |_, cx: &mut App| save(cx, |c| set(c, None)),
   )
+}
+
+/// What an optional text field holds: none when it is blank or shows the fallback
+fn optional(value: String, fallback: &str) -> Option<String> {
+  (!value.trim().is_empty() && value != fallback).then_some(value)
 }
 
 fn text_field(
@@ -432,7 +442,7 @@ pub(super) fn searchable(
 mod tests {
   use corona_config::{NotificationPosition, Weekday};
 
-  use super::{format_number, name};
+  use super::{format_number, name, optional, parse};
 
   #[test]
   fn names_and_numbers() {
@@ -440,5 +450,45 @@ mod tests {
     assert_eq!(name(&Weekday::Sunday).as_ref(), "sunday");
     assert_eq!(format_number(1.0), "1");
     assert_eq!(format_number(0.1 + 0.2), "0.3");
+  }
+
+  #[test]
+  fn optional_names_round_trip() {
+    assert_eq!(name(&None::<NotificationPosition>).as_ref(), "");
+    assert_eq!(parse::<Option<NotificationPosition>>(""), Some(None));
+    for value in [
+      NotificationPosition::TopRight,
+      NotificationPosition::TopLeft,
+    ] {
+      assert_eq!(parse(&name(&value)), Some(value));
+      assert_eq!(parse(&name(&Some(value))), Some(Some(value)));
+    }
+  }
+
+  #[test]
+  fn parse_rejects_unknown() {
+    assert_eq!(parse::<NotificationPosition>("nowhere"), None);
+    // a required enum has no empty value
+    assert_eq!(parse::<NotificationPosition>(""), None);
+    assert_eq!(parse::<Weekday>("Sunday"), None);
+  }
+
+  #[test]
+  fn format_number_rounds_to_thousandths() {
+    assert_eq!(format_number(0.), "0");
+    assert_eq!(format_number(-2.5), "-2.5");
+    assert_eq!(format_number(1.23456), "1.235");
+    assert_eq!(format_number(100.), "100");
+  }
+
+  #[test]
+  fn optional_text_values() {
+    assert_eq!(optional("".into(), "fb"), None);
+    assert_eq!(optional("  ".into(), "fb"), None);
+    assert_eq!(optional("fb".into(), "fb"), None);
+    assert_eq!(optional("x".into(), "fb"), Some("x".into()));
+    // kept as typed
+    assert_eq!(optional(" x ".into(), "fb"), Some(" x ".into()));
+    assert_eq!(optional("x".into(), ""), Some("x".into()));
   }
 }

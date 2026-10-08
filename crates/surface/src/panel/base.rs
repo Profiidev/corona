@@ -314,3 +314,70 @@ pub fn panel_path(
   p.close();
   p.build().ok()
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::size;
+
+  use super::*;
+
+  pub(crate) const ALL: [Placement; 4] = [
+    Placement::Top,
+    Placement::Bottom,
+    Placement::Left,
+    Placement::Right,
+  ];
+
+  fn inside(path: &Path<Pixels>, bounds: Bounds<Pixels>) -> bool {
+    let e = px(0.5);
+    let b = path.bounds;
+    b.left() >= bounds.left() - e
+      && b.top() >= bounds.top() - e
+      && b.right() <= bounds.right() + e
+      && b.bottom() <= bounds.bottom() + e
+  }
+
+  #[test]
+  fn every_align_and_placement_builds_inside_its_bounds() {
+    let bounds = Bounds::new(point(px(10.), px(20.)), size(px(300.), px(200.)));
+    for placement in ALL {
+      for align in [Align::Left, Align::Right, Align::Relative(150.)] {
+        let path = panel_path(bounds, px(12.), align, placement).expect("a path");
+        assert!(!path.vertices.is_empty());
+        assert!(inside(&path, bounds), "{placement:?} {:?}", path.bounds);
+      }
+    }
+  }
+
+  #[test]
+  fn degenerate_bounds_do_not_panic() {
+    for placement in ALL {
+      for align in [Align::Left, Align::Right, Align::Relative(0.)] {
+        for (w, h, n) in [
+          (0., 0., 12.),
+          (300., 5., 12.),
+          (5., 300., 12.),
+          (300., 200., 0.),
+        ] {
+          let bounds = Bounds::new(point(px(0.), px(0.)), size(px(w), px(h)));
+          let _ = panel_path(bounds, px(n), align, placement);
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn blockers_cover_their_display_and_take_no_keys() {
+    let options = blocker_options(DisplayId::new(7));
+    assert_eq!(options.display_id, Some(DisplayId::new(7)));
+    let WindowKind::LayerShell(shell) = options.kind else {
+      panic!("not a layer surface");
+    };
+    assert_eq!(shell.namespace, format!("{PANEL_NAME}_blocker"));
+    assert_eq!(shell.anchor, Anchor::all());
+    assert!(matches!(
+      shell.keyboard_interactivity,
+      KeyboardInteractivity::None
+    ));
+  }
+}

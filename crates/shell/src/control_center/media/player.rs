@@ -26,6 +26,15 @@ fn time(duration: Duration) -> String {
   format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+/// The repeat button cycles off → playlist → track → off
+fn next_loop(status: Option<LoopStatus>) -> LoopStatus {
+  match status {
+    Some(LoopStatus::None) | None => LoopStatus::Playlist,
+    Some(LoopStatus::Playlist) => LoopStatus::Track,
+    Some(LoopStatus::Track) => LoopStatus::None,
+  }
+}
+
 fn art(theme: &Theme, player: &Player) -> impl IntoElement {
   let placeholder = || {
     div()
@@ -192,14 +201,7 @@ impl MediaPanel {
         .on_click(cx.async_listener(
           {
             let name = name.clone();
-            move |_, _, _, cx| {
-              let next = match loop_status {
-                Some(LoopStatus::None) | None => LoopStatus::Playlist,
-                Some(LoopStatus::Playlist) => LoopStatus::Track,
-                Some(LoopStatus::Track) => LoopStatus::None,
-              };
-              cx.mpris().set_loop_status(&name, next)
-            }
+            move |_, _, _, cx| cx.mpris().set_loop_status(&name, next_loop(loop_status))
           },
           log,
         )),
@@ -260,5 +262,29 @@ impl MediaPanel {
             log,
           )),
       )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn time() {
+    let t = |s| super::time(Duration::from_secs(s));
+    assert_eq!(t(0), "0:00");
+    assert_eq!(t(59), "0:59");
+    assert_eq!(t(60), "1:00");
+    assert_eq!(t(3600), "60:00");
+    // sub-second parts are dropped
+    assert_eq!(super::time(Duration::from_millis(1999)), "0:01");
+  }
+
+  #[test]
+  fn next_loop_cycles() {
+    assert_eq!(next_loop(None), LoopStatus::Playlist);
+    assert_eq!(next_loop(Some(LoopStatus::None)), LoopStatus::Playlist);
+    assert_eq!(next_loop(Some(LoopStatus::Playlist)), LoopStatus::Track);
+    assert_eq!(next_loop(Some(LoopStatus::Track)), LoopStatus::None);
   }
 }

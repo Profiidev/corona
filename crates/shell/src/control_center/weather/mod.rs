@@ -158,3 +158,50 @@ impl Render for WeatherPanel {
       )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn location(name: &str) -> Location {
+    Location {
+      name: name.into(),
+      latitude: 0.,
+      longitude: 0.,
+      query: None,
+    }
+  }
+
+  #[test]
+  fn icon_day_night() {
+    for condition in Condition::ALL {
+      let differs = matches!(
+        condition,
+        Condition::Clear | Condition::MainlyClear | Condition::PartlyCloudy
+      );
+      assert_eq!(
+        icon(condition, true) != icon(condition, false),
+        differs,
+        "{condition:?}"
+      );
+    }
+    assert_eq!(icon(Condition::Clear, true), IconName::Sun);
+    assert_eq!(icon(Condition::Clear, false), IconName::Moon);
+    assert_eq!(icon(Condition::PartlyCloudy, false), IconName::CloudMoon);
+    assert_eq!(icon(Condition::Unknown, true), IconName::Cloud);
+  }
+
+  #[test]
+  fn describe_every_condition() {
+    for condition in Condition::ALL {
+      let text = describe(condition);
+      assert!(!text.is_empty() && !text.contains('.'), "{text}");
+    }
+  }
+
+  #[test]
+  fn place_name() {
+    assert_eq!(super::place_name(&location("Berlin")), "Berlin");
+    assert_eq!(super::place_name(&location("")), "Current location");
+  }
+}

@@ -40,6 +40,29 @@ struct Display {
   unavailable: Option<Unavailable>,
 }
 
+impl From<&br::Display> for Display {
+  fn from(d: &br::Display) -> Self {
+    Self {
+      id: d.id.clone(),
+      output: d.output.clone(),
+      name: d.name.clone(),
+      kind: match d.kind {
+        br::DisplayKind::Backlight => DisplayKind::Backlight,
+        br::DisplayKind::External => DisplayKind::External,
+      },
+      brightness: d.brightness,
+      max: d.max,
+      unavailable: d.unavailable.map(|reason| match reason {
+        br::Unavailable::DdcutilDisabled => Unavailable::DdcutilDisabled,
+        br::Unavailable::DdcutilMissing => Unavailable::DdcutilMissing,
+        br::Unavailable::Detecting => Unavailable::Detecting,
+        br::Unavailable::Unsupported => Unavailable::Unsupported,
+        br::Unavailable::Failed => Unavailable::Failed,
+      }),
+    }
+  }
+}
+
 #[derive(Serialize, TS)]
 struct Ddcutil {
   available: bool,
@@ -69,27 +92,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       state.displays.clone(),
       |cx| {
         let displays = cx.brightness().list_displays(cx);
-        displays
-          .iter()
-          .map(|d| Display {
-            id: d.id.clone(),
-            output: d.output.clone(),
-            name: d.name.clone(),
-            kind: match d.kind {
-              br::DisplayKind::Backlight => DisplayKind::Backlight,
-              br::DisplayKind::External => DisplayKind::External,
-            },
-            brightness: d.brightness,
-            max: d.max,
-            unavailable: d.unavailable.map(|reason| match reason {
-              br::Unavailable::DdcutilDisabled => Unavailable::DdcutilDisabled,
-              br::Unavailable::DdcutilMissing => Unavailable::DdcutilMissing,
-              br::Unavailable::Detecting => Unavailable::Detecting,
-              br::Unavailable::Unsupported => Unavailable::Unsupported,
-              br::Unavailable::Failed => Unavailable::Failed,
-            }),
-          })
-          .collect::<Vec<_>>()
+        displays.iter().map(Display::from).collect::<Vec<_>>()
       },
     ))
     .func(named!("ddcutil", |cx: Cx| {
@@ -106,4 +109,47 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       }
     ))
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn display(kind: br::DisplayKind, unavailable: Option<br::Unavailable>) -> serde_json::Value {
+    let display = br::Display {
+      id: "ddc:1".into(),
+      output: Some("DP-1".into()),
+      name: None,
+      kind,
+      brightness: 40,
+      max: 100,
+      unavailable,
+    };
+    serde_json::to_value(Display::from(&display)).unwrap()
+  }
+
+  #[test]
+  fn displays() {
+    let json = display(br::DisplayKind::Backlight, None);
+    assert_eq!(json["kind"], "backlight");
+    assert_eq!(json["id"], "ddc:1");
+    assert_eq!(json["output"], "DP-1");
+    assert!(json["name"].is_null());
+    assert_eq!(json["brightness"], 40);
+    assert_eq!(json["max"], 100);
+    assert!(json["unavailable"].is_null());
+
+    let all = [
+      (br::Unavailable::DdcutilDisabled, "ddcutil_disabled"),
+      (br::Unavailable::DdcutilMissing, "ddcutil_missing"),
+      (br::Unavailable::Detecting, "detecting"),
+      (br::Unavailable::Unsupported, "unsupported"),
+      (br::Unavailable::Failed, "failed"),
+    ];
+    for (reason, name) in all {
+      let json = display(br::DisplayKind::External, Some(reason));
+      assert_eq!(json["kind"], "external");
+      assert_eq!(json["unavailable"], name);
+    }
+  }
 }

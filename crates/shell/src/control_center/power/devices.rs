@@ -83,3 +83,58 @@ impl PowerPanel {
     )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn device(percentage: f64, level: BatteryLevel) -> PowerDevice {
+    PowerDevice {
+      path: zbus::zvariant::OwnedObjectPath::try_from("/test").unwrap(),
+      model: "Test".into(),
+      kind: BatteryType::Mouse,
+      percentage,
+      state: corona_power::BatteryState::Discharging,
+      level,
+    }
+  }
+
+  #[test]
+  fn icon() {
+    assert_eq!(super::icon(BatteryType::Mouse), IconName::Mouse);
+    assert_eq!(
+      super::icon(BatteryType::Headset),
+      super::icon(BatteryType::Headphones)
+    );
+    assert_eq!(super::icon(BatteryType::Wearable), IconName::Watch);
+    assert_eq!(super::icon(BatteryType::Printer), IconName::Battery);
+    assert_eq!(super::icon(BatteryType::Unknown), IconName::Battery);
+  }
+
+  #[test]
+  fn charge_percentage() {
+    assert_eq!(charge(&device(42., BatteryLevel::Unknown)), "42%");
+    assert_eq!(charge(&device(99.6, BatteryLevel::Unknown)), "100%");
+  }
+
+  #[test]
+  fn charge_falls_back_to_level() {
+    assert_eq!(charge(&device(0., BatteryLevel::High)), "High");
+    assert_eq!(
+      charge(&device(0., BatteryLevel::None)),
+      charge(&device(0., BatteryLevel::Unknown))
+    );
+    let levels = [
+      BatteryLevel::Full,
+      BatteryLevel::High,
+      BatteryLevel::Normal,
+      BatteryLevel::Low,
+      BatteryLevel::Critical,
+      BatteryLevel::Unknown,
+    ];
+    let mut labels: Vec<_> = levels.iter().map(|l| charge(&device(0., *l))).collect();
+    labels.sort();
+    labels.dedup();
+    assert_eq!(labels.len(), levels.len());
+  }
+}

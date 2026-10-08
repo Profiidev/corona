@@ -28,3 +28,7 @@ tracing.workspace = true
 dirs.workspace = true
 ts-rs.workspace = true
 schemars = "1.2.2"
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

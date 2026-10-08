@@ -214,13 +214,243 @@ fn granted() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use std::collections::BTreeSet;
+  use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+  };
 
-  use super::ManifestFile;
+  use gpui_shell::{Capabilities, ExecuteGrant};
+
+  use super::{ManifestFile, expand};
   use crate::module::CoronaModule;
 
   fn parse(json: &str) -> serde_json::Result<ManifestFile> {
     serde_json::from_str(json)
+  }
+
+  /// The grant of a manifest with these `capabilities`.
+  fn grant(capabilities: &str) -> Capabilities {
+    let json = format!(r#"{{ "id": "a", "name": "A", "capabilities": {capabilities} }}"#);
+    parse(&json)
+      .unwrap()
+      .capabilities
+      .grant(Path::new("/plugins/a"), Path::new("/data/a"))
+  }
+
+  fn expand_raw(raw: &str) -> PathBuf {
+    expand(raw, Path::new("/plugins/a"), Path::new("/data/a"))
+  }
+
+  #[test]
+  fn required_fields() {
+    assert!(parse(r#"{ "name": "A" }"#).is_err());
+    assert!(parse(r#"{ "id": "a" }"#).is_err());
+    let manifest = parse(r#"{ "id": "a", "name": "A" }"#).unwrap();
+    assert_eq!(manifest.version, None);
+    assert!(manifest.views.is_empty());
+
+    let manifest =
+      parse(r#"{ "id": "a", "name": "A", "version": "1.2.0", "views": { "bar": "main.js" } }"#)
+        .unwrap();
+    assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
+    assert_eq!(manifest.views["bar"], "main.js");
+  }
+
+  #[test]
+  fn nested_unknown_fields_are_rejected() {
+    for capabilities in [
+      r#"{ "bogus": true }"#,
+      r#"{ "fs": { "exec": ["git"] } }"#,
+      r#"{ "network": { "host": [] } }"#,
+      r#"{ "network": { "http": [{ "host": "a", "methods": ["GET"], "path": [] }] } }"#,
+      r#"{ "clipboard": { "paste": true } }"#,
+      r#"{ "process": { "kill": true } }"#,
+    ] {
+      let json = format!(r#"{{ "id": "a", "name": "A", "capabilities": {capabilities} }}"#);
+      assert!(parse(&json).is_err(), "{capabilities}");
+    }
+  }
+
+  #[test]
+  fn http_methods_are_required() {
+    let json =
+      r#"{ "id": "a", "name": "A", "capabilities": { "network": { "http": [{ "host": "a" }] } } }"#;
+    assert!(parse(json).is_err());
+  }
+
+  #[test]
+  fn default_grant() {
+    let capabilities = grant("{}");
+    // storage is the one grant given by default
+    assert!(capabilities.has_storage());
+    assert_eq!(capabilities.execute_grant(), &ExecuteGrant::Denied);
+    assert!(!capabilities.has_read_access());
+    assert!(!capabilities.has_write_access());
+    assert!(!capabilities.is_clipboard_readable());
+    assert!(!capabilities.is_clipboard_writable());
+    assert!(!capabilities.may_exit());
+    assert!(!capabilities.may_reach("example.com"));
+    assert!(!capabilities.may_request("https", "example.com", None, "GET", "/"));
+  }
+
+  #[test]
+  #[ignore = "bug: derived Default gives storage false when `capabilities` is omitted, `{}` gives true"]
+  fn bug_omitted_capabilities_lose_storage() {
+    let capabilities = parse(r#"{ "id": "a", "name": "A" }"#)
+      .unwrap()
+      .capabilities
+      .grant(Path::new("/plugins/a"), Path::new("/data/a"));
+    assert!(capabilities.has_storage());
+  }
+
+  #[test]
+  fn explicit_grants() {
+    let capabilities = grant(
+      r#"{
+        "fs": { "read": ["${pluginDir}"], "write": ["${dataDir}"] },
+        "storage": false,
+        "clipboard": { "read": true, "write": true },
+        "process": { "exit": true }
+      }"#,
+    );
+    assert!(!capabilities.has_storage());
+    assert!(capabilities.has_read_access());
+    assert!(capabilities.has_write_access());
+    assert!(capabilities.is_clipboard_readable());
+    assert!(capabilities.is_clipboard_writable());
+    assert!(capabilities.may_exit());
+
+    let capabilities = grant(r#"{ "clipboard": { "read": true } }"#);
+    assert!(capabilities.is_clipboard_readable());
+    assert!(!capabilities.is_clipboard_writable());
+  }
+
+  #[test]
+  fn execute_grants() {
+    let capabilities = grant(r#"{ "fs": { "execute": ["git"] } }"#);
+    assert_eq!(
+      capabilities.execute_grant(),
+      &ExecuteGrant::Allowed(vec!["git".into()])
+    );
+    assert!(capabilities.may_run("git"));
+    assert!(!capabilities.may_run("rm"));
+
+    let capabilities = grant(r#"{ "fs": { "execute": [] } }"#);
+    assert!(!capabilities.may_run("git"));
+
+    let capabilities = grant(r#"{ "fs": { "execute": "*" } }"#);
+    assert_eq!(capabilities.execute_grant(), &ExecuteGrant::Unrestricted);
+    assert!(capabilities.may_run("anything"));
+
+    let json = r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "execute": true } } }"#;
+    assert!(parse(json).is_err());
+  }
+
+  #[test]
+  #[ignore = "bug: any execute string, not just \"*\", grants unrestricted execution"]
+  fn bug_execute_string_other_than_wildcard_is_unrestricted() {
+    let json = r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "execute": "git" } } }"#;
+    let unrestricted = parse(json).is_ok_and(|manifest| {
+      manifest
+        .capabilities
+        .grant(Path::new("/p"), Path::new("/d"))
+        .execute_grant()
+        == &ExecuteGrant::Unrestricted
+    });
+    assert!(!unrestricted, "`\"git\"` must not mean `\"*\"`");
+  }
+
+  #[test]
+  fn network_hosts() {
+    let capabilities = grant(r#"{ "network": { "hosts": ["API.Example.com"] } }"#);
+    assert!(capabilities.may_reach("api.example.com"));
+    assert!(!capabilities.may_reach("example.com"));
+    // a host grant allows any request to it
+    assert!(capabilities.may_request("http", "api.example.com", Some(1), "POST", "/x"));
+  }
+
+  #[test]
+  fn http_grants() {
+    let capabilities = grant(
+      r#"{ "network": { "http": [
+        { "host": "Api.Example.com", "methods": ["get"], "paths": ["/v1/a"], "path_prefixes": ["/v2"] },
+        { "scheme": "http", "host": "local", "port": 8080, "methods": ["POST"] }
+      ] } }"#,
+    );
+    // https by default, host and method case-insensitive
+    assert!(capabilities.may_request("https", "api.example.com", None, "GET", "/v1/a"));
+    assert!(capabilities.may_request("https", "api.example.com", Some(443), "GET", "/v2/b"));
+    assert!(!capabilities.may_request("http", "api.example.com", None, "GET", "/v1/a"));
+    assert!(!capabilities.may_request("https", "api.example.com", None, "POST", "/v1/a"));
+    assert!(!capabilities.may_request("https", "api.example.com", None, "GET", "/v1/b"));
+    assert!(!capabilities.may_request("https", "api.example.com", Some(8443), "GET", "/v1/a"));
+    // an http grant is not a host grant
+    assert!(!capabilities.may_reach("api.example.com"));
+
+    // no paths at all: nothing is allowed
+    assert!(!capabilities.may_request("http", "local", Some(8080), "POST", "/"));
+  }
+
+  #[test]
+  fn http_port() {
+    let capabilities = grant(
+      r#"{ "network": { "http": [
+        { "scheme": "http", "host": "local", "port": 8080, "methods": ["POST"], "path_prefixes": ["/"] }
+      ] } }"#,
+    );
+    assert!(capabilities.may_request("http", "local", Some(8080), "POST", "/x"));
+    assert!(!capabilities.may_request("http", "local", None, "POST", "/x"));
+    assert!(!capabilities.may_request("https", "local", Some(8080), "POST", "/x"));
+  }
+
+  #[test]
+  fn expands_paths() {
+    assert_eq!(expand_raw("${pluginDir}"), Path::new("/plugins/a"));
+    assert_eq!(
+      expand_raw("${pluginDir}/assets"),
+      Path::new("/plugins/a/assets")
+    );
+    assert_eq!(expand_raw("${dataDir}/cache"), Path::new("/data/a/cache"));
+    assert_eq!(expand_raw("/etc/os-release"), Path::new("/etc/os-release"));
+    // relative paths are inside the plugin directory
+    assert_eq!(expand_raw("assets"), Path::new("/plugins/a/assets"));
+    assert_eq!(expand_raw(""), Path::new("/plugins/a"));
+  }
+
+  #[test]
+  #[ignore = "bug: a relative `..` path is granted outside the plugin directory"]
+  fn bug_relative_path_escapes_plugin_dir() {
+    let path = expand_raw("../other");
+    let escapes = path
+      .components()
+      .any(|component| component == std::path::Component::ParentDir);
+    assert!(!escapes, "{} leaves /plugins/a", path.display());
+  }
+
+  #[test]
+  #[ignore = "bug: unknown placeholders like ${homeDir} are granted as a literal directory"]
+  fn bug_unknown_placeholder_is_accepted() {
+    let json =
+      r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "read": ["${homeDir}"] } } }"#;
+    assert!(parse(json).is_err());
+  }
+
+  #[test]
+  #[ignore = "bug: a misspelled top-level key like `capabilites` is ignored, the plugin silently gets the default grant"]
+  fn bug_top_level_unknown_fields_are_accepted() {
+    let json = r#"{ "id": "a", "name": "A", "capabilites": { "clipboard": { "read": true } } }"#;
+    assert!(parse(json).is_err());
+  }
+
+  #[test]
+  fn committed_schema_is_current() {
+    let schema = schemars::schema_for!(ManifestFile).to_value();
+    let committed: serde_json::Value =
+      serde_json::from_str(include_str!("../plugin.schema.json")).unwrap();
+    assert_eq!(
+      schema, committed,
+      "run corona in debug to refresh plugin.schema.json"
+    );
   }
 
   #[test]

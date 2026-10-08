@@ -54,10 +54,13 @@ fn source(cx: &App) -> Option<&AudioNode> {
 /// the focused monitor's display, or the first usable one
 pub(crate) fn display(cx: &App) -> Option<&Display> {
   let focused = &cx.compositor().active_monitor(cx).name;
-  let displays = cx.brightness().list_displays(cx);
+  pick_display(cx.brightness().list_displays(cx), focused)
+}
+
+fn pick_display<'d>(displays: &'d [Display], focused: &str) -> Option<&'d Display> {
   let usable = || displays.iter().filter(|d| d.unavailable.is_none());
   usable()
-    .find(|d| d.output.as_ref() == Some(focused))
+    .find(|d| d.output.as_deref() == Some(focused))
     .or_else(|| usable().next())
 }
 
@@ -272,4 +275,50 @@ fn row(
         .cursor_pointer()
         .on_click(move |_, window, cx| ControlCenter::navigate(page, window, cx)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+  use corona_brightness::{DisplayKind, Unavailable};
+
+  use super::*;
+
+  fn display(id: &str, output: Option<&str>, unavailable: Option<Unavailable>) -> Display {
+    Display {
+      id: id.into(),
+      output: output.map(Into::into),
+      name: None,
+      kind: DisplayKind::External,
+      brightness: 50,
+      max: 100,
+      unavailable,
+    }
+  }
+
+  fn picked(displays: &[Display], focused: &str) -> Option<String> {
+    pick_display(displays, focused).map(|d| d.id.clone())
+  }
+
+  #[test]
+  fn pick_display_prefers_focused() {
+    let displays = [
+      display("a", Some("DP-1"), None),
+      display("b", Some("DP-2"), None),
+    ];
+    assert_eq!(picked(&displays, "DP-2").as_deref(), Some("b"));
+    assert_eq!(picked(&displays, "HDMI-1").as_deref(), Some("a"));
+  }
+
+  #[test]
+  fn pick_display_skips_unavailable() {
+    let displays = [
+      display("a", Some("DP-1"), Some(Unavailable::Detecting)),
+      display("b", None, None),
+      display("c", Some("DP-2"), Some(Unavailable::Failed)),
+    ];
+    // the focused one is unusable, so the first usable one
+    assert_eq!(picked(&displays, "DP-2").as_deref(), Some("b"));
+    assert_eq!(picked(&displays[..1], "DP-1"), None);
+    assert_eq!(picked(&[], "DP-1"), None);
+  }
 }

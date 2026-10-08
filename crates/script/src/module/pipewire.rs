@@ -129,12 +129,13 @@ fn reset_target(pipewire: Glob<Pipewire>, stream: u32) -> anyhow::Result<()> {
 
 #[host_fn]
 fn set_volume(pipewire: Glob<Pipewire>, id: u32, volume: f32) -> anyhow::Result<()> {
-  let channels = pipewire
-    .audio()
-    .node(id)
-    .map_or(1, |node| node.volumes.len().max(1));
-
+  let channels = channels(pipewire.audio().node(id).as_ref());
   pipewire.audio().set_volumes(id, vec![volume; channels])
+}
+
+/// One volume per channel, at least one even for an unknown node.
+fn channels(node: Option<&AudioNode>) -> usize {
+  node.map_or(1, |node| node.volumes.len().max(1))
 }
 
 #[host_fn]
@@ -231,4 +232,71 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
     .func(set_volume)
     .func(set_mute)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::{Duration, UNIX_EPOCH};
+
+  use super::*;
+
+  fn node(volumes: Vec<f32>) -> AudioNode {
+    AudioNode {
+      id: 7,
+      serial: 70,
+      kind: NodeType::Sink,
+      name: "alsa_output".into(),
+      description: "Speakers".into(),
+      nickname: None,
+      device: Some(1),
+      profile_device: Some(2),
+      volumes,
+      mute: true,
+      app: vec!["firefox".into()],
+    }
+  }
+
+  #[test]
+  fn volume_is_the_first_channel() {
+    let json = serde_json::to_value(Node::from(&node(vec![0.4, 0.6]))).unwrap();
+    assert_eq!(json["volume"], 0.4f32);
+    assert_eq!(json["volumes"].as_array().unwrap().len(), 2);
+    assert_eq!(json["id"], 7);
+    assert_eq!(json["mute"], true);
+    // device ids stay in the shell
+    assert!(json.get("device").is_none());
+    assert!(json.get("profile_device").is_none());
+
+    let json = serde_json::to_value(Node::from(&node(vec![]))).unwrap();
+    assert_eq!(json["volume"], 0.);
+  }
+
+  #[test]
+  fn channel_counts() {
+    assert_eq!(channels(None), 1);
+    assert_eq!(channels(Some(&node(vec![]))), 1);
+    assert_eq!(channels(Some(&node(vec![0.5]))), 1);
+    assert_eq!(channels(Some(&node(vec![0.5; 6]))), 6);
+  }
+
+  #[test]
+  fn captures() {
+    let capture = PwCapture {
+      id: 3,
+      kind: CaptureKind::Microphone,
+      name: "obs".into(),
+      active: true,
+    };
+    let json = serde_json::to_value(Capture::from(&capture)).unwrap();
+    assert_eq!(json["id"], 3);
+    assert_eq!(json["name"], "obs");
+    assert_eq!(json["active"], true);
+  }
+
+  #[test]
+  fn unix_times() {
+    assert_eq!(unix(UNIX_EPOCH + Duration::from_millis(2500)), 2.5);
+    assert_eq!(unix(UNIX_EPOCH), 0.);
+    assert_eq!(unix(UNIX_EPOCH - Duration::from_secs(10)), 0.);
+  }
 }

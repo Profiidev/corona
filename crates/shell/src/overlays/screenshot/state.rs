@@ -361,4 +361,143 @@ mod tests {
     assert_eq!(pick(Direction::Down), Some("closer but aside"));
     assert_eq!(pick(Direction::Up), None);
   }
+
+  fn bounds(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds {
+      origin: point(px(x), px(y)),
+      size: Size::new(px(w), px(h)),
+    }
+  }
+
+  #[test]
+  fn direction_from_key() {
+    for (keys, dir) in [
+      (["left", "h"], Direction::Left),
+      (["right", "l"], Direction::Right),
+      (["up", "k"], Direction::Up),
+      (["down", "j"], Direction::Down),
+    ] {
+      for key in keys {
+        assert_eq!(Direction::from_key(key), Some(dir), "{key}");
+      }
+    }
+    for key in ["", "H", "Left", "x", "space"] {
+      assert_eq!(Direction::from_key(key), None, "{key}");
+    }
+  }
+
+  #[test]
+  fn drag_bounds_normalized_for_every_direction() {
+    let corners = [(10., 20.), (110., 20.), (10., 70.), (110., 70.)];
+    for from in corners {
+      for to in corners {
+        if from.0 == to.0 || from.1 == to.1 {
+          continue;
+        }
+        let drag = DragArea {
+          from: point(px(from.0), px(from.1)),
+          to: point(px(to.0), px(to.1)),
+        };
+        assert_eq!(drag.bounds(), bounds(10., 20., 100., 50.));
+      }
+    }
+  }
+
+  #[test]
+  fn drag_bounds_zero_size() {
+    let p = point(px(5.), px(7.));
+    let b = DragArea { from: p, to: p }.bounds();
+    assert_eq!(b.origin, p);
+    assert_eq!(b.size, Size::new(px(0.), px(0.)));
+  }
+
+  #[test]
+  fn window_at_first_match_wins() {
+    let top = bounds(0., 0., 100., 100.);
+    let below = bounds(50., 50., 100., 100.);
+    let windows = [top, below];
+    assert_eq!(window_at(&windows, point(px(60.), px(60.))), Some(top));
+    assert_eq!(window_at(&windows, point(px(120.), px(120.))), Some(below));
+    assert_eq!(window_at(&windows, point(px(300.), px(0.))), None);
+    assert_eq!(window_at(&[], point(px(0.), px(0.))), None);
+  }
+
+  #[test]
+  fn window_at_edges() {
+    let w = bounds(0., 0., 100., 100.);
+    assert_eq!(window_at(&[w], point(px(0.), px(0.))), Some(w));
+    assert_eq!(window_at(&[w], point(px(99.9), px(99.9))), Some(w));
+    // the far edge is exclusive
+    assert_eq!(window_at(&[w], point(px(100.), px(50.))), None);
+    assert_eq!(window_at(&[w], point(px(50.), px(100.))), None);
+  }
+
+  #[test]
+  fn nearest_empty_and_self() {
+    let from = rect(0., 0.);
+    let none: [(u8, Bounds<Pixels>); 0] = [];
+    assert!(nearest(from, Direction::Right, none).is_none());
+    // a candidate at the same center is never "ahead"
+    for dir in [
+      Direction::Left,
+      Direction::Right,
+      Direction::Up,
+      Direction::Down,
+    ] {
+      assert!(nearest(from, dir, [(0, from)]).is_none());
+    }
+  }
+
+  #[test]
+  fn nearest_tie_keeps_first() {
+    let from = rect(0., 0.);
+    let candidates = [("a", rect(200., 0.)), ("b", rect(200., 0.))];
+    assert_eq!(
+      nearest(from, Direction::Right, candidates).map(|(k, _)| k),
+      Some("a")
+    );
+  }
+
+  #[test]
+  fn nearest_weights_offset_twice() {
+    let from = rect(0., 0.);
+    // score: 100 + 2*100 = 300 vs 290 + 0
+    let candidates = [("diagonal", rect(100., 100.)), ("straight", rect(290., 0.))];
+    assert_eq!(
+      nearest(from, Direction::Right, candidates).map(|(k, _)| k),
+      Some("straight")
+    );
+    let candidates = [("diagonal", rect(100., 100.)), ("straight", rect(310., 0.))];
+    assert_eq!(
+      nearest(from, Direction::Right, candidates).map(|(k, _)| k),
+      Some("diagonal")
+    );
+    // the sign of the offset does not matter
+    let candidates = [("above", rect(100., -100.)), ("straight", rect(310., 0.))];
+    assert_eq!(
+      nearest(from, Direction::Right, candidates).map(|(k, _)| k),
+      Some("above")
+    );
+  }
+
+  #[test]
+  fn nearest_up_and_left() {
+    let from = rect(0., 0.);
+    let candidates = [("up", rect(0., -300.)), ("left", rect(-300., 0.))];
+    let pick = |dir| nearest(from, dir, candidates).map(|(k, _)| k);
+    assert_eq!(pick(Direction::Up), Some("up"));
+    assert_eq!(pick(Direction::Left), Some("left"));
+    assert_eq!(pick(Direction::Down), None);
+    assert_eq!(pick(Direction::Right), None);
+  }
+
+  #[test]
+  fn monitor_geometry_bounds() {
+    let g = MonitorGeometry {
+      origin: point(px(1920.), px(0.)),
+      size: Size::new(px(1280.), px(720.)),
+      scale: 1.5,
+    };
+    assert_eq!(g.bounds(), bounds(1920., 0., 1280., 720.));
+  }
 }

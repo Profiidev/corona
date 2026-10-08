@@ -107,6 +107,41 @@ fn on_off(on: bool) -> String {
   .into()
 }
 
+/// The connected network's name while wifi is on
+fn wifi_status(enabled: bool, connected: Option<String>) -> String {
+  connected
+    .filter(|_| enabled)
+    .unwrap_or_else(|| on_off(enabled))
+}
+
+/// `powered` is None without an adapter
+fn bluetooth_status(powered: Option<bool>, connected: usize) -> String {
+  match (powered, connected) {
+    (None, _) => t!("app.common.unavailable").into(),
+    (Some(true), 1) => t!("app.dashboard.devices.one").into(),
+    (Some(true), n) if n > 1 => t!("app.dashboard.devices.other", count = n).into(),
+    (Some(on), _) => on_off(on),
+  }
+}
+
+fn profile_icon(active: Option<&str>) -> IconName {
+  match active {
+    Some("performance") => IconName::Gauge,
+    Some("power-saver") => IconName::Leaf,
+    _ => IconName::Scale,
+  }
+}
+
+/// Lit for any profile but the default one
+fn profile_active(active: Option<&str>) -> bool {
+  active.is_some_and(|a| a != "balanced")
+}
+
+/// Airplane mode is on while no radio is
+fn airplane_on(wifi: bool, bluetooth: Option<bool>) -> bool {
+  !wifi && bluetooth != Some(true)
+}
+
 fn wifi(cx: &App) -> Toggle {
   let network = cx.network_manager();
   let enabled = network.wifi_enabled(cx);
@@ -123,9 +158,7 @@ fn wifi(cx: &App) -> Toggle {
       IconName::WifiOff
     },
     label: t!("app.dashboard.wifi"),
-    status: connected
-      .filter(|_| enabled)
-      .unwrap_or_else(|| on_off(enabled)),
+    status: wifi_status(enabled, connected),
     active: enabled,
     on_click: network.wifi_supported(cx).then(|| {
       Box::new(move |cx: &mut App| {
@@ -152,12 +185,7 @@ fn bluetooth(cx: &App) -> Toggle {
       _ => IconName::BluetoothOff,
     },
     label: t!("app.dashboard.bluetooth"),
-    status: match (powered, connected) {
-      (None, _) => t!("app.common.unavailable").into(),
-      (Some(true), 1) => t!("app.dashboard.devices.one").into(),
-      (Some(true), n) if n > 1 => t!("app.dashboard.devices.other", count = n).into(),
-      (Some(on), _) => on_off(on),
-    },
+    status: bluetooth_status(powered, connected),
     active: powered == Some(true),
     on_click: powered.map(|powered| {
       Box::new(move |cx: &mut App| {
@@ -208,17 +236,13 @@ fn profile(cx: &App) -> Toggle {
   let next = profiles.and_then(|p| p.next().cloned());
   Toggle {
     id: "toggle-profile",
-    icon: match active.as_deref() {
-      Some("performance") => IconName::Gauge,
-      Some("power-saver") => IconName::Leaf,
-      _ => IconName::Scale,
-    },
+    icon: profile_icon(active.as_deref()),
     label: t!("app.power.profile.title"),
     status: match active.as_deref() {
       Some(name) => power_profile(name).1.into(),
       None => t!("app.common.unavailable").into(),
     },
-    active: active.as_deref().is_some_and(|a| a != "balanced"),
+    active: profile_active(active.as_deref()),
     on_click: next.map(|next| {
       Box::new(move |cx: &mut App| {
         let task = cx.power().set_profile(next.clone());
@@ -232,7 +256,7 @@ fn profile(cx: &App) -> Toggle {
 fn airplane(cx: &App) -> Toggle {
   let wifi = cx.network_manager().wifi_enabled(cx);
   let bluetooth = cx.bluetooth().adapter(cx).map(|a| a.powered);
-  let on = !wifi && bluetooth != Some(true);
+  let on = airplane_on(wifi, bluetooth);
   Toggle {
     id: "toggle-airplane",
     icon: IconName::Plane,
@@ -248,5 +272,62 @@ fn airplane(cx: &App) -> Toggle {
       }
     })),
     page: Some(ControlCenterType::Network),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn on_off_labels() {
+    assert_eq!(super::on_off(true), "On");
+    assert_eq!(super::on_off(false), "Off");
+  }
+
+  #[test]
+  fn wifi_status() {
+    assert_eq!(super::wifi_status(true, Some("Home".into())), "Home");
+    assert_eq!(super::wifi_status(true, None), on_off(true));
+    // a stale connection does not show while wifi is off
+    assert_eq!(
+      super::wifi_status(false, Some("Home".into())),
+      on_off(false)
+    );
+  }
+
+  #[test]
+  fn bluetooth_status() {
+    let unavailable = super::bluetooth_status(None, 3);
+    assert_ne!(unavailable, on_off(false));
+    assert_eq!(super::bluetooth_status(None, 0), unavailable);
+    assert_eq!(super::bluetooth_status(Some(true), 0), on_off(true));
+    assert_eq!(super::bluetooth_status(Some(false), 2), on_off(false));
+    let one = super::bluetooth_status(Some(true), 1);
+    let several = super::bluetooth_status(Some(true), 3);
+    assert_ne!(one, on_off(true));
+    assert_ne!(one, several);
+    assert!(several.contains('3'), "{several}");
+  }
+
+  #[test]
+  fn profile() {
+    assert!(!profile_active(None));
+    assert!(!profile_active(Some("balanced")));
+    assert!(profile_active(Some("performance")));
+    assert!(profile_active(Some("power-saver")));
+    assert_eq!(profile_icon(Some("performance")), IconName::Gauge);
+    assert_eq!(profile_icon(Some("power-saver")), IconName::Leaf);
+    assert_eq!(profile_icon(Some("balanced")), IconName::Scale);
+    assert_eq!(profile_icon(None), IconName::Scale);
+  }
+
+  #[test]
+  fn airplane_on() {
+    assert!(super::airplane_on(false, None));
+    assert!(super::airplane_on(false, Some(false)));
+    assert!(!super::airplane_on(false, Some(true)));
+    assert!(!super::airplane_on(true, None));
+    assert!(!super::airplane_on(true, Some(false)));
   }
 }

@@ -172,3 +172,103 @@ impl TooltipExt for App {
     TooltipState::hide::<T>(self);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{TestAppContext, point, size};
+
+  use super::*;
+  use crate::test_support::{self, TipA, TipB, draw_all, plain_window, windows};
+
+  fn anchor(x: f32) -> Bounds<Pixels> {
+    Bounds::new(point(px(x), px(0.)), size(px(10.), px(10.)))
+  }
+
+  fn show<T: Tooltip>(
+    tip: T,
+    parent: AnyWindowHandle,
+    at: Bounds<Pixels>,
+    cx: &mut TestAppContext,
+  ) -> Result<()> {
+    cx.update_window(parent, |_, window, cx| {
+      cx.show_tooltip(tip, at, Placement::Top, window)
+    })
+    .unwrap()
+  }
+
+  fn entry(name: &str, cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Size<Pixels>)> {
+    cx.update(|cx| {
+      cx.global::<TooltipState>()
+        .tooltips
+        .get(name)
+        .map(|e| (e.handle, e.size))
+    })
+  }
+
+  #[gpui_kit::test]
+  fn same_place_reuses_and_resizes(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let parent = plain_window(cx);
+    let before = windows(cx);
+    show(TipA::<40>, parent, anchor(0.), cx).unwrap();
+    let (handle, first) = entry("tip_a", cx).unwrap();
+    // the border goes around the content
+    assert_eq!(first, size(px(40. + BORDER * 2.), px(20. + BORDER * 2.)));
+    assert_eq!(windows(cx), before + 1);
+    draw_all(cx);
+
+    show(TipA::<40>, parent, anchor(0.), cx).unwrap();
+    show(TipA::<80>, parent, anchor(0.), cx).unwrap();
+    let (again, resized) = entry("tip_a", cx).unwrap();
+    assert!(again == handle);
+    assert_eq!(resized.width, px(80. + BORDER * 2.));
+    assert_eq!(windows(cx), before + 1);
+  }
+
+  #[gpui_kit::test]
+  fn a_new_anchor_replaces_the_window(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let parent = plain_window(cx);
+    let before = windows(cx);
+    show(TipA::<40>, parent, anchor(0.), cx).unwrap();
+    let (first, _) = entry("tip_a", cx).unwrap();
+    show(TipA::<40>, parent, anchor(50.), cx).unwrap();
+    let (second, _) = entry("tip_a", cx).unwrap();
+    assert!(first != second);
+    cx.executor()
+      .advance_clock(std::time::Duration::from_millis(1));
+    cx.run_until_parked();
+    assert_eq!(windows(cx), before + 1);
+  }
+
+  #[gpui_kit::test]
+  fn hide_forgets_at_once_and_closes_after_a_moment(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let parent = plain_window(cx);
+    let before = windows(cx);
+    show(TipA::<40>, parent, anchor(0.), cx).unwrap();
+    show(TipB, parent, anchor(0.), cx).unwrap();
+    cx.update(|cx| cx.hide_tooltip::<TipA<40>>());
+    assert!(entry("tip_a", cx).is_none());
+    assert!(entry("tip_b", cx).is_some());
+    assert_eq!(windows(cx), before + 2);
+    cx.executor()
+      .advance_clock(std::time::Duration::from_millis(1));
+    cx.run_until_parked();
+    assert_eq!(windows(cx), before + 1);
+    // nothing to hide
+    cx.update(|cx| cx.hide_tooltip::<TipA<40>>());
+  }
+
+  #[gpui_kit::test]
+  fn bar_tooltips_need_a_bar(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let parent = plain_window(cx);
+    let result = cx
+      .update_window(parent, |_, window, cx| {
+        cx.show_bar_tooltip(TipB, anchor(0.), window)
+      })
+      .unwrap();
+    assert!(result.unwrap_err().to_string().contains("no bar"));
+  }
+}

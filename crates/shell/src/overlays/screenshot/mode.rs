@@ -46,3 +46,28 @@ impl Mode {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::collections::HashSet;
+
+  #[test]
+  fn all_is_complete_and_ids_unique() {
+    let ids: HashSet<_> = Mode::ALL.iter().map(|m| m.id()).collect();
+    assert_eq!(ids.len(), Mode::ALL.len());
+    assert_eq!(Mode::ALL.len(), Mode::value_variants().len());
+    for m in Mode::value_variants() {
+      assert!(Mode::ALL.contains(m));
+    }
+  }
+
+  #[test]
+  fn labels_and_hints_translated() {
+    for m in Mode::ALL {
+      assert!(!m.label().is_empty() && !m.label().starts_with("app."));
+      assert!(!m.hint().is_empty() && !m.hint().starts_with("app."));
+      assert_ne!(m.label(), m.hint());
+    }
+  }
+}
