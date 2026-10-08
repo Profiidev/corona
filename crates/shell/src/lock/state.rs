@@ -232,6 +232,7 @@ impl LockState {
           size: Size::new(px(640.), px(480.)),
         })),
         window_background: WindowBackgroundAppearance::Opaque,
+        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
         app_id: Some(APP_NAME.to_string()),
         titlebar: None,
