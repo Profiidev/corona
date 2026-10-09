@@ -98,12 +98,10 @@ struct PluginView {
 }
 
 impl Render for PluginView {
-  fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-    // the content alone: gpui-shell's root paints the theme's background,
-    // over the bar's pill and the panel's own shape
+  fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
     div()
       .when(self.fill, |d| d.size_full())
-      .child(self.script.content(cx))
+      .child(self.script.view())
   }
 }
 

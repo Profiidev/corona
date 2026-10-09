@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::HashMap, fs, rc::Rc};
 
 use anyhow::{Context as _, Result};
-use gpui_kit::{AnyView, App, Entity, EntityId, Global, Subscription, Window};
+use gpui_kit::{AnyView, App, Entity, EntityId, Global, Subscription, Window, transparent_black};
 use gpui_shell::{
   ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
@@ -21,16 +21,11 @@ pub struct Script {
 }
 
 impl Script {
-  /// The script inside gpui-shell's root, which fills its window, paints the
-  /// theme's background and hosts dialogs, sheets and toasts
+  /// The script inside gpui-shell's root, which hosts its dialogs, sheets and
+  /// toasts. Transparent, over the bar's pill or the panel's own shape; a
+  /// widget's is as big as its content, so the bar knows where it is
   pub fn view(&self) -> AnyView {
     self.root.clone().into()
-  }
-
-  /// Only what the script renders, without the root's background: what bar
-  /// widgets and panels show
-  pub fn content(&self, cx: &App) -> AnyView {
-    self.root.read(cx).content().clone()
   }
 
   /// The bar widget showing this script, where its panels open
@@ -122,6 +117,10 @@ impl ScriptManager {
     let root = runtime.try_load_entry(root, window, cx);
     policy::set_default(Policy::new());
     let root = root?;
+    root.update(cx, |root, cx| {
+      root.set_background(Some(transparent_black()), cx);
+      root.set_fill(!matches!(entry, Entry::Widget(_)), cx);
+    });
 
     let subscriptions = subscribes
       .into_iter()
@@ -320,6 +319,26 @@ export default class Main extends View {
     assert!(!plugins.paths.local.join("a/store.json").exists());
     // the grant does not stay behind for the next view
     assert_ne!(policy::default().application(), "a");
+  }
+
+  #[gpui::test]
+  fn roots_are_transparent_and_widgets_sized_to_content(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let extra = "[panels.p]\nview = \"main.js\"";
+    plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
+    cx.set_global(plugins.manager());
+    cx.set_global(Config::default());
+    let cx = cx.add_empty_window();
+    for (entry, fills) in [(Entry::Widget("main"), false), (Entry::Panel("p"), true)] {
+      let script = cx
+        .update(|window, cx| ScriptManager::load("a", entry, window, cx))
+        .unwrap();
+      cx.update(|_, cx| {
+        let root = script.root.read(cx);
+        assert_eq!(root.background(), Some(transparent_black()), "{entry:?}");
+        assert_eq!(root.fills(), fills, "{entry:?}");
+      });
+    }
   }
 
   #[gpui::test]

@@ -1,0 +1,84 @@
+ShellRoot always fills its window and paints the theme's background, so a
+script shown inside a host's own surface (a bar widget, a panel with its own
+shape) covers it and stretches across it. set_background and set_fill let the
+host make the root transparent and as big as its content.
+
+--- a/crates/shell/src/root.rs
++++ b/crates/shell/src/root.rs
+@@ -154,6 +154,11 @@
+     /// The performance HUD, while a script has asked for one. See
+     /// [`ShellRoot::show_fps_monitor`].
+     fps_hud: Option<FpsHudRequest>,
++    /// What the root paints under the content; the theme's background when
++    /// unset. See [`ShellRoot::set_background`].
++    background: Option<Hsla>,
++    /// Whether the root fills its window. See [`ShellRoot::set_fill`].
++    fill: bool,
+ }
+ 
+ /// Where the performance HUD sits over the window and how it behaves.
+@@ -232,9 +237,36 @@
+             next_toast_ordinal: 0,
+             tooltip_overlay: cx.new(|_| TooltipOverlay::new().render_with(render_tooltip)),
+             fps_hud: None,
++            background: None,
++            fill: true,
+         }
+     }
+ 
++    /// Paints `background` under the content instead of the theme's
++    /// background, like a transparent one for a window the host draws itself.
++    /// `None` goes back to the theme's.
++    pub fn set_background(&mut self, background: Option<Hsla>, cx: &mut Context<Self>) {
++        self.background = background;
++        cx.notify();
++    }
++
++    /// Whether the root fills its window, the default, or is as big as its
++    /// content, for a view the host places among others of its own.
++    pub fn set_fill(&mut self, fill: bool, cx: &mut Context<Self>) {
++        self.fill = fill;
++        cx.notify();
++    }
++
++    /// The background [`Self::set_background`] set, if any.
++    pub fn background(&self) -> Option<Hsla> {
++        self.background
++    }
++
++    /// Whether the root fills its window; see [`Self::set_fill`].
++    pub fn fills(&self) -> bool {
++        self.fill
++    }
++
+     pub(crate) fn with_application(
+         view: gpui::Entity<ScriptView>,
+         root: PathBuf,
+@@ -840,16 +872,20 @@
+                 cx.listener(Self::blur_on_background_press),
+             )
+             .relative()
+-            .size_full()
+-            .bg(colors.background)
++            .when(self.fill, |root| root.size_full())
++            .bg(self.background.unwrap_or(colors.background))
+             .text_color(colors.foreground)
+             // Painted back to front; see the stacking order on `ShellRoot`.
+             .child(TextSelectionLayer)
+-            .child(
+-                self.content
+-                    .clone()
+-                    .cached(StyleRefinement::default().size_full()),
+-            )
++            .map(|root| match self.fill {
++                true => root.child(
++                    self.content
++                        .clone()
++                        .cached(StyleRefinement::default().size_full()),
++                ),
++                // cached at full size it would have no size of its own
++                false => root.child(self.content.clone()),
++            })
+             .children(self.sheet_layer(&colors, &spacing, cx))
+             .children(self.dialog_layer(&colors, &radius, &spacing, cx))
+             .child(self.toast_layer(&colors, &radius, &spacing, cx))
