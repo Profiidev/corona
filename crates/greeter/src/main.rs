@@ -4,7 +4,8 @@ use anyhow::{Context as _, Result, anyhow};
 use corona_auth_screen::{AuthScreen, Check, MenuItem, Purpose, User, corner_menu};
 use gpui_kit::{
   Anchor, App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Render,
-  SharedString, Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations, WindowOptions,
+  SharedString, Size, Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations,
+  WindowOptions,
   assets::IconName,
   base::Root,
   black,
@@ -14,11 +15,12 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use corona_utils::{display::display_uuid, error::ErrorLogExt};
+use corona_utils::error::ErrorLogExt;
 use greetd::Session;
 
 mod config;
 mod greetd;
+mod outputs;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -29,6 +31,10 @@ const LAST_USER: &str = "last-user";
 struct Greeter {
   screen: Entity<AuthScreen>,
   monitor: Option<String>,
+  /// The outputs' names and places
+  outputs: Vec<(String, Bounds<Pixels>)>,
+  /// The window size `outputs` were read at
+  outputs_for: Option<Size<Pixels>>,
   sessions: Vec<Session>,
   selected: usize,
 }
@@ -85,6 +91,8 @@ impl Greeter {
     Self {
       screen: cx.new(|cx| AuthScreen::new(Purpose::Login, users, user, check, window, cx)),
       monitor,
+      outputs: Vec::new(),
+      outputs_for: None,
       selected: (sessions.iter())
         .position(|s| Some(&s.id) == last.as_ref())
         .unwrap_or(0),
@@ -133,11 +141,17 @@ impl Greeter {
 }
 
 impl Render for Greeter {
-  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let wanted = self.monitor.as_deref().map(display_uuid);
-    let displays = (cx.displays().iter())
-      .map(|d| (wanted.is_some() && d.uuid().ok() == wanted, d.bounds()))
-      .collect::<Vec<_>>();
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    // cage resizes the window when outputs come, go or move
+    let viewport = window.viewport_size();
+    if self.outputs_for != Some(viewport) {
+      self.outputs_for = Some(viewport);
+      self.outputs = outputs::layout()
+        .inspect_err(|e| tracing::error!("greeter: no output layout: {e:#}"))
+        .unwrap_or_default();
+      tracing::info!("greeter: outputs {:?} in {viewport:?}", self.outputs);
+    }
+    let displays = marked(&self.outputs, self.monitor.as_deref());
     let theme = cx.theme();
     div()
       .size_full()
@@ -160,6 +174,16 @@ impl Render for Greeter {
           .child(self.session_menu(cx)),
       )
   }
+}
+
+/// Each output's place, flagged when it is `monitor`
+fn marked(
+  outputs: &[(String, Bounds<Pixels>)],
+  monitor: Option<&str>,
+) -> Vec<(bool, Bounds<Pixels>)> {
+  (outputs.iter())
+    .map(|(name, bounds)| (monitor == Some(name.as_str()), *bounds))
+    .collect()
 }
 
 /// Where the login goes in the window: cage stretches it over every output,
@@ -240,6 +264,33 @@ mod tests {
       origin: point(px(x), px(y)),
       size: Size::new(px(w), px(h)),
     }
+  }
+
+  #[test]
+  fn monitor_is_found_by_name() {
+    let outputs = [
+      ("DP-4".to_string(), at(1920., 0., 2560., 1440.)),
+      ("eDP-1".to_string(), at(0., 0., 1920., 1200.)),
+    ];
+    assert_eq!(
+      marked(&outputs, Some("eDP-1")),
+      [(false, outputs[0].1), (true, outputs[1].1)]
+    );
+    // unset or disconnected: none, so the leftmost
+    for monitor in [None, Some("HDMI-A-1"), Some("edp-1")] {
+      let displays = marked(&outputs, monitor);
+      assert!(displays.iter().all(|(wanted, _)| !wanted));
+      assert_eq!(login_area(&displays), Some(outputs[1].1));
+    }
+    // the login lands on eDP-1 wherever it sits
+    let swapped = [
+      ("DP-4".to_string(), at(0., 0., 2560., 1440.)),
+      ("eDP-1".to_string(), at(2560., 0., 1920., 1200.)),
+    ];
+    assert_eq!(
+      login_area(&marked(&swapped, Some("eDP-1"))),
+      Some(at(2560., 0., 1920., 1200.))
+    );
   }
 
   #[test]

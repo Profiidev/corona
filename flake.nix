@@ -44,6 +44,12 @@
       homeModules.default = import ./nix/home-module.nix self;
       nixosModules.greeter = import ./nix/greeter-module.nix self;
 
+      checks.x86_64-linux.greeter-module = import ./nix/greeter-check.nix {
+        inherit self;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        inherit (nixpkgs) lib;
+      };
+
       nixosConfigurations.greeter-vm = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
