@@ -59,6 +59,11 @@ in
     enable = true;
     # the checkout's debug build, see virtualisation.sharedDirectories
     executable = "/mnt/corona/target/debug/corona_greeter";
+    cursorTheme = {
+      package = pkgs.bibata-cursors;
+      name = "Bibata-Modern-Ice";
+    };
+    profileIcons.test = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
     environment = {
       # Venus frames don't show under cage in the VM
       VK_DRIVER_FILES = "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.x86_64.json";

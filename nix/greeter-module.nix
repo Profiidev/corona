@@ -36,6 +36,43 @@ in
       description = "Extra environment for cage and the greeter.";
     };
 
+    cursorTheme = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.submodule {
+          options = {
+            package = lib.mkOption {
+              type = lib.types.package;
+              description = "The package with the theme under `share/icons`.";
+            };
+            name = lib.mkOption {
+              type = lib.types.str;
+              description = "The theme's directory name under `share/icons`.";
+            };
+            size = lib.mkOption {
+              type = lib.types.int;
+              default = 24;
+              description = "The cursor size.";
+            };
+          };
+        }
+      );
+      default = null;
+      example = lib.literalExpression ''
+        {
+          package = pkgs.bibata-cursors;
+          name = "Bibata-Modern-Classic";
+        }
+      '';
+      description = "The cursor theme for cage and the greeter.";
+    };
+
+    profileIcons = lib.mkOption {
+      type = lib.types.attrsOf lib.types.path;
+      default = { };
+      example = lib.literalExpression "{ alice = ./alice.jpeg; }";
+      description = "Profile pictures by user name, linked into AccountsService's icons.";
+    };
+
     settings = lib.mkOption {
       inherit (toml) type;
       default = { };
@@ -61,10 +98,20 @@ in
           home = lib.mkDefault "/var/lib/${user}";
           createHome = true;
         };
-        systemd.tmpfiles.settings."10-corona-greeter"."${home}/.config/corona-greeter/config.toml"."L+" =
-          {
-            argument = "${toml.generate "corona-greeter.toml" cfg.settings}";
-          };
+        systemd.tmpfiles.settings."10-corona-greeter"."${home}/.config/corona-greeter/config.toml"."L+" = {
+          argument = "${toml.generate "corona-greeter.toml" cfg.settings}";
+        };
+
+        systemd.tmpfiles.settings."10-corona-greeter-icons" = lib.mapAttrs' (
+          name: icon:
+          lib.nameValuePair "/var/lib/AccountsService/icons/${name}" { "L+".argument = "${icon}"; }
+        ) cfg.profileIcons;
+
+        services.corona-greeter.environment = lib.mkIf (cfg.cursorTheme != null) {
+          XCURSOR_THEME = cfg.cursorTheme.name;
+          XCURSOR_SIZE = toString cfg.cursorTheme.size;
+          XCURSOR_PATH = "${cfg.cursorTheme.package}/share/icons";
+        };
 
         services.greetd = {
           enable = true;
