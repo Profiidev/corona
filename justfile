@@ -192,3 +192,7 @@ layerrules:
 # Bind corona's keys in the running Hyprland session, until its config reloads.
 keybinds:
   hyprctl eval '{{keybinds}}'
+
+vm:
+  cargo build -p corona_greeter
+  QEMU_OPTS="-device virtio-vga-gl -display gtk,gl=on -serial mon:stdio" nix run .#nixosConfigurations.greeter-vm.config.system.build.vm

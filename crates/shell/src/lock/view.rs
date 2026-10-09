@@ -5,6 +5,8 @@ use std::{
   time::{Duration, Instant},
 };
 
+use corona_auth::AuthExt;
+use corona_auth_screen::{AuthScreen, Purpose};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
   App, AppContext, BoxShadow, Context, Div, Entity, IntoElement, ParentElement, Pixels, Render,
@@ -12,10 +14,7 @@ use gpui_kit::{
   prelude::FluentBuilder, px, relative,
 };
 
-use crate::lock::{
-  screen::{AuthScreen, Purpose, User},
-  state::LockState,
-};
+use crate::lock::{state::LockState, user};
 
 const ZOOM: f32 = 0.96;
 const FEATHER: f32 = 10.;
@@ -36,9 +35,19 @@ pub struct Lock {
 
 impl Lock {
   pub fn new(background: Option<Background>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-    let user = User::current(cx);
+    let user = user(cx);
+    let check = Rc::new(|user: String, password: String, cx: &mut App| {
+      let check = cx.auth().password(user, password, cx);
+      cx.spawn(async move |cx| {
+        let right = check.await?;
+        if right {
+          cx.update(LockState::unlock_animated);
+        }
+        Ok(right)
+      })
+    });
     Self {
-      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, user, window, cx)),
+      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, user, check, window, cx)),
       background,
     }
   }

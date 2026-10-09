@@ -1825,6 +1825,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_auth_screen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_power",
+ "corona_utils",
+ "gpui-kit",
+ "rust-i18n",
+ "tracing",
+]
+
+[[package]]
 name = "corona_bluez"
 version = "0.1.0"
 dependencies = [
@@ -1946,6 +1958,25 @@ dependencies = [
  "corona-freedesktop-icons",
  "dirs 7.0.0",
  "freedesktop-desktop-entry",
+]
+
+[[package]]
+name = "corona_greeter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corona_auth_screen",
+ "corona_components",
+ "corona_config",
+ "corona_power",
+ "freedesktop-desktop-entry",
+ "gpui-kit",
+ "greetd_ipc",
+ "rust-i18n",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
 ]
 
 [[package]]
@@ -2111,6 +2142,7 @@ dependencies = [
  "anyhow",
  "clap",
  "corona_auth",
+ "corona_auth_screen",
  "corona_bluez",
  "corona_brightness",
  "corona_capture",
@@ -4631,6 +4663,17 @@ checksum = "e20f99e46474f56bd905c56e817ebddcf377a611f94c53ac4649e4d3fa3c0cd0"
 dependencies = [
  "arraydeque",
  "smallvec",
+]
+
+[[package]]
+name = "greetd_ipc"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "700d2e5bfc91a042d1d531b46de245085c6a179debedf149aa97c7ca71492078"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

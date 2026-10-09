@@ -1,11 +1,12 @@
-use corona_auth::AuthExt;
-use corona_config::ConfigProvider;
+use std::rc::Rc;
+
+use anyhow::Result;
 use corona_power::{PowerExt, SessionAction, SessionCapabilities};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, InteractiveElement,
-  IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
-  Subscription, Window,
+  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, ImageSource,
+  InteractiveElement, IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement,
+  Styled, Subscription, Task, Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon, Sizable,
@@ -26,23 +27,25 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::{lock::LockState, overlays::wallpaper};
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const WIDTH: f32 = 320.;
 const MENU_WIDTH: f32 = 248.;
 const INSET: f32 = 32.;
 
-/// What the screen is for. The greeter adds `Login`: no switch user or log out,
-/// "Power" for the menu and "log in" wording
+/// What the screen is for. `Login` is the greeter: no log out, "Power" for the
+/// menu and "log in" wording
 #[derive(Clone, Copy, PartialEq)]
 pub enum Purpose {
   Unlock,
+  Login,
 }
 
 impl Purpose {
   fn submit(self) -> SharedString {
     match self {
       Purpose::Unlock => t!("app.lock.unlock").into(),
+      Purpose::Login => t!("app.lock.login").into(),
     }
   }
 
@@ -50,12 +53,14 @@ impl Purpose {
   fn menu(self) -> SharedString {
     match self {
       Purpose::Unlock => t!("app.lock.session").into(),
+      Purpose::Login => t!("app.lock.power").into(),
     }
   }
 
   fn idle(self) -> SharedString {
     match self {
       Purpose::Unlock => t!("app.lock.idle").into(),
+      Purpose::Login => t!("app.lock.idle_login").into(),
     }
   }
 
@@ -65,6 +70,7 @@ impl Purpose {
     let power = vec![A::Reboot, A::PowerOff];
     match self {
       Purpose::Unlock => vec![vec![A::Logout], sleep, power],
+      Purpose::Login => vec![sleep, power],
     }
   }
 }
@@ -134,23 +140,19 @@ enum Log {
 
 pub struct User {
   pub name: SharedString,
-  pub avatar: Option<String>,
+  pub avatar: Option<ImageSource>,
 }
 
-impl User {
-  pub fn current(cx: &App) -> Self {
-    Self {
-      name: std::env::var("USER").unwrap_or_default().into(),
-      avatar: cx.config().shell.avatar.clone(),
-    }
-  }
-}
+/// Checks `user`'s password: `Ok(false)` when wrong, `Err` when the check itself
+/// failed. Does whatever comes after a right password too
+pub type Check = Rc<dyn Fn(String, String, &mut App) -> Task<Result<bool>>>;
 
 /// The user, password field, log line and session menu over the lock and login
 /// backdrop
 pub struct AuthScreen {
   purpose: Purpose,
   user: User,
+  check: Check,
   input: Entity<InputState>,
   log: Log,
   invalid: bool,
@@ -161,7 +163,13 @@ pub struct AuthScreen {
 }
 
 impl AuthScreen {
-  pub fn new(purpose: Purpose, user: User, window: &mut Window, cx: &mut Context<Self>) -> Self {
+  pub fn new(
+    purpose: Purpose,
+    user: User,
+    check: Check,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) -> Self {
     let input = cx.new(|cx| InputState::new(window, cx).masked(true));
     let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
       InputEvent::PressEnter { .. } => this.submit(window, cx),
@@ -176,6 +184,7 @@ impl AuthScreen {
     Self {
       purpose,
       user,
+      check,
       input,
       log: Log::Idle,
       invalid: false,
@@ -202,16 +211,14 @@ impl AuthScreen {
     }
     self.log = Log::Busy(t!("app.lock.checking").into());
     self.set_checking(true, window, cx);
-    let check = cx.auth().password(self.user.name.to_string(), password, cx);
+    let check = (self.check)(self.user.name.to_string(), password, cx);
     cx.spawn_in(window, async move |this, cx| {
       let result = check.await;
       let _ = this.update_in(cx, |this, window, cx| {
         this.log = Log::Idle;
         this.set_checking(false, window, cx);
         match result {
-          Ok(true) => match this.purpose {
-            Purpose::Unlock => LockState::unlock_animated(cx),
-          },
+          Ok(true) => {}
           Ok(false) => {
             this.invalid = true;
             this.log = Log::Error(t!("app.lock.wrong").into());
@@ -220,7 +227,7 @@ impl AuthScreen {
               .update(cx, |input, cx| input.set_value("", window, cx));
           }
           Err(e) => {
-            tracing::warn!("lock: password check failed: {e:#}");
+            tracing::warn!("auth: password check failed: {e:#}");
             this.log = Log::Error(t!("app.lock.auth_failed").into());
           }
         }
@@ -265,7 +272,7 @@ impl AuthScreen {
       let _ = this.update(cx, |this, cx| {
         this.log = match result {
           Err(e) => {
-            tracing::warn!("lock: {action:?} failed: {e:#}");
+            tracing::warn!("auth: {action:?} failed: {e:#}");
             Log::Error(t!("app.lock.failed", action = label(action)).into())
           }
           // back from sleep, or the request only got queued
@@ -286,9 +293,7 @@ impl AuthScreen {
       .child(
         Avatar::new()
           .name(self.user.name.clone())
-          .when_some(self.user.avatar.as_deref(), |a, src| {
-            a.src(wallpaper::source(src))
-          })
+          .when_some(self.user.avatar.clone(), |a, src| a.src(src))
           .with_size(px(96.))
           .text_size(px(30.))
           .font_weight(gpui_kit::FontWeight::MEDIUM),
@@ -351,7 +356,8 @@ impl AuthScreen {
 
   fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
     let capabilities = self.capabilities.as_ref();
-    let groups: Vec<Vec<(SessionAction, bool)>> = self
+    let this = cx.entity();
+    let groups = self
       .purpose
       .groups()
       .into_iter()
@@ -360,32 +366,70 @@ impl AuthScreen {
           .into_iter()
           .filter_map(|action| {
             let (shown, enabled) = availability(action, capabilities);
-            shown.then_some((action, enabled))
+            let this = this.clone();
+            shown.then(|| MenuItem {
+              id: format!("auth-menu-{action:?}").into(),
+              icon: Some(icon(action)),
+              label: label(action),
+              enabled,
+              on_click: Rc::new(move |_, cx| this.update(cx, |this, cx| this.activate(action, cx))),
+            })
           })
           .collect()
       })
-      .filter(|group: &Vec<_>| !group.is_empty())
       .collect();
-    let this = cx.entity();
-    let on_open = this.clone();
+    let trigger = Button::new("auth-menu-trigger")
+      .icon(IconName::Power)
+      .tooltip(self.purpose.menu());
+    corner_menu(
+      "auth-menu",
+      Anchor::BottomRight,
+      trigger,
+      groups,
+      move |cx| this.update(cx, |this, cx| this.load_capabilities(cx)),
+    )
+  }
+}
 
-    div().absolute().right(px(INSET)).bottom(px(INSET)).child(
-      Popover::new("auth-menu")
-        .anchor(Anchor::BottomRight)
+pub struct MenuItem {
+  pub id: SharedString,
+  pub icon: Option<IconName>,
+  pub label: SharedString,
+  pub enabled: bool,
+  pub on_click: OnClick,
+}
+
+pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// `trigger` in the `anchor` corner, opening `groups` of items, a line between
+/// each. `on_open` runs every time it opens
+pub fn corner_menu(
+  id: &'static str,
+  anchor: Anchor,
+  trigger: Button,
+  groups: Vec<Vec<MenuItem>>,
+  on_open: impl Fn(&mut App) + 'static,
+) -> impl IntoElement {
+  let groups: Vec<_> = groups.into_iter().filter(|g| !g.is_empty()).collect();
+  div()
+    .absolute()
+    .bottom(px(INSET))
+    .map(|d| match anchor {
+      Anchor::BottomLeft => d.left(px(INSET)),
+      _ => d.right(px(INSET)),
+    })
+    .child(
+      Popover::new(id)
+        .anchor(anchor)
         .offset(px(8.))
         .p_1()
         .rounded_xl()
         .on_open_change(move |open, _, cx| {
           if *open {
-            on_open.update(cx, |this, cx| this.load_capabilities(cx));
+            on_open(cx);
           }
         })
-        .trigger(
-          Button::new("auth-menu-trigger")
-            .icon(IconName::Power)
-            .tooltip(self.purpose.menu())
-            .cursor_pointer(),
-        )
+        .trigger(trigger.cursor_pointer())
         .content(move |_, _, cx| {
           let hover = cx.theme().accent;
           let popover = cx.entity();
@@ -394,25 +438,28 @@ impl AuthScreen {
             if i > 0 {
               panel = panel.child(Separator::horizontal().my_1());
             }
-            panel = panel.children(group.iter().map(|&(action, enabled)| {
-              let (this, popover) = (this.clone(), popover.clone());
+            panel = panel.children(group.iter().map(|item| {
+              let (on_click, popover) = (item.on_click.clone(), popover.clone());
               div()
-                .id(SharedString::from(format!("auth-menu-{action:?}")))
+                .id(item.id.clone())
                 .flex()
                 .items_center()
                 .gap_2()
                 .px_2()
                 .py_1p5()
                 .rounded_md()
-                .child(Icon::new(icon(action)).size_4())
-                .child(label(action))
-                .when(!enabled, |d| d.opacity(0.5))
-                .when(enabled, |d| {
+                .child(match item.icon {
+                  Some(icon) => Icon::new(icon).size_4().into_any_element(),
+                  None => div().size_4().into_any_element(),
+                })
+                .child(item.label.clone())
+                .when(!item.enabled, |d| d.opacity(0.5))
+                .when(item.enabled, |d| {
                   d.cursor_pointer()
                     .hover(move |d| d.bg(hover))
                     .on_click(move |_, window, cx| {
                       popover.update(cx, |popover, cx| popover.dismiss(window, cx));
-                      this.update(cx, |this, cx| this.activate(action, cx));
+                      on_click(window, cx);
                     })
                 })
             }));
@@ -420,7 +467,6 @@ impl AuthScreen {
           panel
         }),
     )
-  }
 }
 
 impl Render for AuthScreen {
@@ -487,5 +533,15 @@ mod tests {
     assert_eq!(groups.len(), 3);
     assert_eq!(groups[0], [SessionAction::Logout]);
     assert_eq!(groups[2].last(), Some(&SessionAction::PowerOff));
+  }
+
+  #[test]
+  fn login_menu_has_no_logout() {
+    let groups = Purpose::Login.groups();
+    assert!(groups.iter().flatten().all(|&a| a != SessionAction::Logout));
+    assert_eq!(
+      groups.last().unwrap().last(),
+      Some(&SessionAction::PowerOff)
+    );
   }
 }

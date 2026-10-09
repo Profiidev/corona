@@ -426,10 +426,11 @@ mod tests {
       }
     }
     let mut files = Vec::new();
-    sources(
-      &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-      &mut files,
-    );
+    // the lock and login screen share these locale files
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    for dir in ["shell", "auth_screen", "greeter"] {
+      sources(&crates.join(dir).join("src"), &mut files);
+    }
 
     let call = regex::Regex::new(r#""(app\.[a-z0-9_.]+)""#).unwrap();
     let mut keys: Vec<String> = files

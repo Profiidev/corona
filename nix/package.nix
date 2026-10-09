@@ -68,6 +68,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
     };
   };
 
+  cargoBuildFlags = [
+    "--package"
+    "corona"
+    "--package"
+    "corona_greeter"
+  ];
+
   nativeBuildInputs = [
     pkg-config
     rustPlatform.bindgenHook
@@ -93,12 +100,14 @@ rustPlatform.buildRustPackage (finalAttrs: {
   '';
 
   postFixup = ''
-    patchelf --add-rpath ${
-      lib.makeLibraryPath [
-        wayland
-        vulkan-loader
-      ]
-    } $out/bin/corona
+    for bin in corona corona_greeter; do
+      patchelf --add-rpath ${
+        lib.makeLibraryPath [
+          wayland
+          vulkan-loader
+        ]
+      } $out/bin/$bin
+    done
   '';
 
   postInstall = ''

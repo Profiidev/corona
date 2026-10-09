@@ -42,5 +42,10 @@
     // {
       nixosModules.default = import ./nix/nixos-module.nix self;
       homeModules.default = import ./nix/home-module.nix self;
+
+      nixosConfigurations.greeter-vm = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [ ./nix/greeter-vm.nix ];
+      };
     };
 }

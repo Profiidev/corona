@@ -16,3 +16,6 @@ devenv.local.nix
 jsconfig.json
 *.schema.json
 /.benchmark/
+
+*.qcow2
+/*.fd

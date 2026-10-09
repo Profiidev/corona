@@ -20,6 +20,7 @@ corona_notifications.workspace = true
 corona_tray.workspace = true
 corona_idle.workspace = true
 corona_auth.workspace = true
+corona_auth_screen.workspace = true
 corona_sysinfo.workspace = true
 corona_weather.workspace = true
 corona_script.workspace = true

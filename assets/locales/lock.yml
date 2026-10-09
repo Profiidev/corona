@@ -13,6 +13,18 @@ app:
     idle:
       en: Enter your password to unlock
       de: Passwort eingeben zum Entsperren
+    login:
+      en: Log in
+      de: Anmelden
+    power:
+      en: Power
+      de: Energie
+    idle_login:
+      en: Enter your password to log in
+      de: Passwort eingeben zum Anmelden
+    no_session:
+      en: No Wayland session found
+      de: Keine Wayland-Sitzung gefunden
     empty:
       en: Enter your password.
       de: Passwort eingeben.

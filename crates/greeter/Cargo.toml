@@ -1,0 +1,21 @@
+[package]
+name = "corona_greeter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_auth_screen.workspace = true
+corona_components.workspace = true
+corona_config.workspace = true
+corona_power.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+rust-i18n.workspace = true
+zbus.workspace = true
+tracing-subscriber = "0.3.23"
+greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
+freedesktop-desktop-entry = "0.8.3"
+
+[dev-dependencies]
+tempfile.workspace = true

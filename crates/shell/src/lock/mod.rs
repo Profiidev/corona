@@ -1,12 +1,25 @@
+use corona_auth_screen::User;
 use corona_config::ConfigProvider;
 use corona_power::PowerExt;
 use gpui_kit::{App, Task};
 
 pub use state::LockState;
 
-mod screen;
 mod state;
 mod view;
+
+/// Who is logged in, for the lock screen
+fn user(cx: &App) -> User {
+  User {
+    name: std::env::var("USER").unwrap_or_default().into(),
+    avatar: cx
+      .config()
+      .shell
+      .avatar
+      .as_deref()
+      .map(crate::overlays::wallpaper::source),
+  }
+}
 
 pub fn init(cx: &mut App) {
   cx.power().clone().lock_requests(cx, |lock, cx| match lock {

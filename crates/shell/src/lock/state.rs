@@ -28,7 +28,7 @@ use gpui_kit::{
 use corona_components::animation::animation_duration;
 
 use crate::lock::{
-  screen::User,
+  user,
   view::{Background, Lock, Unlock, ZOOM_SPEED},
 };
 
@@ -193,7 +193,7 @@ impl LockState {
       return;
     }
     let scan = cx.auth().clone();
-    let user = User::current(cx).name.to_string();
+    let user = user(cx).name.to_string();
     let task = cx.spawn(async move |cx| {
       loop {
         match scan.fingerprint(user.clone()).await {
