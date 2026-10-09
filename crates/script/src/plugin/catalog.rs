@@ -6,6 +6,7 @@ use std::{fs, path::Path};
 
 use anyhow::{Result, bail};
 use corona_config::plugins::is_flat_name;
+use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::{
@@ -15,26 +16,38 @@ use crate::{
 
 pub const CATALOG_FILENAME: &str = "catalog.toml";
 
+/// `catalog.toml` at the root of a git source: every plugin it offers
+#[derive(Deserialize, JsonSchema)]
+pub struct CatalogFile {
+  /// One row per plugin.
+  #[serde(default)]
+  pub plugin: Vec<CatalogEntry>,
+}
+
 /// One plugin a source offers
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CatalogEntry {
+  /// The id in the plugin's `plugin.toml`.
   pub id: String,
   pub name: String,
+  /// The version in the plugin's `plugin.toml`; an installed copy of another
+  /// version shows an update.
   pub version: String,
+  /// One line about what it does.
   #[serde(default)]
   pub description: Option<String>,
   #[serde(default)]
   pub author: Option<String>,
-  /// An image in the plugin's directory
+  /// An image in the plugin's directory, shown in the settings app.
   #[serde(default)]
   pub icon: Option<String>,
-  /// A Markdown file in the plugin's directory
+  /// A Markdown file in the plugin's directory, shown in the settings app.
   #[serde(default)]
   pub readme: Option<String>,
   #[serde(default)]
   pub tags: Vec<String>,
-  /// The plugin's directory at the repository root; the id when unset
+  /// The plugin's directory at the repository root; the id when unset.
   #[serde(default)]
   pub path: Option<String>,
 }

@@ -1,10 +1,11 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
-use crate::{config::ConfigCommands, ipc::IpcCommands};
+use crate::{config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands};
 
 mod config;
 mod ipc;
+mod schema;
 
 /// Corona Shell CLI
 #[derive(Parser)]
@@ -35,6 +36,11 @@ pub enum Commands {
     #[command(subcommand)]
     command: ConfigCommands,
   },
+  /// Print the JSON schemas of plugin files, for editors
+  Schema {
+    #[command(subcommand)]
+    command: SchemaCommands,
+  },
 }
 
 #[cfg(test)]
@@ -57,6 +63,12 @@ mod tests {
       parse(&["config", "validate"]).unwrap().command,
       Commands::Config { .. }
     ));
+    assert!(matches!(
+      parse(&["schema", "plugin"]).unwrap().command,
+      Commands::Schema { .. }
+    ));
+    assert!(parse(&["schema", "catalog", "-o", "x.json"]).is_ok());
+    assert!(parse(&["schema", "other"]).is_err());
     assert!(parse(&[]).is_err());
     assert!(parse(&["nope"]).is_err());
   }

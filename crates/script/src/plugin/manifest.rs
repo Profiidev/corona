@@ -659,22 +659,6 @@ methods = ["POST"]
   }
 
   #[test]
-  fn committed_schema_is_current() {
-    let schema = schemars::schema_for!(ManifestFile).to_value();
-    if std::env::var_os("UPDATE_SCHEMA").is_some() {
-      let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin.schema.json");
-      std::fs::write(path, serde_json::to_string_pretty(&schema).unwrap()).unwrap();
-      return;
-    }
-    let committed: serde_json::Value =
-      serde_json::from_str(include_str!("../../plugin.schema.json")).unwrap();
-    assert_eq!(
-      schema, committed,
-      "run with UPDATE_SCHEMA=1 (or corona in debug) to refresh plugin.schema.json"
-    );
-  }
-
-  #[test]
   fn corona_modules() {
     assert!(with("").unwrap().capabilities.modules().is_empty());
 

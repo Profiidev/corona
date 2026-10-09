@@ -1892,6 +1892,7 @@ dependencies = [
  "clap_complete",
  "corona_config",
  "corona_ipc",
+ "corona_script",
  "corona_shell",
  "corona_surface",
  "corona_utils",

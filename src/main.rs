@@ -13,6 +13,7 @@ fn main() {
       run_shell();
     }
     corona_cli::Commands::Config { command } => command.execute(),
+    corona_cli::Commands::Schema { command } => command.execute(),
   }
 }
 

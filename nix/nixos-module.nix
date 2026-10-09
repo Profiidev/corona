@@ -34,30 +34,33 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable lib.mkMerge [
-    {
-      environment.systemPackages = [ cfg.package ];
+  config = lib.mkIf cfg.enable (
+    lib.mkMerge [
+      {
+        environment.systemPackages = [ cfg.package ];
+        environment.pathsToLink = [ "/share/corona" ];
 
-      security.pam.services.corona.fprintAuth = lib.mkDefault false;
+        security.pam.services.corona.fprintAuth = lib.mkDefault false;
 
-      systemd.user.services.corona = {
-        description = "Corona shell";
-        partOf = [ cfg.systemd.target ];
-        after = [ cfg.systemd.target ];
-        wantedBy = [ cfg.systemd.target ];
-        restartTriggers = [ cfg.package ];
+        systemd.user.services.corona = {
+          description = "Corona shell";
+          partOf = [ cfg.systemd.target ];
+          after = [ cfg.systemd.target ];
+          wantedBy = [ cfg.systemd.target ];
+          restartTriggers = [ cfg.package ];
 
-        serviceConfig = {
-          ExecStart = "${lib.getExe cfg.package} shell";
-          Restart = "on-failure";
+          serviceConfig = {
+            ExecStart = "${lib.getExe cfg.package} shell";
+            Restart = "on-failure";
+          };
         };
-      };
-    }
+      }
 
-    (lib.mkIf cfg.recommendedServices.enable {
-      networking.networkmanager.enable = lib.mkDefault true;
-      hardware.bluetooth.enable = lib.mkDefault true;
-      services.upower.enable = lib.mkDefault true;
-    })
-  ];
+      (lib.mkIf cfg.recommendedServices.enable {
+        networking.networkmanager.enable = lib.mkDefault true;
+        hardware.bluetooth.enable = lib.mkDefault true;
+        services.upower.enable = lib.mkDefault true;
+      })
+    ]
+  );
 }

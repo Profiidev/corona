@@ -121,6 +121,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --bash <(COMPLETE=bash $out/bin/corona) \
       --zsh  <(COMPLETE=zsh $out/bin/corona) \
       --fish <(COMPLETE=fish $out/bin/corona)
+    # for editors: /run/current-system/sw/share/corona/schema with the NixOS module
+    mkdir -p $out/share/corona/schema
+    $out/bin/corona schema plugin --output $out/share/corona/schema/plugin.schema.json
+    $out/bin/corona schema catalog --output $out/share/corona/schema/catalog.schema.json
     install -Dm644 assets/corona-settings.svg $out/share/icons/hicolor/scalable/apps/corona-settings.svg
     install -Dm644 assets/corona-settings.desktop $out/share/applications/corona-settings.desktop
     substituteInPlace $out/share/applications/corona-settings.desktop \
