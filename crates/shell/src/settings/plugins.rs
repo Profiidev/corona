@@ -162,7 +162,7 @@ fn source_row(name: &str, cx: &App) -> Div {
       d.child(
         Button::new(format!("source-update-{name}"))
           .label(t!("app.settings.plugins.update"))
-          .icon(IconName::Redo)
+          .icon(IconName::RotateCw)
           .cursor_pointer()
           .outline()
           .disabled(busy || !source.enabled)
@@ -287,7 +287,7 @@ fn plugins_group(cx: &App) -> SettingGroup {
     div().flex().justify_end().gap_2().child(
       Button::new("plugins-refresh")
         .label(t!("app.settings.plugins.refresh"))
-        .icon(IconName::Redo)
+        .icon(IconName::RefreshCw)
         .cursor_pointer()
         .outline()
         .on_click(|_, _, cx| PluginManager::refresh_catalogs(cx)),

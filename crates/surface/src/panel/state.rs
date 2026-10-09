@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;
@@ -32,15 +32,19 @@ struct OpenPanel {
 pub struct PanelState {
   panels: HashMap<String, OpenPanel>,
   registry: HashMap<String, PanelData>,
+  /// The panels open or opening, so views can follow them
+  open: Entity<BTreeSet<String>>,
 }
 
 impl Global for PanelState {}
 
 impl PanelState {
   pub fn init(cx: &mut App) {
+    let open = cx.new(|_| BTreeSet::new());
     cx.set_global(PanelState {
       panels: HashMap::new(),
       registry: HashMap::new(),
+      open,
     });
   }
 
@@ -94,6 +98,66 @@ impl PanelState {
 
     let align = Align::from_bounds(bar.bounds(), bar.bounds(), data.width, placement, cx);
     Self::apply(data, align, placement, Some(display_id), None, toggle, cx)
+  }
+
+  /// Shows panel `name` at the bar widget `opener`, like a widget's own
+  /// button does, closing it instead when `toggle` and it is open there.
+  /// Without an opener, or one in no bar, at the bar as [`Self::show`] does.
+  pub fn show_at(name: &str, opener: Option<EntityId>, toggle: bool, cx: &mut App) -> Result<()> {
+    let data = cx
+      .global::<PanelState>()
+      .registry
+      .get(name)
+      .cloned()
+      .with_context(|| format!("unknown panel: {name}"))?;
+    let found = opener.and_then(|id| Some((id, BarState::bar_with_widget(id, cx)?)));
+    let Some((widget_id, (handle, bar))) = found else {
+      return Self::show(name, toggle, cx);
+    };
+    let bar = bar.read(cx);
+    let placement = bar.placement();
+    let bar_bounds = bar.bounds();
+    let button_bounds = bar
+      .widget_bounds(widget_id)
+      .context("no bounds for this widget")?;
+    handle.update(cx, |_, window, cx| {
+      let align = Align::from_bounds(button_bounds, bar_bounds, data.width, placement, cx);
+      let display_id = window.display(cx).map(|d| d.id());
+      Self::apply(
+        data,
+        align,
+        placement,
+        display_id,
+        Some(widget_id),
+        toggle,
+        cx,
+      )
+    })?
+  }
+
+  /// Whether panel `name` is open or opening
+  pub fn is_open(name: &str, cx: &App) -> bool {
+    cx.global::<PanelState>().open.read(cx).contains(name)
+  }
+
+  /// The names of the open panels; notifies as panels open and close
+  pub fn open_panels(cx: &App) -> Entity<BTreeSet<String>> {
+    cx.global::<PanelState>().open.clone()
+  }
+
+  pub(crate) fn mark_open(name: &str, open: bool, cx: &mut App) {
+    let Some(set) = cx.try_global::<PanelState>().map(|s| s.open.clone()) else {
+      return;
+    };
+    set.update(cx, |set, cx| {
+      let changed = match open {
+        true => set.insert(name.to_string()),
+        false => set.remove(name),
+      };
+      if changed {
+        cx.notify();
+      }
+    });
   }
 
   fn target_bar(cx: &App) -> Option<(DisplayId, Entity<Bar>)> {
@@ -152,7 +216,7 @@ impl PanelState {
     Self::open_new(data, align, placement, display_id, opener, cx)
   }
 
-  pub(crate) fn close(name: &str, cx: &mut App) -> Result<()> {
+  pub fn close(name: &str, cx: &mut App) -> Result<()> {
     if let Some((_, panel)) = Self::get(name, cx) {
       panel.update(cx, |panel, cx| panel.close(cx));
     }
@@ -284,6 +348,8 @@ impl AppPanelExt for App {
 
 #[cfg(test)]
 mod tests {
+  use std::{cell::Cell, rc::Rc};
+
   use gpui_kit::TestAppContext;
 
   use super::*;
@@ -549,6 +615,85 @@ mod tests {
     assert!(matches!(align, Some(Align::Relative(_))));
     toggle(cx);
     assert!(!is_open("panel_a", cx));
+  }
+
+  #[gpui_kit::test]
+  fn toggles_a_named_panel_at_a_widget(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      cx.bar_mut().register::<test_support::Toggle>();
+    });
+    let config = corona_config::bar::BarConfig {
+      start: vec![],
+      center: vec![corona_config::bar::WidgetConfig::Widget(
+        corona_config::bar::WidgetEntry {
+          widget_type: "toggle".into(),
+          options: None,
+        },
+      )],
+      end: vec![],
+      ..Default::default()
+    };
+    let handle = cx.update(|cx| {
+      let display = cx.displays()[0].id();
+      BarState::create(cx, config, display).unwrap()
+    });
+    cx.simulate_window_resize(handle, gpui_kit::size(px(1000.), px(40.)));
+    draw_all(cx);
+    let widget = cx
+      .update_window(handle, |_, window, cx| {
+        let bar = BarState::get(window, cx).unwrap();
+        bar.read(cx).sections()[1][0][0].entity_id()
+      })
+      .unwrap();
+
+    cx.update(|cx| {
+      assert_eq!(
+        BarState::widget_place(widget, cx),
+        Some((Placement::Top, false))
+      );
+      let other = cx.new(|_| ()).entity_id();
+      assert_eq!(BarState::widget_place(other, cx), None);
+      assert!(!PanelState::is_open("panel_a", cx));
+    });
+    let changes = Rc::new(Cell::new(0));
+    let _watch = cx.update(|cx| {
+      let changes = changes.clone();
+      cx.observe(&PanelState::open_panels(cx), move |_, _| {
+        changes.set(changes.get() + 1)
+      })
+    });
+
+    cx.update(|cx| PanelState::show_at("panel_a", Some(widget), true, cx))
+      .unwrap();
+    cx.run_until_parked();
+    assert!(is_open("panel_a", cx));
+    assert!(cx.update(|cx| PanelState::is_open("panel_a", cx)));
+    assert_eq!(changes.get(), 1);
+    assert_eq!(opener("panel_a", cx), Some(widget));
+    // opening what is open keeps it open
+    cx.update(|cx| PanelState::show_at("panel_a", Some(widget), false, cx))
+      .unwrap();
+    cx.run_until_parked();
+    assert!(is_open("panel_a", cx));
+    assert_eq!(changes.get(), 1);
+    let align = panel("panel_a", cx).map(|p| cx.update(|cx| p.read(cx).align()));
+    assert!(matches!(align, Some(Align::Relative(_))));
+    cx.update(|cx| PanelState::show_at("panel_a", Some(widget), true, cx))
+      .unwrap();
+    cx.run_until_parked();
+    assert!(!is_open("panel_a", cx));
+    assert!(!cx.update(|cx| PanelState::is_open("panel_a", cx)));
+    assert_eq!(changes.get(), 2);
+
+    cx.update(|cx| {
+      let err = PanelState::show_at("nope", Some(widget), true, cx).unwrap_err();
+      assert!(err.to_string().contains("unknown panel"));
+      // no widget: falls back to the bar of the active monitor, which the
+      // fake compositor does not have
+      let err = PanelState::show_at("panel_a", None, true, cx).unwrap_err();
+      assert!(err.to_string().contains("no bar"));
+    });
   }
 
   #[gpui_kit::test]

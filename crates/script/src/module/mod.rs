@@ -25,6 +25,7 @@ pub mod notifications;
 pub mod pipewire;
 pub mod power;
 pub mod settings;
+pub mod surface;
 pub mod sysinfo;
 pub mod tray;
 pub mod weather;
@@ -88,6 +89,7 @@ pub enum Updates {
   Notifications(notifications::Updates),
   Pipewire(pipewire::Updates),
   Power(power::Updates),
+  Surface(surface::Updates),
   Sysinfo(sysinfo::Updates),
   Tray(tray::Updates),
   Weather(weather::Updates),

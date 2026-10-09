@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fs, rc::Rc};
+use std::{cell::Cell, collections::HashMap, fs, rc::Rc};
 
 use anyhow::{Context as _, Result};
-use gpui_kit::{AnyView, App, Entity, Global, Subscription, Window};
+use gpui_kit::{AnyView, App, Entity, EntityId, Global, Subscription, Window};
 use gpui_shell::{
   ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
@@ -9,12 +9,13 @@ use gpui_shell::{
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, settings},
+  module::{ModuleExt, Subscriptions, settings, surface},
   plugin::{manifest::PluginManifest, paths::Paths},
 };
 
 pub struct Script {
   root: Entity<ShellRoot>,
+  opener: Rc<Cell<Option<EntityId>>>,
   _watcher: Option<Watcher>,
   _subscriptions: Vec<Subscription>,
 }
@@ -22,6 +23,11 @@ pub struct Script {
 impl Script {
   pub fn view(&self) -> AnyView {
     self.root.clone().into()
+  }
+
+  /// The bar widget showing this script, where its panels open
+  pub fn set_opener(&self, widget: EntityId) {
+    self.opener.set(Some(widget));
   }
 }
 
@@ -83,13 +89,24 @@ impl ScriptManager {
       manifest.modules.clone(),
       manifest.settings.clone(),
     );
+    let panels: Vec<String> = manifest.panels.keys().cloned().collect();
+    let opener = Rc::new(Cell::new(None));
 
     let (policy, mut subscribes) = Policy::new()
       .with_application(&id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
       .with_corona_modules(&modules, cx)?;
-    let policy = policy.with_host_module(settings::module(&id, &settings, &mut subscribes))?;
+    let policy = policy
+      .with_host_module(settings::module(&id, &settings, &mut subscribes))?
+      .with_host_module(surface::module(
+        &id,
+        panels,
+        opener.clone(),
+        &Subscriptions::default(),
+        &mut subscribes,
+        cx,
+      ))?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -113,6 +130,7 @@ impl ScriptManager {
 
     Ok(Script {
       root,
+      opener,
       _watcher: watcher,
       _subscriptions: subscriptions,
     })
@@ -124,7 +142,7 @@ mod tests {
   use std::{cell::RefCell, path::PathBuf};
 
   use corona_compositor::{Compositor, CompositorImpl, types};
-  use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
+  use gpui_kit::{self as gpui, AppContext, TestAppContext, VisualTestContext};
 
   use corona_config::Config;
 
@@ -567,5 +585,76 @@ default = "hello""#;
     });
     cx.run_until_parked();
     assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+  }
+
+  /// Reports what `corona/surface` answers through `focusWorkspace` on every
+  /// render.
+  const SURFACE_VIEW: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { panels, isPanelOpen, togglePanel, openPanel, closePanel, bar } from "corona/surface";
+
+export default class Main extends View {
+  render(_cx) {
+    // an error comes back as `{ message }`
+    const errors = [togglePanel("other"), openPanel("other"), closePanel("other"), isPanelOpen("other")]
+      .filter((e) => e && e.message.includes("no panel `other`")).length;
+    focusWorkspace(JSON.stringify({
+      panels: panels(),
+      open: isPanelOpen("p"),
+      bar: bar(),
+      errors,
+      // own panels are fine; there is no bar to open one at here
+      toggle: togglePanel("p") ?? null,
+      close: closePanel("p") ?? null,
+    }));
+    return v_flex().child("plugin");
+  }
+}
+"#;
+
+  #[gpui::test]
+  fn surface_reads_and_follows_its_panels(cx: &mut TestAppContext) {
+    let fake = Rc::new(Fake::default());
+    cx.update(|cx| {
+      let compositor = Compositor::new(cx, fake.clone()).unwrap();
+      cx.set_global(compositor);
+      corona_surface::init(cx).unwrap();
+    });
+    let plugins = Plugins::new();
+    let extra = "capabilities = { corona = [\"compositor\"] }\n[panels.p]\nview = \"main.js\"";
+    plugins.add("a", &manifest("a", extra), &[("main.js", SURFACE_VIEW)]);
+    let (cx, script) = load(cx, &plugins, "a");
+    let script = script.unwrap();
+    script.set_opener(cx.update(|_, cx| cx.new(|_| ()).entity_id()));
+    let last = |fake: &Fake| -> serde_json::Value {
+      let calls = fake.calls.borrow();
+      serde_json::from_str(calls.last().unwrap()).unwrap()
+    };
+    assert_eq!(
+      last(&fake),
+      serde_json::json!({
+        "panels": ["p"],
+        "open": false,
+        // a widget in no bar
+        "bar": null,
+        "errors": 4,
+        "toggle": null,
+        "close": null,
+      })
+    );
+
+    // it asked whether `p` is open, so it renders as that changes
+    let rendered = fake.calls.borrow().len();
+    cx.update(|_, cx| {
+      corona_surface::panel::PanelState::open_panels(cx).update(cx, |open, cx| {
+        open.insert("a:p".into());
+        cx.notify();
+      })
+    });
+    cx.run_until_parked();
+    assert!(fake.calls.borrow().len() > rendered);
+    assert_eq!(last(&fake)["open"], true);
   }
 }

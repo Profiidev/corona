@@ -48,7 +48,12 @@ fn sync(registered: &mut Registered, cx: &mut App) {
       cx.bar_mut().register_data(WidgetData::from_fn(
         name.clone(),
         move |window, cx, _, _| match ScriptManager::load(&id, Entry::Widget(&key), window, cx) {
-          Ok(script) => Some(cx.new(|_| PluginView(script)).into()),
+          Ok(script) => {
+            let view = cx.new(|_| PluginView(script));
+            // its panels open at it
+            view.read(cx).0.set_opener(view.entity_id());
+            Some(view.into())
+          }
           Err(e) => {
             tracing::error!("plugin widget `{id}:{key}`: {e:#}");
             None

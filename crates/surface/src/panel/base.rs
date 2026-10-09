@@ -18,11 +18,14 @@ use gpui_kit::{
   px,
 };
 
-use crate::panel::{PANEL_NAME, align::Align, style::PanelStyle, variants::PanelData};
+use crate::panel::{
+  PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData,
+};
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 
 pub struct BasePanel {
+  name: String,
   panel: AnyView,
   width: f32,
   height: f32,
@@ -50,7 +53,9 @@ impl BasePanel {
     cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.block(cx)))
       .detach();
 
+    PanelState::mark_open(&data.name, true, cx);
     Self {
+      name: data.name.clone(),
       display,
       blockers: Vec::new(),
       panel: data.init(window, cx),
@@ -67,6 +72,7 @@ impl BasePanel {
 
   pub fn close(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = false;
+    PanelState::mark_open(&self.name, false, cx);
     let blockers = std::mem::take(&mut self.blockers);
     cx.defer(move |cx| {
       for handle in blockers {
@@ -78,6 +84,7 @@ impl BasePanel {
 
   pub fn open(&mut self, cx: &mut Context<'_, BasePanel>) {
     self.open = true;
+    PanelState::mark_open(&self.name, true, cx);
     self.block(cx);
     cx.notify();
   }
