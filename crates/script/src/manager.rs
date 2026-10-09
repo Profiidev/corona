@@ -21,8 +21,16 @@ pub struct Script {
 }
 
 impl Script {
+  /// The script inside gpui-shell's root, which fills its window, paints the
+  /// theme's background and hosts dialogs, sheets and toasts
   pub fn view(&self) -> AnyView {
     self.root.clone().into()
+  }
+
+  /// Only what the script renders, without the root's background: what bar
+  /// widgets and panels show
+  pub fn content(&self, cx: &App) -> AnyView {
+    self.root.read(cx).content().clone()
   }
 
   /// The bar widget showing this script, where its panels open

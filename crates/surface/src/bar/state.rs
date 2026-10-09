@@ -186,7 +186,7 @@ impl BarState {
     Some((bar.placement(), bar.is_bare(widget_id)))
   }
 
-  pub(crate) fn get(window: &Window, cx: &App) -> Option<Entity<Bar>> {
+  pub fn get(window: &Window, cx: &App) -> Option<Entity<Bar>> {
     cx.global::<BarState>()
       .bars
       .get(&window.window_handle().window_id())?

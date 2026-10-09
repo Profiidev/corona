@@ -153,7 +153,7 @@ impl Bar {
 #[cfg(test)]
 impl Bar {
   /// The views of the start, center and end sections; a group is one entry
-  pub(crate) fn sections(&self) -> [Vec<Vec<AnyView>>; 3] {
+  pub fn sections(&self) -> [Vec<Vec<AnyView>>; 3] {
     [&self.start_widgets, &self.center_widgets, &self.end_widgets].map(|entries| {
       entries
         .iter()
