@@ -21,6 +21,8 @@ mod greetd;
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const AVATARS: &str = "/var/lib/AccountsService/icons";
+const LAST_SESSION: &str = "last-session";
+const LAST_USER: &str = "last-user";
 
 struct Greeter {
   screen: Entity<AuthScreen>,
@@ -30,15 +32,24 @@ struct Greeter {
 
 impl Greeter {
   fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-    let name = std::fs::read_to_string("/etc/passwd")
-      .ok()
-      .and_then(|passwd| greetd::first_user(&passwd))
+    let names = std::fs::read_to_string("/etc/passwd")
+      .map(|passwd| greetd::users(&passwd))
       .unwrap_or_default();
-    let avatar = Path::new(AVATARS).join(&name);
-    let user = User {
-      avatar: avatar.exists().then(|| avatar.into()),
-      name: name.into(),
-    };
+    let last_user = config::state_file(LAST_USER).and_then(|file| config::read_state(&file));
+    let user = names
+      .iter()
+      .position(|name| Some(name) == last_user.as_ref())
+      .unwrap_or(0);
+    let users = names
+      .into_iter()
+      .map(|name| {
+        let avatar = Path::new(AVATARS).join(&name);
+        User {
+          avatar: avatar.exists().then(|| avatar.into()),
+          name: name.into(),
+        }
+      })
+      .collect();
     let this = cx.weak_entity();
     let check: Check = Rc::new(move |user, password, cx: &mut App| {
       let session = this
@@ -48,14 +59,17 @@ impl Greeter {
         return Task::ready(Err(anyhow!("no Wayland session to start")));
       };
       let id = session.id.clone();
+      let name = user.clone();
       let login = cx
         .background_executor()
         .spawn(async move { greetd::login(user, password, session) });
       cx.spawn(async move |cx| {
         let right = login.await?;
         if right {
-          if let Some(file) = config::last_session_file() {
-            let _ = config::save_session(&file, &id).log_err();
+          for (state, value) in [(LAST_SESSION, &id), (LAST_USER, &name)] {
+            if let Some(file) = config::state_file(state) {
+              let _ = config::save_state(&file, value).log_err();
+            }
           }
           // greetd starts the session once we are gone
           cx.update(|cx| cx.quit());
@@ -64,9 +78,9 @@ impl Greeter {
       })
     });
     let sessions = greetd::sessions();
-    let last = config::last_session_file().and_then(|file| config::last_session(&file));
+    let last = config::state_file(LAST_SESSION).and_then(|file| config::read_state(&file));
     Self {
-      screen: cx.new(|cx| AuthScreen::new(Purpose::Login, user, check, window, cx)),
+      screen: cx.new(|cx| AuthScreen::new(Purpose::Login, users, user, check, window, cx)),
       selected: (sessions.iter())
         .position(|s| Some(&s.id) == last.as_ref())
         .unwrap_or(0),

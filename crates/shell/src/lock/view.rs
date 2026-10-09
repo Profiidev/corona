@@ -47,7 +47,7 @@ impl Lock {
       })
     });
     Self {
-      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, user, check, window, cx)),
+      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, vec![user], 0, check, window, cx)),
       background,
     }
   }

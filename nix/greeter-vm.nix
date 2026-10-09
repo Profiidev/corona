@@ -78,6 +78,10 @@ in
     isNormalUser = true;
     password = "test";
   };
+  users.users.dummy = {
+    isNormalUser = true;
+    password = "dummy";
+  };
   users.users.root.password = "root"; # to read journalctl -t corona-greeter
 
   virtualisation.sharedDirectories.corona = {

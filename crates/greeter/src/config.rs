@@ -15,9 +15,9 @@ pub fn config_file() -> Option<PathBuf> {
   Some(dirs::config_dir()?.join(DIR).join("config.toml"))
 }
 
-/// `~/.local/state/corona-greeter/last-session`: the id of the session started last
-pub fn last_session_file() -> Option<PathBuf> {
-  Some(dirs::state_dir()?.join(DIR).join("last-session"))
+/// `~/.local/state/corona-greeter/<name>`, like `last-session` or `last-user`
+pub fn state_file(name: &str) -> Option<PathBuf> {
+  Some(dirs::state_dir()?.join(DIR).join(name))
 }
 
 #[derive(Deserialize, Debug, Default, PartialEq)]
@@ -38,16 +38,16 @@ pub fn read(path: &Path) -> Result<Config> {
   }
 }
 
-pub fn last_session(path: &Path) -> Option<String> {
-  let id = fs::read_to_string(path).ok()?;
-  Some(id.trim().to_string()).filter(|id| !id.is_empty())
+pub fn read_state(path: &Path) -> Option<String> {
+  let value = fs::read_to_string(path).ok()?;
+  Some(value.trim().to_string()).filter(|value| !value.is_empty())
 }
 
-pub fn save_session(path: &Path, id: &str) -> Result<()> {
+pub fn save_state(path: &Path, value: &str) -> Result<()> {
   if let Some(dir) = path.parent() {
     fs::create_dir_all(dir)?;
   }
-  fs::write(path, id).with_context(|| format!("writing {}", path.display()))
+  fs::write(path, value).with_context(|| format!("writing {}", path.display()))
 }
 
 #[cfg(test)]
@@ -76,11 +76,11 @@ mod tests {
   }
 
   #[test]
-  fn remembers_the_session() {
+  fn remembers_state() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("corona-greeter/last-session");
-    assert_eq!(last_session(&path), None);
-    save_session(&path, "hyprland-uwsm").unwrap();
-    assert_eq!(last_session(&path).as_deref(), Some("hyprland-uwsm"));
+    assert_eq!(read_state(&path), None);
+    save_state(&path, "hyprland-uwsm").unwrap();
+    assert_eq!(read_state(&path).as_deref(), Some("hyprland-uwsm"));
   }
 }

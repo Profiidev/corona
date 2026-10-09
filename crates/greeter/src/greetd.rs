@@ -63,23 +63,34 @@ fn find(dirs: impl Iterator<Item = impl AsRef<Path>>) -> Vec<Session> {
   sessions
 }
 
-/// The first account people log in with: a uid from 1000 below 60000 and a login shell.
-/// ponytail: one user only, a user picker when a machine has more
-pub fn first_user(passwd: &str) -> Option<String> {
-  passwd.lines().find_map(|line| {
-    let fields: Vec<_> = line.split(':').collect();
-    let uid: u32 = fields.get(2)?.parse().ok()?;
-    let shell = fields.get(6)?;
-    let login = !shell.ends_with("nologin") && !shell.ends_with("false");
-    ((1000..60000).contains(&uid) && login).then(|| fields[0].to_string())
-  })
+/// The accounts people log in with: a uid from 1000 below 60000 and a login
+/// shell, in passwd order
+pub fn users(passwd: &str) -> Vec<String> {
+  passwd
+    .lines()
+    .filter_map(|line| {
+      let fields: Vec<_> = line.split(':').collect();
+      let uid: u32 = fields.get(2)?.parse().ok()?;
+      let shell = fields.get(6)?;
+      let login = !shell.ends_with("nologin") && !shell.ends_with("false");
+      ((1000..60000).contains(&uid) && login).then(|| fields[0].to_string())
+    })
+    .collect()
 }
 
 /// One login conversation: `Ok(false)` for a wrong password. On success greetd
 /// starts `session` once the greeter exits. Blocks, PAM sleeps on a failure
 pub fn login(user: String, password: String, session: Session) -> Result<bool> {
   let socket = env::var("GREETD_SOCK").context("GREETD_SOCK not set, not run by greetd")?;
-  let mut stream = UnixStream::connect(socket)?;
+  converse(UnixStream::connect(socket)?, user, password, session)
+}
+
+fn converse(
+  mut stream: UnixStream,
+  user: String,
+  password: String,
+  session: Session,
+) -> Result<bool> {
   let mut send = |request: Request| -> Result<Response> {
     request.write_to(&mut stream)?;
     Ok(Response::read_from(&mut stream)?)
@@ -173,8 +184,97 @@ mod tests {
       nixbld1:x:30001:30000::/var/empty:/run/current-system/sw/bin/nologin\n\
       greeter:x:999:999::/var/empty:/bin/false\n\
       test:x:1000:100::/home/test:/run/current-system/sw/bin/bash\n\
+      dummy:x:1001:100::/home/dummy:/run/current-system/sw/bin/bash\n\
       nobody:x:65534:65534::/var/empty:/run/current-system/sw/bin/nologin\n";
-    assert_eq!(first_user(passwd).as_deref(), Some("test"));
-    assert_eq!(first_user("root:x:0:0::/root:/bin/sh"), None);
+    assert_eq!(users(passwd), ["test", "dummy"]);
+    assert!(users("root:x:0:0::/root:/bin/sh").is_empty());
+  }
+
+  /// greetd answering each request with the next of `responses`, the requests
+  /// it got as their debug text
+  fn greetd(responses: Vec<Response>) -> (UnixStream, std::thread::JoinHandle<Vec<String>>) {
+    let (ours, mut theirs) = UnixStream::pair().unwrap();
+    let server = std::thread::spawn(move || {
+      let mut requests = Vec::new();
+      for response in responses {
+        let Ok(request) = Request::read_from(&mut theirs) else {
+          break;
+        };
+        requests.push(format!("{request:?}"));
+        response.write_to(&mut theirs).unwrap();
+      }
+      requests
+    });
+    (ours, server)
+  }
+
+  fn session() -> Session {
+    Session {
+      id: "hyprland".into(),
+      name: "Hyprland".into(),
+      cmd: vec!["start-hyprland".into()],
+      env: vec!["XDG_SESSION_TYPE=wayland".into()],
+    }
+  }
+
+  fn message(auth_message_type: AuthMessageType) -> Response {
+    Response::AuthMessage {
+      auth_message_type,
+      auth_message: "".into(),
+    }
+  }
+
+  fn error(error_type: ErrorType) -> Response {
+    Response::Error {
+      error_type,
+      description: "nope".into(),
+    }
+  }
+
+  fn run(responses: Vec<Response>) -> (Result<bool>, Vec<String>) {
+    let (stream, server) = greetd(responses);
+    let result = converse(stream, "alice".into(), "hunter2".into(), session());
+    (result, server.join().unwrap())
+  }
+
+  #[test]
+  fn logs_in_and_starts_the_session() {
+    let (result, requests) = run(vec![
+      message(AuthMessageType::Info),
+      message(AuthMessageType::Secret),
+      Response::Success,
+      Response::Success,
+    ]);
+    assert!(result.unwrap());
+    assert!(requests[0].contains("CreateSession") && requests[0].contains("alice"));
+    // info gets no answer, the password prompt the password
+    assert!(requests[1].contains("response: None"), "{}", requests[1]);
+    assert!(requests[2].contains("Some(\"hunter2\")"), "{}", requests[2]);
+    assert!(requests[3].contains("StartSession") && requests[3].contains("start-hyprland"));
+    assert!(requests[3].contains("XDG_SESSION_TYPE=wayland"));
+  }
+
+  #[test]
+  fn wrong_password_cancels() {
+    let (result, requests) = run(vec![
+      message(AuthMessageType::Secret),
+      error(ErrorType::AuthError),
+      Response::Success,
+    ]);
+    assert!(!result.unwrap());
+    assert_eq!(requests.last().unwrap(), "CancelSession");
+  }
+
+  #[test]
+  fn other_errors_fail_and_cancel() {
+    let (result, requests) = run(vec![error(ErrorType::Error), Response::Success]);
+    assert!(result.unwrap_err().to_string().contains("nope"));
+    assert_eq!(requests.last().unwrap(), "CancelSession");
+  }
+
+  #[test]
+  fn greetd_hanging_up_is_an_error() {
+    let (result, _) = run(vec![]);
+    assert!(result.is_err());
   }
 }

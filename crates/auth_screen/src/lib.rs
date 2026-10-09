@@ -8,10 +8,11 @@ use gpui_kit::{
   InteractiveElement, IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement,
   Styled, Subscription, Task, Window,
   assets::IconName,
+  base::Disableable,
   component::{
     ActiveTheme, Icon, Sizable,
     avatar::Avatar,
-    button::Button,
+    button::{Button, ButtonVariants},
     form::field,
     input::{
       InputEvent, InputGroup, InputGroupAddon, InputGroupAddonAlignment, InputGroupButton,
@@ -32,6 +33,8 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 const WIDTH: f32 = 320.;
 const MENU_WIDTH: f32 = 248.;
 const INSET: f32 = 32.;
+const AVATAR: f32 = 96.;
+const SIDE_AVATAR: f32 = 48.;
 
 /// What the screen is for. `Login` is the greeter: no log out, "Power" for the
 /// menu and "log in" wording
@@ -143,15 +146,25 @@ pub struct User {
   pub avatar: Option<ImageSource>,
 }
 
+fn avatar(user: &User, size: f32) -> Avatar {
+  Avatar::new()
+    .name(user.name.clone())
+    .when_some(user.avatar.clone(), |a, src| a.src(src))
+    .with_size(px(size))
+    .text_size(px(size * 0.3125))
+    .font_weight(gpui_kit::FontWeight::MEDIUM)
+}
+
 /// Checks `user`'s password: `Ok(false)` when wrong, `Err` when the check itself
 /// failed. Does whatever comes after a right password too
 pub type Check = Rc<dyn Fn(String, String, &mut App) -> Task<Result<bool>>>;
 
 /// The user, password field, log line and session menu over the lock and login
-/// backdrop
+/// backdrop. More than one user get a carousel to pick from
 pub struct AuthScreen {
   purpose: Purpose,
-  user: User,
+  users: Vec<User>,
+  selected: usize,
   check: Check,
   input: Entity<InputState>,
   log: Log,
@@ -165,7 +178,8 @@ pub struct AuthScreen {
 impl AuthScreen {
   pub fn new(
     purpose: Purpose,
-    user: User,
+    users: Vec<User>,
+    selected: usize,
     check: Check,
     window: &mut Window,
     cx: &mut Context<Self>,
@@ -183,7 +197,8 @@ impl AuthScreen {
     });
     Self {
       purpose,
-      user,
+      selected: selected.min(users.len().saturating_sub(1)),
+      users,
       check,
       input,
       log: Log::Idle,
@@ -209,9 +224,13 @@ impl AuthScreen {
       cx.notify();
       return;
     }
+    // no one to log in, like a greeter on a machine without users
+    let Some(user) = self.users.get(self.selected) else {
+      return;
+    };
+    let check = (self.check)(user.name.to_string(), password, cx);
     self.log = Log::Busy(t!("app.lock.checking").into());
     self.set_checking(true, window, cx);
-    let check = (self.check)(self.user.name.to_string(), password, cx);
     cx.spawn_in(window, async move |this, cx| {
       let result = check.await;
       let _ = this.update_in(cx, |this, window, cx| {
@@ -235,6 +254,21 @@ impl AuthScreen {
       });
     })
     .detach();
+  }
+
+  /// Picks another user, not while a check runs. Starts their password over
+  fn select(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    if self.checking || index == self.selected || index >= self.users.len() {
+      return;
+    }
+    self.selected = index;
+    self.log = Log::Idle;
+    self.invalid = false;
+    self.input.update(cx, |input, cx| {
+      input.set_value("", window, cx);
+      input.focus(window, cx);
+    });
+    cx.notify();
   }
 
   fn set_checking(&mut self, checking: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -284,19 +318,66 @@ impl AuthScreen {
     .detach();
   }
 
-  fn header(&self, cx: &App) -> impl IntoElement + use<> {
+  fn header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    let (i, count) = (self.selected, self.users.len());
+    let name = self
+      .users
+      .get(i)
+      .map(|u| u.name.clone())
+      .unwrap_or_default();
+    let carousel = count > 1;
+    let arrow = |id: &'static str, icon: IconName, to: Option<usize>, cx: &mut Context<Self>| {
+      Button::new(id)
+        .ghost()
+        .icon(icon)
+        .disabled(to.is_none() || self.checking)
+        .cursor_pointer()
+        .on_click(cx.listener(move |this, _, window, cx| {
+          if let Some(to) = to {
+            this.select(to, window, cx);
+          }
+        }))
+    };
+    // a neighbour, or the space it would take so the picked one stays centered
+    let side = |to: Option<usize>, cx: &mut Context<Self>| match to {
+      Some(to) => div()
+        .id(("auth-user", to))
+        .rounded_full()
+        .opacity(0.5)
+        .cursor_pointer()
+        .hover(|d| d.opacity(0.8))
+        .on_click(cx.listener(move |this, _, window, cx| this.select(to, window, cx)))
+        .child(avatar(&self.users[to], SIDE_AVATAR))
+        .into_any_element(),
+      None => div().size(px(SIDE_AVATAR)).into_any_element(),
+    };
+    let previous = i.checked_sub(1);
+    let next = (i + 1 < count).then_some(i + 1);
+
     div()
       .flex()
       .flex_col()
       .items_center()
       .gap(px(14.))
       .child(
-        Avatar::new()
-          .name(self.user.name.clone())
-          .when_some(self.user.avatar.clone(), |a, src| a.src(src))
-          .with_size(px(96.))
-          .text_size(px(30.))
-          .font_weight(gpui_kit::FontWeight::MEDIUM),
+        div()
+          .flex()
+          .items_center()
+          .gap_3()
+          .when(carousel, |d| {
+            d.child(arrow(
+              "auth-user-previous",
+              IconName::ChevronLeft,
+              previous,
+              cx,
+            ))
+            .child(side(previous, cx))
+          })
+          .children(self.users.get(i).map(|user| avatar(user, AVATAR)))
+          .when(carousel, |d| {
+            d.child(side(next, cx))
+              .child(arrow("auth-user-next", IconName::ChevronRight, next, cx))
+          }),
       )
       .child(
         div()
@@ -304,7 +385,7 @@ impl AuthScreen {
           .line_height(px(28.))
           .font_weight(gpui_kit::FontWeight::MEDIUM)
           .text_color(cx.theme().foreground)
-          .child(self.user.name.clone()),
+          .child(name),
       )
   }
 
@@ -543,5 +624,154 @@ mod tests {
       groups.last().unwrap().last(),
       Some(&SessionAction::PowerOff)
     );
+  }
+
+  #[gpui_kit::test]
+  fn carousel_picks_the_user_checked(cx: &mut gpui_kit::TestAppContext) {
+    use std::cell::RefCell;
+    cx.update(gpui_kit::init);
+    let checked = Rc::new(RefCell::new(Vec::new()));
+    let check: Check = Rc::new({
+      let checked = checked.clone();
+      move |user, _, _| {
+        checked.borrow_mut().push(user);
+        Task::ready(Ok(false))
+      }
+    });
+    let users = ["alice", "bob", "carol"].map(|name| User {
+      name: name.into(),
+      avatar: None,
+    });
+    let (screen, cx) = cx.add_window_view(|window, cx| {
+      AuthScreen::new(Purpose::Login, users.into(), 9, check, window, cx)
+    });
+    // out of range picks the last
+    assert_eq!(screen.read_with(cx, |s, _| s.selected), 2);
+
+    screen.update_in(cx, |screen, window, cx| {
+      screen
+        .input
+        .update(cx, |input, cx| input.set_value("secret", window, cx));
+      screen.select(0, window, cx);
+      // the password starts over for the new user
+      assert_eq!(screen.input.read(cx).value(), "");
+      screen.select(7, window, cx);
+      assert_eq!(screen.selected, 0);
+      screen
+        .input
+        .update(cx, |input, cx| input.set_value("secret", window, cx));
+      screen.submit(window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(*checked.borrow(), ["alice"]);
+  }
+
+  /// A window with `users` whose check answers by password, counting the calls
+  fn open<'a>(
+    users: &[&str],
+    cx: &'a mut gpui_kit::TestAppContext,
+  ) -> (
+    Entity<AuthScreen>,
+    &'a mut gpui_kit::VisualTestContext,
+    Rc<std::cell::Cell<usize>>,
+  ) {
+    cx.update(gpui_kit::init);
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let check: Check = Rc::new({
+      let calls = calls.clone();
+      move |_, password, _| {
+        calls.set(calls.get() + 1);
+        Task::ready(match password.as_str() {
+          "right" => Ok(true),
+          "wrong" => Ok(false),
+          _ => Err(anyhow::anyhow!("PAM broke")),
+        })
+      }
+    });
+    let users = users
+      .iter()
+      .map(|name| User {
+        name: (*name).into(),
+        avatar: None,
+      })
+      .collect();
+    let (screen, cx) = cx
+      .add_window_view(|window, cx| AuthScreen::new(Purpose::Unlock, users, 0, check, window, cx));
+    (screen, cx, calls)
+  }
+
+  fn submit(
+    screen: &Entity<AuthScreen>,
+    password: &str,
+    cx: &mut gpui_kit::VisualTestContext,
+  ) -> (Log, bool, String) {
+    screen.update_in(cx, |screen, window, cx| {
+      screen
+        .input
+        .update(cx, |input, cx| input.set_value(password, window, cx));
+      screen.submit(window, cx);
+    });
+    cx.run_until_parked();
+    screen.read_with(cx, |screen, cx| {
+      assert!(!screen.checking, "the field takes input again");
+      (
+        screen.log.clone(),
+        screen.invalid,
+        screen.input.read(cx).value().to_string(),
+      )
+    })
+  }
+
+  #[gpui_kit::test]
+  fn submit_reports_each_outcome(cx: &mut gpui_kit::TestAppContext) {
+    let (screen, cx, calls) = open(&["alice"], cx);
+    let error = |key: &str| Log::Error(t!(key).into());
+
+    assert_eq!(
+      submit(&screen, "", cx),
+      (error("app.lock.empty"), false, "".into())
+    );
+    assert_eq!(calls.get(), 0, "an empty password is not checked");
+
+    // a wrong one marks the field and starts over
+    assert_eq!(
+      submit(&screen, "wrong", cx),
+      (error("app.lock.wrong"), true, "".into())
+    );
+    // typing clears the error
+    screen.update_in(cx, |screen, window, cx| {
+      screen.input.update(cx, |input, cx| input.focus(window, cx))
+    });
+    cx.simulate_input("x");
+    assert_eq!(
+      screen.read_with(cx, |s, cx| (
+        s.log.clone(),
+        s.invalid,
+        s.input.read(cx).value().to_string()
+      )),
+      (Log::Idle, false, "x".into())
+    );
+    // a broken check keeps what was typed
+    assert_eq!(
+      submit(&screen, "other", cx),
+      (error("app.lock.auth_failed"), false, "other".into())
+    );
+    assert_eq!(submit(&screen, "right", cx).0, Log::Idle);
+    assert_eq!(calls.get(), 3);
+  }
+
+  #[gpui_kit::test]
+  fn no_users_never_checks(cx: &mut gpui_kit::TestAppContext) {
+    let (screen, cx, calls) = open(&[], cx);
+    assert_eq!(submit(&screen, "right", cx).0, Log::Idle);
+    assert_eq!(calls.get(), 0);
+  }
+
+  #[test]
+  fn purposes_word_differently() {
+    let (unlock, login) = (Purpose::Unlock, Purpose::Login);
+    assert_ne!(unlock.submit(), login.submit());
+    assert_ne!(unlock.menu(), login.menu());
+    assert_ne!(unlock.idle(), login.idle());
   }
 }
