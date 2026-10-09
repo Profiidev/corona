@@ -55,34 +55,18 @@ in
     plymouth.enable = true;
   };
 
-  services.greetd = {
+  services.corona-greeter = {
     enable = true;
-    settings.default_session.command = lib.concatStringsSep " " [
-      "${pkgs.systemd}/bin/systemd-cat -t greeter"
-      "${pkgs.coreutils}/bin/env"
-      "VK_DRIVER_FILES=${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.x86_64.json"
-      "LD_LIBRARY_PATH=${
-        lib.makeLibraryPath [
-          pkgs.wayland
-          pkgs.vulkan-loader
-        ]
-      }"
-      "${pkgs.cage}/bin/cage -s -- /mnt/corona/target/debug/corona_greeter"
-    ];
-    # GDM-style handoff, see systemd.services.greetd below
-    greeterManagesPlymouth = true;
-  };
-
-  systemd.services.greetd = {
-    conflicts = [ "plymouth-quit.service" ];
-    after = [ "plymouth-quit.service" ];
-    serviceConfig = {
-      # idle would wait (up to 5s) for plymouth-quit-wait, which only ends when we quit Plymouth.
-      Type = lib.mkForce "simple";
-      ExecStartPre = "-${pkgs.plymouth}/bin/plymouth deactivate";
-      # Quit only after cage drew: closing Plymouth's DRM fd turns off a CRTC still showing
-      # its framebuffer. ponytail: fixed delay; a greeter-side signal would be exact.
-      ExecStartPost = "-${pkgs.bash}/bin/sh -c 'sleep 3; ${pkgs.plymouth}/bin/plymouth quit --retain-splash'";
+    # the checkout's debug build, see virtualisation.sharedDirectories
+    executable = "/mnt/corona/target/debug/corona_greeter";
+    environment = {
+      # Venus frames don't show under cage in the VM
+      VK_DRIVER_FILES = "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.x86_64.json";
+      # dlopen'ed, like devenv's LD_LIBRARY_PATH; the package has them in its rpath
+      LD_LIBRARY_PATH = lib.makeLibraryPath [
+        pkgs.wayland
+        pkgs.vulkan-loader
+      ];
     };
   };
 
@@ -94,7 +78,7 @@ in
     isNormalUser = true;
     password = "test";
   };
-  users.users.root.password = "root"; # to read journalctl -t greeter
+  users.users.root.password = "root"; # to read journalctl -t corona-greeter
 
   virtualisation.sharedDirectories.corona = {
     source = ''$(git -C "$OLDPWD" rev-parse --show-toplevel 2>/dev/null || echo "$OLDPWD")'';
