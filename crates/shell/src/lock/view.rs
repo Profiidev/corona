@@ -7,9 +7,9 @@ use std::{
 
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  App, AppContext, BoxShadow, Context, Div, Entity, InteractiveElement, IntoElement, ParentElement,
-  Pixels, Render, RenderImage, Size, Styled, Window, black, component::ActiveTheme, div,
-  ease_out_quint, img, prelude::FluentBuilder, px, relative,
+  App, AppContext, BoxShadow, Context, Div, Entity, IntoElement, ParentElement, Pixels, Render,
+  RenderImage, Size, Styled, Window, black, component::ActiveTheme, div, ease_out_quint, img,
+  prelude::FluentBuilder, px, relative,
 };
 
 use crate::lock::{
@@ -20,7 +20,7 @@ use crate::lock::{
 const ZOOM: f32 = 0.96;
 const FEATHER: f32 = 10.;
 /// Darkens the blurred screen under the lock UI
-const DIM: f32 = 0.1;
+const DIM: f32 = 0.5;
 pub(super) const ZOOM_SPEED: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
@@ -115,12 +115,6 @@ impl Render for Lock {
     let theme = cx.theme();
     let size = window.viewport_size();
     div()
-      // TODO: remove once the password unlocks
-      .on_key_down(cx.listener(|_, event: &gpui_kit::KeyDownEvent, _, cx| {
-        if event.keystroke.key == "escape" {
-          LockState::unlock_animated(cx);
-        }
-      }))
       .size_full()
       .relative()
       .bg(theme.background)

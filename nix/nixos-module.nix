@@ -37,7 +37,8 @@ in
   config = lib.mkIf cfg.enable lib.mkMerge [
     {
       environment.systemPackages = [ cfg.package ];
-      security.pam.services.corona = { };
+
+      security.pam.services.corona.fprintAuth = lib.mkDefault false;
 
       systemd.user.services.corona = {
         description = "Corona shell";

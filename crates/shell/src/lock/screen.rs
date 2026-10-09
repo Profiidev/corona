@@ -1,3 +1,4 @@
+use corona_auth::AuthExt;
 use corona_config::ConfigProvider;
 use corona_power::{PowerExt, SessionAction, SessionCapabilities};
 use corona_utils::error::ErrorLogExt;
@@ -25,7 +26,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::overlays::wallpaper;
+use crate::{lock::LockState, overlays::wallpaper};
 
 const WIDTH: f32 = 320.;
 const MENU_WIDTH: f32 = 248.;
@@ -42,6 +43,13 @@ impl Purpose {
   fn submit(self) -> SharedString {
     match self {
       Purpose::Unlock => t!("app.lock.unlock").into(),
+    }
+  }
+
+  /// The session menu's button
+  fn menu(self) -> SharedString {
+    match self {
+      Purpose::Unlock => t!("app.lock.session").into(),
     }
   }
 
@@ -205,13 +213,44 @@ impl AuthScreen {
     self.input.read(cx).focus_handle(cx)
   }
 
-  fn submit(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-    if self.input.read(cx).value().is_empty() {
+  fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    // one check at a time, and none while a session action runs
+    if matches!(self.log, Log::Busy(_)) {
+      return;
+    }
+    let password = self.input.read(cx).value().to_string();
+    if password.is_empty() {
       self.log = Log::Error(t!("app.lock.empty").into());
       cx.notify();
+      return;
     }
-    // TODO: authenticate with PAM, on failure set `invalid`, clear the field and
-    // log "Wrong password — N attempts left"
+    self.log = Log::Busy(t!("app.lock.checking").into());
+    cx.notify();
+    let check = cx.auth().password(self.user.name.to_string(), password, cx);
+    cx.spawn_in(window, async move |this, cx| {
+      let result = check.await;
+      let _ = this.update_in(cx, |this, window, cx| {
+        this.log = Log::Idle;
+        match result {
+          Ok(true) => match this.purpose {
+            Purpose::Unlock => LockState::unlock_animated(cx),
+          },
+          Ok(false) => {
+            this.invalid = true;
+            this.log = Log::Error(t!("app.lock.wrong").into());
+            this
+              .input
+              .update(cx, |input, cx| input.set_value("", window, cx));
+          }
+          Err(e) => {
+            tracing::warn!("lock: password check failed: {e:#}");
+            this.log = Log::Error(t!("app.lock.auth_failed").into());
+          }
+        }
+        cx.notify();
+      });
+    })
+    .detach();
   }
 
   /// Reads what the machine allows on every open
@@ -286,7 +325,7 @@ impl AuthScreen {
 
     field().label(t!("app.lock.password").to_string()).child(
       InputGroup::new("auth-password")
-        .input(gpui_kit::component::input::Input::new(&self.input))
+        .input(gpui_kit::component::input::Input::new(&self.input).mask_toggle())
         .invalid(self.invalid)
         .addon(
           InputGroupAddon::new("auth-actions")
@@ -352,6 +391,7 @@ impl AuthScreen {
         .trigger(
           Button::new("auth-menu-trigger")
             .icon(IconName::Power)
+            .tooltip(self.purpose.menu())
             .cursor_pointer(),
         )
         .content(move |_, _, cx| {

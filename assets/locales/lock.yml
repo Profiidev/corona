@@ -19,6 +19,15 @@ app:
     empty:
       en: Enter your password.
       de: Passwort eingeben.
+    checking:
+      en: Checking…
+      de: Wird geprüft…
+    wrong:
+      en: Wrong password
+      de: Falsches Passwort
+    auth_failed:
+      en: Could not check the password
+      de: Passwort konnte nicht geprüft werden
     failed:
       en: "%{action} failed"
       de: "%{action} fehlgeschlagen"

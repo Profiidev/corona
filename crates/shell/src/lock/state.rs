@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
+use corona_auth::AuthExt;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
   image::imageops::{self, FilterType},
@@ -26,7 +27,10 @@ use gpui_kit::{
 
 use corona_components::animation::animation_duration;
 
-use crate::lock::view::{Background, Lock, Unlock, ZOOM_SPEED};
+use crate::lock::{
+  screen::User,
+  view::{Background, Lock, Unlock, ZOOM_SPEED},
+};
 
 const UNLOCK_NAMESPACE: &str = "corona_unlock";
 const BLUR_SCALE: u32 = 4;
@@ -46,6 +50,9 @@ pub struct LockState {
   unlock_start: Rc<Cell<Option<Instant>>>,
   /// When the current animation started, shared so every display plays it in sync
   animation_start: Option<Instant>,
+  /// One scan for all displays, the reader takes one claim at a time.
+  /// Dropping it on unlock lets go of the reader
+  fingerprint: Option<Task<()>>,
 }
 
 impl Global for LockState {}
@@ -99,7 +106,10 @@ impl LockState {
           return;
         };
         match locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
-          Ok(()) => cx.update(Self::open_overlays),
+          Ok(()) => cx.update(|cx| {
+            Self::open_overlays(cx);
+            Self::scan_fingerprints(cx);
+          }),
           Err(e) => {
             tracing::error!("session lock refused: {e:#}");
             cx.update(Self::unlock);
@@ -175,6 +185,27 @@ impl LockState {
         Err(e) => tracing::warn!("unlock: no animation overlay: {e:#}"),
       }
     }
+  }
+
+  /// Unlocks on a matching finger, until the reader or fprintd gives up
+  fn scan_fingerprints(cx: &mut App) {
+    if !cx.has_global::<Self>() {
+      return;
+    }
+    let scan = cx.auth().clone();
+    let user = User::current(cx).name.to_string();
+    let task = cx.spawn(async move |cx| {
+      loop {
+        match scan.fingerprint(user.clone()).await {
+          Ok(true) => return cx.update(Self::unlock_animated),
+          // the next finger
+          Ok(false) => {}
+          // no reader, no prints enrolled or fprintd missing; the password still works
+          Err(e) => return tracing::info!("lock: no fingerprint unlock: {e:#}"),
+        }
+      }
+    });
+    cx.global_mut::<Self>().fingerprint = Some(task);
   }
 
   /// Unlocks right away, the overlays then play the lock animation backwards

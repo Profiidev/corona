@@ -1,9 +1,19 @@
+use std::{
+  path::Path,
+  sync::{Arc, Mutex},
+  time::Duration,
+};
+
 use anyhow::{Result, bail};
 use corona_config::APP_NAME;
 use futures_lite::StreamExt;
-use gpui_kit::{App, Global, Task};
+use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
+
+const FAIL_DELAY: Duration = Duration::from_secs(2);
+const PAM_DIRS: [&str; 2] = ["/etc/pam.d", "/usr/lib/pam.d"];
+const FALLBACK_SERVICE: &str = "login";
 
 #[proxy(
   interface = "net.reactivated.Fprint.Manager",
@@ -27,9 +37,15 @@ trait Device {
   fn verify_status(&self, result: &str, done: bool) -> zbus::Result<()>;
 }
 
+/// The release of a claim whose scan was dropped half way
+type Releasing = Arc<Mutex<Option<zbus::Task<()>>>>;
+
 #[derive(Clone)]
 pub struct Auth {
   conn: Connection,
+  releasing: Releasing,
+  /// One password check at a time, so the delay also slows parallel guesses
+  checking: Arc<futures::lock::Mutex<()>>,
 }
 
 impl Global for Auth {}
@@ -47,25 +63,90 @@ impl AuthExt for App {
 impl Auth {
   /// `Ok(false)` for a wrong password, `Err` when PAM itself failed
   pub fn password(&self, user: String, password: String, cx: &App) -> Task<Result<bool>> {
-    cx.background_executor()
-      .spawn(async move { pam(APP_NAME, &user, password) })
+    let executor = cx.background_executor().clone();
+    let checking = self.checking.clone();
+    let service = service(&PAM_DIRS.map(Path::new));
+    cx.background_executor().spawn(async move {
+      let _checking = checking.lock().await;
+      check(service, &user, password, &executor).await
+    })
   }
 
   /// One scan of any enrolled finger. `Ok(false)` when it did not match; start
   /// again for the next try
   pub fn fingerprint(&self, user: String) -> impl Future<Output = Result<bool>> + use<> {
     let conn = self.conn.clone();
+    let releasing = self.releasing.clone();
     async move {
+      // or the claim below finds the device still taken
+      let pending = releasing.lock().unwrap().take();
+      if let Some(pending) = pending {
+        let _ = pending.await;
+      }
       let path = ManagerProxy::new(&conn).await?.get_default_device().await?;
       let device = DeviceProxy::builder(&conn).path(path)?.build().await?;
-      let _ = device.release().await;
       device.claim(&user).await?;
+      let claim = Claim {
+        device: Some(device.clone()),
+        releasing,
+      };
       let matched = verify(&device).await;
-      let _ = device.verify_stop().await;
-      let _ = device.release().await;
+      claim.release().await;
       matched
     }
   }
+}
+
+/// Lets go of the device even when the scan is dropped half way, otherwise
+/// fprintd keeps it ours and sudo or another login cannot scan until we exit
+struct Claim {
+  device: Option<DeviceProxy<'static>>,
+  releasing: Releasing,
+}
+
+impl Claim {
+  async fn release(mut self) {
+    if let Some(device) = self.device.take() {
+      let_go(device).await;
+    }
+  }
+}
+
+impl Drop for Claim {
+  fn drop(&mut self) {
+    if let Some(device) = self.device.take() {
+      let executor = device.inner().connection().executor().clone();
+      let task = executor.spawn(let_go(device), "fprint release");
+      *self.releasing.lock().unwrap() = Some(task);
+    }
+  }
+}
+
+async fn let_go(device: DeviceProxy<'static>) {
+  let _ = device.verify_stop().await;
+  let _ = device.release().await;
+}
+
+/// `corona` when configured, otherwise the `login` everyone has
+fn service(dirs: &[&Path]) -> &'static str {
+  match dirs.iter().any(|dir| dir.join(APP_NAME).exists()) {
+    true => APP_NAME,
+    false => FALLBACK_SERVICE,
+  }
+}
+
+/// Anything but success, errors too, waits out `FAIL_DELAY`
+async fn check(
+  service: &str,
+  user: &str,
+  password: String,
+  executor: &BackgroundExecutor,
+) -> Result<bool> {
+  let result = pam(service, user, password);
+  if !matches!(result, Ok(true)) {
+    executor.timer(FAIL_DELAY).await;
+  }
+  result
 }
 
 fn pam(service: &str, user: &str, password: String) -> Result<bool> {
@@ -105,7 +186,11 @@ async fn verify(device: &DeviceProxy<'_>) -> Result<bool> {
 }
 
 pub fn init(cx: &mut App, conn: &Connection) {
-  cx.set_global(Auth { conn: conn.clone() });
+  cx.set_global(Auth {
+    conn: conn.clone(),
+    releasing: Releasing::default(),
+    checking: Default::default(),
+  });
 }
 
 #[cfg(test)]
@@ -117,6 +202,7 @@ mod tests {
 
   use corona_utils::test_bus::TestBus;
   use futures_lite::future::{self, block_on};
+  use gpui_kit::{self as gpui, TestAppContext};
   use zbus::{
     DBusError, interface, message::Header, object_server::SignalEmitter, zvariant::ObjectPath,
   };
@@ -260,6 +346,8 @@ mod tests {
   async fn auth(bus: &TestBus) -> Auth {
     Auth {
       conn: bus.conn().await,
+      releasing: Releasing::default(),
+      checking: Default::default(),
     }
   }
 
@@ -288,13 +376,50 @@ mod tests {
   }
 
   #[test]
+  fn falls_back_to_login() {
+    let empty = tempfile::tempdir().unwrap();
+    let configured = tempfile::tempdir().unwrap();
+    std::fs::write(configured.path().join(APP_NAME), "").unwrap();
+    assert_eq!(service(&[empty.path()]), "login");
+    assert_eq!(service(&[]), "login");
+    // found in any of them
+    assert_eq!(service(&[empty.path(), configured.path()]), APP_NAME);
+  }
+
+  #[gpui::test]
+  fn failure_waits(cx: &mut TestAppContext) {
+    let executor = cx.executor();
+    let check = cx.background_executor.spawn({
+      let executor = executor.clone();
+      async move {
+        check(
+          "corona-test-unconfigured",
+          "root",
+          "hunter2".into(),
+          &executor,
+        )
+        .await
+      }
+    });
+    cx.run_until_parked();
+    executor.advance_clock(FAIL_DELAY - Duration::from_millis(1));
+    cx.run_until_parked();
+    let mut check = check;
+    assert!(
+      future::block_on(future::poll_once(&mut check)).is_none(),
+      "answered early"
+    );
+    executor.advance_clock(Duration::from_millis(1));
+    cx.run_until_parked();
+    let unlocked = future::block_on(check);
+    assert!(!matches!(unlocked, Ok(true)), "{unlocked:?}");
+  }
+
+  #[test]
   fn match_after_retry() {
     let (matched, calls) = scan([vec![("verify-retry-scan", false), ("verify-match", true)]]);
     assert!(matched.unwrap());
-    assert_eq!(
-      calls,
-      ["release", "claim alice", "verify any", "stop", "release"]
-    );
+    assert_eq!(calls, ["claim alice", "verify any", "stop", "release"]);
   }
 
   #[test]
@@ -444,6 +569,34 @@ mod tests {
       .await;
       assert!(dropped.is_none());
       assert!(auth.fingerprint("alice".into()).await.unwrap());
+    });
+  }
+
+  #[test]
+  fn dropped_scan_frees_the_device_for_others() {
+    let bus = TestBus::new();
+    let calls = Calls::default();
+    let device = FakeDevice::new(&calls, [vec![]]);
+    block_on(async {
+      let _fprintd = fprintd(&bus, Some(device)).await;
+      let auth = auth(&bus).await;
+      future::or(
+        async {
+          let _ = auth.fingerprint("alice".into()).await;
+        },
+        until(&calls, "verify any"),
+      )
+      .await;
+      // sudo's pam_fprintd, without corona scanning again
+      until(&calls, "release").await;
+      let sudo = bus.conn().await;
+      let device = DeviceProxy::builder(&sudo)
+        .path(DEVICE)
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+      device.claim("alice").await.unwrap();
     });
   }
 }
