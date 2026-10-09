@@ -12,6 +12,14 @@ let
   toml = pkgs.formats.toml { };
   user = config.services.greetd.settings.default_session.user;
   home = config.users.users.${user}.home;
+  greeter = pkgs.writeShellScript "corona-greeter" ''
+    ${lib.concatMapStrings (name: ''
+      ${pkgs.wlr-randr}/bin/wlr-randr --output ${lib.escapeShellArg name} --pos ${
+        lib.escapeShellArg cfg.outputs.${name}.position
+      } || true
+    '') (lib.attrNames cfg.outputs)}
+    exec ${cfg.executable}
+  '';
 in
 {
   options.services.corona-greeter = {
@@ -54,6 +62,28 @@ in
         options = option "options" "XKB options, like `grp:alt_shift_toggle` to switch layouts.";
         model = option "model" "XKB model.";
       };
+
+    outputs = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options.position = lib.mkOption {
+            type = lib.types.str;
+            example = "1920,0";
+            description = "The output's top left in the layout, `x,y`.";
+          };
+        }
+      );
+      default = { };
+      example = {
+        HDMI-A-1.position = "0,0";
+        DP-1.position = "1920,0";
+      };
+      description = ''
+        Where each monitor sits, like Hyprland's `monitor` positions. Cage
+        otherwise lines them up left to right in the order they connect.
+        Unconnected ones are skipped.
+      '';
+    };
 
     cursorTheme = lib.mkOption {
       type = lib.types.nullOr (
@@ -151,7 +181,7 @@ in
               "${pkgs.coreutils}/bin/env"
             ]
             ++ lib.mapAttrsToList (name: value: "${name}=${lib.escapeShellArg value}") cfg.environment
-            ++ [ "${pkgs.cage}/bin/cage -s -- ${cfg.executable}" ]
+            ++ [ "${pkgs.cage}/bin/cage -s -- ${greeter}" ]
           );
         };
       }

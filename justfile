@@ -193,6 +193,6 @@ layerrules:
 keybinds:
   hyprctl eval '{{keybinds}}'
 
-vm:
+vm outputs="1":
   cargo build -p corona_greeter
-  QEMU_OPTS="-device virtio-vga-gl -display gtk,gl=on -serial mon:stdio" nix run .#nixosConfigurations.greeter-vm.config.system.build.vm
+  QEMU_OPTS="-device virtio-vga-gl,max_outputs={{outputs}} -display gtk,gl=on,show-tabs=on -serial mon:stdio" nix run .#nixosConfigurations.greeter-vm.config.system.build.vm
