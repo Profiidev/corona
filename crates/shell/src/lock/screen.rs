@@ -59,84 +59,57 @@ impl Purpose {
     }
   }
 
-  fn groups(self) -> Vec<Vec<Item>> {
+  fn groups(self) -> Vec<Vec<SessionAction>> {
     use SessionAction as A;
-    let sleep = vec![
-      Item::Action(A::Suspend),
-      Item::Action(A::Hibernate),
-      Item::Action(A::SuspendThenHibernate),
-    ];
-    let power = vec![Item::Action(A::Reboot), Item::Action(A::PowerOff)];
+    let sleep = vec![A::Suspend, A::Hibernate, A::SuspendThenHibernate];
+    let power = vec![A::Reboot, A::PowerOff];
     match self {
-      Purpose::Unlock => vec![
-        vec![Item::SwitchUser],
-        vec![Item::Action(A::Logout)],
-        sleep,
-        power,
-      ],
+      Purpose::Unlock => vec![vec![A::Logout], sleep, power],
     }
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Item {
-  SwitchUser,
-  Action(SessionAction),
+fn label(action: SessionAction) -> SharedString {
+  match action {
+    SessionAction::Logout => t!("app.session.logout"),
+    SessionAction::Suspend => t!("app.session.suspend"),
+    SessionAction::Hibernate => t!("app.session.hibernate"),
+    SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+    SessionAction::Reboot => t!("app.session.reboot"),
+    SessionAction::PowerOff => t!("app.session.shutdown"),
+    SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
+  }
+  .into()
 }
 
-impl Item {
-  fn label(self) -> SharedString {
-    match self {
-      Item::SwitchUser => t!("app.lock.switch_user"),
-      Item::Action(action) => match action {
-        SessionAction::Logout => t!("app.session.logout"),
-        SessionAction::Suspend => t!("app.session.suspend"),
-        SessionAction::Hibernate => t!("app.session.hibernate"),
-        SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
-        SessionAction::Reboot => t!("app.session.reboot"),
-        SessionAction::PowerOff => t!("app.session.shutdown"),
-        SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
-      },
-    }
-    .into()
+fn busy(action: SessionAction) -> SharedString {
+  match action {
+    SessionAction::Logout => t!("app.lock.busy.logout"),
+    SessionAction::Suspend => t!("app.lock.busy.suspend"),
+    SessionAction::Hibernate => t!("app.lock.busy.hibernate"),
+    SessionAction::SuspendThenHibernate => t!("app.lock.busy.suspend_then_hibernate"),
+    SessionAction::Reboot | SessionAction::RebootToFirmware => t!("app.lock.busy.reboot"),
+    SessionAction::PowerOff => t!("app.lock.busy.shutdown"),
   }
+  .into()
+}
 
-  fn busy(action: SessionAction) -> SharedString {
-    match action {
-      SessionAction::Logout => t!("app.lock.busy.logout"),
-      SessionAction::Suspend => t!("app.lock.busy.suspend"),
-      SessionAction::Hibernate => t!("app.lock.busy.hibernate"),
-      SessionAction::SuspendThenHibernate => t!("app.lock.busy.suspend_then_hibernate"),
-      SessionAction::Reboot | SessionAction::RebootToFirmware => t!("app.lock.busy.reboot"),
-      SessionAction::PowerOff => t!("app.lock.busy.shutdown"),
-    }
-    .into()
-  }
-
-  fn icon(self) -> IconName {
-    match self {
-      Item::SwitchUser => IconName::ArrowLeftRight,
-      Item::Action(action) => match action {
-        SessionAction::Logout => IconName::LogOut,
-        SessionAction::Suspend => IconName::Moon,
-        SessionAction::Hibernate => IconName::Snowflake,
-        SessionAction::SuspendThenHibernate => IconName::Hourglass,
-        SessionAction::Reboot | SessionAction::RebootToFirmware => IconName::RotateCw,
-        SessionAction::PowerOff => IconName::Power,
-      },
-    }
+fn icon(action: SessionAction) -> IconName {
+  match action {
+    SessionAction::Logout => IconName::LogOut,
+    SessionAction::Suspend => IconName::Moon,
+    SessionAction::Hibernate => IconName::Snowflake,
+    SessionAction::SuspendThenHibernate => IconName::Hourglass,
+    SessionAction::Reboot | SessionAction::RebootToFirmware => IconName::RotateCw,
+    SessionAction::PowerOff => IconName::Power,
   }
 }
 
-/// Whether `item` shows, and whether it can be picked. Hibernating hides when
+/// Whether `action` shows, and whether it can be picked. Hibernating hides when
 /// the machine can't, the rest only disable. Nothing runs before the
 /// capabilities loaded, except logging out
-fn availability(item: Item, capabilities: Option<&SessionCapabilities>) -> (bool, bool) {
+fn availability(action: SessionAction, capabilities: Option<&SessionCapabilities>) -> (bool, bool) {
   use SessionAction as A;
-  let Item::Action(action) = item else {
-    // TODO: switch user
-    return (true, false);
-  };
   let Some(c) = capabilities else {
     let hidden = matches!(action, A::Hibernate | A::SuspendThenHibernate);
     return (!hidden, action == A::Logout);
@@ -181,6 +154,8 @@ pub struct AuthScreen {
   input: Entity<InputState>,
   log: Log,
   invalid: bool,
+  /// A password check runs, the field takes no input until it answered
+  checking: bool,
   capabilities: Option<SessionCapabilities>,
   _subscription: Subscription,
 }
@@ -204,6 +179,7 @@ impl AuthScreen {
       input,
       log: Log::Idle,
       invalid: false,
+      checking: false,
       capabilities: None,
       _subscription: subscription,
     }
@@ -225,12 +201,13 @@ impl AuthScreen {
       return;
     }
     self.log = Log::Busy(t!("app.lock.checking").into());
-    cx.notify();
+    self.set_checking(true, window, cx);
     let check = cx.auth().password(self.user.name.to_string(), password, cx);
     cx.spawn_in(window, async move |this, cx| {
       let result = check.await;
       let _ = this.update_in(cx, |this, window, cx| {
         this.log = Log::Idle;
+        this.set_checking(false, window, cx);
         match result {
           Ok(true) => match this.purpose {
             Purpose::Unlock => LockState::unlock_animated(cx),
@@ -253,6 +230,19 @@ impl AuthScreen {
     .detach();
   }
 
+  fn set_checking(&mut self, checking: bool, window: &mut Window, cx: &mut Context<Self>) {
+    self.checking = checking;
+    // right away, not on the next render, so no key slips in
+    self
+      .input
+      .update(cx, |input, cx| input.set_disabled(checking, cx));
+    if !checking {
+      // disabling dropped the focus
+      self.input.read(cx).focus_handle(cx).focus(window, cx);
+    }
+    cx.notify();
+  }
+
   /// Reads what the machine allows on every open
   fn load_capabilities(&mut self, cx: &mut Context<Self>) {
     let capabilities = cx.power().session_capabilities();
@@ -266,11 +256,8 @@ impl AuthScreen {
     .detach();
   }
 
-  fn activate(&mut self, item: Item, cx: &mut Context<Self>) {
-    let Item::Action(action) = item else {
-      return;
-    };
-    self.log = Log::Busy(Item::busy(action));
+  fn activate(&mut self, action: SessionAction, cx: &mut Context<Self>) {
+    self.log = Log::Busy(busy(action));
     cx.notify();
     let task = cx.power().session_action(action);
     cx.spawn(async move |this, cx| {
@@ -279,7 +266,7 @@ impl AuthScreen {
         this.log = match result {
           Err(e) => {
             tracing::warn!("lock: {action:?} failed: {e:#}");
-            Log::Error(t!("app.lock.failed", action = item.label()).into())
+            Log::Error(t!("app.lock.failed", action = label(action)).into())
           }
           // back from sleep, or the request only got queued
           Ok(()) => Log::Idle,
@@ -325,7 +312,12 @@ impl AuthScreen {
 
     field().label(t!("app.lock.password").to_string()).child(
       InputGroup::new("auth-password")
-        .input(gpui_kit::component::input::Input::new(&self.input).mask_toggle())
+        .input(
+          gpui_kit::component::input::Input::new(&self.input)
+            .mask_toggle()
+            .disabled(self.checking),
+        )
+        .disabled(self.checking)
         .invalid(self.invalid)
         .addon(
           InputGroupAddon::new("auth-actions")
@@ -359,16 +351,16 @@ impl AuthScreen {
 
   fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
     let capabilities = self.capabilities.as_ref();
-    let groups: Vec<Vec<(Item, bool)>> = self
+    let groups: Vec<Vec<(SessionAction, bool)>> = self
       .purpose
       .groups()
       .into_iter()
       .map(|group| {
         group
           .into_iter()
-          .filter_map(|item| {
-            let (shown, enabled) = availability(item, capabilities);
-            shown.then_some((item, enabled))
+          .filter_map(|action| {
+            let (shown, enabled) = availability(action, capabilities);
+            shown.then_some((action, enabled))
           })
           .collect()
       })
@@ -402,25 +394,25 @@ impl AuthScreen {
             if i > 0 {
               panel = panel.child(Separator::horizontal().my_1());
             }
-            panel = panel.children(group.iter().map(|&(item, enabled)| {
+            panel = panel.children(group.iter().map(|&(action, enabled)| {
               let (this, popover) = (this.clone(), popover.clone());
               div()
-                .id(SharedString::from(format!("auth-menu-{item:?}")))
+                .id(SharedString::from(format!("auth-menu-{action:?}")))
                 .flex()
                 .items_center()
                 .gap_2()
                 .px_2()
                 .py_1p5()
                 .rounded_md()
-                .child(Icon::new(item.icon()).size_4())
-                .child(item.label())
+                .child(Icon::new(icon(action)).size_4())
+                .child(label(action))
                 .when(!enabled, |d| d.opacity(0.5))
                 .when(enabled, |d| {
                   d.cursor_pointer()
                     .hover(move |d| d.bg(hover))
                     .on_click(move |_, window, cx| {
                       popover.update(cx, |popover, cx| popover.dismiss(window, cx));
-                      this.update(cx, |this, cx| this.activate(item, cx));
+                      this.update(cx, |this, cx| this.activate(action, cx));
                     })
                 })
             }));
@@ -473,34 +465,27 @@ mod tests {
   fn hibernating_hides_until_supported() {
     use SessionAction as A;
     for action in [A::Hibernate, A::SuspendThenHibernate] {
-      assert_eq!(availability(Item::Action(action), None), (false, false));
+      assert_eq!(availability(action, None), (false, false));
       let none = SessionCapabilities::default();
-      assert!(!availability(Item::Action(action), Some(&none)).0);
+      assert!(!availability(action, Some(&none)).0);
     }
     // suspending hides too once known unsupported
     let none = SessionCapabilities::default();
-    assert!(!availability(Item::Action(A::Suspend), Some(&none)).0);
-    assert_eq!(availability(Item::Action(A::Suspend), None), (true, false));
+    assert!(!availability(A::Suspend, Some(&none)).0);
+    assert_eq!(availability(A::Suspend, None), (true, false));
     // the rest show disabled
     for action in [A::Reboot, A::PowerOff] {
-      assert_eq!(
-        availability(Item::Action(action), Some(&none)),
-        (true, false)
-      );
-      assert_eq!(availability(Item::Action(action), None), (true, false));
+      assert_eq!(availability(action, Some(&none)), (true, false));
+      assert_eq!(availability(action, None), (true, false));
     }
-    assert_eq!(availability(Item::Action(A::Logout), None), (true, true));
-    assert_eq!(availability(Item::SwitchUser, None), (true, false));
+    assert_eq!(availability(A::Logout, None), (true, true));
   }
 
   #[test]
   fn unlock_menu_groups() {
     let groups = Purpose::Unlock.groups();
-    assert_eq!(groups.len(), 4);
-    assert_eq!(groups[0], [Item::SwitchUser]);
-    assert_eq!(
-      groups[3].last(),
-      Some(&Item::Action(SessionAction::PowerOff))
-    );
+    assert_eq!(groups.len(), 3);
+    assert_eq!(groups[0], [SessionAction::Logout]);
+    assert_eq!(groups[2].last(), Some(&SessionAction::PowerOff));
   }
 }

@@ -133,12 +133,7 @@ impl ControlCenterPanel for DashboardPanel {
         )
         .content({
           let session = self.session.clone();
-          move |_, _, _| {
-            div()
-              .w(px(SessionMenu::WIDTH))
-              .h(px(SessionMenu::HEIGHT))
-              .child(session.clone())
-          }
+          move |_, _, _| div().w(px(SessionMenu::WIDTH)).child(session.clone())
         })
         .into_any_element(),
     ]

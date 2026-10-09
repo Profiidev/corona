@@ -10,9 +10,6 @@ app:
     session:
       en: Session
       de: Sitzung
-    switch_user:
-      en: Switch user
-      de: Benutzer wechseln
     idle:
       en: Enter your password to unlock
       de: Passwort eingeben zum Entsperren

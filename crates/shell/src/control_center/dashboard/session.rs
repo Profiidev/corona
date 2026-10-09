@@ -106,7 +106,6 @@ pub struct SessionMenu {
 }
 impl SessionMenu {
   pub const WIDTH: f32 = 300.;
-  pub const HEIGHT: f32 = ROW * ROWS as f32;
 
   pub fn new(on_done: impl Fn(&mut Window, &mut App) + 'static, cx: &mut Context<Self>) -> Self {
     let task = cx.power().session_capabilities();
@@ -127,9 +126,10 @@ impl SessionMenu {
   }
 }
 
-/// The boot menu once capabilities loaded, the main menu otherwise
+/// The boot menu once capabilities loaded, the main menu otherwise. Only what
+/// can run shows: before capabilities loaded that is locking and logging out
 fn entries(boot_menu: bool, capabilities: Option<&SessionCapabilities>) -> Vec<Item> {
-  match (boot_menu, capabilities) {
+  let all = match (boot_menu, capabilities) {
     (true, Some(capabilities)) => std::iter::once(Item::Back)
       .chain(boot_entries(capabilities))
       .collect(),
@@ -144,7 +144,11 @@ fn entries(boot_menu: bool, capabilities: Option<&SessionCapabilities>) -> Vec<I
       Item::Action(SessionAction::RebootToFirmware),
       Item::Action(SessionAction::PowerOff),
     ],
-  }
+  };
+  all
+    .into_iter()
+    .filter(|entry| enabled(capabilities, entry))
+    .collect()
 }
 
 /// Only locking and logging out work before capabilities loaded
@@ -160,14 +164,7 @@ impl SessionMenu {
     entries(self.boot_menu, self.capabilities.as_ref())
   }
 
-  fn enabled(&self, entry: &Item) -> bool {
-    enabled(self.capabilities.as_ref(), entry)
-  }
-
   fn activate(&mut self, entry: Item, window: &mut Window, cx: &mut Context<Self>) {
-    if !self.enabled(&entry) {
-      return;
-    }
     if matches!(entry, Item::RebootTo | Item::Back) {
       self.boot_menu = entry == Item::RebootTo;
       return cx.notify();
@@ -214,7 +211,6 @@ impl SessionMenu {
 
   fn row(&self, index: usize, entry: Item, cx: &mut Context<Self>) -> impl IntoElement + use<> {
     let theme = cx.theme();
-    let enabled = self.enabled(&entry);
     let danger = entry == Item::Action(SessionAction::PowerOff);
     let color: Hsla = match danger {
       true => theme.colors.danger,
@@ -233,8 +229,8 @@ impl SessionMenu {
       .px_3()
       .rounded_lg()
       .text_color(color)
-      .when(!enabled, |d| d.opacity(0.4))
-      .when(enabled, |d| d.cursor_pointer().hover(move |d| d.bg(hover)))
+      .cursor_pointer()
+      .hover(move |d| d.bg(hover))
       .child(Icon::new(entry.icon()))
       .child(div().flex_1().min_w_0().truncate().child(label))
       .when(index < 9, |d| {
@@ -267,7 +263,8 @@ impl Render for SessionMenu {
     div()
       .track_focus(&self.focus)
       .on_key_down(cx.listener(Self::on_key))
-      .size_full()
+      .w_full()
+      .h(px(ROW * rows.len().min(ROWS) as f32))
       .child(
         div()
           .size_full()
@@ -302,8 +299,20 @@ mod tests {
     assert_eq!(main[0], Item::Lock);
     assert_eq!(main.last(), Some(&Item::Action(SessionAction::PowerOff)));
     // the boot menu needs capabilities
-    assert_eq!(entries(true, None), main);
-    assert_eq!(entries(false, None), main);
+    assert_eq!(entries(true, None), entries(false, None));
+  }
+
+  #[test]
+  fn unavailable_actions_hide() {
+    let mut caps = all();
+    caps.hibernate = false;
+    caps.boot_entries.clear();
+    let main = entries(false, Some(&caps));
+    assert!(!main.contains(&Item::Action(SessionAction::Hibernate)));
+    assert!(!main.contains(&Item::RebootTo));
+    assert_eq!(main.len(), ROWS - 2);
+    let none = entries(false, Some(&SessionCapabilities::default()));
+    assert_eq!(none, [Item::Lock, Item::Action(SessionAction::Logout)]);
   }
 
   #[test]
@@ -325,11 +334,11 @@ mod tests {
   }
 
   #[test]
-  fn nothing_loaded_allows_lock_and_logout() {
-    for entry in entries(false, None) {
-      let expected = matches!(entry, Item::Lock | Item::Action(SessionAction::Logout));
-      assert_eq!(enabled(None, &entry), expected, "{entry:?}");
-    }
+  fn nothing_loaded_shows_lock_and_logout() {
+    assert_eq!(
+      entries(false, None),
+      [Item::Lock, Item::Action(SessionAction::Logout)]
+    );
   }
 
   #[test]
@@ -384,7 +393,7 @@ mod tests {
       "NixOS generation 42"
     );
     assert_eq!(Item::BootEntry("windows.conf".into()).label(), "Windows");
-    let mut labels: Vec<_> = entries(false, None)
+    let mut labels: Vec<_> = entries(false, Some(&all()))
       .iter()
       .chain([&Item::Back])
       .map(Item::label)
@@ -397,7 +406,10 @@ mod tests {
 
   #[test]
   fn icons() {
-    let mut icons: Vec<_> = entries(false, None).iter().map(Item::icon).collect();
+    let mut icons: Vec<_> = entries(false, Some(&all()))
+      .iter()
+      .map(Item::icon)
+      .collect();
     let count = icons.len();
     icons.sort_by_key(|i| format!("{i:?}"));
     icons.dedup();

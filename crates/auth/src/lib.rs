@@ -46,6 +46,9 @@ pub struct Auth {
   releasing: Releasing,
   /// One password check at a time, so the delay also slows parallel guesses
   checking: Arc<futures::lock::Mutex<()>>,
+  /// One scan at a time: the lock screen and a plugin share our bus
+  /// connection, and fprintd refuses a second claim from it
+  scanning: Arc<futures::lock::Mutex<()>>,
 }
 
 impl Global for Auth {}
@@ -77,7 +80,9 @@ impl Auth {
   pub fn fingerprint(&self, user: String) -> impl Future<Output = Result<bool>> + use<> {
     let conn = self.conn.clone();
     let releasing = self.releasing.clone();
+    let scanning = self.scanning.clone();
     async move {
+      let _scanning = scanning.lock().await;
       // or the claim below finds the device still taken
       let pending = releasing.lock().unwrap().take();
       if let Some(pending) = pending {
@@ -149,15 +154,15 @@ async fn check(
   result
 }
 
+/// Only authenticates. The account step fails without root (`pam_unix` can't
+/// setuid), and an expired account should not lock its own session anyway
 fn pam(service: &str, user: &str, password: String) -> Result<bool> {
   let conversation = Conversation::with_credentials(user, password);
   let mut context = Context::new(service, Some(user), conversation)?;
   match context.authenticate(Flag::NONE) {
-    Err(e) if e.code() == ErrorCode::AUTH_ERR => return Ok(false),
-    result => result?,
+    Err(e) if e.code() == ErrorCode::AUTH_ERR => Ok(false),
+    result => result.map(|()| true).map_err(Into::into),
   }
-  context.acct_mgmt(Flag::NONE)?;
-  Ok(true)
 }
 
 async fn verify(device: &DeviceProxy<'_>) -> Result<bool> {
@@ -190,6 +195,7 @@ pub fn init(cx: &mut App, conn: &Connection) {
     conn: conn.clone(),
     releasing: Releasing::default(),
     checking: Default::default(),
+    scanning: Default::default(),
   });
 }
 
@@ -348,6 +354,7 @@ mod tests {
       conn: bus.conn().await,
       releasing: Releasing::default(),
       checking: Default::default(),
+      scanning: Default::default(),
     }
   }
 
@@ -598,5 +605,37 @@ mod tests {
         .unwrap();
       device.claim("alice").await.unwrap();
     });
+  }
+
+  #[test]
+  fn concurrent_scans_take_turns() {
+    let bus = TestBus::new();
+    let calls = Calls::default();
+    let device = FakeDevice::new(
+      &calls,
+      [
+        vec![("verify-no-match", true)],
+        vec![("verify-match", true)],
+      ],
+    );
+    block_on(async {
+      let _fprintd = fprintd(&bus, Some(device)).await;
+      // the lock screen and a plugin on the one connection
+      let auth = auth(&bus).await;
+      let (first, second) = future::zip(
+        auth.fingerprint("alice".into()),
+        auth.fingerprint("alice".into()),
+      )
+      .await;
+      assert!(!first.unwrap());
+      assert!(second.unwrap());
+    });
+    let claims = calls
+      .lock()
+      .unwrap()
+      .iter()
+      .filter(|c| c.starts_with("claim"))
+      .count();
+    assert_eq!(claims, 2);
   }
 }
