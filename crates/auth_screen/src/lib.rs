@@ -173,6 +173,7 @@ pub struct AuthScreen {
   checking: bool,
   capabilities: Option<SessionCapabilities>,
   _subscription: Subscription,
+  _layout_change: Subscription,
 }
 
 impl AuthScreen {
@@ -206,6 +207,12 @@ impl AuthScreen {
       checking: false,
       capabilities: None,
       _subscription: subscription,
+      _layout_change: cx.on_keyboard_layout_change({
+        let this = cx.weak_entity();
+        move |cx| {
+          let _ = this.update(cx, |_, cx| cx.notify());
+        }
+      }),
     }
   }
 
@@ -435,6 +442,26 @@ impl AuthScreen {
       .child(div().truncate().child(text))
   }
 
+  /// The keyboard layout the password is typed in, bottom center between the menus
+  fn layout(&self, cx: &App) -> impl IntoElement + use<> {
+    let name = cx.keyboard_layout().name().to_string();
+    let theme = cx.theme();
+    div()
+      .absolute()
+      .bottom(px(INSET))
+      .left_0()
+      .right_0()
+      .h_8()
+      .flex()
+      .items_center()
+      .justify_center()
+      .gap_2()
+      .text_color(theme.muted_foreground)
+      .when(!name.is_empty(), |d| {
+        d.child(Icon::new(IconName::Keyboard).size_4()).child(name)
+      })
+  }
+
   fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
     let capabilities = self.capabilities.as_ref();
     let this = cx.entity();
@@ -580,6 +607,7 @@ impl Render for AuthScreen {
               ),
           ),
       )
+      .child(self.layout(cx))
       .child(self.menu(cx))
   }
 }

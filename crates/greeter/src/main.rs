@@ -7,6 +7,7 @@ use gpui_kit::{
   Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations, WindowOptions,
   assets::IconName,
   base::Root,
+  black,
   component::{ActiveTheme, button::Button},
   div,
 };
@@ -135,7 +136,7 @@ impl Render for Greeter {
       .size_full()
       .relative()
       .text_sm()
-      .bg(theme.background)
+      .bg(black())
       .text_color(theme.foreground)
       .child(self.screen.clone())
       .child(self.session_menu(cx))
