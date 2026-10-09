@@ -2140,6 +2140,7 @@ dependencies = [
  "toml 1.1.6+spec-1.1.0",
  "tracing",
  "ts-rs",
+ "uuid",
 ]
 
 [[package]]
@@ -2172,7 +2173,9 @@ dependencies = [
  "corona_weather",
  "dirs 7.0.0",
  "futures",
+ "gpui-component-shell",
  "gpui-kit",
+ "gpui-shell",
  "icu_calendar",
  "icu_datetime",
  "icu_decimal",
@@ -10524,6 +10527,7 @@ version = "12.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
 dependencies = [
+ "serde_json",
  "thiserror 2.0.21",
  "ts-rs-macros",
 ]

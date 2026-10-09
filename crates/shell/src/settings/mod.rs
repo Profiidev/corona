@@ -21,6 +21,7 @@ pub use pages::PAGES;
 mod bar;
 mod fields;
 mod pages;
+mod plugins;
 
 const APP_NAME_SETTINGS: &str = "corona-settings";
 
@@ -73,6 +74,10 @@ pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
     return handle.update(cx, |_, window, _| window.activate_window());
   }
   let page = page_index(page);
+  // so the plugins page lists what the sources offer now
+  if cx.has_global::<corona_script::PluginManager>() {
+    corona_script::PluginManager::refresh_catalogs(cx);
+  }
 
   let options = WindowOptions {
     titlebar: Some(TitlebarOptions {
@@ -154,6 +159,86 @@ mod tests {
       cx.run_until_parked();
       assert!(cx.update(|cx| open_window(cx)).is_none(), "{page}");
     }
+  }
+
+  #[gpui::test]
+  fn plugins_page_renders_every_control(cx: &mut TestAppContext) {
+    setup(cx);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = corona_script::plugin::paths::Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("README.md"), "# Hello").unwrap();
+    std::fs::write(
+      dir.join("plugin.toml"),
+      r#"
+id = "com.p"
+name = "P"
+version = "1"
+description = "Every setting"
+[widgets.w]
+view = "main.js"
+[[settings]]
+key = "on"
+label = "On"
+type = "toggle"
+default = true
+[[settings]]
+key = "name"
+label = "Name"
+type = "text"
+default = "x"
+[[settings]]
+key = "count"
+label = "Count"
+type = "number"
+default = 1
+[[settings]]
+key = "opacity"
+label = "Opacity"
+type = "slider"
+default = 0.5
+min = 0
+max = 1
+step = 0.1
+[[settings]]
+key = "units"
+label = "Units"
+type = "select"
+default = "a"
+options = [{ value = "a", label = "A" }]
+[[settings]]
+key = "hosts"
+label = "Hosts"
+type = "list"
+default = ["h"]
+"#,
+    )
+    .unwrap();
+    cx.update(|cx| {
+      let mut config = corona_config::Config::default();
+      config.plugins.enabled = vec!["com.p".into()];
+      config.plugins.source.clear();
+      cx.set_global(config);
+      corona_script::PluginManager::init(paths, cx);
+      assert!(
+        cx.global::<corona_script::PluginManager>()
+          .active()
+          .contains_key("com.p")
+      );
+    });
+    cx.update(|cx| open(Some("plugins"), cx)).unwrap();
+    cx.run_until_parked();
+    let rows = cx.update(|cx| corona_script::PluginManager::list(cx));
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].enabled && rows[0].running);
+    let handle = cx.update(|cx| open_window(cx)).expect("settings open");
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+      .unwrap();
+    cx.update(close);
   }
 
   #[gpui::test]

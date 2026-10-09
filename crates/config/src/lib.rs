@@ -8,10 +8,11 @@ use anyhow::Result;
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::bar::BarConfig;
+use crate::{bar::BarConfig, plugins::PluginsConfig};
 
 pub mod bar;
 pub mod placement;
+pub mod plugins;
 mod read;
 mod watch;
 mod write;
@@ -60,6 +61,10 @@ pub struct Config {
   pub brightness: BrightnessConfig,
   pub system: SystemConfig,
   pub idle: IdleConfig,
+  pub plugins: PluginsConfig,
+  /// Settings of each plugin by id, checked against the settings its manifest
+  /// declares
+  pub plugin_settings: BTreeMap<String, serde_json::Map<String, serde_json::Value>>,
 }
 
 impl Default for Config {
@@ -81,6 +86,8 @@ impl Default for Config {
       brightness: BrightnessConfig::default(),
       system: SystemConfig::default(),
       idle: IdleConfig::default(),
+      plugins: PluginsConfig::default(),
+      plugin_settings: BTreeMap::new(),
     }
   }
 }
@@ -90,8 +97,6 @@ impl Default for Config {
 pub struct ShellConfig {
   /// Path, `~/` path or http(s) URL of the picture on the dashboard
   pub avatar: Option<String>,
-  /// Unset: `~/.config/corona/plugins`; may start with `~/`. Read at startup only
-  pub plugin_dir: Option<PathBuf>,
   /// Language of the interface, like `de`; unset follows `LC_MESSAGES`/`LANG`
   pub language: Option<String>,
   pub animation: AnimationConfig,
@@ -113,20 +118,6 @@ pub fn expand_home(path: &Path) -> PathBuf {
   match (path.strip_prefix("~"), dirs::home_dir()) {
     (Ok(rest), Some(home)) => home.join(rest),
     _ => path.to_path_buf(),
-  }
-}
-
-impl ShellConfig {
-  pub fn plugin_dir(&self) -> PathBuf {
-    self
-      .plugin_dir
-      .as_deref()
-      .map(expand_home)
-      .unwrap_or_else(|| {
-        dirs::config_dir()
-          .unwrap_or_else(|| PathBuf::from("."))
-          .join("corona/plugins")
-      })
   }
 }
 
@@ -709,22 +700,6 @@ mod tests {
     for unchanged in ["~foo/x", "/abs/~/x", "rel/x", ""] {
       assert_eq!(expand_home(Path::new(unchanged)), PathBuf::from(unchanged));
     }
-  }
-
-  #[test]
-  fn plugin_dir_expands_or_defaults() {
-    let home = tempfile::tempdir().unwrap();
-    let xdg = tempfile::tempdir().unwrap();
-    unsafe {
-      std::env::set_var("HOME", home.path());
-      std::env::set_var("XDG_CONFIG_HOME", xdg.path());
-    }
-    let mut shell = ShellConfig::default();
-    assert_eq!(shell.plugin_dir(), xdg.path().join("corona/plugins"));
-    shell.plugin_dir = Some("~/plugins".into());
-    assert_eq!(shell.plugin_dir(), home.path().join("plugins"));
-    shell.plugin_dir = Some("/opt/p".into());
-    assert_eq!(shell.plugin_dir(), PathBuf::from("/opt/p"));
   }
 
   #[test]

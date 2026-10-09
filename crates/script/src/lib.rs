@@ -2,11 +2,11 @@
 use std::path::Path;
 
 use anyhow::Result;
-use corona_config::{APP_NAME, ConfigProvider};
 use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
-pub use manager::{Script, ScriptManager};
+pub use manager::{Entry, Script, ScriptManager};
+pub use plugin::manager::{PluginManager, PluginStatus};
 
 const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";
 #[cfg(debug_assertions)]
@@ -15,15 +15,15 @@ const PLUGIN_STORAGE_FILENAME: &str = "store.json";
 
 mod host_fn;
 mod manager;
-mod manifest;
 mod module;
+pub mod plugin;
 
 pub fn init(cx: &mut App) -> Result<()> {
   let components = gpui_component_shell::components()?;
 
   #[cfg(debug_assertions)]
   {
-    use crate::manifest::ManifestFile;
+    use crate::plugin::manifest::ManifestFile;
 
     let schema = schemars::schema_for!(ManifestFile).to_value();
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PLUGIN_SCHEMA_FILENAME);
@@ -33,25 +33,19 @@ pub fn init(cx: &mut App) -> Result<()> {
   }
 
   let runtime = ShellRuntime::new_with_components(cx, components)?;
-  let data_home = dirs::data_dir()
-    .unwrap_or_default()
-    .join(APP_NAME)
-    .join("plugins");
-  let plugin_directory = cx.config().shell.plugin_dir();
-
-  let mut manager = ScriptManager::new(runtime, data_home, plugin_directory);
-  manager.discover();
-  cx.set_global(manager);
+  let paths = plugin::paths::Paths::from_config();
+  cx.set_global(ScriptManager::new(runtime, paths.clone()));
+  PluginManager::init(paths, cx);
 
   Ok(())
 }
 
 pub trait ScriptManagerExt {
-  fn load_plugin_view(&mut self, id: &str, view: &str, window: &mut Window) -> Result<Script>;
+  fn load_plugin_view(&mut self, id: &str, entry: Entry, window: &mut Window) -> Result<Script>;
 }
 
 impl ScriptManagerExt for App {
-  fn load_plugin_view(&mut self, id: &str, view: &str, window: &mut Window) -> Result<Script> {
-    ScriptManager::load(id, view, window, self)
+  fn load_plugin_view(&mut self, id: &str, entry: Entry, window: &mut Window) -> Result<Script> {
+    ScriptManager::load(id, entry, window, self)
   }
 }

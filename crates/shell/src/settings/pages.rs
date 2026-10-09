@@ -20,11 +20,12 @@ use crate::i18n;
 use crate::settings::{
   bar,
   fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
+  plugins,
 };
 use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
-pub const PAGES: [&str; 14] = [
+pub const PAGES: [&str; 15] = [
   "appearance",
   "bar",
   "wallpaper",
@@ -38,6 +39,7 @@ pub const PAGES: [&str; 14] = [
   "screenshot",
   "location",
   "privacy",
+  "plugins",
   "system",
 ];
 
@@ -56,6 +58,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     screenshot(),
     location(),
     privacy(),
+    plugins::page(cx),
     system(),
   ]
 }
@@ -1041,37 +1044,14 @@ fn system() -> SettingPage {
       ),
       group(
         t!("app.settings.system.groups.applies_after_a_restart"),
-        vec![
-          item(
-            t!("app.settings.system.ddcutil.title"),
-            t!("app.settings.system.ddcutil.description"),
-            switch(
-              |c| c.brightness.enable_ddcutil,
-              |c, v| c.brightness.enable_ddcutil = v,
-            ),
+        vec![item(
+          t!("app.settings.system.ddcutil.title"),
+          t!("app.settings.system.ddcutil.description"),
+          switch(
+            |c| c.brightness.enable_ddcutil,
+            |c, v| c.brightness.enable_ddcutil = v,
           ),
-          item(
-            t!("app.settings.system.plugin_directory.title"),
-            t!("app.settings.system.plugin_directory.description"),
-            optional_text(
-              "shell.plugin_dir",
-              |c| {
-                c.shell
-                  .plugin_dir
-                  .as_ref()
-                  .map(|p| p.to_string_lossy().into_owned())
-              },
-              |c, v| c.shell.plugin_dir = v.map(PathBuf::from),
-              |_| {
-                corona_config::ShellConfig::default()
-                  .plugin_dir()
-                  .to_string_lossy()
-                  .into_owned()
-              },
-            ),
-          )
-          .layout(Axis::Vertical),
-        ],
+        )],
       ),
     ],
   )

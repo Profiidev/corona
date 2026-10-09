@@ -1,7 +1,6 @@
 {
   pkgs,
   lib,
-  config,
   ...
 }:
 
@@ -27,5 +26,4 @@ in
   packages = runtimeDeps ++ buildDeps;
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath runtimeDeps;
-  env.CORONA_SHELL__PLUGIN_DIR = "${config.env.DEVENV_ROOT}/plugins";
 }

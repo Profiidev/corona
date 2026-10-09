@@ -42,29 +42,35 @@ enum Entry {
 }
 
 impl Bar {
-  pub fn new(config: BarConfig, cx: &mut Context<Bar>, display_id: Uuid) -> Self {
+  pub fn new(
+    config: BarConfig,
+    window: &mut Window,
+    cx: &mut Context<Bar>,
+    display_id: Uuid,
+  ) -> Self {
     let mut grouped = HashSet::new();
-    let init = |entry: &WidgetEntry, cx: &mut Context<Bar>| {
+    let init = |entry: &WidgetEntry, window: &mut Window, cx: &mut Context<Bar>| {
       let data = cx.bar().widget(&entry.widget_type).cloned()?;
-      data.init(cx, display_id, entry.options.as_ref())
+      data.init(window, cx, display_id, entry.options.as_ref())
     };
-    let mut init_widgets = |widgets: Vec<WidgetConfig>, cx: &mut Context<Bar>| {
-      widgets
-        .iter()
-        .filter_map(|w| match w {
-          WidgetConfig::Widget(entry) => init(entry, cx).map(Entry::Widget),
-          WidgetConfig::Group { group } => {
-            let views: Vec<_> = group.iter().filter_map(|e| init(e, cx)).collect();
-            grouped.extend(views.iter().map(AnyView::entity_id));
-            (!views.is_empty()).then_some(Entry::Group(views))
-          }
-        })
-        .collect::<Vec<_>>()
-    };
+    let mut init_widgets =
+      |widgets: Vec<WidgetConfig>, window: &mut Window, cx: &mut Context<Bar>| {
+        widgets
+          .iter()
+          .filter_map(|w| match w {
+            WidgetConfig::Widget(entry) => init(entry, window, cx).map(Entry::Widget),
+            WidgetConfig::Group { group } => {
+              let views: Vec<_> = group.iter().filter_map(|e| init(e, window, cx)).collect();
+              grouped.extend(views.iter().map(AnyView::entity_id));
+              (!views.is_empty()).then_some(Entry::Group(views))
+            }
+          })
+          .collect::<Vec<_>>()
+      };
 
-    let start_widgets = init_widgets(config.start, cx);
-    let center_widgets = init_widgets(config.center, cx);
-    let end_widgets = init_widgets(config.end, cx);
+    let start_widgets = init_widgets(config.start, window, cx);
+    let center_widgets = init_widgets(config.center, window, cx);
+    let end_widgets = init_widgets(config.end, window, cx);
 
     Self {
       placement: config.position,

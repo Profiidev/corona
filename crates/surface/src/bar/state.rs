@@ -57,10 +57,13 @@ impl BarState {
     );
   }
 
-  fn reopen(cx: &mut App) {
-    if let Some(displays) = cx.bar_mut().displays.take() {
-      PerDisplay::close(displays, cx);
-    }
+  /// Closes the bars and opens them again, to show widgets registered since
+  pub fn reopen(cx: &mut App) {
+    // not open yet: they open with the widgets there are then
+    let Some(displays) = cx.bar_mut().displays.take() else {
+      return;
+    };
+    PerDisplay::close(displays, cx);
     Self::open_bars(cx);
   }
 
@@ -81,8 +84,17 @@ impl BarState {
   }
 
   pub fn register<W: Widget>(&mut self) -> &mut Self {
-    let data = WidgetData::new::<W>();
+    self.register_data(WidgetData::new::<W>())
+  }
+
+  /// Registers a widget built at runtime, like a plugin's
+  pub fn register_data(&mut self, data: WidgetData) -> &mut Self {
     self.widgets.insert(data.name.clone(), data);
+    self
+  }
+
+  pub fn unregister(&mut self, name: &str) -> &mut Self {
+    self.widgets.remove(name);
     self
   }
 
@@ -93,7 +105,7 @@ impl BarState {
     names
   }
 
-  pub(crate) fn widget(&self, name: &str) -> Option<&WidgetData> {
+  pub fn widget(&self, name: &str) -> Option<&WidgetData> {
     self.widgets.get(name)
   }
 
@@ -135,7 +147,7 @@ impl BarState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| Bar::new(config, cx, display_uuid));
+        let view = cx.new(|cx| Bar::new(config, window, cx, display_uuid));
 
         let state = cx.global_mut::<BarState>();
         state.bars.retain(|_, bar| bar.upgrade().is_some());
@@ -268,6 +280,31 @@ mod tests {
       assert_eq!(BarState::widget_names(cx), ["label", "toggle"]);
       assert!(cx.bar().widget("label").is_some());
       assert!(cx.bar().widget("nope").is_none());
+    });
+  }
+
+  #[gpui_kit::test]
+  fn runtime_widgets_register_and_unregister(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      cx.bar_mut()
+        .register_data(WidgetData::from_fn("plugin:w", |_, cx, _, _| {
+          Some(cx.new(|_| Label(Default::default())).into())
+        }));
+      assert_eq!(BarState::widget_names(cx), ["label", "plugin:w", "toggle"]);
+    });
+    let handle = create(
+      BarConfig {
+        start: vec![widget("plugin:w")],
+        ..Default::default()
+      },
+      cx,
+    );
+    let bar = bar(handle, cx).unwrap();
+    bar.read_with(cx, |bar, _| assert_eq!(bar.sections()[0].len(), 1));
+    cx.update(|cx| {
+      cx.bar_mut().unregister("plugin:w");
+      assert_eq!(BarState::widget_names(cx), ["label", "toggle"]);
     });
   }
 

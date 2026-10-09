@@ -1,59 +1,154 @@
 use std::{
-  collections::{BTreeSet, HashMap},
+  collections::{BTreeMap, BTreeSet},
   path::{Path, PathBuf},
 };
 
+use anyhow::{Context as _, Result};
+use corona_config::plugins::is_flat_name;
 use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
 
-use crate::module::CoronaModule;
+use crate::{
+  PLUGIN_MANIFEST_FILENAME,
+  module::CoronaModule,
+  plugin::settings::{self, Setting},
+};
 
+/// A plugin as it runs: its manifest, where it was found and what it may do
+#[derive(Clone, Debug)]
 pub struct PluginManifest {
   pub id: String,
-  /// The directory it was discovered in, not necessarily named after the id
+  /// The directory it was found in, not necessarily named after the id
   pub dir: PathBuf,
-  #[allow(dead_code)]
   pub name: String,
-  #[allow(dead_code)]
   pub version: Option<String>,
-  pub views: HashMap<String, String>,
+  pub description: Option<String>,
+  pub widgets: BTreeMap<String, WidgetFile>,
+  pub panels: BTreeMap<String, PanelFile>,
+  pub settings: Vec<Setting>,
   pub capabilities: Capabilities,
   /// The corona modules it may import
   pub modules: BTreeSet<CoronaModule>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+impl PluginManifest {
+  pub fn new(file: ManifestFile, dir: PathBuf, data_dir: &Path) -> Self {
+    Self {
+      capabilities: file.capabilities.grant(&dir, data_dir),
+      modules: file.capabilities.modules(),
+      id: file.id,
+      dir,
+      name: file.name,
+      version: file.version,
+      description: file.description,
+      widgets: file.widgets,
+      panels: file.panels,
+      settings: file.settings,
+    }
+  }
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestFile {
   /// The JSON schema an editor validates this file against.
   #[serde(rename = "$schema", default)]
   #[allow(dead_code)]
   pub schema: Option<String>,
-  /// Reverse-DNS identity, e.g. `com.example.inbox`. Also the namespace for
-  /// panels, storage and capability records.
-  #[serde(deserialize_with = "plugin_id")]
+  /// Reverse-DNS identity, e.g. `com.example.inbox`: letters, digits, `.`,
+  /// `_` and `-`. Also the namespace for widgets, panels, storage and
+  /// capability records.
+  #[serde(deserialize_with = "flat_name")]
   pub id: String,
   /// Human-readable name, shown in menus and in the permission prompt.
   pub name: String,
   /// Optional plugin semantic version, e.g. `1.2.0`.
   #[serde(default)]
   pub version: Option<String>,
+  /// One line about what it does, shown in the settings app.
   #[serde(default)]
-  pub views: HashMap<String, String>,
+  pub description: Option<String>,
+  /// Bar widgets by name; a bar lists one as `<id>:<name>`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub widgets: BTreeMap<String, WidgetFile>,
+  /// Panels by name, opened as `<id>:<name>`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub panels: BTreeMap<String, PanelFile>,
+  /// Settings the user can change in the settings app, in this order.
+  #[serde(default, deserialize_with = "valid_settings")]
+  pub settings: Vec<Setting>,
   #[serde(default)]
   pub capabilities: CapabilitiesFile,
 }
 
-/// The id names the plugin's storage directory, so it must be one path segment.
-fn plugin_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+impl ManifestFile {
+  /// The `plugin.toml` in `dir`
+  pub fn read(dir: &Path) -> Result<Self> {
+    let path = dir.join(PLUGIN_MANIFEST_FILENAME);
+    let text = std::fs::read_to_string(&path)?;
+    toml::from_str(&text).with_context(|| path.display().to_string())
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetFile {
+  /// The script of the view, relative to the plugin directory.
+  pub view: String,
+  /// Shown in the bar editor; the widget's key when unset.
+  #[serde(default)]
+  pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PanelFile {
+  /// The script of the view, relative to the plugin directory.
+  pub view: String,
+  #[serde(default)]
+  pub name: Option<String>,
+  #[serde(default = "panel_width")]
+  pub width: f32,
+  #[serde(default = "panel_height")]
+  pub height: f32,
+}
+
+fn panel_width() -> f32 {
+  400.
+}
+
+fn panel_height() -> f32 {
+  500.
+}
+
+/// Ids and entry names are directory names and the parts of `<id>:<entry>`
+fn flat_name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
   let id = String::deserialize(deserializer)?;
-  if matches!(id.as_str(), "" | "." | "..") || id.contains(['/', '\\', '\0']) {
+  if !is_flat_name(&id) {
     return Err(D::Error::custom(format!(
-      "invalid plugin id `{id}`: must be a single path segment"
+      "invalid plugin id `{id}`: letters, digits, `.`, `_` and `-` only"
     )));
   }
   Ok(id)
+}
+
+fn flat_keys<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+  deserializer: D,
+) -> Result<BTreeMap<String, T>, D::Error> {
+  let map = BTreeMap::<String, T>::deserialize(deserializer)?;
+  if let Some(key) = map.keys().find(|key| !is_flat_name(key)) {
+    return Err(D::Error::custom(format!(
+      "invalid name `{key}`: letters, digits, `.`, `_` and `-` only"
+    )));
+  }
+  Ok(map)
+}
+
+fn valid_settings<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Setting>, D::Error> {
+  let list = Vec::<Setting>::deserialize(deserializer)?;
+  settings::validate(&list).map_err(|e| D::Error::custom(e.to_string()))?;
+  Ok(list)
 }
 
 const PLUGIN_DIR_PLACEHOLDER: &str = "${pluginDir}";
@@ -323,15 +418,76 @@ mod tests {
     assert!(parse(r#"id = "a""#).is_err());
     let manifest = with("").unwrap();
     assert_eq!(manifest.version, None);
-    assert!(manifest.views.is_empty());
 
+    assert!(manifest.widgets.is_empty() && manifest.panels.is_empty());
+    assert!(manifest.settings.is_empty());
+
+    let manifest = with(r#"version = "1.2.0""#).unwrap();
+    assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
+  }
+
+  #[test]
+  fn widgets_panels_and_settings() {
     let manifest = with(
-      r#"version = "1.2.0"
-views = { bar = "main.js" }"#,
+      r#"
+description = "Clock"
+[widgets.clock]
+view = "clock.js"
+name = "Clock"
+[widgets.small]
+view = "small.js"
+[panels.main]
+view = "panel.js"
+width = 300
+[[settings]]
+key = "seconds"
+label = "Seconds"
+type = "toggle"
+default = false
+"#,
     )
     .unwrap();
-    assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
-    assert_eq!(manifest.views["bar"], "main.js");
+    assert_eq!(manifest.description.as_deref(), Some("Clock"));
+    assert_eq!(manifest.widgets["clock"].view, "clock.js");
+    assert_eq!(manifest.widgets["clock"].name.as_deref(), Some("Clock"));
+    assert_eq!(manifest.widgets["small"].name, None);
+    let panel = &manifest.panels["main"];
+    assert_eq!((panel.width, panel.height), (300., 500.));
+    assert_eq!(manifest.settings[0].key, "seconds");
+
+    // entry names are part of `<id>:<entry>`
+    assert!(with("[widgets.\"a:b\"]\nview = \"x.js\"").is_err());
+    assert!(with("[panels.main]\nview = \"x.js\"\nsize = 3").is_err());
+    // settings are checked as the manifest loads
+    let bad = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = \"no\"";
+    assert!(with(bad).is_err());
+  }
+
+  #[test]
+  fn ids_are_flat_names() {
+    for id in ["com.example.a", "a-b_c", "A1"] {
+      assert!(
+        parse(&format!("id = \"{id}\"\nname = \"A\"")).is_ok(),
+        "{id}"
+      );
+    }
+    for id in ["", ".", "..", "a/b", "a:b", ".a", "a b"] {
+      assert!(
+        parse(&format!("id = \"{id}\"\nname = \"A\"")).is_err(),
+        "{id}"
+      );
+    }
+  }
+
+  #[test]
+  fn reads_from_a_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(ManifestFile::read(tmp.path()).is_err());
+    std::fs::write(tmp.path().join("plugin.toml"), "id = \"a\"\nname = \"A\"").unwrap();
+    assert_eq!(ManifestFile::read(tmp.path()).unwrap().id, "a");
+    std::fs::write(tmp.path().join("plugin.toml"), "id = 1").unwrap();
+    let e = ManifestFile::read(tmp.path()).unwrap_err();
+    assert!(format!("{e:#}").contains("plugin.toml"), "{e:#}");
   }
 
   #[test]
@@ -505,11 +661,16 @@ methods = ["POST"]
   #[test]
   fn committed_schema_is_current() {
     let schema = schemars::schema_for!(ManifestFile).to_value();
+    if std::env::var_os("UPDATE_SCHEMA").is_some() {
+      let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin.schema.json");
+      std::fs::write(path, serde_json::to_string_pretty(&schema).unwrap()).unwrap();
+      return;
+    }
     let committed: serde_json::Value =
-      serde_json::from_str(include_str!("../plugin.schema.json")).unwrap();
+      serde_json::from_str(include_str!("../../plugin.schema.json")).unwrap();
     assert_eq!(
       schema, committed,
-      "run corona in debug to refresh plugin.schema.json"
+      "run with UPDATE_SCHEMA=1 (or corona in debug) to refresh plugin.schema.json"
     );
   }
 

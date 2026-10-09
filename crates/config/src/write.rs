@@ -228,6 +228,62 @@ mod tests {
   }
 
   #[gpui::test]
+  fn plugins_round_trip(cx: &mut TestAppContext) {
+    use crate::plugins::{SourceConfig, SourceKind};
+    let user = r#"
+[[plugins.source]]
+name = "mine"
+kind = "path"
+location = "~/p"
+[[plugins.source]]
+name = "other"
+kind = "git"
+location = "https://example.com/x"
+[plugin_settings."com.example.clock"]
+interval = 5
+"#;
+    let env = Env::new(cx, user);
+    let now = config(cx);
+    assert_eq!(now.plugins.source.len(), 2);
+    assert_eq!(
+      now.plugin_settings["com.example.clock"]["interval"],
+      serde_json::json!(5)
+    );
+
+    // a source the user's file declares can still be removed
+    cx.update(|cx| {
+      update(cx, |c| {
+        c.plugins.source.retain(|s| s.name != "mine");
+        c.plugins.enabled.push("com.example.clock".into());
+        c.plugin_settings
+          .get_mut("com.example.clock")
+          .unwrap()
+          .insert("label".into(), "hi".into());
+      })
+    })
+    .unwrap();
+    let now = config(cx);
+    assert_eq!(
+      now.plugins.source,
+      [SourceConfig {
+        name: "other".into(),
+        kind: SourceKind::Git,
+        location: "https://example.com/x".into(),
+        enabled: true,
+      }]
+    );
+    assert_eq!(now.plugins.enabled, ["com.example.clock"]);
+    let settings = &now.plugin_settings["com.example.clock"];
+    assert_eq!(settings["interval"], serde_json::json!(5));
+    assert_eq!(settings["label"], serde_json::json!("hi"));
+    let written = env.settings();
+    assert_eq!(
+      written["plugin_settings"]["com.example.clock"]["label"].as_str(),
+      Some("hi")
+    );
+  }
+
+  #[gpui::test]
   fn bad_user_file_is_an_error_and_writes_nothing(cx: &mut TestAppContext) {
     let env = Env::new(cx, "");
     fs::write(env.config.path().join("corona/bad.toml"), "[osd\n").unwrap();

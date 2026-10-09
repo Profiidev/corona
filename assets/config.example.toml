@@ -6,14 +6,12 @@
 # needs the keys it changes. Edits apply while the shell runs. Unsetting an
 # option your files set writes `unset = [["theme", "mode"]]` to the settings file.
 #
-# Environment variables win over both: CORONA_SHELL__PLUGIN_DIR sets
-# shell.plugin_dir. Check a config with `corona config validate [path]`.
+# Environment variables win over both: CORONA_SHELL__LANGUAGE sets
+# shell.language. Check a config with `corona config validate [path]`.
 
 [shell]
 # Path, ~/ path or http(s) URL of the picture on the dashboard.
 # avatar = "~/.face"
-# Where plugins live, ~/.config/corona/plugins when unset. Read at startup.
-# plugin_dir = "~/.config/corona/plugins"
 # Language of the interface, like "de"; unset follows LC_MESSAGES/LANG. Dates
 # follow LC_TIME and numbers LC_NUMERIC.
 # language = "de"
@@ -208,3 +206,26 @@ resume_command = ""
 # action = "command"
 # timeout = 570
 # command = "notify-send 'Locking soon'"
+
+# Plugins. Installed is not enabled: only the ids in `enabled` run. Your own
+# plugins go in ~/.local/share/corona/plugins (the "local" source); fetched ones
+# and plugin data live in ~/.local/state/corona/plugins.
+[plugins]
+enabled = []
+# Which git sources update on their own every 6 hours: "all", "official" or "none".
+auto_update = "official"
+
+# Where plugins come from; a later source wins over an earlier one offering the
+# same plugin. kind: "git" (a repository, needs git), "path" (a directory used in
+# place) or "dev" (a directory in development, wins over every other source and
+# reloads on edits). Declaring any source replaces this default list.
+[[plugins.source]]
+name = "official"
+kind = "git"
+location = "https://github.com/ProfiiDev/corona-plugins"
+enabled = true
+
+# Settings of each plugin, by id, as its manifest declares them.
+[plugin_settings]
+# [plugin_settings."com.example.clock"]
+# interval = 5

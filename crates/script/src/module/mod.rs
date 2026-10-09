@@ -24,6 +24,7 @@ pub mod network;
 pub mod notifications;
 pub mod pipewire;
 pub mod power;
+pub mod settings;
 pub mod sysinfo;
 pub mod tray;
 pub mod weather;

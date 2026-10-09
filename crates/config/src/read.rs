@@ -52,8 +52,8 @@ impl Loaded {
 }
 
 /// The settings the shell runs with: the config files, the settings file over
-/// them, environment variables over both (`CORONA_SHELL__PLUGIN_DIR` sets
-/// `shell.plugin_dir`).
+/// them, environment variables over both (`CORONA_SHELL__LANGUAGE` sets
+/// `shell.language`).
 pub fn read() -> Result<Loaded> {
   let mut files = config_files(&config_dir()?)?;
   files.push(settings_file()?);
@@ -88,7 +88,7 @@ pub fn read_files(files: &[PathBuf]) -> Result<Loaded> {
   }
 }
 
-/// Environment variables: `CORONA_SHELL__PLUGIN_DIR` sets `shell.plugin_dir`
+/// Environment variables: `CORONA_SHELL__LANGUAGE` sets `shell.language`
 fn environment() -> config::Environment {
   config::Environment::with_prefix("CORONA")
     .prefix_separator("_")
@@ -346,13 +346,10 @@ pub(crate) mod tests {
   }
 
   #[test]
-  fn documented_env_var_sets_plugin_dir() {
-    unsafe { std::env::set_var("CORONA_SHELL__PLUGIN_DIR", "/opt/plugins") };
+  fn documented_env_var_sets_language() {
+    unsafe { std::env::set_var("CORONA_SHELL__LANGUAGE", "de") };
     let loaded = read_files(&[]).unwrap();
-    assert_eq!(
-      loaded.config.shell.plugin_dir.as_deref(),
-      Some(Path::new("/opt/plugins"))
-    );
+    assert_eq!(loaded.config.shell.language.as_deref(), Some("de"));
   }
 
   #[test]

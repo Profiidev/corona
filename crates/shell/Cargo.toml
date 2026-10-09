@@ -52,4 +52,6 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb5
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
+gpui-shell.workspace = true
+gpui-component-shell.workspace = true
 tempfile.workspace = true

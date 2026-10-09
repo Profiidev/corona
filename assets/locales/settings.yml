@@ -804,6 +804,77 @@ app:
         description:
           en: "Same, for screen sharing and recording."
           de: "Ebenso, für Bildschirmfreigabe und -aufnahme."
+    plugins:
+      title:
+        en: Plugins
+        de: Plugins
+      groups:
+        sources:
+          en: Sources
+          de: Quellen
+        plugins:
+          en: Plugins
+          de: Plugins
+      kind:
+        git:
+          en: Git
+          de: Git
+        path:
+          en: Folder
+          de: Ordner
+        dev:
+          en: Development
+          de: Entwicklung
+      auto_update:
+        title:
+          en: Automatic updates
+          de: Automatische Updates
+        description:
+          en: Which git sources update on their own every 6 hours.
+          de: Welche Git-Quellen sich alle 6 Stunden selbst aktualisieren.
+        all:
+          en: All
+          de: Alle
+        official:
+          en: Official only
+          de: Nur die offizielle
+        none:
+          en: None
+          de: Keine
+      add:
+        name:
+          en: Name
+          de: Name
+        kind:
+          en: Kind
+          de: Art
+        location:
+          en: Git URL or folder
+          de: Git-URL oder Ordner
+        button:
+          en: Add source
+          de: Quelle hinzufügen
+      update:
+        en: Update
+        de: Aktualisieren
+      refresh:
+        en: Check sources
+        de: Quellen prüfen
+      none:
+        en: No source offers plugins yet.
+        de: Noch bietet keine Quelle Plugins an.
+      update_available:
+        en: Update available
+        de: Update verfügbar
+      dev_override:
+        en: Overrides installed
+        de: Überschreibt installierte
+      shadows:
+        en: "Also in: %{sources}"
+        de: "Auch in: %{sources}"
+      list_add:
+        en: Add
+        de: Hinzufügen
     system:
       title:
         en: System
@@ -846,10 +917,3 @@ app:
         description:
           en: Brightness of external monitors.
           de: Helligkeit externer Monitore.
-      plugin_directory:
-        title:
-          en: Plugin directory
-          de: Plugin-Verzeichnis
-        description:
-          en: Where plugins are loaded from; may start with ~/.
-          de: Woher Plugins geladen werden; darf mit ~/ beginnen.

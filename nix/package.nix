@@ -15,6 +15,8 @@
   wayland,
   vulkan-loader,
   installShellFiles,
+  makeWrapper,
+  git,
 }:
 
 let
@@ -79,7 +81,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
     pkg-config
     rustPlatform.bindgenHook
     installShellFiles
+    makeWrapper
   ];
+
+  nativeCheckInputs = [ git ];
 
   buildInputs = [
     fontconfig
@@ -108,6 +113,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
         ]
       } $out/bin/$bin
     done
+    wrapProgram $out/bin/corona --suffix PATH : ${lib.makeBinPath [ git ]}
   '';
 
   postInstall = ''

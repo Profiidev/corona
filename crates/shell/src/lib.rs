@@ -18,6 +18,7 @@ mod idle;
 mod lock;
 mod osds;
 pub mod overlays;
+mod plugins;
 pub mod settings;
 mod widgets;
 
@@ -59,7 +60,6 @@ fn watch_config(cx: &mut App) {
   fn later<T>(name: &'static str) -> impl FnMut(&T, &mut App) {
     move |_, _| tracing::warn!("{name} applies after a restart")
   }
-  observe_section(cx, |c| &c.shell.plugin_dir, later("shell.plugin_dir"));
   observe_section(
     cx,
     |c| &c.brightness.enable_ddcutil,
@@ -119,6 +119,7 @@ fn init_integrations(cx: &mut App) {
 fn register_variants(cx: &mut App) {
   control_center::register_panels(cx);
   widgets::register_widgets(cx);
+  plugins::init(cx);
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {

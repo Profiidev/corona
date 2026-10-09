@@ -65,6 +65,12 @@ mod tests {
 
   #[test]
   fn validates_a_dir_or_a_file() {
+    // the environment is merged in too; the shell running the tests may set some
+    for (key, _) in std::env::vars_os() {
+      if key.to_string_lossy().starts_with("CORONA_") {
+        unsafe { std::env::remove_var(key) };
+      }
+    }
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir(dir.path().join("sub")).unwrap();
     fs::write(dir.path().join("a.toml"), "[notification]\ntimout = 5\n").unwrap();

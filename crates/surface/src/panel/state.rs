@@ -45,12 +45,22 @@ impl PanelState {
   }
 
   pub fn register<P: Panel>(&mut self) -> &mut Self {
-    let data = PanelData::new::<P>();
+    self.register_data(PanelData::new::<P>())
+  }
+
+  /// Registers a panel built at runtime, like a plugin's
+  pub fn register_data(&mut self, data: PanelData) -> &mut Self {
     self.registry.insert(data.name.clone(), data);
     self
   }
 
-  pub(crate) fn names(cx: &App) -> Vec<String> {
+  /// Forgets panel `name` and closes it when open
+  pub fn unregister(name: &str, cx: &mut App) {
+    cx.global_mut::<PanelState>().registry.remove(name);
+    Self::close(name, cx).ok();
+  }
+
+  pub fn names(cx: &App) -> Vec<String> {
     let mut names: Vec<_> = cx.global::<PanelState>().registry.keys().cloned().collect();
     names.sort_unstable();
     names
@@ -461,6 +471,28 @@ mod tests {
       draw_all(cx);
       draw_all(cx);
     }
+  }
+
+  #[gpui_kit::test]
+  fn runtime_panels_register_and_unregister(cx: &mut TestAppContext) {
+    setup(cx);
+    let data = PanelData::from_fn("plugin:p", 123., 45., |window, cx| {
+      cx.new(|cx| PanelA::init(window, cx)).into()
+    });
+    assert_eq!((data.width, data.height), (123., 45.));
+    cx.update(|cx| {
+      cx.panel().register_data(data.clone());
+      assert!(PanelState::names(cx).contains(&"plugin:p".to_string()));
+      PanelState::apply(data, Align::Left, Placement::Top, None, None, false, cx).unwrap();
+    });
+    assert!(is_open("plugin:p", cx));
+    cx.update(|cx| PanelState::unregister("plugin:p", cx));
+    assert!(!is_open("plugin:p", cx));
+    cx.update(|cx| {
+      assert!(!PanelState::names(cx).contains(&"plugin:p".to_string()));
+      let err = PanelState::show("plugin:p", true, cx).unwrap_err();
+      assert!(err.to_string().contains("unknown panel"));
+    });
   }
 
   #[gpui_kit::test]

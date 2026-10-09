@@ -1,7 +1,6 @@
-use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
+use std::{collections::HashMap, fs, rc::Rc};
 
 use anyhow::{Context as _, Result};
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{AnyView, App, Entity, Global, Subscription, Window};
 use gpui_shell::{
   ShellRoot, ShellRuntime, Watcher,
@@ -9,9 +8,9 @@ use gpui_shell::{
 };
 
 use crate::{
-  PLUGIN_MANIFEST_FILENAME, PLUGIN_STORAGE_FILENAME,
-  manifest::{ManifestFile, PluginManifest},
-  module::ModuleExt,
+  PLUGIN_STORAGE_FILENAME,
+  module::{ModuleExt, settings},
+  plugin::{manifest::PluginManifest, paths::Paths},
 };
 
 pub struct Script {
@@ -26,81 +25,71 @@ impl Script {
   }
 }
 
+/// A view a plugin declares in its manifest
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Entry<'a> {
+  Widget(&'a str),
+  Panel(&'a str),
+}
+
+/// Runs plugin views. Which plugins there are is up to the plugin manager.
 pub struct ScriptManager {
   runtime: Rc<ShellRuntime>,
-  data_dir: PathBuf,
-  plugin_dir: PathBuf,
+  paths: Paths,
   plugins: HashMap<String, PluginManifest>,
 }
 
 impl Global for ScriptManager {}
 
 impl ScriptManager {
-  pub fn new(runtime: Rc<ShellRuntime>, data_dir: PathBuf, plugin_dir: PathBuf) -> Self {
+  pub fn new(runtime: Rc<ShellRuntime>, paths: Paths) -> Self {
     Self {
       runtime,
-      data_dir,
-      plugin_dir,
+      paths,
       plugins: HashMap::new(),
     }
   }
 
-  pub fn discover(&mut self) {
-    self.plugins = fs::read_dir(&self.plugin_dir)
-      .into_iter()
-      .flatten()
-      .flatten()
-      .map(|entry| entry.path())
-      .filter(|path| path.join(PLUGIN_MANIFEST_FILENAME).is_file())
-      .flat_map(|path| {
-        let file = fs::read_to_string(path.join(PLUGIN_MANIFEST_FILENAME))
-          .log_err()
-          .ok()?;
-        let data = toml::from_str::<ManifestFile>(&file).log_err().ok()?;
-
-        Some((
-          data.id.clone(),
-          PluginManifest {
-            capabilities: data
-              .capabilities
-              .grant(&path, &self.data_dir.join(&data.id)),
-            id: data.id,
-            dir: path,
-            name: data.name,
-            version: data.version,
-            views: data.views,
-            modules: data.capabilities.modules(),
-          },
-        ))
-      })
-      .collect();
+  /// The plugins that run, by id
+  pub fn plugins(&self) -> &HashMap<String, PluginManifest> {
+    &self.plugins
   }
 
-  pub fn load(id: &str, view: &str, window: &mut Window, cx: &mut App) -> Result<Script> {
+  pub fn set_plugins(&mut self, plugins: HashMap<String, PluginManifest>) {
+    self.plugins = plugins;
+  }
+
+  pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
     let manager = cx.global::<ScriptManager>();
     let manifest = manager
       .plugins
       .get(id)
       .with_context(|| format!("Plugin `{id}` not found"))?;
-    let (id, modules) = (manifest.id.clone(), manifest.modules.clone());
-    let view = manifest
-      .views
-      .get(view)
-      .with_context(|| format!("script `{id}` has no view `{view}`"))?;
+    let view = match entry {
+      Entry::Widget(name) => manifest.widgets.get(name).map(|w| &w.view),
+      Entry::Panel(name) => manifest.panels.get(name).map(|p| &p.view),
+    }
+    .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
 
-    let data_dir = manager.data_dir.join(&id);
+    let data_dir = manager.paths.data(id);
     if let Err(error) = fs::create_dir_all(&data_dir) {
       tracing::warn!("storage unavailable for `{id}`: {error}");
     }
 
     let runtime = manager.runtime.clone();
     let root = manifest.dir.join(view);
+    let (id, modules, settings) = (
+      manifest.id.clone(),
+      manifest.modules.clone(),
+      manifest.settings.clone(),
+    );
 
-    let (policy, subscribes) = Policy::new()
+    let (policy, mut subscribes) = Policy::new()
       .with_application(&id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
       .with_corona_modules(&modules, cx)?;
+    let policy = policy.with_host_module(settings::module(&id, &settings, &mut subscribes))?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -132,12 +121,15 @@ impl ScriptManager {
 
 #[cfg(test)]
 mod tests {
-  use std::cell::RefCell;
+  use std::{cell::RefCell, path::PathBuf};
 
   use corona_compositor::{Compositor, CompositorImpl, types};
   use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
 
+  use corona_config::Config;
+
   use super::*;
+  use crate::{PLUGIN_MANIFEST_FILENAME, plugin::registry};
 
   const VIEW: &str = r#"
 import { View } from "gpui-kit";
@@ -167,24 +159,27 @@ export default class Main extends View {
 
   struct Plugins {
     _dir: tempfile::TempDir,
-    plugins: PathBuf,
+    paths: Paths,
     data: PathBuf,
   }
 
   impl Plugins {
     fn new() -> Self {
       let dir = tempfile::tempdir().unwrap();
-      let (plugins, data) = (dir.path().join("plugins"), dir.path().join("data"));
-      fs::create_dir_all(&plugins).unwrap();
+      let paths = Paths {
+        state: dir.path().join("state"),
+        local: dir.path().join("local"),
+      };
+      fs::create_dir_all(&paths.local).unwrap();
       Self {
+        data: paths.state.join("data"),
         _dir: dir,
-        plugins,
-        data,
+        paths,
       }
     }
 
     fn add(&self, dir: &str, manifest: &str, files: &[(&str, &str)]) {
-      let dir = self.plugins.join(dir);
+      let dir = self.paths.local.join(dir);
       fs::create_dir_all(&dir).unwrap();
       fs::write(dir.join(PLUGIN_MANIFEST_FILENAME), manifest).unwrap();
       for (name, content) in files {
@@ -192,24 +187,25 @@ export default class Main extends View {
       }
     }
 
+    /// Every plugin in the local directory, all enabled
     fn manager(&self) -> ScriptManager {
       let runtime =
         ShellRuntime::new_isolated_with_components(gpui_component_shell::components().unwrap())
           .unwrap();
-      let mut manager = ScriptManager::new(runtime, self.data.clone(), self.plugins.clone());
-      manager.discover();
+      let mut manager = ScriptManager::new(runtime, self.paths.clone());
+      let root = &registry::roots(&self.paths, &Default::default())[1];
+      manager.set_plugins(
+        registry::scan_root(&self.paths, root)
+          .into_iter()
+          .map(|found| (found.manifest.id.clone(), found.manifest))
+          .collect(),
+      );
       manager
     }
   }
 
   fn manifest(id: &str, extra: &str) -> String {
-    format!("id = \"{id}\"\nname = \"Test\"\nviews = {{ main = \"main.js\" }}\n{extra}")
-  }
-
-  fn ids(manager: &ScriptManager) -> Vec<&str> {
-    let mut ids: Vec<_> = manager.plugins.keys().map(String::as_str).collect();
-    ids.sort();
-    ids
+    format!("id = \"{id}\"\nname = \"Test\"\n{extra}\n[widgets.main]\nview = \"main.js\"\n")
   }
 
   /// Shows the loaded view, so it renders.
@@ -229,8 +225,11 @@ export default class Main extends View {
     id: &str,
   ) -> (&'a mut VisualTestContext, Result<Script>) {
     cx.set_global(plugins.manager());
+    if !cx.update(|cx| cx.has_global::<Config>()) {
+      cx.set_global(Config::default());
+    }
     let (host, cx) = cx.add_window_view(|_, _| Host(None));
-    let result = cx.update(|window, cx| ScriptManager::load(id, "main", window, cx));
+    let result = cx.update(|window, cx| ScriptManager::load(id, Entry::Widget("main"), window, cx));
     if let Ok(script) = &result {
       let view = script.view();
       cx.update(|_, cx| {
@@ -242,40 +241,6 @@ export default class Main extends View {
     }
     cx.run_until_parked();
     (cx, result)
-  }
-
-  #[test]
-  fn discovers_plugins_by_manifest_id() {
-    let plugins = Plugins::new();
-    plugins.add("a", &manifest("com.example.a", ""), &[]);
-    plugins.add("other-name", &manifest("com.example.b", ""), &[]);
-    plugins.add("broken", "not toml {", &[]);
-    plugins.add("incomplete", r#"id = "com.example.c""#, &[]);
-    fs::create_dir_all(plugins.plugins.join("empty")).unwrap();
-    fs::write(plugins.plugins.join("stray.toml"), "{}").unwrap();
-
-    let manager = plugins.manager();
-    assert_eq!(ids(&manager), ["com.example.a", "com.example.b"]);
-    let manifest = &manager.plugins["com.example.a"];
-    assert_eq!(manifest.views["main"], "main.js");
-    assert!(manifest.modules.is_empty());
-  }
-
-  #[test]
-  fn path_like_ids_are_rejected() {
-    let plugins = Plugins::new();
-    plugins.add("a", &manifest("../escape", ""), &[]);
-    plugins.add("b", &manifest("/abs", ""), &[]);
-    plugins.add("c", &manifest("..", ""), &[]);
-    plugins.add("d", &manifest("", ""), &[]);
-    assert!(plugins.manager().plugins.is_empty());
-  }
-
-  #[test]
-  fn missing_plugin_dir_is_empty() {
-    let plugins = Plugins::new();
-    fs::remove_dir(&plugins.plugins).unwrap();
-    assert!(plugins.manager().plugins.is_empty());
   }
 
   #[test]
@@ -297,19 +262,22 @@ export default class Main extends View {
     let plugins = Plugins::new();
     plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
     cx.set_global(plugins.manager());
+    cx.set_global(Config::default());
     let cx = cx.add_empty_window();
 
     let error = cx
-      .update(|window, cx| ScriptManager::load("missing", "main", window, cx))
+      .update(|window, cx| ScriptManager::load("missing", Entry::Widget("main"), window, cx))
       .err()
       .unwrap();
     assert!(error.to_string().contains("not found"), "{error}");
 
-    let error = cx
-      .update(|window, cx| ScriptManager::load("a", "settings", window, cx))
-      .err()
-      .unwrap();
-    assert!(error.to_string().contains("no view"), "{error}");
+    for entry in [Entry::Widget("other"), Entry::Panel("main")] {
+      let error = cx
+        .update(|window, cx| ScriptManager::load("a", entry, window, cx))
+        .err()
+        .unwrap();
+      assert!(error.to_string().contains("has no"), "{error}");
+    }
   }
 
   #[gpui::test]
@@ -323,6 +291,7 @@ export default class Main extends View {
     let _ = script.view();
     // storage lives in the data dir, under the id
     assert!(plugins.data.join("a").is_dir());
+    assert!(!plugins.paths.local.join("a/store.json").exists());
     // the grant does not stay behind for the next view
     assert_ne!(policy::default().application(), "a");
   }
@@ -523,5 +492,80 @@ export default class Main extends View {
       "{error:#}"
     );
     assert!(fake.calls.borrow().is_empty());
+  }
+
+  /// Reports its `label` setting through `focusWorkspace` on every render.
+  const SETTINGS_VIEW: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { get, all } from "corona/settings";
+
+export default class Main extends View {
+  render(_cx) {
+    focusWorkspace(get("label") + " " + Object.keys(all()).length + " " + get("missing"));
+    return v_flex().child("plugin");
+  }
+}
+"#;
+
+  #[gpui::test]
+  fn settings_are_read_and_rerender(cx: &mut TestAppContext) {
+    let fake = Rc::new(Fake::default());
+    cx.update(|cx| {
+      let compositor = Compositor::new(cx, fake.clone()).unwrap();
+      cx.set_global(compositor);
+    });
+    cx.set_global(Config::default());
+    let plugins = Plugins::new();
+    let extra = r#"capabilities = { corona = ["compositor"] }
+[[settings]]
+key = "label"
+label = "Label"
+type = "text"
+default = "hello""#;
+    plugins.add("a", &manifest("a", extra), &[("main.js", SETTINGS_VIEW)]);
+    let (cx, script) = load(cx, &plugins, "a");
+    let _script = script.unwrap();
+    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+
+    let rendered = fake.calls.borrow().len();
+    // another plugin's settings change nothing
+    cx.update(|_, cx| {
+      cx.global_mut::<Config>().plugin_settings.insert(
+        "b".into(),
+        serde_json::json!({ "label": "x" })
+          .as_object()
+          .unwrap()
+          .clone(),
+      );
+    });
+    cx.run_until_parked();
+    assert_eq!(fake.calls.borrow().len(), rendered);
+
+    cx.update(|_, cx| {
+      cx.global_mut::<Config>().plugin_settings.insert(
+        "a".into(),
+        serde_json::json!({ "label": "bye" })
+          .as_object()
+          .unwrap()
+          .clone(),
+      );
+    });
+    cx.run_until_parked();
+    assert_eq!(fake.calls.borrow().last().unwrap(), "bye 1 null");
+
+    // a value of the wrong type reads as the default
+    cx.update(|_, cx| {
+      cx.global_mut::<Config>().plugin_settings.insert(
+        "a".into(),
+        serde_json::json!({ "label": 3 })
+          .as_object()
+          .unwrap()
+          .clone(),
+      );
+    });
+    cx.run_until_parked();
+    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
   }
 }

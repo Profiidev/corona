@@ -30,6 +30,21 @@ impl PanelData {
     }
   }
 
+  /// A panel built by `init` at runtime, like a plugin's
+  pub fn from_fn(
+    name: impl Into<String>,
+    width: f32,
+    height: f32,
+    init: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
+  ) -> Self {
+    Self {
+      name: name.into(),
+      width,
+      height,
+      init: Arc::new(init),
+    }
+  }
+
   pub fn init(&self, window: &mut Window, cx: &mut App) -> AnyView {
     (self.init)(window, cx)
   }
