@@ -102,6 +102,9 @@ pub(crate) mod test_support {
     fn set_dpms(&self, _: bool) -> Result<()> {
       Ok(())
     }
+    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> Result<()> {
+      Ok(())
+    }
   }
 
   /// Kit, default config, a fake compositor and every surface global

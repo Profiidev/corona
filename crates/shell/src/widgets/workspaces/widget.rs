@@ -478,6 +478,9 @@ mod tests {
     fn set_dpms(&self, _: bool) -> Result<()> {
       Ok(())
     }
+    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> Result<()> {
+      Ok(())
+    }
   }
 
   fn ids(widget: &Workspaces) -> Vec<&str> {

@@ -283,6 +283,9 @@ app:
         brightness:
           en: Brightness
           de: Helligkeit
+        displays:
+          en: Displays
+          de: Bildschirme
         notifications:
           en: Notifications
           de: Benachrichtigungen

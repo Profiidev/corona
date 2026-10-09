@@ -188,6 +188,7 @@ pub(crate) mod test_support {
   pub struct FakeCompositor {
     pub workspaces: Vec<types::Workspace>,
     pub windows: Vec<types::Window>,
+    pub monitors: Vec<types::Monitor>,
     pub calls: RefCell<Vec<String>>,
   }
 
@@ -199,7 +200,7 @@ pub(crate) mod test_support {
       Ok(workspace("1", "DP-1"))
     }
     fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
-      Ok(Vec::new())
+      Ok(self.monitors.clone())
     }
     fn active_monitor(&self) -> Result<types::Monitor> {
       Ok(monitor("DP-1"))
@@ -233,6 +234,13 @@ pub(crate) mod test_support {
     }
     fn set_dpms(&self, on: bool) -> Result<()> {
       self.calls.borrow_mut().push(format!("dpms {on}"));
+      Ok(())
+    }
+    fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()> {
+      self
+        .calls
+        .borrow_mut()
+        .push(format!("monitor {name} {change:?}"));
       Ok(())
     }
   }

@@ -78,6 +78,9 @@ impl CompositorImpl for Hyprland {
   fn set_dpms(&self, on: bool) -> Result<()> {
     self.ipc.dpms(if on { "on" } else { "off" })
   }
+  fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()> {
+    self.ipc.configure_monitor(name, change)
+  }
 
   fn keyboard_layout(&self) -> Result<Option<String>> {
     self.ipc.keyboard_layout()

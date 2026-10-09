@@ -122,11 +122,16 @@ impl Ipc {
         let workspaces = self.list_workspaces()?;
         let active = self.active_workspace()?;
         let monitors = self.list_monitors()?;
-        vec![
+        let mut events = vec![
           CompositorEvent::Workspace(workspaces),
           CompositorEvent::ActiveWorkspace(active),
           CompositorEvent::Monitor(monitors),
-        ]
+        ];
+        // its windows move along, and no window event says so
+        if name == "moveworkspace" {
+          events.push(CompositorEvent::Window(self.list_windows()?));
+        }
+        events
       }
       "activespecial" => vec![CompositorEvent::Monitor(self.list_monitors()?)],
       // fullscreen, floating and pinned change how windows stack
@@ -174,10 +179,15 @@ impl Ipc {
         ]
       }
       "activelayout" => vec![CompositorEvent::KeyboardLayout(self.keyboard_layout()?)],
-      "monitorremoved" | "monitoradded" => {
-        let monitors = self.list_monitors()?;
-        vec![CompositorEvent::Monitor(monitors)]
-      }
+      // a monitor that goes away, or starts mirroring another (which Hyprland
+      // reports as removed and added), hands its workspaces and their windows
+      // to the monitors left, without workspace or window events
+      "monitorremoved" | "monitoradded" => vec![
+        CompositorEvent::Monitor(self.list_monitors()?),
+        CompositorEvent::Workspace(self.list_workspaces()?),
+        CompositorEvent::ActiveWorkspace(self.active_workspace()?),
+        CompositorEvent::Window(self.list_windows()?),
+      ],
       _ => {
         debug!(
           "Hyprland event parsing is not implemented yet for: {}",
@@ -247,24 +257,25 @@ mod tests {
       "moveworkspace",
     ] {
       let events = parse(&hypr, &format!("{name}>>3")).unwrap();
-      assert_eq!(
-        names(&events),
-        ["Workspace", "ActiveWorkspace", "Monitor"],
-        "{name}"
-      );
+      let mut want = vec!["Workspace", "ActiveWorkspace", "Monitor"];
+      // a moved workspace takes its windows to another monitor
+      if name == "moveworkspace" {
+        want.push("Window");
+      }
+      assert_eq!(names(&events), want, "{name}");
     }
     assert_eq!(
       names(&parse(&hypr, "activespecial>>special:x,DP-1").unwrap()),
       ["Monitor"]
     );
-    assert_eq!(
-      names(&parse(&hypr, "monitoradded>>DP-2").unwrap()),
-      ["Monitor"]
-    );
-    assert_eq!(
-      names(&parse(&hypr, "monitorremoved>>DP-2").unwrap()),
-      ["Monitor"]
-    );
+    // mirroring is a monitor removed and added: workspaces and windows move
+    for name in ["monitoradded", "monitorremoved"] {
+      assert_eq!(
+        names(&parse(&hypr, &format!("{name}>>DP-2")).unwrap()),
+        ["Monitor", "Workspace", "ActiveWorkspace", "Window"],
+        "{name}"
+      );
+    }
   }
 
   #[test]
@@ -311,7 +322,10 @@ mod tests {
   fn monitorremoved_does_not_refresh_active_monitor() {
     let hypr = FakeHyprland::start();
     let events = parse(&hypr, "monitorremoved>>DP-1").unwrap();
-    assert_eq!(names(&events), ["Monitor"]);
+    assert_eq!(
+      names(&events),
+      ["Monitor", "Workspace", "ActiveWorkspace", "Window"]
+    );
     assert!(
       !events
         .iter()

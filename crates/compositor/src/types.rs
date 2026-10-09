@@ -30,6 +30,17 @@ pub struct Monitor {
   pub mirror_of: String,
 }
 
+/// A change to one monitor's configuration. It lasts until the compositor
+/// reloads its config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MonitorChange {
+  Enable,
+  Disable,
+  /// Show the monitor of this name on it
+  Mirror(String),
+  StopMirroring,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct Window {
   pub address: String,

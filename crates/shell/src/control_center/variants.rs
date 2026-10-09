@@ -4,8 +4,9 @@ use std::borrow::Cow;
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
   brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
-  media::MediaPanel, network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
-  sysinfo::SysinfoPanel, weather::WeatherPanel,
+  displays::DisplaysPanel, media::MediaPanel, network::NetworkPanel,
+  notifications::NotificationsPanel, power::PowerPanel, sysinfo::SysinfoPanel,
+  weather::WeatherPanel,
 };
 use rust_i18n::t;
 
@@ -17,6 +18,7 @@ pub enum ControlCenterType {
   Bluetooth,
   Power,
   Brightness,
+  Displays,
   Notifications,
   Sysinfo,
   Weather,
@@ -33,6 +35,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => "bluetooth",
       ControlCenterType::Power => "power",
       ControlCenterType::Brightness => "brightness",
+      ControlCenterType::Displays => "displays",
       ControlCenterType::Notifications => "notifications",
       ControlCenterType::Sysinfo => "sysinfo",
       ControlCenterType::Weather => "weather",
@@ -49,6 +52,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => IconName::Bluetooth,
       ControlCenterType::Power => IconName::Zap,
       ControlCenterType::Brightness => IconName::Sun,
+      ControlCenterType::Displays => IconName::Monitor,
       ControlCenterType::Notifications => IconName::Bell,
       ControlCenterType::Sysinfo => IconName::Activity,
       ControlCenterType::Weather => IconName::CloudSun,
@@ -65,6 +69,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => t!("app.control_center.bluetooth"),
       ControlCenterType::Power => t!("app.control_center.power"),
       ControlCenterType::Brightness => t!("app.control_center.brightness"),
+      ControlCenterType::Displays => t!("app.control_center.displays"),
       ControlCenterType::Notifications => t!("app.control_center.notifications"),
       ControlCenterType::Sysinfo => t!("app.control_center.sysinfo"),
       ControlCenterType::Weather => t!("app.control_center.weather"),
@@ -81,6 +86,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth,
       ControlCenterType::Power,
       ControlCenterType::Brightness,
+      ControlCenterType::Displays,
       ControlCenterType::Notifications,
       ControlCenterType::Sysinfo,
       ControlCenterType::Weather,
@@ -98,6 +104,7 @@ impl ControlCenterType {
       ControlCenterType::Bluetooth => BluetoothPanel::handle(window, cx),
       ControlCenterType::Power => PowerPanel::handle(window, cx),
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
+      ControlCenterType::Displays => DisplaysPanel::handle(window, cx),
       ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
       ControlCenterType::Sysinfo => SysinfoPanel::handle(window, cx),
       ControlCenterType::Weather => WeatherPanel::handle(window, cx),
@@ -123,6 +130,7 @@ mod tests {
         | ControlCenterType::Bluetooth
         | ControlCenterType::Power
         | ControlCenterType::Brightness
+        | ControlCenterType::Displays
         | ControlCenterType::Notifications
         | ControlCenterType::Sysinfo
         | ControlCenterType::Weather
@@ -130,7 +138,7 @@ mod tests {
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 11);
+    assert_eq!(all.len(), 12);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 

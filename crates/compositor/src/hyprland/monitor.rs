@@ -3,6 +3,25 @@ use serde::Deserialize;
 use crate::{hypr_data_cmd, types};
 
 impl crate::hyprland::command::Ipc {
+  /// Changes one setting of monitor `name`; Hyprland keeps the others
+  pub fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> anyhow::Result<()> {
+    use crate::hyprland::command::lua_string;
+    let setting = match change {
+      types::MonitorChange::Enable => "disabled = false".to_string(),
+      types::MonitorChange::Disable => "disabled = true".to_string(),
+      types::MonitorChange::Mirror(source) => format!("mirror = {}", lua_string(&source)),
+      types::MonitorChange::StopMirroring => "mirror = \"\"".to_string(),
+    };
+    let res = self.eval(format!(
+      "hl.monitor({{ output = {}, {setting} }})",
+      lua_string(name)
+    ))?;
+    if res.to_lowercase().contains("error") {
+      anyhow::bail!("Hyprland monitor change failed: {res}");
+    }
+    Ok(())
+  }
+
   /// every monitor's power, `on` or `off`
   pub fn dpms(&self, action: &str) -> anyhow::Result<()> {
     let action = crate::hyprland::command::lua_string(action);
@@ -134,6 +153,33 @@ mod tests {
       .map(|m| m.name)
       .collect();
     assert_eq!(names, ["B", "A", "C"]);
+  }
+
+  #[test]
+  fn configures_one_monitor() {
+    use types::MonitorChange::*;
+    let hypr = FakeHyprland::start();
+    let ipc = hypr.ipc();
+    for change in [Enable, Disable, Mirror("DP-1".into()), StopMirroring] {
+      ipc.configure_monitor("HDMI-A-1", change).unwrap();
+    }
+    // a name cannot end the Lua string it is put in
+    ipc.configure_monitor("x\" })", Disable).unwrap();
+    assert_eq!(
+      hypr.commands(),
+      [
+        r#"/eval hl.monitor({ output = "HDMI-A-1", disabled = false })"#,
+        r#"/eval hl.monitor({ output = "HDMI-A-1", disabled = true })"#,
+        r#"/eval hl.monitor({ output = "HDMI-A-1", mirror = "DP-1" })"#,
+        r#"/eval hl.monitor({ output = "HDMI-A-1", mirror = "" })"#,
+        r#"/eval hl.monitor({ output = "x\" })", disabled = true })"#,
+      ]
+    );
+    hypr.answer(
+      r#"/eval hl.monitor({ output = "Z", disabled = true })"#,
+      "error: no such output",
+    );
+    assert!(ipc.configure_monitor("Z", Disable).is_err());
   }
 
   #[test]

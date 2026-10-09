@@ -74,6 +74,41 @@ impl Compositor {
     self.inner.set_dpms(on)
   }
 
+  /// Enables, disables or mirrors monitor `name`, then reads the monitors
+  /// again: turning one on or off is not always an event
+  pub fn configure_monitor(name: &str, change: types::MonitorChange, cx: &mut App) -> Result<()> {
+    cx.global::<Compositor>()
+      .inner
+      .configure_monitor(name, change)?;
+    Self::refresh_monitors(cx)
+  }
+
+  /// Reads the monitors again, and the workspaces and windows on them: a
+  /// monitor turned off or mirroring hands those to the others, and the
+  /// compositor does not always say so
+  pub fn refresh_monitors(cx: &mut App) -> Result<()> {
+    let compositor = cx.global::<Compositor>();
+    let inner = compositor.inner.clone();
+    let (monitors, workspaces, active, windows) = (
+      inner.list_monitors()?,
+      inner.list_workspaces()?,
+      inner.active_workspace()?,
+      inner.list_windows()?,
+    );
+    let compositor = cx.global::<Compositor>();
+    let entities = (
+      compositor.monitors.clone(),
+      compositor.workspaces.clone(),
+      compositor.active_workspace.clone(),
+      compositor.windows.clone(),
+    );
+    entities.0.write_changed(cx, monitors);
+    entities.1.write_changed(cx, workspaces);
+    entities.2.write_changed(cx, active);
+    entities.3.write_changed(cx, windows);
+    Ok(())
+  }
+
   pub fn cursor_position(&self) -> Result<(i32, i32)> {
     self.inner.cursor_position()
   }
@@ -130,6 +165,8 @@ pub trait CompositorImpl {
   fn keyboard_layout(&self) -> Result<Option<String>>;
 
   fn set_dpms(&self, on: bool) -> Result<()>;
+
+  fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()>;
 }
 
 pub trait CompositorExt {
@@ -164,6 +201,7 @@ mod tests {
   #[derive(Default)]
   struct Fake {
     windows: RefCell<Vec<types::Window>>,
+    monitors: RefCell<Vec<types::Monitor>>,
     calls: RefCell<Vec<String>>,
     fail: bool,
   }
@@ -176,7 +214,7 @@ mod tests {
       Ok(workspace("1"))
     }
     fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
-      Ok(vec![])
+      Ok(self.monitors.borrow().clone())
     }
     fn active_monitor(&self) -> Result<types::Monitor> {
       if self.fail {
@@ -229,6 +267,13 @@ mod tests {
       self.calls.borrow_mut().push(format!("dpms {on}"));
       Ok(())
     }
+    fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()> {
+      self
+        .calls
+        .borrow_mut()
+        .push(format!("monitor {name} {change:?}"));
+      Ok(())
+    }
   }
 
   #[gpui::test]
@@ -255,6 +300,42 @@ mod tests {
     assert_eq!(
       *fake.calls.borrow(),
       ["workspace 2", "focus 0xa", "close 0xb", "dpms false"]
+    );
+  }
+
+  #[gpui::test]
+  fn configuring_a_monitor_reads_them_again(cx: &mut TestAppContext) {
+    let fake = Rc::new(Fake::default());
+    let monitor = cx.update(|cx| {
+      let compositor = Compositor::new(cx, fake.clone()).unwrap();
+      cx.set_global(compositor);
+      cx.compositor().active_monitor(cx).clone()
+    });
+    fake.monitors.borrow_mut().push(types::Monitor {
+      disabled: true,
+      ..monitor
+    });
+    cx.update(|cx| {
+      assert!(cx.compositor().list_monitors(cx).is_empty());
+      Compositor::configure_monitor("DP-1", types::MonitorChange::Disable, cx).unwrap();
+      Compositor::configure_monitor("DP-2", types::MonitorChange::Mirror("DP-1".into()), cx)
+        .unwrap();
+      assert!(cx.compositor().list_monitors(cx)[0].disabled);
+    });
+    // the windows moved with their workspaces, without an event
+    let listed = FakeHyprland::start().ipc().list_windows().unwrap();
+    *fake.windows.borrow_mut() = listed.clone();
+    cx.update(|cx| {
+      Compositor::configure_monitor("DP-2", types::MonitorChange::StopMirroring, cx).unwrap();
+      assert_eq!(cx.compositor().list_windows(cx), listed);
+    });
+    assert_eq!(
+      *fake.calls.borrow(),
+      [
+        "monitor DP-1 Disable",
+        "monitor DP-2 Mirror(\"DP-1\")",
+        "monitor DP-2 StopMirroring"
+      ]
     );
   }
 

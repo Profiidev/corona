@@ -19,6 +19,9 @@ app:
     brightness:
       en: Brightness
       de: Helligkeit
+    displays:
+      en: Displays
+      de: Bildschirme
     notifications:
       en: Notifications
       de: Benachrichtigungen
@@ -214,6 +217,43 @@ app:
       printer:
         en: Printer
         de: Drucker
+  displays:
+    refresh:
+      en: Read the monitors again
+      de: Bildschirme neu einlesen
+    monitors:
+      en: Monitors
+      de: Bildschirme
+    primary:
+      en: Primary
+      de: Primär
+    mirror_tag:
+      en: Mirror
+      de: Spiegel
+    mirrors_detail:
+      en: "Mirrors %{source} · %{mode}"
+      de: "Spiegelt %{source} · %{mode}"
+    disabled_detail:
+      en: "Disabled · %{mode}"
+      de: "Aus · %{mode}"
+    mirror:
+      en: Mirror
+      de: Spiegeln
+    mirror_description:
+      en: Show one display on another.
+      de: Einen Bildschirm auf einem anderen zeigen.
+    source:
+      en: Source
+      de: Quelle
+    target:
+      en: Target
+      de: Ziel
+    stop_mirroring:
+      en: Stop mirroring
+      de: Spiegeln beenden
+    start_mirroring:
+      en: Mirror
+      de: Spiegeln
   brightness:
     displays:
       en: Displays

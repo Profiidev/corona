@@ -3,6 +3,7 @@ mod bluetooth;
 pub(crate) mod brightness;
 mod calendar;
 pub(crate) mod dashboard;
+mod displays;
 mod layout;
 mod media;
 mod nav;
@@ -23,6 +24,7 @@ pub use crate::control_center::{
   brightness::BrightnessPanel,
   calendar::CalendarPanel,
   dashboard::DashboardPanel,
+  displays::DisplaysPanel,
   media::MediaPanel,
   network::NetworkPanel,
   notifications::NotificationsPanel,
@@ -44,6 +46,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<Standalone<BluetoothPanel>>()
     .register::<Standalone<PowerPanel>>()
     .register::<Standalone<BrightnessPanel>>()
+    .register::<Standalone<DisplaysPanel>>()
     .register::<Standalone<NotificationsPanel>>()
     .register::<Standalone<SysinfoPanel>>()
     .register::<Standalone<WeatherPanel>>()

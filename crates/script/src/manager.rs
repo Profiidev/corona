@@ -431,6 +431,9 @@ export default class Main extends View {
     fn set_dpms(&self, _: bool) -> anyhow::Result<()> {
       Ok(())
     }
+    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> anyhow::Result<()> {
+      Ok(())
+    }
   }
 
   #[gpui::test]
