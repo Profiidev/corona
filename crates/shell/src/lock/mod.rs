@@ -1,7 +1,7 @@
 use corona_auth_screen::User;
 use corona_config::ConfigProvider;
 use corona_power::PowerExt;
-use gpui_kit::{App, Task};
+use gpui_kit::{App, AppContext, Task};
 
 pub use state::LockState;
 
@@ -22,6 +22,9 @@ fn user(cx: &App) -> User {
 }
 
 pub fn init(cx: &mut App) {
+  // The lock is usually the first capture, keep the GPU setup out of its delay
+  cx.background_spawn(async { corona_capture::warm_up() })
+    .detach();
   cx.power().clone().lock_requests(cx, |lock, cx| match lock {
     true => LockState::lock(cx).detach(),
     false => LockState::unlock_animated(cx),

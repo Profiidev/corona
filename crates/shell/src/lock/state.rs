@@ -89,10 +89,18 @@ impl LockState {
           Either::Left((frames, _)) => cx
             .background_executor()
             .spawn(async move {
-              frames?
-                .into_iter()
-                .map(|(name, frame)| Ok((name, background(&frame, sigma)?)))
-                .collect::<Result<Vec<_>>>()
+              let frames = frames?;
+              std::thread::scope(|s| {
+                frames
+                  .iter()
+                  .map(|(name, frame)| {
+                    s.spawn(move || Ok((name.clone(), background(frame, sigma)?)))
+                  })
+                  .collect::<Vec<_>>()
+                  .into_iter()
+                  .map(|h| h.join().expect("lock background panicked"))
+                  .collect::<Result<Vec<_>>>()
+              })
             })
             .await
             .inspect_err(|e| tracing::warn!("lock: no screen capture for the background: {e:#}"))

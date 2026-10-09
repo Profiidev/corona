@@ -13,6 +13,10 @@ pub use live::capture_window;
 pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};
 
+pub fn warm_up() {
+  gpu::importable_modifiers();
+}
+
 /// Capture all outputs, blocks until all are captured
 pub fn capture_all(outputs: impl IntoIterator<Item = String>) -> Result<Vec<(String, Frame)>> {
   let mut capturer = Capturer::new()?;
