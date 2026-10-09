@@ -25,6 +25,7 @@ members = [
   "crates/capture",
   "crates/tray",
   "crates/idle",
+  "crates/auth",
 ]
 
 [workspace.dependencies]
@@ -52,6 +53,7 @@ corona_cli = { path = "crates/cli" }
 corona_capture = { path = "crates/capture" }
 corona_tray = { path = "crates/tray" }
 corona_idle = { path = "crates/idle" }
+corona_auth = { path = "crates/auth" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1" }

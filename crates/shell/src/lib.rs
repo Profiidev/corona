@@ -132,6 +132,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_power::init(cx, &system).await?;
   corona_weather::init(cx, &system);
   corona_brightness::init(cx, &system)?;
+  corona_auth::init(cx, &system);
 
   let session = zbus::connection::Builder::session()?
     .method_timeout(Duration::from_secs(5))

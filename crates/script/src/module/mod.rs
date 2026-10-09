@@ -15,6 +15,7 @@ use corona_macros::named;
 
 use crate::host_fn::{Cx, HostReturn, Named};
 
+pub mod auth;
 pub mod bluetooth;
 pub mod brightness;
 pub mod compositor;
@@ -51,6 +52,7 @@ pub enum CoronaModule {
   /// System information and usage.
   Sysinfo,
   Weather,
+  Auth,
 }
 
 impl CoronaModule {
@@ -67,6 +69,7 @@ impl CoronaModule {
       Self::Tray => tray::module(reads, subs, cx),
       Self::Sysinfo => sysinfo::module(reads, subs, cx),
       Self::Weather => weather::module(reads, subs, cx),
+      Self::Auth => auth::module(),
     }
   }
 }
@@ -177,6 +180,7 @@ mod tests {
       (CoronaModule::Tray, "tray"),
       (CoronaModule::Sysinfo, "sysinfo"),
       (CoronaModule::Weather, "weather"),
+      (CoronaModule::Auth, "auth"),
     ];
     for (module, name) in all {
       assert_eq!(

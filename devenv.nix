@@ -14,6 +14,7 @@ let
     pipewire
     alsa-lib
     libgbm
+    linux-pam
     rustPlatform.bindgenHook
   ];
 

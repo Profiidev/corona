@@ -17,6 +17,7 @@ corona_notifications.workspace = true
 corona_tray.workspace = true
 corona_sysinfo.workspace = true
 corona_weather.workspace = true
+corona_auth.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 gpui-shell.workspace = true

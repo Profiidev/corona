@@ -1,0 +1,21 @@
+[package]
+name = "corona_auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+corona_config.workspace = true
+gpui-kit.workspace = true
+zbus.workspace = true
+anyhow.workspace = true
+futures-lite.workspace = true
+pam-client = { version = "0.5.0", default-features = false }
+
+[dev-dependencies]
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }
+
+# pipewire's bindgen turns on clang-sys `runtime`, then pam-sys's bindgen must
+# load libclang itself (from LIBCLANG_PATH) or its build script panics
+[build-dependencies]
+bindgen = { version = "0.69", default-features = false, features = ["runtime"] }

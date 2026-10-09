@@ -11,6 +11,7 @@
   pipewire,
   alsa-lib,
   libgbm,
+  linux-pam,
   wayland,
   vulkan-loader,
   installShellFiles,
@@ -80,6 +81,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     pipewire
     alsa-lib
     libgbm
+    linux-pam
   ];
 
   postPatch = ''
