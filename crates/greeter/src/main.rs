@@ -3,17 +3,18 @@ use std::{path::Path, rc::Rc, time::Duration};
 use anyhow::{Context as _, Result, anyhow};
 use corona_auth_screen::{AuthScreen, Check, MenuItem, Purpose, User, corner_menu};
 use gpui_kit::{
-  Anchor, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
-  Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations, WindowOptions,
+  Anchor, App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Render,
+  SharedString, Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations, WindowOptions,
   assets::IconName,
   base::Root,
   black,
   component::{ActiveTheme, button::Button},
-  div,
+  div, point,
+  prelude::FluentBuilder,
 };
 use rust_i18n::t;
 
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{display::display_uuid, error::ErrorLogExt};
 use greetd::Session;
 
 mod config;
@@ -27,12 +28,13 @@ const LAST_USER: &str = "last-user";
 
 struct Greeter {
   screen: Entity<AuthScreen>,
+  monitor: Option<String>,
   sessions: Vec<Session>,
   selected: usize,
 }
 
 impl Greeter {
-  fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+  fn new(monitor: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
     let names = std::fs::read_to_string("/etc/passwd")
       .map(|passwd| greetd::users(&passwd))
       .unwrap_or_default();
@@ -82,6 +84,7 @@ impl Greeter {
     let last = config::state_file(LAST_SESSION).and_then(|file| config::read_state(&file));
     Self {
       screen: cx.new(|cx| AuthScreen::new(Purpose::Login, users, user, check, window, cx)),
+      monitor,
       selected: (sessions.iter())
         .position(|s| Some(&s.id) == last.as_ref())
         .unwrap_or(0),
@@ -131,6 +134,10 @@ impl Greeter {
 
 impl Render for Greeter {
   fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let wanted = self.monitor.as_deref().map(display_uuid);
+    let displays = (cx.displays().iter())
+      .map(|d| (wanted.is_some() && d.uuid().ok() == wanted, d.bounds()))
+      .collect::<Vec<_>>();
     let theme = cx.theme();
     div()
       .size_full()
@@ -138,9 +145,34 @@ impl Render for Greeter {
       .text_sm()
       .bg(black())
       .text_color(theme.foreground)
-      .child(self.screen.clone())
-      .child(self.session_menu(cx))
+      .child(
+        div()
+          .absolute()
+          .map(|d| match login_area(&displays) {
+            Some(area) => d
+              .left(area.origin.x)
+              .top(area.origin.y)
+              .w(area.size.width)
+              .h(area.size.height),
+            None => d.size_full(),
+          })
+          .child(self.screen.clone())
+          .child(self.session_menu(cx)),
+      )
   }
+}
+
+/// Where the login goes in the window: cage stretches it over every output,
+/// its origin at the layout's top left. The wanted display, else the leftmost.
+fn login_area(displays: &[(bool, Bounds<Pixels>)]) -> Option<Bounds<Pixels>> {
+  let left = displays.iter().map(|(_, b)| b.origin.x).min()?;
+  let top = displays.iter().map(|(_, b)| b.origin.y).min()?;
+  let (_, area) = (displays.iter().find(|(wanted, _)| *wanted))
+    .or_else(|| (displays.iter()).min_by_key(|(_, b)| (b.origin.x, b.origin.y)))?;
+  Some(Bounds {
+    origin: area.origin - point(left, top),
+    size: area.size,
+  })
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
@@ -165,6 +197,7 @@ fn main() {
       let language = (config.language)
         .or_else(|| std::env::var("LANG").ok())
         .unwrap_or_default();
+      let monitor = config.monitor;
       // the theme loader reads the shell's settings
       cx.set_global(corona_config::Config {
         theme: config.theme,
@@ -186,7 +219,7 @@ fn main() {
           ..Default::default()
         },
         |window, cx| {
-          let view = cx.new(|cx| Greeter::new(window, cx));
+          let view = cx.new(|cx| Greeter::new(monitor, window, cx));
           let focus = view.read(cx).screen.read(cx).focus_handle(cx);
           window.focus(&focus, cx);
           cx.new(|cx| Root::new(view, window, cx))
@@ -194,4 +227,37 @@ fn main() {
       )
       .expect("Failed to open the greeter window");
     });
+}
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{Size, px};
+
+  use super::*;
+
+  fn at(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds {
+      origin: point(px(x), px(y)),
+      size: Size::new(px(w), px(h)),
+    }
+  }
+
+  #[test]
+  fn login_on_one_display() {
+    assert_eq!(login_area(&[]), None);
+    let hdmi = at(0., 0., 1920., 1080.);
+    let dp = at(1920., 0., 2560., 1440.);
+    // the leftmost without a wanted one
+    assert_eq!(login_area(&[(false, dp), (false, hdmi)]), Some(hdmi));
+    assert_eq!(
+      login_area(&[(false, hdmi), (true, dp)]),
+      Some(at(1920., 0., 2560., 1440.))
+    );
+    // relative to the layout's top left
+    let above = at(-1000., -500., 1000., 800.);
+    assert_eq!(
+      login_area(&[(false, above), (true, hdmi)]),
+      Some(at(1000., 500., 1920., 1080.))
+    );
+  }
 }

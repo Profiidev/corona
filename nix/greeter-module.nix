@@ -36,6 +36,25 @@ in
       description = "Extra environment for cage and the greeter.";
     };
 
+    keyboard =
+      let
+        xkb = config.services.xserver.xkb;
+        option =
+          name: description:
+          lib.mkOption {
+            type = lib.types.str;
+            default = xkb.${name};
+            defaultText = lib.literalExpression "config.services.xserver.xkb.${name}";
+            inherit description;
+          };
+      in
+      {
+        layout = option "layout" "XKB layouts, comma separated like `us,de`.";
+        variant = option "variant" "XKB variants, one per layout.";
+        options = option "options" "XKB options, like `grp:alt_shift_toggle` to switch layouts.";
+        model = option "model" "XKB model.";
+      };
+
     cursorTheme = lib.mkOption {
       type = lib.types.nullOr (
         lib.types.submodule {
@@ -78,11 +97,12 @@ in
       default = { };
       example = {
         language = "de";
+        monitor = "DP-1";
         theme.name = "Catppuccin Mocha";
       };
       description = ''
         The greeter's config.toml: `theme` like the shell's `[theme]`, `language`
-        over `LANG`.
+        over `LANG`, `monitor` the output showing the login (default: the leftmost).
       '';
     };
   };
@@ -107,11 +127,20 @@ in
           lib.nameValuePair "/var/lib/AccountsService/icons/${name}" { "L+".argument = "${icon}"; }
         ) cfg.profileIcons;
 
-        services.corona-greeter.environment = lib.mkIf (cfg.cursorTheme != null) {
-          XCURSOR_THEME = cfg.cursorTheme.name;
-          XCURSOR_SIZE = toString cfg.cursorTheme.size;
-          XCURSOR_PATH = "${cfg.cursorTheme.package}/share/icons";
-        };
+        services.corona-greeter.environment = lib.mkMerge [
+          (lib.mkIf (cfg.cursorTheme != null) {
+            XCURSOR_THEME = cfg.cursorTheme.name;
+            XCURSOR_SIZE = toString cfg.cursorTheme.size;
+            XCURSOR_PATH = "${cfg.cursorTheme.package}/share/icons";
+          })
+          # cage's keymap; unset ones keep xkbcommon's defaults
+          (lib.filterAttrs (_: value: value != "") {
+            XKB_DEFAULT_LAYOUT = cfg.keyboard.layout;
+            XKB_DEFAULT_VARIANT = cfg.keyboard.variant;
+            XKB_DEFAULT_OPTIONS = cfg.keyboard.options;
+            XKB_DEFAULT_MODEL = cfg.keyboard.model;
+          })
+        ];
 
         services.greetd = {
           enable = true;

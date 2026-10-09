@@ -9,9 +9,10 @@ use corona_auth::AuthExt;
 use corona_auth_screen::{AuthScreen, Purpose};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  App, AppContext, BoxShadow, Context, Div, Entity, IntoElement, ParentElement, Pixels, Render,
-  RenderImage, Size, Styled, Window, black, component::ActiveTheme, div, ease_out_quint, img,
-  prelude::FluentBuilder, px, relative,
+  AnyWindowHandle, App, AppContext, BoxShadow, Context, Div, Entity, FocusHandle,
+  InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Render, RenderImage, Size,
+  Styled, Window, black, component::ActiveTheme, div, ease_out_quint, img, prelude::FluentBuilder,
+  px, relative,
 };
 
 use crate::lock::{state::LockState, user};
@@ -28,13 +29,33 @@ pub struct Background {
   pub blurred: Arc<RenderImage>,
 }
 
+/// What a lock window shows over its screen
+enum Ui {
+  Login(Entity<AuthScreen>),
+  /// Nothing; keys typed here go to the login's window, the compositor gives
+  /// the keyboard to the monitor under the cursor
+  Forward(FocusHandle, AnyWindowHandle),
+}
+
 pub struct Lock {
-  pub screen: Entity<AuthScreen>,
+  ui: Ui,
   background: Option<Background>,
 }
 
 impl Lock {
-  pub fn new(background: Option<Background>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+  /// The login, or with `login` only the screen, forwarding keys to that window
+  pub fn new(
+    background: Option<Background>,
+    login: Option<AnyWindowHandle>,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) -> Self {
+    if let Some(login) = login {
+      return Self {
+        ui: Ui::Forward(cx.focus_handle(), login),
+        background,
+      };
+    }
     let user = user(cx);
     let check = Rc::new(|user: String, password: String, cx: &mut App| {
       let check = cx.auth().password(user, password, cx);
@@ -47,8 +68,17 @@ impl Lock {
       })
     });
     Self {
-      screen: cx.new(|cx| AuthScreen::new(Purpose::Unlock, vec![user], 0, check, window, cx)),
+      ui: Ui::Login(
+        cx.new(|cx| AuthScreen::new(Purpose::Unlock, vec![user], 0, check, window, cx)),
+      ),
       background,
+    }
+  }
+
+  pub fn focus_handle(&self, cx: &App) -> FocusHandle {
+    match &self.ui {
+      Ui::Login(screen) => screen.read(cx).focus_handle(cx),
+      Ui::Forward(focus, _) => focus.clone(),
     }
   }
 }
@@ -131,13 +161,23 @@ impl Render for Lock {
       .when_some(self.background.clone(), |d, background| {
         d.child(screen(background, progress, size))
       })
-      .child(
-        div()
-          .absolute()
-          .size_full()
-          .opacity(progress)
-          .child(self.screen.clone()),
-      )
+      .map(|d| match &self.ui {
+        Ui::Login(screen) => d.child(
+          div()
+            .absolute()
+            .size_full()
+            .opacity(progress)
+            .child(screen.clone()),
+        ),
+        Ui::Forward(focus, login) => {
+          let login = *login;
+          d.track_focus(focus)
+            .on_key_down(move |e: &KeyDownEvent, _, cx| {
+              let keystroke = e.keystroke.clone();
+              let _ = login.update(cx, |_, window, cx| window.dispatch_keystroke(keystroke, cx));
+            })
+        }
+      })
   }
 }
 
@@ -172,5 +212,66 @@ impl Render for Unlock {
       .when_some(self.background.clone(), |d, background| {
         d.child(screen(background, progress, size))
       })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, InteractiveElement, TestAppContext, WindowOptions};
+
+  use super::*;
+  use crate::test_support::{FakeCompositor, setup};
+
+  /// Stands in for the login's window, recording the keys it gets
+  struct Keys {
+    focus: FocusHandle,
+    typed: Vec<String>,
+  }
+
+  impl Render for Keys {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+      div().size_full().track_focus(&self.focus).on_key_down(
+        cx.listener(|this, e: &KeyDownEvent, _, _| this.typed.push(e.keystroke.key.clone())),
+      )
+    }
+  }
+
+  #[gpui::test]
+  fn screens_without_login_forward_keys(cx: &mut TestAppContext) {
+    setup(FakeCompositor::default(), cx);
+    cx.update(|cx| cx.set_global(LockState::default()));
+
+    let (keys, login) = cx.update(|cx| {
+      let mut keys = None;
+      let login = cx
+        .open_window(WindowOptions::default(), |window, cx| {
+          let view = cx.new(|cx| Keys {
+            focus: cx.focus_handle(),
+            typed: Vec::new(),
+          });
+          let focus = view.read(cx).focus.clone();
+          window.focus(&focus, cx);
+          keys = Some(view.clone());
+          view
+        })
+        .unwrap();
+      (keys.unwrap(), login)
+    });
+    let other = cx.update(|cx| {
+      cx.open_window(WindowOptions::default(), |window, cx| {
+        let view = cx.new(|cx| Lock::new(None, Some(login.into()), window, cx));
+        window.focus(&view.read(cx).focus_handle(cx), cx);
+        view
+      })
+      .unwrap()
+    });
+    cx.run_until_parked();
+
+    cx.simulate_keystrokes(other.into(), "a b enter");
+    keys.read_with(cx, |keys, _| assert_eq!(keys.typed, ["a", "b", "enter"]));
+    // gone with the login's window, keys go nowhere
+    cx.update(|cx| login.update(cx, |_, window, _| window.remove_window()))
+      .unwrap();
+    cx.simulate_keystrokes(other.into(), "c");
   }
 }

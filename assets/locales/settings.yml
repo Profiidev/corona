@@ -50,6 +50,9 @@ app:
       language_auto:
         en: Automatic
         de: Automatisch
+      all_monitors:
+        en: All monitors
+        de: Alle Monitore
     appearance:
       screen_corners:
         title:
@@ -697,6 +700,13 @@ app:
         description:
           en: "Of the screen behind the lock, 0 for none."
           de: "Des Bildschirms hinter der Sperre, 0 für keine."
+      monitor:
+        title:
+          en: Monitor
+          de: Monitor
+        description:
+          en: The monitor showing the login, the others only show the blurred screen.
+          de: "Der Monitor mit der Anmeldung, die anderen zeigen nur den unscharfen Bildschirm."
     screenshot:
       title:
         en: Screenshot

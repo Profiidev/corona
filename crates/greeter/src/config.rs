@@ -27,6 +27,9 @@ pub struct Config {
   pub theme: ThemeConfig,
   /// Like `de`, over `LANG`
   pub language: Option<String>,
+  /// The monitor showing the login, like `DP-1`. Unset or disconnected: the
+  /// leftmost
+  pub monitor: Option<String>,
 }
 
 /// The defaults without a file
@@ -62,11 +65,12 @@ mod tests {
 
     fs::write(
       &path,
-      "language = \"de\"\n[theme]\nname = \"Catppuccin Mocha\"\n",
+      "language = \"de\"\nmonitor = \"DP-1\"\n[theme]\nname = \"Catppuccin Mocha\"\n",
     )
     .unwrap();
     let config = read(&path).unwrap();
     assert_eq!(config.language.as_deref(), Some("de"));
+    assert_eq!(config.monitor.as_deref(), Some("DP-1"));
     assert_eq!(config.theme.name, "Catppuccin Mocha");
     // the rest of the theme keeps its defaults
     assert_eq!(config.theme.font_scale, ThemeConfig::default().font_scale);

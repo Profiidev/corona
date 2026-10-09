@@ -339,6 +339,9 @@ pub struct LockscreenConfig {
   pub lock_before_suspend: bool,
   /// Blur of the captured screen behind the lock, 0 for none
   pub blur: f32,
+  /// The monitor showing the login, like `DP-1`; the others only show the
+  /// blurred screen. Unset or disconnected: every monitor
+  pub monitor: Option<String>,
 }
 
 impl Default for LockscreenConfig {
@@ -346,6 +349,7 @@ impl Default for LockscreenConfig {
     Self {
       lock_before_suspend: true,
       blur: 3.,
+      monitor: None,
     }
   }
 }

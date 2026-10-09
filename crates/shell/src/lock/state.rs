@@ -12,7 +12,7 @@ use corona_capture::{
 };
 use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, ConfigProvider};
-use corona_utils::display::display_uuid;
+use corona_utils::display::{display_id_for, display_uuid};
 use futures::{
   channel::oneshot,
   future::{Either, FutureExt, Shared, select},
@@ -151,12 +151,12 @@ impl LockState {
       .collect();
 
     cx.global_mut::<Self>().screens = screens.clone();
+    let main = (cx.config().lockscreen.monitor.as_deref()).and_then(|m| display_id_for(m, cx));
     let locked = cx.lock_session();
 
-    let windows = screens
-      .into_iter()
-      .map(|(display, background)| Self::open(display, background, cx))
-      .collect::<Result<Vec<_>>>();
+    let windows = open_screens(screens, main, |display, background, login| {
+      Self::open(display, background, login, cx)
+    });
 
     match windows {
       Ok(windows) => cx.global_mut::<Self>().windows = windows,
@@ -260,6 +260,7 @@ impl LockState {
   fn open(
     display: gpui_kit::DisplayId,
     background: Option<Background>,
+    login: Option<AnyWindowHandle>,
     cx: &mut App,
   ) -> Result<AnyWindowHandle> {
     let window = cx.open_window(
@@ -278,8 +279,8 @@ impl LockState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| Lock::new(background, window, cx));
-        let focus = view.read(cx).screen.read(cx).focus_handle(cx);
+        let view = cx.new(|cx| Lock::new(background, login, window, cx));
+        let focus = view.read(cx).focus_handle(cx);
         window.focus(&focus, cx);
         cx.new(|cx| Root::new(view, window, cx))
       },
@@ -326,6 +327,27 @@ impl LockState {
 
     Ok(window.into())
   }
+}
+
+/// Opens a window per screen, `main`'s first so the others get its window to
+/// forward their keys to. No `main`, or one not connected: each shows a login
+fn open_screens<T, W: Copy>(
+  mut screens: Vec<(DisplayId, T)>,
+  main: Option<DisplayId>,
+  mut open: impl FnMut(DisplayId, T, Option<W>) -> Result<W>,
+) -> Result<Vec<W>> {
+  screens.sort_by_key(|(display, _)| main.is_some_and(|m| m != *display));
+  let mut login = None;
+  screens
+    .into_iter()
+    .map(|(display, screen)| {
+      let window = open(display, screen, login)?;
+      if main == Some(display) {
+        login = Some(window);
+      }
+      Ok(window)
+    })
+    .collect()
 }
 
 /// `frame` sharp, and blurred by `sigma` for behind the lock
@@ -375,6 +397,39 @@ mod tests {
     assert!(cx.update(|cx| cx.windows().is_empty()));
     assert!(task.now_or_never().is_some());
     assert!(second.now_or_never().is_some());
+  }
+
+  /// Which display each window opened for and where it forwards keys, `0`
+  /// for its own login
+  fn opened(displays: &[u64], main: Option<u64>) -> Vec<(u64, u64)> {
+    let screens = displays.iter().map(|&d| (DisplayId::new(d), ())).collect();
+    open_screens(screens, main.map(DisplayId::new), |display, (), login| {
+      Ok((u64::from(display), login.map_or(0, |(d, _)| d)))
+    })
+    .unwrap()
+  }
+
+  #[test]
+  fn login_on_main_display() {
+    // the main display opens first, the others forward to it
+    assert_eq!(opened(&[1, 2, 3], Some(2)), [(2, 0), (1, 2), (3, 2)]);
+    assert_eq!(opened(&[1, 2], Some(1)), [(1, 0), (2, 1)]);
+    // unset or disconnected: a login everywhere
+    assert_eq!(opened(&[1, 2], None), [(1, 0), (2, 0)]);
+    assert_eq!(opened(&[1, 2], Some(9)), [(1, 0), (2, 0)]);
+    assert_eq!(opened(&[], Some(1)), []);
+  }
+
+  #[test]
+  fn open_screens_stops_on_failure() {
+    let screens = vec![(DisplayId::new(1), ()), (DisplayId::new(2), ())];
+    let mut calls = 0;
+    let res = open_screens(screens, None, |_, (), _: Option<()>| {
+      calls += 1;
+      anyhow::bail!("no window")
+    });
+    assert!(res.is_err());
+    assert_eq!(calls, 1);
   }
 
   #[gpui::test]

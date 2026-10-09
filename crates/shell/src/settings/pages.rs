@@ -1,6 +1,7 @@
 use std::{iter, path::PathBuf};
 
 use corona_components::assets::{set_theme, theme_font, theme_names};
+use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
   Config, ConfigProvider, IdleAction, IdleBehavior, NotificationPosition, OsdPosition, ThemeMode,
   Units, Weekday,
@@ -50,7 +51,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     control_center(),
     taskbar(),
     window_switcher(),
-    lockscreen(),
+    lockscreen(cx),
     idle(cx),
     screenshot(),
     location(),
@@ -771,7 +772,11 @@ fn idle(cx: &App) -> SettingPage {
   )
 }
 
-fn lockscreen() -> SettingPage {
+fn lockscreen(cx: &App) -> SettingPage {
+  let connected = (cx.try_global::<Compositor>())
+    .map(|c| c.list_monitors(cx))
+    .unwrap_or_default();
+  let monitors = monitor_choices(connected, cx.config().lockscreen.monitor.as_ref());
   page(
     t!("app.settings.lockscreen.title"),
     IconName::Lock,
@@ -796,9 +801,35 @@ fn lockscreen() -> SettingPage {
             |c, v| c.lockscreen.blur = v,
           ),
         ),
+        item(
+          t!("app.settings.lockscreen.monitor.title"),
+          t!("app.settings.lockscreen.monitor.description"),
+          choice(
+            &iter::once((None, t!("app.settings.options.all_monitors")))
+              .chain(monitors.into_iter().map(|m| (Some(m.clone()), m.into())))
+              .collect::<Vec<_>>(),
+            |c| c.lockscreen.monitor.clone(),
+            |c, v| c.lockscreen.monitor = v,
+          ),
+        ),
       ],
     )],
   )
+}
+
+/// The enabled monitors' names, and a configured one that is not connected so
+/// the dropdown still shows it
+fn monitor_choices(connected: &[Monitor], configured: Option<&String>) -> Vec<String> {
+  let mut names: Vec<String> = (connected.iter())
+    .filter(|m| !m.disabled)
+    .map(|m| m.name.clone())
+    .collect();
+  if let Some(configured) = configured
+    && !names.contains(configured)
+  {
+    names.push(configured.clone());
+  }
+  names
 }
 
 fn screenshot() -> SettingPage {
@@ -1067,6 +1098,25 @@ mod tests {
       all(cx).len()
     });
     assert_eq!(pages, PAGES.len());
+  }
+
+  #[test]
+  fn monitor_choices_keep_the_configured() {
+    let mut off = crate::test_support::monitor("HDMI-A-1");
+    off.disabled = true;
+    let connected = [crate::test_support::monitor("DP-1"), off];
+    assert_eq!(monitor_choices(&connected, None), ["DP-1"]);
+    assert_eq!(monitor_choices(&connected, Some(&"DP-1".into())), ["DP-1"]);
+    // a disconnected or disabled choice stays selectable
+    assert_eq!(
+      monitor_choices(&connected, Some(&"DP-2".into())),
+      ["DP-1", "DP-2"]
+    );
+    assert_eq!(
+      monitor_choices(&connected, Some(&"HDMI-A-1".into())),
+      ["DP-1", "HDMI-A-1"]
+    );
+    assert_eq!(monitor_choices(&[], Some(&"DP-2".into())), ["DP-2"]);
   }
 
   #[test]
