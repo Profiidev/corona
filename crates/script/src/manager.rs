@@ -665,4 +665,21 @@ export default class Main extends View {
     assert!(fake.calls.borrow().len() > rendered);
     assert_eq!(last(&fake)["open"], true);
   }
+
+  #[gpui::test]
+  fn loading_types_the_settings_for_the_editor(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let extra = "[[settings]]\nkey = \"units\"\nlabel = \"Units\"\ntype = \"select\"\ndefault = \"a\"\noptions = [{ value = \"a\", label = \"A\" }, { value = \"b\", label = \"B\" }]";
+    plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
+    let (_, script) = load(cx, &plugins, "a");
+    script.unwrap();
+    let dts = fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let start = dts.find("declare module \"corona/settings\"").unwrap();
+    let module = &dts[start..start + dts[start..].find("\n}").unwrap()];
+    assert!(module.contains("    \"units\": \"a\" | \"b\";"), "{module}");
+    assert!(
+      module.contains("export function get<K extends keyof Settings>"),
+      "{module}"
+    );
+  }
 }
