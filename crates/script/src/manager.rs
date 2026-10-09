@@ -53,12 +53,10 @@ impl ScriptManager {
       .map(|entry| entry.path())
       .filter(|path| path.join(PLUGIN_MANIFEST_FILENAME).is_file())
       .flat_map(|path| {
-        let file = fs::File::open(path.join(PLUGIN_MANIFEST_FILENAME))
+        let file = fs::read_to_string(path.join(PLUGIN_MANIFEST_FILENAME))
           .log_err()
           .ok()?;
-        let data = serde_json::from_reader::<fs::File, ManifestFile>(file)
-          .log_err()
-          .ok()?;
+        let data = toml::from_str::<ManifestFile>(&file).log_err().ok()?;
 
         Some((
           data.id.clone(),
@@ -205,7 +203,7 @@ export default class Main extends View {
   }
 
   fn manifest(id: &str, extra: &str) -> String {
-    format!(r#"{{ "id": "{id}", "name": "Test", "views": {{ "main": "main.js" }} {extra} }}"#)
+    format!("id = \"{id}\"\nname = \"Test\"\nviews = {{ main = \"main.js\" }}\n{extra}")
   }
 
   fn ids(manager: &ScriptManager) -> Vec<&str> {
@@ -251,10 +249,10 @@ export default class Main extends View {
     let plugins = Plugins::new();
     plugins.add("a", &manifest("com.example.a", ""), &[]);
     plugins.add("other-name", &manifest("com.example.b", ""), &[]);
-    plugins.add("broken", "{ not json", &[]);
-    plugins.add("incomplete", r#"{ "id": "com.example.c" }"#, &[]);
+    plugins.add("broken", "not toml {", &[]);
+    plugins.add("incomplete", r#"id = "com.example.c""#, &[]);
     fs::create_dir_all(plugins.plugins.join("empty")).unwrap();
-    fs::write(plugins.plugins.join("stray.json"), "{}").unwrap();
+    fs::write(plugins.plugins.join("stray.toml"), "{}").unwrap();
 
     let manager = plugins.manager();
     assert_eq!(ids(&manager), ["com.example.a", "com.example.b"]);
@@ -283,7 +281,7 @@ export default class Main extends View {
   #[test]
   fn grants_are_rooted_in_the_plugin_dir() {
     let plugins = Plugins::new();
-    let extra = r#", "capabilities": { "fs": { "execute": ["git"] }, "corona": ["weather"] }"#;
+    let extra = r#"capabilities = { fs = { execute = ["git"] }, corona = ["weather"] }"#;
     plugins.add("a", &manifest("a", extra), &[]);
     let manager = plugins.manager();
     let manifest = &manager.plugins["a"];
@@ -344,7 +342,7 @@ export default class Main extends View {
   #[gpui::test]
   fn failed_load_resets_policy(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
-    let extra = r#", "capabilities": { "clipboard": { "read": true } }"#;
+    let extra = r#"capabilities = { clipboard = { read = true } }"#;
     // the view file is missing, so mounting it fails
     plugins.add("a", &manifest("a", extra), &[]);
     let (_, script) = load(cx, &plugins, "a");
@@ -429,7 +427,7 @@ export default class Main extends View {
       cx.set_global(compositor);
     });
     let plugins = Plugins::new();
-    let extra = r#", "capabilities": { "corona": ["compositor"] }"#;
+    let extra = r#"capabilities = { corona = ["compositor"] }"#;
     plugins.add("a", &manifest("a", extra), &[("main.js", COMPOSITOR_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let script = script.unwrap();
@@ -485,7 +483,7 @@ export default class Main extends View {
       cx.set_global(compositor);
     });
     let plugins = Plugins::new();
-    let extra = r#", "capabilities": { "corona": ["compositor"] }"#;
+    let extra = r#"capabilities = { corona = ["compositor"] }"#;
     plugins.add(
       "a",
       &manifest("a", extra),

@@ -291,14 +291,23 @@ mod tests {
   use super::{ManifestFile, expand};
   use crate::module::CoronaModule;
 
-  fn parse(json: &str) -> serde_json::Result<ManifestFile> {
-    serde_json::from_str(json)
+  fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
+    toml::from_str(toml)
   }
 
-  /// The grant of a manifest with these `capabilities`.
-  fn grant(capabilities: &str) -> Capabilities {
-    let json = format!(r#"{{ "id": "a", "name": "A", "capabilities": {capabilities} }}"#);
-    parse(&json)
+  /// A manifest with id `a`, name `A` and `rest`.
+  fn with(rest: &str) -> Result<ManifestFile, toml::de::Error> {
+    parse(&format!("id = \"a\"\nname = \"A\"\n{rest}"))
+  }
+
+  /// A manifest with this `[capabilities]` table body.
+  fn with_capabilities(body: &str) -> Result<ManifestFile, toml::de::Error> {
+    with(&format!("[capabilities]\n{body}"))
+  }
+
+  /// The grant of a manifest with this `[capabilities]` table body.
+  fn grant(body: &str) -> Capabilities {
+    with_capabilities(body)
       .unwrap()
       .capabilities
       .grant(Path::new("/plugins/a"), Path::new("/data/a"))
@@ -310,44 +319,43 @@ mod tests {
 
   #[test]
   fn required_fields() {
-    assert!(parse(r#"{ "name": "A" }"#).is_err());
-    assert!(parse(r#"{ "id": "a" }"#).is_err());
-    let manifest = parse(r#"{ "id": "a", "name": "A" }"#).unwrap();
+    assert!(parse(r#"name = "A""#).is_err());
+    assert!(parse(r#"id = "a""#).is_err());
+    let manifest = with("").unwrap();
     assert_eq!(manifest.version, None);
     assert!(manifest.views.is_empty());
 
-    let manifest =
-      parse(r#"{ "id": "a", "name": "A", "version": "1.2.0", "views": { "bar": "main.js" } }"#)
-        .unwrap();
+    let manifest = with(
+      r#"version = "1.2.0"
+views = { bar = "main.js" }"#,
+    )
+    .unwrap();
     assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
     assert_eq!(manifest.views["bar"], "main.js");
   }
 
   #[test]
   fn nested_unknown_fields_are_rejected() {
-    for capabilities in [
-      r#"{ "bogus": true }"#,
-      r#"{ "fs": { "exec": ["git"] } }"#,
-      r#"{ "network": { "host": [] } }"#,
-      r#"{ "network": { "http": [{ "host": "a", "methods": ["GET"], "path": [] }] } }"#,
-      r#"{ "clipboard": { "paste": true } }"#,
-      r#"{ "process": { "kill": true } }"#,
+    for body in [
+      r#"bogus = true"#,
+      r#"fs = { exec = ["git"] }"#,
+      r#"network = { host = [] }"#,
+      r#"network = { http = [{ host = "a", methods = ["GET"], path = [] }] }"#,
+      r#"clipboard = { paste = true }"#,
+      r#"process = { kill = true }"#,
     ] {
-      let json = format!(r#"{{ "id": "a", "name": "A", "capabilities": {capabilities} }}"#);
-      assert!(parse(&json).is_err(), "{capabilities}");
+      assert!(with_capabilities(body).is_err(), "{body}");
     }
   }
 
   #[test]
   fn http_methods_are_required() {
-    let json =
-      r#"{ "id": "a", "name": "A", "capabilities": { "network": { "http": [{ "host": "a" }] } } }"#;
-    assert!(parse(json).is_err());
+    assert!(with_capabilities(r#"network = { http = [{ host = "a" }] }"#).is_err());
   }
 
   #[test]
   fn default_grant() {
-    let capabilities = grant("{}");
+    let capabilities = grant("");
     // storage is the one grant given by default
     assert!(capabilities.has_storage());
     assert_eq!(capabilities.execute_grant(), &ExecuteGrant::Denied);
@@ -362,7 +370,7 @@ mod tests {
 
   #[test]
   fn omitted_capabilities_keep_storage() {
-    let capabilities = parse(r#"{ "id": "a", "name": "A" }"#)
+    let capabilities = with("")
       .unwrap()
       .capabilities
       .grant(Path::new("/plugins/a"), Path::new("/data/a"));
@@ -372,12 +380,12 @@ mod tests {
   #[test]
   fn explicit_grants() {
     let capabilities = grant(
-      r#"{
-        "fs": { "read": ["${pluginDir}"], "write": ["${dataDir}"] },
-        "storage": false,
-        "clipboard": { "read": true, "write": true },
-        "process": { "exit": true }
-      }"#,
+      r#"
+fs = { read = ["${pluginDir}"], write = ["${dataDir}"] }
+storage = false
+clipboard = { read = true, write = true }
+process = { exit = true }
+"#,
     );
     assert!(!capabilities.has_storage());
     assert!(capabilities.has_read_access());
@@ -386,14 +394,14 @@ mod tests {
     assert!(capabilities.is_clipboard_writable());
     assert!(capabilities.may_exit());
 
-    let capabilities = grant(r#"{ "clipboard": { "read": true } }"#);
+    let capabilities = grant(r#"clipboard = { read = true }"#);
     assert!(capabilities.is_clipboard_readable());
     assert!(!capabilities.is_clipboard_writable());
   }
 
   #[test]
   fn execute_grants() {
-    let capabilities = grant(r#"{ "fs": { "execute": ["git"] } }"#);
+    let capabilities = grant(r#"fs = { execute = ["git"] }"#);
     assert_eq!(
       capabilities.execute_grant(),
       &ExecuteGrant::Allowed(vec!["git".into()])
@@ -401,26 +409,24 @@ mod tests {
     assert!(capabilities.may_run("git"));
     assert!(!capabilities.may_run("rm"));
 
-    let capabilities = grant(r#"{ "fs": { "execute": [] } }"#);
+    let capabilities = grant(r#"fs = { execute = [] }"#);
     assert!(!capabilities.may_run("git"));
 
-    let capabilities = grant(r#"{ "fs": { "execute": "*" } }"#);
+    let capabilities = grant(r#"fs = { execute = "*" }"#);
     assert_eq!(capabilities.execute_grant(), &ExecuteGrant::Unrestricted);
     assert!(capabilities.may_run("anything"));
 
-    let json = r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "execute": true } } }"#;
-    assert!(parse(json).is_err());
+    assert!(with_capabilities(r#"fs = { execute = true }"#).is_err());
   }
 
   #[test]
   fn execute_string_must_be_wildcard() {
-    let json = r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "execute": "git" } } }"#;
-    assert!(parse(json).is_err());
+    assert!(with_capabilities(r#"fs = { execute = "git" }"#).is_err());
   }
 
   #[test]
   fn network_hosts() {
-    let capabilities = grant(r#"{ "network": { "hosts": ["API.Example.com"] } }"#);
+    let capabilities = grant(r#"network = { hosts = ["API.Example.com"] }"#);
     assert!(capabilities.may_reach("api.example.com"));
     assert!(!capabilities.may_reach("example.com"));
     // a host grant allows any request to it
@@ -430,10 +436,19 @@ mod tests {
   #[test]
   fn http_grants() {
     let capabilities = grant(
-      r#"{ "network": { "http": [
-        { "host": "Api.Example.com", "methods": ["get"], "paths": ["/v1/a"], "path_prefixes": ["/v2"] },
-        { "scheme": "http", "host": "local", "port": 8080, "methods": ["POST"] }
-      ] } }"#,
+      r#"
+[[capabilities.network.http]]
+host = "Api.Example.com"
+methods = ["get"]
+paths = ["/v1/a"]
+path_prefixes = ["/v2"]
+
+[[capabilities.network.http]]
+scheme = "http"
+host = "local"
+port = 8080
+methods = ["POST"]
+"#,
     );
     // https by default, host and method case-insensitive
     assert!(capabilities.may_request("https", "api.example.com", None, "GET", "/v1/a"));
@@ -452,9 +467,7 @@ mod tests {
   #[test]
   fn http_port() {
     let capabilities = grant(
-      r#"{ "network": { "http": [
-        { "scheme": "http", "host": "local", "port": 8080, "methods": ["POST"], "path_prefixes": ["/"] }
-      ] } }"#,
+      r#"network = { http = [{ scheme = "http", host = "local", port = 8080, methods = ["POST"], path_prefixes = ["/"] }] }"#,
     );
     assert!(capabilities.may_request("http", "local", Some(8080), "POST", "/x"));
     assert!(!capabilities.may_request("http", "local", None, "POST", "/x"));
@@ -479,17 +492,14 @@ mod tests {
 
   #[test]
   fn unknown_placeholder_is_rejected() {
-    let json =
-      r#"{ "id": "a", "name": "A", "capabilities": { "fs": { "read": ["${homeDir}"] } } }"#;
-    assert!(parse(json).is_err());
+    assert!(with_capabilities(r#"fs = { read = ["${homeDir}"] }"#).is_err());
   }
 
   #[test]
   fn top_level_unknown_fields_are_rejected() {
-    let json = r#"{ "id": "a", "name": "A", "capabilites": { "clipboard": { "read": true } } }"#;
-    assert!(parse(json).is_err());
+    assert!(with(r#"capabilites = { clipboard = { read = true } }"#).is_err());
     // the editor's schema pointer is the one extra key
-    assert!(parse(r#"{ "$schema": "plugin.schema.json", "id": "a", "name": "A" }"#).is_ok());
+    assert!(with(r#""$schema" = "plugin.schema.json""#).is_ok());
   }
 
   #[test]
@@ -505,19 +515,14 @@ mod tests {
 
   #[test]
   fn corona_modules() {
-    let manifest = parse(r#"{ "id": "a", "name": "A" }"#).unwrap();
-    assert!(manifest.capabilities.modules().is_empty());
+    assert!(with("").unwrap().capabilities.modules().is_empty());
 
-    let manifest = parse(
-      r#"{ "id": "a", "name": "A", "capabilities": { "corona": ["weather", "sysinfo", "weather"] } }"#,
-    )
-    .unwrap();
+    let manifest = with_capabilities(r#"corona = ["weather", "sysinfo", "weather"]"#).unwrap();
     assert_eq!(
       manifest.capabilities.modules(),
       BTreeSet::from([CoronaModule::Sysinfo, CoronaModule::Weather])
     );
 
-    let unknown = r#"{ "id": "a", "name": "A", "capabilities": { "corona": ["camera"] } }"#;
-    assert!(parse(unknown).is_err());
+    assert!(with_capabilities(r#"corona = ["camera"]"#).is_err());
   }
 }

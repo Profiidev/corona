@@ -8,7 +8,7 @@ use gpui_shell::ShellRuntime;
 
 pub use manager::{Script, ScriptManager};
 
-const PLUGIN_MANIFEST_FILENAME: &str = "plugin.json";
+const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";
 #[cfg(debug_assertions)]
 const PLUGIN_SCHEMA_FILENAME: &str = "plugin.schema.json";
 const PLUGIN_STORAGE_FILENAME: &str = "store.json";
