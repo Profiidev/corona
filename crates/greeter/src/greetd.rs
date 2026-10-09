@@ -7,6 +7,8 @@ use greetd_ipc::{AuthMessageType, ErrorType, Request, Response, codec::SyncCodec
 /// A Wayland session from a `wayland-sessions/*.desktop` file
 #[derive(Clone, Debug, PartialEq)]
 pub struct Session {
+  /// The file name without `.desktop`
+  pub id: String,
   pub name: String,
   pub cmd: Vec<String>,
   pub env: Vec<String>,
@@ -39,6 +41,7 @@ fn find(dirs: impl Iterator<Item = impl AsRef<Path>>) -> Vec<Session> {
       let id = path.file_stem()?.to_string_lossy().into_owned();
       let desktops = entry.desktop_entry("DesktopNames").unwrap_or(&id);
       Some(Session {
+        id: id.clone(),
         name: entry.name(&locales)?.into_owned(),
         cmd: ["systemd-cat", "-t", &id]
           .into_iter()
@@ -154,6 +157,7 @@ mod tests {
     let sessions = find([first.path(), second.path(), Path::new("/nonexistent")].into_iter());
     let names: Vec<_> = sessions.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, ["Cage", "Hyprland"]);
+    assert_eq!(sessions[1].id, "hyprland");
     assert_eq!(
       sessions[1].cmd,
       ["systemd-cat", "-t", "hyprland", "start-hyprland", "--flag"]

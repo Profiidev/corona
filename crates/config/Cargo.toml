@@ -14,7 +14,7 @@ flume.workspace = true
 tracing.workspace = true
 notify = "8.2.0"
 serde_ignored = "0.1.14"
-toml = "1.1.6"
+toml.workspace = true
 config = { version = "0.15.27", default-features = false, features = ["toml"] }
 
 [dev-dependencies]

@@ -1,8 +1,7 @@
 use std::{path::Path, rc::Rc, time::Duration};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use corona_auth_screen::{AuthScreen, Check, MenuItem, Purpose, User, corner_menu};
-use corona_config::ConfigProvider;
 use gpui_kit::{
   Anchor, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
   Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations, WindowOptions,
@@ -13,8 +12,10 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
+use corona_utils::error::ErrorLogExt;
 use greetd::Session;
 
+mod config;
 mod greetd;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
@@ -46,22 +47,30 @@ impl Greeter {
       let Some(session) = session else {
         return Task::ready(Err(anyhow!("no Wayland session to start")));
       };
+      let id = session.id.clone();
       let login = cx
         .background_executor()
         .spawn(async move { greetd::login(user, password, session) });
       cx.spawn(async move |cx| {
         let right = login.await?;
         if right {
+          if let Some(file) = config::last_session_file() {
+            let _ = config::save_session(&file, &id).log_err();
+          }
           // greetd starts the session once we are gone
           cx.update(|cx| cx.quit());
         }
         Ok(right)
       })
     });
+    let sessions = greetd::sessions();
+    let last = config::last_session_file().and_then(|file| config::last_session(&file));
     Self {
       screen: cx.new(|cx| AuthScreen::new(Purpose::Login, user, check, window, cx)),
-      sessions: greetd::sessions(),
-      selected: 0,
+      selected: (sessions.iter())
+        .position(|s| Some(&s.id) == last.as_ref())
+        .unwrap_or(0),
+      sessions,
     }
   }
 
@@ -134,14 +143,18 @@ fn main() {
     .with_assets(corona_components::assets::Assets)
     .run(|cx| {
       gpui_kit::init(cx);
-      // the greeter user has no config of its own unless XDG_CONFIG_HOME points at one
-      if let Err(e) = corona_config::load(cx) {
-        tracing::warn!("greeter: default settings: {e:#}");
-      }
-      // ponytail: language only, `de_DE.UTF-8` as `de`, no LC_* lookup like the shell's
-      let language = (cx.config().shell.language.clone())
+      let config = (config::config_file().context("no home directory"))
+        .and_then(|file| config::read(&file))
+        .inspect_err(|e| tracing::error!("greeter: default settings: {e:#}"))
+        .unwrap_or_default();
+      let language = (config.language)
         .or_else(|| std::env::var("LANG").ok())
         .unwrap_or_default();
+      // the theme loader reads the shell's settings
+      cx.set_global(corona_config::Config {
+        theme: config.theme,
+        ..Default::default()
+      });
       rust_i18n::set_locale(language.split(['_', '.', '-']).next().unwrap_or_default());
       corona_components::assets::load(cx).expect("Failed to load assets");
       cx.foreground_executor()
