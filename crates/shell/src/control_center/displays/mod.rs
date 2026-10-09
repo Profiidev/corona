@@ -86,7 +86,6 @@ impl ControlCenterPanel for DisplaysPanel {
     vec![
       Button::new("displays-refresh")
         .icon(IconName::RefreshCw)
-        .small()
         .cursor_pointer()
         .tooltip(t!("app.displays.refresh"))
         .on_click(cx.listener(|this, _, _, cx| {

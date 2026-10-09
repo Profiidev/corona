@@ -191,6 +191,9 @@ in
       # black console in between
       (lib.mkIf config.boot.plymouth.enable {
         services.greetd.greeterManagesPlymouth = true;
+
+        systemd.services.plymouth-quit.wantedBy = lib.mkForce [ ];
+
         systemd.services.greetd = {
           conflicts = [ "plymouth-quit.service" ];
           after = [ "plymouth-quit.service" ];
