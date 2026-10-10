@@ -337,12 +337,12 @@ impl CapabilitiesFile {
     let network = self.network.clone().unwrap_or_default();
     Capabilities::new()
       .read_roots(expand_all(&fs.read, plugin_dir, data_dir))
-      // ponytail: lexical, so a root above the plugin directory still covers
-      // it; such a root already reaches the config, deny-paths if that matters
+      // ponytail: checked once here, a link the plugin makes below a root
+      // later is up to the write check
       .write_roots(
         expand_all(&fs.write, plugin_dir, data_dir)
           .into_iter()
-          .filter(|root| !root.starts_with(plugin_dir)),
+          .filter(|root| may_write(root, plugin_dir, data_dir)),
       )
       .execute(execute)
       .network_hosts(
@@ -420,6 +420,43 @@ fn expand(raw: &str, plugin_dir: &Path, data_dir: &Path) -> PathBuf {
   }
 }
 
+/// Whether `root` may be granted for writing: inside the plugin's own data, or
+/// apart from everything a write would turn into code or grants, the plugin
+/// and its siblings, their data, corona's state and config
+fn may_write(root: &Path, plugin_dir: &Path, data_dir: &Path) -> bool {
+  let root = resolve(root);
+  if root.starts_with(resolve(data_dir)) {
+    return true;
+  }
+  let plugins = corona_config::plugins::plugin_dirs();
+  let protected = [
+    Some(plugin_dir.to_path_buf()),
+    plugin_dir.parent().map(Into::into),
+    data_dir.parent().map(Into::into),
+    plugins.state.parent().map(Into::into),
+    Some(plugins.local),
+    corona_config::config_dir().ok(),
+  ];
+  let allowed = protected
+    .into_iter()
+    .flatten()
+    .map(|p| resolve(&p))
+    .all(|p| !root.starts_with(&p) && !p.starts_with(&root));
+  if !allowed {
+    tracing::warn!("write access to {} is not granted", root.display());
+  }
+  allowed
+}
+
+/// `path` through its links: its nearest existing ancestor canonical, the rest
+/// as written
+fn resolve(path: &Path) -> PathBuf {
+  path
+    .ancestors()
+    .find_map(|dir| Some(dir.canonicalize().ok()?.join(path.strip_prefix(dir).ok()?)))
+    .unwrap_or_else(|| path.to_path_buf())
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct FsGrantFile {
@@ -428,7 +465,7 @@ struct FsGrantFile {
   #[serde(default, deserialize_with = "grant_paths")]
   read: Vec<String>,
   /// Directories that may be written, absolute or `${dataDir}`; never the
-  /// plugin's own directory.
+  /// plugin's own directory, other plugins or corona's state and config.
   #[serde(default, deserialize_with = "write_paths")]
   write: Vec<String>,
   /// Commands `process.run` may start.
@@ -764,6 +801,15 @@ process = { exit = true }
 
     // an absolute path into the plugin directory is dropped
     assert!(!grant(r#"fs = { write = ["/plugins/a/x"] }"#).has_write_access());
+    // so is one around it, around corona's own directories or other plugins'
+    // data; inside its own data is fine
+    let config = corona_config::config_dir().unwrap();
+    let home = config.parent().unwrap().display();
+    for root in ["/", "/plugins", "/data", "/data/b", &home.to_string()] {
+      let body = format!("fs = {{ write = [\"{root}\"] }}");
+      assert!(!grant(&body).has_write_access(), "{root}");
+    }
+    assert!(grant(r#"fs = { write = ["/data/a/cache", "/elsewhere"] }"#).has_write_access());
 
     let capabilities = grant(r#"clipboard = { read = true }"#);
     assert!(capabilities.is_clipboard_readable());
