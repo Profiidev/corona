@@ -717,6 +717,7 @@ export default class Main extends View {
 import { View } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import * as c from "corona/compositor";
+import * as control from "corona/compositor_control";
 
 export default class Main extends View {
   render(_cx) {
@@ -728,9 +729,9 @@ export default class Main extends View {
       windows: c.listWindows().length,
       activeWindow: c.activeWindow(),
       keyboardLayout: c.keyboardLayout(),
-      focusWindow: c.focusWindow("0xa"),
-      closeWindow: c.closeWindow("0xb"),
-      cursor: c.cursorPosition(),
+      focusWindow: control.focusWindow("0xa"),
+      closeWindow: control.closeWindow("0xb"),
+      cursor: control.cursorPosition(),
     };
     c.focusWorkspace(JSON.stringify(results));
     return v_flex().child("plugin");
@@ -746,7 +747,7 @@ export default class Main extends View {
       cx.set_global(compositor);
     });
     let plugins = Plugins::new();
-    let extra = r#"capabilities = { corona = ["compositor"] }"#;
+    let extra = r#"capabilities = { corona = ["compositor", "compositor_control"] }"#;
     plugins.add(
       "a",
       &manifest("a", extra),

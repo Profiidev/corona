@@ -116,6 +116,12 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       |cx| cx.compositor().keyboard_layout(cx).map(str::to_string),
     ))
     .func(focus_workspace)
+    .into()
+}
+
+/// `corona/compositor_control`: acting on other apps' windows and tracking the cursor.
+pub fn control() -> HostModule {
+  Module::new("corona/compositor_control")
     .func(focus_window)
     .func(close_window)
     .func(cursor_position)
@@ -217,24 +223,29 @@ mod tests {
     try { m.focusWorkspace(3); } catch (e) { thrown = String(e); }
     report({
       focusWorkspace: m.focusWorkspace("1"),
-      focusWindow: m.focusWindow("0xa"),
-      closeWindow: m.closeWindow("0xa"),
-      cursorPosition: m.cursorPosition(),
+      // only in `corona/compositor_control`
+      control: [m.focusWindow, m.closeWindow, m.cursorPosition].every((f) => f === undefined),
       thrown,
     });"#;
     let (view, _) = harness::view(cx, body, module);
     let last = view.last();
     let down = json!({ "message": "compositor down" });
-    for name in [
-      "focusWorkspace",
-      "focusWindow",
-      "closeWindow",
-      "cursorPosition",
-    ] {
-      assert_eq!(last[name], down, "{name}");
-    }
+    assert_eq!(last["focusWorkspace"], down);
+    assert_eq!(last["control"], true);
     let thrown = last["thrown"].as_str().unwrap();
     assert!(thrown.contains("argument 0"), "{thrown}");
+
+    let body = r#"
+    report({
+      focusWindow: m.focusWindow("0xa"),
+      closeWindow: m.closeWindow("0xa"),
+      cursorPosition: m.cursorPosition(),
+    });"#;
+    let (view, _) = harness::view(cx, body, |_, _, _| control());
+    let last = view.last();
+    for name in ["focusWindow", "closeWindow", "cursorPosition"] {
+      assert_eq!(last[name], down, "{name}");
+    }
   }
 
   #[gpui::test]

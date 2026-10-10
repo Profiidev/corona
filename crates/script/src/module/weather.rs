@@ -25,8 +25,13 @@ enum Units {
 struct Location {
   /// Empty for the device's own position.
   name: String,
+  /// Rounded to 0.1°, about 11 km, so plugins do not learn where the user is.
   latitude: f64,
   longitude: f64,
+}
+
+fn coarse(degrees: f64) -> f64 {
+  (degrees * 10.).round() / 10.
 }
 
 #[derive(Serialize, TS)]
@@ -94,8 +99,8 @@ impl From<&wt::Weather> for Weather {
     Self {
       location: Location {
         name: w.location.name.clone(),
-        latitude: w.location.latitude,
-        longitude: w.location.longitude,
+        latitude: coarse(w.location.latitude),
+        longitude: coarse(w.location.longitude),
       },
       units: match w.units {
         wt::Units::Metric => Units::Metric,
@@ -226,6 +231,8 @@ mod tests {
   fn converts() {
     let json = serde_json::to_value(Weather::from(&sample())).unwrap();
     assert_eq!(json["location"]["name"], "");
+    assert_eq!(json["location"]["latitude"], 47.9);
+    assert_eq!(json["location"]["longitude"], 12.);
     assert_eq!(json["units"], "metric");
     assert_eq!(json["current"]["condition"], "partly_cloudy");
     assert_eq!(json["daily"][0]["condition"], "rain");

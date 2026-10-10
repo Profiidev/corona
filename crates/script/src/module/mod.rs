@@ -40,8 +40,10 @@ pub mod weather;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CoronaModule {
-  /// Workspaces, monitors and windows.
+  /// Workspaces, monitors and windows, and switching workspaces.
   Compositor,
+  /// Focusing and closing other apps' windows, and the cursor position.
+  CompositorControl,
   /// Audio devices, streams and who records.
   Pipewire,
   /// Network interfaces, Wi-Fi and VPNs.
@@ -88,6 +90,7 @@ impl CoronaModule {
   ) -> HostModule {
     match self {
       Self::Compositor => compositor::module(reads, subs, cx),
+      Self::CompositorControl => compositor::control(),
       Self::Pipewire => pipewire::module(reads, subs, cx),
       Self::Network => network::module(reads, subs, cx),
       Self::Mpris => mpris::module(reads, subs, cx),
@@ -354,6 +357,7 @@ mod tests {
   fn module_names() {
     let all = [
       (CoronaModule::Compositor, "compositor"),
+      (CoronaModule::CompositorControl, "compositor_control"),
       (CoronaModule::Pipewire, "pipewire"),
       (CoronaModule::Network, "network"),
       (CoronaModule::Mpris, "mpris"),
