@@ -274,7 +274,13 @@ pub fn module(
 mod tests {
   use std::time::{Duration, SystemTime};
 
+  use corona_utils::test_bus::{TestBus, wait_until};
+  use futures_lite::future::block_on;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use gpui_shell::ShellRuntime;
+
   use super::*;
+  use crate::{module::harness, plugin::paths::Paths};
 
   fn notification(urgency: nt::Urgency, time: SystemTime) -> nt::Notification {
     nt::Notification {
@@ -320,5 +326,48 @@ mod tests {
     let time = UNIX_EPOCH - Duration::from_secs(1);
     let converted = Notification::from(&notification(nt::Urgency::Normal, time));
     assert_eq!(converted.time, 0.);
+  }
+
+  #[gpui::test]
+  fn actions_reach_the_plugin_that_notified(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      let executor = cx.foreground_executor().clone();
+      executor.block_on(nt::init(cx, &conn, true)).unwrap()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths {
+      state: dir.path().join("state"),
+      local: dir.path().join("local"),
+    };
+    cx.set_global(ScriptManager::new(
+      ShellRuntime::new_isolated().unwrap(),
+      paths,
+    ));
+
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.notify({ summary: "hi", actions: [{ key: "open", label: "Open" }] }).then((id) => {
+        report(id);
+        m.nextAction().then(report);
+      });
+    }"#;
+    let plugin = PluginRef {
+      id: "a",
+      name: "Plugin A",
+    };
+    let (view, cx) = harness::view(cx, body, |reads, subs, cx| module(plugin, reads, subs, cx));
+    wait_until(cx, |cx| {
+      !view.reports.borrow().is_empty() && cx.read(|cx| !cx.notifications().list(cx).is_empty())
+    });
+    let id = view.reports.borrow()[0].as_u64().unwrap() as u32;
+    let app_name = cx.read(|cx| cx.notifications().list(cx)[0].app_name.clone());
+    assert_eq!(app_name, "Plugin A");
+
+    cx.update(|_, cx| cx.notifications().clone().invoke_action(id, "open", cx));
+    wait_until(cx, |_| view.reports.borrow().len() == 2);
+    assert_eq!(view.last(), serde_json::json!({ "id": id, "key": "open" }));
   }
 }

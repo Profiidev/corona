@@ -90,7 +90,10 @@ pub fn module(plugin: PluginRef) -> HostModule {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit::{self as gpui, TestAppContext};
+
   use super::*;
+  use crate::module::harness;
 
   #[test]
   fn keys_are_namespaced_and_not_empty() {
@@ -98,5 +101,30 @@ mod tests {
     let attributes = attributes("a", "token").unwrap();
     assert_eq!(attributes[1], ("plugin", "a".into()));
     assert_eq!(attributes[2], ("key", "token".into()));
+  }
+
+  #[test]
+  fn declarations() {
+    let module: HostModule = module(PluginRef { id: "a", name: "A" });
+    let declared = module.declared().unwrap();
+    for line in [
+      "export function get(key: string): Promise<string | null | Error>;",
+      "export function set(key: string, value: string): Promise<void | Error>;",
+      "export function remove(key: string): Promise<void | Error>;",
+    ] {
+      assert!(declared.lines().any(|l| l == line), "{line} in\n{declared}");
+    }
+  }
+
+  #[gpui::test]
+  fn empty_keys_fail_without_the_keyring(cx: &mut TestAppContext) {
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      Promise.all([m.get(""), m.set("", "x"), m.remove("")]).then(report);
+    }"#;
+    let (view, cx) = harness::view(cx, body, |_, _, _| module(PluginRef { id: "a", name: "A" }));
+    cx.run_until_parked();
+    let error = serde_json::json!({ "message": "the key is empty" });
+    assert_eq!(view.last(), serde_json::json!([error, error, error]));
   }
 }

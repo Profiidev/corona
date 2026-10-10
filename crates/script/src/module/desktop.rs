@@ -114,7 +114,34 @@ pub fn module() -> HostModule {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit::{self as gpui, TestAppContext};
+
   use super::*;
+  use crate::module::harness;
+
+  #[gpui::test]
+  fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
+    let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt")]);"#;
+    let (view, cx) = harness::view(cx, body, |_, _, _| module());
+    let reports = view.last();
+    assert!(reports[0]["message"].as_str().unwrap().contains("openPath"));
+    assert!(
+      reports[1]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not absolute")
+    );
+    assert_eq!(cx.opened_url(), None);
+  }
+
+  #[gpui::test]
+  fn opens_uris(cx: &mut TestAppContext) {
+    let (view, cx) = harness::view(cx, r#"report(m.openUri("mailto:a@b.c"));"#, |_, _, _| {
+      module()
+    });
+    assert_eq!(view.last(), serde_json::Value::Null);
+    assert_eq!(cx.opened_url().as_deref(), Some("mailto:a@b.c"));
+  }
 
   #[test]
   fn openable_paths() {

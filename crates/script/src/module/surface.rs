@@ -172,3 +172,40 @@ pub fn module(
     ))
     .into()
 }
+
+#[cfg(test)]
+mod tests {
+  use serde_json::json;
+
+  use super::*;
+
+  #[test]
+  fn bars() {
+    for (placement, side, vertical) in [
+      (Placement::Top, "top", false),
+      (Placement::Bottom, "bottom", false),
+      (Placement::Left, "left", true),
+      (Placement::Right, "right", true),
+    ] {
+      assert_eq!(
+        serde_json::to_value(Bar::new(placement, true)).unwrap(),
+        json!({ "side": side, "vertical": vertical, "bare": true })
+      );
+    }
+  }
+
+  #[test]
+  fn only_own_panels_under_the_plugin_id() {
+    let own = Own {
+      id: "a".into(),
+      panels: vec!["p".into()],
+      opener: Rc::default(),
+    };
+    assert_eq!(own.panel("p").unwrap(), "a:p");
+    // not another plugin's, named in full
+    for name in ["q", "a:p", "b:p", ""] {
+      let error = own.panel(name).unwrap_err().to_string();
+      assert!(error.contains("no panel"), "{name}: {error}");
+    }
+  }
+}

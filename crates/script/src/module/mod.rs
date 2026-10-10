@@ -193,6 +193,120 @@ impl ModuleExt for Policy {
   }
 }
 
+/// Runs a module in a real script view, for tests of what plugins see.
+#[cfg(test)]
+pub(crate) mod harness {
+  use std::{cell::RefCell, fs, rc::Rc};
+
+  use gpui_kit::{
+    AnyView, App, Context, Entity, IntoElement, ParentElement as _, Render, Subscription,
+    TestAppContext, VisualTestContext, Window, div,
+  };
+  use gpui_shell::{
+    HostModule, ShellRoot, ShellRuntime,
+    policy::{self, Policy},
+  };
+  use serde_json::Value;
+
+  use super::{Subscribe, Subscriptions};
+  use crate::host_fn::Module;
+  use corona_macros::named;
+
+  /// Shows the script, so it renders
+  struct Host(Option<AnyView>);
+
+  impl Render for Host {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+      div().children(self.0.clone())
+    }
+  }
+
+  pub(crate) struct View {
+    /// What `report(value)` was called with, in order
+    pub reports: Rc<RefCell<Vec<Value>>>,
+    pub reads: Subscriptions,
+    _root: Entity<ShellRoot>,
+    _subs: Vec<Subscription>,
+    _dir: tempfile::TempDir,
+  }
+
+  impl View {
+    pub fn last(&self) -> Value {
+      let reports = self.reports.borrow();
+      reports.last().cloned().expect("nothing reported")
+    }
+  }
+
+  /// A view running `body` on every render, with the module `module` builds
+  /// imported as `m` and `report` from `corona/test`.
+  pub(crate) fn view<'a>(
+    cx: &'a mut TestAppContext,
+    body: &str,
+    module: impl FnOnce(&Subscriptions, &mut Vec<Subscribe>, &mut App) -> HostModule,
+  ) -> (View, &'a mut VisualTestContext) {
+    let reports: Rc<RefCell<Vec<Value>>> = Rc::default();
+    let report = reports.clone();
+    let test: HostModule = Module::new("corona/test")
+      .func(named!("report", move |value: Value| {
+        report.borrow_mut().push(value)
+      }))
+      .into();
+    let (reads, mut subs) = (Subscriptions::default(), Vec::new());
+    let module = cx.update(|cx| module(&reads, &mut subs, cx));
+
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("main.js");
+    let source = format!(
+      r#"
+import {{ View }} from "gpui-kit";
+import {{ v_flex }} from "gpui-base";
+import {{ report }} from "corona/test";
+import * as m from "{}";
+
+export default class Main extends View {{
+  render(_cx) {{
+    {body}
+    return v_flex().child("test");
+  }}
+}}
+"#,
+      module.name()
+    );
+    fs::write(&main, source).unwrap();
+    let runtime =
+      ShellRuntime::new_isolated_with_components(gpui_component_shell::components().unwrap())
+        .unwrap();
+    let policy = Policy::new()
+      .with_host_module(test)
+      .unwrap()
+      .with_host_module(module)
+      .unwrap();
+
+    let (host, cx) = cx.add_window_view(|_, _| Host(None));
+    let (root, subs) = cx.update(|window, cx| {
+      policy::set_default(policy);
+      let root = runtime.try_load_entry(&main, window, cx);
+      policy::set_default(Policy::new());
+      let root = root.unwrap();
+      let subs = subs.into_iter().map(|s| s(&runtime, &root, cx)).collect();
+      host.update(cx, |host, cx| {
+        host.0 = Some(root.clone().into());
+        cx.notify();
+      });
+      (root, subs)
+    });
+    cx.run_until_parked();
+    let view = View {
+      reports,
+      reads,
+      _root: root,
+      _subs: subs,
+      _dir: dir,
+    };
+    (view, cx)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

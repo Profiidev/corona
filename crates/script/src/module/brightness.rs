@@ -113,7 +113,46 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
 
 #[cfg(test)]
 mod tests {
+  use corona_config::Config;
+  use corona_utils::test_bus::{TestBus, wait_until};
+  use futures_lite::future::block_on;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use serde_json::json;
+
   use super::*;
+  use crate::module::harness;
+
+  #[gpui::test]
+  fn reads_and_failures(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let conn = block_on(bus.conn());
+    let mut config = Config::default();
+    // never the real monitors
+    config.brightness.enable_ddcutil = false;
+    cx.set_global(config);
+    cx.update(|cx| br::init(cx, &conn).unwrap());
+
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.setBrightness("nope", 5).then(report);
+    }
+    report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil() });"#;
+    let (view, cx) = harness::view(cx, body, module);
+    wait_until(cx, |_| view.reports.borrow().len() >= 2);
+
+    let reports = view.reports.borrow();
+    assert!(
+      reports.contains(&json!({ "message": "no display nope" })),
+      "{reports:?}"
+    );
+    let read = reports.iter().find(|r| r.get("ddcutil").is_some()).unwrap();
+    assert_eq!(read["displays"], true);
+    assert_eq!(read["ddcutil"]["enabled"], false);
+    assert!(read["ddcutil"]["available"].is_boolean());
+    // listing renders again as displays come and go, `ddcutil` is fixed
+    assert!(view.reads.contains(Updates::Displays.into()));
+  }
 
   fn display(kind: br::DisplayKind, unavailable: Option<br::Unavailable>) -> serde_json::Value {
     let display = br::Display {
