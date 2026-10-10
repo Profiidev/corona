@@ -1,0 +1,2971 @@
+Plugin I/O: what a ported shell plugin needs to talk to the system.
+
+- process.spawn(cmd, args, {env, cwd, stdout, stderr}) for long-running
+  children read line by line. The child leads its own process group, which is
+  SIGKILLed when the owning view, plugin or runtime goes away. run() takes
+  {env, cwd} too. Children still start from an empty environment: granted host
+  variables (Capabilities::process_env) are copied in, and only those names may
+  be set explicitly. cwd must be absolute and inside a read root.
+- net.connect({path}) for granted unix sockets (Capabilities::network_unix),
+  and reads without the 30 s idle timeout, on a dedicated thread instead of the
+  shared background pool.
+- fetch: binary bodies (arrayBuffer()), a timeout option, and stream: true.
+- image()/AvatarImage.new() take a path or raster bytes. A URL string used to
+  make GPUI fetch around the network grant and is now refused; a relative path
+  resolves under Capabilities::asset_root and an absolute one must be in a read
+  root.
+
+diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -28,7 +28,10 @@
+     read_roots: Vec<PathBuf>,
+     write_roots: Vec<PathBuf>,
+     execute: ExecuteGrant,
++    process_env: Vec<String>,
+     network_hosts: Vec<String>,
++    network_unix: Vec<PathBuf>,
++    asset_root: Option<PathBuf>,
+     http_requests: Vec<HttpRequestGrant>,
+     storage: bool,
+     clipboard_read: bool,
+@@ -151,6 +154,43 @@
+         self
+     }
+ 
++    /// Host environment variables a child process inherits, and the only
++    /// names a script may set for one. Everything else is cleared, so a script
++    /// cannot inject `LD_PRELOAD` or a `PATH` of its own.
++    pub fn process_env(mut self, names: impl IntoIterator<Item = String>) -> Self {
++        self.process_env = names.into_iter().collect();
++        self
++    }
++
++    pub fn may_pass_env(&self, name: &str) -> bool {
++        self.process_env.iter().any(|allowed| allowed == name)
++    }
++
++    pub fn process_env_names(&self) -> &[String] {
++        &self.process_env
++    }
++
++    /// Unix sockets `net.connect({ path })` may reach, as exact absolute paths.
++    pub fn network_unix(mut self, paths: impl IntoIterator<Item = PathBuf>) -> Self {
++        self.network_unix = paths.into_iter().collect();
++        self
++    }
++
++    pub fn may_connect_unix(&self, path: &Path) -> bool {
++        path.is_absolute() && self.network_unix.iter().any(|allowed| allowed == path)
++    }
++
++    /// The directory a relative `image()` path resolves against. Without one a
++    /// relative path names an embedded asset, as it does standalone.
++    pub fn asset_root(mut self, path: PathBuf) -> Self {
++        self.asset_root = Some(path);
++        self
++    }
++
++    pub(crate) fn asset_root_path(&self) -> Option<&Path> {
++        self.asset_root.as_deref()
++    }
++
+     pub fn network_hosts(mut self, hosts: impl IntoIterator<Item = String>) -> Self {
+         self.network_hosts = hosts
+             .into_iter()
+@@ -355,6 +395,7 @@
+     NotGranted(Access),
+     OutsideRoots { path: PathBuf, access: Access },
+     ExecuteDenied(String),
++    EnvDenied(String),
+     StorageDenied,
+ }
+ 
+@@ -377,6 +418,10 @@
+                 f,
+                 "running `{command}` is not granted; add it to capabilities.fs.execute in the manifest"
+             ),
++            CapabilityError::EnvDenied(name) => write!(
++                f,
++                "environment variable `{name}` is not granted; add it to capabilities.process.env in the manifest"
++            ),
+             CapabilityError::StorageDenied => {
+                 f.write_str("storage is not granted; set capabilities.storage to true")
+             }
+diff --git a/crates/shell/src/engine/quickjs/host.rs b/crates/shell/src/engine/quickjs/host.rs
+--- a/crates/shell/src/engine/quickjs/host.rs
++++ b/crates/shell/src/engine/quickjs/host.rs
+@@ -1322,6 +1322,11 @@
+             !message.contains("capabilities"),
+             "open_url must not ask for a grant: {message}"
+         );
++        let message = with_host(|ctx| error_of(ctx, "__open_url('file:///etc/passwd')"));
++        assert!(
++            message.contains("absolute HTTP(S) URL"),
++            "unexpected message: {message}"
++        );
+     }
+ 
+     #[test]
+diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/quickjs/mod.rs
+--- a/crates/shell/src/engine/quickjs/mod.rs
++++ b/crates/shell/src/engine/quickjs/mod.rs
+@@ -6725,7 +6725,7 @@
+     h_flex: () => element(__h_flex()),
+     v_flex: () => element(__v_flex()),
+     svg: (path) => element(__svg(String(path))),
+-    image: (path) => element(__image(String(path))),
++    image: (source) => element(__image(source instanceof Uint8Array ? source : String(source))),
+     PathBuilder: {
+       fill: () => pathBuilder(true, 0),
+       stroke: (width) => pathBuilder(false, finitePositive(width, "stroke width")),
+@@ -6805,7 +6805,10 @@
+         visible_pages === undefined ? 7 : Number(visible_pages),
+       ),
+     Avatar: { new: () => element(__avatar()) },
+-    AvatarImage: { new: (path) => element(__avatar_image(String(path))) },
++    AvatarImage: {
++      new: (source) =>
++        element(__avatar_image(source instanceof Uint8Array ? source : String(source))),
++    },
+     AvatarFallback: { new: () => element(__avatar_fallback()) },
+     ProgressTrack: { new: () => element(__progress_track()) },
+     ProgressIndicator: { new: () => element(__progress_indicator()) },
+@@ -7159,7 +7162,7 @@
+                 }),
+             )?;
+             text_constructor(&globals, "__svg", runtime.clone(), Component::Svg)?;
+-            text_constructor(&globals, "__image", runtime.clone(), Component::Image)?;
++            image_constructor(&globals, "__image", "image(source)", runtime.clone(), Component::Image)?;
+             text_constructor(
+                 &globals,
+                 "__accordion",
+@@ -7189,9 +7192,10 @@
+             )?;
+             globals.set("__pagination_items", Func::from(pagination_items))?;
+             constructor(&globals, "__avatar", runtime.clone(), || Component::Avatar)?;
+-            text_constructor(
++            image_constructor(
+                 &globals,
+                 "__avatar_image",
++                "AvatarImage.new(source)",
+                 runtime.clone(),
+                 Component::AvatarImage,
+             )?;
+@@ -8719,6 +8723,129 @@
+     )
+ }
+ 
++/// `image(source)` and `AvatarImage.new(source)`, with the source checked
++/// against the grant before it is described.
++fn image_constructor(
++    globals: &Object<'_>,
++    name: &str,
++    api: &'static str,
++    runtime: Weak<ShellRuntime>,
++    build: fn(crate::spec::ImageSpec) -> Component,
++) -> JsResult<()> {
++    globals.set(
++        name,
++        Func::from(
++            move |ctx: Ctx<'_>, source: ImageArgument| -> JsResult<SpecId> {
++                let spec = resolve_image(&host::capabilities(), api, &ctx, source)?;
++                Ok(upgrade(&runtime, &ctx)?.push_node(build(spec)))
++            },
++        ),
++    )
++}
++
++/// `image()`'s argument: a `Uint8Array` (`None` when detached) or a path.
++enum ImageArgument {
++    Bytes(Option<Vec<u8>>),
++    Path(String),
++}
++
++impl<'js> FromJs<'js> for ImageArgument {
++    fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> JsResult<Self> {
++        if let Ok(bytes) = rquickjs::TypedArray::<u8>::from_js(ctx, value.clone()) {
++            return Ok(Self::Bytes(bytes.as_bytes().map(<[u8]>::to_vec)));
++        }
++        String::from_js(ctx, value).map(Self::Path)
++    }
++}
++
++/// Where an image may come from: raster bytes, a file the grant covers, or a
++/// path under the application's own directory. Never a URL, which GPUI would
++/// fetch on its own and around the network grant.
++fn resolve_image(
++    capabilities: &crate::Capabilities,
++    api: &str,
++    ctx: &Ctx<'_>,
++    source: ImageArgument,
++) -> JsResult<crate::spec::ImageSpec> {
++    use crate::spec::ImageSpec;
++    use std::path::Component as Part;
++
++    let source = match source {
++        ImageArgument::Path(source) => source,
++        ImageArgument::Bytes(None) => {
++            return Err(Exception::throw_type(
++                ctx,
++                &format!("{api} received a detached Uint8Array"),
++            ));
++        }
++        ImageArgument::Bytes(Some(bytes)) => {
++            // SVG has no magic bytes, so it is refused here like any unknown data.
++            let format = image::guess_format(&bytes)
++            .ok()
++            .and_then(|format| gpui::ImageFormat::from_mime_type(format.to_mime_type()))
++            .filter(|format| *format != gpui::ImageFormat::Svg)
++            .ok_or_else(|| {
++                Exception::throw_type(
++                    ctx,
++                    &format!("{api} bytes are not a PNG, JPEG, WebP, GIF, BMP, TIFF, ICO or PNM image"),
++                )
++            })?;
++            return Ok(ImageSpec::Bytes(std::sync::Arc::new(
++                gpui::Image::from_bytes(format, bytes),
++            )));
++        }
++    };
++    if reqwest::Url::parse(&source).is_ok() {
++        return Err(Exception::throw_type(
++            ctx,
++            &format!(
++                "{api} does not load URLs; fetch the bytes and pass them instead: \
++                 image(new Uint8Array(await (await fetch(url)).arrayBuffer()))"
++            ),
++        ));
++    }
++    let path = Path::new(&source);
++    if path.is_absolute() {
++        capabilities
++            .open(path, crate::capability::Access::Read)
++            .map_err(|error| Exception::throw_type(ctx, &format!("{api}: {error}")))?;
++        return Ok(ImageSpec::File(path.to_path_buf()));
++    }
++    let Some(root) = capabilities.asset_root_path() else {
++        return Ok(ImageSpec::Embedded(source));
++    };
++    if !path
++        .components()
++        .all(|part| matches!(part, Part::Normal(_) | Part::CurDir))
++    {
++        return Err(Exception::throw_type(
++            ctx,
++            &format!("{api} path `{source}` must stay inside the application directory"),
++        ));
++    }
++    let joined = root.join(path);
++    // A link inside the directory must not lead out of it, dangling or not: the
++    // deepest part that is there at all, link or file, has to resolve inside.
++    let existing = joined
++        .ancestors()
++        .take_while(|part| part.starts_with(root))
++        .find(|part| part.symlink_metadata().is_ok());
++    if let Some(existing) = existing {
++        let inside = root.canonicalize().is_ok_and(|root| {
++            existing
++                .canonicalize()
++                .is_ok_and(|target| target.starts_with(root))
++        });
++        if !inside {
++            return Err(Exception::throw_type(
++                ctx,
++                &format!("{api} path `{source}` leads outside the application directory"),
++            ));
++        }
++    }
++    Ok(ImageSpec::File(joined))
++}
++
+ /// A constructor whose second argument is a one-based accessibility index.
+ ///
+ /// `TableRow::new(id, row_index)` and the two cell types take their index in
+diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engine/quickjs/sandbox.rs
+--- a/crates/shell/src/engine/quickjs/sandbox.rs
++++ b/crates/shell/src/engine/quickjs/sandbox.rs
+@@ -54,17 +54,20 @@
+ 
+ use std::{
+     cell::Cell,
++    ffi::OsString,
++    path::PathBuf,
+     sync::atomic::{AtomicBool, Ordering},
+     time::{Duration, Instant},
+ };
+ 
+ use rquickjs::{
+-    Ctx, Exception, Function, IntoJs, Object, Promise, Result as JsResult, Value,
++    Ctx, Exception, FromJs, Function, IntoJs, Object, Promise, Result as JsResult, TypedArray,
++    Value,
+     function::{Args, Func, Opt, Rest},
+ };
+ 
+ use crate::{
+-    capability::CapabilityError,
++    capability::{Access, CapabilityError},
+     scope::{self, ScopePhase},
+ };
+ 
+@@ -293,13 +296,26 @@
+ /// Output is captured rather than inherited. A script that runs a command
+ /// almost always wants what it said, and in a windowed application a child
+ /// writing to the host's stdout is writing to nowhere a user will look.
+-fn run<'js>(ctx: Ctx<'js>, command: String, args: Opt<Vec<String>>) -> JsResult<Promise<'js>> {
++fn run<'js>(
++    ctx: Ctx<'js>,
++    command: String,
++    args: Opt<Vec<String>>,
++    options: Opt<ProcessOptions>,
++) -> JsResult<Promise<'js>> {
+     if !host::capabilities().may_run(&command) {
+         return Err(Exception::throw_type(
+             &ctx,
+             &CapabilityError::ExecuteDenied(command).to_string(),
+         ));
+     }
++    let options = options.0.unwrap_or_default();
++    if options.stdout.is_some() || options.stderr.is_some() {
++        return Err(Exception::throw_type(
++            &ctx,
++            "process.run(command, args, options) captures both streams; stdout and stderr are spawn() options",
++        ));
++    }
++    let (env, cwd) = options.authorize(&ctx)?;
+ 
+     let args = args.0.unwrap_or_default();
+     let cancellation = crate::process::Cancellation::new();
+@@ -312,6 +328,8 @@
+             crate::process::run_bounded(
+                 &command,
+                 &args,
++                &env,
++                cwd.as_deref(),
+                 crate::process::Limits::default(),
+                 worker_cancellation,
+             )
+@@ -319,6 +337,342 @@
+     )
+ }
+ 
++/// `{ env, cwd, stdout, stderr }`, shared by `run` and `spawn`.
++#[derive(Default)]
++struct ProcessOptions {
++    env: Vec<(String, String)>,
++    cwd: Option<String>,
++    stdout: Option<bool>,
++    stderr: Option<bool>,
++}
++
++impl<'js> FromJs<'js> for ProcessOptions {
++    fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> JsResult<Self> {
++        if value.is_null() || value.is_undefined() {
++            return Ok(Self::default());
++        }
++        let Some(object) = value.into_object() else {
++            return Err(Exception::throw_type(
++                ctx,
++                "process options expect an object with env, cwd, stdout and/or stderr",
++            ));
++        };
++        for key in object.keys::<String>() {
++            let key = key?;
++            if !matches!(key.as_str(), "env" | "cwd" | "stdout" | "stderr") {
++                return Err(Exception::throw_type(
++                    ctx,
++                    &format!("unknown process option `{key}`; expected env, cwd, stdout or stderr"),
++                ));
++            }
++        }
++        let mut env = Vec::new();
++        if let Some(values) = object.get::<_, Option<Object>>("env")? {
++            for entry in values.props::<String, Value>() {
++                let (name, value) = entry?;
++                let value = String::from_js(ctx, value).map_err(|_| {
++                    Exception::throw_type(ctx, "process options.env expects string values")
++                })?;
++                env.push((name, value));
++            }
++        }
++        let stream = |name: &str| -> JsResult<Option<bool>> {
++            match object.get::<_, Option<String>>(name)?.as_deref() {
++                None => Ok(None),
++                Some("pipe") => Ok(Some(true)),
++                Some("ignore") => Ok(Some(false)),
++                Some(other) => Err(Exception::throw_type(
++                    ctx,
++                    &format!("process options.{name} `{other}` must be \"pipe\" or \"ignore\""),
++                )),
++            }
++        };
++        Ok(Self {
++            env,
++            cwd: object.get("cwd")?,
++            stdout: stream("stdout")?,
++            stderr: stream("stderr")?,
++        })
++    }
++}
++
++impl ProcessOptions {
++    /// Checks the options against the grant on the calling thread, so a denial
++    /// throws at the call site.
++    fn authorize(&self, ctx: &Ctx<'_>) -> JsResult<(Vec<(OsString, OsString)>, Option<PathBuf>)> {
++        let capabilities = host::capabilities();
++        let env = crate::process::child_env(&capabilities, self.env.clone())
++            .map_err(|error| Exception::throw_type(ctx, &error.to_string()))?;
++        let cwd = match &self.cwd {
++            None => None,
++            Some(cwd) => {
++                let path = PathBuf::from(cwd);
++                if !path.is_absolute() {
++                    return Err(Exception::throw_type(
++                        ctx,
++                        &format!("process options.cwd `{cwd}` must be an absolute path"),
++                    ));
++                }
++                capabilities
++                    .open(&path, Access::Read)
++                    .map_err(|error| Exception::throw_type(ctx, &error.to_string()))?;
++                Some(path)
++            }
++        };
++        Ok((env, cwd))
++    }
++}
++
++const CHILD_IO_LIMIT: usize = 1024 * 1024;
++
++/// Starts a long-running command the script talks to line by line.
++///
++/// The child leads its own process group, and every promise it hands out is a
++/// task whose cancellation kills that group: when the view, the plugin or the
++/// runtime goes away, so does the child and anything it started.
++#[cfg(unix)]
++fn spawn<'js>(
++    ctx: Ctx<'js>,
++    command: String,
++    args: Opt<Vec<String>>,
++    options: Opt<ProcessOptions>,
++) -> JsResult<Object<'js>> {
++    if !host::capabilities().may_run(&command) {
++        return Err(Exception::throw_type(
++            &ctx,
++            &CapabilityError::ExecuteDenied(command).to_string(),
++        ));
++    }
++    let options = options.0.unwrap_or_default();
++    let (env, cwd) = options.authorize(&ctx)?;
++    let args = args.0.unwrap_or_default();
++    let mut spawned = crate::process::spawn(
++        &command,
++        &args,
++        &env,
++        cwd.as_deref(),
++        options.stdout.unwrap_or(true),
++        options.stderr.unwrap_or(true),
++    )
++    .map_err(|error| Exception::throw_type(&ctx, &error))?;
++
++    let pid = spawned.pid;
++    let exited = spawned.exited.clone();
++    let killer = {
++        let exited = exited.clone();
++        move || crate::process::signal_group(pid, &exited, libc::SIGKILL)
++    };
++
++    // Registered after the spawn because the hook needs the pid; a refused
++    // registration must not leave the child running unowned.
++    let (exit, done) = scheduler::actor_cancellable(&ctx, "process.spawn(command)", killer.clone())
++        .inspect_err(|_| killer())?;
++    let stdout = spawned
++        .child
++        .stdout
++        .take()
++        .map(|out| Box::new(out) as ChildOutput);
++    let stderr = spawned
++        .child
++        .stderr
++        .take()
++        .map(|err| Box::new(err) as ChildOutput);
++    let mut stdin = spawned.child.stdin.take().expect("piped stdin");
++    let child = spawned.child;
++    let waited = exited.clone();
++    std::thread::Builder::new()
++        .name("process.spawn wait".to_owned())
++        .spawn(move || done.settle(crate::process::wait_spawned(child, pid, &waited)))
++        .map_err(|error| {
++            killer();
++            Exception::throw_type(&ctx, &format!("waiting for `{command}` failed: {error}"))
++        })?;
++
++    let object = Object::new(ctx.clone())?;
++    object.set("pid", pid)?;
++    object.set(
++        "readLine",
++        line_reader(&ctx, "child.readLine()", stdout, &killer)?,
++    )?;
++    object.set(
++        "readErrLine",
++        line_reader(&ctx, "child.readErrLine()", stderr, &killer)?,
++    )?;
++
++    let writer = scheduler::serve("process.spawn stdin", move |bytes: Vec<u8>| {
++        use std::io::Write as _;
++        stdin
++            .write_all(&bytes)
++            .and_then(|()| stdin.flush())
++            .map_err(|error| format!("writing to the child failed: {error}"))
++    })
++    .map_err(|error| Exception::throw_type(&ctx, &error))?;
++    let write_killer = killer.clone();
++    object.set(
++        "write",
++        Func::from(
++            move |ctx: Ctx<'js>, data: Value<'js>| -> JsResult<Promise<'js>> {
++                let bytes = if let Some(text) = data.as_string() {
++                    text.to_string()?.into_bytes()
++                } else {
++                    TypedArray::<u8>::from_js(&ctx, data)
++                        .ok()
++                        .and_then(|bytes| bytes.as_bytes().map(<[u8]>::to_vec))
++                        .ok_or_else(|| {
++                            Exception::throw_type(
++                                &ctx,
++                                "child.write(data) expects a string or Uint8Array",
++                            )
++                        })?
++                };
++                if bytes.len() > CHILD_IO_LIMIT {
++                    return Err(Exception::throw_range(
++                        &ctx,
++                        &format!("child.write(data) exceeded the {CHILD_IO_LIMIT} byte limit"),
++                    ));
++                }
++                let (promise, done) =
++                    scheduler::actor_cancellable(&ctx, "child.write(data)", write_killer.clone())?;
++                if let Err(error) = writer.send((bytes, done)) {
++                    error
++                        .0
++                        .1
++                        .settle(Err("the child's stdin is closed".to_owned()));
++                }
++                Ok(promise)
++            },
++        ),
++    )?;
++    object.set(
++        "kill",
++        Func::from(move |ctx: Ctx<'js>, signal: Opt<String>| -> JsResult<()> {
++            let signal = match signal.0.as_deref().unwrap_or("SIGTERM") {
++                "SIGTERM" => libc::SIGTERM,
++                "SIGKILL" => libc::SIGKILL,
++                "SIGINT" => libc::SIGINT,
++                "SIGHUP" => libc::SIGHUP,
++                other => {
++                    return Err(Exception::throw_type(
++                        &ctx,
++                        &format!("child.kill(signal) does not know `{other}`; expected SIGTERM, SIGKILL, SIGINT or SIGHUP"),
++                    ));
++                }
++            };
++            crate::process::signal_group(pid, &exited, signal);
++            Ok(())
++        }),
++    )?;
++    // The exit promise stays in the JS heap: a closure over it, rather than a
++    // `Persistent` that would outlive the runtime inside a Rust closure.
++    let wait: Function = ctx.eval::<Function, _>("(p) => () => p")?.call((exit,))?;
++    object.set("wait", wait)?;
++    Ok(object)
++}
++
++#[cfg(unix)]
++type ChildOutput = Box<dyn std::io::Read + Send>;
++
++/// `readLine`: one line per call from a dedicated reader thread, `null` at EOF
++/// or when the stream was ignored.
++#[cfg(unix)]
++fn line_reader<'js>(
++    ctx: &Ctx<'js>,
++    api: &'static str,
++    stream: Option<ChildOutput>,
++    killer: &(impl Fn() + Clone + 'static),
++) -> JsResult<Function<'js>> {
++    use std::io::{BufRead as _, BufReader, Read as _};
++
++    /// Drains what nobody reads any more, so the child never blocks on a full
++    /// pipe after the script dropped its reader.
++    struct Drain(BufReader<ChildOutput>);
++    impl Drop for Drain {
++        fn drop(&mut self) {
++            let _ = std::io::copy(&mut self.0, &mut std::io::sink());
++        }
++    }
++
++    let lines = match stream {
++        None => None,
++        Some(stream) => {
++            let mut reader = Drain(BufReader::new(stream));
++            Some(
++                scheduler::serve(api, move |()| {
++                    let mut line = Vec::new();
++                    let count = (&mut reader.0)
++                        .take(CHILD_IO_LIMIT as u64 + 1)
++                        .read_until(b'\n', &mut line)
++                        .map_err(|error| format!("reading from the child failed: {error}"))?;
++                    if count == 0 {
++                        return Ok(Line(None));
++                    }
++                    if line.last() == Some(&b'\n') {
++                        line.pop();
++                        if line.last() == Some(&b'\r') {
++                            line.pop();
++                        }
++                    } else if line.len() > CHILD_IO_LIMIT {
++                        return Err(format!(
++                            "a child output line exceeded {CHILD_IO_LIMIT} bytes"
++                        ));
++                    }
++                    Ok(Line(Some(String::from_utf8_lossy(&line).into_owned())))
++                })
++                .map_err(|error| Exception::throw_type(ctx, &error))?,
++            )
++        }
++    };
++    let killer = killer.clone();
++    Function::new(
++        ctx.clone(),
++        move |ctx: Ctx<'js>| -> JsResult<Promise<'js>> {
++            let (promise, done) = scheduler::actor_cancellable(&ctx, api, killer.clone())?;
++            match &lines {
++                Some(lines) => {
++                    if let Err(error) = lines.send(((), done)) {
++                        error.0.1.settle(Ok(Line(None)));
++                    }
++                }
++                None => done.settle(Ok(Line(None))),
++            }
++            Ok(promise)
++        },
++    )
++}
++
++/// A line of child output, or `null` at its end.
++#[cfg(unix)]
++struct Line(Option<String>);
++
++#[cfg(unix)]
++impl<'js> IntoJs<'js> for Line {
++    fn into_js(self, ctx: &Ctx<'js>) -> JsResult<Value<'js>> {
++        match self.0 {
++            Some(line) => line.into_js(ctx),
++            None => Ok(Value::new_null(ctx.clone())),
++        }
++    }
++}
++
++/// What a spawned child's exit looked like.
++impl<'js> IntoJs<'js> for crate::process::ExitInfo {
++    fn into_js(self, ctx: &Ctx<'js>) -> JsResult<Value<'js>> {
++        let object = Object::new(ctx.clone())?;
++        let null = || Value::new_null(ctx.clone());
++        object.set(
++            "code",
++            self.code
++                .map_or_else(null, |code| Value::new_int(ctx.clone(), code)),
++        )?;
++        object.set(
++            "signal",
++            self.signal
++                .map_or_else(null, |signal| Value::new_int(ctx.clone(), signal)),
++        )?;
++        Ok(object.into_value())
++    }
++}
++
+ fn next_tick<'js>(ctx: Ctx<'js>, callback: Function<'js>, args: Rest<Value<'js>>) -> JsResult<()> {
+     let mut deferred = Args::new(ctx, args.len());
+     for argument in args.0 {
+@@ -346,6 +700,8 @@
+     let process = Object::new(ctx.clone())?;
+ 
+     process.set("run", Func::from(run))?;
++    #[cfg(unix)]
++    process.set("spawn", Func::from(spawn))?;
+     process.set("nextTick", Func::from(next_tick))?;
+ 
+     process.set(
+diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/engine/quickjs/scheduler.rs
+--- a/crates/shell/src/engine/quickjs/scheduler.rs
++++ b/crates/shell/src/engine/quickjs/scheduler.rs
+@@ -1127,17 +1127,43 @@
+ where
+     T: for<'a> IntoJs<'a> + Send + 'static,
+ {
++    actor_task(ctx, api, None)
++}
++
++/// [`actor_blocking`] with a hook that interrupts the actor's operation when
++/// the task is cancelled or its view goes away, so a read with no deadline —
++/// a socket, a child's stdout — does not outlive the script that asked for it.
++pub(super) fn actor_cancellable<'js, T>(
++    ctx: &Ctx<'js>,
++    api: &'static str,
++    cancel: impl Fn() + 'static,
++) -> JsResult<(Promise<'js>, ActorCompletion<T>)>
++where
++    T: for<'a> IntoJs<'a> + Send + 'static,
++{
++    actor_task(ctx, api, Some(Box::new(cancel)))
++}
++
++fn actor_task<'js, T>(
++    ctx: &Ctx<'js>,
++    api: &'static str,
++    cancel: Option<Box<dyn Fn()>>,
++) -> JsResult<(Promise<'js>, ActorCompletion<T>)>
++where
++    T: for<'a> IntoJs<'a> + Send + 'static,
++{
+     let host = host(ctx, api)?;
+     let (promise, resolve, reject) = ctx.promise()?;
+-    let task = register(
+-        ctx,
+-        TaskState::new(
+-            api,
+-            scope::current_view().map(|view| view.downgrade()),
+-            Some(Persistent::save(ctx, resolve)),
+-        )
+-        .with_rejection(Persistent::save(ctx, reject)),
+-    )?;
++    let mut task = TaskState::new(
++        api,
++        scope::current_view().map(|view| view.downgrade()),
++        Some(Persistent::save(ctx, resolve)),
++    )
++    .with_rejection(Persistent::save(ctx, reject));
++    if let Some(cancel) = cancel {
++        task = task.with_cancellation(cancel);
++    }
++    let task = register(ctx, task)?;
+     let (completion, receiver) = async_channel::bounded(1);
+     let running = task.clone();
+     let foreground = host.foreground.scheduler_executor();
+@@ -1151,6 +1177,16 @@
+                         break Err("actor stopped before completing the operation".to_owned());
+                     }
+                     Err(async_channel::TryRecvError::Empty) => {
++                        // Cancellation already ran the hook; a view that went
++                        // away has nobody to run it but this loop.
++                        if let Readiness::OwnerGone = running.readiness() {
++                            running.cancelled.set(true);
++                            running.cancel_work();
++                        }
++                        if !matches!(running.readiness(), Readiness::Ready(_)) {
++                            finish(&running);
++                            return;
++                        }
+                         foreground.timer(Duration::from_millis(10)).await;
+                     }
+                 }
+@@ -1184,6 +1220,31 @@
+     Ok((promise, ActorCompletion(completion)))
+ }
+ 
++/// A dedicated thread that answers requests one at a time, in order.
++///
++/// For work with no upper bound on how long it blocks — a read that waits for a
++/// peer — which must not occupy the shared background pool. The thread exits
++/// once every sender is dropped, and drops `handle` with it.
++pub(super) fn serve<Req, T>(
++    name: &str,
++    mut handle: impl FnMut(Req) -> Result<T, String> + Send + 'static,
++) -> Result<std::sync::mpsc::Sender<(Req, ActorCompletion<T>)>, String>
++where
++    Req: Send + 'static,
++    T: Send + 'static,
++{
++    let (sender, requests) = std::sync::mpsc::channel::<(Req, ActorCompletion<T>)>();
++    std::thread::Builder::new()
++        .name(name.to_owned())
++        .spawn(move || {
++            for (request, completion) in requests {
++                completion.settle(handle(request));
++            }
++        })
++        .map_err(|error| format!("starting {name} failed: {error}"))?;
++    Ok(sender)
++}
++
+ /// A promise driven by a future on the background executor.
+ ///
+ /// [`blocking`] is this with a synchronous closure in front; this one takes the
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -1,4 +1,11 @@
+-use std::{io::Read as _, time::Duration};
++use std::{
++    io::Read as _,
++    sync::{
++        Arc,
++        atomic::{AtomicBool, Ordering},
++    },
++    time::Duration,
++};
+ 
+ use rquickjs::{
+     Ctx, Exception, FromJs, Function, IntoJs, Object, Promise, Result, TypedArray, Value,
+@@ -10,6 +17,8 @@
+ const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
+ const MAX_REDIRECTS: usize = 10;
+ const TIMEOUT: Duration = Duration::from_secs(30);
++const MAX_TIMEOUT_MS: f64 = 300_000.0;
++const STREAM_CHUNK: usize = 64 * 1024;
+ 
+ pub(super) fn install(ctx: &Ctx<'_>) -> Result<()> {
+     ctx.globals().set("fetch", Func::from(fetch))
+@@ -29,6 +38,11 @@
+     #[cfg(not(test))]
+     let injected_client = None;
+ 
++    if options.stream {
++        return scheduler::blocking(&ctx, "fetch(url, options)", move || {
++            send(capabilities, initial, options, injected_client).map(FetchStream)
++        });
++    }
+     scheduler::blocking(&ctx, "fetch(url, options)", move || {
+         request(capabilities, initial, options, injected_client)
+     })
+@@ -40,6 +54,9 @@
+     method: reqwest::Method,
+     headers: reqwest::header::HeaderMap,
+     body: Vec<u8>,
++    /// Applies to connecting and to each read, not to the whole body.
++    timeout: Duration,
++    stream: bool,
+ }
+ 
+ impl Default for FetchOptions {
+@@ -48,6 +65,8 @@
+             method: reqwest::Method::GET,
+             headers: reqwest::header::HeaderMap::new(),
+             body: Vec::new(),
++            timeout: TIMEOUT,
++            stream: false,
+         }
+     }
+ }
+@@ -60,16 +79,19 @@
+         let Some(object) = value.into_object() else {
+             return Err(Exception::throw_type(
+                 ctx,
+-                "fetch(url, options) expects an object with method, headers and/or body",
++                "fetch(url, options) expects an object with method, headers, body, timeout and/or stream",
+             ));
+         };
+         for key in object.keys::<String>() {
+             let key = key?;
+-            if !matches!(key.as_str(), "method" | "headers" | "body") {
++            if !matches!(
++                key.as_str(),
++                "method" | "headers" | "body" | "timeout" | "stream"
++            ) {
+                 return Err(Exception::throw_type(
+                     ctx,
+                     &format!(
+-                        "unknown option `{key}` for fetch(url, options); expected method, headers or body"
++                        "unknown option `{key}` for fetch(url, options); expected method, headers, body, timeout or stream"
+                     ),
+                 ));
+             }
+@@ -81,10 +103,27 @@
+         };
+         let headers = parse_headers(ctx, object.get("headers")?)?;
+         let body = parse_body(ctx, object.get("body")?)?;
++        let timeout = match object.get::<_, Option<f64>>("timeout")? {
++            None => TIMEOUT,
++            Some(ms) if ms.is_finite() && (1.0..=MAX_TIMEOUT_MS).contains(&ms) => {
++                Duration::from_millis(ms as u64)
++            }
++            Some(ms) => {
++                return Err(Exception::throw_range(
++                    ctx,
++                    &format!(
++                        "fetch(url, options).timeout {ms} must be between 1 and {MAX_TIMEOUT_MS} ms"
++                    ),
++                ));
++            }
++        };
++        let stream = object.get::<_, Option<bool>>("stream")?.unwrap_or(false);
+         Ok(Self {
+             method,
+             headers,
+             body,
++            timeout,
++            stream,
+         })
+     }
+ }
+@@ -225,16 +264,48 @@
+ 
+ fn request(
+     capabilities: crate::Capabilities,
+-    mut url: reqwest::Url,
++    url: reqwest::Url,
+     options: FetchOptions,
+     injected_client: Option<reqwest::blocking::Client>,
+ ) -> std::result::Result<FetchResponse, String> {
+-    let client = match injected_client {
+-        Some(client) => client,
+-        None => client_builder()
+-            .build()
+-            .map_err(|error| format!("creating HTTP client failed: {error}"))?,
+-    };
++    let response = send(capabilities, url, options, injected_client)?;
++    let status = response.status().as_u16();
++    let final_url = response.url().to_string();
++    let mut bytes = Vec::new();
++    response
++        .take(MAX_BODY_BYTES + 1)
++        .read_to_end(&mut bytes)
++        .map_err(|error| format!("reading response from {final_url} failed: {error}"))?;
++    if bytes.len() as u64 > MAX_BODY_BYTES {
++        return Err(format!(
++            "response body from {final_url} exceeded the {MAX_BODY_BYTES} byte limit"
++        ));
++    }
++    Ok(FetchResponse {
++        status,
++        url: final_url,
++        body: bytes,
++    })
++}
++
++/// Sends the request and follows granted redirects up to the final response,
++/// whose body is still unread.
++fn send(
++    capabilities: crate::Capabilities,
++    mut url: reqwest::Url,
++    options: FetchOptions,
++    injected_client: Option<reqwest::blocking::Client>,
++) -> std::result::Result<reqwest::blocking::Response, String> {
++    // The timeout belongs on the client: reqwest's blocking client applies it
++    // per read, while a per-request timeout would also bound the whole body and
++    // end a stream. A test's injected client only stands for "no proxy".
++    let mut builder = client_builder(options.timeout);
++    if injected_client.is_some() {
++        builder = builder.no_proxy();
++    }
++    let client = builder
++        .build()
++        .map_err(|error| format!("creating HTTP client failed: {error}"))?;
+ 
+     let mut method = options.method;
+     let mut headers = options.headers;
+@@ -262,23 +333,7 @@
+             continue;
+         }
+ 
+-        let status = response.status().as_u16();
+-        let final_url = response.url().to_string();
+-        let mut bytes = Vec::new();
+-        response
+-            .take(MAX_BODY_BYTES + 1)
+-            .read_to_end(&mut bytes)
+-            .map_err(|error| format!("reading response from {final_url} failed: {error}"))?;
+-        if bytes.len() as u64 > MAX_BODY_BYTES {
+-            return Err(format!(
+-                "response body from {final_url} exceeded the {MAX_BODY_BYTES} byte limit"
+-            ));
+-        }
+-        return Ok(FetchResponse {
+-            status,
+-            url: final_url,
+-            body: String::from_utf8_lossy(&bytes).into_owned(),
+-        });
++        return Ok(response);
+     }
+     Err(format!("fetch exceeded the {MAX_REDIRECTS} redirect limit"))
+ }
+@@ -312,16 +367,16 @@
+     }
+ }
+ 
+-fn client_builder() -> reqwest::blocking::ClientBuilder {
++fn client_builder(timeout: Duration) -> reqwest::blocking::ClientBuilder {
+     reqwest::blocking::Client::builder()
+-        .timeout(TIMEOUT)
++        .timeout(timeout)
+         .redirect(reqwest::redirect::Policy::none())
+ }
+ 
+ #[cfg(test)]
+ pub(super) fn direct_test_client() -> std::result::Result<reqwest::blocking::Client, reqwest::Error>
+ {
+-    client_builder().no_proxy().build()
++    client_builder(TIMEOUT).no_proxy().build()
+ }
+ 
+ fn authorize_redirect(
+@@ -618,7 +673,7 @@
+ struct FetchResponse {
+     status: u16,
+     url: String,
+-    body: String,
++    body: Vec<u8>,
+ }
+ 
+ impl<'js> IntoJs<'js> for FetchResponse {
+@@ -627,23 +682,24 @@
+         response.set("status", self.status)?;
+         response.set("ok", (200..300).contains(&self.status))?;
+         response.set("url", self.url)?;
+-        let text = self.body;
+-        let text_method = text.clone();
++        let body = Arc::new(self.body);
++        let text = body.clone();
+         response.set(
+             "text",
+             Func::from(move |ctx: Ctx<'js>| -> Result<Promise<'js>> {
+                 let (promise, resolve, _) = Promise::new(&ctx)?;
+-                resolve.call::<_, ()>((text_method.clone(),))?;
++                resolve.call::<_, ()>((String::from_utf8_lossy(&text).into_owned(),))?;
+                 Ok(promise)
+             }),
+         )?;
++        let json = body.clone();
+         response.set(
+             "json",
+             Func::from(move |ctx: Ctx<'js>| -> Result<Promise<'js>> {
+                 let (promise, resolve, reject) = Promise::new(&ctx)?;
+-                let json: Object = ctx.globals().get("JSON")?;
+-                let parse: Function = json.get("parse")?;
+-                match parse.call::<_, Value>((text.clone(),)) {
++                let json_object: Object = ctx.globals().get("JSON")?;
++                let parse: Function = json_object.get("parse")?;
++                match parse.call::<_, Value>((String::from_utf8_lossy(&json).into_owned(),)) {
+                     Ok(value) => resolve.call::<_, ()>((value,))?,
+                     Err(rquickjs::Error::Exception) => {
+                         reject.call::<_, ()>((ctx.catch(),))?;
+@@ -653,6 +709,112 @@
+                 Ok(promise)
+             }),
+         )?;
++        response.set(
++            "arrayBuffer",
++            Func::from(move |ctx: Ctx<'js>| -> Result<Promise<'js>> {
++                let (promise, resolve, _) = Promise::new(&ctx)?;
++                let buffer = rquickjs::ArrayBuffer::new_copy(ctx.clone(), body.as_slice())?;
++                resolve.call::<_, ()>((buffer,))?;
++                Ok(promise)
++            }),
++        )?;
+         Ok(response.into_value())
+     }
+ }
++
++/// `fetch(url, { stream: true })`: the live response, read chunk by chunk with
++/// no body limit. The status is known; the body is not read yet.
++struct FetchStream(reqwest::blocking::Response);
++
++impl<'js> IntoJs<'js> for FetchStream {
++    fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
++        let response = Object::new(ctx.clone())?;
++        let status = self.0.status().as_u16();
++        response.set("status", status)?;
++        response.set("ok", (200..300).contains(&status))?;
++        response.set("url", self.0.url().to_string())?;
++        // Dropped once closed or cancelled, which releases the connection even
++        // while the script still holds the response.
++        let mut body = Some(self.0);
++
++        let closed = Arc::new(AtomicBool::new(false));
++        let reading = closed.clone();
++        // ponytail: reqwest's blocking reads can only be interrupted by their
++        // own per-read timeout, so a cancel or close takes effect within one
++        // `timeout` (default 30 s); a closable body would make it immediate.
++        let reads = scheduler::serve("fetch stream", move |()| {
++            let mut chunk = vec![0; STREAM_CHUNK];
++            loop {
++                if reading.load(Ordering::Acquire) {
++                    body = None;
++                }
++                let Some(open) = body.as_mut() else {
++                    return Ok(ReadChunk(None));
++                };
++                match open.read(&mut chunk) {
++                    Ok(0) => return Ok(ReadChunk(None)),
++                    Ok(count) => {
++                        chunk.truncate(count);
++                        return Ok(ReadChunk(Some(chunk)));
++                    }
++                    Err(error) if is_timeout(&error) => continue,
++                    Err(error) => return Err(format!("reading the response failed: {error}")),
++                }
++            }
++        })
++        .map_err(|error| Exception::throw_type(ctx, &error))?;
++        let reads = Arc::new(std::sync::Mutex::new(Some(reads)));
++
++        let cancel = closed.clone();
++        let reader = reads.clone();
++        response.set(
++            "read",
++            Func::from(move |ctx: Ctx<'js>| -> Result<Promise<'js>> {
++                let flag = cancel.clone();
++                let (promise, done) =
++                    scheduler::actor_cancellable(&ctx, "response.read()", move || {
++                        flag.store(true, Ordering::Release)
++                    })?;
++                let sender = reader.lock().ok().and_then(|reads| reads.clone());
++                match sender {
++                    Some(sender) => {
++                        if let Err(error) = sender.send(((), done)) {
++                            error.0.1.settle(Ok(ReadChunk(None)));
++                        }
++                    }
++                    None => done.settle(Ok(ReadChunk(None))),
++                }
++                Ok(promise)
++            }),
++        )?;
++        response.set(
++            "close",
++            Func::from(move || {
++                closed.store(true, Ordering::Release);
++                if let Ok(mut reads) = reads.lock() {
++                    reads.take();
++                }
++            }),
++        )?;
++        Ok(response.into_value())
++    }
++}
++
++fn is_timeout(error: &std::io::Error) -> bool {
++    error.kind() == std::io::ErrorKind::TimedOut
++        || error
++            .get_ref()
++            .and_then(|inner| inner.downcast_ref::<reqwest::Error>())
++            .is_some_and(reqwest::Error::is_timeout)
++}
++
++struct ReadChunk(Option<Vec<u8>>);
++
++impl<'js> IntoJs<'js> for ReadChunk {
++    fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
++        match self.0 {
++            Some(bytes) => TypedArray::<u8>::new(ctx.clone(), bytes)?.into_js(ctx),
++            None => Ok(Value::new_null(ctx.clone())),
++        }
++    }
++}
+diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/engine/quickjs/standard/net.rs
+--- a/crates/shell/src/engine/quickjs/standard/net.rs
++++ b/crates/shell/src/engine/quickjs/standard/net.rs
+@@ -6,7 +6,7 @@
+ };
+ 
+ use rquickjs::{
+-    Ctx, Exception, IntoJs, Object, Promise, Result, TypedArray, Value,
++    Ctx, Exception, FromJs, IntoJs, Object, Promise, Result, TypedArray, Value,
+     function::{Func, Opt},
+     module::{Declarations, Exports, ModuleDef},
+ };
+@@ -37,7 +37,25 @@
+     }
+ }
+ 
+-fn connect<'js>(ctx: Ctx<'js>, host_name: String, port: u16) -> Result<Promise<'js>> {
++fn connect<'js>(ctx: Ctx<'js>, target: Value<'js>, port: Opt<u16>) -> Result<Promise<'js>> {
++    if let Some(object) = target.as_object() {
++        #[cfg(unix)]
++        if let Some(path) = object.get::<_, Option<String>>("path")? {
++            return connect_unix(ctx, std::path::PathBuf::from(path));
++        }
++        let _ = object;
++        return Err(Exception::throw_type(
++            &ctx,
++            "net.connect(target) expects { path } for a unix socket",
++        ));
++    }
++    let host_name = String::from_js(&ctx, target)?;
++    let Some(port) = port.0 else {
++        return Err(Exception::throw_type(
++            &ctx,
++            "net.connect(host, port) needs a port",
++        ));
++    };
+     let normalized = host_name.to_ascii_lowercase();
+     if !host::capabilities().may_reach(&normalized) {
+         return Err(Exception::throw_type(
+@@ -50,26 +68,111 @@
+     scheduler::blocking(&ctx, "net.connect(host, port)", move || {
+         let operation = format!("{host_name}:{port}");
+         let (stream, _) = network_connect::connect_tcp(&host_name, port, TIMEOUT, &operation)?;
+-        stream.set_read_timeout(Some(TIMEOUT)).ok();
+-        stream.set_write_timeout(Some(TIMEOUT)).ok();
++        Socket::new(Stream::Tcp(stream), &operation)
++    })
++}
++
++#[cfg(unix)]
++fn connect_unix<'js>(ctx: Ctx<'js>, path: std::path::PathBuf) -> Result<Promise<'js>> {
++    if !host::capabilities().may_connect_unix(&path) {
++        return Err(Exception::throw_type(
++            &ctx,
++            &format!(
++                "unix socket `{}` is not granted; add it to capabilities.network.unix",
++                path.display()
++            ),
++        ));
++    }
++    scheduler::blocking(&ctx, "net.connect({ path })", move || {
++        let operation = path.display().to_string();
++        let stream = std::os::unix::net::UnixStream::connect(&path)
++            .map_err(|error| format!("connecting to {operation} failed: {error}"))?;
++        Socket::new(Stream::Unix(stream), &operation)
++    })
++}
++
++/// A connected socket of either family.
++enum Stream {
++    Tcp(TcpStream),
++    #[cfg(unix)]
++    Unix(std::os::unix::net::UnixStream),
++}
++
++impl Stream {
++    fn try_clone(&self) -> std::io::Result<Self> {
++        Ok(match self {
++            Stream::Tcp(stream) => Stream::Tcp(stream.try_clone()?),
++            #[cfg(unix)]
++            Stream::Unix(stream) => Stream::Unix(stream.try_clone()?),
++        })
++    }
++
++    fn shutdown(&self, how: Shutdown) {
++        let _ = match self {
++            Stream::Tcp(stream) => stream.shutdown(how),
++            #[cfg(unix)]
++            Stream::Unix(stream) => stream.shutdown(how),
++        };
++    }
++}
++
++impl std::io::Read for Stream {
++    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
++        match self {
++            Stream::Tcp(stream) => stream.read(buf),
++            #[cfg(unix)]
++            Stream::Unix(stream) => stream.read(buf),
++        }
++    }
++}
++
++impl std::io::Write for Stream {
++    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
++        match self {
++            Stream::Tcp(stream) => stream.write(buf),
++            #[cfg(unix)]
++            Stream::Unix(stream) => stream.write(buf),
++        }
++    }
++
++    fn flush(&mut self) -> std::io::Result<()> {
++        match self {
++            Stream::Tcp(stream) => stream.flush(),
++            #[cfg(unix)]
++            Stream::Unix(stream) => stream.flush(),
++        }
++    }
++}
++
++struct Socket {
++    reader: Stream,
++    writer: Arc<Mutex<Stream>>,
++    closer: Arc<Stream>,
++}
++
++impl Socket {
++    /// Reads have no deadline: a socket that is quiet for minutes is an
++    /// ordinary event stream. They run on a thread of their own and end when
++    /// the socket closes or the reading task is cancelled. Writes keep theirs.
++    fn new(stream: Stream, operation: &str) -> std::result::Result<Self, String> {
++        let write_timeout = match &stream {
++            Stream::Tcp(stream) => stream.set_write_timeout(Some(TIMEOUT)),
++            #[cfg(unix)]
++            Stream::Unix(stream) => stream.set_write_timeout(Some(TIMEOUT)),
++        };
++        write_timeout.ok();
+         let reader = stream
+             .try_clone()
+-            .map_err(|error| format!("cloning {host_name}:{port} for reads failed: {error}"))?;
++            .map_err(|error| format!("cloning {operation} for reads failed: {error}"))?;
+         let writer = stream
+             .try_clone()
+-            .map_err(|error| format!("cloning {host_name}:{port} for writes failed: {error}"))?;
++            .map_err(|error| format!("cloning {operation} for writes failed: {error}"))?;
+         Ok(Socket {
+-            reader: Arc::new(Mutex::new(reader)),
++            reader,
+             writer: Arc::new(Mutex::new(writer)),
+-            closer: stream,
++            closer: Arc::new(stream),
+         })
+-    })
+-}
+-
+-struct Socket {
+-    reader: Arc<Mutex<TcpStream>>,
+-    writer: Arc<Mutex<TcpStream>>,
+-    closer: TcpStream,
++    }
+ }
+ 
+ struct ReadChunk(Option<Vec<u8>>);
+@@ -106,7 +209,20 @@
+                 })
+             }),
+         )?;
+-        let reader = self.reader;
++        let mut reader = self.reader;
++        let reads = scheduler::serve("socket.read", move |size: usize| {
++            let mut bytes = vec![0; size];
++            let count = reader
++                .read(&mut bytes)
++                .map_err(|error| format!("socket read failed: {error}"))?;
++            if count == 0 {
++                return Ok(ReadChunk(None));
++            }
++            bytes.truncate(count);
++            Ok(ReadChunk(Some(bytes)))
++        })
++        .map_err(|error| Exception::throw_type(ctx, &error))?;
++        let interrupt = self.closer.clone();
+         socket.set(
+             "read",
+             Func::from(
+@@ -118,30 +234,22 @@
+                             &format!("socket read exceeded the {IO_LIMIT} byte limit"),
+                         ));
+                     }
+-                    let stream = reader.clone();
+-                    scheduler::blocking(&ctx, "socket.read(size)", move || {
+-                        let mut bytes = vec![0; size];
+-                        let count = stream
+-                            .lock()
+-                            .map_err(|_| "socket lock was poisoned".to_owned())?
+-                            .read(&mut bytes)
+-                            .map_err(|error| format!("socket read failed: {error}"))?;
+-                        if count == 0 {
+-                            return Ok(ReadChunk(None));
+-                        }
+-                        bytes.truncate(count);
+-                        Ok(ReadChunk(Some(bytes)))
+-                    })
++                    // Cancelled only when the view or plugin is gone, and then
++                    // the socket is too: closing it also tells the peer.
++                    let stream = interrupt.clone();
++                    let (promise, done) =
++                        scheduler::actor_cancellable(&ctx, "socket.read(size)", move || {
++                            stream.shutdown(Shutdown::Both)
++                        })?;
++                    if let Err(error) = reads.send((size, done)) {
++                        error.0.1.settle(Ok(ReadChunk(None)));
++                    }
++                    Ok(promise)
+                 },
+             ),
+         )?;
+         let closer = self.closer;
+-        socket.set(
+-            "close",
+-            Func::from(move || {
+-                let _ = closer.shutdown(Shutdown::Both);
+-            }),
+-        )?;
++        socket.set("close", Func::from(move || closer.shutdown(Shutdown::Both)))?;
+         Ok(socket.into_value())
+     }
+ }
+diff --git a/crates/shell/src/engine/quickjs/standard/process.rs b/crates/shell/src/engine/quickjs/standard/process.rs
+--- a/crates/shell/src/engine/quickjs/standard/process.rs
++++ b/crates/shell/src/engine/quickjs/standard/process.rs
+@@ -3,7 +3,7 @@
+     module::{Declarations, Exports, ModuleDef},
+ };
+ 
+-const EXPORTS: &[&str] = &["run", "exit", "nextTick", "platform", "arch"];
++const EXPORTS: &[&str] = &["run", "spawn", "exit", "nextTick", "platform", "arch"];
+ 
+ pub(super) struct ProcessModule;
+ 
+diff --git a/crates/shell/src/materialize/components/avatar.rs b/crates/shell/src/materialize/components/avatar.rs
+--- a/crates/shell/src/materialize/components/avatar.rs
++++ b/crates/shell/src/materialize/components/avatar.rs
+@@ -110,7 +110,7 @@
+     cx: &mut App,
+ ) -> Option<AvatarImage> {
+     let node = arena.node(slot)?;
+-    let Some(Component::AvatarImage(path)) = node.component() else {
++    let Some(Component::AvatarImage(spec)) = node.component() else {
+         tracing::warn!(
+             "an Avatar's `image` slot must be an AvatarImage.new(path); a {} there is not \
+              rendered at all",
+@@ -119,7 +119,7 @@
+         return None;
+     };
+     let (refinement, _, _) = resolve_slot(arena, slot, "AvatarImage", window, cx);
+-    let mut image = AvatarImage::new(gpui::SharedString::from(path.clone()));
++    let mut image = AvatarImage::new(spec);
+     image.style().refine(&refinement);
+     Some(image)
+ }
+diff --git a/crates/shell/src/materialize.rs b/crates/shell/src/materialize.rs
+--- a/crates/shell/src/materialize.rs
++++ b/crates/shell/src/materialize.rs
+@@ -1430,9 +1430,9 @@
+         ),
+         Component::AvatarImage(_) => components::avatar::orphan("AvatarImage"),
+         Component::AvatarFallback => components::avatar::orphan("AvatarFallback"),
+-        Component::Image(path) => {
++        Component::Image(spec) => {
+             warn_unhonoured_a11y(&behavior, "image", &[]);
+-            let mut image = gpui::img(SharedString::from(path));
++            let mut image = gpui::img(&spec);
+             image.style().refine(&refinement);
+             image.into_any_element()
+         }
+diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
+--- a/crates/shell/src/process.rs
++++ b/crates/shell/src/process.rs
+@@ -1,12 +1,12 @@
+ //! Bounded child-process execution for the standard runtime adapter.
+ 
+ use std::{
+-    ffi::OsStr,
++    ffi::{OsStr, OsString},
+     io::Read,
+     path::{Path, PathBuf},
+     process::{Command, Stdio},
+     sync::{
+-        Arc,
++        Arc, Mutex,
+         atomic::{AtomicBool, AtomicU8, Ordering},
+         mpsc,
+     },
+@@ -69,24 +69,61 @@
+     pub(crate) stderr: String,
+ }
+ 
++/// A child's environment: the granted host variables, then the script's own.
++///
++/// The child starts from an empty environment either way. A script may only set
++/// a name the grant lists, so it cannot hand a child `LD_PRELOAD` or a `PATH`
++/// of its own when the host never granted one.
++pub(crate) fn child_env(
++    capabilities: &crate::Capabilities,
++    explicit: Vec<(String, String)>,
++) -> Result<Vec<(OsString, OsString)>, crate::capability::CapabilityError> {
++    let mut env: Vec<(OsString, OsString)> = capabilities
++        .process_env_names()
++        .iter()
++        .filter_map(|name| std::env::var_os(name).map(|value| (name.into(), value)))
++        .collect();
++    for (name, value) in explicit {
++        if !capabilities.may_pass_env(&name) {
++            return Err(crate::capability::CapabilityError::EnvDenied(name));
++        }
++        env.retain(|(existing, _)| existing.as_os_str() != OsStr::new(&name));
++        env.push((name.into(), value.into()));
++    }
++    Ok(env)
++}
++
++fn command(
++    command: &str,
++    args: &[String],
++    env: &[(OsString, OsString)],
++    cwd: Option<&Path>,
++) -> Result<Command, String> {
++    let executable = resolve_executable(command, std::env::var_os("PATH").as_deref())?;
++    let mut builder = Command::new(&executable);
++    // A process grant authorizes one executable, not the host's ambient
++    // credentials: only the allowlisted variables in `env` reach the child.
++    builder.env_clear().envs(env.iter().cloned()).args(args);
++    if let Some(cwd) = cwd {
++        builder.current_dir(cwd);
++    }
++    configure_process_tree(&mut builder);
++    Ok(builder)
++}
++
+ pub(crate) fn run_bounded(
+     command: &str,
+     args: &[String],
++    env: &[(OsString, OsString)],
++    cwd: Option<&Path>,
+     limits: Limits,
+     cancellation: Cancellation,
+ ) -> Result<Output, String> {
+-    let executable = resolve_executable(command, std::env::var_os("PATH").as_deref())?;
+-    let mut command_builder = Command::new(&executable);
++    let mut command_builder = self::command(command, args, env, cwd)?;
+     command_builder
+-        // A process grant authorizes one executable, not the host's ambient
+-        // credentials. Keep the child environment empty until the public API
+-        // grows an explicit, capability-reviewed environment allowlist.
+-        .env_clear()
+-        .args(args)
+         .stdin(Stdio::null())
+         .stdout(Stdio::piped())
+         .stderr(Stdio::piped());
+-    configure_process_tree(&mut command_builder);
+     let mut process_tree = ProcessTree::new()?;
+     let mut child = command_builder
+         .spawn()
+@@ -164,6 +201,101 @@
+     })
+ }
+ 
++/// A long-running child the script talks to, leader of its own process group.
++#[cfg(unix)]
++pub(crate) struct Spawned {
++    pub(crate) child: std::process::Child,
++    pub(crate) pid: i32,
++    /// Set once the child is reaped, under the same lock [`signal_group`]
++    /// takes, so a signal never reaches a recycled pid.
++    pub(crate) exited: Arc<Mutex<bool>>,
++}
++
++#[cfg(unix)]
++pub(crate) fn spawn(
++    command: &str,
++    args: &[String],
++    env: &[(OsString, OsString)],
++    cwd: Option<&Path>,
++    stdout: bool,
++    stderr: bool,
++) -> Result<Spawned, String> {
++    let piped = |pipe: bool| if pipe { Stdio::piped() } else { Stdio::null() };
++    let child = self::command(command, args, env, cwd)?
++        .stdin(Stdio::piped())
++        .stdout(piped(stdout))
++        .stderr(piped(stderr))
++        .spawn()
++        .map_err(|error| format!("running `{command}` failed: {error}"))?;
++    Ok(Spawned {
++        pid: child.id() as i32,
++        child,
++        exited: Arc::new(Mutex::new(false)),
++    })
++}
++
++/// Signals a spawned child's whole process group, unless it was already reaped.
++#[cfg(unix)]
++pub(crate) fn signal_group(pid: i32, exited: &Mutex<bool>, signal: i32) {
++    let exited = exited
++        .lock()
++        .unwrap_or_else(|poisoned| poisoned.into_inner());
++    if !*exited {
++        unsafe {
++            libc::kill(-pid, signal);
++        }
++    }
++}
++
++#[derive(Debug)]
++pub(crate) struct ExitInfo {
++    pub(crate) code: Option<i32>,
++    pub(crate) signal: Option<i32>,
++}
++
++/// Blocks until a spawned child exits, then reaps it.
++///
++/// Waits without reaping first: until the zombie is collected its pid cannot be
++/// reused, so a concurrent [`signal_group`] either reaches this group or sees
++/// `exited` and does nothing.
++#[cfg(unix)]
++pub(crate) fn wait_spawned(
++    mut child: std::process::Child,
++    pid: i32,
++    exited: &Mutex<bool>,
++) -> Result<ExitInfo, String> {
++    use std::os::unix::process::ExitStatusExt as _;
++    loop {
++        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
++        let waited = unsafe {
++            libc::waitid(
++                libc::P_PID,
++                pid as libc::id_t,
++                &mut info,
++                libc::WEXITED | libc::WNOWAIT,
++            )
++        };
++        if waited == 0 {
++            break;
++        }
++        let error = std::io::Error::last_os_error();
++        if error.kind() != std::io::ErrorKind::Interrupted {
++            return Err(format!("waiting for the child failed: {error}"));
++        }
++    }
++    let mut exited = exited
++        .lock()
++        .unwrap_or_else(|poisoned| poisoned.into_inner());
++    let status = child
++        .wait()
++        .map_err(|error| format!("reaping the child failed: {error}"))?;
++    *exited = true;
++    Ok(ExitInfo {
++        code: status.code(),
++        signal: status.signal(),
++    })
++}
++
+ fn resolve_executable(command: &str, path: Option<&OsStr>) -> Result<PathBuf, String> {
+     let command_path = Path::new(command);
+     if command_path.components().count() > 1 {
+@@ -442,6 +574,17 @@
+     #[cfg(unix)]
+     use std::ffi::OsStr;
+ 
++    /// The test's own PATH, for a shell that runs `sleep` or `yes` by name:
++    /// the child environment is otherwise empty, and not every host has them
++    /// in the shell's built-in default path.
++    #[cfg(unix)]
++    fn host_path() -> Vec<(OsString, OsString)> {
++        std::env::var_os("PATH")
++            .map(|path| ("PATH".into(), path))
++            .into_iter()
++            .collect()
++    }
++
+     #[cfg(unix)]
+     #[test]
+     fn resolves_a_bare_command_from_the_host_path_before_clearing_the_environment() {
+@@ -470,6 +613,8 @@
+         let result = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "printf out; printf err >&2".into()],
++            &[],
++            None,
+             Limits::for_test(Duration::from_secs(2), 1024),
+             Cancellation::new(),
+         )
+@@ -485,6 +630,8 @@
+         let result = run_bounded(
+             "/usr/bin/env",
+             &[],
++            &[],
++            None,
+             Limits::for_test(Duration::from_secs(2), 1024),
+             Cancellation::new(),
+         )
+@@ -500,6 +647,8 @@
+         let error = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "sleep 5".into()],
++            &host_path(),
++            None,
+             Limits::for_test(Duration::from_millis(30), 1024),
+             Cancellation::new(),
+         )
+@@ -514,6 +663,8 @@
+         let error = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "(sleep 5) & exit 0".into()],
++            &host_path(),
++            None,
+             Limits::for_test(Duration::from_millis(50), 1024),
+             Cancellation::new(),
+         )
+@@ -528,6 +679,8 @@
+         let error = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "yes x | head -c 4096".into()],
++            &host_path(),
++            None,
+             Limits::for_test(Duration::from_secs(2), 128),
+             Cancellation::new(),
+         )
+@@ -541,6 +694,8 @@
+         let error = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "yes x | head -c 4096 >&2".into()],
++            &host_path(),
++            None,
+             Limits::for_test(Duration::from_secs(2), 128),
+             Cancellation::new(),
+         )
+@@ -557,6 +712,8 @@
+         let error = run_bounded(
+             "/bin/sh",
+             &["-c".into(), "sleep 5".into()],
++            &host_path(),
++            None,
+             Limits::for_test(Duration::from_secs(2), 1024),
+             cancellation,
+         )
+@@ -565,12 +722,95 @@
+         assert!(started.elapsed() < Duration::from_secs(1));
+     }
+ 
++    #[cfg(unix)]
++    #[test]
++    fn a_child_gets_only_granted_host_variables_and_granted_overrides() {
++        // nextest runs each test in its own process, so this cannot race.
++        unsafe { std::env::set_var("GPUI_SHELL_ENV_PROBE", "host") };
++        let capabilities = crate::Capabilities::new().process_env([
++            "GPUI_SHELL_ENV_PROBE".to_owned(),
++            "GPUI_SHELL_ENV_EXTRA".to_owned(),
++        ]);
++        let env = child_env(
++            &capabilities,
++            vec![("GPUI_SHELL_ENV_EXTRA".to_owned(), "set".to_owned())],
++        )
++        .expect("granted names");
++        let result = run_bounded(
++            "/usr/bin/env",
++            &[],
++            &env,
++            None,
++            Limits::for_test(Duration::from_secs(2), 1024),
++            Cancellation::new(),
++        )
++        .expect("environment probe");
++        let mut lines: Vec<_> = result.stdout.lines().collect();
++        lines.sort();
++        assert_eq!(
++            lines,
++            ["GPUI_SHELL_ENV_EXTRA=set", "GPUI_SHELL_ENV_PROBE=host"]
++        );
++
++        let denied = child_env(
++            &capabilities,
++            vec![("LD_PRELOAD".to_owned(), "x".to_owned())],
++        )
++        .expect_err("an ungranted name");
++        assert_eq!(
++            denied,
++            crate::capability::CapabilityError::EnvDenied("LD_PRELOAD".to_owned())
++        );
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn signalling_the_group_reaches_a_grandchild_and_is_a_no_op_after_exit() {
++        use std::io::{BufRead as _, BufReader};
++
++        let mut spawned = spawn(
++            "/bin/sh",
++            &[
++                "-c".into(),
++                "/bin/sh -c 'echo $$; while :; do :; done' & wait".into(),
++            ],
++            &[],
++            None,
++            true,
++            false,
++        )
++        .expect("spawn");
++        let mut line = String::new();
++        BufReader::new(spawned.child.stdout.take().expect("stdout"))
++            .read_line(&mut line)
++            .expect("grandchild pid");
++        let grandchild: i32 = line.trim().parse().expect("a pid");
++
++        signal_group(spawned.pid, &spawned.exited, libc::SIGKILL);
++        let exit = wait_spawned(spawned.child, spawned.pid, &spawned.exited).expect("reaped");
++        assert_eq!(exit.signal, Some(libc::SIGKILL));
++        assert!(*spawned.exited.lock().unwrap());
++
++        let deadline = Instant::now() + Duration::from_secs(2);
++        while std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
++            .is_ok_and(|stat| !stat.contains(") Z "))
++        {
++            assert!(Instant::now() < deadline, "the grandchild survived");
++            thread::sleep(Duration::from_millis(5));
++        }
++
++        // Reaped: the pid may belong to someone else now, so nothing is sent.
++        signal_group(spawned.pid, &spawned.exited, libc::SIGKILL);
++    }
++
+     #[cfg(windows)]
+     #[test]
+     fn windows_successful_command_is_resumed_after_job_assignment() {
+         let result = run_bounded(
+             "cmd.exe",
+             &["/D".into(), "/C".into(), "echo out & echo err 1>&2".into()],
++            &[],
++            None,
+             Limits::for_test(Duration::from_secs(2), 1024),
+             Cancellation::new(),
+         )
+@@ -592,6 +832,8 @@
+                 "/C".into(),
+                 "ping.exe -n 20 127.0.0.1 >NUL".into(),
+             ],
++            &[],
++            None,
+             Limits::for_test(Duration::from_millis(100), 1024),
+             Cancellation::new(),
+         )
+@@ -614,6 +856,8 @@
+                 "/C".into(),
+                 "ping.exe -n 20 127.0.0.1 >NUL".into(),
+             ],
++            &[],
++            None,
+             Limits::for_test(Duration::from_secs(2), 1024),
+             cancellation,
+         )
+@@ -662,6 +906,8 @@
+                 "/C".into(),
+                 parent_script.into_os_string().into_string().unwrap(),
+             ],
++            &[],
++            None,
+             Limits::for_test(Duration::from_millis(100), 1024),
+             Cancellation::new(),
+         )
+diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
+--- a/crates/shell/src/spec.rs
++++ b/crates/shell/src/spec.rs
+@@ -228,6 +228,46 @@
+     }
+ }
+ 
++/// Where an image's pixels come from, already checked against the grant.
++///
++/// Never a URL: GPUI would fetch one itself, around the network grant. A
++/// script that wants a remote picture fetches the bytes and passes those.
++#[derive(Clone, PartialEq)]
++pub(crate) enum ImageSpec {
++    /// A path in the host's asset source, as a standalone application has.
++    Embedded(String),
++    /// A file inside the application's directory or a granted read root.
++    File(std::path::PathBuf),
++    /// Raster bytes the script supplied.
++    Bytes(std::sync::Arc<gpui::Image>),
++}
++
++impl std::fmt::Debug for ImageSpec {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        match self {
++            ImageSpec::Embedded(path) => write!(f, "{path:?}"),
++            ImageSpec::File(path) => write!(f, "{path:?}"),
++            ImageSpec::Bytes(image) => write!(f, "<{} bytes>", image.bytes.len()),
++        }
++    }
++}
++
++impl From<&ImageSpec> for gpui::ImageSource {
++    fn from(spec: &ImageSpec) -> Self {
++        match spec {
++            // Explicitly embedded: `From<&str>` would turn a URL-shaped
++            // string into a fetch.
++            ImageSpec::Embedded(path) => gpui::ImageSource::Resource(gpui::Resource::Embedded(
++                SharedString::from(path.clone()),
++            )),
++            ImageSpec::File(path) => {
++                gpui::ImageSource::Resource(gpui::Resource::Path(path.as_path().into()))
++            }
++            ImageSpec::Bytes(image) => gpui::ImageSource::Image(image.clone()),
++        }
++    }
++}
++
+ /// Which constructor produced a node.
+ #[derive(Clone, Debug, PartialEq)]
+ pub(crate) enum Component {
+@@ -306,12 +346,12 @@
+     /// A component of its own rather than a plain `Image` in the slot, because
+     /// base's `Avatar::image` takes an `AvatarImage` and not an element: the
+     /// slot has to be resolved into that type, which needs the path back.
+-    AvatarImage(String),
++    AvatarImage(ImageSpec),
+     /// The fallback slot: an ordinary box holding whatever stands in for the
+     /// image — initials, a shape, an svg the script supplies.
+     AvatarFallback,
+-    /// A full-color image, loaded from the application's own directory.
+-    Image(String),
++    /// A full-color image: a file the grant covers, or bytes the script has.
++    Image(ImageSpec),
+     /// A native GPUI path. Its geometry is retained in method operations and
+     /// resolved against final element bounds during prepaint.
+     Path {
+@@ -1333,7 +1373,6 @@
+             | Component::Checkbox(value)
+             | Component::Switch(value)
+             | Component::Svg(value)
+-            | Component::Image(value)
+             | Component::Tabs(value)
+             | Component::Tab(value)
+             | Component::Progress(value)
+@@ -1349,6 +1388,7 @@
+             // The focus handle is part of what a `DatePicker` *is* rather than
+             // something called on it, so the dump carries it beside the id the
+             // way a row carries its index.
++            Component::Image(spec) => out.push_str(&format!(" {spec:?}")),
+             Component::DatePicker(value, handle) => out.push_str(&format!(" {value:?} #{handle}")),
+             Component::Table(value)
+             | Component::TableHeader(value)
+diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -405,10 +405,9 @@
+ 
+     let source = NET_PROBE.replace("__PORT__", &port.to_string());
+     let (_runtime, view, mut context) = probe(cx, &source);
+-    context.run_until_parked();
+-    draw(&mut context, &view);
+     assert!(
+-        snapshot(&mut context, &view).contains("true|112,111,110,103|true"),
++        settle(&mut context, &view, |text| !text.contains("pending"))
++            .contains("true|112,111,110,103|true"),
+         "raw TCP reads should preserve bytes and report EOF"
+     );
+     server.join().expect("TCP server");
+@@ -432,8 +431,7 @@
+     let started = std::time::Instant::now();
+     context.run_until_parked();
+     let close_elapsed = started.elapsed();
+-    draw(&mut context, &view);
+-    let rendered = snapshot(&mut context, &view);
++    let rendered = settle(&mut context, &view, |text| text.contains("closed"));
+ 
+     server.join().expect("TCP server");
+     assert!(
+@@ -1144,6 +1142,417 @@
+     server.join().expect("HTTP server");
+ }
+ 
++const UNIX_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { connect } from "net";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        const socket = await connect({ path: "__PATH__" });
++        await socket.write("ping");
++        const bytes = await socket.read(4);
++        const eof = await socket.read(4);
++        this.state = `${String.fromCharCode(...bytes)}|${eof === null}`;
++        socket.close();
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const NET_HELD_READ_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { connect } from "net";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      this.socket = await connect("127.0.0.1", __PORT__);
++      this.state = "connected";
++      cx.notify();
++      await this.socket.read(1);
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const FETCH_BYTES_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        const response = await fetch("__URL__");
++        const bytes = new Uint8Array(await response.arrayBuffer());
++        const text = await response.text();
++        this.state = `${[...bytes].join(",")}|${text.length}`;
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const FETCH_TIMEOUT_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    const errors = [];
++    for (const timeout of [0, 300001, Infinity]) {
++      try { fetch("__URL__", { timeout }); }
++      catch (error) { errors.push(error.name); }
++    }
++    cx.spawn(async (cx) => {
++      try {
++        await fetch("__URL__", { timeout: 100 });
++        this.state = "unexpectedly resolved";
++      } catch (error) {
++        this.state = `${errors.join(",")}|rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const FETCH_STREAM_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        const response = await fetch("__URL__", { stream: true, timeout: 100 });
++        const chunks = [];
++        for (;;) {
++          const chunk = await response.read();
++          if (chunk === null) break;
++          chunks.push(String.fromCharCode(...chunk));
++        }
++        this.state = `${response.status}|${chunks.join("").trim().split("\n").join(";")}`;
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const FETCH_STREAM_CLOSE_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      const response = await fetch("__URL__", { stream: true, timeout: 100 });
++      const first = await response.read();
++      response.close();
++      const after = await response.read();
++      this.state = `${first.length}|${after}`;
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const FETCH_STREAM_HELD_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      this.response = await fetch("__URL__", { stream: true, timeout: 100 });
++      await this.response.read();
++      this.state = "reading";
++      cx.notify();
++      await this.response.read();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++const NET_TARGET_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { connect } from "net";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    const errors = [];
++    for (const call of [() => connect({ host: "127.0.0.1" }), () => connect("127.0.0.1")]) {
++      try { call(); errors.push("allowed"); }
++      catch (error) { errors.push(`${error.name}:${error.message}`); }
++    }
++    this.state = errors.join("~");
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[gpui::test]
++fn net_connect_refuses_a_target_without_a_path_or_port(cx: &mut TestAppContext) {
++    let (_runtime, view, mut context) = probe(cx, NET_TARGET_PROBE);
++    let rendered = settle(&mut context, &view, |text| text.contains("~"));
++    assert!(
++        rendered.contains("TypeError:net.connect(target) expects { path }")
++            && rendered.contains("TypeError:net.connect(host, port) needs a port"),
++        "{rendered}"
++    );
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn net_connects_to_a_granted_unix_socket_without_a_read_timeout(cx: &mut TestAppContext) {
++    let directory = std::env::temp_dir().join(format!("gpui-shell-unix-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&directory);
++    std::fs::create_dir_all(&directory).expect("socket directory");
++    let path = directory.join("echo.sock");
++    let listener = std::os::unix::net::UnixListener::bind(&path).expect("unix listener");
++    let server = thread::spawn(move || {
++        let (mut stream, _) = listener.accept().expect("unix connection");
++        let mut request = [0; 4];
++        stream.read_exact(&mut request).expect("read ping");
++        // Quiet for longer than one actor poll: the read waits, not times out.
++        thread::sleep(Duration::from_millis(200));
++        stream.write_all(b"pong").expect("write pong");
++    });
++
++    let source = UNIX_PROBE.replace("__PATH__", &path.display().to_string());
++    let (_runtime, view, mut context) = probe_with(
++        cx,
++        Capabilities::new().network_unix([path.clone()]),
++        &source,
++    );
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    server.join().expect("unix server");
++    let _ = std::fs::remove_dir_all(&directory);
++    assert!(rendered.contains("pong|true"), "{rendered}");
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn net_refuses_an_ungranted_unix_socket(cx: &mut TestAppContext) {
++    let source = UNIX_PROBE.replace("__PATH__", "/run/gpui-shell-not-granted.sock");
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(
++        rendered.contains("rejected:unix socket `/run/gpui-shell-not-granted.sock` is not granted")
++            && rendered.contains("capabilities.network.unix"),
++        "{rendered}"
++    );
++}
++
++#[gpui::test]
++fn dropping_the_view_closes_a_socket_with_a_pending_read(cx: &mut TestAppContext) {
++    let listener = TcpListener::bind("127.0.0.1:0").expect("TCP listener");
++    let port = listener.local_addr().expect("listener address").port();
++    let (eof, saw_eof) = mpsc::channel();
++    let server = thread::spawn(move || {
++        let (mut stream, _) = listener.accept().expect("TCP connection");
++        stream
++            .set_read_timeout(Some(Duration::from_secs(10)))
++            .expect("timeout");
++        let mut byte = [0];
++        let _ = eof.send(matches!(stream.read(&mut byte), Ok(0)));
++    });
++
++    let source = NET_HELD_READ_PROBE.replace("__PORT__", &port.to_string());
++    let (runtime, view, mut context) = probe(cx, &source);
++    settle(&mut context, &view, |text| text.contains("connected"));
++    drop(view);
++    let deadline = std::time::Instant::now() + Duration::from_secs(5);
++    let closed = loop {
++        context.executor().advance_clock(Duration::from_millis(10));
++        context.run_until_parked();
++        match saw_eof.try_recv() {
++            Ok(closed) => break closed,
++            Err(_) if std::time::Instant::now() < deadline => {
++                thread::sleep(Duration::from_millis(5));
++            }
++            Err(error) => panic!("the server never saw the socket close: {error}"),
++        }
++    };
++    server.join().expect("TCP server");
++    assert!(closed, "the peer saw data or an error instead of EOF");
++    std::mem::forget(runtime);
++}
++
++#[gpui::test]
++fn fetch_array_buffer_returns_the_exact_bytes(cx: &mut TestAppContext) {
++    let address = serve_once(|stream| {
++        stream
++            .write_all(
++                b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\n\xff\x00\x80",
++            )
++            .expect("HTTP response");
++    });
++    let source = FETCH_BYTES_PROBE.replace("__URL__", &format!("http://{address}/bytes"));
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    // Lossy text: the invalid bytes become replacement characters.
++    assert!(rendered.contains("255,0,128|3"), "{rendered}");
++}
++
++#[gpui::test]
++fn fetch_timeout_rejects_stalled_headers_and_is_range_checked(cx: &mut TestAppContext) {
++    let (release, released) = mpsc::channel::<()>();
++    let address = serve_once(move |_| {
++        let _ = released.recv_timeout(Duration::from_secs(10));
++    });
++    let source = FETCH_TIMEOUT_PROBE.replace("__URL__", &format!("http://{address}/stall"));
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    let _ = release.send(());
++    assert!(
++        rendered.contains("RangeError,RangeError,RangeError|rejected:"),
++        "{rendered}"
++    );
++}
++
++#[gpui::test]
++fn fetch_stream_reads_chunks_across_a_pause_longer_than_the_timeout(cx: &mut TestAppContext) {
++    let address = serve_once(|stream| {
++        stream
++            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nConnection: close\r\n\r\n{\"n\":1}\n")
++            .expect("first chunk");
++        stream.flush().expect("flush");
++        thread::sleep(Duration::from_millis(300));
++        stream.write_all(b"{\"n\":2}\n").expect("second chunk");
++    });
++    let source = FETCH_STREAM_PROBE.replace("__URL__", &format!("http://{address}/events"));
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(
++        rendered.contains(r#"200|{\"n\":1};{\"n\":2}"#),
++        "{rendered}"
++    );
++}
++
++#[gpui::test]
++fn fetch_stream_close_releases_the_connection(cx: &mut TestAppContext) {
++    let (eof, saw_eof) = mpsc::channel();
++    let address = serve_once(move |stream| {
++        stream
++            .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nfirst\n")
++            .expect("first chunk");
++        stream.flush().expect("flush");
++        stream
++            .set_read_timeout(Some(Duration::from_secs(10)))
++            .expect("timeout");
++        let mut byte = [0];
++        let _ = eof.send(matches!(stream.read(&mut byte), Ok(0)));
++    });
++    let source = FETCH_STREAM_CLOSE_PROBE.replace("__URL__", &format!("http://{address}/events"));
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(rendered.contains("6|null"), "{rendered}");
++    assert_eq!(
++        saw_eof.recv_timeout(Duration::from_secs(5)),
++        Ok(true),
++        "closing the stream did not close the connection"
++    );
++}
++
++#[gpui::test]
++fn dropping_the_view_releases_a_streaming_fetch(cx: &mut TestAppContext) {
++    let (eof, saw_eof) = mpsc::channel();
++    let address = serve_once(move |stream| {
++        stream
++            .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nfirst\n")
++            .expect("first chunk");
++        stream.flush().expect("flush");
++        stream
++            .set_read_timeout(Some(Duration::from_secs(10)))
++            .expect("timeout");
++        let mut byte = [0];
++        let _ = eof.send(matches!(stream.read(&mut byte), Ok(0)));
++    });
++    let source = FETCH_STREAM_HELD_PROBE.replace("__URL__", &format!("http://{address}/events"));
++    let (runtime, view, mut context) = probe(cx, &source);
++    settle(&mut context, &view, |text| text.contains("reading"));
++    drop(view);
++    let deadline = std::time::Instant::now() + Duration::from_secs(5);
++    let closed = loop {
++        context.executor().advance_clock(Duration::from_millis(10));
++        context.run_until_parked();
++        match saw_eof.try_recv() {
++            Ok(closed) => break closed,
++            Err(_) if std::time::Instant::now() < deadline => {
++                thread::sleep(Duration::from_millis(5));
++            }
++            Err(error) => panic!("the server never saw the stream close: {error}"),
++        }
++    };
++    assert!(closed, "the peer saw data or an error instead of EOF");
++    std::mem::forget(runtime);
++}
++
++/// One HTTP exchange on a local port: reads the request, then hands the
++/// stream to `respond`.
++fn serve_once(
++    respond: impl FnOnce(&mut std::net::TcpStream) + Send + 'static,
++) -> std::net::SocketAddr {
++    let listener = TcpListener::bind("127.0.0.1:0").expect("HTTP listener");
++    let address = listener.local_addr().expect("listener address");
++    thread::spawn(move || {
++        let (mut stream, _) = listener.accept().expect("HTTP connection");
++        let mut request = [0; 1024];
++        let _ = stream.read(&mut request);
++        respond(&mut stream);
++    });
++    address
++}
++
++/// Pumps actor-driven promises until the rendered tree satisfies `done`.
++fn settle(
++    context: &mut VisualTestContext,
++    view: &Entity<ScriptView>,
++    done: impl Fn(&str) -> bool,
++) -> String {
++    let deadline = std::time::Instant::now() + Duration::from_secs(10);
++    loop {
++        context.run_until_parked();
++        draw(context, view);
++        let rendered = snapshot(context, view);
++        if done(&rendered) || std::time::Instant::now() >= deadline {
++            return rendered;
++        }
++        thread::sleep(Duration::from_millis(5));
++        context.executor().advance_clock(Duration::from_millis(10));
++    }
++}
++
+ fn probe(
+     cx: &mut TestAppContext,
+     source: &str,
+@@ -1152,8 +1561,24 @@
+     Entity<ScriptView>,
+     VisualTestContext,
+ ) {
++    probe_with(
++        cx,
++        Capabilities::new().network_hosts(["127.0.0.1".to_owned()]),
++        source,
++    )
++}
++
++fn probe_with(
++    cx: &mut TestAppContext,
++    capabilities: Capabilities,
++    source: &str,
++) -> (
++    std::rc::Rc<ShellRuntime>,
++    Entity<ScriptView>,
++    VisualTestContext,
++) {
+     cx.update(crate::init);
+-    crate::set_capabilities(Capabilities::new().network_hosts(["127.0.0.1".to_owned()]));
++    crate::set_capabilities(capabilities);
+     let runtime = ShellRuntime::new_isolated().expect("runtime");
+     runtime.use_direct_http_for_tests();
+     cx.update(|cx| runtime.set_global(cx));
+diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.rs
+--- a/crates/shell/src/tests/process.rs
++++ b/crates/shell/src/tests/process.rs
+@@ -162,8 +162,15 @@
+ #[cfg(unix)]
+ #[gpui::test]
+ fn process_output_limit_rejects_the_javascript_promise(cx: &mut TestAppContext) {
+-    let (_runtime, object, mut context) =
+-        probe(cx, "/bin/sh", "process-output-limit.js", OUTPUT_LIMIT_PROBE);
++    // PATH for `yes` and `head`, which the empty child environment lacks.
++    let (_runtime, object, mut context) = probe_with(
++        cx,
++        Capabilities::new()
++            .execute(ExecuteGrant::Allowed(vec!["/bin/sh".to_owned()]))
++            .process_env(["PATH".to_owned()]),
++        "process-output-limit.js",
++        OUTPUT_LIMIT_PROBE,
++    );
+ 
+     context.run_until_parked();
+     draw(&mut context, &object);
+@@ -202,6 +209,277 @@
+ }
+ 
+ #[cfg(unix)]
++const SPAWN_ROUND_TRIP_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        const child = spawn("/bin/sh", [
++          "-c",
++          "echo a; echo b >&2; read x; echo got:$x; exit 3",
++        ]);
++        const a = await child.readLine();
++        const b = await child.readErrLine();
++        await child.write("hi\n");
++        const got = await child.readLine();
++        const eof = await child.readLine();
++        const status = await child.wait();
++        this.state = `${a}|${b}|${got}|${eof}|${status.code}|${status.signal}`;
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++const SPAWN_POLICY_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { run, spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    const errors = [];
++    try { spawn("/bin/sh", ["-c", "true"], { env: { LD_PRELOAD: "x" } }); }
++    catch (error) { errors.push(`${error.name}:${error.message}`); }
++    try { spawn("/bin/sh", ["-c", "true"], { cwd: "relative" }); }
++    catch (error) { errors.push(`${error.name}:${error.message}`); }
++    try { spawn("/gpui-shell-ungranted"); }
++    catch (error) { errors.push(`${error.name}:${error.message}`); }
++    cx.spawn(async (cx) => {
++      try {
++        const output = await run("/bin/sh", ["-c", 'printf "%s@%s" "$GPUI_SHELL_PROBE" "$(pwd)"'], {
++          env: { GPUI_SHELL_PROBE: "set" },
++          cwd: "__CWD__",
++        });
++        this.state = `${errors.join("~")}~${output.stdout}`;
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++const SPAWN_LIFETIME_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      // Held, or collecting it would close stdin and end `read` on its own.
++      this.child = spawn("/bin/sh", ["-c", "echo started; read x"]);
++      await this.child.readLine();
++      this.state = `pid:${this.child.pid}:`;
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++const SPAWN_IGNORE_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      const child = spawn("/bin/sh", ["-c", "echo hi; read x"], { stdout: "ignore" });
++      const line = await child.readLine();
++      child.kill();
++      const status = await child.wait();
++      this.state = `${line}|${status.code}|${status.signal}`;
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++#[gpui::test]
++fn spawn_round_trips_lines_stdin_and_exit_status(cx: &mut TestAppContext) {
++    let (_runtime, view, mut context) =
++        probe(cx, "/bin/sh", "spawn-round-trip.js", SPAWN_ROUND_TRIP_PROBE);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(rendered.contains("a|b|got:hi|null|3|null"), "{rendered}");
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn spawn_checks_command_env_and_cwd_against_the_grant(cx: &mut TestAppContext) {
++    let cwd = std::env::temp_dir().canonicalize().expect("temp dir");
++    let source = SPAWN_POLICY_PROBE.replace("__CWD__", &cwd.display().to_string());
++    let (_runtime, view, mut context) = probe_with(
++        cx,
++        Capabilities::new()
++            .execute(ExecuteGrant::Allowed(vec!["/bin/sh".to_owned()]))
++            .process_env(["GPUI_SHELL_PROBE".to_owned()])
++            .read_roots([cwd.clone()]),
++        "spawn-policy.js",
++        &source,
++    );
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(
++        rendered.contains("TypeError:environment variable `LD_PRELOAD` is not granted")
++            && rendered.contains("capabilities.process.env")
++            && rendered
++                .contains("TypeError:process options.cwd `relative` must be an absolute path")
++            && rendered.contains("TypeError:running `/gpui-shell-ungranted` is not granted")
++            && rendered.contains(&format!("set@{}", cwd.display())),
++        "{rendered}"
++    );
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn dropping_the_view_kills_a_spawned_child(cx: &mut TestAppContext) {
++    let (runtime, view, mut context) =
++        probe(cx, "/bin/sh", "spawn-lifetime.js", SPAWN_LIFETIME_PROBE);
++    let rendered = settle(&mut context, &view, |text| text.contains("pid:"));
++    let pid: i32 = rendered
++        .split("pid:")
++        .nth(1)
++        .and_then(|rest| rest.split(':').next())
++        .and_then(|pid| pid.parse().ok())
++        .expect("the child's pid");
++    assert!(alive(pid), "the child should still be running");
++
++    drop(view);
++    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
++    while alive(pid) {
++        assert!(
++            std::time::Instant::now() < deadline,
++            "the child outlived its view"
++        );
++        context
++            .executor()
++            .advance_clock(std::time::Duration::from_millis(10));
++        context.run_until_parked();
++        std::thread::sleep(std::time::Duration::from_millis(5));
++    }
++    std::mem::forget(runtime);
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn an_ignored_stream_reads_null_and_kill_ends_the_child(cx: &mut TestAppContext) {
++    let (_runtime, view, mut context) = probe(cx, "/bin/sh", "spawn-ignore.js", SPAWN_IGNORE_PROBE);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(rendered.contains("null|null|15"), "{rendered}");
++}
++
++#[cfg(unix)]
++const SPAWN_LIMITS_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { run, spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    const errors = [];
++    for (const call of [
++      () => run("/bin/sh", ["-c", "true"], { stdout: "pipe" }),
++      () => spawn("/bin/sh", ["-c", "true"], { shell: true }),
++      () => spawn("/bin/sh", ["-c", "true"], { env: { HOME: 1 } }),
++      () => spawn("/bin/sh", ["-c", "true"], { stderr: "inherit" }),
++      () => spawn("/bin/sh", ["-c", "true"], { cwd: "/" }),
++    ]) {
++      try { call(); errors.push("allowed"); }
++      catch (error) { errors.push(`${error.name}:${error.message}`); }
++    }
++    cx.spawn(async (cx) => {
++      // One line one byte over the 1 MiB limit, from a shell builtin.
++      const child = spawn("/bin/sh", ["-c", "printf '%01048577d' 0"]);
++      try { child.kill("SIGUSR1"); errors.push("allowed"); }
++      catch (error) { errors.push(`${error.name}:${error.message}`); }
++      try { child.write("x".repeat(1048577)); errors.push("allowed"); }
++      catch (error) { errors.push(`${error.name}:${error.message}`); }
++      try { await child.readLine(); errors.push("allowed"); }
++      catch (error) { errors.push(`rejected:${error.message}`); }
++      const status = await child.wait();
++      try { await child.write("late\n"); errors.push("allowed"); }
++      catch (error) { errors.push(`rejected:${error.message}`); }
++      this.state = `${errors.join("~")}~${status.code}`;
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++#[gpui::test]
++fn spawn_refuses_malformed_options_and_bounds_its_io(cx: &mut TestAppContext) {
++    let (_runtime, view, mut context) = probe(cx, "/bin/sh", "spawn-limits.js", SPAWN_LIMITS_PROBE);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    for expected in [
++        "TypeError:process.run(command, args, options) captures both streams",
++        "TypeError:unknown process option `shell`",
++        "TypeError:process options.env expects string values",
++        "TypeError:process options.stderr `inherit` must be",
++        "TypeError:filesystem read is not granted",
++        "TypeError:child.kill(signal) does not know `SIGUSR1`",
++        "RangeError:child.write(data) exceeded the 1048576 byte limit",
++        "rejected:a child output line exceeded 1048576 bytes",
++        "rejected:writing to the child failed",
++        "~0",
++    ] {
++        assert!(rendered.contains(expected), "{expected} missing from {rendered}");
++    }
++    assert!(!rendered.contains("allowed"), "{rendered}");
++}
++
++/// Alive and not yet reaped.
++#[cfg(unix)]
++fn alive(pid: i32) -> bool {
++    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| !stat.contains(") Z "))
++}
++
++/// Pumps the actor-driven promises until the rendered tree satisfies `done`.
++#[cfg(unix)]
++fn settle(
++    context: &mut VisualTestContext,
++    view: &Entity<ScriptView>,
++    done: impl Fn(&str) -> bool,
++) -> String {
++    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
++    loop {
++        context.run_until_parked();
++        draw(context, view);
++        let rendered = snapshot_text(context, view);
++        if done(&rendered) || std::time::Instant::now() >= deadline {
++            return rendered;
++        }
++        std::thread::sleep(std::time::Duration::from_millis(5));
++        context
++            .executor()
++            .advance_clock(std::time::Duration::from_millis(10));
++    }
++}
++
++#[cfg(unix)]
+ fn probe(
+     cx: &mut TestAppContext,
+     command: &str,
+@@ -212,10 +490,27 @@
+     Entity<ScriptView>,
+     VisualTestContext,
+ ) {
+-    cx.update(crate::init);
+-    crate::set_capabilities(
++    probe_with(
++        cx,
+         Capabilities::new().execute(ExecuteGrant::Allowed(vec![command.to_owned()])),
+-    );
++        name,
++        source,
++    )
++}
++
++#[cfg(unix)]
++fn probe_with(
++    cx: &mut TestAppContext,
++    capabilities: Capabilities,
++    name: &str,
++    source: &str,
++) -> (
++    std::rc::Rc<ShellRuntime>,
++    Entity<ScriptView>,
++    VisualTestContext,
++) {
++    cx.update(crate::init);
++    crate::set_capabilities(capabilities);
+ 
+     let runtime = ShellRuntime::new_isolated().expect("runtime");
+     cx.update(|cx| runtime.set_global(cx));
+diff --git a/crates/shell/src/tests/render.rs b/crates/shell/src/tests/render.rs
+--- a/crates/shell/src/tests/render.rs
++++ b/crates/shell/src/tests/render.rs
+@@ -2370,6 +2370,86 @@
+     draw(&mut context, &view);
+ }
+ 
++/// `image()` and `AvatarImage.new()` load only what the grant covers: no URL,
++/// no `..`, no absolute path outside the read roots, no SVG bytes, no link
++/// out of the application directory.
++#[cfg(unix)]
++#[gpui::test]
++fn image_sources_are_checked_against_the_grant(cx: &mut TestAppContext) {
++    let root = std::env::temp_dir().join(format!("gpui-shell-images-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&root);
++    std::fs::create_dir_all(root.join("app/icons")).expect("asset root");
++    std::fs::create_dir_all(root.join("granted")).expect("read root");
++    let root = root.canonicalize().expect("canonical root");
++    std::fs::write(root.join("app/icons/logo.png"), b"png").expect("asset");
++    // Dangling now, so only its link says where a later file would be read from.
++    std::os::unix::fs::symlink(root.join("outside.png"), root.join("app/icons/later.png"))
++        .expect("dangling link");
++
++    cx.update(crate::init);
++    crate::set_capabilities(
++        crate::Capabilities::new()
++            .asset_root(root.join("app"))
++            .read_roots([root.join("granted")]),
++    );
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    cx.update(|cx| runtime.set_global(cx));
++    let source = r#"
++import { View, image } from "gpui-kit";
++import { v_flex, Avatar, AvatarImage } from "gpui-base";
++const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
++const SVG = new Uint8Array([...'<svg xmlns="http://www.w3.org/2000/svg"/>'].map((c) => c.charCodeAt(0)));
++export default class Images extends View {
++  render(cx) {
++    const refused = [];
++    for (const source of ["../x.png", "https://example.test/a.png", "data:image/png;base64,AAAA", "/etc/hostname", SVG, "icons/later.png"]) {
++      try { image(source); refused.push("allowed"); }
++      catch (error) { refused.push(error.name); }
++    }
++    try { AvatarImage.new("https://example.test/a.png"); refused.push("allowed"); }
++    catch (error) { refused.push(error.name); }
++    return v_flex()
++      .child(refused.join(","))
++      .child(image("icons/logo.png"))
++      .child(image("icons/missing.png"))
++      .child(image("__GRANTED__"))
++      .child(image(PNG))
++      .child(Avatar.new().image(AvatarImage.new("icons/logo.png")));
++  }
++}
++"#
++    .replace("__GRANTED__", &root.join("granted/photo.png").display().to_string());
++    let view_type = runtime.load_source("images.js", &source).expect("load");
++    let window = cx.add_window(|_, _| Empty);
++    let mut context = VisualTestContext::from_window(*window.deref(), cx);
++    let object = context
++        .update(|window, cx| runtime.instantiate(&view_type, window, cx))
++        .expect("instantiate");
++    let tree = context
++        .update(|window, cx| runtime.render_to_spec(&object, None, window, cx))
++        .expect("render");
++    let _ = std::fs::remove_dir_all(&root);
++    crate::set_capabilities(crate::Capabilities::new());
++
++    assert!(
++        tree.contains("TypeError,TypeError,TypeError,TypeError,TypeError,TypeError,TypeError"),
++        "{tree}"
++    );
++    let logo = root.join("app/icons/logo.png");
++    assert!(tree.contains(&format!("image {:?}", logo)), "{tree}");
++    // Not there yet, but nothing on its way leads out.
++    assert!(
++        tree.contains(&format!("image {:?}", root.join("app/icons/missing.png"))),
++        "{tree}"
++    );
++    assert!(
++        tree.contains(&format!("image {:?}", root.join("granted/photo.png"))),
++        "{tree}"
++    );
++    assert!(tree.contains("image <12 bytes>"), "{tree}");
++    assert!(tree.contains(&format!("AvatarImage {:?}", logo)), "{tree}");
++}
++
+ #[gpui::test]
+ fn an_external_link_survives_the_script_render(cx: &mut TestAppContext) {
+     cx.update(crate::init);
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -2038,13 +2038,18 @@
+   export function svg(path: string): NativeElement;
+ 
+   /**
+-   * A full-color image from the application's own directory.
++   * A full-color image.
+    *
+    * Unlike `svg`, this preserves the source image's colors instead of using it
+-   * as a theme-tinted icon mask. SVG, PNG, JPEG and other GPUI image formats
+-   * are supported by the host image loader.
++   * as a theme-tinted icon mask. `source` is one of:
++   * - a path relative to the application's own directory (no `..`);
++   * - an absolute path inside a granted `capabilities.fs.read` root;
++   * - a `Uint8Array` of PNG, JPEG, WebP, GIF, BMP, TIFF or ICO bytes (not SVG).
++   *
++   * URLs are refused: fetch the bytes through the network grant instead, e.g.
++   * `image(new Uint8Array(await (await fetch(url)).arrayBuffer()))`.
+    */
+-  export function image(path: string): NativeElement;
++  export function image(source: string | Uint8Array): NativeElement;
+ 
+   /** The visible items, as a half-open `[start, end)` interval. */
+   export interface ItemRange {
+@@ -2429,14 +2434,14 @@
+    */
+   export const Avatar: PartType;
+   /**
+-   * The image slot: a picture from the application's own directory, at the
+-   * same kind of path `image(...)` takes.
++   * The image slot: a picture from the same kinds of source `image(...)`
++   * takes — a path or raster bytes, never a URL.
+    *
+    * It is a slot type, not an element — used as an ordinary child it draws
+    * nothing and says so in the log. Give it `size_full()` unless you want it at
+    * its natural size.
+    */
+-  export const AvatarImage: { new(path: string): Element };
++  export const AvatarImage: { new(source: string | Uint8Array): Element };
+   /**
+    * The fallback slot: an ordinary box holding whatever stands in for the
+    * image — initials, a shape, an `svg(...)`.
+@@ -3716,12 +3721,46 @@
+ }
+ declare module "process" {
+   export interface CommandOutput { code: number; stdout: string; stderr: string; }
+-  export function run(command: string, args?: string[]): Promise<CommandOutput>;
++  export interface ProcessOptions {
++    /**
++     * Variables to set. The child otherwise gets only the host variables named
++     * in `capabilities.process.env`, and only those names may be set here.
++     */
++    env?: Record<string, string>;
++    /** Absolute working directory inside a granted `capabilities.fs.read` root. */
++    cwd?: string;
++  }
++  export interface SpawnOptions extends ProcessOptions {
++    /** "pipe" (default) to read it with readLine/readErrLine, "ignore" to discard it. */
++    stdout?: "pipe" | "ignore";
++    stderr?: "pipe" | "ignore";
++  }
++  /** `code` for a normal exit, `signal` when a signal ended the child. */
++  export interface ExitStatus { code: number | null; signal: number | null; }
++  /**
++   * A running child, leader of its own process group. When the view, plugin or
++   * runtime that spawned it goes away the whole group is killed.
++   */
++  export interface ChildProcess {
++    readonly pid: number;
++    /** The next stdout line without its newline; null at EOF or when ignored. */
++    readLine(): Promise<string | null>;
++    /** The next stderr line; null at EOF or when ignored. */
++    readErrLine(): Promise<string | null>;
++    /** Writes to stdin (at most 1 MiB per call). */
++    write(data: string | Uint8Array): Promise<void>;
++    /** Resolves when the child exits. */
++    wait(): Promise<ExitStatus>;
++    /** Signals the child's process group; SIGTERM by default. */
++    kill(signal?: "SIGTERM" | "SIGKILL" | "SIGINT" | "SIGHUP"): void;
++  }
++  export function run(command: string, args?: string[], options?: ProcessOptions): Promise<CommandOutput>;
++  export function spawn(command: string, args?: string[], options?: SpawnOptions): ChildProcess;
+   export function exit(code?: number): void;
+   export function nextTick(callback: (...args: unknown[]) => void, ...args: unknown[]): void;
+   export const platform: string;
+   export const arch: string;
+-  const process: { run: typeof run; exit: typeof exit; nextTick: typeof nextTick; platform: string; arch: string };
++  const process: { run: typeof run; spawn: typeof spawn; exit: typeof exit; nextTick: typeof nextTick; platform: string; arch: string };
+   export default process;
+ }
+ declare module "os" {
+@@ -3747,11 +3786,16 @@
+ declare module "net" {
+   export interface Socket {
+     write(data: string): Promise<void>;
+-    /** Reads raw bytes. Resolves to null after the peer reaches EOF. */
++    /**
++     * Reads raw bytes. There is no idle timeout: it waits as long as the peer
++     * is quiet. Resolves to null at EOF or after close().
++     */
+     read(maxBytes?: number): Promise<Uint8Array | null>;
+     close(): void;
+   }
+   export function connect(host: string, port: number): Promise<Socket>;
++  /** A unix socket, granted by its exact path in `capabilities.network.unix`. */
++  export function connect(target: { path: string }): Promise<Socket>;
+   const net: { connect: typeof connect };
+   export default net;
+ }
+@@ -3778,8 +3822,21 @@
+   readonly status: number;
+   readonly ok: boolean;
+   readonly url: string;
++  /** The body, decoded as UTF-8 with invalid bytes replaced. */
+   text(): Promise<string>;
+   json(): Promise<unknown>;
++  /** The body's exact bytes. */
++  arrayBuffer(): Promise<ArrayBuffer>;
++}
++/** `fetch(url, { stream: true })`: the body unread, with no size limit. */
++interface ShellFetchStream {
++  readonly status: number;
++  readonly ok: boolean;
++  readonly url: string;
++  /** The next chunk; null at the end of the body or after close(). */
++  read(): Promise<Uint8Array | null>;
++  /** Stops reading and releases the connection. */
++  close(): void;
+ }
+ interface ShellFetchOptions {
+   /**
+@@ -3791,7 +3848,15 @@
+   /** Client-managed framing headers such as Host and Content-Length are refused. */
+   headers?: Record<string, string>;
+   body?: string | Uint8Array;
++  /**
++   * Milliseconds, 1 to 300000; 30000 by default. Bounds connecting and each
++   * read, so a stream may stay quiet for longer than this between chunks.
++   */
++  timeout?: number;
++  /** Resolve once the headers arrive and read the body chunk by chunk. */
++  stream?: boolean;
+ }
++declare function fetch(url: string, options: ShellFetchOptions & { stream: true }): Promise<ShellFetchStream>;
+ declare function fetch(url: string, options?: ShellFetchOptions): Promise<ShellFetchResponse>;
+ declare const process: typeof import("process").default;
+ "#;
+@@ -4446,6 +4511,13 @@
+         assert!(!declarations.contains("export const fs: FileSystem"));
+         assert!(!declarations.contains("export const process: Process"));
+         assert!(declarations.contains("declare function fetch"));
++        assert!(declarations.contains("export function spawn(command: string, args?: string[], options?: SpawnOptions): ChildProcess;"));
++        assert!(
++            declarations
++                .contains("export function connect(target: { path: string }): Promise<Socket>;")
++        );
++        assert!(declarations.contains("arrayBuffer(): Promise<ArrayBuffer>;"));
++        assert!(declarations.contains("Promise<ShellFetchStream>"));
+     }
+ 
+     #[test]

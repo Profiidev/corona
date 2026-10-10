@@ -242,6 +242,7 @@ impl CapabilitiesFile {
       .write_roots(expand_all(&fs.write, plugin_dir, data_dir))
       .execute(execute)
       .network_hosts(network.hosts.into_iter().map(|host| host.to_lowercase()))
+      .network_unix(expand_all(&network.unix, plugin_dir, data_dir))
       .http_requests(network.http.into_iter().map(|request| {
         let mut grant = HttpRequestGrant::new(
           request.host,
@@ -259,6 +260,8 @@ impl CapabilitiesFile {
       .clipboard_read(clipboard.read)
       .clipboard_write(clipboard.write)
       .exit(process.exit)
+      .process_env(process.env)
+      .asset_root(plugin_dir.to_path_buf())
   }
 }
 
@@ -333,6 +336,10 @@ struct NetworkGrantFile {
   /// HTTP requests constrained by host, method and URL path.
   #[serde(default)]
   http: Vec<HttpRequestGrantFile>,
+  /// Unix sockets `net.connect({ path })` may reach, by exact path, e.g.
+  /// `/run/tailscale/tailscaled.sock`. Placeholders expand as in `fs.read`.
+  #[serde(default, deserialize_with = "grant_paths")]
+  unix: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
@@ -368,6 +375,25 @@ struct ClipboardGrantFile {
 struct ProcessGrantFile {
   #[serde(default)]
   exit: bool,
+  /// Host environment variables passed to `run`/`spawn` children, and the
+  /// only names their `env` option may set. Children otherwise get an empty
+  /// environment.
+  #[serde(default, deserialize_with = "env_names")]
+  env: Vec<String>,
+}
+
+/// Loader variables would run the plugin's own code in any granted command.
+fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+  let names = Vec::<String>::deserialize(deserializer)?;
+  if let Some(name) = names
+    .iter()
+    .find(|name| name.starts_with("LD_") || *name == "GCONV_PATH" || name.contains('='))
+  {
+    return Err(D::Error::custom(format!(
+      "`{name}` cannot be granted in process.env"
+    )));
+  }
+  Ok(names)
 }
 
 fn granted() -> bool {
@@ -578,6 +604,35 @@ process = { exit = true }
   #[test]
   fn execute_string_must_be_wildcard() {
     assert!(with_capabilities(r#"fs = { execute = "git" }"#).is_err());
+  }
+
+  #[test]
+  fn process_env_and_unix_sockets() {
+    let capabilities = grant(
+      r#"
+process = { env = ["HOME", "XDG_RUNTIME_DIR"] }
+network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
+"#,
+    );
+    assert!(capabilities.may_pass_env("HOME"));
+    assert!(!capabilities.may_pass_env("LD_PRELOAD"));
+    assert!(capabilities.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
+    assert!(capabilities.may_connect_unix(Path::new("/data/a/adb.sock")));
+    assert!(!capabilities.may_connect_unix(Path::new("/run/other.sock")));
+
+    let none = grant("");
+    assert!(!none.may_pass_env("HOME"));
+    assert!(!none.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
+    assert!(with_capabilities(r#"network = { unix = ["${home}/x.sock"] }"#).is_err());
+    for bad in ["LD_PRELOAD", "LD_LIBRARY_PATH", "GCONV_PATH", "A=B"] {
+      let body = format!("process = {{ env = [\"{bad}\"] }}");
+      assert!(with_capabilities(&body).is_err(), "{bad}");
+    }
+  }
+
+  #[test]
+  fn images_resolve_against_the_plugin_dir() {
+    assert!(format!("{:?}", grant("")).contains(r#"asset_root: Some("/plugins/a")"#));
   }
 
   #[test]
