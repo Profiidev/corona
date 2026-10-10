@@ -2225,6 +2225,7 @@ dependencies = [
  "toml 1.1.6+spec-1.1.0",
  "tracing",
  "ts-rs",
+ "url",
  "uuid",
  "zbus",
  "zbus_xml",

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use anyhow::{Result, ensure};
 use corona_config::{Config, ConfigProvider};
 use corona_macros::named;
@@ -14,7 +16,13 @@ use crate::{
 
 /// `corona/settings`: the plugin's own settings, as the user set them in the
 /// settings app or the config. Every plugin has it, for its own settings only.
-pub fn module(id: &str, settings: &[Setting], subs: &mut Vec<Subscribe>) -> HostModule {
+/// `hosts` are the settings its network grant reads, which it cannot `set`.
+pub fn module(
+  id: &str,
+  settings: &[Setting],
+  hosts: &BTreeSet<String>,
+  subs: &mut Vec<Subscribe>,
+) -> HostModule {
   let current = {
     let (id, settings) = (id.to_string(), settings.to_vec());
     move |cx: &App| resolved(&id, &settings, cx)
@@ -23,6 +31,7 @@ pub fn module(id: &str, settings: &[Setting], subs: &mut Vec<Subscribe>) -> Host
 
   let get = current.clone();
   let (set, options) = (lookup(id, settings), lookup(id, settings));
+  let hosts = hosts.clone();
   let module: HostModule = Module::new("corona/settings")
     .func(named!(
       "get",
@@ -40,6 +49,11 @@ pub fn module(id: &str, settings: &[Setting], subs: &mut Vec<Subscribe>) -> Host
       /// Changes setting `key` in the config, as the settings app would.
       move |cx: &mut App, key: String, value: Value| -> Result<()> {
         let (id, setting) = set(&key)?;
+        // a plugin setting its own host would grant itself any host
+        ensure!(
+          !hosts.contains(&key),
+          "setting `{key}` is a network grant, only the user changes it"
+        );
         ensure!(setting.accepts(&value), "setting `{key}` cannot be {value}");
         // the config observers render scripts again, so not from inside one
         cx.defer(move |cx| {
@@ -332,7 +346,9 @@ dynamic = true
       report([m.set("on", false), m.set("on", 1), m.set("nope", 1), m.set("device", "phone")]);
     }"#;
     let declared = settings(DECLARED);
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module("p", &declared, subs));
+    let (view, cx) = harness::view(cx, body, |_, subs, _| {
+      module("p", &declared, &BTreeSet::new(), subs)
+    });
     cx.run_until_parked();
     let report = view.last();
     assert_eq!(report[0], Value::Null);
@@ -359,7 +375,9 @@ dynamic = true
     cx.update(|cx| cx.set_global(Config::default()));
     let declared = settings(DECLARED);
     let device = declared[1].clone();
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module("p", &declared, subs));
+    let (view, cx) = harness::view(cx, body, |_, subs, _| {
+      module("p", &declared, &BTreeSet::new(), subs)
+    });
     cx.run_until_parked();
     let report = view.last();
     assert_eq!(report[0], Value::Null);
@@ -373,6 +391,19 @@ dynamic = true
     });
   }
 
+  #[gpui::test]
+  fn host_settings_are_the_users(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Config::default()));
+    let body = r#"report(m.set("on", false));"#;
+    let declared = settings(DECLARED);
+    let hosts = BTreeSet::from(["on".to_string()]);
+    let (view, cx) = harness::view(cx, body, |_, subs, _| module("p", &declared, &hosts, subs));
+    cx.run_until_parked();
+    let message = view.last()["message"].as_str().unwrap().to_string();
+    assert!(message.contains("network grant"), "{message}");
+    cx.update(|_, cx| assert!(cx.config().plugin_settings.is_empty()));
+  }
+
   #[test]
   fn no_settings_is_an_empty_interface() {
     let ts = declarations(&[]);
@@ -382,7 +413,7 @@ dynamic = true
   #[test]
   fn the_module_accepts_its_declarations() {
     // gpui-shell checks the declared functions against the registered ones
-    let module = module("p", &[], &mut Vec::new());
+    let module = module("p", &[], &BTreeSet::new(), &mut Vec::new());
     assert!(module.declared().unwrap().contains("export function get"));
   }
 }

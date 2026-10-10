@@ -154,7 +154,12 @@ impl ScriptManager {
       )?;
     let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(id, cx));
     let policy = policy
-      .with_host_module(settings::module(id, &manifest.settings, &mut subscribes))?
+      .with_host_module(settings::module(
+        id,
+        &manifest.settings,
+        &manifest.host_settings,
+        &mut subscribes,
+      ))?
       .with_host_module(surface::module(
         id,
         panels,
@@ -337,7 +342,7 @@ export default class Main extends View {
       let mut manager = ScriptManager::new(runtime, self.paths.clone());
       let root = &registry::roots(&self.paths, &Default::default())[1];
       manager.set_plugins(
-        registry::scan_root(&self.paths, root)
+        registry::scan_root(&self.paths, root, &Default::default())
           .into_iter()
           .map(|found| (found.manifest.id.clone(), found.manifest))
           .collect(),

@@ -2,12 +2,13 @@
 //! precedence that has it. Disk only, no network.
 
 use std::{
-  collections::HashMap,
+  collections::{BTreeMap, HashMap},
   fs,
   path::{Path, PathBuf},
 };
 
 use corona_config::plugins::{LOCAL_SOURCE, PluginsConfig, SourceKind};
+use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
@@ -68,8 +69,12 @@ pub struct Found {
   pub manifest: PluginManifest,
 }
 
-/// Every plugin in `dir`, by subdirectory
-pub fn scan_root(paths: &Paths, root: &Root) -> Vec<Found> {
+/// `[plugin_settings]`, by plugin id
+pub type PluginSettings = BTreeMap<String, Map<String, Value>>;
+
+/// Every plugin in `dir`, by subdirectory, its `${setting:<key>}` hosts from
+/// `settings`
+pub fn scan_root(paths: &Paths, root: &Root, settings: &PluginSettings) -> Vec<Found> {
   let mut dirs: Vec<PathBuf> = fs::read_dir(&root.dir)
     .into_iter()
     .flatten()
@@ -84,10 +89,11 @@ pub fn scan_root(paths: &Paths, root: &Root) -> Vec<Found> {
     .into_iter()
     .filter_map(|dir| match ManifestFile::read(&dir) {
       Ok(file) => {
-        let data = paths.data(&file.id);
+        let id = file.id.clone();
+        let data = paths.data(&id);
         Some(Found {
           origin: root.origin.clone(),
-          manifest: PluginManifest::new(file, dir, &data),
+          manifest: PluginManifest::new(file, dir, &data, settings.get(&id)),
         })
       }
       Err(e) => {
@@ -105,10 +111,14 @@ fn hidden(path: &Path) -> bool {
 }
 
 /// The plugin each enabled id runs as: the last root that has it wins
-pub fn scan(paths: &Paths, config: &PluginsConfig) -> HashMap<String, Found> {
+pub fn scan(
+  paths: &Paths,
+  config: &PluginsConfig,
+  settings: &PluginSettings,
+) -> HashMap<String, Found> {
   let mut active: HashMap<String, Found> = HashMap::new();
   for root in roots(paths, config) {
-    for found in scan_root(paths, &root) {
+    for found in scan_root(paths, &root, settings) {
       let id = found.manifest.id.clone();
       if !config.is_enabled(&id) {
         continue;
@@ -245,7 +255,7 @@ mod tests {
       ],
       &["com.a", "com.b", "com.c", "com.d"],
     );
-    let active = scan(&paths, &config);
+    let active = scan(&paths, &config, &Default::default());
     let mut ids: Vec<_> = active.keys().cloned().collect();
     ids.sort();
     assert_eq!(ids, ["com.a", "com.b", "com.c"]);
@@ -273,7 +283,11 @@ mod tests {
       source("git", SourceKind::Git, Path::new("https://x")),
       source("path", SourceKind::Path, &base.join("path")),
     ];
-    let active = scan(&paths, &config(sources.clone(), &["com.a"]));
+    let active = scan(
+      &paths,
+      &config(sources.clone(), &["com.a"]),
+      &Default::default(),
+    );
     assert_eq!(from(&active, "com.a"), "dev");
     assert_eq!(active["com.a"].manifest.dir, dev.join("a-work"));
     assert_eq!(active["com.a"].origin.kind, SourceKind::Dev);
@@ -283,7 +297,7 @@ mod tests {
     // a disabled dev source overrides nothing
     let mut off = sources;
     off[0].enabled = false;
-    let active = scan(&paths, &config(off, &["com.a"]));
+    let active = scan(&paths, &config(off, &["com.a"]), &Default::default());
     assert_eq!(from(&active, "com.a"), "local");
   }
 
@@ -294,7 +308,7 @@ mod tests {
     fs::create_dir_all(paths.local.join("bad")).unwrap();
     fs::write(paths.local.join("bad/plugin.toml"), "id = ").unwrap();
     let root = &roots(&paths, &config(Vec::new(), &[]))[0];
-    let found = scan_root(&paths, root);
+    let found = scan_root(&paths, root, &Default::default());
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].manifest.id, "com.good");
     // grants are rooted in the plugin and its data directory

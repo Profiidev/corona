@@ -8,11 +8,12 @@ use corona_config::plugins::is_flat_name;
 use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
+use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
   module::{CoronaModule, dbus::DbusGrant},
-  plugin::settings::{self, Setting},
+  plugin::settings::{self, Setting, SettingKind},
 };
 
 /// A plugin as it runs: its manifest, where it was found and what it may do
@@ -29,6 +30,9 @@ pub struct PluginManifest {
   /// The service's script, relative to the plugin directory
   pub service: Option<String>,
   pub settings: Vec<Setting>,
+  /// Settings a `${setting:<key>}` host grant reads: the user's to change,
+  /// never the plugin's
+  pub host_settings: BTreeSet<String>,
   pub capabilities: Capabilities,
   /// The corona modules it may import
   pub modules: BTreeSet<CoronaModule>,
@@ -37,9 +41,23 @@ pub struct PluginManifest {
 }
 
 impl PluginManifest {
-  pub fn new(file: ManifestFile, dir: PathBuf, data_dir: &Path) -> Self {
+  /// `configured` is `[plugin_settings."<id>"]`, which `${setting:<key>}`
+  /// hosts expand from
+  pub fn new(
+    file: ManifestFile,
+    dir: PathBuf,
+    data_dir: &Path,
+    configured: Option<&Map<String, Value>>,
+  ) -> Self {
+    let values = settings::resolve(&file.id, &file.settings, configured);
     Self {
-      capabilities: file.capabilities.grant(&dir, data_dir),
+      capabilities: file.capabilities.grant(&dir, data_dir, &values),
+      host_settings: file
+        .capabilities
+        .hosts()
+        .filter_map(setting_key)
+        .map(Into::into)
+        .collect(),
       modules: file.capabilities.modules(),
       dbus: file.capabilities.dbus.clone(),
       id: file.id,
@@ -105,8 +123,25 @@ impl ManifestFile {
   }
 
   /// What one table cannot tell alone: a secret setting is read through
-  /// `corona/secrets`, so the plugin must be granted it
+  /// `corona/secrets`, so the plugin must be granted it, and a
+  /// `${setting:<key>}` host needs a text setting `key`
   fn check(&self) -> Result<()> {
+    for host in self.capabilities.hosts() {
+      let Some(key) = setting_key(host) else {
+        ensure!(
+          !host.contains("${"),
+          "unknown placeholder in host `{host}`, only ${{setting:<key>}} exists"
+        );
+        continue;
+      };
+      ensure!(
+        self
+          .settings
+          .iter()
+          .any(|s| s.key == key && matches!(s.kind, SettingKind::Text { .. })),
+        "host `{host}` needs a text setting `{key}`"
+      );
+    }
     if let Some(secret) = self.settings.iter().find(|s| s.is_secret()) {
       ensure!(
         self.capabilities.corona.contains(&CoronaModule::Secrets),
@@ -258,7 +293,22 @@ impl CapabilitiesFile {
     self.corona.clone()
   }
 
-  pub fn grant(&self, plugin_dir: &Path, data_dir: &Path) -> Capabilities {
+  /// Every host granted, by `hosts` and by `http`, as written
+  fn hosts(&self) -> impl Iterator<Item = &str> {
+    let network = self.network.iter();
+    let hosts = network
+      .clone()
+      .flat_map(|n| n.hosts.iter().map(String::as_str));
+    hosts.chain(network.flat_map(|n| n.http.iter().map(|r| r.host.as_str())))
+  }
+
+  /// `settings` are the resolved values `${setting:<key>}` hosts expand from
+  pub fn grant(
+    &self,
+    plugin_dir: &Path,
+    data_dir: &Path,
+    settings: &Map<String, Value>,
+  ) -> Capabilities {
     let fs = self.fs.clone().unwrap_or_default();
     let clipboard = self.clipboard.clone().unwrap_or_default();
     let process = self.process.clone().unwrap_or_default();
@@ -273,11 +323,16 @@ impl CapabilitiesFile {
       .read_roots(expand_all(&fs.read, plugin_dir, data_dir))
       .write_roots(expand_all(&fs.write, plugin_dir, data_dir))
       .execute(execute)
-      .network_hosts(network.hosts.into_iter().map(|host| host.to_lowercase()))
+      .network_hosts(
+        network
+          .hosts
+          .iter()
+          .filter_map(|host| expand_host(host, settings)),
+      )
       .network_unix(expand_all(&network.unix, plugin_dir, data_dir))
-      .http_requests(network.http.into_iter().map(|request| {
+      .http_requests(network.http.into_iter().filter_map(|request| {
         let mut grant = HttpRequestGrant::new(
-          request.host,
+          expand_host(&request.host, settings)?,
           request.methods,
           request.paths,
           request.path_prefixes,
@@ -286,7 +341,7 @@ impl CapabilitiesFile {
         if let Some(port) = request.port {
           grant = grant.port(port);
         }
-        grant
+        Some(grant)
       }))
       .storage(self.storage)
       .clipboard_read(clipboard.read)
@@ -295,6 +350,29 @@ impl CapabilitiesFile {
       .process_env(process.env)
       .asset_root(plugin_dir.to_path_buf())
   }
+}
+
+const SETTING_PLACEHOLDER: &str = "${setting:";
+
+/// The key of a host that is a whole `${setting:<key>}`
+fn setting_key(host: &str) -> Option<&str> {
+  host.strip_prefix(SETTING_PLACEHOLDER)?.strip_suffix('}')
+}
+
+/// A granted host, lowercase. A `${setting:<key>}` is the host of the value,
+/// a URL or a bare host with an optional port; none when that is empty or
+/// invalid, which drops the grant.
+fn expand_host(raw: &str, settings: &Map<String, Value>) -> Option<String> {
+  let Some(key) = setting_key(raw) else {
+    return Some(raw.to_lowercase());
+  };
+  let value = settings.get(key)?.as_str()?.trim();
+  let url = match value.contains("://") {
+    true => url::Url::parse(value),
+    false => url::Url::parse(&format!("http://{value}")),
+  };
+  let host = url.ok()?.host_str()?.to_lowercase();
+  (!host.is_empty()).then_some(host)
 }
 
 fn expand_all(paths: &[String], plugin_dir: &Path, data_dir: &Path) -> Vec<PathBuf> {
@@ -362,7 +440,9 @@ fn wildcard<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Err
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct NetworkGrantFile {
-  /// Hosts that may be reached, e.g. `api.example.com`.
+  /// Hosts that may be reached, e.g. `api.example.com`. `${setting:<key>}`
+  /// grants the host of text setting `key`, a URL or a host, and nothing
+  /// while it is empty; the plugin cannot change that setting itself.
   #[serde(default)]
   hosts: Vec<String>,
   /// HTTP requests constrained by host, method and URL path.
@@ -379,6 +459,7 @@ struct NetworkGrantFile {
 struct HttpRequestGrantFile {
   #[serde(default = "default_https_scheme")]
   scheme: String,
+  /// Expands `${setting:<key>}` as `hosts` do.
   host: String,
   #[serde(default)]
   port: Option<u16>,
@@ -440,8 +521,9 @@ mod tests {
   };
 
   use gpui_shell::{Capabilities, ExecuteGrant};
+  use serde_json::{Map, json};
 
-  use super::{ManifestFile, expand};
+  use super::{ManifestFile, PluginManifest, expand};
   use crate::module::CoronaModule;
 
   fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
@@ -460,10 +542,11 @@ mod tests {
 
   /// The grant of a manifest with this `[capabilities]` table body.
   fn grant(body: &str) -> Capabilities {
-    with_capabilities(body)
-      .unwrap()
-      .capabilities
-      .grant(Path::new("/plugins/a"), Path::new("/data/a"))
+    with_capabilities(body).unwrap().capabilities.grant(
+      Path::new("/plugins/a"),
+      Path::new("/data/a"),
+      &Map::new(),
+    )
   }
 
   fn expand_raw(raw: &str) -> PathBuf {
@@ -627,10 +710,11 @@ default = false
 
   #[test]
   fn omitted_capabilities_keep_storage() {
-    let capabilities = with("")
-      .unwrap()
-      .capabilities
-      .grant(Path::new("/plugins/a"), Path::new("/data/a"));
+    let capabilities = with("").unwrap().capabilities.grant(
+      Path::new("/plugins/a"),
+      Path::new("/data/a"),
+      &Map::new(),
+    );
     assert!(capabilities.has_storage());
   }
 
@@ -758,6 +842,73 @@ methods = ["POST"]
     assert!(capabilities.may_request("http", "local", Some(8080), "POST", "/x"));
     assert!(!capabilities.may_request("http", "local", None, "POST", "/x"));
     assert!(!capabilities.may_request("https", "local", Some(8080), "POST", "/x"));
+  }
+
+  /// A plugin with text setting `url` and this `[capabilities]` body, the
+  /// setting configured as `url`.
+  fn with_url(body: &str, url: Option<&str>) -> Result<PluginManifest, anyhow::Error> {
+    let file = with(&format!(
+      "[[settings]]\nkey = \"url\"\nlabel = \"URL\"\ntype = \"text\"\ndefault = \"\"\n[capabilities]\n{body}"
+    ))?;
+    file.check()?;
+    let configured = url.map(|url| Map::from_iter([("url".into(), json!(url))]));
+    let manifest = PluginManifest::new(
+      file,
+      "/plugins/a".into(),
+      Path::new("/data/a"),
+      configured.as_ref(),
+    );
+    Ok(manifest)
+  }
+
+  #[test]
+  fn setting_hosts() {
+    let hosts = r#"network = { hosts = ["${setting:url}"] }"#;
+    for (url, host) in [
+      ("https://HA.local:8123/api", "ha.local"),
+      ("ha.local:8123", "ha.local"),
+      ("192.168.1.5", "192.168.1.5"),
+      ("ha.local/x", "ha.local"),
+    ] {
+      let manifest = with_url(hosts, Some(url)).unwrap();
+      assert!(manifest.capabilities.may_reach(host), "{url}");
+      assert_eq!(manifest.host_settings, BTreeSet::from(["url".into()]));
+    }
+    // empty or invalid: no grant, and the placeholder is never a host
+    for url in [None, Some(""), Some("a b"), Some("file:///etc")] {
+      let manifest = with_url(hosts, url).unwrap();
+      assert!(
+        !manifest.capabilities.may_reach("${setting:url}"),
+        "{url:?}"
+      );
+      let debug = format!("{:?}", manifest.capabilities);
+      assert!(debug.contains("network_hosts: []"), "{url:?}");
+    }
+
+    let http = r#"network = { http = [{ host = "${setting:url}", methods = ["GET"], path_prefixes = ["/"] }] }"#;
+    let manifest = with_url(http, Some("http://ha.local")).unwrap();
+    assert!(
+      manifest
+        .capabilities
+        .may_request("https", "ha.local", None, "GET", "/api")
+    );
+    let manifest = with_url(http, Some("")).unwrap();
+    assert!(!format!("{:?}", manifest.capabilities).contains("HttpRequestGrant"));
+
+    // only declared text settings, only as a whole host
+    for body in [
+      r#"network = { hosts = ["${setting:other}"] }"#,
+      r#"network = { hosts = ["${setting:url}.example.com"] }"#,
+      r#"network = { hosts = ["${pluginDir}"] }"#,
+      r#"network = { http = [{ host = "${setting:nope}", methods = ["GET"] }] }"#,
+    ] {
+      assert!(with_url(body, None).is_err(), "{body}");
+    }
+    let toggle = "[[settings]]\nkey = \"on\"\nlabel = \"On\"\ntype = \"toggle\"\ndefault = true\n";
+    let toggle = with(&format!(
+      "{toggle}[capabilities]\nnetwork = {{ hosts = [\"${{setting:on}}\"] }}"
+    ));
+    assert!(toggle.unwrap().check().is_err());
   }
 
   #[test]

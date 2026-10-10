@@ -88,6 +88,10 @@ impl PluginManager {
     });
     Self::rescan(cx);
     observe_section(cx, |c| &c.plugins, |_, cx| Self::rescan(cx));
+    // for `${setting:<key>}` hosts, which a new revision restarts with
+    // rereads every manifest on any setting change; scan once and
+    // re-grant if settings change often
+    observe_section(cx, |c| &c.plugin_settings, |_, cx| Self::rescan(cx));
     Self::heal(cx);
 
     let task = cx.spawn(async move |cx| {
@@ -131,8 +135,9 @@ impl PluginManager {
   /// Reads which plugins run from disk again
   pub fn rescan(cx: &mut App) {
     let config = cx.config().plugins.clone();
+    let settings = cx.config().plugin_settings.clone();
     let this = cx.global_mut::<Self>();
-    this.active = registry::scan(&this.worker.paths, &config);
+    this.active = registry::scan(&this.worker.paths, &config, &settings);
     let signature = signature(&this.active);
     if signature != this.signature {
       this.signature = signature;
@@ -867,6 +872,46 @@ mod tests {
     let setting = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = true\n";
     let grant = "[capabilities.dbus]\nsession = [\"org.a\"]\n";
     assert!(!rescan(&format!("{setting}{grant}")));
+  }
+
+  #[gpui::test]
+  fn a_changed_host_setting_is_a_new_revision(cx: &mut TestAppContext) {
+    let env = env(cx, |_, _| String::new());
+    let dir = env.base.join("data/corona/plugins/mine");
+    let text = |key: &str| {
+      format!("[[settings]]\nkey = \"{key}\"\nlabel = \"K\"\ntype = \"text\"\ndefault = \"\"\n")
+    };
+    let hosts = "[capabilities]\nnetwork = { hosts = [\"${setting:url}\"] }\n";
+    plugin(&dir, "com.mine", "1");
+    let manifest = manifest("com.mine", "1") + &text("url") + &text("other") + hosts;
+    fs::write(dir.join("plugin.toml"), manifest).unwrap();
+    cx.update(|cx| PluginManager::enable("com.mine", cx));
+    cx.run_until_parked();
+    let set = |key: &str, cx: &mut TestAppContext| {
+      let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
+      cx.update(|cx| {
+        corona_config::update(cx, |c| {
+          let values = c.plugin_settings.entry("com.mine".into()).or_default();
+          values.insert(key.into(), "https://ha.local:8123".into());
+        })
+        .unwrap()
+      });
+      cx.run_until_parked();
+      cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
+    };
+    assert!(set("url", cx));
+    let reach = |cx: &mut TestAppContext| {
+      cx.update(|cx| {
+        let active = cx.global::<PluginManager>().active();
+        active["com.mine"]
+          .manifest
+          .capabilities
+          .may_reach("ha.local")
+      })
+    };
+    assert!(reach(cx));
+    // a setting no grant reads restarts nothing
+    assert!(!set("other", cx));
   }
 
   #[gpui::test]
