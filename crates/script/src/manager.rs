@@ -1,4 +1,10 @@
-use std::{cell::Cell, collections::HashMap, fs, rc::Rc};
+use std::{
+  cell::Cell,
+  collections::HashMap,
+  fs,
+  rc::Rc,
+  sync::{Arc, Mutex},
+};
 
 use anyhow::{Context as _, Result};
 use gpui_kit::{
@@ -11,7 +17,7 @@ use gpui_shell::{
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, Subscriptions, plugin, settings, surface},
+  module::{ModuleExt, PluginRef, Subscriptions, plugin, settings, surface},
   plugin::{manifest::PluginManifest, paths::Paths},
 };
 
@@ -61,7 +67,11 @@ pub struct ScriptManager {
   paths: Paths,
   plugins: HashMap<String, PluginManifest>,
   /// What the instances of each plugin share, made as the first one loads
-  hubs: HashMap<String, plugin::Hub>,
+  pub(crate) hubs: HashMap<String, plugin::Hub>,
+  /// The plugin that sent each notification, until an action is picked on it
+  pub(crate) owners: Arc<Mutex<HashMap<u32, String>>>,
+  /// Whether notification actions are listened for, from the first `notify`
+  pub(crate) listening: bool,
 }
 
 impl Global for ScriptManager {}
@@ -73,6 +83,8 @@ impl ScriptManager {
       paths,
       plugins: HashMap::new(),
       hubs: HashMap::new(),
+      owners: Arc::default(),
+      listening: false,
     }
   }
 
@@ -87,7 +99,7 @@ impl ScriptManager {
   }
 
   /// The hub of plugin `id`, shared by all its views
-  fn hub(&mut self, id: &str, cx: &mut App) -> plugin::Hub {
+  pub(crate) fn hub(&mut self, id: &str, cx: &mut App) -> plugin::Hub {
     self
       .hubs
       .entry(id.to_string())
@@ -115,8 +127,9 @@ impl ScriptManager {
 
     let runtime = manager.runtime.clone();
     let root = manifest.dir.join(view);
-    let (id, modules, settings) = (
+    let (id, name, modules, settings) = (
       manifest.id.clone(),
+      manifest.name.clone(),
       manifest.modules.clone(),
       manifest.settings.clone(),
     );
@@ -127,7 +140,14 @@ impl ScriptManager {
       .with_application(&id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
-      .with_corona_modules(&modules, cx)?;
+      .with_corona_modules(
+        PluginRef {
+          id: &id,
+          name: &name,
+        },
+        &modules,
+        cx,
+      )?;
     let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(&id, cx));
     let service = (entry == Entry::Service).then(|| {
       hub.start_service();

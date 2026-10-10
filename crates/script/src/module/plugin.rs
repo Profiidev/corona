@@ -20,6 +20,8 @@ use crate::{
 
 /// How long `call` waits for the service to answer
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Notification actions kept for a plugin that is not waiting for one
+const ACTION_BUFFER: usize = 16;
 
 /// A `call` for the service to answer with `reply` or `fail`.
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -29,9 +31,17 @@ pub struct Call {
   pub args: Value,
 }
 
+/// An action the user picked on one of the plugin's notifications.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+pub struct ActionEvent {
+  /// The notification's id, as `notify` returned it.
+  pub id: u32,
+  pub key: String,
+}
+
 type Answer = Result<Value, String>;
 
-/// Calls into the plugin's service
+/// Calls into the plugin's service, and the notification actions for it
 #[derive(Default)]
 pub struct Calls {
   service: bool,
@@ -40,6 +50,10 @@ pub struct Calls {
   /// The service's `nextCall`, while it waits
   waiter: Option<flume::Sender<Call>>,
   pending: HashMap<u64, flume::Sender<Answer>>,
+  actions: VecDeque<ActionEvent>,
+  /// The `nextAction`s waiting, by the load that made them
+  action_waiters: Vec<(u64, flume::Sender<ActionEvent>)>,
+  next_load: u64,
 }
 
 impl Calls {
@@ -93,6 +107,30 @@ impl Calls {
       tx.send(Err("service stopped".into())).ok();
     }
   }
+
+  fn next_action(&mut self, load: u64) -> flume::Receiver<ActionEvent> {
+    let (tx, rx) = flume::bounded(1);
+    match self.actions.pop_front() {
+      Some(action) => drop(tx.send(action)),
+      None => self.action_waiters.push((load, tx)),
+    }
+    rx
+  }
+
+  /// To every instance waiting; kept for the next one when none is.
+  fn push_action(&mut self, action: ActionEvent) {
+    let delivered = self
+      .action_waiters
+      .drain(..)
+      .filter(|(_, tx)| tx.send(action.clone()).is_ok())
+      .count();
+    if delivered == 0 {
+      self.actions.push_back(action);
+      if self.actions.len() > ACTION_BUFFER {
+        self.actions.pop_front();
+      }
+    }
+  }
 }
 
 /// What all instances of one plugin share: its state and the calls into its
@@ -141,6 +179,27 @@ impl Hub {
         Err(anyhow!("the service did not answer in time"))
       },
     ))
+  }
+
+  /// An id for [`Self::next_action`] and [`Self::stop_actions`]
+  pub fn load(&self) -> u64 {
+    let mut calls = self.calls.borrow_mut();
+    calls.next_load += 1;
+    calls.next_load
+  }
+
+  pub fn next_action(&self, load: u64) -> flume::Receiver<ActionEvent> {
+    self.calls.borrow_mut().next_action(load)
+  }
+
+  /// Wakes the `nextAction`s of a load that is gone: gpui-shell never drops
+  /// their futures, and a dead waiter would swallow the next action
+  pub fn stop_actions(&self, load: u64) {
+    (self.calls.borrow_mut().action_waiters).retain(|(l, _)| *l != load);
+  }
+
+  pub fn push_action(&self, action: ActionEvent) {
+    self.calls.borrow_mut().push_action(action);
   }
 }
 
@@ -263,5 +322,32 @@ mod tests {
     assert_eq!(queued.try_recv().unwrap(), Err("service stopped".into()));
     assert!(calls.queue.is_empty() && calls.pending.is_empty());
     assert!(calls.call("d".into(), Value::Null).is_err());
+  }
+
+  #[test]
+  fn actions_go_to_every_waiter_or_are_kept() {
+    let mut calls = Calls::default();
+    let action = |id| ActionEvent {
+      id,
+      key: "default".into(),
+    };
+    let (a, b) = (calls.next_action(1), calls.next_action(2));
+    calls.push_action(action(1));
+    assert_eq!(a.try_recv().unwrap().id, 1);
+    assert_eq!(b.try_recv().unwrap().id, 1);
+
+    for id in 0..20 {
+      calls.push_action(action(id));
+    }
+    assert_eq!(calls.actions.len(), ACTION_BUFFER);
+    assert_eq!(calls.next_action(1).try_recv().unwrap().id, 4);
+
+    // a gone load's waiter is woken, the action kept
+    calls.actions.clear();
+    let gone = calls.next_action(3);
+    calls.action_waiters.retain(|(l, _)| *l != 3);
+    assert!(gone.try_recv().is_err() && gone.is_disconnected());
+    calls.push_action(action(30));
+    assert_eq!(calls.actions.back().unwrap().id, 30);
   }
 }

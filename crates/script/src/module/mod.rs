@@ -58,8 +58,21 @@ pub enum CoronaModule {
   Auth,
 }
 
+/// The plugin a module is built for.
+#[derive(Clone, Copy)]
+pub struct PluginRef<'a> {
+  pub id: &'a str,
+  pub name: &'a str,
+}
+
 impl CoronaModule {
-  fn module(self, reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
+  fn module(
+    self,
+    plugin: PluginRef,
+    reads: &Subscriptions,
+    subs: &mut Vec<Subscribe>,
+    cx: &mut App,
+  ) -> HostModule {
     match self {
       Self::Compositor => compositor::module(reads, subs, cx),
       Self::Pipewire => pipewire::module(reads, subs, cx),
@@ -68,7 +81,7 @@ impl CoronaModule {
       Self::Bluetooth => bluetooth::module(reads, subs, cx),
       Self::Power => power::module(reads, subs, cx),
       Self::Brightness => brightness::module(reads, subs, cx),
-      Self::Notifications => notifications::module(reads, subs, cx),
+      Self::Notifications => notifications::module(plugin, reads, subs, cx),
       Self::Tray => tray::module(reads, subs, cx),
       Self::Sysinfo => sysinfo::module(reads, subs, cx),
       Self::Weather => weather::module(reads, subs, cx),
@@ -146,6 +159,7 @@ pub trait ModuleExt: Sized {
   /// Adds the `granted` corona modules; importing any other fails.
   fn with_corona_modules(
     self,
+    plugin: PluginRef,
     granted: &BTreeSet<CoronaModule>,
     cx: &mut App,
   ) -> Result<(Self, Vec<Subscribe>)>;
@@ -154,6 +168,7 @@ pub trait ModuleExt: Sized {
 impl ModuleExt for Policy {
   fn with_corona_modules(
     self,
+    plugin: PluginRef,
     granted: &BTreeSet<CoronaModule>,
     cx: &mut App,
   ) -> Result<(Self, Vec<Subscribe>)> {
@@ -162,7 +177,7 @@ impl ModuleExt for Policy {
 
     let mut policy = self;
     for module in granted {
-      policy = policy.with_host_module(module.module(&reads, &mut subs, cx))?;
+      policy = policy.with_host_module(module.module(plugin, &reads, &mut subs, cx))?;
     }
     Ok((policy, subs))
   }

@@ -2059,6 +2059,7 @@ name = "corona_notifications"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_config",
  "corona_utils",
  "flume",
  "futures-lite",

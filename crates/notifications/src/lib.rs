@@ -1,11 +1,13 @@
 use std::{collections::HashMap, sync::atomic::AtomicU32};
 
 use anyhow::Result;
-use futures_lite::StreamExt;
+use corona_config::APP_NAME;
+use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{
-  Connection,
+  Connection, MatchRule, MessageStream,
   fdo::{DBusProxy, RequestNameFlags, RequestNameReply},
+  message,
   object_server::SignalEmitter,
   zvariant::Value,
 };
@@ -26,6 +28,17 @@ pub struct Notifications {
 }
 
 impl Global for Notifications {}
+
+/// A notification to send
+pub struct Notify {
+  pub app_name: String,
+  /// A theme icon name or a `file://` path, may be empty
+  pub app_icon: String,
+  pub summary: String,
+  pub body: String,
+  pub actions: Vec<Action>,
+  pub urgency: Urgency,
+}
 
 pub struct Filter(pub Box<dyn Fn(&Notification) -> bool>);
 
@@ -90,28 +103,84 @@ impl Notifications {
   /// Goes through `org.freedesktop.Notifications` like any app's, so it lands
   /// wherever notifications go now, corona or another daemon.
   pub fn send(&self, summary: String, body: String) -> impl Future<Output = Result<()>> + use<> {
+    let sent = self.send_notify(Notify {
+      app_name: APP_NAME.into(),
+      app_icon: String::new(),
+      summary,
+      body,
+      actions: Vec::new(),
+      urgency: Urgency::Normal,
+    });
+    async move { sent.await.map(drop) }
+  }
+
+  /// [`Self::send`] with everything a notification can have, its id
+  pub fn send_notify(&self, n: Notify) -> impl Future<Output = Result<u32>> + use<> {
     let conn = self.conn.clone();
     async move {
-      let hints: HashMap<&str, Value> = HashMap::new();
-      conn
+      let actions: Vec<&str> = n
+        .actions
+        .iter()
+        .flat_map(|a| [a.key.as_str(), a.label.as_str()])
+        .collect();
+      let urgency = match n.urgency {
+        Urgency::Low => 0u8,
+        Urgency::Normal => 1,
+        Urgency::Critical => 2,
+      };
+      let hints = HashMap::from([("urgency", Value::from(urgency))]);
+      let reply = conn
         .call_method(
           Some(NAME),
           PATH,
           Some(NAME),
           "Notify",
           &(
-            "corona",
+            n.app_name.as_str(),
             0u32,
-            "",
-            summary,
-            body,
-            Vec::<&str>::new(),
+            n.app_icon.as_str(),
+            n.summary.as_str(),
+            n.body.as_str(),
+            actions,
             hints,
             -1i32,
           ),
         )
         .await?;
-      Ok(())
+      Ok(reply.body().deserialize()?)
+    }
+  }
+
+  /// The actions picked on notifications, by whichever daemon shows them:
+  /// the notification id and the action key
+  pub fn action_invoked(
+    &self,
+  ) -> impl Future<Output = Result<impl Stream<Item = (u32, String)> + use<>>> + use<> {
+    let conn = self.conn.clone();
+    async move {
+      let rule = MatchRule::builder()
+        .msg_type(message::Type::Signal)
+        .sender(NAME)?
+        .path(PATH)?
+        .interface(NAME)?
+        .member("ActionInvoked")?
+        .build();
+      let stream = MessageStream::for_match_rule(rule, &conn, None).await?;
+      let dbus = DBusProxy::new(&conn).await?;
+      // zbus cannot match a well-known sender, so any client could send one
+      Ok(
+        stream
+          .then(move |message| {
+            let dbus = dbus.clone();
+            async move {
+              let message = message.ok()?;
+              let owner = dbus.get_name_owner(NAME.try_into().ok()?).await.ok()?;
+              (message.header().sender()? == owner.inner()).then_some(())?;
+              message.body().deserialize().ok()
+            }
+          })
+          .filter_map(|action| action),
+      )
     }
   }
 
@@ -529,6 +598,58 @@ mod tests {
         ("corona", "Hi", "there")
       );
     });
+  }
+
+  #[gpui::test]
+  fn send_notify_returns_the_id_and_hears_actions(cx: &mut TestAppContext) {
+    let running = start(cx, true);
+    let actions = block_on(cx.read(|cx| cx.notifications().action_invoked())).unwrap();
+    let mut actions = Box::pin(actions);
+    let task = cx.read(|cx| {
+      cx.notifications().send_notify(Notify {
+        app_name: "plugin".into(),
+        app_icon: "icon".into(),
+        summary: "Hi".into(),
+        body: String::new(),
+        actions: vec![Action {
+          key: "open".into(),
+          label: "Open".into(),
+        }],
+        urgency: Urgency::Critical,
+      })
+    });
+    let id = block_on(task).unwrap();
+    wait_until(cx, |cx| ids(cx) == [id]);
+    cx.read(|cx| {
+      let n = &cx.notifications().list(cx)[0];
+      assert_eq!(
+        (n.app_name.as_str(), n.app_icon.as_str()),
+        ("plugin", "icon")
+      );
+      assert_eq!(
+        (n.actions[0].key.as_str(), n.urgency),
+        ("open", Urgency::Critical)
+      );
+    });
+
+    // another app's, sent straight to corona, is not the daemon's
+    let corona = cx.read(|cx| cx.notifications().conn.unique_name().unwrap().to_owned());
+    block_on(running.client.emit_signal(
+      Some(corona),
+      PATH,
+      NAME,
+      "ActionInvoked",
+      &(id, "spoofed"),
+    ))
+    .unwrap();
+    // corona hears its own signal
+    cx.update(|cx| cx.notifications().clone().invoke_action(id, "open", cx));
+    let mut action = None;
+    wait_until(cx, |_| {
+      action = block_on(futures_lite::future::poll_once(actions.next())).flatten();
+      action.is_some()
+    });
+    assert_eq!(action.unwrap(), (id, "open".into()));
   }
 
   #[gpui::test]

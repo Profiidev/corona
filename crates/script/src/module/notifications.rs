@@ -1,19 +1,22 @@
-use std::time::UNIX_EPOCH;
+use std::{mem, pin::pin, time::UNIX_EPOCH};
 
+use anyhow::anyhow;
 use corona_notifications as nt;
 use corona_notifications::NotificationsExt;
-use gpui_kit::App;
+use futures_lite::StreamExt;
+use gpui_kit::{App, BorrowAppContext};
 use gpui_shell::HostModule;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
+  ScriptManager,
   host_fn::{Glob, Module},
-  module::{Subscribe, Subscriptions, read},
+  module::{PluginRef, Subscribe, Subscriptions, plugin::ActionEvent, read},
 };
 use corona_macros::named;
 
-#[derive(Serialize, TS)]
+#[derive(Clone, Copy, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 enum Urgency {
   Low,
@@ -21,10 +24,36 @@ enum Urgency {
   Critical,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Deserialize, TS)]
 struct Action {
   key: String,
   label: String,
+}
+
+impl From<Urgency> for nt::Urgency {
+  fn from(value: Urgency) -> Self {
+    match value {
+      Urgency::Low => nt::Urgency::Low,
+      Urgency::Normal => nt::Urgency::Normal,
+      Urgency::Critical => nt::Urgency::Critical,
+    }
+  }
+}
+
+/// A notification from the plugin, under its name.
+#[derive(Serialize, Deserialize, TS)]
+struct NotifyOptions {
+  summary: String,
+  #[ts(optional)]
+  body: Option<String>,
+  /// A theme icon name or a `file://` path.
+  #[ts(optional)]
+  icon: Option<String>,
+  /// Buttons; the one with key `default` is a click on the notification.
+  #[ts(optional)]
+  actions: Option<Vec<Action>>,
+  #[ts(optional)]
+  urgency: Option<Urgency>,
 }
 
 #[derive(Serialize, TS)]
@@ -88,7 +117,50 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
+/// Hands the actions picked on plugin notifications to the plugin that sent
+/// them, from the first `notify` on
+fn listen(cx: &mut App) {
+  let manager = cx.global_mut::<ScriptManager>();
+  if mem::replace(&mut manager.listening, true) {
+    return;
+  }
+  let owners = manager.owners.clone();
+  let actions = cx.notifications().action_invoked();
+  cx.spawn(async move |cx| {
+    let actions = match actions.await {
+      Ok(actions) => actions,
+      Err(e) => return tracing::error!("notification actions: {e:#}"),
+    };
+    let mut actions = pin!(actions);
+    while let Some((id, key)) = actions.next().await {
+      // ponytail: forgotten after the first action, a resident notification
+      // delivers only that one; keep owners until NotificationClosed if needed
+      let Some(owner) = owners.lock().unwrap().remove(&id) else {
+        continue;
+      };
+      cx.update(|cx| {
+        if let Some(hub) = cx.global::<ScriptManager>().hubs.get(&owner) {
+          hub.push_action(ActionEvent { id, key });
+        }
+      });
+    }
+  })
+  .detach();
+}
+
+pub fn module(
+  plugin: PluginRef,
+  reads: &Subscriptions,
+  subs: &mut Vec<Subscribe>,
+  cx: &mut App,
+) -> HostModule {
+  let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(plugin.id, cx));
+  let load = hub.load();
+  let stop = hub.clone();
+  subs.push(Box::new(move |_, _, _| {
+    gpui_kit::Subscription::new(move || stop.stop_actions(load))
+  }));
+  let (id, name) = (plugin.id.to_string(), plugin.name.to_string());
   let state = cx.notifications();
 
   Module::new("corona/notifications")
@@ -149,6 +221,42 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       /// Shows a notification from corona.
       |notifications: Glob<nt::Notifications>, summary: String, body: String| notifications
         .send(summary, body)
+    ))
+    .func(named!(
+      "notify",
+      /// Shows a notification under the plugin's name, its id.
+      move |cx: &mut App, options: NotifyOptions| {
+        listen(cx);
+        let owners = cx.global::<ScriptManager>().owners.clone();
+        let sent = cx.notifications().send_notify(nt::Notify {
+          app_name: name.clone(),
+          app_icon: options.icon.unwrap_or_default(),
+          summary: options.summary,
+          body: options.body.unwrap_or_default(),
+          actions: (options.actions.unwrap_or_default().into_iter())
+            .map(|a| nt::Action {
+              key: a.key,
+              label: a.label,
+            })
+            .collect(),
+          urgency: options.urgency.unwrap_or(Urgency::Normal).into(),
+        });
+        let id = id.clone();
+        async move {
+          let sent = sent.await?;
+          owners.lock().unwrap().insert(sent, id);
+          anyhow::Ok(sent)
+        }
+      }
+    ))
+    .func(named!(
+      "nextAction",
+      /// The next action picked on one of the plugin's notifications, once
+      /// one is. Every view waiting gets it.
+      move || {
+        let rx = hub.next_action(load);
+        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
+      }
     ))
     .func(named!("clearAll", |cx: &mut App| cx
       .notifications()
