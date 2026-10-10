@@ -89,21 +89,16 @@ struct Tracked {
   kind: Option<CaptureKind>,
   name: String,
   running: bool,
-  failed: bool,
 }
 
 impl Tracked {
   fn capture(&self, id: u32) -> Option<Capture> {
     let kind = self.kind?;
-    let active = match (kind, self.source) {
-      (CaptureKind::Screen, true) => !self.failed,
-      _ => self.running,
-    };
     Some(Capture {
       id,
       kind,
       name: self.name.clone(),
-      active,
+      active: self.running,
     })
   }
 }
@@ -173,7 +168,6 @@ impl CaptureState {
       kind: None,
       name: String::new(),
       running: false,
-      failed: false,
     };
     tracked.apply(props);
     self.nodes.insert(id, tracked);
@@ -189,7 +183,6 @@ impl CaptureState {
     let changed = self.nodes.get_mut(&id).is_some_and(|mut tracked| {
       let before = tracked.capture(id);
       tracked.running = matches!(state, NodeState::Running);
-      tracked.failed = matches!(state, NodeState::Error(_));
       if let Some(props) = props {
         tracked.apply(props);
       }
@@ -306,13 +299,12 @@ mod tests {
       kind: Some(kind),
       name: String::new(),
       running,
-      failed: false,
     };
     let active = |t: Tracked| t.capture(0).unwrap().active;
     assert!(active(tracked(CaptureKind::Camera, true, true)));
     assert!(!active(tracked(CaptureKind::Camera, true, false)));
-    // a paused screen share still shares
-    assert!(active(tracked(CaptureKind::Screen, true, false)));
+    assert!(active(tracked(CaptureKind::Screen, true, true)));
+    assert!(!active(tracked(CaptureKind::Screen, true, false)));
     assert!(!active(tracked(CaptureKind::Screen, false, false)));
   }
 
@@ -491,8 +483,8 @@ mod tests {
       list[0],
       capture(1, CaptureKind::Microphone, "Discord", false)
     );
-    // a screen source is active until it fails, and keeps no name
-    assert_eq!(list[1], capture(3, CaptureKind::Screen, "", true));
+    // a screen source is not active until running, and keeps no name
+    assert_eq!(list[1], capture(3, CaptureKind::Screen, "", false));
 
     state.update(1, &NodeState::Running, None, &tx);
     assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c[0].active));
@@ -503,9 +495,11 @@ mod tests {
     let renamed = props(&[("media.name", "Call")]);
     state.update(1, &NodeState::Running, Some(renamed.dict()), &tx);
     assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c[0].name == "Call"));
-    // a source does not take names from its props
-    state.update(3, &NodeState::Idle, Some(renamed.dict()), &tx);
-    assert!(rx.is_empty());
+    // a source does not take names from its props, but becomes active when running
+    state.update(3, &NodeState::Running, Some(renamed.dict()), &tx);
+    assert!(
+      matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if c[1].active && c[1].name.is_empty())
+    );
     state.update(3, &NodeState::Error("gone"), None, &tx);
     assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Captures(c) if !c[1].active));
     // the recorder turning into a mic by its props
@@ -562,18 +556,23 @@ mod tests {
   }
 
   #[test]
-  fn screen_source_recovers_from_error_to_idle_active() {
+  fn screen_source_recovers_from_error_to_running() {
     let (tx, rx) = flume::unbounded();
     let state = CaptureState::default();
     let screen = props(&[("application.name", "OBS")]);
     state.insert(3, "Stream/Output/Video", screen.dict());
+    assert!(!state.list()[0].active);
+
+    state.update(3, &NodeState::Running, None, &tx);
     assert!(state.list()[0].active);
+    rx.drain().for_each(drop);
 
     state.update(3, &NodeState::Error("device disconnected"), None, &tx);
     assert!(!state.list()[0].active);
+    assert_eq!(rx.drain().count(), 1);
     rx.drain().for_each(drop);
 
-    state.update(3, &NodeState::Idle, None, &tx);
+    state.update(3, &NodeState::Running, None, &tx);
     assert!(state.list()[0].active);
     assert_eq!(rx.drain().count(), 1);
   }

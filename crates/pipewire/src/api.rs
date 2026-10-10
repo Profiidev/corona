@@ -189,6 +189,10 @@ mod tests {
     state.captures.insert(300, "Video/Source", screen.dict());
     let (tx, commands) = Commands::new();
     let (events, rx) = flume::unbounded();
+    state
+      .captures
+      .update(300, &pipewire::node::NodeState::Running, None, &events);
+    rx.drain().for_each(drop);
     let thread_state = state.clone();
     cx.update(|cx| {
       let pipewire = Pipewire::new(cx, tx, thread_state, rx);
