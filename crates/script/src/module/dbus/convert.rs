@@ -191,8 +191,16 @@ pub fn from_json(json: &Json, signature: &Signature) -> Result<Value<'static>> {
   })
 }
 
-/// The value inside a `v`, typed by what the JSON looks like.
+/// The value inside a `v`, typed by what the JSON looks like, or explicitly
+/// by `{ "$type": "u", "value": 3 }`.
+// ponytail: an `a{sv}` with exactly the keys `$type` and `value` reads as a typed value
 fn infer(json: &Json) -> Result<Value<'static>> {
+  if let Json::Object(map) = json
+    && map.len() == 2
+    && let (Some(ty), Some(value)) = (map.get("$type"), map.get("value"))
+  {
+    return from_json(value, &parse(&str(ty)?)?);
+  }
   Ok(match json {
     Json::Null => bail!("null has no D-Bus type"),
     Json::Bool(b) => Value::Bool(*b),
@@ -308,6 +316,38 @@ mod tests {
     check(json!("s"), "s");
     check(json!([1, "a"]), "av");
     check(json!({ "a": { "b": 1 } }), "a{sv}");
+  }
+
+  #[test]
+  fn variants_can_be_typed() {
+    // the type of the value inside a variant
+    let inner = |value: &Value| {
+      let Value::Value(inner) = value else {
+        panic!("a variant, got {value:?}");
+      };
+      inner.value_signature().to_string()
+    };
+    let typed = json!({ "$type": "u", "value": 3 });
+    assert_eq!(inner(&from_json(&typed, &Signature::Variant).unwrap()), "u");
+    // in arrays and dicts of variants
+    let items = json!([{ "$type": "(s)", "value": ["a"] }, 1]);
+    let Value::Array(array) = from_json(&items, &sig("av")).unwrap() else {
+      panic!("an array");
+    };
+    assert_eq!(inner(&array[0]), "(s)");
+    let Value::Dict(dict) = from_json(&json!({ "a": typed }), &sig("a{sv}")).unwrap() else {
+      panic!("a dict");
+    };
+    assert_eq!(inner(dict.iter().next().unwrap().1), "u");
+    // more keys are a plain dict
+    let plain = json!({ "$type": "u", "value": 3, "x": 1 });
+    assert_eq!(
+      inner(&from_json(&plain, &Signature::Variant).unwrap()),
+      "a{sv}"
+    );
+
+    assert!(from_json(&json!({ "$type": "(", "value": 3 }), &Signature::Variant).is_err());
+    assert!(from_json(&json!({ "$type": "s", "value": 3 }), &Signature::Variant).is_err());
   }
 
   #[test]

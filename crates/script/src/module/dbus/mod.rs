@@ -7,7 +7,7 @@ use std::{
   sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
-use anyhow::{Context as _, Result, ensure};
+use anyhow::{Context as _, Result, bail, ensure};
 use corona_macros::named;
 use futures::{StreamExt as _, channel::oneshot, future::BoxFuture};
 use futures_lite::{FutureExt as _, future};
@@ -103,9 +103,12 @@ struct Call {
   path: String,
   iface: String,
   method: String,
+  /// A `v` argument's type follows the JSON, `{ $type: "u", value: 3 }` sets
+  /// it, also inside `av` and `a{sv}`.
   args: Option<Vec<Json>>,
   /// The types of `args`, e.g. `"sa{sv}"`. Read from the service's
-  /// introspection data when left out.
+  /// introspection data when left out, picking the overload that takes as
+  /// many arguments.
   signature: Option<String>,
 }
 
@@ -139,6 +142,7 @@ struct SetProperty {
   path: String,
   iface: String,
   name: String,
+  /// A `v` value's type follows the JSON, `{ $type: "u", value: 3 }` sets it.
   value: Json,
   /// The property's type. Read from the introspection data when left out.
   signature: Option<String>,
@@ -168,7 +172,7 @@ struct Signal {
   args: Vec<Json>,
 }
 
-/// Where the types of a method's arguments or of a property are cached.
+/// Where the overloads of a method or the type of a property are cached.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Key {
   bus: Bus,
@@ -201,7 +205,7 @@ struct State {
   made: u32,
   /// The script is gone, new subscriptions are dropped.
   closed: bool,
-  signatures: HashMap<Key, String>,
+  signatures: HashMap<Key, Vec<Vec<String>>>,
 }
 
 #[derive(Clone)]
@@ -263,7 +267,7 @@ impl Dbus {
               member: call.method.clone(),
               property: false,
             };
-            signature(&conn, &state, key).await?
+            signature(&conn, &state, key, Some(args.len())).await?
           }
         };
         let body = convert::body(&args, &signature)?;
@@ -341,7 +345,7 @@ impl Dbus {
               member: p.name.clone(),
               property: true,
             };
-            signature(&conn, &state, key).await?
+            signature(&conn, &state, key, None).await?
           }
         };
         let signature = convert::parse(&signature)?;
@@ -562,62 +566,90 @@ async fn send(
   })
 }
 
-/// The argument types of a method, or the type of a property, from the
-/// service's introspection data.
-async fn signature(conn: &Connection, state: &Mutex<State>, key: Key) -> Result<String> {
-  if let Some(signature) = lock(state).signatures.get(&key) {
-    return Ok(signature.clone());
-  }
+/// The argument types of a method that takes `arity` arguments, or the type
+/// of a property, from the service's introspection data.
+async fn signature(
+  conn: &Connection,
+  state: &Mutex<State>,
+  key: Key,
+  arity: Option<usize>,
+) -> Result<String> {
   let missing = || {
     format!(
       "no `{}` on `{}` at `{}` in its introspection data, pass a signature",
       key.member, key.iface, key.path
     )
   };
-  let reply = conn
-    .call_method(
-      Some(key.dest.as_str()),
-      key.path.as_str(),
-      Some("org.freedesktop.DBus.Introspectable"),
-      "Introspect",
-      &(),
-    )
-    .await
-    .with_context(missing)?;
-  let xml: String = reply.body().deserialize()?;
-  let node = Node::from_reader(xml.as_bytes()).with_context(missing)?;
-  let iface = node
+  let cached = lock(state).signatures.get(&key).cloned();
+  let overloads = match cached {
+    Some(overloads) => overloads,
+    None => {
+      let reply = conn
+        .call_method(
+          Some(key.dest.as_str()),
+          key.path.as_str(),
+          Some("org.freedesktop.DBus.Introspectable"),
+          "Introspect",
+          &(),
+        )
+        .await
+        .with_context(missing)?;
+      let xml: String = reply.body().deserialize()?;
+      let node = Node::from_reader(xml.as_bytes()).with_context(missing)?;
+      let overloads = overloads(&node, &key.iface, &key.member, key.property);
+      ensure!(!overloads.is_empty(), missing());
+      lock(state)
+        .signatures
+        .insert(key.clone(), overloads.clone());
+      overloads
+    }
+  };
+  pick(&overloads, &key.member, arity)
+}
+
+/// The argument types of every method `member` of `iface`, or the type of the
+/// property `member` alone.
+fn overloads(node: &Node, iface: &str, member: &str, property: bool) -> Vec<Vec<String>> {
+  let Some(iface) = node
     .interfaces()
     .iter()
-    .find(|iface| iface.name().as_str() == key.iface);
-  let signature = if key.property {
-    iface
-      .and_then(|iface| {
-        iface
-          .properties()
-          .iter()
-          .find(|p| p.name().as_str() == key.member)
-      })
-      .map(|p| p.ty().to_string())
-  } else {
-    iface
-      .and_then(|iface| {
-        iface
-          .methods()
-          .iter()
-          .find(|m| m.name().as_str() == key.member)
-      })
-      .map(|m| {
-        m.args()
-          .iter()
-          .filter(|arg| arg.direction() != Some(ArgDirection::Out))
-          .map(|arg| arg.ty().to_string())
-          .collect()
-      })
+    .find(|i| i.name().as_str() == iface)
+  else {
+    return Vec::new();
+  };
+  if property {
+    return iface
+      .properties()
+      .iter()
+      .filter(|p| p.name().as_str() == member)
+      .map(|p| vec![p.ty().to_string()])
+      .collect();
   }
-  .with_context(missing)?;
-  lock(state).signatures.insert(key, signature.clone());
-  Ok(signature)
+  iface
+    .methods()
+    .iter()
+    .filter(|m| m.name().as_str() == member)
+    .map(|m| {
+      m.args()
+        .iter()
+        .filter(|arg| arg.direction() != Some(ArgDirection::Out))
+        .map(|arg| arg.ty().to_string())
+        .collect()
+    })
+    .collect()
+}
+
+/// The overload that takes `arity` arguments, any for a property. A lone
+/// overload is taken whatever its arity, so the call reports the mismatch.
+fn pick(overloads: &[Vec<String>], member: &str, arity: Option<usize>) -> Result<String> {
+  let fits: Vec<_> = overloads
+    .iter()
+    .filter(|args| arity.is_none_or(|n| args.len() == n))
+    .collect();
+  match (fits.as_slice(), overloads) {
+    (&[args], _) | ([], [args]) => Ok(args.concat()),
+    _ => bail!("`{member}` is overloaded, pass a `signature`"),
+  }
 }
 
 pub fn module(grant: DbusGrant, subs: &mut Vec<Subscribe>) -> HostModule {
@@ -843,7 +875,7 @@ mod tests {
       assert_eq!(echo, args);
       assert_eq!(
         lock(&dbus.state).signatures.values().collect::<Vec<_>>(),
-        ["a{sv}ay(si)"]
+        [&[vec!["a{sv}", "ay", "(si)"]]]
       );
 
       let error = dbus
@@ -859,6 +891,32 @@ mod tests {
         .unwrap_err();
       assert!(error.to_string().contains("takes 2"), "{error}");
     });
+  }
+
+  #[test]
+  fn overloads_are_picked_by_arity() {
+    let node = Node::from_reader(
+      r#"<node><interface name="a.B">
+        <method name="Send"><arg type="s" direction="in"/></method>
+        <method name="Send"><arg type="s"/><arg type="as"/><arg type="i" direction="out"/></method>
+        <method name="Send"><arg type="o"/><arg type="u"/></method>
+        <method name="Ping"><arg type="u"/></method>
+        <property name="Ping" type="b" access="read"/>
+      </interface></node>"#
+        .as_bytes(),
+    )
+    .unwrap();
+    let send = overloads(&node, "a.B", "Send", false);
+    assert_eq!(pick(&send, "Send", Some(1)).unwrap(), "s");
+    let error = pick(&send, "Send", Some(2)).unwrap_err();
+    assert!(error.to_string().contains("overloaded"), "{error}");
+    assert!(pick(&send, "Send", Some(3)).is_err());
+    // one method is taken whatever its arity
+    let ping = overloads(&node, "a.B", "Ping", false);
+    assert_eq!(pick(&ping, "Ping", Some(2)).unwrap(), "u");
+    let ping = overloads(&node, "a.B", "Ping", true);
+    assert_eq!(pick(&ping, "Ping", None).unwrap(), "b");
+    assert!(overloads(&node, "a.C", "Send", false).is_empty());
   }
 
   #[test]
