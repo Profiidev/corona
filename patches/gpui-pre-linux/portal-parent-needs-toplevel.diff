@@ -1,0 +1,21 @@
+The file and save dialogs (and other portal requests) name their parent by
+exporting the keyboard-focused window's surface with zxdg_exporter_v2. That
+protocol only accepts xdg toplevels: for a layer shell surface (bar, panel),
+a popup or a lock surface the compositor raises a protocol error and the
+connection dies. Only toplevels are exported; other windows get no parent.
+
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -1503,7 +1503,11 @@
+ 
+         let client_state = self.0.borrow();
+         let active_window = client_state.keyboard_focused_window.as_ref();
+-        inner(active_window.map(|aw| aw.surface()))
++        // zxdg_exporter_v2 only exports xdg toplevels; exporting a layer shell, popup or
++        // lock surface is a protocol error that kills the connection. Those dialogs go
++        // without a parent instead.
++        let toplevel = active_window.filter(|aw| aw.toplevel().is_some());
++        inner(toplevel.map(|aw| aw.surface()))
+     }
+ }
+ 
