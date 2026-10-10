@@ -306,12 +306,7 @@ fn listen(cx: &mut App) {
   .detach();
 }
 
-pub fn module(
-  plugin: PluginRef,
-  reads: &Subscriptions,
-  subs: &mut Vec<Subscribe>,
-  cx: &mut App,
-) -> HostModule {
+pub fn module(plugin: PluginRef, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
   let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(plugin.id, cx));
   let load = hub.load();
   let stop = hub.clone();
@@ -319,9 +314,76 @@ pub fn module(
     stop.stop_actions(load)
   })));
   let (id, name) = (plugin.id.to_string(), plugin.name.to_string());
-  let state = cx.notifications();
+  let (dismiss_id, invoke_id) = (id.clone(), id.clone());
 
   Module::new("corona/notifications")
+    .func(named!(
+      "dismiss",
+      /// Closes one of the plugin's notifications.
+      move |cx: &mut App, id: u32| {
+        ensure!(owns(cx, &dismiss_id, id), "notification {id} is not this plugin's");
+        cx.notifications().clone().dismiss(id, cx);
+        anyhow::Ok(())
+      }
+    ))
+    .func(named!(
+      "invokeAction",
+      /// Picks an action on one of the plugin's notifications.
+      move |cx: &mut App, id: u32, key: String| {
+        ensure!(owns(cx, &invoke_id, id), "notification {id} is not this plugin's");
+        cx.notifications().clone().invoke_action(id, &key, cx);
+        anyhow::Ok(())
+      }
+    ))
+    .func(named!(
+      "send",
+      /// Shows a notification from corona.
+      |notifications: Glob<nt::Notifications>, summary: String, body: String| notifications
+        .send(summary, body)
+    ))
+    .func(named!(
+      "notify",
+      /// Shows a notification under the plugin's name, its id.
+      move |cx: &mut App, options: NotifyOptions| {
+        listen(cx);
+        let owners = cx.global::<ScriptManager>().owners.clone();
+        let notify = options.into_notify(name.clone());
+        let sent = notify.map(|n| {
+          let resident = n.hints.get("resident").is_some_and(|v| **v == Value::Bool(true));
+          (cx.notifications().send_notify(n), resident)
+        });
+        let id = id.clone();
+        async move {
+          let (sent, resident) = sent?;
+          let sent = sent.await?;
+          owners.lock().unwrap().insert(sent, (id, resident));
+          anyhow::Ok(sent)
+        }
+      }
+    ))
+    .func(named!(
+      "nextAction",
+      /// The next action picked on one of the plugin's notifications, once
+      /// one is. Every view waiting gets it.
+      move || {
+        let rx = hub.next_action(load);
+        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
+      }
+    ))
+    .into()
+}
+
+/// Whether the plugin `plugin` sent the notification `id`.
+fn owns(cx: &App, plugin: &str, id: u32) -> bool {
+  let owners = cx.global::<ScriptManager>().owners.lock().unwrap();
+  owners.get(&id).is_some_and(|(owner, _)| owner == plugin)
+}
+
+/// `corona/notification_center`: every app's notifications and the global state.
+pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
+  let state = cx.notifications();
+
+  Module::new("corona/notification_center")
     .func(read(
       reads,
       subs,
@@ -374,41 +436,6 @@ pub fn module(
       .notifications()
       .clone()
       .mark_all_read(cx)))
-    .func(named!(
-      "send",
-      /// Shows a notification from corona.
-      |notifications: Glob<nt::Notifications>, summary: String, body: String| notifications
-        .send(summary, body)
-    ))
-    .func(named!(
-      "notify",
-      /// Shows a notification under the plugin's name, its id.
-      move |cx: &mut App, options: NotifyOptions| {
-        listen(cx);
-        let owners = cx.global::<ScriptManager>().owners.clone();
-        let notify = options.into_notify(name.clone());
-        let sent = notify.map(|n| {
-          let resident = n.hints.get("resident").is_some_and(|v| **v == Value::Bool(true));
-          (cx.notifications().send_notify(n), resident)
-        });
-        let id = id.clone();
-        async move {
-          let (sent, resident) = sent?;
-          let sent = sent.await?;
-          owners.lock().unwrap().insert(sent, (id, resident));
-          anyhow::Ok(sent)
-        }
-      }
-    ))
-    .func(named!(
-      "nextAction",
-      /// The next action picked on one of the plugin's notifications, once
-      /// one is. Every view waiting gets it.
-      move || {
-        let rx = hub.next_action(load);
-        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
-      }
-    ))
     .func(named!("clearAll", |cx: &mut App| cx
       .notifications()
       .clone()
@@ -500,6 +527,7 @@ mod tests {
     let body = format!(
       r#"if (!globalThis.started) {{
       globalThis.started = true;
+      report({{ center: typeof m.listNotifications, foreign: m.dismiss(999) }});
       m.notify({{
         summary: "hi",
         actions: [{{ key: "open", label: "Open" }}],
@@ -524,11 +552,19 @@ mod tests {
       name: "Plugin A",
       capabilities: &capabilities,
     };
-    let (view, cx) = harness::view(cx, body, |reads, subs, cx| module(plugin, reads, subs, cx));
+    let (view, cx) = harness::view(cx, body, |_, subs, cx| module(plugin, subs, cx));
     wait_until(cx, |cx| {
       !view.reports.borrow().is_empty() && cx.read(|cx| !cx.notifications().list(cx).is_empty())
     });
-    let id = view.reports.borrow()[0].as_u64().unwrap() as u32;
+    let gated = view.reports.borrow()[0].clone();
+    assert_eq!(gated["center"], "undefined");
+    assert!(
+      gated["foreign"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not this plugin's")
+    );
+    let id = view.reports.borrow()[1].as_u64().unwrap() as u32;
     let n = cx.read(|cx| cx.notifications().list(cx)[0].clone());
     assert_eq!(n.app_name, "Plugin A");
     assert_eq!(n.reply_placeholder.as_deref(), Some("Say hi"));
@@ -536,11 +572,11 @@ mod tests {
     assert!(matches!(n.image, Some(nt::NotificationImage::Path(_))));
 
     cx.update(|_, cx| cx.notifications().clone().invoke_action(id, "open", cx));
-    wait_until(cx, |_| view.reports.borrow().len() == 2);
+    wait_until(cx, |_| view.reports.borrow().len() == 3);
     assert_eq!(view.last(), serde_json::json!({ "id": id, "key": "open" }));
     // resident, so the plugin still owns it
     cx.update(|_, cx| cx.notifications().clone().reply(id, "hey", cx));
-    wait_until(cx, |_| view.reports.borrow().len() == 3);
+    wait_until(cx, |_| view.reports.borrow().len() == 4);
     assert_eq!(
       view.last(),
       serde_json::json!({ "id": id, "key": "inline-reply", "text": "hey" })

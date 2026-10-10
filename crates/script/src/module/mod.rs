@@ -53,7 +53,10 @@ pub enum CoronaModule {
   Power,
   /// Screen brightness.
   Brightness,
+  /// Sending notifications, and acting on the plugin's own.
   Notifications,
+  /// Every app's notifications, do not disturb, and acting on them.
+  NotificationCenter,
   /// System tray items.
   Tray,
   /// System information and usage.
@@ -91,7 +94,8 @@ impl CoronaModule {
       Self::Bluetooth => bluetooth::module(reads, subs, cx),
       Self::Power => power::module(reads, subs, cx),
       Self::Brightness => brightness::module(reads, subs, cx),
-      Self::Notifications => notifications::module(plugin, reads, subs, cx),
+      Self::Notifications => notifications::module(plugin, subs, cx),
+      Self::NotificationCenter => notifications::center(reads, subs, cx),
       Self::Tray => tray::module(reads, subs, cx),
       Self::Sysinfo => sysinfo::module(reads, subs, cx),
       Self::Weather => weather::module(reads, subs, cx),
@@ -357,6 +361,7 @@ mod tests {
       (CoronaModule::Power, "power"),
       (CoronaModule::Brightness, "brightness"),
       (CoronaModule::Notifications, "notifications"),
+      (CoronaModule::NotificationCenter, "notification_center"),
       (CoronaModule::Tray, "tray"),
       (CoronaModule::Sysinfo, "sysinfo"),
       (CoronaModule::Weather, "weather"),
