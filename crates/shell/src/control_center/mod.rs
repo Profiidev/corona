@@ -27,7 +27,7 @@ pub use crate::control_center::{
   displays::DisplaysPanel,
   media::MediaPanel,
   network::NetworkPanel,
-  notifications::NotificationsPanel,
+  notifications::{NotificationsPanel, ReplyInputs},
   panel::{ControlCenter, Standalone},
   power::PowerPanel,
   sysinfo::SysinfoPanel,

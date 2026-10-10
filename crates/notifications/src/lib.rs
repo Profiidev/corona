@@ -14,7 +14,7 @@ use zbus::{
 
 use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
-pub use crate::state::{Action, Notification, Urgency};
+pub use crate::state::{Action, Notification, NotificationImage, Urgency, strip_markup};
 
 mod server;
 mod state;
@@ -204,6 +204,25 @@ impl Notifications {
     .detach();
   }
 
+  /// the text typed into an `inline-reply` action, closes the notification
+  /// unless it is resident, like [`Self::invoke_action`]
+  pub fn reply(&self, id: u32, text: &str, cx: &mut App) {
+    let Some(notification) = self.list(cx).iter().find(|n| n.id == id) else {
+      return;
+    };
+    let closed = match notification.resident {
+      true => Vec::new(),
+      false => self.take(cx, |n| n.id == id),
+    };
+    let (conn, text) = (self.conn.clone(), text.to_string());
+    cx.background_spawn(async move {
+      let emitter = SignalEmitter::new(&conn, PATH)?;
+      Server::notification_replied(&emitter, id, &text).await?;
+      closed_signals(&emitter, closed).await
+    })
+    .detach();
+  }
+
   fn remove(&self, cx: &mut App, matches: impl Fn(&Notification) -> bool) {
     let removed = self.take(cx, matches);
     if removed.is_empty() {
@@ -284,7 +303,7 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
           Event::Notify(n) if cx.try_global::<Filter>().is_some_and(|f| (f.0)(&n)) => {
             return Some(n.id);
           }
-          Event::Notify(notification) => state::insert(list, notification),
+          Event::Notify(notification) => state::insert(list, *notification),
           Event::Close(id) => list.retain(|n| n.id != id),
         }
         cx.notify();
@@ -583,6 +602,46 @@ mod tests {
         .invoke_action(plain, "default", cx)
     });
     assert_eq!(next_signal(cx, &mut running).0, "ActionInvoked");
+  }
+
+  #[gpui::test]
+  fn reply_comes_before_close(cx: &mut TestAppContext) {
+    let mut running = start(cx, true);
+    let plain = notify(
+      &running.client,
+      "a",
+      0,
+      &["inline-reply", "Reply"],
+      HashMap::new(),
+    );
+    let resident = notify(
+      &running.client,
+      "b",
+      0,
+      &["inline-reply", "Reply"],
+      HashMap::from([("resident", Value::from(true))]),
+    );
+    wait_until(cx, |cx| ids(cx).len() == 2);
+    cx.update(|cx| cx.notifications().clone().reply(resident, "hey", cx));
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationReplied".into(), resident, "hey".into())
+    );
+    assert_eq!(ids(cx).len(), 2);
+    cx.update(|cx| cx.notifications().clone().reply(plain, "hi there", cx));
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationReplied".into(), plain, "hi there".into())
+    );
+    assert_eq!(
+      next_signal(cx, &mut running),
+      ("NotificationClosed".into(), plain, "2".into())
+    );
+    assert_eq!(ids(cx), [resident]);
+    // an unknown id does nothing
+    cx.update(|cx| cx.notifications().clone().reply(999, "x", cx));
+    settle(cx);
+    assert_eq!(ids(cx), [resident]);
   }
 
   #[gpui::test]

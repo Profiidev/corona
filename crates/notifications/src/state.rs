@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Urgency {
@@ -13,20 +13,91 @@ pub struct Action {
   pub label: String,
 }
 
+/// What to draw for a notification: a picture file or a theme icon name
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotificationImage {
+  Path(PathBuf),
+  Name(String),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Notification {
   pub id: u32,
   pub app_name: String,
   /// a theme icon name or a `file://` path, empty when the app sent none
   pub app_icon: String,
+  /// from `image-data`, `image-path` or `app_icon`, the first one set
+  pub image: Option<NotificationImage>,
   pub summary: String,
+  /// may hold markup: `b`, `i`, `u`, `a` and `img` tags, see [`strip_markup`]
   pub body: String,
   pub actions: Vec<Action>,
   pub urgency: Urgency,
   pub desktop_entry: Option<String>,
+  /// the `x-kde-reply-placeholder-text` hint, for an `inline-reply` action
+  pub reply_placeholder: Option<String>,
   pub resident: bool,
   pub time: SystemTime,
   pub read: bool,
+}
+
+/// The body markup as plain text: tags dropped, entities decoded
+pub fn strip_markup(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  let mut rest = text;
+  while let Some(start) = rest.find('<') {
+    out.push_str(&rest[..start]);
+    match rest[start..].find('>') {
+      Some(end) => rest = &rest[start + end + 1..],
+      // a lone `<` is text
+      None => {
+        out.push_str(&rest[start..]);
+        rest = "";
+      }
+    }
+  }
+  out.push_str(rest);
+  unescape(&out)
+}
+
+fn unescape(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  let mut rest = text;
+  while let Some(start) = rest.find('&') {
+    out.push_str(&rest[..start]);
+    rest = &rest[start..];
+    let entity = rest.find(';').map(|end| (&rest[1..end], end));
+    let decoded = entity.and_then(|(name, end)| {
+      let c = match name {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "nbsp" => '\u{a0}',
+        _ => {
+          let code = match name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")) {
+            Some(hex) => u32::from_str_radix(hex, 16).ok(),
+            None => name.strip_prefix('#')?.parse().ok(),
+          };
+          char::from_u32(code?)?
+        }
+      };
+      Some((c, end))
+    });
+    match decoded {
+      Some((c, end)) => {
+        out.push(c);
+        rest = &rest[end + 1..];
+      }
+      None => {
+        out.push('&');
+        rest = &rest[1..];
+      }
+    }
+  }
+  out.push_str(rest);
+  out
 }
 
 pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
@@ -61,11 +132,13 @@ mod tests {
       id,
       app_name: "test".into(),
       app_icon: String::new(),
+      image: None,
       summary: summary.into(),
       body: String::new(),
       actions: Vec::new(),
       urgency: Urgency::Normal,
       desktop_entry: None,
+      reply_placeholder: None,
       resident: false,
       time: SystemTime::UNIX_EPOCH,
       read: false,
@@ -95,6 +168,29 @@ mod tests {
     // a replacement is new content, so it is unread again
     insert(&mut list, notification(2, "second, updated"));
     assert!(list.iter().any(|n| !n.read));
+  }
+
+  #[test]
+  fn strip_markup() {
+    let strip = super::strip_markup;
+    assert_eq!(
+      strip("<b>bold</b> and <a href=\"https://x.y/?a=1&amp;b=2\">link</a>"),
+      "bold and link"
+    );
+    assert_eq!(strip("pic <img src=\"/a.png\" alt=\"x\"/> end"), "pic  end");
+    assert_eq!(
+      strip("1 &lt; 2 &amp;&amp; 3 &gt; 2 &quot;&apos;"),
+      "1 < 2 && 3 > 2 \"'"
+    );
+    assert_eq!(strip("&#65;&#x42;&#X43;"), "ABC");
+    // unknown entities, a lone `&` and a lone `<` stay
+    assert_eq!(
+      strip("a & b &bogus; &#xzz; c < d"),
+      "a & b &bogus; &#xzz; c < d"
+    );
+    // decoding happens once, after the tags are gone
+    assert_eq!(strip("&lt;b&gt;"), "<b>");
+    assert_eq!(strip("line\nbreak"), "line\nbreak");
   }
 
   #[test]

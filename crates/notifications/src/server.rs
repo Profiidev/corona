@@ -1,12 +1,18 @@
 use std::{
   collections::HashMap,
+  ffi::OsString,
+  hash::{DefaultHasher, Hash, Hasher},
+  os::unix::ffi::OsStringExt,
+  path::PathBuf,
   sync::atomic::{AtomicU32, Ordering},
   time::SystemTime,
 };
 
+use anyhow::{Context, Result, ensure};
+use image::RgbaImage;
 use zbus::{interface, object_server::SignalEmitter, zvariant::OwnedValue};
 
-use crate::state::{self, Notification, Urgency};
+use crate::state::{self, Notification, NotificationImage, Urgency};
 
 pub(crate) const PATH: &str = "/org/freedesktop/Notifications";
 pub(crate) const NAME: &str = "org.freedesktop.Notifications";
@@ -19,7 +25,7 @@ pub(crate) enum CloseReason {
 }
 
 pub(crate) enum Event {
-  Notify(Notification),
+  Notify(Box<Notification>),
   Close(u32),
 }
 
@@ -55,10 +61,124 @@ fn hint<T: TryFrom<OwnedValue>>(hints: &HashMap<String, OwnedValue>, key: &str) 
   T::try_from(hints.get(key)?.try_clone().ok()?).ok()
 }
 
+/// `(iiibiiay)`: width, height, rowstride, has alpha, bits per sample, channels, pixels
+type ImageData = (i32, i32, i32, bool, i32, i32, Vec<u8>);
+
+/// The spec's priority: raw image data (under any of its three names), then
+/// `image-path`, then the `app_icon` argument
+fn image(hints: &HashMap<String, OwnedValue>, app_icon: &str) -> Option<NotificationImage> {
+  let data = ["image-data", "image_data", "icon_data"]
+    .iter()
+    .find_map(|key| hint::<ImageData>(hints, key));
+  if let Some(data) = data {
+    match rgba(data).and_then(|image| image_file(&image)) {
+      Ok(path) => return Some(NotificationImage::Path(path)),
+      Err(e) => tracing::warn!("ignoring notification image data: {e:?}"),
+    }
+  }
+  hint::<String>(hints, "image-path")
+    .and_then(|path| icon(&path))
+    .or_else(|| icon(app_icon))
+}
+
+/// a `file://` uri, an absolute path or a theme icon name
+fn icon(text: &str) -> Option<NotificationImage> {
+  if let Some(path) = text.strip_prefix("file://") {
+    let path = path.strip_prefix("localhost").unwrap_or(path);
+    return Some(NotificationImage::Path(PathBuf::from(OsString::from_vec(
+      percent_decode(path),
+    ))));
+  }
+  match text {
+    "" => None,
+    path if path.starts_with('/') => Some(NotificationImage::Path(path.into())),
+    name => Some(NotificationImage::Name(name.into())),
+  }
+}
+
+fn rgba((width, height, rowstride, _, bits, channels, data): ImageData) -> Result<RgbaImage> {
+  ensure!(bits == 8, "{bits} bits per sample");
+  ensure!(matches!(channels, 3 | 4), "{channels} channels");
+  let (w, h, stride, channels) = (
+    usize::try_from(width)?,
+    usize::try_from(height)?,
+    usize::try_from(rowstride)?,
+    channels as usize,
+  );
+  ensure!(w > 0 && h > 0 && stride >= w * channels, "bad image size");
+  // the last row may be cut down to its pixels
+  let needed = stride * (h - 1) + w * channels;
+  ensure!(
+    data.len() >= needed,
+    "{} bytes, {needed} needed",
+    data.len()
+  );
+  let mut pixels = Vec::with_capacity(w * h * 4);
+  for row in data.chunks(stride).take(h) {
+    for px in row[..w * channels].chunks_exact(channels) {
+      pixels.extend_from_slice(&px[..3]);
+      pixels.push(px.get(3).copied().unwrap_or(u8::MAX));
+    }
+  }
+  RgbaImage::from_raw(width as u32, height as u32, pixels).context("image buffer")
+}
+
+/// saved once per distinct picture, apps resend the same avatar a lot
+fn image_file(image: &RgbaImage) -> Result<PathBuf> {
+  let mut hasher = DefaultHasher::new();
+  image.dimensions().hash(&mut hasher);
+  image.as_raw().hash(&mut hasher);
+  let path = cache_dir().join(format!("{:016x}.png", hasher.finish()));
+  if !path.exists() {
+    std::fs::create_dir_all(cache_dir())?;
+    image.save(&path)?;
+  }
+  Ok(path)
+}
+
+fn cache_dir() -> PathBuf {
+  dirs::runtime_dir()
+    .unwrap_or_else(std::env::temp_dir)
+    .join("corona")
+    .join("notifications")
+}
+
+/// `%20` and friends as their bytes; a stray `%` stays as it is
+fn percent_decode(text: &str) -> Vec<u8> {
+  let bytes = text.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut i = 0;
+  while i < bytes.len() {
+    let hex = bytes
+      .get(i + 1..i + 3)
+      .and_then(|h| std::str::from_utf8(h).ok())
+      .and_then(|h| u8::from_str_radix(h, 16).ok());
+    match (bytes[i], hex) {
+      (b'%', Some(byte)) => {
+        out.push(byte);
+        i += 3;
+      }
+      (byte, _) => {
+        out.push(byte);
+        i += 1;
+      }
+    }
+  }
+  out
+}
+
 #[interface(name = "org.freedesktop.Notifications")]
 impl Server {
   fn get_capabilities(&self) -> Vec<&'static str> {
-    vec!["body", "actions", "persistence"]
+    vec![
+      "body",
+      "actions",
+      "persistence",
+      "icon-static",
+      "body-markup",
+      "body-hyperlinks",
+      "inline-reply",
+    ]
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -87,17 +207,19 @@ impl Server {
     let notification = Notification {
       id,
       app_name,
+      image: image(&hints, &app_icon),
       app_icon,
       summary,
       body,
       actions: state::actions(actions),
       urgency,
       desktop_entry: hint(&hints, "desktop-entry"),
+      reply_placeholder: hint(&hints, "x-kde-reply-placeholder-text"),
       resident: hint(&hints, "resident").unwrap_or(false),
       time: SystemTime::now(),
       read: false,
     };
-    let _ = self.events.send(Event::Notify(notification));
+    let _ = self.events.send(Event::Notify(Box::new(notification)));
     id
   }
 
@@ -127,6 +249,13 @@ impl Server {
     emitter: &SignalEmitter<'_>,
     id: u32,
     action_key: &str,
+  ) -> zbus::Result<()>;
+
+  #[zbus(signal)]
+  pub(crate) async fn notification_replied(
+    emitter: &SignalEmitter<'_>,
+    id: u32,
+    text: &str,
   ) -> zbus::Result<()>;
 }
 
@@ -169,7 +298,7 @@ mod tests {
 
   fn received(rx: &flume::Receiver<Event>) -> Notification {
     match rx.try_recv().unwrap() {
-      Event::Notify(n) => n,
+      Event::Notify(n) => *n,
       Event::Close(id) => panic!("closed {id}"),
     }
   }
@@ -334,10 +463,106 @@ mod tests {
     let (server, _) = server(1);
     assert_eq!(
       server.get_capabilities(),
-      ["body", "actions", "persistence"]
+      [
+        "body",
+        "actions",
+        "persistence",
+        "icon-static",
+        "body-markup",
+        "body-hyperlinks",
+        "inline-reply"
+      ]
     );
     let (name, vendor, version, spec) = server.get_server_information();
     assert_eq!((name, vendor, spec), ("corona", "corona", "1.2"));
     assert_eq!(version, env!("CARGO_PKG_VERSION"));
+  }
+
+  #[test]
+  fn image_priority() {
+    let (server, rx) = server(1);
+    let pixels: Value<'_> = (1i32, 1i32, 4i32, true, 8i32, 4i32, vec![1u8, 2, 3, 4]).into();
+    // data beats image-path beats app_icon, under any of its names
+    for key in ["image-data", "image_data", "icon_data"] {
+      notify(
+        &server,
+        0,
+        hints(vec![
+          (key, pixels.try_clone().unwrap()),
+          ("image-path", "/a.png".into()),
+        ]),
+      );
+      let Some(NotificationImage::Path(path)) = received(&rx).image else {
+        panic!("{key} not saved");
+      };
+      assert_eq!(path.extension().unwrap(), "png");
+      assert_eq!(
+        image::open(&path).unwrap().to_rgba8().as_raw(),
+        &[1, 2, 3, 4]
+      );
+    }
+    notify(
+      &server,
+      0,
+      hints(vec![("image-path", "file:///a%20b.png".into())]),
+    );
+    assert_eq!(
+      received(&rx).image,
+      Some(NotificationImage::Path("/a b.png".into()))
+    );
+    notify(
+      &server,
+      0,
+      hints(vec![("image-path", "dialog-warning".into())]),
+    );
+    assert_eq!(
+      received(&rx).image,
+      Some(NotificationImage::Name("dialog-warning".into()))
+    );
+    // the test notify sends app_icon "icon"
+    notify(&server, 0, HashMap::new());
+    assert_eq!(
+      received(&rx).image,
+      Some(NotificationImage::Name("icon".into()))
+    );
+    // broken data falls through to the next source
+    let short: Value<'_> = (2i32, 2i32, 8i32, true, 8i32, 4i32, vec![0u8; 3]).into();
+    notify(&server, 0, hints(vec![("image-data", short)]));
+    assert_eq!(
+      received(&rx).image,
+      Some(NotificationImage::Name("icon".into()))
+    );
+    assert_eq!(icon(""), None);
+    assert_eq!(
+      icon("/usr/a.svg"),
+      Some(NotificationImage::Path("/usr/a.svg".into()))
+    );
+  }
+
+  #[test]
+  fn image_data_rowstride_and_channels() {
+    // 2x2 rgb rows padded to 8 bytes, the last row unpadded
+    let data = vec![1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12];
+    let image = rgba((2, 2, 8, false, 8, 3, data)).unwrap();
+    assert_eq!(
+      image.as_raw(),
+      &[1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
+    );
+    assert!(rgba((1, 1, 4, true, 16, 4, vec![0; 8])).is_err());
+    assert!(rgba((1, 1, 2, true, 8, 4, vec![0; 4])).is_err());
+    assert!(rgba((0, 1, 4, true, 8, 4, vec![])).is_err());
+    assert!(rgba((-1, 1, 4, true, 8, 4, vec![0; 4])).is_err());
+    assert!(rgba((1, 1, 4, true, 8, 2, vec![0; 4])).is_err());
+  }
+
+  #[test]
+  fn reply_placeholder_hint() {
+    let (server, rx) = server(1);
+    notify(
+      &server,
+      0,
+      hints(vec![("x-kde-reply-placeholder-text", "Reply…".into())]),
+    );
+    assert_eq!(received(&rx).reply_placeholder.as_deref(), Some("Reply…"));
   }
 }

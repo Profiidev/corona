@@ -80,7 +80,7 @@ impl From<&nt::Notification> for Notification {
       app_name: n.app_name.clone(),
       app_icon: n.app_icon.clone(),
       summary: n.summary.clone(),
-      body: n.body.clone(),
+      body: nt::strip_markup(&n.body),
       actions: n
         .actions
         .iter()
@@ -287,6 +287,7 @@ mod tests {
       id: 4,
       app_name: "mail".into(),
       app_icon: String::new(),
+      image: None,
       summary: "New mail".into(),
       body: "Hi".into(),
       actions: vec![nt::Action {
@@ -295,6 +296,7 @@ mod tests {
       }],
       urgency,
       desktop_entry: Some("thunderbird".into()),
+      reply_placeholder: None,
       resident: true,
       time,
       read: false,

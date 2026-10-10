@@ -13,7 +13,7 @@ use corona_compositor::CompositorExt;
 use corona_config::{
   APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition, observe_section,
 };
-use corona_notifications::{Filter, NotificationsExt, Urgency};
+use corona_notifications::{Filter, NotificationsExt, Urgency, strip_markup};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
@@ -27,7 +27,10 @@ use gpui_kit::{
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
 
-use crate::{control_center::NotificationsPanel, widgets::filter_regex};
+use crate::{
+  control_center::{NotificationsPanel, ReplyInputs},
+  widgets::filter_regex,
+};
 
 const NAMESPACE: &str = "corona_notification";
 const STACK_OFFSET: f32 = 12.;
@@ -37,6 +40,7 @@ type Item = corona_notifications::Notification;
 
 struct Popups {
   items: Vec<Popup>,
+  replies: ReplyInputs,
 }
 
 struct Popup {
@@ -90,7 +94,7 @@ fn filter(config: &NotificationConfig) -> Filter {
   let re = filter_regex(&config.filter_regex);
   Filter(Box::new(move |n| {
     re.as_ref().is_some_and(|re| {
-      [&n.app_name, &n.summary, &n.body]
+      [&n.app_name, &n.summary, &strip_markup(&n.body)]
         .iter()
         .any(|text| re.is_match(text))
     })
@@ -220,6 +224,7 @@ impl NotificationPopups {
       None => {
         let view = cx.new(|_| Popups {
           items: vec![Popup::new(notification, 0, &config)],
+          replies: ReplyInputs::default(),
         });
         Self::open(view, display, cx)?;
       }
@@ -322,6 +327,9 @@ impl NotificationPopups {
 
 impl Render for Popups {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    self
+      .replies
+      .sync(self.items.iter().map(|p| &p.item), window, cx);
     let speed = animation_duration(SLIDE_SPEED, cx);
     let config = cx.config().notification.clone();
     let (width, gap) = (config.width, config.offset);
@@ -349,14 +357,16 @@ impl Render for Popups {
             popup.slot.retarget(-(slot as f32), speed / 4);
             slot += 1;
           }
-          if popup.open && !popup.hovered {
+          // typing a reply holds it like hovering
+          let held = popup.hovered || self.replies.typing(popup.item.id, window, cx);
+          if popup.open && !held {
             popup.remaining = popup.remaining.saturating_sub(now - popup.last_tick);
             if popup.remaining.is_zero() {
               expired.push(popup.item.id);
             }
           }
           popup.last_tick = now;
-          let counting = popup.open && !popup.hovered;
+          let counting = popup.open && !held;
 
           let (progress, sliding) = popup.anim.value();
           let (at, moving) = popup.slot.value();
@@ -375,7 +385,7 @@ impl Render for Popups {
             .child({
               let id = popup.item.id;
               let left = popup.remaining.as_secs_f32() / popup.timeout.as_secs_f32();
-              NotificationsPanel::notification_card(cx, &popup.item)
+              NotificationsPanel::notification_card(cx, &popup.item, self.replies.get(id))
                 .bg(theme.colors.accent.opacity(config.background_opacity))
                 .relative()
                 .child(
@@ -449,11 +459,13 @@ mod tests {
       id: 1,
       app_name: app_name.into(),
       app_icon: String::new(),
+      image: None,
       summary: summary.into(),
       body: body.into(),
       actions: Vec::new(),
       urgency,
       desktop_entry: None,
+      reply_placeholder: None,
       resident: false,
       time: SystemTime::UNIX_EPOCH,
       read: false,
@@ -484,6 +496,10 @@ mod tests {
     assert!(!drops("discord", &n));
     // the fields are matched one by one, not joined
     assert!(!drops("Spotify Now", &n));
+    // the body as its text, without markup
+    let n = item("a", "b", "<b>Some</b> &amp; Song", Urgency::Normal);
+    assert!(drops("some & song", &n));
+    assert!(!drops("<b>", &n));
   }
 
   #[test]

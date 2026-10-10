@@ -12,6 +12,8 @@ anyhow.workspace = true
 flume.workspace = true
 futures-lite.workspace = true
 tracing.workspace = true
+dirs.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 corona_utils = { workspace = true, features = ["test-support"] }

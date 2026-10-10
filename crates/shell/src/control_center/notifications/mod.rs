@@ -23,6 +23,8 @@ use rust_i18n::t;
 
 mod notification;
 
+pub use notification::ReplyInputs;
+
 const TICK: Duration = Duration::from_secs(30);
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -35,6 +37,7 @@ enum Filter {
 
 pub struct NotificationsPanel {
   filter: Filter,
+  replies: ReplyInputs,
   _subscriptions: [Subscription; 3],
   _ticker: Task<()>,
 }
@@ -64,6 +67,7 @@ impl ControlCenterPanel for NotificationsPanel {
 
     Self {
       filter: Filter::All,
+      replies: ReplyInputs::default(),
       _subscriptions: subscriptions,
       _ticker: ticker,
     }
@@ -150,10 +154,11 @@ impl NotificationsPanel {
 }
 
 impl Render for NotificationsPanel {
-  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let all = cx.notifications().list(cx).to_vec();
+    self.replies.sync(&all, window, cx);
     let theme = cx.theme();
     let notifications = cx.notifications();
-    let all = notifications.list(cx);
     let shown: Vec<&Notification> = all
       .iter()
       .filter(|n| match self.filter {
@@ -200,7 +205,11 @@ impl Render for NotificationsPanel {
               .min_h_0()
               .gap_2()
               .overflow_y_scrollbar()
-              .children(shown.iter().map(|n| Self::notification(cx, n))),
+              .children(
+                shown
+                  .iter()
+                  .map(|n| Self::notification(cx, n, self.replies.get(n.id))),
+              ),
           )
         },
       )
