@@ -233,6 +233,22 @@ fn grant_paths<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>
   Ok(paths)
 }
 
+/// As [`grant_paths`], but never the plugin directory: a plugin that rewrites
+/// its own `plugin.toml` would grant itself anything on the next rescan.
+fn write_paths<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+  let paths = grant_paths(deserializer)?;
+  for path in &paths {
+    // `..` could climb from `${dataDir}` into the plugin directory
+    let climbs = path.split('/').any(|part| part == "..");
+    if path.contains(PLUGIN_DIR_PLACEHOLDER) || !path.starts_with(['/', '$']) || climbs {
+      return Err(D::Error::custom(format!(
+        "`{path}` cannot be written, the plugin directory is read only; write to {DATA_DIR_PLACEHOLDER}"
+      )));
+    }
+  }
+  Ok(paths)
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilitiesFile {
@@ -321,7 +337,13 @@ impl CapabilitiesFile {
     let network = self.network.clone().unwrap_or_default();
     Capabilities::new()
       .read_roots(expand_all(&fs.read, plugin_dir, data_dir))
-      .write_roots(expand_all(&fs.write, plugin_dir, data_dir))
+      // ponytail: lexical, so a root above the plugin directory still covers
+      // it; such a root already reaches the config, deny-paths if that matters
+      .write_roots(
+        expand_all(&fs.write, plugin_dir, data_dir)
+          .into_iter()
+          .filter(|root| !root.starts_with(plugin_dir)),
+      )
       .execute(execute)
       .network_hosts(
         network
@@ -405,8 +427,9 @@ struct FsGrantFile {
   /// the plugin's own directory and its storage directory.
   #[serde(default, deserialize_with = "grant_paths")]
   read: Vec<String>,
-  /// Directories that may be written.
-  #[serde(default, deserialize_with = "grant_paths")]
+  /// Directories that may be written, absolute or `${dataDir}`; never the
+  /// plugin's own directory.
+  #[serde(default, deserialize_with = "write_paths")]
   write: Vec<String>,
   /// Commands `process.run` may start.
   #[serde(default)]
@@ -675,6 +698,10 @@ default = false
       r#"storage = "yes""#,
       r#"fs = { read = "/etc" }"#,
       r#"fs = { write = ["${home}"] }"#,
+      r#"fs = { write = ["${pluginDir}"] }"#,
+      r#"fs = { write = ["${pluginDir}/cache"] }"#,
+      r#"fs = { write = ["cache"] }"#,
+      r#"fs = { write = ["${dataDir}/../../plugins/a"] }"#,
       r#"network = { hosts = "a" }"#,
       r#"network = { unix = "/run/a.sock" }"#,
       r#"network = { http = [{ host = "a", methods = ["GET"], port = 70000 }] }"#,
@@ -734,6 +761,9 @@ process = { exit = true }
     assert!(capabilities.is_clipboard_readable());
     assert!(capabilities.is_clipboard_writable());
     assert!(capabilities.may_exit());
+
+    // an absolute path into the plugin directory is dropped
+    assert!(!grant(r#"fs = { write = ["/plugins/a/x"] }"#).has_write_access());
 
     let capabilities = grant(r#"clipboard = { read = true }"#);
     assert!(capabilities.is_clipboard_readable());
