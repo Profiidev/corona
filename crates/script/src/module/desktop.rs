@@ -9,6 +9,7 @@ use std::{
   os::unix::fs::PermissionsExt as _,
   path::{Path, PathBuf},
   rc::Rc,
+  sync::Arc,
   time::Duration,
 };
 
@@ -35,8 +36,8 @@ struct PickFiles {
   accept_label: Option<String>,
 }
 
-/// `path` as it is opened: an existing absolute path, neither a launcher nor
-/// an executable, which would run instead of open.
+/// `path` as it is opened: an existing absolute regular file, neither a
+/// launcher nor an executable, which would run instead of open.
 fn openable(path: &Path) -> Result<PathBuf> {
   ensure!(path.is_absolute(), "`{}` is not absolute", path.display());
   let path = fs::canonicalize(path).with_context(|| path.display().to_string())?;
@@ -48,29 +49,27 @@ fn openable(path: &Path) -> Result<PathBuf> {
     path.display()
   );
   let meta = fs::metadata(&path)?;
+  ensure!(meta.is_file(), "`{}` is not a file", path.display());
   ensure!(
-    !meta.is_file() || meta.permissions().mode() & 0o111 == 0,
+    meta.permissions().mode() & 0o111 == 0,
     "`{}` is executable",
     path.display()
   );
   Ok(path)
 }
 
-/// A URI with a scheme, not a `file:` one, which `openPath` checks.
+/// Schemes `openUri` opens; others hand the URI to whatever app claims them.
+const SCHEMES: [&str; 3] = ["http", "https", "mailto"];
+
+/// A URI with a web or mail scheme; files go through `openPath`, which checks them.
 fn uri_ok(uri: &str) -> Result<()> {
   let scheme = uri
     .split_once(':')
     .map(|(scheme, _)| scheme)
-    .filter(|scheme| {
-      scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-        && scheme
-          .chars()
-          .all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c))
-    })
     .with_context(|| format!("`{uri}` has no scheme"))?;
   ensure!(
-    !scheme.eq_ignore_ascii_case("file"),
-    "open files with openPath"
+    SCHEMES.iter().any(|s| s.eq_ignore_ascii_case(scheme)),
+    "`{scheme}:` cannot be opened, only {SCHEMES:?}; open files with openPath"
   );
   Ok(())
 }
@@ -79,9 +78,7 @@ fn uri_ok(uri: &str) -> Result<()> {
 #[serde(rename_all = "camelCase")]
 #[ts(optional_fields)]
 struct ListenRedirect {
-  /// The port on 127.0.0.1, a free one when 0 or left out.
-  port: Option<u16>,
-  /// How long `nextRedirect` waits, 5 minutes by default.
+  /// How long `nextRedirect` waits, 5 minutes by default, 10 at most.
   timeout_ms: Option<u32>,
 }
 
@@ -104,6 +101,9 @@ struct Redirect {
 }
 
 const TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const MAX_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Ports a load may hold open at once, waiting or not
+const MAX_LISTENERS: usize = 2;
 /// Longer request heads are not a redirect
 const MAX_HEAD: usize = 16 * 1024;
 
@@ -200,7 +200,10 @@ async fn redirect(listener: TcpListener) -> Result<Redirect> {
 
 /// `capabilities` is the plugin's grant, which a picked path is added to
 pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModule {
-  let listeners = Rc::new(RefCell::new(HashMap::<u32, (TcpListener, Duration)>::new()));
+  // each listener holds a clone of `live`, waiting or not
+  type Listener = (TcpListener, Duration, Arc<()>);
+  let listeners = Rc::new(RefCell::new(HashMap::<u32, Listener>::new()));
+  let live = Arc::new(());
   let next_id = Rc::new(Cell::new(0));
   // never sent, dropped on cleanup to stop a waiting `nextRedirect`, whose
   // future gpui-shell never drops
@@ -211,6 +214,7 @@ pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModu
     dropped.borrow_mut().clear();
   })));
   let taken = listeners.clone();
+  let readable = capabilities.clone();
 
   Module::new("corona/desktop")
     .func(named!(
@@ -245,9 +249,11 @@ pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModu
     ))
     .func(named!(
       "openPath",
-      /// Opens a file or directory in the user's default app.
-      |cx: &mut App, path: String| -> Result<()> {
-        cx.open_with_system(&openable(Path::new(&path))?);
+      /// Opens a file the plugin may read in the user's default app.
+      move |cx: &mut App, path: String| -> Result<()> {
+        let path = openable(Path::new(&path))?;
+        ensure!(readable.may_read(&path), "`{}` is not readable", path.display());
+        cx.open_with_system(&path);
         Ok(())
       }
     ))
@@ -263,18 +269,23 @@ pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModu
     .func(named!(
       "listenRedirect",
       /// Listens on 127.0.0.1 for one OAuth redirect, for a login opened with
-      /// `openUri`. Wait for it with `nextRedirect(id)`.
+      /// `openUri`, on a free port. Wait for it with `nextRedirect(id)`.
       move |options: Option<ListenRedirect>| -> Result<Listening> {
         let options = options.unwrap_or_default();
-        let listener =
-          std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, options.port.unwrap_or(0)))?;
+        ensure!(
+          Arc::strong_count(&live) <= MAX_LISTENERS,
+          "at most {MAX_LISTENERS} redirect listeners at once"
+        );
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         let id = next_id.get() + 1;
         next_id.set(id);
         let timeout = options
           .timeout_ms
-          .map_or(TIMEOUT, |ms| Duration::from_millis(ms.into()));
-        (listeners.borrow_mut()).insert(id, (TcpListener::try_from(listener)?, timeout));
+          .map_or(TIMEOUT, |ms| Duration::from_millis(ms.into()))
+          .min(MAX_TIMEOUT);
+        let listener = (TcpListener::try_from(listener)?, timeout, live.clone());
+        (listeners.borrow_mut()).insert(id, listener);
         Ok(Listening {
           id,
           port,
@@ -291,7 +302,7 @@ pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModu
         let listener = taken.borrow_mut().remove(&id);
         let stop = stop_rx.clone();
         async move {
-          let (listener, timeout) = listener.context("no such listener, or it was used")?;
+          let (listener, timeout, _live) = listener.context("no such listener, or it was used")?;
           let timed_out = async {
             smol::Timer::after(timeout).await;
             Err(anyhow!("no redirect within {timeout:?}"))
@@ -317,7 +328,7 @@ mod tests {
 
   #[gpui::test]
   fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
-    let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt")]);"#;
+    let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt"), m.openPath("/etc/hostname")]);"#;
     let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
     let reports = view.last();
     assert!(reports[0]["message"].as_str().unwrap().contains("openPath"));
@@ -326,6 +337,13 @@ mod tests {
         .as_str()
         .unwrap()
         .contains("not absolute")
+    );
+    // ungranted
+    assert!(
+      reports[2]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not readable")
     );
     assert_eq!(cx.opened_url(), None);
   }
@@ -347,14 +365,19 @@ mod tests {
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
       const l = m.listenRedirect();
-      report(l);
+      // the port is always a free one
+      const t = m.listenRedirect({ timeoutMs: 1, port: 1 });
+      report({ ...l, capped: m.listenRedirect(), freePort: t.port !== 1 });
       m.nextRedirect(l.id).then(report);
       m.nextRedirect(l.id).then(report);
-      m.nextRedirect(m.listenRedirect({ timeoutMs: 1 }).id).then(report);
+      m.nextRedirect(t.id).then(report);
     }"#;
     let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
     wait_until(cx, |_| view.reports.borrow().len() == 3);
     let listening = view.reports.borrow()[0].clone();
+    let capped = listening["capped"]["message"].as_str().unwrap();
+    assert!(capped.contains("at most"), "{capped}");
+    assert_eq!(listening["freePort"], true);
     let port = listening["port"].as_u64().unwrap();
     assert_eq!(
       listening["redirectUri"],
@@ -412,7 +435,7 @@ mod tests {
     let file = dir.path().join("a.txt");
     fs::write(&file, "").unwrap();
     assert!(openable(&file).is_ok());
-    assert!(openable(dir.path()).is_ok());
+    assert!(openable(dir.path()).is_err());
 
     assert!(openable(Path::new("a.txt")).is_err());
     assert!(openable(&dir.path().join("missing")).is_err());
@@ -433,17 +456,15 @@ mod tests {
 
   #[test]
   fn uris() {
-    for ok in [
-      "https://example.com",
-      "mailto:a@b.c",
-      "kdeconnect://x",
-      "a+b.c-d:x",
-    ] {
+    for ok in ["https://example.com", "HTTP://x", "mailto:a@b.c"] {
       assert!(uri_ok(ok).is_ok(), "{ok}");
     }
     for bad in [
       "file:///etc/passwd",
       "FILE:/x",
+      "kdeconnect://x",
+      "javascript:alert(1)",
+      "smb://host/share",
       "example.com",
       ":x",
       "1a:x",

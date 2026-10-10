@@ -1,0 +1,20 @@
+Capabilities: public read check.
+
+Lets a host ask whether a path is readable under the grant before handing
+it to something outside the sandbox, e.g. opening it in the default app.
+
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -299,6 +299,12 @@
+         !self.read_roots.is_empty()
+     }
+ 
++    /// Whether `path` lies under a read grant, the check a host makes before
++    /// handing a path to something outside the sandbox.
++    pub fn may_read(&self, path: &Path) -> bool {
++        self.open(path, Access::Read).is_ok()
++    }
++
+     pub fn may_run(&self, command: &str) -> bool {
+         match &self.execute {
+             ExecuteGrant::Denied => false,
