@@ -2134,6 +2134,7 @@ dependencies = [
  "corona_weather",
  "dirs 7.0.0",
  "flume",
+ "futures",
  "futures-lite",
  "gpui-component-shell",
  "gpui-kit",
@@ -2148,6 +2149,8 @@ dependencies = [
  "tracing",
  "ts-rs",
  "uuid",
+ "zbus",
+ "zbus_xml",
 ]
 
 [[package]]

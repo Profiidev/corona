@@ -45,6 +45,7 @@ mod tests {
       assert!(property(&plugin, &["properties", key]).is_object(), "{key}");
     }
     for (def, key) in [
+      ("CapabilitiesFile", "dbus"),
       ("ProcessGrantFile", "env"),
       ("NetworkGrantFile", "unix"),
     ] {

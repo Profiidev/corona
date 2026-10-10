@@ -650,7 +650,7 @@ fn signature(active: &HashMap<String, Found>) -> Vec<String> {
     .map(|found| {
       let m = &found.manifest;
       format!(
-        "{} {} {:?} {:?} {:?} {:?} {:?} {:?}",
+        "{} {} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
         m.id,
         m.dir.display(),
         m.version,
@@ -658,7 +658,8 @@ fn signature(active: &HashMap<String, Found>) -> Vec<String> {
         m.panels,
         m.service,
         m.capabilities,
-        m.modules
+        m.modules,
+        m.dbus
       )
     })
     .collect();
@@ -864,9 +865,12 @@ mod tests {
     assert!(rescan(&format!(
       "{service}[capabilities]\ncorona = [\"weather\"]\n"
     )));
+    assert!(rescan(&format!(
+      "{service}[capabilities.dbus]\nsession = [\"org.a\"]\n"
+    )));
     // settings are read live, nothing restarts for them
     let setting = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = true\n";
-    let grant = format!("{service}[capabilities]\ncorona = [\"weather\"]\n");
+    let grant = format!("{service}[capabilities.dbus]\nsession = [\"org.a\"]\n");
     assert!(!rescan(&format!("{setting}{grant}")));
   }
 

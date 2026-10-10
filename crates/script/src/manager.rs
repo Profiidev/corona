@@ -17,7 +17,7 @@ use gpui_shell::{
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, PluginRef, Subscriptions, i18n, plugin, settings, surface},
+  module::{ModuleExt, PluginRef, Subscriptions, dbus, i18n, plugin, settings, surface},
   plugin::{manifest::PluginManifest, paths::Paths},
 };
 
@@ -127,12 +127,13 @@ impl ScriptManager {
 
     let runtime = manager.runtime.clone();
     let root = manifest.dir.join(view);
-    let (id, name, dir, modules, settings) = (
+    let (id, name, dir, modules, settings, grant) = (
       manifest.id.clone(),
       manifest.name.clone(),
       manifest.dir.clone(),
       manifest.modules.clone(),
       manifest.settings.clone(),
+      manifest.dbus.clone(),
     );
     let panels: Vec<String> = manifest.panels.keys().cloned().collect();
     let opener = Rc::new(Cell::new(None));
@@ -166,6 +167,10 @@ impl ScriptManager {
       ))?
       .with_host_module(plugin::module(&hub, service.is_some(), &mut subscribes))?
       .with_host_module(i18n::module(&dir, &mut subscribes))?;
+    let policy = match grant {
+      Some(grant) => policy.with_host_module(dbus::module(grant, &mut subscribes))?,
+      None => policy,
+    };
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -1113,6 +1118,100 @@ export default class Main extends View {
       "declare module \"corona/i18n\"",
     ] {
       assert!(dts.contains(line), "missing {line:?} in\n{dts}");
+    }
+  }
+
+  /// Reports through `focusWorkspace` whether the test name is on the bus,
+  /// and what calling an ungranted one answers.
+  const DBUS_VIEW: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { call, nameHasOwner } from "corona/dbus";
+
+let started = false;
+
+export default class Main extends View {
+  render(_cx) {
+    if (!started) {
+      started = true;
+      nameHasOwner("session", "io.corona.Test").then((owned) => focusWorkspace("owned " + owned));
+      call({ bus: "session", dest: "io.corona.Other", path: "/", iface: "io.corona.Other", method: "X" })
+        .then((e) => focusWorkspace("denied " + e.message));
+    }
+    return v_flex().child("plugin");
+  }
+}
+"#;
+
+  #[gpui::test]
+  fn dbus_calls_go_to_granted_names(cx: &mut TestAppContext) {
+    use corona_utils::test_bus::{TestBus, wait_until};
+    use futures_lite::future::block_on;
+
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let (session, service) = block_on(async { (bus.conn().await, bus.conn().await) });
+    block_on(service.request_name("io.corona.Test")).unwrap();
+    cx.set_global(crate::Buses {
+      system: session.clone(),
+      session,
+    });
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let extra =
+      r#"capabilities = { corona = ["compositor"], dbus = { session = ["io.corona.Test"] } }"#;
+    plugins.add("a", &manifest("a", extra), &[("main.js", DBUS_VIEW)]);
+    let (cx, script) = load(cx, &plugins, "a");
+    let _script = script.unwrap();
+
+    wait_until(cx, |_| fake.calls.borrow().len() == 2);
+    let calls = fake.calls.borrow();
+    assert!(calls.contains(&"owned true".to_string()), "{calls:?}");
+    assert!(
+      calls
+        .iter()
+        .any(|c| c.starts_with("denied ") && c.contains("not in this plugin's session bus grant")),
+      "{calls:?}"
+    );
+  }
+
+  /// Imports one module and does nothing with it.
+  fn importing(module: &str) -> String {
+    format!(
+      r#"
+import {{ View }} from "gpui-kit";
+import {{ v_flex }} from "gpui-base";
+import * as m from "corona/{module}";
+
+export default class Main extends View {{
+  render(_cx) {{
+    return v_flex().child(typeof m);
+  }}
+}}
+"#
+    )
+  }
+
+  #[gpui::test]
+  fn modules_need_their_grant(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    for (id, module, extra, granted) in [
+      ("a", "dbus", "", false),
+      ("b", "dbus", r#"capabilities = { dbus = {} }"#, true),
+    ] {
+      plugins.add(id, &manifest(id, extra), &[("main.js", &importing(module))]);
+      let (_, script) = load(cx, &plugins, id);
+      match script {
+        Ok(_) => assert!(granted, "{module} imported without a grant"),
+        Err(error) => {
+          assert!(!granted, "{module}: {error:#}");
+          assert!(
+            format!("{error:#}").contains(&format!("corona/{module}")),
+            "{error:#}"
+          );
+        }
+      }
     }
   }
 }

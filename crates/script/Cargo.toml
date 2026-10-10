@@ -36,7 +36,11 @@ rust-i18n-support.workspace = true
 ts-rs = { workspace = true, features = ["serde-json-impl"] }
 uuid = { workspace = true, features = ["v4"] }
 schemars = "1.2.2"
+zbus.workspace = true
+zbus_xml.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
+corona_utils = { workspace = true, features = ["test-support"] }

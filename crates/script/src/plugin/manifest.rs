@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, de::Error as _};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  module::CoronaModule,
+  module::{CoronaModule, dbus::DbusGrant},
   plugin::settings::{self, Setting},
 };
 
@@ -31,6 +31,8 @@ pub struct PluginManifest {
   pub capabilities: Capabilities,
   /// The corona modules it may import
   pub modules: BTreeSet<CoronaModule>,
+  /// The bus names `corona/dbus` may reach, which it needs to be importable
+  pub dbus: Option<DbusGrant>,
 }
 
 impl PluginManifest {
@@ -38,6 +40,7 @@ impl PluginManifest {
     Self {
       capabilities: file.capabilities.grant(&dir, data_dir),
       modules: file.capabilities.modules(),
+      dbus: file.capabilities.dbus.clone(),
       id: file.id,
       dir,
       name: file.name,
@@ -218,6 +221,10 @@ pub struct CapabilitiesFile {
   /// `corona/weather`. Importing one not listed fails.
   #[serde(default)]
   corona: BTreeSet<CoronaModule>,
+  /// Bus names `corona/dbus` may call, read and receive signals from. The
+  /// module is only there with this table.
+  #[serde(default)]
+  dbus: Option<DbusGrant>,
 }
 
 // Same as `{}`: an omitted `capabilities` still grants storage.
@@ -230,6 +237,7 @@ impl Default for CapabilitiesFile {
       clipboard: None,
       process: None,
       corona: BTreeSet::new(),
+      dbus: None,
     }
   }
 }
@@ -546,6 +554,7 @@ default = false
       r#"network = { http = [{ host = "a", methods = ["GET"], path = [] }] }"#,
       r#"clipboard = { paste = true }"#,
       r#"process = { kill = true }"#,
+      r#"dbus = { sesion = ["org.kde.*"] }"#,
     ] {
       assert!(with_capabilities(body).is_err(), "{body}");
     }
@@ -564,6 +573,7 @@ default = false
       r#"process = { exit = 1 }"#,
       r#"process = { env = "HOME" }"#,
       r#"corona = "weather""#,
+      r#"dbus = { session = "org.kde.*" }"#,
     ] {
       assert!(with_capabilities(body).is_err(), "{body}");
     }
@@ -763,5 +773,21 @@ methods = ["POST"]
     );
 
     assert!(with_capabilities(r#"corona = ["camera"]"#).is_err());
+  }
+
+  #[test]
+  fn dbus_grants() {
+    assert_eq!(with("").unwrap().capabilities.dbus, None);
+    let manifest = with_capabilities(r#"dbus = { session = ["org.kde.*"] }"#).unwrap();
+    let grant = manifest.capabilities.dbus.unwrap();
+    assert_eq!(grant.session, ["org.kde.*"]);
+    assert!(grant.system.is_empty());
+
+    for bad in [r#"["*"]"#, r#"["org.freedesktop.*"]"#, r#"[":1.2"]"#] {
+      assert!(
+        with_capabilities(&format!("dbus = {{ system = {bad} }}")).is_err(),
+        "{bad}"
+      );
+    }
   }
 }
