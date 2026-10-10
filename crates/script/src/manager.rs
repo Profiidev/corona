@@ -65,9 +65,10 @@ impl Drop for StopGuard {
 }
 
 /// A view a plugin declares in its manifest
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Entry<'a> {
-  Widget(&'a str),
+  /// With this instance's options from the bar config
+  Widget(&'a str, Option<&'a serde_json::Value>),
   Panel(&'a str),
 }
 
@@ -126,11 +127,13 @@ impl ScriptManager {
   }
 
   /// The policy of a script of plugin `manifest`: its grants and the modules
-  /// every script has. `calls` is the service's, `None` for a view.
+  /// every script has. `calls` is the service's, `None` for a view;
+  /// `options` a widget's.
   fn policy(
     manifest: &PluginManifest,
     opener: Rc<Cell<Option<EntityId>>>,
     calls: Option<flume::Receiver<plugin::Call>>,
+    options: Option<serde_json::Value>,
     cx: &mut App,
   ) -> Result<(Policy, Vec<Subscribe>)> {
     let id = &manifest.id;
@@ -166,6 +169,7 @@ impl ScriptManager {
         id,
         panels,
         opener,
+        options,
         &Subscriptions::default(),
         &mut subscribes,
         cx,
@@ -182,7 +186,7 @@ impl ScriptManager {
   pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
     let manifest = Self::manifest(id, cx)?;
     let view = match entry {
-      Entry::Widget(name) => manifest.widgets.get(name).map(|w| &w.view),
+      Entry::Widget(name, _) => manifest.widgets.get(name).map(|w| &w.view),
       Entry::Panel(name) => manifest.panels.get(name).map(|p| &p.view),
     }
     .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
@@ -190,7 +194,11 @@ impl ScriptManager {
     let runtime = cx.global::<ScriptManager>().runtime.clone();
     let root = manifest.dir.join(view);
     let opener = Rc::new(Cell::new(None));
-    let (policy, subscribes) = Self::policy(&manifest, opener.clone(), None, cx)?;
+    let options = match entry {
+      Entry::Widget(_, options) => options.cloned(),
+      Entry::Panel(_) => None,
+    };
+    let (policy, subscribes) = Self::policy(&manifest, opener.clone(), None, options, cx)?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -237,7 +245,7 @@ impl ScriptManager {
       let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(&manifest.id, cx));
       let calls = hub.start_service();
       let stop = StopGuard(hub);
-      let (policy, subscribes) = Self::policy(&manifest, Rc::default(), Some(calls), cx)?;
+      let (policy, subscribes) = Self::policy(&manifest, Rc::default(), Some(calls), None, cx)?;
       let runtime = cx.global::<ScriptManager>().runtime.clone();
       Ok(Running {
         _handle: runtime.start_service(&entry, Rc::new(policy), cx)?,
@@ -403,7 +411,8 @@ export default class Main extends View {
 
   /// Loads view `main` of plugin `id` and shows it in `host`.
   fn show(cx: &mut VisualTestContext, host: &Entity<Host>, id: &str) -> Result<Script> {
-    let result = cx.update(|window, cx| ScriptManager::load(id, Entry::Widget("main"), window, cx));
+    let result =
+      cx.update(|window, cx| ScriptManager::load(id, Entry::Widget("main", None), window, cx));
     if let Ok(script) = &result {
       let view = script.view();
       cx.update(|_, cx| {
@@ -449,12 +458,12 @@ export default class Main extends View {
     let cx = cx.add_empty_window();
 
     let error = cx
-      .update(|window, cx| ScriptManager::load("missing", Entry::Widget("main"), window, cx))
+      .update(|window, cx| ScriptManager::load("missing", Entry::Widget("main", None), window, cx))
       .err()
       .unwrap();
     assert!(error.to_string().contains("not found"), "{error}");
 
-    for entry in [Entry::Widget("other"), Entry::Panel("main")] {
+    for entry in [Entry::Widget("other", None), Entry::Panel("main")] {
       let error = cx
         .update(|window, cx| ScriptManager::load("a", entry, window, cx))
         .err()
@@ -487,7 +496,10 @@ export default class Main extends View {
     cx.set_global(plugins.manager());
     cx.set_global(Config::default());
     let cx = cx.add_empty_window();
-    for (entry, fills) in [(Entry::Widget("main"), false), (Entry::Panel("p"), true)] {
+    for (entry, fills) in [
+      (Entry::Widget("main", None), false),
+      (Entry::Panel("p"), true),
+    ] {
       let script = cx
         .update(|window, cx| ScriptManager::load("a", entry, window, cx))
         .unwrap();
@@ -868,6 +880,43 @@ export default class Main extends View {
     cx.run_until_parked();
     assert!(fake.calls.borrow().len() > rendered);
     assert_eq!(last(&fake)["open"], true);
+  }
+
+  #[gpui::test]
+  fn widgets_read_their_options(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let view = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { options } from "corona/surface";
+export default class Main extends View {
+  render() {
+    focusWorkspace("options " + JSON.stringify(options()));
+    return v_flex().child("plugin");
+  }
+}
+"#;
+    let extra = "capabilities = { corona = [\"compositor\"] }\n[panels.p]\nview = \"main.js\"";
+    plugins.add("a", &manifest("a", extra), &[("main.js", view)]);
+    let (host, cx) = host(cx, &plugins);
+    let options = serde_json::json!({ "city": "Rosenheim" });
+    for entry in [Entry::Widget("main", Some(&options)), Entry::Panel("p")] {
+      let script = cx.update(|window, cx| ScriptManager::load("a", entry, window, cx));
+      let view = script.unwrap().view();
+      cx.update(|_, cx| {
+        host.update(cx, |host, cx| {
+          host.0.push(view);
+          cx.notify();
+        })
+      });
+      cx.run_until_parked();
+    }
+    assert_eq!(
+      reported(&fake, "options "),
+      [r#"{"city":"Rosenheim"}"#, "null"]
+    );
   }
 
   #[gpui::test]
@@ -1272,7 +1321,7 @@ export default class Main extends View {
     let (_, cx) = host(cx, &plugins);
     let start = |cx: &mut VisualTestContext| {
       let script =
-        cx.update(|window, cx| ScriptManager::load("a", Entry::Widget("main"), window, cx));
+        cx.update(|window, cx| ScriptManager::load("a", Entry::Widget("main", None), window, cx));
       drop(script.unwrap());
       cx.run_until_parked();
     };

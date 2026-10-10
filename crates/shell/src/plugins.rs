@@ -58,7 +58,12 @@ fn sync(registered: &mut Registered, cx: &mut App) {
       let (id, key) = (manifest.id.clone(), key.clone());
       cx.bar_mut().register_data(WidgetData::from_fn(
         name.clone(),
-        move |window, cx, _, _| match ScriptManager::load(&id, Entry::Widget(&key), window, cx) {
+        move |window, cx, _, options| match ScriptManager::load(
+          &id,
+          Entry::Widget(&key, options),
+          window,
+          cx,
+        ) {
           Ok(script) => {
             let view = cx.new(|_| PluginView {
               script,

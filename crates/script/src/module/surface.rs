@@ -96,6 +96,7 @@ pub fn module(
   id: &str,
   panels: Vec<String>,
   opener: Rc<Cell<Option<EntityId>>>,
+  options: Option<serde_json::Value>,
   reads: &Subscriptions,
   subs: &mut Vec<Subscribe>,
   cx: &mut App,
@@ -160,6 +161,12 @@ pub fn module(
         reads.record(Updates::OpenPanels.into());
         Ok(cx.has_global::<PanelState>() && PanelState::is_open(&full, &cx))
       }
+    ))
+    .func(named!(
+      "options",
+      /// This widget's options from the bar config; null in a panel or
+      /// service, or when the config gives none.
+      move || options.clone()
     ))
     .func(named!(
       "bar",
