@@ -1,0 +1,1070 @@
+Headless service scripts: an entry that default-exports a function,
+`export default async function main(cx)`, runs with an App and no window.
+
+- A scope frame may have no window (scope::enter_headless). with_current and
+  with_context refuse there, so window APIs throw "needs a live host call";
+  everything App-only works.
+- scheduler::Host keeps an optional window and resumes a headless task
+  through the App; job drains skip nested-view flushing without a window.
+- ShellRuntime::start_service(entry, policy, cx) loads the entry under the
+  policy, calls main(cx) with the ambient AsyncContext as an owned task
+  (rejections are logged) and returns a ServiceHandle, whose drop releases
+  the application generation and cancels the policy's tasks, killing
+  spawned process groups.
+- ServiceWatcher restarts a service on a source change, dropping the old run
+  before calling the host's start closure again. A failed start, the first
+  one too, is logged and retried on the next save.
+- HostModule::type_only names declared exports a module does not register,
+  so variants of one module (a plugin's views and its service) can share one
+  gpui-kit.d.ts that types them all.
+
+diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/quickjs/mod.rs
+index f62212a..4e35a1b 100644
+--- a/crates/shell/src/engine/quickjs/mod.rs
++++ b/crates/shell/src/engine/quickjs/mod.rs
+@@ -62,6 +62,13 @@ pub struct ViewType {
+     application: Option<Rc<ApplicationGeneration>>,
+ }
+ 
++impl ViewType {
++    /// The evaluated application incarnation the module was loaded as.
++    pub(crate) fn application(&self) -> Option<&Rc<ApplicationGeneration>> {
++        self.application.as_ref()
++    }
++}
++
+ #[cfg(test)]
+ mod retained_component_state_tests {
+     use super::*;
+@@ -2255,6 +2262,39 @@ impl ShellRuntime {
+         })
+     }
+ 
++    /// Calls a headless service's default-exported `main(cx)` as an owned task,
++    /// the way `cx.spawn(main)` would, under `policy` and the incarnation
++    /// `load_app` evaluated it as. See [`crate::service`].
++    pub(crate) fn start_service_main(
++        self: &Rc<Self>,
++        service: &ViewType,
++        policy: Rc<Policy>,
++        cx: &mut App,
++    ) -> Result<()> {
++        let (_scope, _) = scope::enter_headless(
++            self,
++            None,
++            cx,
++            ScopePhase::Task,
++            None,
++            policy,
++            service.application.clone(),
++        );
++        let started = self.with_js(|ctx| {
++            let main = service.value.clone().restore(ctx)?;
++            let Some(main) = main.as_function() else {
++                return Err(Exception::throw_type(
++                    ctx,
++                    "a service must `export default` a function: \
++                     `export default async function main(cx) { ... }`",
++                ));
++            };
++            scheduler::js_spawn(ctx.clone(), main.clone(), rquickjs::function::Opt(None)).map(drop)
++        });
++        scheduler::drain_runtime_jobs_opt(self, None, cx);
++        started
++    }
++
+     /// Constructs one instance of a view class.
+     ///
+     /// `init` is where a view creates the state it keeps across frames, and
+diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/engine/quickjs/scheduler.rs
+index 973b6f0..554ac5a 100644
+--- a/crates/shell/src/engine/quickjs/scheduler.rs
++++ b/crates/shell/src/engine/quickjs/scheduler.rs
+@@ -147,9 +147,22 @@ pub(super) fn drain_runtime_jobs(
+     runtime: &Rc<ShellRuntime>,
+     window: &mut gpui::Window,
+     cx: &mut gpui::App,
++) {
++    drain_runtime_jobs_opt(runtime, Some(window), cx);
++}
++
++/// [`drain_runtime_jobs`] for a call that may have no window. A headless
++/// service has no view, so it cannot have queued a nested view operation, and
++/// there is nothing to flush.
++pub(super) fn drain_runtime_jobs_opt(
++    runtime: &Rc<ShellRuntime>,
++    mut window: Option<&mut gpui::Window>,
++    cx: &mut gpui::App,
+ ) {
+     if runtime.job_queue_error().is_none() {
+-        if let Err(error) = runtime.flush_pending_nested_views(window, cx) {
++        if let Some(window) = window.as_deref_mut()
++            && let Err(error) = runtime.flush_pending_nested_views(window, cx)
++        {
+             tracing::error!("error applying a nested view operation: {error}");
+             return;
+         }
+@@ -168,14 +181,16 @@ pub(super) fn drain_runtime_jobs(
+ /// execution outside `Context::with` while the job's owner scope is still live.
+ fn drain_runtime_job_batch(
+     runtime: &Rc<ShellRuntime>,
+-    window: &mut gpui::Window,
++    mut window: Option<&mut gpui::Window>,
+     cx: &mut gpui::App,
+ ) -> bool {
+     for _ in 0..MAX_JOBS_PER_DRAIN {
+         let pending_checkpoint = runtime.pending_nested.borrow().len();
+         match runtime.js_runtime.execute_pending_job() {
+             Ok(true) => {
+-                if let Err(error) = runtime.flush_pending_nested_views(window, cx) {
++                if let Some(window) = window.as_deref_mut()
++                    && let Err(error) = runtime.flush_pending_nested_views(window, cx)
++                {
+                     tracing::error!("error applying a nested view operation: {error}");
+                     if runtime.job_queue_error().is_some() {
+                         return true;
+@@ -536,6 +551,8 @@ fn js_sleep<'js>(ctx: Ctx<'js>, ms: Opt<f64>) -> JsResult<Promise<'js>> {
+ 
+ /// `gpui.spawn(asyncFn, opts?)` — calls `asyncFn(cx)` and adopts its promise.
+ ///
++/// A headless service's `main(cx)` starts through here too.
++///
+ /// Adoption is the point. A rejected promise nobody handles is JavaScript's most
+ /// common silent failure: the work stops, the interface keeps the state it had,
+ /// and nothing is written anywhere. Here it reaches `tracing::error!` with the
+@@ -544,7 +561,7 @@ fn js_sleep<'js>(ctx: Ctx<'js>, ms: Opt<f64>) -> JsResult<Promise<'js>> {
+ /// The `cx` passed to `asyncFn` is valid until its first `await`, and only when
+ /// there is a host call in progress — at module top level there is no window
+ /// yet, and the argument is `undefined`.
+-fn js_spawn<'js>(
++pub(super) fn js_spawn<'js>(
+     ctx: Ctx<'js>,
+     body: Function<'js>,
+     opts: Opt<Value<'js>>,
+@@ -738,7 +755,8 @@ impl<'js> FromJs<'js> for ScriptFailure {
+ /// window handle and the executors are reachable.
+ #[derive(Clone)]
+ pub(super) struct Host {
+-    window: AnyWindowHandle,
++    /// `None` for a headless service, which resumes through the `App` alone.
++    window: Option<AnyWindowHandle>,
+     app: AsyncApp,
+     foreground: ForegroundExecutor,
+     background: BackgroundExecutor,
+@@ -772,8 +790,8 @@ fn host(ctx: &Ctx<'_>, api: &str) -> JsResult<Host> {
+ 
+     let runtime = scope::current_runtime()
+         .ok_or_else(|| Exception::throw_type(ctx, &format!("{api} has no owning shell runtime")))?;
+-    scope::with_context(generation, |window, app| Host {
+-        window: window.window_handle(),
++    scope::with_context_opt(generation, |window, app| Host {
++        window: window.map(|window| window.window_handle()),
+         app: app.to_async(),
+         foreground: app.foreground_executor().clone(),
+         background: app.background_executor().clone(),
+@@ -797,17 +815,17 @@ fn resume(
+ ) {
+     let policy = policy.clone();
+     let mut app = host.app.clone();
+-    let entered = host.window.update(&mut app, |_, window, cx| {
++    let run = |mut window: Option<&mut gpui::Window>, cx: &mut gpui::App| {
+         let Some(runtime) = host.runtime.upgrade() else {
+             tracing::debug!("script task dropped: the shell runtime has already shut down");
+             return;
+         };
+ 
+-        // `enter_with` and not `enter`: there is no enclosing frame to inherit
+-        // from out here, so `enter` would reach for the default policy.
+-        let (guard, generation) = scope::enter_with_application(
++        // `enter_headless` and not `enter`: there is no enclosing frame to
++        // inherit from out here, so `enter` would reach for the default policy.
++        let (guard, generation) = scope::enter_headless(
+             &runtime,
+-            window,
++            window.as_deref_mut(),
+             cx,
+             ScopePhase::Task,
+             owner,
+@@ -817,9 +835,16 @@ fn resume(
+         if let Err(error) = runtime.with_js(|ctx| body(ctx, generation)) {
+             tracing::error!("error in script task: {error}");
+         }
+-        drain_runtime_jobs(&runtime, window, cx);
++        drain_runtime_jobs_opt(&runtime, window, cx);
+         drop(guard);
+-    });
++    };
++    let entered = match host.window {
++        Some(handle) => handle.update(&mut app, |_, window, cx| run(Some(window), cx)),
++        None => {
++            app.update(|cx| run(None, cx));
++            Ok(())
++        }
++    };
+ 
+     if let Err(error) = entered {
+         tracing::debug!("script task dropped: {error}");
+diff --git a/crates/shell/src/host_modules.rs b/crates/shell/src/host_modules.rs
+index 4b9c2f0..c82e5bb 100644
+--- a/crates/shell/src/host_modules.rs
++++ b/crates/shell/src/host_modules.rs
+@@ -422,6 +422,9 @@ pub struct HostModule {
+     /// The module's TypeScript face, if the host wrote one. See
+     /// [`HostModule::declarations`].
+     declarations: Option<String>,
++    /// Declared exports this module does not register. See
++    /// [`HostModule::type_only`].
++    type_only: Vec<String>,
+ }
+ 
+ impl HostModule {
+@@ -438,6 +441,7 @@ impl HostModule {
+             async_functions: BTreeMap::new(),
+             components: BTreeMap::new(),
+             declarations: None,
++            type_only: Vec::new(),
+         }
+     }
+ 
+@@ -600,6 +604,18 @@ impl HostModule {
+         self
+     }
+ 
++    /// Names [`Self::declarations`] declares that this module does not register,
++    /// so [`Self::validate`] accepts them.
++    ///
++    /// For a module that comes in variants under different policies sharing one
++    /// `gpui-kit.d.ts`: each declares every variant's exports, so the editor's
++    /// typings do not change with whichever loaded last. Importing a name this
++    /// variant does not register still fails.
++    pub fn type_only(mut self, names: impl IntoIterator<Item = impl Into<String>>) -> Self {
++        self.type_only.extend(names.into_iter().map(Into::into));
++        self
++    }
++
+     /// The TypeScript body [`Self::declarations`] was given.
+     pub fn declared(&self) -> Option<&str> {
+         self.declarations.as_deref()
+@@ -694,7 +710,7 @@ impl HostModule {
+         let extra: Vec<&str> = declared
+             .iter()
+             .copied()
+-            .filter(|name| !self.has_export(name))
++            .filter(|name| !self.has_export(name) && !self.type_only.iter().any(|t| t == name))
+             .collect();
+ 
+         if missing.is_empty() && extra.is_empty() {
+@@ -1253,6 +1269,24 @@ mod tests {
+         );
+     }
+ 
++    /// Another variant's exports may be declared, but only when named.
++    #[test]
++    fn a_type_only_export_is_declared_without_being_registered() {
++        let module = || {
++            HostModule::new("market")
++                .function("quotes", |_| Ok(HostValue::Null))
++                .declarations(
++                    "export function quotes(): unknown[];\nexport function prices(): unknown[];\n",
++                )
++        };
++        assert!(module().validate().is_err());
++        module()
++            .type_only(["prices"])
++            .validate()
++            .expect("a type-only export is valid");
++        assert!(!module().type_only(["prices"]).has("prices"));
++    }
++
+     /// A helper type is not an export, and must not be read as a missing one.
+     #[test]
+     fn only_exported_functions_are_read_as_exports() {
+diff --git a/crates/shell/src/lib.rs b/crates/shell/src/lib.rs
+index 6fbb251..2e4bd2a 100644
+--- a/crates/shell/src/lib.rs
++++ b/crates/shell/src/lib.rs
+@@ -31,6 +31,8 @@
+ // script may reach, `root` and `theme` for the window it lives in, `view` and
+ // `snapshot` for the view itself, `metrics` to measure. Hot reload is exposed
+ // through `ShellRuntime::watch`; its watcher implementation remains internal.
++// A headless service starts with `ShellRuntime::start_service` and restarts
++// on a change through `ServiceWatcher`.
+ // `write_type_declarations_with_components` is the explicit tooling hook for `gpui-kit.d.ts`;
+ // ordinary application loading updates it automatically.
+ //
+@@ -81,6 +83,7 @@ pub(crate) mod runtime;
+ pub(crate) mod scope;
+ mod script_callback;
+ pub(crate) mod scroll;
++pub(crate) mod service;
+ pub mod snapshot;
+ pub(crate) mod spec;
+ pub(crate) mod storage;
+@@ -121,6 +124,7 @@ pub use runtime::{
+     resolve_app_root,
+ };
+ pub use scope::{ScopePhase, with_current_app};
++pub use service::{ServiceHandle, ServiceWatcher};
+ pub use snapshot::RenderSnapshot;
+ pub use view::ScriptView;
+ pub use watch::Watcher;
+diff --git a/crates/shell/src/scope.rs b/crates/shell/src/scope.rs
+index 1c74ae6..6d221ee 100644
+--- a/crates/shell/src/scope.rs
++++ b/crates/shell/src/scope.rs
+@@ -62,6 +62,7 @@ impl ScopePhase {
+ }
+ 
+ struct Frame {
++    /// Null for a headless service and the tasks it resumes. See [`enter_headless`].
+     window: *mut Window,
+     app: *mut App,
+     phase: ScopePhase,
+@@ -154,7 +155,7 @@ pub fn enter(
+         .flatten()
+         .or_else(current_application_generation);
+     enter_with_runtime_opt(
+-        window,
++        Some(window),
+         app,
+         phase,
+         view,
+@@ -197,7 +198,15 @@ pub fn enter_with_runtime(
+         .as_ref()
+         .and_then(|view| view.read(app).application_generation())
+         .or_else(current_application_generation);
+-    enter_with_runtime_opt(window, app, phase, view, policy, Some(runtime), application)
++    enter_with_runtime_opt(
++        Some(window),
++        app,
++        phase,
++        view,
++        policy,
++        Some(runtime),
++        application,
++    )
+ }
+ 
+ /// Opens a scope owned by an explicitly selected application incarnation.
+@@ -209,6 +218,32 @@ pub(crate) fn enter_with_application(
+     view: Option<Entity<ScriptView>>,
+     policy: Rc<Policy>,
+     application: Option<Rc<ApplicationGeneration>>,
++) -> (CallScopeGuard, u64) {
++    enter_with_runtime_opt(
++        Some(window),
++        app,
++        phase,
++        view,
++        policy,
++        Some(runtime),
++        application,
++    )
++}
++
++/// [`enter_with_application`] for a call that may have no window: a headless
++/// service and the tasks it resumes.
++///
++/// Inside a window-less frame [`with_current`] answers `None` and
++/// [`with_context`] refuses, so window APIs report that they need a live host
++/// call; everything that only needs the `App` works as usual.
++pub(crate) fn enter_headless(
++    runtime: &Rc<ShellRuntime>,
++    window: Option<&mut Window>,
++    app: &mut App,
++    phase: ScopePhase,
++    view: Option<Entity<ScriptView>>,
++    policy: Rc<Policy>,
++    application: Option<Rc<ApplicationGeneration>>,
+ ) -> (CallScopeGuard, u64) {
+     enter_with_runtime_opt(window, app, phase, view, policy, Some(runtime), application)
+ }
+@@ -254,7 +289,7 @@ pub(crate) fn enter_application(
+ }
+ 
+ fn enter_with_runtime_opt(
+-    window: &mut Window,
++    window: Option<&mut Window>,
+     app: &mut App,
+     phase: ScopePhase,
+     view: Option<Entity<ScriptView>>,
+@@ -270,7 +305,7 @@ fn enter_with_runtime_opt(
+ 
+     STACK.with(|stack| {
+         stack.borrow_mut().push(Frame {
+-            window: window as *mut Window,
++            window: window.map_or(std::ptr::null_mut(), |window| window as *mut Window),
+             app: app as *mut App,
+             phase,
+             generation,
+@@ -344,10 +379,16 @@ pub fn with_current_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
+ /// and it happens while script code is running rather than at a known point in
+ /// the host, so the context comes from the scope stack rather than being
+ /// threaded through. Returns `None` outside any scope, which is the honest
+-/// answer for "the script asked for this from nowhere".
++/// answer for "the script asked for this from nowhere" — and inside a headless
++/// frame, which has no window.
+ pub fn with_current<R>(f: impl FnOnce(&mut Window, &mut App) -> R) -> Option<R> {
+-    let pointers =
+-        STACK.with(|stack| stack.borrow().last().map(|frame| (frame.window, frame.app)))?;
++    let pointers = STACK.with(|stack| {
++        stack
++            .borrow()
++            .last()
++            .filter(|frame| !frame.window.is_null())
++            .map(|frame| (frame.window, frame.app))
++    })?;
+     let _borrow = HostContextBorrow::acquire()?;
+     // SAFETY: see the module header.
+     Some(f(unsafe { &mut *pointers.0 }, unsafe { &mut *pointers.1 }))
+@@ -386,10 +427,22 @@ pub(crate) fn current_application_generation() -> Option<Rc<ApplicationGeneratio
+ /// live call — the innermost frame's own, or one that frame [`adopt`]ed.
+ ///
+ /// A stale generation is a programming error in the script, not a host bug, so
+-/// it produces a descriptive error rather than a panic.
++/// it produces a descriptive error rather than a panic. A headless frame has no
++/// window and is refused the same way.
+ pub fn with_context<R>(
+     generation: u64,
+     f: impl FnOnce(&mut Window, &mut App) -> R,
++) -> Result<R, StaleContext> {
++    with_context_opt(generation, |window, app| {
++        window.map(|window| f(window, app))
++    })?
++    .ok_or(StaleContext)
++}
++
++/// [`with_context`] that also answers inside a headless frame, with no window.
++pub(crate) fn with_context_opt<R>(
++    generation: u64,
++    f: impl FnOnce(Option<&mut Window>, &mut App) -> R,
+ ) -> Result<R, StaleContext> {
+     let pointers = STACK.with(|stack| {
+         stack
+@@ -404,7 +457,7 @@ pub fn with_context<R>(
+         // guard is therefore still alive, and nothing else can be holding these
+         // borrows on this thread while the script is running.
+         (Some((window, app)), Some(_borrow)) => {
+-            Ok(f(unsafe { &mut *window }, unsafe { &mut *app }))
++            Ok(f(unsafe { window.as_mut() }, unsafe { &mut *app }))
+         }
+         _ => Err(StaleContext),
+     }
+diff --git a/crates/shell/src/service.rs b/crates/shell/src/service.rs
+new file mode 100644
+index 0000000..c605af5
+--- /dev/null
++++ b/crates/shell/src/service.rs
+@@ -0,0 +1,180 @@
++//! Headless services: a script that runs with an `App` and no window.
++//!
++//! A service entry default-exports one function instead of a view class:
++//!
++//! ```js
++//! export default async function main(cx) {
++//!   cx.timer.every(1000, () => { /* … */ });
++//! }
++//! ```
++//!
++//! `main` receives the ambient `AsyncContext` and runs as a task owned by the
++//! service's policy, so timers, `cx.spawn`, host modules and the standard
++//! modules work as they do in a view. Window APIs have no window to act on and
++//! throw their "needs a live host call" error. Dropping the [`ServiceHandle`]
++//! cancels everything the service started.
++
++use std::{any::Any, cell::RefCell, path::Path, path::PathBuf, rc::Rc};
++
++use anyhow::{Context as _, Result};
++use gpui::{App, Task};
++
++use crate::{
++    engine::{ShellRuntime, quickjs::ViewType},
++    policy::Policy,
++    scope::{self, ScopePhase},
++    watch::{POLL_INTERVAL, SourceWatcher},
++};
++
++/// A running service. Dropping it stops the service: its tasks and timers are
++/// cancelled, pending host work is dropped and spawned processes are killed.
++#[must_use = "dropping the handle stops the service"]
++pub struct ServiceHandle {
++    // Before `runtime`: the module's persistent value must be released while
++    // the runtime is still alive.
++    service: ViewType,
++    policy: Rc<Policy>,
++    runtime: Rc<ShellRuntime>,
++}
++
++impl ShellRuntime {
++    /// Starts the service whose entry module is exactly `entry`, under `policy`.
++    ///
++    /// The entry's directory is the application root, as in
++    /// [`Self::load_entry`]. Fails when the module does not evaluate or its
++    /// default export is not a function. An error thrown by `main`, or a
++    /// rejection of the promise it returns, is logged rather than returned:
++    /// the service has started by then.
++    pub fn start_service(
++        self: &Rc<Self>,
++        entry: impl AsRef<Path>,
++        policy: Rc<Policy>,
++        cx: &mut App,
++    ) -> Result<ServiceHandle> {
++        let entry = entry.as_ref();
++        let path = entry
++            .canonicalize()
++            .with_context(|| format!("cannot read `{}`", entry.display()))?;
++        let (Some(root), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
++        else {
++            anyhow::bail!(
++                "`{}` has no parent directory or UTF-8 file name",
++                entry.display()
++            );
++        };
++
++        let loaded = {
++            let (_scope, _) =
++                scope::enter_headless(self, None, cx, ScopePhase::Task, None, policy.clone(), None);
++            self.load_app(root, name)
++        };
++        let service = match loaded {
++            Ok(service) => service,
++            Err(error) => {
++                crate::engine::quickjs::cancel_policy_tasks(&policy);
++                return Err(error);
++            }
++        };
++
++        // Built before `main` runs, so a failure below is cleaned up by `Drop`.
++        let handle = ServiceHandle {
++            service,
++            policy,
++            runtime: self.clone(),
++        };
++        self.start_service_main(&handle.service, handle.policy.clone(), cx)
++            .with_context(|| format!("starting service `{}`", entry.display()))?;
++        Ok(handle)
++    }
++}
++
++impl Drop for ServiceHandle {
++    fn drop(&mut self) {
++        if let Some(application) = self.service.application() {
++            self.runtime
++                .release_application_generation_without_context(application);
++        }
++        crate::engine::quickjs::cancel_policy_tasks(&self.policy);
++    }
++}
++
++/// Restarts a service whenever a script source under a directory changes.
++///
++/// Dropping it stops the running instance and the watch.
++#[must_use = "dropping the watcher stops the service"]
++pub struct ServiceWatcher {
++    _running: Rc<dyn Any>,
++    _task: Task<()>,
++}
++
++impl ServiceWatcher {
++    /// Calls `start` now and again after every change to a script source under
++    /// `directory`, usually the service entry's directory.
++    ///
++    /// `start` returns whatever the host keeps for one run of the service —
++    /// typically a [`ServiceHandle`] from [`ShellRuntime::start_service`]
++    /// together with state built for that run, such as a fresh [`Policy`]. The
++    /// previous run is dropped before `start` is called again, so two instances
++    /// never overlap. A failed start, the first one too, is logged and retried
++    /// on the next save, so fixing a broken service needs no restart of the
++    /// host. Fails only when `directory` cannot be watched.
++    pub fn new<S: 'static>(
++        directory: impl Into<PathBuf>,
++        mut start: impl FnMut(&mut App) -> Result<S> + 'static,
++        cx: &mut App,
++    ) -> Result<Self> {
++        let directory = directory.into();
++        let mut watcher = SourceWatcher::new(directory.clone())?;
++        let started = start(cx)
++            .inspect_err(|error| {
++                tracing::error!("service in {} failed: {error:#}", directory.display())
++            })
++            .ok();
++        let running = Rc::new(RefCell::new(started));
++        let current = Rc::downgrade(&running);
++
++        let task = cx.spawn(async move |cx| {
++            loop {
++                cx.background_executor().timer(POLL_INTERVAL).await;
++                let (changed, scanned) = cx
++                    .background_executor()
++                    .spawn(async move {
++                        let changed = watcher.poll();
++                        (changed, watcher)
++                    })
++                    .await;
++                watcher = scanned;
++
++                let Some(current) = current.upgrade() else {
++                    break;
++                };
++                match changed {
++                    Ok(true) => {}
++                    Ok(false) => continue,
++                    Err(error) => {
++                        tracing::error!("service source watch stopped: {error:#}");
++                        break;
++                    }
++                }
++
++                // Cancel first, then start: the old instance's timers and
++                // processes must not outlive the change that replaced them.
++                current.borrow_mut().take();
++                match cx.update(|cx| start(cx)) {
++                    Ok(started) => {
++                        tracing::info!("restarted the service in {}", directory.display());
++                        *current.borrow_mut() = Some(started);
++                    }
++                    Err(error) => {
++                        tracing::error!("service in {} failed: {error:#}", directory.display())
++                    }
++                }
++            }
++        });
++
++        Ok(Self {
++            _running: running,
++            _task: task,
++        })
++    }
++}
+diff --git a/crates/shell/src/tests/mod.rs b/crates/shell/src/tests/mod.rs
+index 910d1f8..a637805 100644
+--- a/crates/shell/src/tests/mod.rs
++++ b/crates/shell/src/tests/mod.rs
+@@ -14,6 +14,7 @@ mod http_request;
+ mod network;
+ mod process;
+ mod render;
++mod service;
+ mod snapshot;
+ mod standard_runtime;
+ mod structure;
+diff --git a/crates/shell/src/tests/service.rs b/crates/shell/src/tests/service.rs
+new file mode 100644
+index 0000000..c675678
+--- /dev/null
++++ b/crates/shell/src/tests/service.rs
+@@ -0,0 +1,389 @@
++//! Headless services: `main(cx)` with an `App` and no window.
++//!
++//! No test here opens a window. A service reports what it saw through a host
++//! module, `probe.report(text)`, because it has no render to read.
++
++use std::{
++    cell::RefCell,
++    path::{Path, PathBuf},
++    rc::Rc,
++    time::{Duration, Instant},
++};
++
++use gpui::TestAppContext;
++
++use crate::{
++    Capabilities, HostModule, HostValue, ServiceHandle, ServiceWatcher, ShellRuntime,
++    policy::Policy,
++};
++
++type Log = Rc<RefCell<Vec<String>>>;
++
++/// A policy granting `capabilities` and the `probe` module that appends to `log`.
++fn policy(capabilities: Capabilities, log: &Log) -> Rc<Policy> {
++    let log = log.clone();
++    let probe = HostModule::new("probe").function("report", move |arguments| {
++        log.borrow_mut().push(arguments.string(0)?.to_owned());
++        Ok(HostValue::Null)
++    });
++    Rc::new(
++        Policy::new()
++            .with_capabilities(capabilities)
++            .with_host_module(probe)
++            .expect("probe module"),
++    )
++}
++
++/// Writes `source` as `service.js` in a fresh directory named after `name`.
++fn entry(name: &str, source: &str) -> PathBuf {
++    let directory =
++        std::env::temp_dir().join(format!("gpui-shell-service-{name}-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&directory);
++    std::fs::create_dir_all(&directory).expect("service directory");
++    let entry = directory.join("service.js");
++    std::fs::write(&entry, source).expect("service.js");
++    entry
++}
++
++fn runtime(cx: &mut TestAppContext) -> Rc<ShellRuntime> {
++    cx.update(crate::init);
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    cx.update(|cx| runtime.set_global(cx));
++    runtime
++}
++
++fn start(
++    cx: &mut TestAppContext,
++    runtime: &Rc<ShellRuntime>,
++    capabilities: Capabilities,
++    name: &str,
++    source: &str,
++) -> (anyhow::Result<ServiceHandle>, Log) {
++    let log = Log::default();
++    let entry = entry(name, source);
++    let policy = policy(capabilities, &log);
++    let started = cx.update(|cx| runtime.start_service(&entry, policy, cx));
++    (started, log)
++}
++
++/// Pumps timers and actor-driven promises until `done` holds or ten seconds pass.
++fn settle(cx: &mut TestAppContext, log: &Log, done: impl Fn(&[String]) -> bool) -> Vec<String> {
++    let deadline = Instant::now() + Duration::from_secs(10);
++    loop {
++        cx.run_until_parked();
++        let seen = log.borrow().clone();
++        if done(&seen) || Instant::now() >= deadline {
++            return seen;
++        }
++        std::thread::sleep(Duration::from_millis(5));
++        cx.executor().advance_clock(Duration::from_millis(10));
++    }
++}
++
++fn count(log: &[String], prefix: &str) -> usize {
++    log.iter().filter(|line| line.starts_with(prefix)).count()
++}
++
++#[gpui::test]
++fn main_runs_and_its_sleeps_and_timers_resume(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "resume",
++        r#"
++import { report } from "probe";
++export default async function main(cx) {
++  report("started");
++  await cx.sleep(20);
++  report("slept");
++  let ticks = 0;
++  cx.timer.every(10, () => report(`tick:${++ticks}`));
++}
++"#,
++    );
++    let _service = service.expect("start");
++    let seen = settle(cx, &log, |log| count(log, "tick:") >= 2);
++    assert_eq!(seen[..2], ["started", "slept"], "{seen:?}");
++    assert!(count(&seen, "tick:") >= 2, "{seen:?}");
++}
++
++#[gpui::test]
++fn an_async_standard_module_resolves(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let data = entry("fs-data", "").with_file_name("data.txt");
++    std::fs::write(&data, "hello").expect("data.txt");
++    let directory = data.parent().expect("parent").to_path_buf();
++    let source = r#"
++import { report } from "probe";
++import * as fs from "fs/promises";
++export default async function main() {
++  report(`read:${await fs.readFile("__PATH__", "utf8")}`);
++}
++"#
++    .replace("__PATH__", &data.to_string_lossy());
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new().read_roots([directory]),
++        "fs",
++        &source,
++    );
++    let _service = service.expect("start");
++    let seen = settle(cx, &log, |log| !log.is_empty());
++    assert_eq!(seen, ["read:hello"]);
++}
++
++#[gpui::test]
++fn capabilities_are_enforced(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "denied",
++        r#"
++import { report } from "probe";
++import * as fs from "fs/promises";
++import process from "process";
++export default async function main() {
++  try { await fs.readFile("/etc/hostname", "utf8"); report("fs:allowed"); }
++  catch (error) { report("fs:denied"); }
++  try { await process.run("/bin/sh", ["-c", "true"]); report("exec:allowed"); }
++  catch (error) { report("exec:denied"); }
++}
++"#,
++    );
++    let _service = service.expect("start");
++    let seen = settle(cx, &log, |log| log.len() >= 2);
++    assert_eq!(seen, ["fs:denied", "exec:denied"]);
++}
++
++#[gpui::test]
++fn a_default_export_that_is_not_a_function_is_refused(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let (service, _) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "object",
++        "export default { main() {} };",
++    );
++    let error = format!("{:#}", service.err().expect("an object is not a service"));
++    assert!(
++        error.contains("must `export default` a function"),
++        "{error}"
++    );
++}
++
++#[gpui::test]
++fn a_failing_main_is_logged_not_fatal(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let (thrown, _) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "thrown",
++        r#"export default function main() { throw new Error("boom"); }"#,
++    );
++    let (rejected, _) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "rejected",
++        r#"export default async function main(cx) { await cx.sleep(1); throw new Error("boom"); }"#,
++    );
++    let (_thrown, _rejected) = (thrown.expect("thrown"), rejected.expect("rejected"));
++    cx.executor().advance_clock(Duration::from_millis(10));
++    cx.run_until_parked();
++
++    // The runtime still serves the next service.
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "after-failure",
++        r#"import { report } from "probe"; export default function main() { report("ok"); }"#,
++    );
++    let _service = service.expect("start");
++    assert_eq!(settle(cx, &log, |log| !log.is_empty()), ["ok"]);
++}
++
++#[gpui::test]
++fn window_apis_need_a_live_host_call(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new(),
++        "window",
++        r#"
++import { report } from "probe";
++function probe(stage) {
++  try { window.viewport_size(); report(`${stage}:allowed`); }
++  catch (error) { report(`${stage}:${error.message}`); }
++}
++export default async function main(cx) {
++  probe("main");
++  await cx.sleep(1);
++  probe("resumed");
++}
++"#,
++    );
++    let _service = service.expect("start");
++    let seen = settle(cx, &log, |log| log.len() >= 2);
++    assert_eq!(seen.len(), 2, "{seen:?}");
++    for line in &seen {
++        assert!(line.contains("needs a live host call"), "{seen:?}");
++    }
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn dropping_the_handle_cancels_timers_and_kills_spawned_processes(cx: &mut TestAppContext) {
++    use crate::ExecuteGrant;
++
++    let runtime = runtime(cx);
++    let (service, log) = start(
++        cx,
++        &runtime,
++        Capabilities::new().execute(ExecuteGrant::Allowed(vec!["/bin/sh".to_owned()])),
++        "drop",
++        r#"
++import { report } from "probe";
++import { spawn } from "process";
++export default async function main(cx) {
++  // A grandchild in the child's process group, made of shell builtins only.
++  // Held, or collecting it would close stdin and end both `read`s on their own.
++  const child = (globalThis.child = spawn("/bin/sh", [
++    "-c",
++    "exec 3<&0; (read x <&3) & echo $!; read y",
++  ]));
++  const grandchild = await child.readLine();
++  report(`pids:${child.pid}:${grandchild}`);
++  cx.timer.every(10, () => report("tick"));
++}
++"#,
++    );
++    let service = service.expect("start");
++    let seen = settle(cx, &log, |log| count(log, "tick") >= 1);
++    let pids: Vec<i32> = seen
++        .iter()
++        .find_map(|line| line.strip_prefix("pids:"))
++        .expect("the pids")
++        .split(':')
++        .map(|pid| pid.trim().parse().expect("a pid"))
++        .collect();
++    assert!(pids.iter().all(|&pid| alive(pid)), "{seen:?}");
++
++    drop(service);
++    let ticks = count(&log.borrow(), "tick");
++    let deadline = Instant::now() + Duration::from_secs(5);
++    while pids.iter().any(|&pid| alive(pid)) {
++        assert!(Instant::now() < deadline, "a process outlived its service");
++        cx.executor().advance_clock(Duration::from_millis(10));
++        cx.run_until_parked();
++        std::thread::sleep(Duration::from_millis(5));
++    }
++    assert_eq!(
++        count(&log.borrow(), "tick"),
++        ticks,
++        "the timer outlived its service"
++    );
++}
++
++#[cfg(unix)]
++fn alive(pid: i32) -> bool {
++    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| !stat.contains(") Z "))
++}
++
++#[gpui::test]
++fn a_source_change_restarts_the_service(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let source = |name: &str| {
++        format!(
++            r#"import {{ report }} from "probe";
++export default function main(cx) {{ cx.timer.every(10, () => report("{name}")); }}
++"#
++        )
++    };
++    let entry = entry("reload", &source("old"));
++    let log = Log::default();
++    let starts = Rc::new(RefCell::new(0));
++    let directory = entry.parent().map(Path::to_path_buf).expect("parent");
++    let watcher = {
++        let (runtime, entry, log, starts) =
++            (runtime.clone(), entry.clone(), log.clone(), starts.clone());
++        cx.update(|cx| {
++            ServiceWatcher::new(
++                directory,
++                move |cx| {
++                    *starts.borrow_mut() += 1;
++                    runtime.start_service(&entry, policy(Capabilities::new(), &log), cx)
++                },
++                cx,
++            )
++        })
++        .expect("watch")
++    };
++    settle(cx, &log, |log| count(log, "old") >= 1);
++
++    // Older than the write that follows, so the stamp moves.
++    std::thread::sleep(Duration::from_millis(20));
++    std::fs::write(&entry, source("new")).expect("rewrite");
++    // The poll runs on the executor's clock and the debounce on the wall's.
++    for _ in 0..2 {
++        cx.executor().advance_clock(crate::watch::POLL_INTERVAL * 2);
++        cx.run_until_parked();
++        std::thread::sleep(Duration::from_millis(250));
++    }
++    settle(cx, &log, |log| count(log, "new") >= 1);
++    assert_eq!(*starts.borrow(), 2);
++
++    let old = count(&log.borrow(), "old");
++    let seen = settle(cx, &log, |log| count(log, "new") >= 3);
++    assert_eq!(count(&seen, "old"), old, "the old instance kept ticking");
++
++    drop(watcher);
++    let new = count(&log.borrow(), "new");
++    cx.executor().advance_clock(Duration::from_millis(100));
++    cx.run_until_parked();
++    assert_eq!(
++        count(&log.borrow(), "new"),
++        new,
++        "the service outlived its watcher"
++    );
++}
++
++#[gpui::test]
++fn a_service_that_fails_to_start_starts_once_fixed(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let entry = entry("broken", "export default 1;");
++    let log = Log::default();
++    let directory = entry.parent().map(Path::to_path_buf).expect("parent");
++    let _watcher = {
++        let (runtime, entry, log) = (runtime.clone(), entry.clone(), log.clone());
++        cx.update(|cx| {
++            ServiceWatcher::new(
++                directory,
++                move |cx| runtime.start_service(&entry, policy(Capabilities::new(), &log), cx),
++                cx,
++            )
++        })
++        .expect("a failed start is retried, not returned")
++    };
++
++    std::thread::sleep(Duration::from_millis(20));
++    std::fs::write(
++        &entry,
++        r#"import { report } from "probe"; export default function main() { report("fixed"); }"#,
++    )
++    .expect("rewrite");
++    for _ in 0..2 {
++        cx.executor().advance_clock(crate::watch::POLL_INTERVAL * 2);
++        cx.run_until_parked();
++        std::thread::sleep(Duration::from_millis(250));
++    }
++    assert_eq!(settle(cx, &log, |log| !log.is_empty()), ["fixed"]);
++}
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index d1159e6..eac1382 100644
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -1228,6 +1228,20 @@ const CONTEXT_AND_VIEW: &str = r#"  /**
+   /** A concrete script view class that can be retained as a nested view. */
+   export type ViewClass = new (props?: import("gpui-shell").Props) => View;
+ 
++  /**
++   * The entry of a headless service: default-export one instead of a view.
++   *
++   * ```js
++   * export default async function main(cx) { ... }
++   * ```
++   *
++   * It runs with no window, under the service's own grant, until the host
++   * stops it — which cancels its tasks and timers and kills the processes it
++   * spawned. `cx.spawn`, `cx.sleep`, `cx.timer` and the standard and host
++   * modules work as in a view; window APIs throw.
++   */
++  export type ServiceMain = (cx: AsyncContext) => void | Promise<void>;
++
+   /**
+    * Retained ownership of one nested `View` entity.
+    *
