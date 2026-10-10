@@ -1,0 +1,204 @@
+Network: private addresses need a literal-IP grant.
+
+A granted host name may only connect to public addresses once resolved, so
+DNS rebinding or a name pointed at 169.254.169.254 cannot reach the local
+network. A literal IP grant reaches exactly that IP; `localhost` reaches
+loopback. Covers net.connect, WebSocket and fetch (through a reqwest
+resolver); a proxy resolves on its own side and is not covered.
+
+diff --git a/crates/shell/src/engine/quickjs/standard/connect.rs b/crates/shell/src/engine/quickjs/standard/connect.rs
+index 438b542..26d3a7a 100644
+--- a/crates/shell/src/engine/quickjs/standard/connect.rs
++++ b/crates/shell/src/engine/quickjs/standard/connect.rs
+@@ -1,7 +1,7 @@
+ use std::{
+     collections::VecDeque,
+     io,
+-    net::{SocketAddr, TcpStream, ToSocketAddrs as _},
++    net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs as _},
+     sync::{Arc, Condvar, Mutex, OnceLock, mpsc},
+     thread,
+     time::{Duration, Instant},
+@@ -129,6 +129,7 @@ pub(super) fn connect_tcp(
+             .map(|addresses| addresses.collect())
+             .map_err(|error| format!("{resolution_error} failed: {error}"))
+     })?;
++    let addresses = reachable(host, addresses)?;
+     let stream = connect_addresses(addresses, deadline, operation, TcpStream::connect_timeout)?;
+     Ok((stream, deadline))
+ }
+@@ -158,6 +159,70 @@ where
+     ))
+ }
+ 
++/// Whether `ip` is on the public internet, which is all a granted host name
++/// may resolve to: a host whose DNS answers with a private address (rebinding,
++/// or a name pointed at the cloud metadata endpoint) would otherwise turn a
++/// grant for one public server into one for the local network.
++pub(super) fn is_public(ip: IpAddr) -> bool {
++    match ip {
++        IpAddr::V4(ip) => {
++            let [a, b, ..] = ip.octets();
++            !(ip.is_private()
++                || ip.is_loopback()
++                || ip.is_link_local()
++                || ip.is_multicast()
++                || a == 0
++                || a >= 240
++                || (a == 100 && b & 0xc0 == 64))
++        }
++        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
++            Some(ip) => is_public(IpAddr::V4(ip)),
++            None => {
++                let first = ip.segments()[0];
++                !(ip.is_unspecified()
++                    || ip.is_loopback()
++                    || ip.is_multicast()
++                    || first & 0xfe00 == 0xfc00
++                    || first & 0xffc0 == 0xfe80)
++            }
++        },
++    }
++}
++
++/// The resolved addresses `host` may connect to. A literal IP was granted as
++/// exactly that address; `localhost` may reach loopback; any other name only
++/// public addresses. A private address needs a literal-IP grant.
++pub(super) fn reachable(
++    host: &str,
++    addresses: impl IntoIterator<Item = SocketAddr>,
++) -> Result<Vec<SocketAddr>, String> {
++    let literal = host
++        .trim_start_matches('[')
++        .trim_end_matches(']')
++        .parse::<IpAddr>()
++        .is_ok();
++    let localhost = host.eq_ignore_ascii_case("localhost");
++    let addresses: Vec<SocketAddr> = addresses.into_iter().collect();
++    let resolved = addresses.len();
++    let allowed: Vec<SocketAddr> = addresses
++        .into_iter()
++        .filter(|address| {
++            literal
++                || if localhost {
++                    address.ip().is_loopback()
++                } else {
++                    is_public(address.ip())
++                }
++        })
++        .collect();
++    if allowed.is_empty() && resolved > 0 {
++        return Err(format!(
++            "`{host}` resolved only to private or reserved addresses; grant the address itself as a literal IP to reach it"
++        ));
++    }
++    Ok(allowed)
++}
++
+ pub(super) fn remaining_io_timeout(deadline: Instant, operation: &str) -> Result<Duration, String> {
+     remaining(deadline, operation)
+ }
+@@ -173,6 +238,59 @@ mod tests {
+     const EXPECTED_RESOLVER_WORKERS: usize = 2;
+     static RESOLVER_TEST_LOCK: Mutex<()> = Mutex::new(());
+ 
++    #[test]
++    fn only_public_addresses_are_public() {
++        for ip in [
++            "127.0.0.1",
++            "10.1.2.3",
++            "172.16.0.1",
++            "192.168.1.1",
++            "169.254.169.254",
++            "100.64.0.1",
++            "0.0.0.0",
++            "224.0.0.1",
++            "255.255.255.255",
++            "::",
++            "::1",
++            "fc00::1",
++            "fd12::1",
++            "fe80::1",
++            "ff02::1",
++            "::ffff:127.0.0.1",
++            "::ffff:169.254.169.254",
++        ] {
++            assert!(!is_public(ip.parse().unwrap()), "{ip}");
++        }
++        for ip in [
++            "1.1.1.1",
++            "100.128.0.1",
++            "2606:4700::1111",
++            "::ffff:8.8.8.8",
++        ] {
++            assert!(is_public(ip.parse().unwrap()), "{ip}");
++        }
++    }
++
++    #[test]
++    fn host_names_reach_only_what_their_grant_covers() {
++        let local: SocketAddr = "127.0.0.1:80".parse().unwrap();
++        let private: SocketAddr = "10.0.0.1:80".parse().unwrap();
++        let public: SocketAddr = "1.1.1.1:80".parse().unwrap();
++        let metadata: SocketAddr = "169.254.169.254:80".parse().unwrap();
++
++        assert_eq!(
++            reachable("example.com", [private, public]).unwrap(),
++            vec![public]
++        );
++        assert!(reachable("example.com", [local]).is_err());
++        assert!(reachable("example.com", [metadata]).is_err());
++        assert_eq!(reachable("LocalHost", [local]).unwrap(), vec![local]);
++        assert!(reachable("localhost", [private]).is_err());
++        assert_eq!(reachable("10.0.0.1", [private]).unwrap(), vec![private]);
++        let v6: SocketAddr = "[::1]:80".parse().unwrap();
++        assert_eq!(reachable("[::1]", [v6]).unwrap(), vec![v6]);
++    }
++
+     #[test]
+     fn dns_resolution_is_bounded_by_the_shared_deadline() {
+         let _guard = RESOLVER_TEST_LOCK.lock().unwrap();
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index 3ce94a5..317c87e 100644
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -597,6 +597,24 @@ fn client_builder(timeout: Duration) -> reqwest::blocking::ClientBuilder {
+     reqwest::blocking::Client::builder()
+         .timeout(timeout)
+         .redirect(reqwest::redirect::Policy::none())
++        .dns_resolver(Arc::new(PublicResolver))
++}
++
++/// System DNS, filtered by `connect::reachable`, so a granted name cannot be
++/// rebound to a private address. IP-literal URLs never reach a resolver; they
++/// pass `authorize_request` only when granted literally. A proxy resolves on
++/// its own side and is not covered.
++struct PublicResolver;
++
++impl reqwest::dns::Resolve for PublicResolver {
++    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
++        Box::pin(async move {
++            let host = name.as_str();
++            let addresses = tokio::net::lookup_host((host, 0)).await?;
++            let addresses = super::connect::reachable(host, addresses)?;
++            Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs)
++        })
++    }
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
+index ee2067c..4cb781b 100644
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -314,7 +314,9 @@ impl Capabilities {
+     }
+ 
+     /// Whether an HTTP request is permitted by either a legacy unrestricted
+-    /// host grant or a scoped HTTP grant.
++    /// host grant or a scoped HTTP grant. A `network.hosts` grant short-circuits
++    /// `network.http`: it already allows raw TCP to the host, so method and path
++    /// scoping on top of it would restrict nothing.
+     pub fn may_request(
+         &self,
+         scheme: &str,
