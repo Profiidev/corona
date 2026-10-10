@@ -40,6 +40,7 @@ zbus.workspace = true
 zbus_xml.workspace = true
 oo7.workspace = true
 futures.workspace = true
+smol.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

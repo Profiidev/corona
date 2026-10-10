@@ -1,19 +1,28 @@
-//! `corona/desktop`: the file picker and the user's default apps.
+//! `corona/desktop`: the file picker, the user's default apps and OAuth
+//! redirects to a loopback port.
 
 use std::{
+  cell::{Cell, RefCell},
+  collections::HashMap,
   fs,
+  net::Ipv4Addr,
   os::unix::fs::PermissionsExt as _,
   path::{Path, PathBuf},
+  rc::Rc,
+  time::Duration,
 };
 
-use anyhow::{Context as _, Result, ensure};
+use anyhow::{Context as _, Result, anyhow, ensure};
 use corona_macros::named;
-use gpui_kit::{App, PathPromptOptions};
+use futures::stream::{FuturesUnordered, StreamExt as _};
+use futures_lite::{AsyncReadExt as _, AsyncWriteExt as _, future};
+use gpui_kit::{App, PathPromptOptions, Subscription};
 use gpui_shell::HostModule;
 use serde::{Deserialize, Serialize};
+use smol::net::{TcpListener, TcpStream};
 use ts_rs::TS;
 
-use crate::host_fn::Module;
+use crate::{host_fn::Module, module::Subscribe};
 
 #[derive(Default, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -66,7 +75,142 @@ fn uri_ok(uri: &str) -> Result<()> {
   Ok(())
 }
 
-pub fn module() -> HostModule {
+#[derive(Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(optional_fields)]
+struct ListenRedirect {
+  /// The port on 127.0.0.1, a free one when 0 or left out.
+  port: Option<u16>,
+  /// How long `nextRedirect` waits, 5 minutes by default.
+  timeout_ms: Option<u32>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct Listening {
+  id: u32,
+  port: u16,
+  /// `http://127.0.0.1:<port>/`, any path on it is taken.
+  redirect_uri: String,
+}
+
+/// The request the browser was redirected with.
+#[derive(Debug, PartialEq, Serialize, TS)]
+struct Redirect {
+  /// Percent-decoded, without the query.
+  path: String,
+  /// Percent-decoded, the last value of a repeated key wins.
+  query: HashMap<String, String>,
+}
+
+const TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Longer request heads are not a redirect
+const MAX_HEAD: usize = 16 * 1024;
+
+fn decode(s: &str) -> String {
+  let (bytes, mut out, mut i) = (s.as_bytes(), Vec::new(), 0);
+  while i < bytes.len() {
+    let hex = bytes
+      .get(i + 1..i + 3)
+      .filter(|h| bytes[i] == b'%' && h.iter().all(u8::is_ascii_hexdigit));
+    match hex {
+      Some(h) => {
+        // two hex digits always fit
+        out.push(u8::from_str_radix(std::str::from_utf8(h).unwrap(), 16).unwrap());
+        i += 3;
+      }
+      None => {
+        out.push(bytes[i]);
+        i += 1;
+      }
+    }
+  }
+  String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `target` of `GET <target> HTTP/1.1`
+fn parse_target(target: &str) -> Redirect {
+  let (path, query) = target.split_once('?').unwrap_or((target, ""));
+  let query = query
+    .split('&')
+    .filter(|pair| !pair.is_empty())
+    .map(|pair| {
+      let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+      (
+        decode(&key.replace('+', " ")),
+        decode(&value.replace('+', " ")),
+      )
+    })
+    .collect();
+  Redirect {
+    path: decode(path),
+    query,
+  }
+}
+
+/// The target of a GET on `stream`, with its head read so the reply is not
+/// reset; `None` for anything else, like a browser's idle preconnect
+async fn request(mut stream: TcpStream) -> Option<(TcpStream, String)> {
+  let (mut head, mut chunk) = (Vec::new(), [0; 1024]);
+  while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+    let n = stream.read(&mut chunk).await.ok()?;
+    if n == 0 || head.len() > MAX_HEAD {
+      return None;
+    }
+    head.extend_from_slice(&chunk[..n]);
+  }
+  let line = head.split(|&b| b == b'\r').next()?;
+  let target = std::str::from_utf8(line).ok()?.strip_prefix("GET ")?;
+  Some((stream, target.split(' ').next()?.to_string()))
+}
+
+/// Answers the first GET on `listener`, handling connections side by side
+async fn redirect(listener: TcpListener) -> Result<Redirect> {
+  enum Event {
+    Accepted(std::io::Result<TcpStream>),
+    Read(Option<(TcpStream, String)>),
+  }
+  let mut pending = FuturesUnordered::new();
+  loop {
+    let accept = async { Event::Accepted(listener.accept().await.map(|(s, _)| s)) };
+    let read = async {
+      match pending.next().await {
+        Some(read) => Event::Read(read),
+        None => future::pending().await,
+      }
+    };
+    let event = future::or(accept, read).await;
+    match event {
+      Event::Accepted(stream) => pending.push(request(stream?)),
+      Event::Read(Some((mut stream, target))) => {
+        let page = "<!doctype html><title>corona</title><p>You can close this tab.</p>";
+        let reply = format!(
+          "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
+           Content-Length: {}\r\nConnection: close\r\n\r\n{page}",
+          page.len()
+        );
+        stream.write_all(reply.as_bytes()).await.ok();
+        stream.flush().await.ok();
+        return Ok(parse_target(&target));
+      }
+      Event::Read(None) => {}
+    }
+  }
+}
+
+pub fn module(subs: &mut Vec<Subscribe>) -> HostModule {
+  let listeners = Rc::new(RefCell::new(HashMap::<u32, (TcpListener, Duration)>::new()));
+  let next_id = Rc::new(Cell::new(0));
+  // never sent, dropped on cleanup to stop a waiting `nextRedirect`, whose
+  // future gpui-shell never drops
+  let (stop_tx, stop_rx) = flume::bounded::<()>(0);
+  let dropped = listeners.clone();
+  subs.push(Subscribe::Cleanup(Subscription::new(move || {
+    drop(stop_tx);
+    dropped.borrow_mut().clear();
+  })));
+  let taken = listeners.clone();
+
   Module::new("corona/desktop")
     .func(named!(
       "pickFiles",
@@ -109,11 +253,56 @@ pub fn module() -> HostModule {
         Ok(())
       }
     ))
+    .func(named!(
+      "listenRedirect",
+      /// Listens on 127.0.0.1 for one OAuth redirect, for a login opened with
+      /// `openUri`. Wait for it with `nextRedirect(id)`.
+      move |options: Option<ListenRedirect>| -> Result<Listening> {
+        let options = options.unwrap_or_default();
+        let listener =
+          std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, options.port.unwrap_or(0)))?;
+        let port = listener.local_addr()?.port();
+        let id = next_id.get() + 1;
+        next_id.set(id);
+        let timeout = options
+          .timeout_ms
+          .map_or(TIMEOUT, |ms| Duration::from_millis(ms.into()));
+        (listeners.borrow_mut()).insert(id, (TcpListener::try_from(listener)?, timeout));
+        Ok(Listening {
+          id,
+          port,
+          redirect_uri: format!("http://127.0.0.1:{port}/"),
+        })
+      }
+    ))
+    .func(named!(
+      "nextRedirect",
+      /// The redirect `listenRedirect` waits for; the browser gets a page
+      /// saying the tab can be closed. The port closes after it or the
+      /// timeout.
+      move |id: u32| {
+        let listener = taken.borrow_mut().remove(&id);
+        let stop = stop_rx.clone();
+        async move {
+          let (listener, timeout) = listener.context("no such listener, or it was used")?;
+          let timed_out = async {
+            smol::Timer::after(timeout).await;
+            Err(anyhow!("no redirect within {timeout:?}"))
+          };
+          let stopped = async {
+            stop.recv_async().await.ok();
+            Err(anyhow!("plugin stopped"))
+          };
+          future::or(redirect(listener), future::or(timed_out, stopped)).await
+        }
+      }
+    ))
     .into()
 }
 
 #[cfg(test)]
 mod tests {
+  use corona_utils::test_bus::wait_until;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -122,7 +311,7 @@ mod tests {
   #[gpui::test]
   fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
     let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt")]);"#;
-    let (view, cx) = harness::view(cx, body, |_, _, _| module());
+    let (view, cx) = harness::view(cx, body, |_, subs, _| module(subs));
     let reports = view.last();
     assert!(reports[0]["message"].as_str().unwrap().contains("openPath"));
     assert!(
@@ -136,11 +325,78 @@ mod tests {
 
   #[gpui::test]
   fn opens_uris(cx: &mut TestAppContext) {
-    let (view, cx) = harness::view(cx, r#"report(m.openUri("mailto:a@b.c"));"#, |_, _, _| {
-      module()
+    let (view, cx) = harness::view(cx, r#"report(m.openUri("mailto:a@b.c"));"#, |_, subs, _| {
+      module(subs)
     });
     assert_eq!(view.last(), serde_json::Value::Null);
     assert_eq!(cx.opened_url().as_deref(), Some("mailto:a@b.c"));
+  }
+
+  #[gpui::test]
+  fn takes_one_redirect(cx: &mut TestAppContext) {
+    use std::io::{Read as _, Write as _};
+
+    cx.executor().allow_parking();
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      const l = m.listenRedirect();
+      report(l);
+      m.nextRedirect(l.id).then(report);
+      m.nextRedirect(l.id).then(report);
+      m.nextRedirect(m.listenRedirect({ timeoutMs: 1 }).id).then(report);
+    }"#;
+    let (view, cx) = harness::view(cx, body, |_, subs, _| module(subs));
+    wait_until(cx, |_| view.reports.borrow().len() == 3);
+    let listening = view.reports.borrow()[0].clone();
+    let port = listening["port"].as_u64().unwrap();
+    assert_eq!(
+      listening["redirectUri"],
+      format!("http://127.0.0.1:{port}/")
+    );
+    let errors: Vec<String> = view.reports.borrow()[1..]
+      .iter()
+      .map(|e| e["message"].as_str().unwrap().to_string())
+      .collect();
+    assert!(errors.iter().any(|e| e.contains("was used")), "{errors:?}");
+    assert!(
+      errors.iter().any(|e| e.contains("no redirect")),
+      "{errors:?}"
+    );
+
+    // an idle preconnect does not hold the redirect up
+    let _idle = std::net::TcpStream::connect(("127.0.0.1", port as u16)).unwrap();
+    let mut browser = std::net::TcpStream::connect(("127.0.0.1", port as u16)).unwrap();
+    browser
+      .write_all(b"GET /cb?code=x&state=y%20z+w&flag HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+      .unwrap();
+    wait_until(cx, |_| view.reports.borrow().len() == 4);
+    assert_eq!(
+      view.last(),
+      serde_json::json!({
+        "path": "/cb",
+        "query": { "code": "x", "state": "y z w", "flag": "" },
+      })
+    );
+    let mut reply = String::new();
+    browser.read_to_string(&mut reply).unwrap();
+    assert!(reply.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(reply.ends_with("You can close this tab.</p>"));
+    // the port is closed after the one redirect
+    assert!(std::net::TcpStream::connect(("127.0.0.1", port as u16)).is_err());
+  }
+
+  #[test]
+  fn decodes_targets() {
+    assert_eq!(decode("a%2Fb%zz%4"), "a/b%zz%4");
+    assert_eq!(decode("%C3%BC+"), "ü+");
+    assert_eq!(decode("%ff"), "\u{fffd}");
+    let redirect = parse_target("/a%20b?x=1&x=2&&k%3D=v%3D");
+    assert_eq!(redirect.path, "/a b");
+    assert_eq!(
+      redirect.query,
+      HashMap::from([("x".into(), "2".into()), ("k=".into(), "v=".into())])
+    );
+    assert_eq!(parse_target("/").query, HashMap::new());
   }
 
   #[test]

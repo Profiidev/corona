@@ -95,7 +95,7 @@ impl CoronaModule {
       Self::Weather => weather::module(reads, subs, cx),
       Self::Auth => auth::module(),
       Self::Secrets => secrets::module(plugin),
-      Self::Desktop => desktop::module(),
+      Self::Desktop => desktop::module(subs),
     }
   }
 }

@@ -1,7 +1,15 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 pub use upower_dbus::{BatteryLevel, BatteryState, BatteryType};
 use zbus::zvariant::OwnedObjectPath;
+
+/// logind's `PrepareForSleep`, as last seen
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SleepState {
+  pub sleeping: bool,
+  /// `None` until the first suspend
+  pub changed_at: Option<SystemTime>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Battery {

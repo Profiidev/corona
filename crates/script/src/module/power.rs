@@ -1,6 +1,9 @@
+use std::{cell::RefCell, rc::Rc, time::UNIX_EPOCH};
+
+use anyhow::anyhow;
 use corona_power as pw;
 use corona_power::{Power, PowerExt};
-use gpui_kit::App;
+use gpui_kit::{App, Subscription};
 use gpui_shell::HostModule;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -139,6 +142,12 @@ struct Profiles {
 }
 
 #[derive(Serialize, TS)]
+struct SleepEvent {
+  /// `true` right before suspend or hibernate, `false` after resume.
+  sleeping: bool,
+}
+
+#[derive(Serialize, TS)]
 struct KeyboardBacklight {
   brightness: i32,
   max: i32,
@@ -206,6 +215,7 @@ pub enum Updates {
   Devices,
   Profiles,
   KeyboardBacklight,
+  Sleep,
 }
 
 impl From<Updates> for super::Updates {
@@ -215,7 +225,24 @@ impl From<Updates> for super::Updates {
 }
 
 pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.power();
+  let state = cx.power().clone();
+
+  // ponytail: an event while no `nextSleepEvent` waits is lost; buffer like
+  // `nextAction` if a plugin misses one
+  let waiters = Rc::new(RefCell::new(Vec::<flume::Sender<SleepEvent>>::new()));
+  let wake = waiters.clone();
+  let observe = cx.observe(&state.sleep, move |sleep, cx| {
+    let sleeping = sleep.read(cx).sleeping;
+    for tx in wake.borrow_mut().drain(..) {
+      tx.send(SleepEvent { sleeping }).ok();
+    }
+  });
+  let stop = waiters.clone();
+  // gpui-shell never drops a pending call's future, so wake it with an error
+  subs.push(Subscribe::Cleanup(Subscription::new(move || {
+    drop(observe);
+    stop.borrow_mut().clear();
+  })));
 
   Module::new("corona/power")
     .func(read(
@@ -288,6 +315,38 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
           })
       },
     ))
+    .func(read(
+      reads,
+      subs,
+      "sleeping",
+      Updates::Sleep,
+      state.sleep.clone(),
+      |cx| cx.power().sleep(cx).sleeping,
+    ))
+    .func(read(
+      reads,
+      subs,
+      "resumedAt",
+      Updates::Sleep,
+      state.sleep.clone(),
+      // unix seconds of the last resume, null before the first one or while asleep
+      |cx| {
+        let sleep = cx.power().sleep(cx);
+        (sleep.changed_at)
+          .filter(|_| !sleep.sleeping)
+          .map(|t| t.duration_since(UNIX_EPOCH).map_or(0., |d| d.as_secs_f64()))
+      },
+    ))
+    .func(named!(
+      "nextSleepEvent",
+      /// The next suspend or resume, once logind announces it. For services
+      /// that reconnect after a resume.
+      move || {
+        let (tx, rx) = flume::bounded(1);
+        waiters.borrow_mut().push(tx);
+        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
+      }
+    ))
     .func(named!(
       "setProfile",
       /// `power-saver`, `balanced` or `performance`.
@@ -322,8 +381,64 @@ mod tests {
   use std::time::Duration;
 
   use corona_power as pw;
+  use corona_utils::test_bus::{TestBus, wait_until};
+  use futures_lite::future::block_on;
+  use gpui_kit::{self as gpui, TestAppContext};
+  use serde_json::json;
 
   use super::{Battery, BatteryState, DeviceKind, SessionAction, SessionCapabilities};
+  use crate::module::harness;
+
+  #[gpui::test]
+  fn sleep_reaches_the_plugin(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let conn = block_on(bus.conn());
+    cx.update(|cx| {
+      let executor = cx.foreground_executor().clone();
+      executor.block_on(pw::init(cx, &conn)).unwrap()
+    });
+    let logind = block_on(async {
+      let logind = bus.conn().await;
+      logind.request_name("org.freedesktop.login1").await.unwrap();
+      logind
+    });
+    let sleep = |start: bool| {
+      block_on(logind.emit_signal(
+        None::<&str>,
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+        "PrepareForSleep",
+        &(start,),
+      ))
+      .unwrap()
+    };
+
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.nextSleepEvent().then((e) => report({ event: e }));
+    }
+    report([m.sleeping(), m.resumedAt()]);"#;
+    let (view, cx) = harness::view(cx, body, super::module);
+    assert_eq!(view.last(), json!([false, null]));
+
+    // the watch may not be up yet, so asleep until it is
+    wait_until(cx, |_| {
+      sleep(true);
+      view.last() == json!([true, null])
+    });
+    assert!(
+      view
+        .reports
+        .borrow()
+        .contains(&json!({ "event": { "sleeping": true } }))
+    );
+    wait_until(cx, |_| {
+      sleep(false);
+      view.last()[0] == false
+    });
+    assert!(view.last()[1].as_f64().unwrap() > 1e9);
+  }
 
   fn json(value: impl serde::Serialize) -> serde_json::Value {
     serde_json::to_value(value).unwrap()

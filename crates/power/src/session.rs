@@ -181,6 +181,22 @@ pub(crate) async fn before_sleep(
   }
 }
 
+/// Calls `on` with `PrepareForSleep`'s `start`, without holding sleep back
+pub(crate) async fn sleep_changes(
+  conn: Connection,
+  cx: &mut AsyncApp,
+  on: impl Fn(bool, &mut gpui_kit::App),
+) -> Result<()> {
+  let mut signals = manager(&conn).await?.receive_prepare_for_sleep().await?;
+  while let Some(signal) = signals.next().await {
+    // a malformed signal is skipped, not the end of the watch
+    if let Ok(args) = signal.args() {
+      cx.update(|cx| on(args.start, cx));
+    }
+  }
+  anyhow::bail!("logind went away")
+}
+
 /// Calls `on` with `true` when logind asks this session to lock, `false` to unlock
 pub(crate) async fn lock_requests(
   conn: Connection,

@@ -13,7 +13,7 @@ use crate::{
 pub use crate::session::{EntryTitle, SessionAction, SessionCapabilities, entry_title};
 pub use crate::state::{
   Battery, BatteryLevel, BatteryState, BatteryType, ChargeThreshold, KeyboardBacklight,
-  PowerDevice, Profiles, Status,
+  PowerDevice, Profiles, SleepState, Status,
 };
 
 mod charge;
@@ -33,6 +33,7 @@ pub struct Power {
   pub devices: Entity<Vec<PowerDevice>>,
   pub profiles: Entity<Option<Profiles>>,
   pub keyboard_backlight: Entity<Option<KeyboardBacklight>>,
+  pub sleep: Entity<SleepState>,
   conn: Connection,
 }
 
@@ -67,6 +68,10 @@ impl Power {
 
   pub fn keyboard_backlight<'c>(&self, cx: &'c App) -> Option<&'c KeyboardBacklight> {
     self.keyboard_backlight.read(cx).as_ref()
+  }
+
+  pub fn sleep<'c>(&self, cx: &'c App) -> &'c SleepState {
+    self.sleep.read(cx)
   }
 
   pub fn session_capabilities(&self) -> impl Future<Output = Result<SessionCapabilities>> + use<> {
@@ -167,8 +172,28 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     devices: cx.new(|_| Vec::new()),
     profiles: cx.new(|_| None),
     keyboard_backlight: cx.new(|_| None),
+    sleep: cx.new(|_| SleepState::default()),
     conn: conn.clone(),
   };
+
+  let (watch, sleep) = (conn.clone(), state.sleep.clone());
+  cx.spawn(async move |cx| {
+    loop {
+      let _ = session::sleep_changes(watch.clone(), cx, |sleeping, cx| {
+        sleep.update(cx, |state, cx| {
+          *state = SleepState {
+            sleeping,
+            changed_at: Some(std::time::SystemTime::now()),
+          };
+          cx.notify();
+        })
+      })
+      .await
+      .log_err();
+      cx.background_executor().timer(RETRY).await;
+    }
+  })
+  .detach();
 
   // subscribe before the first snapshot so no change can slip in between
   let changes = subscribe(conn).await?;
@@ -1019,6 +1044,30 @@ mod tests {
     logind.prepare_for_sleep(false);
     wait_until(cx, |_| logind.held() == [false, true]);
     assert_eq!(*locked.lock().unwrap(), 1);
+  }
+
+  #[gpui::test]
+  fn sleep_state_follows_logind(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    let power = power_on(cx, &bus);
+    settle(cx);
+    assert_eq!(cx.read(|cx| power.sleep(cx).clone()), SleepState::default());
+    // no inhibitor, only `before_sleep` holds sleep back
+    assert!(logind.held().is_empty());
+
+    logind.prepare_for_sleep(true);
+    wait_until(cx, |cx| cx.read(|cx| power.sleep(cx).sleeping));
+    let slept = cx.read(|cx| power.sleep(cx).changed_at).unwrap();
+    logind.emit(
+      "/org/freedesktop/login1",
+      "org.freedesktop.login1.Manager",
+      "PrepareForSleep",
+      &("yes",),
+    );
+    logind.prepare_for_sleep(false);
+    wait_until(cx, |cx| cx.read(|cx| !power.sleep(cx).sleeping));
+    assert!(cx.read(|cx| power.sleep(cx).changed_at).unwrap() >= slept);
   }
 
   #[gpui::test]
