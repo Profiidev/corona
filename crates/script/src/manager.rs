@@ -110,6 +110,16 @@ impl ScriptManager {
     self.plugins = plugins;
   }
 
+  /// Tells plugin `id`'s scripts that its secret `key` was stored or removed
+  pub fn secret_changed(id: &str, key: &str, cx: &mut App) {
+    let hub = cx
+      .try_global::<Self>()
+      .and_then(|m| m.hubs.get(id).cloned());
+    if let Some(hub) = hub {
+      hub.secret_changed(key.into(), cx);
+    }
+  }
+
   /// The hub of plugin `id`, shared by all its views
   pub(crate) fn hub(&mut self, id: &str, cx: &mut App) -> plugin::Hub {
     self
@@ -163,7 +173,9 @@ impl ScriptManager {
         id,
         &manifest.settings,
         &manifest.host_settings,
+        &hub,
         &mut subscribes,
+        cx,
       ))?
       .with_host_module(surface::module(
         id,
@@ -916,6 +928,64 @@ export default class Main extends View {
     assert_eq!(
       reported(&fake, "options "),
       [r#"{"city":"Rosenheim"}"#, "null"]
+    );
+  }
+
+  #[gpui::test]
+  fn services_hear_of_setting_and_secret_changes(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let source = r#"
+import { focusWorkspace } from "corona/compositor";
+import { nextChange } from "corona/settings";
+export default async function main() {
+  while (true) {
+    const change = await nextChange();
+    if (change.message) break;
+    focusWorkspace("change " + JSON.stringify(change));
+  }
+}
+"#;
+    let extra = r#"capabilities = { corona = ["compositor", "secrets"] }
+service = "service.js"
+[[settings]]
+key = "label"
+label = "Label"
+type = "text"
+default = "hello"
+[[settings]]
+key = "count"
+label = "Count"
+type = "number"
+default = 1
+[[settings]]
+key = "token"
+label = "Token"
+type = "secret""#;
+    plugins.add(
+      "a",
+      &manifest("a", extra),
+      &[("main.js", VIEW), ("service.js", source)],
+    );
+    running(cx, &plugins);
+    let _service = service(cx, "a");
+
+    // only what changed, and a secret's key without its value
+    cx.update(|cx| {
+      let set = serde_json::json!({ "label": "bye", "count": 1, "token": "x" });
+      (cx.global_mut::<Config>().plugin_settings)
+        .insert("a".into(), set.as_object().unwrap().clone());
+      ScriptManager::secret_changed("a", "token", cx);
+      // another plugin's secret is not this one's
+      ScriptManager::secret_changed("b", "token", cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+      reported(&fake, "change "),
+      [
+        r#"{"key":"label","value":"bye"}"#,
+        r#"{"key":"token","secret":true}"#
+      ]
     );
   }
 

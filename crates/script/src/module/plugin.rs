@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use corona_macros::named;
-use gpui_kit::{App, AppContext, Entity};
+use gpui_kit::{App, AppContext, Entity, EventEmitter};
 use gpui_shell::HostModule;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -38,6 +38,14 @@ pub struct ActionEvent {
   pub id: u32,
   pub key: String,
 }
+
+/// That secret `0` of the plugin was stored or removed
+pub struct SecretChanged(pub String);
+
+/// Tells the plugin's scripts of its secrets changing, see [`SecretChanged`]
+pub struct Secrets;
+
+impl EventEmitter<SecretChanged> for Secrets {}
 
 type Answer = Result<Value, String>;
 
@@ -125,6 +133,7 @@ impl Calls {
 pub struct Hub {
   state: Entity<Map<String, Value>>,
   calls: Rc<RefCell<Calls>>,
+  pub secrets: Entity<Secrets>,
 }
 
 impl Hub {
@@ -132,7 +141,12 @@ impl Hub {
     Self {
       state: cx.new(|_| Map::new()),
       calls: Rc::default(),
+      secrets: cx.new(|_| Secrets),
     }
+  }
+
+  pub fn secret_changed(&self, key: String, cx: &mut App) {
+    self.secrets.update(cx, |_, cx| cx.emit(SecretChanged(key)));
   }
 
   /// The calls for the service that starts, for the service's [`module`]

@@ -1,33 +1,89 @@
-use std::collections::BTreeSet;
+use std::{
+  cell::RefCell,
+  collections::{BTreeSet, VecDeque},
+  rc::Rc,
+};
 
-use anyhow::{Result, ensure};
+use anyhow::{Result, anyhow, ensure};
 use corona_config::{Config, ConfigProvider};
 use corona_macros::named;
 use corona_utils::error::ErrorLogExt;
-use gpui_kit::App;
+use gpui_kit::{App, Subscription};
 use gpui_shell::HostModule;
+use serde::Serialize;
 use serde_json::{Map, Value};
+use ts_rs::TS;
 
 use crate::{
   host_fn::{Cx, Module},
-  module::Subscribe,
+  module::{
+    Subscribe,
+    plugin::{Hub, SecretChanged},
+  },
   plugin::settings::{DynamicOptions, SelectOption, Setting, SettingKind, resolve},
 };
 
+/// Changes kept for a script that is not waiting for one
+const CHANGE_BUFFER: usize = 16;
+
+/// A setting that changed, or a secret that was stored or removed, without
+/// its value
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(untagged)]
+enum Change {
+  Setting { key: String, value: Value },
+  Secret { key: String, secret: bool },
+}
+
+/// The changes for one script's `nextChange`
+#[derive(Default)]
+struct Changes {
+  kept: VecDeque<Change>,
+  waiters: Vec<flume::Sender<Change>>,
+}
+
+impl Changes {
+  fn next(&mut self) -> flume::Receiver<Change> {
+    let (tx, rx) = flume::bounded(1);
+    match self.kept.pop_front() {
+      Some(change) => drop(tx.send(change)),
+      None => self.waiters.push(tx),
+    }
+    rx
+  }
+
+  /// To every call waiting; kept for the next one when none is
+  fn push(&mut self, change: Change) {
+    let waiters = self.waiters.drain(..);
+    let delivered = waiters.filter(|tx| tx.send(change.clone()).is_ok()).count();
+    if delivered == 0 {
+      self.kept.push_back(change);
+      if self.kept.len() > CHANGE_BUFFER {
+        self.kept.pop_front();
+      }
+    }
+  }
+}
+
 /// `corona/settings`: the plugin's own settings, as the user set them in the
 /// settings app or the config. Every plugin has it, for its own settings only.
-/// `hosts` are the settings its network grant reads, which it cannot `set`.
+/// `hosts` are the settings its network grant reads, which it cannot `set`;
+/// `hub` tells of its secrets changing.
 pub fn module(
   id: &str,
   settings: &[Setting],
   hosts: &BTreeSet<String>,
+  hub: &Hub,
   subs: &mut Vec<Subscribe>,
+  cx: &mut App,
 ) -> HostModule {
   let current = {
     let (id, settings) = (id.to_string(), settings.to_vec());
     move |cx: &App| resolved(&id, &settings, cx)
   };
   subs.push(watch(current.clone()));
+  let changes = Rc::<RefCell<Changes>>::default();
+  subs.push(listen(current.clone(), hub, changes.clone(), cx));
 
   let get = current.clone();
   let (set, options) = (lookup(id, settings), lookup(id, settings));
@@ -43,6 +99,15 @@ pub fn module(
       "all",
       /// Every declared setting by key.
       move |cx: Cx| Value::Object(current(&cx))
+    ))
+    .func(named!(
+      "nextChange",
+      /// The next change of a setting, or of a secret without its value,
+      /// once one comes.
+      move || {
+        let rx = changes.borrow_mut().next();
+        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
+      }
     ))
     .func(named!(
       "set",
@@ -129,6 +194,10 @@ fn declarations(settings: &[Setting]) -> String {
   export function get<K extends keyof Settings>(key: K): Settings[K];
   /** Every setting by key. */
   export function all(): Settings;
+  /** A setting that changed, or a secret that was stored or removed, without its value. */
+  export type Change = {{ [K in keyof Settings]: {{ key: K; value: Settings[K] }} }}[keyof Settings] | {{ key: string; secret: true }};
+  /** The next change, once one comes. Changes while none is awaited are kept, the last 16. */
+  export function nextChange(): Promise<Change | Error>;
   /** Changes setting `key` in the config, as the settings app would. */
   export function set<K extends keyof Settings>(key: K, value: Settings[K]): void | Error;
   /** The choices the settings app offers for dynamic select `key`. */
@@ -214,6 +283,38 @@ fn watch(current: impl Fn(&App) -> Map<String, Value> + 'static) -> Subscribe {
   }))
 }
 
+/// Keeps the changes for `nextChange`, in views and services alike: only the
+/// settings that changed, and secret keys without their values
+fn listen(
+  current: impl Fn(&App) -> Map<String, Value> + 'static,
+  hub: &Hub,
+  changes: Rc<RefCell<Changes>>,
+  cx: &mut App,
+) -> Subscribe {
+  let mut last = current(cx);
+  let push = changes.clone();
+  let settings = cx.observe_global::<Config>(move |cx| {
+    let now = current(cx);
+    for (key, value) in &now {
+      if last.get(key) != Some(value) {
+        let (key, value) = (key.clone(), value.clone());
+        push.borrow_mut().push(Change::Setting { key, value });
+      }
+    }
+    last = now;
+  });
+  let push = changes.clone();
+  let secrets = cx.subscribe(&hub.secrets, move |_, SecretChanged(key), _| {
+    let key = key.clone();
+    push.borrow_mut().push(Change::Secret { key, secret: true });
+  });
+  Subscribe::Cleanup(Subscription::new(move || {
+    drop((settings, secrets));
+    // gpui-shell never drops a pending call's future, so wake it with an error
+    changes.borrow_mut().waiters.clear();
+  }))
+}
+
 #[cfg(test)]
 mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
@@ -293,7 +394,7 @@ default = ["a"]
       assert!(ts.lines().any(|l| l == line), "missing {line:?} in\n{ts}");
     }
     // a comment cannot be closed from a label or description
-    assert_eq!(ts.matches("*/").count(), settings.len() + 5);
+    assert_eq!(ts.matches("*/").count(), settings.len() + 7);
   }
 
   #[test]
@@ -346,8 +447,8 @@ dynamic = true
       report([m.set("on", false), m.set("on", 1), m.set("nope", 1), m.set("device", "phone")]);
     }"#;
     let declared = settings(DECLARED);
-    let (view, cx) = harness::view(cx, body, |_, subs, _| {
-      module("p", &declared, &BTreeSet::new(), subs)
+    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
+      module("p", &declared, &BTreeSet::new(), &Hub::new(cx), subs, cx)
     });
     cx.run_until_parked();
     let report = view.last();
@@ -375,8 +476,8 @@ dynamic = true
     cx.update(|cx| cx.set_global(Config::default()));
     let declared = settings(DECLARED);
     let device = declared[1].clone();
-    let (view, cx) = harness::view(cx, body, |_, subs, _| {
-      module("p", &declared, &BTreeSet::new(), subs)
+    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
+      module("p", &declared, &BTreeSet::new(), &Hub::new(cx), subs, cx)
     });
     cx.run_until_parked();
     let report = view.last();
@@ -397,7 +498,9 @@ dynamic = true
     let body = r#"report(m.set("on", false));"#;
     let declared = settings(DECLARED);
     let hosts = BTreeSet::from(["on".to_string()]);
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module("p", &declared, &hosts, subs));
+    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
+      module("p", &declared, &hosts, &Hub::new(cx), subs, cx)
+    });
     cx.run_until_parked();
     let message = view.last()["message"].as_str().unwrap().to_string();
     assert!(message.contains("network grant"), "{message}");
@@ -410,10 +513,51 @@ dynamic = true
     assert!(ts.contains("export interface Settings {\n  }"), "{ts}");
   }
 
+  #[gpui::test]
+  fn the_module_accepts_its_declarations(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      cx.set_global(Config::default());
+      // gpui-shell checks the declared functions against the registered ones
+      let module = module(
+        "p",
+        &[],
+        &BTreeSet::new(),
+        &Hub::new(cx),
+        &mut Vec::new(),
+        cx,
+      );
+      let declared = module.declared().unwrap();
+      assert!(declared.contains("export function get"));
+      assert!(declared.contains("export function nextChange(): Promise<Change | Error>;"));
+    });
+  }
+
   #[test]
-  fn the_module_accepts_its_declarations() {
-    // gpui-shell checks the declared functions against the registered ones
-    let module = module("p", &[], &BTreeSet::new(), &mut Vec::new());
-    assert!(module.declared().unwrap().contains("export function get"));
+  fn changes_go_to_every_waiter_or_are_kept() {
+    let mut changes = Changes::default();
+    let change = |key: usize| Change::Setting {
+      key: key.to_string(),
+      value: Value::Null,
+    };
+    let (a, b) = (changes.next(), changes.next());
+    changes.push(change(1));
+    assert_eq!(a.try_recv().unwrap(), change(1));
+    assert_eq!(b.try_recv().unwrap(), change(1));
+
+    for key in 0..20 {
+      changes.push(change(key));
+    }
+    assert_eq!(changes.kept.len(), CHANGE_BUFFER);
+    assert_eq!(changes.next().try_recv().unwrap(), change(4));
+  }
+
+  #[test]
+  fn secrets_change_without_their_value() {
+    let change = Change::Secret {
+      key: "token".into(),
+      secret: true,
+    };
+    let json = serde_json::to_value(change).unwrap();
+    assert_eq!(json, serde_json::json!({ "key": "token", "secret": true }));
   }
 }

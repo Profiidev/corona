@@ -5,10 +5,11 @@ use std::sync::Arc;
 use anyhow::{Result, ensure};
 use corona_macros::named;
 use futures_lite::{FutureExt as _, future::Boxed};
+use gpui_kit::{App, Task};
 use gpui_shell::HostModule;
 use oo7::Keyring;
 
-use crate::{host_fn::Module, module::PluginRef};
+use crate::{ScriptManager, host_fn::Module, module::PluginRef};
 
 /// The attributes the secret `key` of plugin `id` is stored under.
 fn attributes(id: &str, key: &str) -> Result<[(&'static str, String); 3]> {
@@ -72,10 +73,14 @@ pub fn module(plugin: PluginRef) -> HostModule {
   let module = module.func(named!(
     "set",
     /// Stores `value` under `key`, replacing what was there.
-    move |key: String, value: String| -> Result<Boxed<Result<()>>> {
+    move |cx: &mut App, key: String, value: String| -> Result<Task<Result<()>>> {
       attributes(&plugin, &key)?;
       let plugin = plugin.clone();
-      Ok(async move { store(&plugin, &key, value).await }.boxed())
+      Ok(cx.spawn(async move |cx| {
+        store(&plugin, &key, value).await?;
+        cx.update(|cx| ScriptManager::secret_changed(&plugin, &key, cx));
+        Ok(())
+      }))
     }
   ));
   let plugin = id;
@@ -84,10 +89,14 @@ pub fn module(plugin: PluginRef) -> HostModule {
       // not `delete`, a reserved word in JS
       "remove",
       /// Deletes the secret under `key`.
-      move |key: String| -> Result<Boxed<Result<()>>> {
+      move |cx: &mut App, key: String| -> Result<Task<Result<()>>> {
         attributes(&plugin, &key)?;
         let plugin = plugin.clone();
-        Ok(async move { remove(&plugin, &key).await }.boxed())
+        Ok(cx.spawn(async move |cx| {
+          remove(&plugin, &key).await?;
+          cx.update(|cx| ScriptManager::secret_changed(&plugin, &key, cx));
+          Ok(())
+        }))
       }
     ))
     .into()

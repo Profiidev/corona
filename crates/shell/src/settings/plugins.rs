@@ -5,7 +5,7 @@ use corona_config::{
   plugins::{AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
 };
 use corona_script::{
-  PluginManager, PluginStatus,
+  PluginManager, PluginStatus, ScriptManager,
   plugin::{
     manifest::PluginManifest,
     settings::{DynamicOptions, Setting, SettingKind, number as json_number},
@@ -671,6 +671,9 @@ impl SecretInput {
         Some(value) => secrets::store(&id, &key, value).await.map(|()| true),
         None => secrets::remove(&id, &key).await.map(|()| false),
       };
+      if result.is_ok() {
+        cx.update(|cx| ScriptManager::secret_changed(&id, &key, cx));
+      }
       this
         .update(cx, |this, cx| {
           this.status = match result {
