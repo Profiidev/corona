@@ -1,0 +1,1145 @@
+Plugin I/O, part two: what the Tailscale, Home Assistant and phone plugins
+still lacked.
+
+- net Socket.write takes a Uint8Array as well as a string. The string-or-bytes
+  argument is one helper, host::bytes_arg, shared with child.write.
+- fs/promises open(path, "r" | "w" | "a" | "r+") returns a FileHandle with
+  read(maxBytes?), write(data) and close(), each at most 1 MiB per call and
+  run off the main thread. "r" needs a read grant, "w"/"a" a write grant,
+  "r+" both. An anchor task closes the file when the view or plugin goes away.
+- fetch(url, { unix }) sends HTTP/1.1 over a unix socket granted in
+  Capabilities::network_unix, via hyper on a current-thread tokio runtime
+  (both already in the tree through reqwest). The URL host only fills Host;
+  path and query are the target. Buffered and stream: true responses and the
+  timeout work as over TCP; redirects are not followed. Origin is now a
+  refused request header everywhere.
+- ChildProcess.closeStdin() closes stdin after the queued writes. When the
+  owner goes away the child's group gets SIGTERM, then SIGKILL 2 s later.
+
+diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
+index 5eadcb2..9a61454 100644
+--- a/crates/shell/Cargo.toml
++++ b/crates/shell/Cargo.toml
+@@ -28,6 +28,10 @@ quickjs = [
+     "dep:quickjs-jit-stdlib",
+     "dep:reqwest",
+     "dep:tungstenite",
++    "dep:hyper",
++    "dep:hyper-util",
++    "dep:http-body-util",
++    "dep:tokio",
+ ]
+ 
+ [dependencies]
+@@ -55,6 +59,11 @@ sha2 = "0.10"
+ wait-timeout = "0.2"
+ reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = ["charset", "http2", "macos-system-configuration", "multipart", "rustls-tls-native-roots", "socks", "stream", "blocking"], optional = true }
+ tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots", "url"], optional = true }
++# fetch(url, { unix }): HTTP/1.1 over a unix socket. Already in the tree through reqwest.
++hyper = { version = "1.11", features = ["client", "http1"], optional = true }
++hyper-util = { version = "0.1.21", features = ["tokio"], optional = true }
++http-body-util = { version = "0.1.5", optional = true }
++tokio = { version = "1.53", features = ["net", "rt", "time"], optional = true }
+ 
+ anyhow = "1"
+ instant = { version = "0.1", features = ["wasm-bindgen"] }
+diff --git a/crates/shell/src/engine/quickjs/host.rs b/crates/shell/src/engine/quickjs/host.rs
+index 68f1a9b..82dbd8f 100644
+--- a/crates/shell/src/engine/quickjs/host.rs
++++ b/crates/shell/src/engine/quickjs/host.rs
+@@ -520,9 +520,20 @@ fn check_readdir_budget(entries: usize, name_bytes: usize) -> std::io::Result<()
+     Ok(())
+ }
+ 
++/// A `string | Uint8Array` argument as bytes, strings as UTF-8.
++pub(super) fn bytes_arg<'js>(ctx: &Ctx<'js>, value: Value<'js>, api: &str) -> JsResult<Vec<u8>> {
++    if let Some(text) = value.as_string() {
++        return Ok(text.to_string()?.into_bytes());
++    }
++    TypedArray::<u8>::from_js(ctx, value)
++        .ok()
++        .and_then(|bytes| bytes.as_bytes().map(<[u8]>::to_vec))
++        .ok_or_else(|| Exception::throw_type(ctx, &format!("{api} expects a string or Uint8Array")))
++}
++
+ /// The single path gate. Nothing in this module touches the filesystem except
+ /// through a [`Grant`] it got back from here.
+-fn grant(ctx: &Ctx<'_>, path: &str, access: Access) -> JsResult<Grant> {
++pub(super) fn grant(ctx: &Ctx<'_>, path: &str, access: Access) -> JsResult<Grant> {
+     capabilities()
+         .open(Path::new(path), access)
+         .map_err(|error| Exception::throw_type(ctx, &denial(&error)))
+diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engine/quickjs/sandbox.rs
+index 495c1e0..b139f1e 100644
+--- a/crates/shell/src/engine/quickjs/sandbox.rs
++++ b/crates/shell/src/engine/quickjs/sandbox.rs
+@@ -61,8 +61,7 @@ use std::{
+ };
+ 
+ use rquickjs::{
+-    Ctx, Exception, FromJs, Function, IntoJs, Object, Promise, Result as JsResult, TypedArray,
+-    Value,
++    Ctx, Exception, FromJs, Function, IntoJs, Object, Promise, Result as JsResult, Value,
+     function::{Args, Func, Opt, Rest},
+ };
+ 
+@@ -458,9 +457,25 @@ fn spawn<'js>(
+ 
+     let pid = spawned.pid;
+     let exited = spawned.exited.clone();
++    // SIGTERM, then SIGKILL after a grace period, once however often it runs.
+     let killer = {
+         let exited = exited.clone();
+-        move || crate::process::signal_group(pid, &exited, libc::SIGKILL)
++        let fired = std::sync::Arc::new(AtomicBool::new(false));
++        move || {
++            if fired.swap(true, Ordering::AcqRel) {
++                return;
++            }
++            crate::process::signal_group(pid, &exited, libc::SIGTERM);
++            let exited = exited.clone();
++            // ponytail: the grace thread dies with the host process, so a child
++            // that ignores SIGTERM outlives a host that exits within 2 s.
++            let _ = std::thread::Builder::new()
++                .name("process.spawn kill".to_owned())
++                .spawn(move || {
++                    std::thread::sleep(Duration::from_secs(2));
++                    crate::process::signal_group(pid, &exited, libc::SIGKILL);
++                });
++        }
+     };
+ 
+     // Registered after the spawn because the hook needs the pid; a refused
+@@ -477,7 +492,7 @@ fn spawn<'js>(
+         .stderr
+         .take()
+         .map(|err| Box::new(err) as ChildOutput);
+-    let mut stdin = spawned.child.stdin.take().expect("piped stdin");
++    let mut stdin = spawned.child.stdin.take();
+     let child = spawned.child;
+     let waited = exited.clone();
+     std::thread::Builder::new()
+@@ -499,32 +514,40 @@ fn spawn<'js>(
+         line_reader(&ctx, "child.readErrLine()", stderr, &killer)?,
+     )?;
+ 
+-    let writer = scheduler::serve("process.spawn stdin", move |bytes: Vec<u8>| {
++    // `None` closes stdin, after every write queued before it.
++    let writer = scheduler::serve("process.spawn stdin", move |bytes: Option<Vec<u8>>| {
+         use std::io::Write as _;
+-        stdin
+-            .write_all(&bytes)
+-            .and_then(|()| stdin.flush())
++        let Some(bytes) = bytes else {
++            stdin = None;
++            return Ok(());
++        };
++        let pipe = stdin
++            .as_mut()
++            .ok_or_else(|| "the child's stdin is closed".to_owned())?;
++        pipe.write_all(&bytes)
++            .and_then(|()| pipe.flush())
+             .map_err(|error| format!("writing to the child failed: {error}"))
+     })
+     .map_err(|error| Exception::throw_type(&ctx, &error))?;
++    let close_writer = writer.clone();
++    let close_killer = killer.clone();
++    object.set(
++        "closeStdin",
++        Func::from(move |ctx: Ctx<'js>| -> JsResult<Promise<'js>> {
++            let (promise, done) =
++                scheduler::actor_cancellable(&ctx, "child.closeStdin()", close_killer.clone())?;
++            if let Err(error) = close_writer.send((None, done)) {
++                error.0.1.settle(Ok(()));
++            }
++            Ok(promise)
++        }),
++    )?;
+     let write_killer = killer.clone();
+     object.set(
+         "write",
+         Func::from(
+             move |ctx: Ctx<'js>, data: Value<'js>| -> JsResult<Promise<'js>> {
+-                let bytes = if let Some(text) = data.as_string() {
+-                    text.to_string()?.into_bytes()
+-                } else {
+-                    TypedArray::<u8>::from_js(&ctx, data)
+-                        .ok()
+-                        .and_then(|bytes| bytes.as_bytes().map(<[u8]>::to_vec))
+-                        .ok_or_else(|| {
+-                            Exception::throw_type(
+-                                &ctx,
+-                                "child.write(data) expects a string or Uint8Array",
+-                            )
+-                        })?
+-                };
++                let bytes = host::bytes_arg(&ctx, data, "child.write(data)")?;
+                 if bytes.len() > CHILD_IO_LIMIT {
+                     return Err(Exception::throw_range(
+                         &ctx,
+@@ -533,7 +556,7 @@ fn spawn<'js>(
+                 }
+                 let (promise, done) =
+                     scheduler::actor_cancellable(&ctx, "child.write(data)", write_killer.clone())?;
+-                if let Err(error) = writer.send((bytes, done)) {
++                if let Err(error) = writer.send((Some(bytes), done)) {
+                     error
+                         .0
+                         .1
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index 711eb2d..37d8663 100644
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -27,8 +27,11 @@ pub(super) fn install(ctx: &Ctx<'_>) -> Result<()> {
+ fn fetch<'js>(ctx: Ctx<'js>, url: String, options: Opt<FetchOptions>) -> Result<Promise<'js>> {
+     let initial = reqwest::Url::parse(&url)
+         .map_err(|error| Exception::throw_type(&ctx, &format!("invalid fetch URL: {error}")))?;
+-    let options = options.0.unwrap_or_default();
++    let mut options = options.0.unwrap_or_default();
+     let capabilities = host::capabilities();
++    if let Some(path) = options.unix.take() {
++        return fetch_unix(ctx, path, initial, options);
++    }
+     authorize_request(&capabilities, &options.method, &initial)
+         .map_err(|error| Exception::throw_type(&ctx, &error))?;
+ 
+@@ -40,14 +43,178 @@ fn fetch<'js>(ctx: Ctx<'js>, url: String, options: Opt<FetchOptions>) -> Result<
+ 
+     if options.stream {
+         return scheduler::blocking(&ctx, "fetch(url, options)", move || {
+-            send(capabilities, initial, options, injected_client).map(FetchStream)
++            send(capabilities, initial, options, injected_client)
++                .map(Fetched::from)
++                .map(FetchStream)
++        });
++    }
++    scheduler::blocking(&ctx, "fetch(url, options)", move || {
++        request(send(capabilities, initial, options, injected_client)?.into())
++    })
++}
++
++/// `fetch(url, { unix })`: HTTP/1.1 to a granted unix socket. The URL's host
++/// only fills the `Host` header; its path and query are the request target.
++/// Redirects are returned, not followed.
++#[cfg(unix)]
++fn fetch_unix<'js>(
++    ctx: Ctx<'js>,
++    path: std::path::PathBuf,
++    url: reqwest::Url,
++    options: FetchOptions,
++) -> Result<Promise<'js>> {
++    if !host::capabilities().may_connect_unix(&path) {
++        return Err(Exception::throw_type(
++            &ctx,
++            &format!(
++                "unix socket `{}` is not granted; add it to capabilities.network.unix",
++                path.display()
++            ),
++        ));
++    }
++    if options.stream {
++        return scheduler::blocking(&ctx, "fetch(url, options)", move || {
++            send_unix(&path, url, options).map(FetchStream)
+         });
+     }
+     scheduler::blocking(&ctx, "fetch(url, options)", move || {
+-        request(capabilities, initial, options, injected_client)
++        request(send_unix(&path, url, options)?)
++    })
++}
++
++#[cfg(not(unix))]
++fn fetch_unix<'js>(
++    ctx: Ctx<'js>,
++    _: std::path::PathBuf,
++    _: reqwest::Url,
++    _: FetchOptions,
++) -> Result<Promise<'js>> {
++    Err(Exception::throw_type(
++        &ctx,
++        "fetch(url, { unix }) needs unix sockets",
++    ))
++}
++
++/// Sends one request on a fresh connection and returns once the headers are
++/// in. The connection lives on a current-thread runtime that only runs while
++/// a read blocks on it, so it needs no thread of its own.
++#[cfg(unix)]
++fn send_unix(
++    path: &std::path::Path,
++    url: reqwest::Url,
++    options: FetchOptions,
++) -> std::result::Result<Fetched, String> {
++    let failed = |error: &dyn std::fmt::Display| {
++        format!("fetching {url} over {} failed: {error}", path.display())
++    };
++    let runtime = tokio::runtime::Builder::new_current_thread()
++        .enable_io()
++        .enable_time()
++        .build()
++        .map_err(|error| failed(&error))?;
++    // Timers and sockets register with the runtime when they are created.
++    let _entered = runtime.enter();
++    let timeout = options.timeout;
++    let (mut sender, connection) = runtime
++        .block_on(tokio::time::timeout(timeout, async {
++            let stream = tokio::net::UnixStream::connect(path).await?;
++            hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
++                .await
++                .map_err(std::io::Error::other)
++        }))
++        .map_err(|error| failed(&error))?
++        .map_err(|error| failed(&error))?;
++    runtime.spawn(connection);
++
++    let target = match url.query() {
++        Some(query) => format!("{}?{query}", url.path()),
++        None => url.path().to_owned(),
++    };
++    let authority = match (url.host_str(), url.port()) {
++        (Some(host), Some(port)) => format!("{host}:{port}"),
++        (Some(host), None) => host.to_owned(),
++        (None, _) => "localhost".to_owned(),
++    };
++    let mut request = hyper::Request::new(http_body_util::Full::new(hyper::body::Bytes::from(
++        options.body,
++    )));
++    *request.method_mut() = options.method;
++    *request.uri_mut() = target.parse().map_err(|error| failed(&error))?;
++    *request.headers_mut() = options.headers;
++    request.headers_mut().insert(
++        hyper::header::HOST,
++        hyper::header::HeaderValue::from_str(&authority).map_err(|error| failed(&error))?,
++    );
++    let response = runtime
++        .block_on(tokio::time::timeout(timeout, sender.send_request(request)))
++        .map_err(|error| failed(&error))?
++        .map_err(|error| failed(&error))?;
++    Ok(Fetched {
++        status: response.status().as_u16(),
++        url: url.to_string(),
++        body: Box::new(UnixBody {
++            runtime,
++            body: response.into_body(),
++            chunk: hyper::body::Bytes::new(),
++            timeout,
++            _sender: sender,
++        }),
+     })
+ }
+ 
++/// A unix response body as `Read`, each read bounded by the fetch timeout.
++#[cfg(unix)]
++struct UnixBody {
++    runtime: tokio::runtime::Runtime,
++    body: hyper::body::Incoming,
++    chunk: hyper::body::Bytes,
++    timeout: Duration,
++    _sender: hyper::client::conn::http1::SendRequest<http_body_util::Full<hyper::body::Bytes>>,
++}
++
++#[cfg(unix)]
++impl std::io::Read for UnixBody {
++    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
++        use http_body_util::BodyExt as _;
++        let _entered = self.runtime.enter();
++        while self.chunk.is_empty() {
++            let frame = self
++                .runtime
++                .block_on(tokio::time::timeout(self.timeout, self.body.frame()));
++            match frame {
++                Err(_) => return Err(std::io::ErrorKind::TimedOut.into()),
++                Ok(None) => return Ok(0),
++                Ok(Some(Err(error))) => return Err(std::io::Error::other(error)),
++                Ok(Some(Ok(frame))) => {
++                    if let Ok(data) = frame.into_data() {
++                        self.chunk = data;
++                    }
++                }
++            }
++        }
++        let count = buf.len().min(self.chunk.len());
++        buf[..count].copy_from_slice(&self.chunk.split_to(count));
++        Ok(count)
++    }
++}
++
++/// A response whose body is still unread, from either transport.
++struct Fetched {
++    status: u16,
++    url: String,
++    body: Box<dyn std::io::Read + Send>,
++}
++
++impl From<reqwest::blocking::Response> for Fetched {
++    fn from(response: reqwest::blocking::Response) -> Self {
++        Self {
++            status: response.status().as_u16(),
++            url: response.url().to_string(),
++            body: Box::new(response),
++        }
++    }
++}
++
+ /// The intentionally small, data-only request surface. It keeps HTTP traffic
+ /// capability-gated while allowing OAuth form exchanges and authenticated reads.
+ struct FetchOptions {
+@@ -57,6 +224,8 @@ struct FetchOptions {
+     /// Applies to connecting and to each read, not to the whole body.
+     timeout: Duration,
+     stream: bool,
++    /// A granted unix socket to send the request over instead of TCP.
++    unix: Option<std::path::PathBuf>,
+ }
+ 
+ impl Default for FetchOptions {
+@@ -67,6 +236,7 @@ impl Default for FetchOptions {
+             body: Vec::new(),
+             timeout: TIMEOUT,
+             stream: false,
++            unix: None,
+         }
+     }
+ }
+@@ -79,19 +249,19 @@ impl<'js> FromJs<'js> for FetchOptions {
+         let Some(object) = value.into_object() else {
+             return Err(Exception::throw_type(
+                 ctx,
+-                "fetch(url, options) expects an object with method, headers, body, timeout and/or stream",
++                "fetch(url, options) expects an object with method, headers, body, timeout, stream and/or unix",
+             ));
+         };
+         for key in object.keys::<String>() {
+             let key = key?;
+             if !matches!(
+                 key.as_str(),
+-                "method" | "headers" | "body" | "timeout" | "stream"
++                "method" | "headers" | "body" | "timeout" | "stream" | "unix"
+             ) {
+                 return Err(Exception::throw_type(
+                     ctx,
+                     &format!(
+-                        "unknown option `{key}` for fetch(url, options); expected method, headers, body, timeout or stream"
++                        "unknown option `{key}` for fetch(url, options); expected method, headers, body, timeout, stream or unix"
+                     ),
+                 ));
+             }
+@@ -118,12 +288,16 @@ impl<'js> FromJs<'js> for FetchOptions {
+             }
+         };
+         let stream = object.get::<_, Option<bool>>("stream")?.unwrap_or(false);
++        let unix = object
++            .get::<_, Option<String>>("unix")?
++            .map(std::path::PathBuf::from);
+         Ok(Self {
+             method,
+             headers,
+             body,
+             timeout,
+             stream,
++            unix,
+         })
+     }
+ }
+@@ -205,6 +379,7 @@ fn prohibited_header(name: &str) -> bool {
+             | "trailer"
+             | "transfer-encoding"
+             | "upgrade"
++            | "origin"
+     )
+ }
+ 
+@@ -262,18 +437,14 @@ fn authorize_request(
+     }
+ }
+ 
+-fn request(
+-    capabilities: crate::Capabilities,
+-    url: reqwest::Url,
+-    options: FetchOptions,
+-    injected_client: Option<reqwest::blocking::Client>,
+-) -> std::result::Result<FetchResponse, String> {
+-    let response = send(capabilities, url, options, injected_client)?;
+-    let status = response.status().as_u16();
+-    let final_url = response.url().to_string();
++fn request(response: Fetched) -> std::result::Result<FetchResponse, String> {
++    let Fetched {
++        status,
++        url: final_url,
++        body,
++    } = response;
+     let mut bytes = Vec::new();
+-    response
+-        .take(MAX_BODY_BYTES + 1)
++    body.take(MAX_BODY_BYTES + 1)
+         .read_to_end(&mut bytes)
+         .map_err(|error| format!("reading response from {final_url} failed: {error}"))?;
+     if bytes.len() as u64 > MAX_BODY_BYTES {
+@@ -724,18 +895,18 @@ impl<'js> IntoJs<'js> for FetchResponse {
+ 
+ /// `fetch(url, { stream: true })`: the live response, read chunk by chunk with
+ /// no body limit. The status is known; the body is not read yet.
+-struct FetchStream(reqwest::blocking::Response);
++struct FetchStream(Fetched);
+ 
+ impl<'js> IntoJs<'js> for FetchStream {
+     fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+         let response = Object::new(ctx.clone())?;
+-        let status = self.0.status().as_u16();
++        let status = self.0.status;
+         response.set("status", status)?;
+         response.set("ok", (200..300).contains(&status))?;
+-        response.set("url", self.0.url().to_string())?;
++        response.set("url", self.0.url)?;
+         // Dropped once closed or cancelled, which releases the connection even
+         // while the script still holds the response.
+-        let mut body = Some(self.0);
++        let mut body = Some(self.0.body);
+ 
+         let closed = Arc::new(AtomicBool::new(false));
+         let reading = closed.clone();
+diff --git a/crates/shell/src/engine/quickjs/standard/fs.rs b/crates/shell/src/engine/quickjs/standard/fs.rs
+index f67a112..15fadf5 100644
+--- a/crates/shell/src/engine/quickjs/standard/fs.rs
++++ b/crates/shell/src/engine/quickjs/standard/fs.rs
+@@ -1,9 +1,22 @@
++use std::{
++    cell::Cell,
++    io::{Read as _, Write as _},
++    rc::Rc,
++    sync::{Arc, Mutex},
++};
++
+ use rquickjs::{
+-    Ctx, Object, Result, Value,
+-    function::Func,
++    Ctx, Exception, IntoJs, Object, Promise, Result, Value,
++    function::{Func, Opt},
+     module::{Declarations, Exports, ModuleDef},
+ };
+ 
++use super::{
++    super::{host, scheduler},
++    net::{IO_LIMIT, ReadChunk},
++};
++use crate::capability::Access;
++
+ const EXPORTS: &[&str] = &[
+     "readFile",
+     "writeFile",
+@@ -12,6 +25,7 @@ const EXPORTS: &[&str] = &[
+     "unlink",
+     "rmdir",
+     "mkdir",
++    "open",
+ ];
+ 
+ pub(super) struct FsModule;
+@@ -34,6 +48,7 @@ impl ModuleDef for FsModule {
+         fs.set("unlink", Func::from(super::super::host::remove_file))?;
+         fs.set("rmdir", Func::from(super::super::host::remove_dir))?;
+         fs.set("mkdir", Func::from(super::super::host::mkdir))?;
++        fs.set("open", Func::from(open))?;
+         exports.export("default", Value::from_object(fs.clone()))?;
+         for name in EXPORTS {
+             exports.export(*name, fs.get::<_, Value>(*name)?)?;
+@@ -41,3 +56,134 @@ impl ModuleDef for FsModule {
+         Ok(())
+     }
+ }
++
++/// `open(path, flags)`: a handle read and written in pieces, for files too
++/// large or too live for `readFile`. Flags are "r" (default), "w", "a" or "r+".
++fn open<'js>(ctx: Ctx<'js>, path: String, flags: Opt<String>) -> Result<Promise<'js>> {
++    let flags = flags.0.unwrap_or_else(|| "r".to_owned());
++    let mut options = cap_std::fs::OpenOptions::new();
++    let access = match flags.as_str() {
++        "r" => {
++            options.read(true);
++            Access::Read
++        }
++        "w" => {
++            options.write(true).create(true).truncate(true);
++            Access::Write
++        }
++        "a" => {
++            options.append(true).create(true);
++            Access::Write
++        }
++        "r+" => {
++            host::grant(&ctx, &path, Access::Read)?;
++            options.read(true).write(true);
++            Access::Write
++        }
++        other => {
++            return Err(Exception::throw_type(
++                &ctx,
++                &format!("fs.open(path, flags) does not know `{other}`; expected r, w, a or r+"),
++            ));
++        }
++    };
++    let grant = host::grant(&ctx, &path, access)?;
++    let name = grant.describe();
++    let (dir, relative) = grant.into_parts();
++    scheduler::blocking(&ctx, "fs.open(path, flags)", move || {
++        dir.open_with(&relative, &options)
++            .map(|file| FileHandle(Arc::new(Mutex::new(Some(file.into_std())))))
++            .map_err(|error| format!("cannot open `{name}`: {error}"))
++    })
++}
++
++type SharedFile = Arc<Mutex<Option<std::fs::File>>>;
++
++struct FileHandle(SharedFile);
++
++fn with_file<T>(
++    file: &SharedFile,
++    body: impl FnOnce(&mut std::fs::File) -> std::io::Result<T>,
++) -> std::result::Result<T, String> {
++    let mut file = file
++        .lock()
++        .map_err(|_| "file lock was poisoned".to_owned())?;
++    let file = file
++        .as_mut()
++        .ok_or_else(|| "the file is closed".to_owned())?;
++    body(file).map_err(|error| format!("file I/O failed: {error}"))
++}
++
++impl<'js> IntoJs<'js> for FileHandle {
++    fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
++        let handle = Object::new(ctx.clone())?;
++        // The anchor task closes the file when the view or plugin goes away.
++        // ponytail: try_lock, so a read stuck on a FIFO cannot hang the UI; such
++        // a file closes once its last handle is collected instead.
++        let anchored = self.0.clone();
++        let (_, anchor) = scheduler::actor_cancellable::<()>(ctx, "fs.open(path)", move || {
++            if let Ok(mut file) = anchored.try_lock() {
++                file.take();
++            }
++        })?;
++        let anchor = Rc::new(Cell::new(Some(anchor)));
++
++        let file = self.0.clone();
++        handle.set(
++            "read",
++            Func::from(
++                move |ctx: Ctx<'js>, size: Opt<usize>| -> Result<Promise<'js>> {
++                    let size = size.0.unwrap_or(64 * 1024);
++                    if size > IO_LIMIT {
++                        return Err(Exception::throw_range(
++                            &ctx,
++                            &format!("file read exceeded the {IO_LIMIT} byte limit"),
++                        ));
++                    }
++                    let file = file.clone();
++                    scheduler::blocking(&ctx, "file.read(size)", move || {
++                        let mut bytes = vec![0; size];
++                        let count = with_file(&file, |file| file.read(&mut bytes))?;
++                        bytes.truncate(count);
++                        Ok(ReadChunk((count > 0 || size == 0).then_some(bytes)))
++                    })
++                },
++            ),
++        )?;
++        let file = self.0.clone();
++        handle.set(
++            "write",
++            Func::from(
++                move |ctx: Ctx<'js>, data: Value<'js>| -> Result<Promise<'js>> {
++                    let data = host::bytes_arg(&ctx, data, "file.write(data)")?;
++                    if data.len() > IO_LIMIT {
++                        return Err(Exception::throw_range(
++                            &ctx,
++                            &format!("file write exceeded the {IO_LIMIT} byte limit"),
++                        ));
++                    }
++                    let file = file.clone();
++                    scheduler::blocking(&ctx, "file.write(data)", move || {
++                        with_file(&file, |file| file.write_all(&data))
++                    })
++                },
++            ),
++        )?;
++        let file = self.0;
++        handle.set(
++            "close",
++            Func::from(move |ctx: Ctx<'js>| -> Result<Promise<'js>> {
++                if let Some(anchor) = anchor.take() {
++                    anchor.settle(Ok(()));
++                }
++                let file = file.clone();
++                scheduler::blocking(&ctx, "file.close()", move || {
++                    file.lock()
++                        .map(|mut file| drop(file.take()))
++                        .map_err(|_| "file lock was poisoned".to_owned())
++                })
++            }),
++        )?;
++        Ok(handle.into_value())
++    }
++}
+diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/engine/quickjs/standard/net.rs
+index 9de8a5c..e510c7f 100644
+--- a/crates/shell/src/engine/quickjs/standard/net.rs
++++ b/crates/shell/src/engine/quickjs/standard/net.rs
+@@ -16,7 +16,7 @@ use super::{
+     connect as network_connect,
+ };
+ 
+-const IO_LIMIT: usize = 1024 * 1024;
++pub(super) const IO_LIMIT: usize = 1024 * 1024;
+ const TIMEOUT: Duration = Duration::from_secs(30);
+ 
+ pub(super) struct NetModule;
+@@ -175,7 +175,7 @@ impl Socket {
+     }
+ }
+ 
+-struct ReadChunk(Option<Vec<u8>>);
++pub(super) struct ReadChunk(pub(super) Option<Vec<u8>>);
+ 
+ impl<'js> IntoJs<'js> for ReadChunk {
+     fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+@@ -192,22 +192,25 @@ impl<'js> IntoJs<'js> for Socket {
+         let writer = self.writer;
+         socket.set(
+             "write",
+-            Func::from(move |ctx: Ctx<'js>, data: String| -> Result<Promise<'js>> {
+-                if data.len() > IO_LIMIT {
+-                    return Err(Exception::throw_range(
+-                        &ctx,
+-                        &format!("socket write exceeded the {IO_LIMIT} byte limit"),
+-                    ));
+-                }
+-                let stream = writer.clone();
+-                scheduler::blocking(&ctx, "socket.write(data)", move || {
+-                    stream
+-                        .lock()
+-                        .map_err(|_| "socket lock was poisoned".to_owned())?
+-                        .write_all(data.as_bytes())
+-                        .map_err(|error| format!("socket write failed: {error}"))
+-                })
+-            }),
++            Func::from(
++                move |ctx: Ctx<'js>, data: Value<'js>| -> Result<Promise<'js>> {
++                    let data = host::bytes_arg(&ctx, data, "socket.write(data)")?;
++                    if data.len() > IO_LIMIT {
++                        return Err(Exception::throw_range(
++                            &ctx,
++                            &format!("socket write exceeded the {IO_LIMIT} byte limit"),
++                        ));
++                    }
++                    let stream = writer.clone();
++                    scheduler::blocking(&ctx, "socket.write(data)", move || {
++                        stream
++                            .lock()
++                            .map_err(|_| "socket lock was poisoned".to_owned())?
++                            .write_all(&data)
++                            .map_err(|error| format!("socket write failed: {error}"))
++                    })
++                },
++            ),
+         )?;
+         let mut reader = self.reader;
+         let reads = scheduler::serve("socket.read", move |size: usize| {
+diff --git a/crates/shell/src/tests/fs.rs b/crates/shell/src/tests/fs.rs
+index 0699502..fcfbd56 100644
+--- a/crates/shell/src/tests/fs.rs
++++ b/crates/shell/src/tests/fs.rs
+@@ -228,6 +228,76 @@ fn fs_module_cannot_follow_a_symlink_out_of_a_granted_root(cx: &mut TestAppConte
+     let _ = std::fs::remove_dir_all(&base);
+ }
+ 
++const HANDLE_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import * as fs from "fs/promises";
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        let denied = "allowed";
++        try { await fs.open("/gpui-shell-outside/x", "r"); } catch (error) { denied = "denied"; }
++        let bad = "allowed";
++        try { await fs.open("log.txt", "x"); } catch (error) { bad = error.name; }
++        let w = await fs.open("log.txt", "w");
++        await w.write("ab");
++        await w.write(new Uint8Array([99]));
++        await w.close();
++        let closed = "open";
++        try { await w.write("late"); } catch (error) { closed = error.message; }
++        const a = await fs.open("log.txt", "a");
++        await a.write("d");
++        await a.close();
++        const r = await fs.open("log.txt");
++        const first = await r.read(2);
++        const rest = await r.read();
++        const eof = await r.read();
++        await r.close();
++        this.state = `${denied}|${bad}|${closed}|${String.fromCharCode(...first)}|${String.fromCharCode(...rest)}|${eof}`;
++      } catch (error) {
++        this.state = `failed: ${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[gpui::test]
++fn file_handles_read_write_append_and_respect_the_grant(cx: &mut TestAppContext) {
++    let directory =
++        std::env::temp_dir().join(format!("gpui-shell-fs-handle-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&directory);
++    std::fs::create_dir_all(&directory).expect("a granted root");
++    cx.update(crate::init);
++    crate::set_capabilities(
++        Capabilities::new()
++            .read_roots([directory.clone()])
++            .write_roots([directory.clone()]),
++    );
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    cx.update(|cx| runtime.set_global(cx));
++    let view_type = runtime
++        .load_source("handle.js", HANDLE_PROBE)
++        .expect("load");
++    let window = cx.add_window(|_, _| Empty);
++    let mut context = VisualTestContext::from_window(*window.deref(), cx);
++    let view = context
++        .update(|window, cx| runtime.instantiate_view(&view_type, window, cx))
++        .expect("instantiate");
++    context.run_until_parked();
++    draw(&mut context, &view);
++    let rendered = snapshot_text(&mut context, &view);
++    let _ = std::fs::remove_dir_all(&directory);
++    assert!(
++        rendered.contains("denied|TypeError|the file is closed|ab|cd|null"),
++        "{rendered}"
++    );
++}
++
+ fn denial_probe(cx: &mut TestAppContext, capabilities: Capabilities, path: &str) -> String {
+     cx.update(crate::init);
+     crate::set_capabilities(capabilities);
+diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
+index 7f09e26..23e256f 100644
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -1373,6 +1373,166 @@ fn net_refuses_an_ungranted_unix_socket(cx: &mut TestAppContext) {
+     );
+ }
+ 
++#[cfg(unix)]
++const UNIX_BYTES_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { connect } from "net";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      try {
++        const socket = await connect({ path: "__PATH__" });
++        await socket.write(new Uint8Array([0, 255, 128]));
++        const bytes = await socket.read(3);
++        this.state = `bytes:${[...bytes].join(",")}`;
++        socket.close();
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++#[gpui::test]
++fn net_writes_binary_data(cx: &mut TestAppContext) {
++    let (directory, path) = unix_socket_path("bytes");
++    let listener = std::os::unix::net::UnixListener::bind(&path).expect("unix listener");
++    let server = thread::spawn(move || {
++        let (mut stream, _) = listener.accept().expect("unix connection");
++        let mut request = [0; 3];
++        stream.read_exact(&mut request).expect("read bytes");
++        stream.write_all(&request).expect("echo bytes");
++    });
++    let source = UNIX_BYTES_PROBE.replace("__PATH__", &path.display().to_string());
++    let (_runtime, view, mut context) =
++        probe_with(cx, Capabilities::new().network_unix([path]), &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    server.join().expect("unix server");
++    let _ = std::fs::remove_dir_all(&directory);
++    assert!(rendered.contains("bytes:0,255,128"), "{rendered}");
++}
++
++#[cfg(unix)]
++const FETCH_UNIX_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    const unix = "__PATH__";
++    let origin = "allowed";
++    try { fetch("http://docker/", { unix, headers: { Origin: "x" } }); }
++    catch (error) { origin = error.name; }
++    cx.spawn(async (cx) => {
++      try {
++        const chunked = await (await fetch("http://docker/chunked?x=1", { unix })).text();
++        const length = await fetch("http://docker/length", { unix, method: "POST", body: "hi" });
++        const stream = await fetch("http://docker/stream", { unix, stream: true, timeout: 100 });
++        const chunks = [];
++        for (;;) {
++          const chunk = await stream.read();
++          if (chunk === null) break;
++          chunks.push(String.fromCharCode(...chunk));
++        }
++        this.state = `${origin}|${chunked}|${length.status}:${await length.text()}|${stream.status}:${chunks.join("")}`;
++      } catch (error) {
++        this.state = `rejected:${error.message}`;
++      }
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++#[gpui::test]
++fn fetch_speaks_http_over_a_granted_unix_socket(cx: &mut TestAppContext) {
++    let (directory, path) = unix_socket_path("fetch");
++    let listener = std::os::unix::net::UnixListener::bind(&path).expect("unix listener");
++    let server = thread::spawn(move || {
++        let mut heads = Vec::new();
++        for _ in 0..3 {
++            let (mut stream, _) = listener.accept().expect("unix connection");
++            let mut head = Vec::new();
++            let mut byte = [0];
++            while !head.ends_with(b"\r\n\r\n") {
++                stream.read_exact(&mut byte).expect("request head");
++                head.push(byte[0]);
++            }
++            let head = String::from_utf8_lossy(&head).to_ascii_lowercase();
++            if head.starts_with("post") {
++                let mut body = [0; 2];
++                stream.read_exact(&mut body).expect("request body");
++                assert_eq!(&body, b"hi");
++            }
++            let response: &[u8] = if head.starts_with("get /chunked") {
++                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
++            } else if head.starts_with("post /length") {
++                b"HTTP/1.1 201 Created\r\nContent-Length: 3\r\n\r\nabc"
++            } else {
++                stream
++                    .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n")
++                    .expect("first chunk");
++                // Quieter than the fetch timeout: a stream read waits it out.
++                thread::sleep(Duration::from_millis(300));
++                b"3\r\ntwo\r\n0\r\n\r\n"
++            };
++            stream.write_all(response).expect("response");
++            heads.push(head);
++        }
++        heads
++    });
++
++    let source = FETCH_UNIX_PROBE.replace("__PATH__", &path.display().to_string());
++    let (_runtime, view, mut context) =
++        probe_with(cx, Capabilities::new().network_unix([path]), &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    let heads = server.join().expect("unix server");
++    let _ = std::fs::remove_dir_all(&directory);
++    assert!(
++        rendered.contains("TypeError|hello world|201:abc|200:onetwo"),
++        "{rendered}"
++    );
++    assert!(
++        heads[0].starts_with("get /chunked?x=1 http/1.1\r\n")
++            && heads[0].contains("host: docker\r\n"),
++        "{}",
++        heads[0]
++    );
++    assert!(heads.iter().all(|head| !head.contains("origin")));
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn fetch_refuses_an_ungranted_unix_socket(cx: &mut TestAppContext) {
++    let source = FETCH_UNIX_PROBE.replace("__PATH__", "/run/gpui-shell-not-granted.sock");
++    let (_runtime, view, mut context) = probe(cx, &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(
++        rendered.contains("unix socket `/run/gpui-shell-not-granted.sock` is not granted"),
++        "{rendered}"
++    );
++}
++
++#[cfg(unix)]
++fn unix_socket_path(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
++    let directory =
++        std::env::temp_dir().join(format!("gpui-shell-unix-{name}-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&directory);
++    std::fs::create_dir_all(&directory).expect("socket directory");
++    let path = directory.join("http.sock");
++    (directory, path)
++}
++
+ #[gpui::test]
+ fn dropping_the_view_closes_a_socket_with_a_pending_read(cx: &mut TestAppContext) {
+     let listener = TcpListener::bind("127.0.0.1:0").expect("TCP listener");
+diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.rs
+index 503811e..c2a9a7e 100644
+--- a/crates/shell/src/tests/process.rs
++++ b/crates/shell/src/tests/process.rs
+@@ -454,6 +454,79 @@ fn spawn_refuses_malformed_options_and_bounds_its_io(cx: &mut TestAppContext) {
+     assert!(!rendered.contains("allowed"), "{rendered}");
+ }
+ 
++#[cfg(unix)]
++const CLOSE_STDIN_PROBE: &str = r#"
++import { View } from "gpui-kit";
++import { v_flex } from "gpui-base";
++import { spawn } from "process";
++
++export default class Probe extends View {
++  init(_props, cx) {
++    this.state = "pending";
++    cx.spawn(async (cx) => {
++      // `cat`, from shell builtins: the child has no PATH.
++      const child = spawn("/bin/sh", ["-c", 'while read -r l; do echo "$l"; done; echo eof']);
++      await child.write("hi\n");
++      await child.closeStdin();
++      let late = "allowed";
++      try { await child.write("late\n"); } catch (error) { late = error.message; }
++      const lines = [await child.readLine(), await child.readLine(), await child.readLine()];
++      const status = await child.wait();
++      this.state = `${lines.map(String).join(",")}|${late}|${status.code}`;
++      cx.notify();
++    });
++  }
++  render() { return v_flex().child(this.state); }
++}
++"#;
++
++#[cfg(unix)]
++#[gpui::test]
++fn close_stdin_ends_the_childs_input_after_queued_writes(cx: &mut TestAppContext) {
++    let (_runtime, view, mut context) = probe(cx, "/bin/sh", "close-stdin.js", CLOSE_STDIN_PROBE);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    assert!(
++        rendered.contains("hi,eof,null|the child's stdin is closed|0"),
++        "{rendered}"
++    );
++}
++
++#[cfg(unix)]
++#[gpui::test]
++fn a_child_that_ignores_sigterm_gets_sigkill_after_the_grace_period(cx: &mut TestAppContext) {
++    let source = SPAWN_LIFETIME_PROBE.replace(
++        "echo started; read x",
++        "trap '' TERM; echo started; while :; do read x; done",
++    );
++    let (runtime, view, mut context) = probe(cx, "/bin/sh", "spawn-term.js", &source);
++    let rendered = settle(&mut context, &view, |text| text.contains("pid:"));
++    let pid: i32 = rendered
++        .split("pid:")
++        .nth(1)
++        .and_then(|rest| rest.split(':').next())
++        .and_then(|pid| pid.parse().ok())
++        .expect("the child's pid");
++
++    drop(view);
++    let started = std::time::Instant::now();
++    let mut survived_sigterm = false;
++    while alive(pid) {
++        let elapsed = started.elapsed();
++        assert!(
++            elapsed < std::time::Duration::from_secs(6),
++            "SIGKILL never came"
++        );
++        survived_sigterm |= elapsed > std::time::Duration::from_secs(1);
++        context
++            .executor()
++            .advance_clock(std::time::Duration::from_millis(10));
++        context.run_until_parked();
++        std::thread::sleep(std::time::Duration::from_millis(5));
++    }
++    assert!(survived_sigterm, "the child should have ignored SIGTERM");
++    std::mem::forget(runtime);
++}
++
+ /// Alive and not yet reaped.
+ #[cfg(unix)]
+ fn alive(pid: i32) -> bool {
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index 194835b..e34893d 100644
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -3770,9 +3770,14 @@ declare module "process" {
+     readErrLine(): Promise<string | null>;
+     /** Writes to stdin (at most 1 MiB per call). */
+     write(data: string | Uint8Array): Promise<void>;
++    /** Closes stdin once the writes before it are done, so the child sees EOF. */
++    closeStdin(): Promise<void>;
+     /** Resolves when the child exits. */
+     wait(): Promise<ExitStatus>;
+-    /** Signals the child's process group; SIGTERM by default. */
++    /**
++     * Signals the child's process group; SIGTERM by default. When its owner goes
++     * away the group gets SIGTERM, then SIGKILL 2 s later.
++     */
+     kill(signal?: "SIGTERM" | "SIGKILL" | "SIGINT" | "SIGHUP"): void;
+   }
+   export function run(command: string, args?: string[], options?: ProcessOptions): Promise<CommandOutput>;
+@@ -3803,10 +3808,21 @@ declare module "fs/promises" {
+   export function unlink(path: string): Promise<void>;
+   export function rmdir(path: string): Promise<void>;
+   export function mkdir(path: string, options?: MakeDirectoryOptions): Promise<void>;
++  /** An open file, closed by close() or when the view or plugin goes away. */
++  export interface FileHandle {
++    /** Up to maxBytes (64 KiB by default, at most 1 MiB); null at EOF. */
++    read(maxBytes?: number): Promise<Uint8Array | null>;
++    /** Writes all of data (at most 1 MiB per call). */
++    write(data: string | Uint8Array): Promise<void>;
++    close(): Promise<void>;
++  }
++  /** "r" (default) needs fs.read; "w" truncates, "a" appends, both need fs.write; "r+" needs both. */
++  export function open(path: string, flags?: "r" | "w" | "a" | "r+"): Promise<FileHandle>;
+ }
+ declare module "net" {
+   export interface Socket {
+-    write(data: string): Promise<void>;
++    /** Strings are sent as UTF-8; at most 1 MiB per call. */
++    write(data: string | Uint8Array): Promise<void>;
+     /**
+      * Reads raw bytes. There is no idle timeout: it waits as long as the peer
+      * is quiet. Resolves to null at EOF or after close().
+@@ -3866,7 +3882,7 @@ interface ShellFetchOptions {
+    * this field.
+    */
+   method?: string;
+-  /** Client-managed framing headers such as Host and Content-Length are refused. */
++  /** Client-managed headers such as Host, Origin and Content-Length are refused. */
+   headers?: Record<string, string>;
+   body?: string | Uint8Array;
+   /**
+@@ -3876,6 +3892,12 @@ interface ShellFetchOptions {
+   timeout?: number;
+   /** Resolve once the headers arrive and read the body chunk by chunk. */
+   stream?: boolean;
++  /**
++   * Sends the request over this unix socket, granted by its exact path in
++   * `capabilities.network.unix`. The URL's host only fills the Host header;
++   * its path and query are sent. Redirects are not followed.
++   */
++  unix?: string;
+ }
+ declare function fetch(url: string, options: ShellFetchOptions & { stream: true }): Promise<ShellFetchStream>;
+ declare function fetch(url: string, options?: ShellFetchOptions): Promise<ShellFetchResponse>;
