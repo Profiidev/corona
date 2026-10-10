@@ -26,6 +26,7 @@ pub struct PluginManifest {
   pub description: Option<String>,
   pub widgets: BTreeMap<String, WidgetFile>,
   pub panels: BTreeMap<String, PanelFile>,
+  pub service: Option<ServiceFile>,
   pub settings: Vec<Setting>,
   pub capabilities: Capabilities,
   /// The corona modules it may import
@@ -44,6 +45,7 @@ impl PluginManifest {
       description: file.description,
       widgets: file.widgets,
       panels: file.panels,
+      service: file.service,
       settings: file.settings,
     }
   }
@@ -75,6 +77,10 @@ pub struct ManifestFile {
   /// Panels by name, opened as `<id>:<name>`.
   #[serde(default, deserialize_with = "flat_keys")]
   pub panels: BTreeMap<String, PanelFile>,
+  /// A view that runs in the background while the plugin is enabled, never
+  /// shown. It answers `call` from `corona/plugin` and from `corona ipc plugin`.
+  #[serde(default)]
+  pub service: Option<ServiceFile>,
   /// Settings the user can change in the settings app, in this order.
   #[serde(default, deserialize_with = "valid_settings")]
   pub settings: Vec<Setting>,
@@ -112,6 +118,13 @@ pub struct PanelFile {
   pub width: f32,
   #[serde(default = "panel_height")]
   pub height: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceFile {
+  /// The script of the service, relative to the plugin directory.
+  pub view: String,
 }
 
 fn panel_width() -> f32 {
@@ -487,6 +500,14 @@ default = false
     // settings are checked as the manifest loads
     let bad = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = \"no\"";
     assert!(with(bad).is_err());
+  }
+
+  #[test]
+  fn service() {
+    assert_eq!(with("").unwrap().service, None);
+    let manifest = with("[service]\nview = \"service.js\"").unwrap();
+    assert_eq!(manifest.service.unwrap().view, "service.js");
+    assert!(with("[service]\nview = \"s.js\"\nwidth = 3").is_err());
   }
 
   #[test]

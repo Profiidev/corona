@@ -40,6 +40,7 @@ mod tests {
       "panels",
       "settings",
       "capabilities",
+      "service",
     ] {
       assert!(property(&plugin, &["properties", key]).is_object(), "{key}");
     }

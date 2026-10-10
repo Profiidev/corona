@@ -2132,6 +2132,8 @@ dependencies = [
  "corona_utils",
  "corona_weather",
  "dirs 7.0.0",
+ "flume",
+ "futures-lite",
  "gpui-component-shell",
  "gpui-kit",
  "gpui-shell",

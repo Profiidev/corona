@@ -643,19 +643,22 @@ pub fn in_scope(scope: AutoUpdate, source: &SourceConfig) -> bool {
 }
 
 /// What the shell builds from the running plugins: ids, where they are and
-/// their widgets and panels
+/// their widgets, panels, services and grants; settings are read live
 fn signature(active: &HashMap<String, Found>) -> Vec<String> {
   let mut signature: Vec<String> = active
     .values()
     .map(|found| {
       let m = &found.manifest;
       format!(
-        "{} {} {:?} {:?} {:?}",
+        "{} {} {:?} {:?} {:?} {:?} {:?} {:?}",
         m.id,
         m.dir.display(),
         m.version,
         m.widgets,
-        m.panels
+        m.panels,
+        m.service,
+        m.capabilities,
+        m.modules
       )
     })
     .collect();
@@ -837,6 +840,34 @@ mod tests {
     // turning the dev source off falls back to the local copy
     cx.update(|cx| PluginManager::set_source_enabled("dev", false, cx));
     assert_eq!(active(cx)[0], ("com.both".to_string(), "local".to_string()));
+  }
+
+  #[gpui::test]
+  fn a_changed_service_or_grant_is_a_new_revision(cx: &mut TestAppContext) {
+    let env = env(cx, |_, _| String::new());
+    let dir = env.base.join("data/corona/plugins/mine");
+    plugin(&dir, "com.mine", "1");
+    cx.update(|cx| PluginManager::enable("com.mine", cx));
+    cx.run_until_parked();
+    // the shell restarts services on a new revision only
+    let rescan = |extra: &str| {
+      let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
+      fs::write(dir.join("plugin.toml"), manifest("com.mine", "1") + extra).unwrap();
+      cx.update(PluginManager::rescan);
+      cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
+    };
+    let service = "[service]\nview = \"service.js\"\n";
+    assert!(rescan(service));
+    assert!(rescan(&format!(
+      "{service}[capabilities]\nclipboard = {{ read = true }}\n"
+    )));
+    assert!(rescan(&format!(
+      "{service}[capabilities]\ncorona = [\"weather\"]\n"
+    )));
+    // settings are read live, nothing restarts for them
+    let setting = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = true\n";
+    let grant = format!("{service}[capabilities]\ncorona = [\"weather\"]\n");
+    assert!(!rescan(&format!("{setting}{grant}")));
   }
 
   #[gpui::test]

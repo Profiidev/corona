@@ -7,6 +7,7 @@ pub mod lock_key;
 
 pub mod media;
 pub mod notification;
+pub mod plugin;
 pub mod power_profile;
 pub mod radio;
 pub mod session;
@@ -20,6 +21,7 @@ pub fn register_commands(server: &mut IpcServer) {
   lock_key::register_commands(server);
   media::register_commands(server);
   notification::register_commands(server);
+  plugin::register_commands(server);
   power_profile::register_commands(server);
   radio::register_commands(server);
   session::register_commands(server);

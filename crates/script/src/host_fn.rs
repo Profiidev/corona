@@ -43,11 +43,21 @@ impl Module {
       f.names.len(),
       params.len()
     );
-    let params: Vec<String> = f
+    let params: Vec<(&str, String)> = f
       .names
       .iter()
       .zip(params)
-      .filter_map(|(arg, ty)| Some(format!("{arg}: {}", ty?)))
+      .filter_map(|(arg, ty)| Some((*arg, ty?)))
+      .collect();
+    // trailing nullable params may be left out, they read as null
+    let required = params
+      .iter()
+      .rposition(|(_, ty)| !ty.ends_with(" | null"))
+      .map_or(0, |i| i + 1);
+    let params: Vec<String> = params
+      .iter()
+      .enumerate()
+      .map(|(i, (arg, ty))| format!("{arg}{}: {ty}", if i < required { "" } else { "?" }))
       .collect();
     let ret = if F::HostFn::ASYNC {
       format!("Promise<{ret}>")
@@ -282,6 +292,10 @@ impl<T: Serialize + TS + 'static> HostReturn<HostValue> for T {
   }
 
   fn ts_type(types: &mut Types) -> String {
+    // a fn without a result returns nothing to rely on, even though it is `null`
+    if TypeId::of::<T>() == TypeId::of::<()>() {
+      return "void".into();
+    }
     types.add::<T>()
   }
 }
@@ -330,7 +344,12 @@ impl<T: HostReturn<M>, M> HostReturn<Result<M, anyhow::Error>> for anyhow::Resul
   }
 
   fn ts_type(types: &mut Types) -> String {
-    format!("{} | {}", T::ts_type(types), types.add::<ErrorValue>())
+    let (ok, error) = (T::ts_type(types), types.add::<ErrorValue>());
+    // an async fn that fails before and after its future
+    match ok.split(" | ").any(|ty| ty == error) {
+      true => ok,
+      false => format!("{ok} | {error}"),
+    }
   }
 }
 
@@ -827,6 +846,22 @@ mod conversion {
     assert_eq!(
       module.declared().unwrap(),
       "/** Returns `id`. */\nexport function id(id: number): number;"
+    );
+  }
+
+  #[test]
+  fn trailing_nullable_params_are_optional() {
+    let module: HostModule = Module::new("test")
+      .func(named!("f", |a: Option<u32>,
+                         b: u32,
+                         c: Option<u32>,
+                         d: Option<u32>| {
+        let _ = (a, b, c, d);
+      }))
+      .into();
+    assert_eq!(
+      module.declared().unwrap(),
+      "export function f(a: number | null, b: number, c?: number | null, d?: number | null): void;"
     );
   }
 

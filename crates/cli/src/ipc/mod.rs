@@ -5,6 +5,7 @@ use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
+use corona_shell::commands::plugin::PluginCall;
 use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::settings::{Action as SettingsAction, SettingsWindow};
@@ -82,6 +83,14 @@ pub enum IpcCommands {
   /// Show the OSD of a lock key: caps, num or scroll. Bind it to the key in
   /// Hyprland, e.g. `hl.bind("Caps_Lock", hl.dsp.exec_cmd("corona ipc lock-key caps"))`
   LockKey { key: LockKey },
+  /// Call a method of a plugin's service and print its answer as JSON
+  Plugin {
+    /// The plugin's id
+    id: String,
+    method: String,
+    /// JSON, or else a string
+    args: Option<String>,
+  },
   /// Turn every monitor on or off
   Dpms { power: Power },
   /// Lock, suspend, log out, reboot or shut down
@@ -139,6 +148,15 @@ impl IpcCommands {
       IpcCommands::Settings { action, page } => {
         if let Err(e) = SettingsWindow::send((action, page)) {
           tracing::error!("Failed to open settings: {}", e);
+        }
+      }
+      IpcCommands::Plugin { id, method, args } => {
+        let args = args.map_or(serde_json::Value::Null, |args| {
+          serde_json::from_str(&args).unwrap_or(serde_json::Value::String(args))
+        });
+        match PluginCall::send(PluginCall { id, method, args }) {
+          Ok(answer) => println!("{answer}"),
+          Err(e) => tracing::error!("Failed to call the plugin: {}", e),
         }
       }
       IpcCommands::Dpms { power } => {
@@ -318,6 +336,9 @@ pub(crate) mod tests {
       (&["wifi", "status"], json!(true), Wifi::COMMAND, json!("Status")),
       (&["bluetooth", "off"], json!(false), Bluetooth::COMMAND, json!("Off")),
       (&["dpms", "off"], json!(null), Dpms::COMMAND, json!("Off")),
+      (&["plugin", "a", "ping"], json!(1), PluginCall::COMMAND, json!({ "id": "a", "method": "ping", "args": null })),
+      (&["plugin", "a", "set", "{\"x\": 1}"], json!(null), PluginCall::COMMAND, json!({ "id": "a", "method": "set", "args": { "x": 1 } })),
+      (&["plugin", "a", "say", "hi there"], json!(null), PluginCall::COMMAND, json!({ "id": "a", "method": "say", "args": "hi there" })),
       (&["lock-key", "caps"], json!(null), Pressed::COMMAND, json!("Caps")),
       (&["session", "lock-and-suspend"], json!(null), Session::COMMAND, json!("LockAndSuspend")),
       (&["panel", "open", "a"], json!(null), OpenPanel::COMMAND, json!("a")),

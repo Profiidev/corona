@@ -1,17 +1,27 @@
+use anyhow::Result;
+use corona_config::APP_NAME;
 use corona_script::{Entry, PluginManager, Script, ScriptManager};
 use corona_surface::{
   bar::{BarExt, BarState, WidgetData},
   panel::{PanelData, PanelState},
 };
 use gpui_kit::{
-  App, AppContext, IntoElement, ParentElement, Render, Styled, Window, div, prelude::FluentBuilder,
+  AnyWindowHandle, App, AppContext, Bounds, IntoElement, ParentElement, Point, Render, Styled,
+  Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  div,
+  layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
+  prelude::FluentBuilder,
+  px, size,
 };
 
-/// The widget and panel names registered for plugins
+/// The widget and panel names registered for plugins, and their services
 #[derive(Default)]
 struct Registered {
   widgets: Vec<String>,
   panels: Vec<String>,
+  services: Vec<Script>,
+  /// Where the services run, never shown
+  window: Option<AnyWindowHandle>,
 }
 
 pub fn init(cx: &mut App) {
@@ -30,6 +40,8 @@ pub fn init(cx: &mut App) {
 }
 
 fn sync(registered: &mut Registered, cx: &mut App) {
+  // stops them, failing what waits for them
+  registered.services.clear();
   for name in registered.widgets.drain(..) {
     cx.bar_mut().unregister(&name);
   }
@@ -44,6 +56,18 @@ fn sync(registered: &mut Registered, cx: &mut App) {
     .map(|found| found.manifest.clone())
     .collect();
   for manifest in plugins {
+    if manifest.service.is_some() {
+      let id = manifest.id.clone();
+      let loaded = service_window(registered, cx).and_then(|window| {
+        window.update(cx, |_, window, cx| {
+          ScriptManager::load(&id, Entry::Service, window, cx)
+        })?
+      });
+      match loaded {
+        Ok(script) => registered.services.push(script),
+        Err(e) => tracing::error!("plugin service `{id}`: {e:#}"),
+      }
+    }
     for key in manifest.widgets.keys() {
       let name = format!("{}:{key}", manifest.id);
       let (id, key) = (manifest.id.clone(), key.clone());
@@ -85,6 +109,49 @@ fn sync(registered: &mut Registered, cx: &mut App) {
       cx.global_mut::<PanelState>().register_data(data);
       registered.panels.push(name);
     }
+  }
+}
+
+/// A 1×1 window on the background layer that takes no input, for services:
+/// their tasks resume in the window they were loaded in
+fn service_window(registered: &mut Registered, cx: &mut App) -> Result<AnyWindowHandle> {
+  if let Some(window) = registered.window
+    && window.update(cx, |_, _, _| ()).is_ok()
+  {
+    return Ok(window);
+  }
+  let window = cx.open_window(
+    WindowOptions {
+      kind: WindowKind::LayerShell(LayerShellOptions {
+        layer: Layer::Background,
+        namespace: "corona-plugin-services".to_string(),
+        keyboard_interactivity: KeyboardInteractivity::None,
+        ..Default::default()
+      }),
+      window_background: WindowBackgroundAppearance::Transparent,
+      window_decorations: Some(WindowDecorations::Client),
+      app_id: Some(APP_NAME.to_string()),
+      titlebar: None,
+      window_bounds: Some(WindowBounds::Windowed(Bounds {
+        origin: Point::default(),
+        size: size(px(1.), px(1.)),
+      })),
+      ..Default::default()
+    },
+    |window, cx| {
+      window.set_input_region(Some(&[]));
+      cx.new(|_| Empty)
+    },
+  )?;
+  registered.window = Some(window.into());
+  Ok(window.into())
+}
+
+struct Empty;
+
+impl Render for Empty {
+  fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
+    div()
   }
 }
 
@@ -232,6 +299,86 @@ export default class Main extends View {
   }
 }
 "#;
+
+  /// Echoes every call
+  const SERVICE: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { nextCall, reply } from "corona/plugin";
+
+export default class Service extends View {
+  init(_props, cx) {
+    cx.spawn(async () => {
+      while (true) {
+        const call = await nextCall();
+        if (call.message) break;
+        reply(call.id, [call.method, call.args]);
+      }
+    });
+  }
+  render() { return v_flex(); }
+}
+"#;
+
+  #[gpui::test]
+  fn services_run_while_the_plugin_is_enabled(cx: &mut TestAppContext) {
+    setup(FakeCompositor::default(), cx);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("echo");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+      dir.join("plugin.toml"),
+      "id = \"com.echo\"\nname = \"Echo\"\n[service]\nview = \"service.js\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("service.js"), SERVICE).unwrap();
+    cx.update(|cx| {
+      corona_surface::init(cx).unwrap();
+      let mut config = Config::default();
+      config.plugins.enabled = vec!["com.echo".into()];
+      config.plugins.source.clear();
+      cx.set_global(config);
+      let runtime = gpui_shell::ShellRuntime::new_isolated_with_components(
+        gpui_component_shell::components().unwrap(),
+      )
+      .unwrap();
+      cx.set_global(ScriptManager::new(runtime, paths.clone()));
+      PluginManager::init(paths, cx);
+      init(cx);
+    });
+    cx.run_until_parked();
+    let call = |cx: &mut TestAppContext| {
+      let answer = cx.update(|cx| corona_script::call("com.echo", "ping".into(), 1.into(), cx));
+      let answer = cx.executor().spawn(answer.unwrap());
+      cx.run_until_parked();
+      futures::executor::block_on(answer)
+    };
+    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1]));
+
+    // changed on disk: restarted
+    fs::write(
+      dir.join("plugin.toml"),
+      "id = \"com.echo\"\nname = \"Echo\"\nversion = \"2\"\n[service]\nview = \"service.js\"\n",
+    )
+    .unwrap();
+    let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
+    cx.update(PluginManager::rescan);
+    cx.run_until_parked();
+    assert!(cx.update(|cx| cx.global::<PluginManager>().revision()) > revision);
+    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1]));
+
+    // disabled: stopped
+    cx.update(|cx| cx.global_mut::<Config>().plugins.enabled.clear());
+    cx.run_until_parked();
+    assert!(
+      cx.update(|cx| corona_script::call("com.echo", "ping".into(), 1.into(), cx))
+        .is_err()
+    );
+  }
 
   #[gpui::test]
   fn a_widget_is_as_big_as_its_content(cx: &mut TestAppContext) {

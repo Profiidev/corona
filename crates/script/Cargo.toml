@@ -29,6 +29,8 @@ serde_json.workspace = true
 toml.workspace = true
 tracing.workspace = true
 dirs.workspace = true
+flume.workspace = true
+futures-lite.workspace = true
 ts-rs = { workspace = true, features = ["serde-json-impl"] }
 uuid = { workspace = true, features = ["v4"] }
 schemars = "1.2.2"

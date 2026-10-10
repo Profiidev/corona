@@ -23,6 +23,7 @@ pub mod mpris;
 pub mod network;
 pub mod notifications;
 pub mod pipewire;
+pub mod plugin;
 pub mod power;
 pub mod settings;
 pub mod surface;
@@ -88,6 +89,8 @@ pub enum Updates {
   Network(network::Updates),
   Notifications(notifications::Updates),
   Pipewire(pipewire::Updates),
+  /// `corona/plugin`'s shared state
+  Plugin,
   Power(power::Updates),
   Surface(surface::Updates),
   Sysinfo(sysinfo::Updates),

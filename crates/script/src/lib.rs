@@ -2,7 +2,7 @@ use anyhow::Result;
 use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
-pub use manager::{Entry, Script, ScriptManager};
+pub use manager::{Entry, Script, ScriptManager, call};
 pub use plugin::manager::{PluginManager, PluginStatus};
 
 const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";
