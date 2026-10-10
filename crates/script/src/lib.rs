@@ -3,7 +3,7 @@ use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
 pub use manager::{Entry, Script, ScriptManager, Service, call};
-pub use module::dbus::Buses;
+pub use module::{dbus::Buses, secrets};
 pub use plugin::manager::{PluginManager, PluginStatus};
 
 const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";

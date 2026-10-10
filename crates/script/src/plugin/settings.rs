@@ -2,9 +2,10 @@
 //! type one control in the settings app; the values live in the shell config
 //! under `[plugin_settings."<id>"]`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
+use gpui_kit::{App, Global};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -50,16 +51,28 @@ pub enum SettingKind {
     max: f64,
     step: f64,
   },
-  /// A dropdown of fixed choices; the value is the chosen `value`.
+  /// A dropdown of choices; the value is the chosen `value`.
   Select {
     default: String,
+    #[serde(default)]
     options: Vec<SelectOption>,
+    /// The plugin replaces `options` at runtime with `setOptions` from
+    /// `corona/settings`, and any string is a value.
+    #[serde(default)]
+    dynamic: bool,
   },
   /// A list of strings, rows added and removed one by one.
   List { default: Vec<String> },
+  /// A masked input that stores into the keyring, never the config. The
+  /// plugin reads it with `get` from `corona/secrets` under the same key,
+  /// which needs `corona = ["secrets"]`.
+  Secret {
+    #[serde(default)]
+    placeholder: Option<String>,
+  },
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct SelectOption {
   pub value: String,
@@ -76,6 +89,7 @@ impl Setting {
       SettingKind::List { default } => {
         Value::Array(default.iter().cloned().map(Value::String).collect())
       }
+      SettingKind::Secret { .. } => Value::Null,
     }
   }
 
@@ -90,13 +104,20 @@ impl Setting {
       SettingKind::Slider { min, max, .. } => value
         .as_f64()
         .is_some_and(|v| in_range(v, Some(*min), Some(*max))),
+      SettingKind::Select { dynamic: true, .. } => value.is_string(),
       SettingKind::Select { options, .. } => value
         .as_str()
         .is_some_and(|v| options.iter().any(|o| o.value == v)),
       SettingKind::List { .. } => value
         .as_array()
         .is_some_and(|items| items.iter().all(Value::is_string)),
+      // in the keyring, never in the config
+      SettingKind::Secret { .. } => false,
     }
+  }
+
+  pub fn is_secret(&self) -> bool {
+    matches!(self.kind, SettingKind::Secret { .. })
   }
 
   fn validate(&self) -> Result<()> {
@@ -127,7 +148,7 @@ impl Setting {
         bail!("setting `{key}`: option `{}` is listed twice", option.value);
       }
     }
-    if !self.accepts(&self.default_value()) {
+    if !self.is_secret() && !self.accepts(&self.default_value()) {
       bail!("setting `{key}`: the default is not one of its values");
     }
     Ok(())
@@ -147,7 +168,8 @@ pub fn validate(settings: &[Setting]) -> Result<()> {
 }
 
 /// The value of every declared setting: the configured one if it fits, else the
-/// default. Configured keys the manifest does not declare are dropped.
+/// default. Configured keys the manifest does not declare are dropped, and
+/// secrets are not here at all.
 pub fn resolve(
   id: &str,
   settings: &[Setting],
@@ -155,6 +177,7 @@ pub fn resolve(
 ) -> Map<String, Value> {
   settings
     .iter()
+    .filter(|setting| !setting.is_secret())
     .map(|setting| {
       let value = match configured.and_then(|c| c.get(&setting.key)) {
         Some(value) if setting.accepts(value) => value.clone(),
@@ -170,6 +193,26 @@ pub fn resolve(
       (setting.key.clone(), value)
     })
     .collect()
+}
+
+/// The options plugins set for their dynamic selects, by plugin id and key.
+/// Only in memory: a plugin sets them again when it starts.
+#[derive(Default)]
+pub struct DynamicOptions(pub HashMap<String, HashMap<String, Vec<SelectOption>>>);
+
+impl Global for DynamicOptions {}
+
+impl DynamicOptions {
+  /// What the dropdown of `setting` offers: the plugin's options once it set
+  /// some, else the manifest's
+  pub fn of<'a>(id: &str, setting: &'a Setting, cx: &'a App) -> &'a [SelectOption] {
+    let SettingKind::Select { options, .. } = &setting.kind else {
+      return &[];
+    };
+    cx.try_global::<Self>()
+      .and_then(|all| all.0.get(id)?.get(&setting.key))
+      .unwrap_or(options)
+  }
 }
 
 fn in_range(value: f64, min: Option<f64>, max: Option<f64>) -> bool {
@@ -342,6 +385,51 @@ default = ["a"]
     let defaults = resolve("p", &settings, None);
     assert_eq!(defaults["on"], json!(true));
     assert_eq!(defaults.len(), settings.len());
+  }
+
+  #[test]
+  fn secrets_have_no_value() {
+    let settings = parse(
+      r#"
+[[settings]]
+key = "token"
+label = "Token"
+type = "secret"
+placeholder = "paste it"
+"#,
+    )
+    .unwrap();
+    assert!(matches!(
+      &settings[0].kind,
+      SettingKind::Secret { placeholder: Some(p) } if p == "paste it"
+    ));
+    assert!(!settings[0].accepts(&json!("x")));
+    // not resolved, not even from the config
+    let configured = json!({ "token": "x" });
+    assert!(resolve("p", &settings, configured.as_object()).is_empty());
+  }
+
+  #[test]
+  fn dynamic_selects_take_any_string() {
+    let settings = parse(
+      r#"
+[[settings]]
+key = "device"
+label = "Device"
+type = "select"
+default = ""
+dynamic = true
+"#,
+    )
+    .unwrap();
+    assert!(settings[0].accepts(&json!("phone")));
+    assert!(!settings[0].accepts(&json!(1)));
+    let resolved = resolve("p", &settings, json!({ "device": "phone" }).as_object());
+    assert_eq!(resolved["device"], json!("phone"));
+    // without `dynamic` the default must be an option
+    assert!(
+      parse("[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"select\"\ndefault = \"\"").is_err()
+    );
   }
 
   #[test]

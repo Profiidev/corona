@@ -3,7 +3,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, ensure};
 use corona_config::plugins::is_flat_name;
 use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
 use schemars::JsonSchema;
@@ -99,7 +99,22 @@ impl ManifestFile {
   pub fn read(dir: &Path) -> Result<Self> {
     let path = dir.join(PLUGIN_MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path)?;
-    toml::from_str(&text).with_context(|| path.display().to_string())
+    let file: Self = toml::from_str(&text).with_context(|| path.display().to_string())?;
+    file.check().with_context(|| path.display().to_string())?;
+    Ok(file)
+  }
+
+  /// What one table cannot tell alone: a secret setting is read through
+  /// `corona/secrets`, so the plugin must be granted it
+  fn check(&self) -> Result<()> {
+    if let Some(secret) = self.settings.iter().find(|s| s.is_secret()) {
+      ensure!(
+        self.capabilities.corona.contains(&CoronaModule::Secrets),
+        "setting `{}` is a secret, which needs `corona = [\"secrets\"]`",
+        secret.key
+      );
+    }
+    Ok(())
   }
 }
 
@@ -540,6 +555,20 @@ default = false
     std::fs::write(tmp.path().join("plugin.toml"), "id = 1").unwrap();
     let e = ManifestFile::read(tmp.path()).unwrap_err();
     assert!(format!("{e:#}").contains("plugin.toml"), "{e:#}");
+  }
+
+  #[test]
+  fn secret_settings_need_the_secrets_module() {
+    let secret = "[[settings]]\nkey = \"token\"\nlabel = \"Token\"\ntype = \"secret\"";
+    let error = with(secret).unwrap().check().unwrap_err();
+    assert!(error.to_string().contains("token"), "{error}");
+    let granted = with(&format!("{secret}\n[capabilities]\ncorona = [\"secrets\"]"));
+    assert!(granted.unwrap().check().is_ok());
+    // and `read` checks it
+    let tmp = tempfile::tempdir().unwrap();
+    let toml = format!("id = \"a\"\nname = \"A\"\n{secret}");
+    std::fs::write(tmp.path().join("plugin.toml"), toml).unwrap();
+    assert!(ManifestFile::read(tmp.path()).is_err());
   }
 
   #[test]

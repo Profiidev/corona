@@ -878,6 +878,9 @@ app:
       list_add:
         en: Add
         de: Hinzufügen
+      secret_stored:
+        en: Stored in the keyring
+        de: Im Schlüsselbund gespeichert
     system:
       title:
         en: System

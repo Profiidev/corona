@@ -8,17 +8,19 @@ use corona_script::{
   PluginManager, PluginStatus,
   plugin::{
     manifest::PluginManifest,
-    settings::{Setting, SettingKind, number as json_number},
+    settings::{DynamicOptions, Setting, SettingKind, number as json_number},
   },
+  secrets,
 };
 use gpui_kit::{
-  App, Div, Entity, Focusable, IntoElement, ParentElement, SharedString, Styled, Window,
+  App, AppContext, Context, Div, Entity, Focusable, IntoElement, ParentElement, SharedString,
+  Styled, Subscription, Window,
   assets::IconName,
   base::Disableable,
   component::{
     ActiveTheme, Icon, Sizable,
     button::{Button, ButtonVariants},
-    input::{Input, InputState},
+    input::{Input, InputEvent, InputState},
     setting::{SettingField, SettingGroup, SettingItem, SettingPage},
     spinner::Spinner,
     switch::Switch,
@@ -44,7 +46,7 @@ pub(super) fn page(cx: &App) -> SettingPage {
       .filter(|m| !m.settings.is_empty())
       .collect();
     running.sort_by(|a, b| a.name.cmp(&b.name));
-    groups.extend(running.iter().map(settings_group));
+    groups.extend(running.iter().map(|m| settings_group(m, cx)));
   }
   SettingPage::new(t!("app.settings.plugins.title"))
     .icon(Icon::new(IconName::LayoutDashboard))
@@ -436,11 +438,11 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
     })
 }
 
-fn settings_group(manifest: &PluginManifest) -> SettingGroup {
+fn settings_group(manifest: &PluginManifest, cx: &App) -> SettingGroup {
   let items: Vec<SettingItem> = manifest
     .settings
     .iter()
-    .map(|setting| setting_item(&manifest.id, setting))
+    .map(|setting| setting_item(&manifest.id, setting, cx))
     .collect();
   SettingGroup::new()
     .title(manifest.name.clone())
@@ -471,7 +473,7 @@ fn put(id: &str, key: &str) -> impl Fn(&mut Config, Value) + Clone + 'static {
   }
 }
 
-fn setting_item(id: &str, setting: &Setting) -> SettingItem {
+fn setting_item(id: &str, setting: &Setting, cx: &App) -> SettingItem {
   let get = value(id, setting);
   let set = put(id, &setting.key);
   let key = format!("plugin.{id}.{}", setting.key);
@@ -514,8 +516,8 @@ fn setting_item(id: &str, setting: &Setting) -> SettingItem {
         move |c, v| set(c, json_number(f64::from(v))),
       ),
     ),
-    SettingKind::Select { options, .. } => {
-      let options: Vec<(SharedString, SharedString)> = options
+    SettingKind::Select { .. } => {
+      let options: Vec<(SharedString, SharedString)> = DynamicOptions::of(id, setting, cx)
         .iter()
         .map(|o| (o.value.clone().into(), o.label.clone().into()))
         .collect();
@@ -546,6 +548,15 @@ fn setting_item(id: &str, setting: &Setting) -> SettingItem {
       SettingItem::new(
         label,
         SettingField::render(move |_, window, cx| list_field(&id, &setting, window, cx)),
+      )
+    }
+    SettingKind::Secret { placeholder } => {
+      let (id, key, placeholder) = (id.to_string(), setting.key.clone(), placeholder.clone());
+      SettingItem::new(
+        label,
+        SettingField::render(move |_, window, cx| {
+          secret_field(&id, &key, placeholder.clone(), window, cx)
+        }),
       )
     }
   };
@@ -643,6 +654,108 @@ fn list_field(id: &str, setting: &Setting, window: &mut Window, cx: &mut App) ->
     )
 }
 
+/// A masked input for a secret setting and how storing it went. What is
+/// stored is never read back.
+struct SecretInput {
+  input: Entity<InputState>,
+  /// `Ok` once stored from here, the error when that failed
+  status: Option<Result<(), String>>,
+  _enter: Subscription,
+}
+
+impl SecretInput {
+  /// Stores (`Some`) or removes (`None`) the secret, showing how it went
+  fn write(&mut self, id: String, key: String, value: Option<String>, cx: &mut Context<Self>) {
+    cx.spawn(async move |this, cx| {
+      let result = match value {
+        Some(value) => secrets::store(&id, &key, value).await.map(|()| true),
+        None => secrets::remove(&id, &key).await.map(|()| false),
+      };
+      this
+        .update(cx, |this, cx| {
+          this.status = match result {
+            Ok(true) => Some(Ok(())),
+            Ok(false) => None,
+            Err(e) => Some(Err(format!("{e:#}"))),
+          };
+          cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+  }
+}
+
+fn secret_field(
+  id: &str,
+  key: &str,
+  placeholder: Option<String>,
+  window: &mut Window,
+  cx: &mut App,
+) -> Div {
+  let prefix = format!("plugin.{id}.{key}");
+  let (store_id, store_key) = (id.to_string(), key.to_string());
+  let field = window.use_keyed_state(prefix.clone(), cx, |window, cx| {
+    let input = cx.new(|cx| {
+      InputState::new(window, cx)
+        .masked(true)
+        .placeholder(placeholder.unwrap_or_default())
+    });
+    let _enter = cx.subscribe_in(
+      &input,
+      window,
+      move |field: &mut SecretInput, input, event: &InputEvent, window, cx| {
+        if !matches!(event, InputEvent::PressEnter { .. }) {
+          return;
+        }
+        let value = input.read(cx).value().to_string();
+        if value.is_empty() {
+          return;
+        }
+        input.update(cx, |input, cx| input.set_value("", window, cx));
+        field.write(store_id.clone(), store_key.clone(), Some(value), cx);
+      },
+    );
+    SecretInput {
+      input,
+      status: None,
+      _enter,
+    }
+  });
+  let (input, status) = {
+    let field = field.read(cx);
+    (field.input.clone(), field.status.clone())
+  };
+  let (clear_id, clear_key) = (id.to_string(), key.to_string());
+  div()
+    .flex()
+    .flex_col()
+    .gap_1()
+    .w(px(320.))
+    .child(
+      div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(div().flex_1().child(Input::new(&input)))
+        .child(
+          Button::new(format!("{prefix}.clear"))
+            .icon(IconName::Delete)
+            .cursor_pointer()
+            .ghost()
+            .on_click(move |_, _, cx| {
+              field.update(cx, |field, cx| {
+                field.write(clear_id.clone(), clear_key.clone(), None, cx)
+              })
+            }),
+        ),
+    )
+    .when(matches!(status, Some(Ok(()))), |d| {
+      d.child(muted(t!("app.settings.plugins.secret_stored"), cx))
+    })
+    .children(error_text(status.and_then(Result::err).as_deref(), cx))
+}
+
 #[cfg(test)]
 mod tests {
   use corona_script::plugin::settings::SelectOption;
@@ -662,6 +775,7 @@ mod tests {
   #[test]
   fn values_fall_back_to_the_default() {
     let setting = setting(SettingKind::Select {
+      dynamic: false,
       default: "a".into(),
       options: vec![
         SelectOption {

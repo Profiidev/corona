@@ -27,6 +27,25 @@ async fn keyring() -> Result<Keyring> {
   Ok(keyring)
 }
 
+/// Stores `value` as secret `key` of plugin `id`, replacing what was there.
+/// The settings app stores secret settings with it.
+pub async fn store(id: &str, key: &str, value: String) -> Result<()> {
+  let attributes = attributes(id, key)?;
+  let label = format!("Corona plugin {id}: {key}");
+  keyring()
+    .await?
+    .create_item(&label, &attributes, value, true)
+    .await?;
+  Ok(())
+}
+
+/// Deletes secret `key` of plugin `id`.
+pub async fn remove(id: &str, key: &str) -> Result<()> {
+  let attributes = attributes(id, key)?;
+  keyring().await?.delete(&attributes).await?;
+  Ok(())
+}
+
 pub fn module(plugin: PluginRef) -> HostModule {
   let id: Arc<str> = plugin.id.into();
 
@@ -54,18 +73,9 @@ pub fn module(plugin: PluginRef) -> HostModule {
     "set",
     /// Stores `value` under `key`, replacing what was there.
     move |key: String, value: String| -> Result<Boxed<Result<()>>> {
-      let attributes = attributes(&plugin, &key)?;
-      let label = format!("Corona plugin {plugin}: {key}");
-      Ok(
-        async move {
-          let keyring = keyring().await?;
-          keyring
-            .create_item(&label, &attributes, value, true)
-            .await?;
-          Ok(())
-        }
-        .boxed(),
-      )
+      attributes(&plugin, &key)?;
+      let plugin = plugin.clone();
+      Ok(async move { store(&plugin, &key, value).await }.boxed())
     }
   ));
   let plugin = id;
@@ -75,14 +85,9 @@ pub fn module(plugin: PluginRef) -> HostModule {
       "remove",
       /// Deletes the secret under `key`.
       move |key: String| -> Result<Boxed<Result<()>>> {
-        let attributes = attributes(&plugin, &key)?;
-        Ok(
-          async move {
-            keyring().await?.delete(&attributes).await?;
-            Ok(())
-          }
-          .boxed(),
-        )
+        attributes(&plugin, &key)?;
+        let plugin = plugin.clone();
+        Ok(async move { remove(&plugin, &key).await }.boxed())
       }
     ))
     .into()
