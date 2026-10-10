@@ -1,0 +1,599 @@
+Plugin I/O, part four: self-signed TLS.
+
+fetch and WebSocket.connect take tls: { pin: "sha256/<hex>" } (the SHA-256
+of the server's DER certificate, colons allowed) or { insecure: true }. Both
+skip chain and hostname checks; the handshake signature is still verified.
+One tls module builds every rustls config with the ring provider explicitly,
+and wss now trusts the system roots, as fetch already did. With tls set,
+fetch refuses cross-origin redirects; tls with unix is an error.
+
+diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
+index 9a61454..2c5ec45 100644
+--- a/crates/shell/Cargo.toml
++++ b/crates/shell/Cargo.toml
+@@ -32,6 +32,8 @@ quickjs = [
+     "dep:hyper-util",
+     "dep:http-body-util",
+     "dep:tokio",
++    "dep:rustls",
++    "dep:rustls-native-certs",
+ ]
+ 
+ [dependencies]
+@@ -64,6 +66,9 @@ hyper = { version = "1.11", features = ["client", "http1"], optional = true }
+ hyper-util = { version = "0.1.21", features = ["tokio"], optional = true }
+ http-body-util = { version = "0.1.5", optional = true }
+ tokio = { version = "1.53", features = ["net", "rt", "time"], optional = true }
++# fetch/WebSocket `tls` option and one ring-backed config for both. Already in the tree.
++rustls = { version = "0.23", default-features = false, features = ["std", "ring"], optional = true }
++rustls-native-certs = { version = "0.8", optional = true }
+ 
+ anyhow = "1"
+ instant = { version = "0.1", features = ["wasm-bindgen"] }
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index 37d8663..a84222f 100644
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -12,7 +12,10 @@ use rquickjs::{
+     function::{Func, Opt},
+ };
+ 
+-use super::super::{host, scheduler};
++use super::{
++    super::{host, scheduler},
++    tls,
++};
+ 
+ const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
+ const MAX_REDIRECTS: usize = 10;
+@@ -30,6 +33,12 @@ fn fetch<'js>(ctx: Ctx<'js>, url: String, options: Opt<FetchOptions>) -> Result<
+     let mut options = options.0.unwrap_or_default();
+     let capabilities = host::capabilities();
+     if let Some(path) = options.unix.take() {
++        if options.tls.is_some() {
++            return Err(Exception::throw_type(
++                &ctx,
++                "fetch(url, options) takes unix or tls, not both",
++            ));
++        }
+         return fetch_unix(ctx, path, initial, options);
+     }
+     authorize_request(&capabilities, &options.method, &initial)
+@@ -226,6 +235,8 @@ struct FetchOptions {
+     stream: bool,
+     /// A granted unix socket to send the request over instead of TCP.
+     unix: Option<std::path::PathBuf>,
++    /// Trust for a server the system roots do not vouch for.
++    tls: Option<tls::Trust>,
+ }
+ 
+ impl Default for FetchOptions {
+@@ -237,6 +248,7 @@ impl Default for FetchOptions {
+             timeout: TIMEOUT,
+             stream: false,
+             unix: None,
++            tls: None,
+         }
+     }
+ }
+@@ -249,19 +261,19 @@ impl<'js> FromJs<'js> for FetchOptions {
+         let Some(object) = value.into_object() else {
+             return Err(Exception::throw_type(
+                 ctx,
+-                "fetch(url, options) expects an object with method, headers, body, timeout, stream and/or unix",
++                "fetch(url, options) expects an object with method, headers, body, timeout, stream, unix and/or tls",
+             ));
+         };
+         for key in object.keys::<String>() {
+             let key = key?;
+             if !matches!(
+                 key.as_str(),
+-                "method" | "headers" | "body" | "timeout" | "stream" | "unix"
++                "method" | "headers" | "body" | "timeout" | "stream" | "unix" | "tls"
+             ) {
+                 return Err(Exception::throw_type(
+                     ctx,
+                     &format!(
+-                        "unknown option `{key}` for fetch(url, options); expected method, headers, body, timeout, stream or unix"
++                        "unknown option `{key}` for fetch(url, options); expected method, headers, body, timeout, stream, unix or tls"
+                     ),
+                 ));
+             }
+@@ -291,6 +303,7 @@ impl<'js> FromJs<'js> for FetchOptions {
+         let unix = object
+             .get::<_, Option<String>>("unix")?
+             .map(std::path::PathBuf::from);
++        let tls = tls::parse(ctx, object.get("tls")?, "fetch(url, options)")?;
+         Ok(Self {
+             method,
+             headers,
+@@ -298,6 +311,7 @@ impl<'js> FromJs<'js> for FetchOptions {
+             timeout,
+             stream,
+             unix,
++            tls,
+         })
+     }
+ }
+@@ -474,6 +488,11 @@ fn send(
+     if injected_client.is_some() {
+         builder = builder.no_proxy();
+     }
++    if let Some(trust) = options.tls {
++        let mut config = tls::config(Some(trust))?;
++        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
++        builder = builder.use_preconfigured_tls(config);
++    }
+     let client = builder
+         .build()
+         .map_err(|error| format!("creating HTTP client failed: {error}"))?;
+@@ -499,7 +518,14 @@ fn send(
+                 .join(location)
+                 .map_err(|error| format!("redirect from {url} is invalid: {error}"))?;
+             rewrite_redirect_request(response.status(), &mut method, &mut headers, &mut body);
+-            authorize_redirect(&capabilities, &method, &url, &next, &headers)?;
++            authorize_redirect(
++                &capabilities,
++                &method,
++                &url,
++                &next,
++                &headers,
++                options.tls.is_some(),
++            )?;
+             url = next;
+             continue;
+         }
+@@ -556,9 +582,15 @@ fn authorize_redirect(
+     current: &reqwest::Url,
+     next: &reqwest::Url,
+     headers: &reqwest::header::HeaderMap,
++    tls: bool,
+ ) -> std::result::Result<(), String> {
+     authorize_request(capabilities, method, next)
+         .map_err(|error| format!("redirect target refused: {error}"))?;
++    if tls && !same_origin(current, next) {
++        return Err(format!(
++            "cross-origin redirect from {current} to {next} refused because options.tls trusts only the original origin"
++        ));
++    }
+     if current.scheme() == "https" && next.scheme() != "https" {
+         return Err(format!(
+             "redirect from {current} to {next} refused because it is an HTTPS downgrade"
+@@ -689,6 +721,7 @@ mod tests {
+             &current,
+             &next,
+             &headers,
++            false,
+         )
+         .expect_err("authorization must not cross origins");
+         assert!(error.contains("cross-origin redirect"), "{error}");
+@@ -707,6 +740,7 @@ mod tests {
+             &current,
+             &next,
+             &reqwest::header::HeaderMap::new(),
++            false,
+         )
+         .expect_err("an HTTPS request must never be redirected onto plaintext HTTP");
+         assert!(error.contains("HTTPS downgrade"), "{error}");
+@@ -727,6 +761,7 @@ mod tests {
+             &current,
+             &next,
+             &reqwest::header::HeaderMap::new(),
++            false,
+         )
+         .expect_err("a credential-bearing POST body must stay on its origin");
+         assert!(error.contains("POST"), "{error}");
+@@ -751,6 +786,7 @@ mod tests {
+             &current,
+             &next,
+             &headers,
++            false,
+         )
+         .expect_err("caller-supplied headers belong to the original origin");
+         assert!(error.contains("request headers"), "{error}");
+@@ -818,11 +854,29 @@ mod tests {
+             &current,
+             &next,
+             &reqwest::header::HeaderMap::new(),
++            false,
+         )
+         .expect_err("redirect path needs its own grant");
+         assert!(error.contains("HTTP request"), "{error}");
+     }
+ 
++    #[test]
++    fn a_tls_option_never_follows_a_cross_origin_redirect() {
++        let capabilities = crate::Capabilities::new()
++            .network_hosts(["ha.local".to_owned(), "other.local".to_owned()]);
++        let current = reqwest::Url::parse("https://ha.local/api").expect("URL");
++        let same = reqwest::Url::parse("https://ha.local/next").expect("URL");
++        let other = reqwest::Url::parse("https://other.local/api").expect("URL");
++        let none = reqwest::header::HeaderMap::new();
++        let get = reqwest::Method::GET;
++
++        assert!(authorize_redirect(&capabilities, &get, &current, &same, &none, true).is_ok());
++        assert!(authorize_redirect(&capabilities, &get, &current, &other, &none, false).is_ok());
++        let error = authorize_redirect(&capabilities, &get, &current, &other, &none, true)
++            .expect_err("a pin belongs to the original origin");
++        assert!(error.contains("options.tls"), "{error}");
++    }
++
+     #[test]
+     fn origin_comparison_includes_scheme_host_and_effective_port() {
+         let origin = reqwest::Url::parse("https://api.example.test:443/v1/quote").expect("URL");
+diff --git a/crates/shell/src/engine/quickjs/standard/mod.rs b/crates/shell/src/engine/quickjs/standard/mod.rs
+index 0c94c58..75db01d 100644
+--- a/crates/shell/src/engine/quickjs/standard/mod.rs
++++ b/crates/shell/src/engine/quickjs/standard/mod.rs
+@@ -18,6 +18,7 @@ mod fs;
+ mod net;
+ mod os;
+ mod process;
++mod tls;
+ mod websocket;
+ 
+ #[cfg(test)]
+diff --git a/crates/shell/src/engine/quickjs/standard/tls.rs b/crates/shell/src/engine/quickjs/standard/tls.rs
+new file mode 100644
+index 0000000..d5f6967
+--- /dev/null
++++ b/crates/shell/src/engine/quickjs/standard/tls.rs
+@@ -0,0 +1,209 @@
++//! The TLS client config behind `fetch` and `WebSocket`.
++//!
++//! Always the ring provider, chosen explicitly: with both ring and aws-lc-rs
++//! compiled into the tree rustls has no process default, and a config built
++//! from it panics. Without a `tls` option a server is checked against the
++//! system's roots, as reqwest does; with one, the plugin has decided to trust
++//! one certificate, or any, for a host its capabilities already grant.
++
++use std::sync::{Arc, OnceLock};
++
++use rquickjs::{Ctx, Exception, Result, Value};
++use rustls::{
++    ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
++    client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
++    crypto::{WebPkiSupportedAlgorithms, verify_tls12_signature, verify_tls13_signature},
++    pki_types::{CertificateDer, ServerName, UnixTime},
++};
++use sha2::Digest as _;
++
++/// The `tls` option: which certificate a server may present instead of one
++/// the system trusts.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub(super) enum Trust {
++    /// Only the certificate whose DER encoding has this SHA-256.
++    Pin([u8; 32]),
++    /// Any certificate. The connection is encrypted but not authenticated.
++    Insecure,
++}
++
++/// Parses `{ pin: "sha256/<hex>" }` or `{ insecure: true }`; `call` names the
++/// option in errors.
++pub(super) fn parse<'js>(ctx: &Ctx<'js>, value: Value<'js>, call: &str) -> Result<Option<Trust>> {
++    if value.is_null() || value.is_undefined() {
++        return Ok(None);
++    }
++    let Some(object) = value.into_object() else {
++        return Err(Exception::throw_type(
++            ctx,
++            &format!("{call}.tls expects an object with pin or insecure"),
++        ));
++    };
++    for key in object.keys::<String>() {
++        let key = key?;
++        if !matches!(key.as_str(), "pin" | "insecure") {
++            return Err(Exception::throw_type(
++                ctx,
++                &format!("unknown option `{key}` for {call}.tls; expected pin or insecure"),
++            ));
++        }
++    }
++    let pin = object.get::<_, Option<String>>("pin")?;
++    let insecure = object.get::<_, Option<bool>>("insecure")?.unwrap_or(false);
++    match (pin, insecure) {
++        (Some(_), true) => Err(Exception::throw_type(
++            ctx,
++            &format!("{call}.tls takes pin or insecure, not both"),
++        )),
++        (Some(pin), false) => parse_pin(&pin)
++            .map(|pin| Some(Trust::Pin(pin)))
++            .map_err(|error| Exception::throw_type(ctx, &format!("{call}.tls.pin {error}"))),
++        (None, true) => Ok(Some(Trust::Insecure)),
++        (None, false) => Ok(None),
++    }
++}
++
++/// `sha256/` and 64 hex digits, colons allowed, as `openssl x509 -fingerprint
++/// -sha256` prints them.
++fn parse_pin(pin: &str) -> std::result::Result<[u8; 32], String> {
++    let invalid = || format!("`{pin}` must be sha256/ and 64 hex digits");
++    let hex = pin
++        .strip_prefix("sha256/")
++        .ok_or_else(invalid)?
++        .replace(':', "");
++    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
++        return Err(invalid());
++    }
++    let mut digest = [0; 32];
++    for (index, byte) in digest.iter_mut().enumerate() {
++        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).map_err(|_| invalid())?;
++    }
++    Ok(digest)
++}
++
++pub(super) fn config(trust: Option<Trust>) -> std::result::Result<ClientConfig, String> {
++    let provider = Arc::new(rustls::crypto::ring::default_provider());
++    let algorithms = provider.signature_verification_algorithms;
++    let builder = ClientConfig::builder_with_provider(provider)
++        .with_safe_default_protocol_versions()
++        .map_err(|error| format!("building the TLS config failed: {error}"))?;
++    let builder = match trust {
++        None => builder.with_root_certificates(native_roots()),
++        Some(trust) => builder
++            .dangerous()
++            .with_custom_certificate_verifier(Arc::new(Verifier { trust, algorithms })),
++    };
++    Ok(builder.with_no_client_auth())
++}
++
++/// Read once: the system bundle is a few hundred certificates to parse.
++// ponytail: a root added to the system while running is seen after a restart.
++fn native_roots() -> Arc<RootCertStore> {
++    static ROOTS: OnceLock<Arc<RootCertStore>> = OnceLock::new();
++    ROOTS
++        .get_or_init(|| {
++            let mut roots = RootCertStore::empty();
++            roots.add_parsable_certificates(rustls_native_certs::load_native_certs().certs);
++            Arc::new(roots)
++        })
++        .clone()
++}
++
++/// Skips chain and name validation; the handshake signature is still checked,
++/// so the server must hold the key of the certificate it presented.
++#[derive(Debug)]
++struct Verifier {
++    trust: Trust,
++    algorithms: WebPkiSupportedAlgorithms,
++}
++
++impl ServerCertVerifier for Verifier {
++    fn verify_server_cert(
++        &self,
++        end_entity: &CertificateDer<'_>,
++        _: &[CertificateDer<'_>],
++        _: &ServerName<'_>,
++        _: &[u8],
++        _: UnixTime,
++    ) -> std::result::Result<ServerCertVerified, rustls::Error> {
++        match self.trust {
++            Trust::Pin(pin) if sha2::Sha256::digest(end_entity.as_ref()).as_slice() != pin => Err(
++                rustls::Error::General("certificate does not match the pinned sha256".to_owned()),
++            ),
++            _ => Ok(ServerCertVerified::assertion()),
++        }
++    }
++
++    fn verify_tls12_signature(
++        &self,
++        message: &[u8],
++        cert: &CertificateDer<'_>,
++        signature: &DigitallySignedStruct,
++    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
++        verify_tls12_signature(message, cert, signature, &self.algorithms)
++    }
++
++    fn verify_tls13_signature(
++        &self,
++        message: &[u8],
++        cert: &CertificateDer<'_>,
++        signature: &DigitallySignedStruct,
++    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
++        verify_tls13_signature(message, cert, signature, &self.algorithms)
++    }
++
++    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
++        self.algorithms.supported_schemes()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn verify(trust: Trust, cert: &[u8]) -> bool {
++        let algorithms = rustls::crypto::ring::default_provider().signature_verification_algorithms;
++        Verifier { trust, algorithms }
++            .verify_server_cert(
++                &CertificateDer::from(cert),
++                &[],
++                &ServerName::try_from("ha.local").expect("name"),
++                &[],
++                UnixTime::now(),
++            )
++            .is_ok()
++    }
++
++    #[test]
++    fn a_pin_accepts_only_the_certificate_it_names() {
++        let cert = b"not really DER, only hashed";
++        let pin = sha2::Sha256::digest(cert).into();
++        assert!(verify(Trust::Pin(pin), cert));
++        assert!(!verify(Trust::Pin(pin), b"another certificate"));
++        assert!(verify(Trust::Insecure, b"another certificate"));
++    }
++
++    #[test]
++    fn a_pin_is_sha256_and_64_hex_digits() {
++        let hex = "AB".repeat(32);
++        assert_eq!(parse_pin(&format!("sha256/{hex}")), Ok([0xab; 32]));
++        let colons = vec!["ab"; 32].join(":");
++        assert_eq!(parse_pin(&format!("sha256/{colons}")), Ok([0xab; 32]));
++        for invalid in [
++            hex.clone(),
++            format!("sha1/{hex}"),
++            format!("sha256/{}", &hex[2..]),
++            format!("sha256/{}zz", &hex[2..]),
++            format!("sha256/{}é", &hex[2..]),
++        ] {
++            assert!(parse_pin(&invalid).is_err(), "{invalid}");
++        }
++    }
++
++    #[test]
++    fn every_trust_builds_a_config() {
++        for trust in [None, Some(Trust::Insecure), Some(Trust::Pin([0; 32]))] {
++            assert!(config(trust).is_ok());
++        }
++    }
++}
+diff --git a/crates/shell/src/engine/quickjs/standard/websocket.rs b/crates/shell/src/engine/quickjs/standard/websocket.rs
+index 6608adb..e5d175e 100644
+--- a/crates/shell/src/engine/quickjs/standard/websocket.rs
++++ b/crates/shell/src/engine/quickjs/standard/websocket.rs
+@@ -25,7 +25,7 @@ use tungstenite::{
+ 
+ use super::{
+     super::{host, scheduler},
+-    connect as network_connect,
++    connect as network_connect, tls,
+ };
+ 
+ const MESSAGE_LIMIT: usize = 8 * 1024 * 1024;
+@@ -56,6 +56,7 @@ impl ModuleDef for WebSocketModule {
+ #[derive(Default)]
+ struct ConnectOptions {
+     headers: HeaderMap,
++    tls: Option<tls::Trust>,
+ }
+ 
+ impl<'js> FromJs<'js> for ConnectOptions {
+@@ -66,22 +67,23 @@ impl<'js> FromJs<'js> for ConnectOptions {
+         let Some(object) = value.into_object() else {
+             return Err(Exception::throw_type(
+                 ctx,
+-                "WebSocket.connect(url, options) expects an object with headers",
++                "WebSocket.connect(url, options) expects an object with headers and/or tls",
+             ));
+         };
+         for key in object.keys::<String>() {
+             let key = key?;
+-            if key != "headers" {
++            if !matches!(key.as_str(), "headers" | "tls") {
+                 return Err(Exception::throw_type(
+                     ctx,
+                     &format!(
+-                        "unknown option `{key}` for WebSocket.connect(url, options); expected headers"
++                        "unknown option `{key}` for WebSocket.connect(url, options); expected headers or tls"
+                     ),
+                 ));
+             }
+         }
+         Ok(Self {
+             headers: parse_headers(ctx, object.get("headers")?)?,
++            tls: tls::parse(ctx, object.get("tls")?, "WebSocket.connect(url, options)")?,
+         })
+     }
+ }
+@@ -156,8 +158,16 @@ fn connect<'js>(ctx: Ctx<'js>, url: String, options: Opt<ConnectOptions>) -> Res
+     let port = parsed.port_or_known_default().ok_or_else(|| {
+         Exception::throw_type(&ctx, "WebSocket URL has no port and no known default")
+     })?;
+-    let headers = options.0.unwrap_or_default().headers;
++    let ConnectOptions { headers, tls } = options.0.unwrap_or_default();
++    let secure = parsed.scheme() == "wss";
+     scheduler::blocking(&ctx, "WebSocket.connect(url)", move || {
++        // Ours rather than tungstenite's default, which trusts webpki's
++        // bundled roots instead of the system's.
++        let connector = if secure {
++            Some(tungstenite::Connector::Rustls(Arc::new(tls::config(tls)?)))
++        } else {
++            None
++        };
+         let config = WebSocketConfig::default()
+             .max_message_size(Some(MESSAGE_LIMIT))
+             .max_frame_size(Some(MESSAGE_LIMIT));
+@@ -178,7 +188,7 @@ fn connect<'js>(ctx: Ctx<'js>, url: String, options: Opt<ConnectOptions>) -> Res
+             .set_write_timeout(Some(handshake_timeout))
+             .map_err(|error| format!("setting WebSocket handshake timeout failed: {error}"))?;
+         let (mut socket, _) =
+-            tungstenite::client_tls_with_config(request, stream, Some(config), None).map_err(
++            tungstenite::client_tls_with_config(request, stream, Some(config), connector).map_err(
+                 |error| match error {
+                     HandshakeError::Interrupted(_) => "WebSocket handshake timed out".to_owned(),
+                     HandshakeError::Failure(tungstenite::Error::Io(error))
+diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
+index 23e256f..e9c7478 100644
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -1431,6 +1431,10 @@ export default class Probe extends View {
+     let origin = "allowed";
+     try { fetch("http://docker/", { unix, headers: { Origin: "x" } }); }
+     catch (error) { origin = error.name; }
++    const refused = [{ unix, tls: { insecure: true } }, { tls: { pin: "sha1/00" } },
++      { tls: { pin: "sha256/" + "00".repeat(32), insecure: true } }, { tls: { verify: false } }]
++      .filter((options) => { try { fetch("https://docker/", options); } catch (error) { return error.name === "TypeError"; } })
++      .length;
+     cx.spawn(async (cx) => {
+       try {
+         const chunked = await (await fetch("http://docker/chunked?x=1", { unix })).text();
+@@ -1442,7 +1446,7 @@ export default class Probe extends View {
+           if (chunk === null) break;
+           chunks.push(String.fromCharCode(...chunk));
+         }
+-        this.state = `${origin}|${chunked}|${length.status}:${await length.text()}|${stream.status}:${chunks.join("")}`;
++        this.state = `${origin}|${refused}|${chunked}|${length.status}:${await length.text()}|${stream.status}:${chunks.join("")}`;
+       } catch (error) {
+         this.state = `rejected:${error.message}`;
+       }
+@@ -1499,7 +1503,7 @@ fn fetch_speaks_http_over_a_granted_unix_socket(cx: &mut TestAppContext) {
+     let heads = server.join().expect("unix server");
+     let _ = std::fs::remove_dir_all(&directory);
+     assert!(
+-        rendered.contains("TypeError|hello world|201:abc|200:onetwo"),
++        rendered.contains("TypeError|4|hello world|201:abc|200:onetwo"),
+         "{rendered}"
+     );
+     assert!(
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index e34893d..d466fc7 100644
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -3848,6 +3848,8 @@ declare module "websocket" {
+   export interface WebSocketConnectOptions {
+     /** Additional protocol headers. Credential and WebSocket control headers are refused. */
+     headers?: Readonly<Record<string, string>>;
++    /** Trust for a wss:// server the system roots do not vouch for. */
++    tls?: ShellTlsOptions;
+   }
+   export interface WebSocketType {
+     connect(url: string, options?: WebSocketConnectOptions): Promise<WebSocketSocket>;
+@@ -3855,6 +3857,15 @@ declare module "websocket" {
+   /** Capability-gated client sockets; not the browser global constructor. */
+   export const WebSocket: WebSocketType;
+ }
++/**
++ * One of: `pin`, the SHA-256 of the server's DER certificate as
++ * `sha256/<hex>` (colons allowed), or `insecure: true` to accept any
++ * certificate. Either skips chain and hostname checks.
++ */
++interface ShellTlsOptions {
++  pin?: string;
++  insecure?: boolean;
++}
+ interface ShellFetchResponse {
+   readonly status: number;
+   readonly ok: boolean;
+@@ -3898,6 +3909,11 @@ interface ShellFetchOptions {
+    * its path and query are sent. Redirects are not followed.
+    */
+   unix?: string;
++  /**
++   * Trust for an https:// server the system roots do not vouch for. Redirects
++   * stay on the same origin. Not with `unix`.
++   */
++  tls?: ShellTlsOptions;
+ }
+ declare function fetch(url: string, options: ShellFetchOptions & { stream: true }): Promise<ShellFetchStream>;
+ declare function fetch(url: string, options?: ShellFetchOptions): Promise<ShellFetchResponse>;
