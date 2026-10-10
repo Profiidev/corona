@@ -2,8 +2,16 @@ Standalone manifest: inline the gpui-kit workspace inheritance (manifest, clippy
 lints, rustfmt config) so the crate builds, lints and formats as it does in
 gpui-kit, as a path dependency and member of corona's workspace.
 
+diff --git a/crates/shell/.rustfmt.toml b/crates/shell/.rustfmt.toml
+new file mode 100644
+index 0000000..f3e454b
+--- /dev/null
++++ b/crates/shell/.rustfmt.toml
+@@ -0,0 +1,2 @@
++edition = "2024"
++style_edition = "2024"
 diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
-index 3ec815f..6a5244a 100644
+index 50fe62d..069f844 100644
 --- a/crates/shell/Cargo.toml
 +++ b/crates/shell/Cargo.toml
 @@ -5,7 +5,7 @@ version = "0.7.1"
@@ -29,7 +37,7 @@ index 3ec815f..6a5244a 100644
 +gpui-fps = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.1" }
  
  # Keep the bindings, runtime, and LLRT compatibility facade on the same release.
- rquickjs = { package = "quickjs-jit", version = "0.12.9", git = "https://github.com/longbridge/quickjs-jit", rev = "82d3808f3aa7d1c4ad2f360f5b3bd5979501d599", features = [
+ rquickjs = { package = "quickjs-jit", version = "0.12.11", git = "https://github.com/longbridge/quickjs-jit", rev = "96593cd7a54440ac060a391b8baea7e9a3cf1393", features = [
 @@ -53,32 +53,35 @@ async-channel = "2.5"
  fs2 = "0.4"
  sha2 = "0.10"
@@ -100,10 +108,3 @@ index 3ec815f..6a5244a 100644
 +todo = "deny"
 +type_complexity = "allow"
 +useless_conversion = "allow"
-diff --git a/crates/shell/.rustfmt.toml b/crates/shell/.rustfmt.toml
-new file mode 100644
---- /dev/null
-+++ b/crates/shell/.rustfmt.toml
-@@ -0,0 +1,2 @@
-+edition = "2024"
-+style_edition = "2024"
