@@ -1,7 +1,7 @@
 use std::{collections::HashMap, thread, time::Duration};
 
 use anyhow::{Context, Result};
-use gpui_kit::{App, Global};
+use gpui_kit::{App, AppContext, Global};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::{
   Connection, Dispatch, QueueHandle, delegate_noop,
@@ -13,6 +13,8 @@ use wayland_protocols::ext::idle_notify::v1::client::{
   ext_idle_notifier_v1::ExtIdleNotifierV1,
 };
 
+mod screensaver;
+
 /// How often the watcher looks for new timeouts while the compositor is quiet
 #[cfg(not(test))]
 const COMMAND_POLL: Duration = Duration::from_millis(250);
@@ -22,6 +24,9 @@ const COMMAND_POLL: Duration = Duration::from_millis(10);
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
   timeouts: flume::Sender<Vec<(String, Duration)>>,
+  wanted: Vec<(String, Duration)>,
+  /// an app holds an `org.freedesktop.ScreenSaver` inhibit
+  inhibited: bool,
 }
 
 impl Global for Idle {}
@@ -42,24 +47,56 @@ pub fn init(cx: &mut App, on_change: impl Fn(&str, bool, &mut App) + 'static) {
     }
   })
   .detach();
-  cx.set_global(Idle { timeouts });
+  let (inhibited, inhibited_rx) = flume::unbounded();
+  cx.background_spawn(async move {
+    let served = async { screensaver::serve(zbus::Connection::session().await?, inhibited).await };
+    if let Err(e) = served.await {
+      tracing::warn!("idle inhibits over D-Bus are ignored: {e:#}");
+    }
+  })
+  .detach();
+  cx.spawn(async move |cx| {
+    while let Ok(inhibited) = inhibited_rx.recv_async().await {
+      cx.update(|cx| {
+        let idle = cx.idle();
+        idle.inhibited = inhibited;
+        idle.send();
+      });
+    }
+  })
+  .detach();
+  cx.set_global(Idle {
+    timeouts,
+    wanted: Vec::new(),
+    inhibited: false,
+  });
 }
 
 impl Idle {
   /// Replaces what is watched; a zero duration is left out. Each one active
   /// before reports `false` first.
-  pub fn set_timeouts(&self, timeouts: Vec<(String, Duration)>) {
+  pub fn set_timeouts(&mut self, timeouts: Vec<(String, Duration)>) {
+    self.wanted = timeouts;
+    self.send();
+  }
+
+  /// Nothing is watched while inhibited, the timeouts start over after
+  fn send(&self) {
+    let timeouts = match self.inhibited {
+      true => Vec::new(),
+      false => self.wanted.clone(),
+    };
     let _ = self.timeouts.send(timeouts);
   }
 }
 
 pub trait IdleExt {
-  fn idle(&self) -> &Idle;
+  fn idle(&mut self) -> &mut Idle;
 }
 
 impl IdleExt for App {
-  fn idle(&self) -> &Idle {
-    self.global::<Idle>()
+  fn idle(&mut self) -> &mut Idle {
+    self.global_mut::<Idle>()
   }
 }
 

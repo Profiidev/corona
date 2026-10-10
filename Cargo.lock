@@ -1991,7 +1991,9 @@ name = "corona_idle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "corona_utils",
  "flume",
+ "futures-lite",
  "gpui-kit",
  "rustix",
  "tempfile",
@@ -1999,6 +2001,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-server",
+ "zbus",
 ]
 
 [[package]]

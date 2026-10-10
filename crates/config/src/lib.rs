@@ -490,7 +490,8 @@ impl Default for BrightnessConfig {
 #[serde(default)]
 pub struct IdleConfig {
   /// What happens after a while without input, by name. The compositor waits
-  /// while an app inhibits idling, a playing video for one.
+  /// while an app inhibits idling, a playing video or a game for one, over
+  /// Wayland or `org.freedesktop.ScreenSaver`.
   pub behavior: BTreeMap<String, IdleBehavior>,
 }
 
