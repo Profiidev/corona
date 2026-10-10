@@ -566,13 +566,34 @@ struct ProcessGrantFile {
   env: Vec<String>,
 }
 
-/// Loader variables would run the plugin's own code in any granted command.
+/// Prefixes of names a child reads code or a command lookup from
+const DENIED_ENV: &[&str] = &[
+  "LD_",
+  "DYLD_",
+  "GIT_",
+  "PYTHON",
+  "NODE_",
+  "PERL",
+  "RUBY",
+  "LUA_",
+  "BASH_ENV",
+  "ENV",
+  "SHELLOPTS",
+  "BASHOPTS",
+  "PS4",
+  "IFS",
+  "JAVA_TOOL_OPTIONS",
+  "_JAVA_OPTIONS",
+];
+
+/// Loader and interpreter variables would run the plugin's own code in any
+/// granted command, the plugin sets their values.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
-  if let Some(name) = names
-    .iter()
-    .find(|name| name.starts_with("LD_") || *name == "GCONV_PATH" || name.contains('='))
-  {
+  let denied = |name: &&String| {
+    name.ends_with("PATH") || name.contains('=') || DENIED_ENV.iter().any(|d| name.starts_with(d))
+  };
+  if let Some(name) = names.iter().find(denied) {
     return Err(D::Error::custom(format!(
       "`{name}` cannot be granted in process.env"
     )));
@@ -879,7 +900,20 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     assert!(!none.may_pass_env("HOME"));
     assert!(!none.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
     assert!(with_capabilities(r#"network = { unix = ["${home}/x.sock"] }"#).is_err());
-    for bad in ["LD_PRELOAD", "LD_LIBRARY_PATH", "GCONV_PATH", "A=B"] {
+    for bad in [
+      "LD_PRELOAD",
+      "LD_LIBRARY_PATH",
+      "GCONV_PATH",
+      "A=B",
+      "PATH",
+      "PYTHONPATH",
+      "PYTHONSTARTUP",
+      "NODE_OPTIONS",
+      "GIT_SSH_COMMAND",
+      "BASH_ENV",
+      "PERL5OPT",
+      "DYLD_INSERT_LIBRARIES",
+    ] {
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");
     }
