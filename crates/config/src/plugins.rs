@@ -1,4 +1,7 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+  collections::{BTreeMap, HashSet},
+  path::PathBuf,
+};
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
@@ -45,6 +48,19 @@ pub struct PluginsConfig {
   /// Later sources win over earlier ones when both offer a plugin
   #[serde(deserialize_with = "unique_sources")]
   pub source: Vec<SourceConfig>,
+  /// What the user agreed each plugin may do, by id. A plugin whose source
+  /// or capabilities differ from this does not run until approved again.
+  pub approved: BTreeMap<String, Approval>,
+}
+
+/// A plugin's grants as the user saw and approved them
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct Approval {
+  /// The source it ran from
+  pub source: String,
+  /// Its `[capabilities]` table as TOML text
+  pub capabilities: String,
 }
 
 impl Default for PluginsConfig {
@@ -53,6 +69,7 @@ impl Default for PluginsConfig {
       enabled: Vec::new(),
       auto_update: AutoUpdate::default(),
       source: vec![SourceConfig::official()],
+      approved: BTreeMap::new(),
     }
   }
 }

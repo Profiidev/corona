@@ -7,13 +7,14 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use corona_config::plugins::{LOCAL_SOURCE, PluginsConfig, SourceKind};
+use anyhow::Result;
+use corona_config::plugins::{Approval, LOCAL_SOURCE, PluginsConfig, SourceKind};
 use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
   plugin::{
-    manifest::{ManifestFile, PluginManifest},
+    manifest::{CapabilitiesFile, ManifestFile, PluginManifest},
     paths::{Paths, expand_user},
   },
 };
@@ -67,6 +68,8 @@ pub fn roots(paths: &Paths, config: &PluginsConfig) -> Vec<Root> {
 pub struct Found {
   pub origin: Origin,
   pub manifest: PluginManifest,
+  /// As written, what the user approves
+  pub capabilities: CapabilitiesFile,
 }
 
 /// `[plugin_settings]`, by plugin id
@@ -93,6 +96,7 @@ pub fn scan_root(paths: &Paths, root: &Root, settings: &PluginSettings) -> Vec<F
         let data = paths.data(&id);
         Some(Found {
           origin: root.origin.clone(),
+          capabilities: file.capabilities.clone(),
           manifest: PluginManifest::new(file, dir, &data, settings.get(&id)),
         })
       }
@@ -110,17 +114,37 @@ fn hidden(path: &Path) -> bool {
     .is_some_and(|name| name.to_string_lossy().starts_with('.'))
 }
 
-/// The plugin each enabled id runs as: the last root that has it wins
+/// The plugin each enabled id runs as: the last root that has it wins.
+/// Whether it may run is [`is_approved`].
 pub fn scan(
   paths: &Paths,
   config: &PluginsConfig,
   settings: &PluginSettings,
 ) -> HashMap<String, Found> {
+  winners(paths, config, settings, |id| config.is_enabled(id))
+}
+
+/// The plugin `id` would run as once enabled
+pub fn find(
+  paths: &Paths,
+  config: &PluginsConfig,
+  settings: &PluginSettings,
+  id: &str,
+) -> Option<Found> {
+  winners(paths, config, settings, |found| found == id).remove(id)
+}
+
+fn winners(
+  paths: &Paths,
+  config: &PluginsConfig,
+  settings: &PluginSettings,
+  wanted: impl Fn(&str) -> bool,
+) -> HashMap<String, Found> {
   let mut active: HashMap<String, Found> = HashMap::new();
   for root in roots(paths, config) {
     for found in scan_root(paths, &root, settings) {
       let id = found.manifest.id.clone();
-      if !config.is_enabled(&id) {
+      if !wanted(&id) {
         continue;
       }
       if let Some(old) = active.get(&id) {
@@ -143,6 +167,101 @@ pub fn scan(
     }
   }
   active
+}
+
+/// Whether the user approved `found` as it is: from its source, with its
+/// capabilities. An update, a rescan or another source winning that changes
+/// either needs a new approval.
+pub fn is_approved(config: &PluginsConfig, found: &Found) -> bool {
+  config.approved.get(&found.manifest.id).is_some_and(|a| {
+    a.source == found.origin.source
+      && toml::from_str::<CapabilitiesFile>(&a.capabilities)
+        .is_ok_and(|capabilities| capabilities == found.capabilities)
+  })
+}
+
+/// What approving `found` records: its source and `[capabilities]` as written
+pub fn approval(found: &Found) -> Result<Approval> {
+  let text = fs::read_to_string(found.manifest.dir.join(PLUGIN_MANIFEST_FILENAME))?;
+  let mut file: toml::Table = toml::from_str(&text)?;
+  let capabilities = match file.remove("capabilities") {
+    Some(toml::Value::Table(table)) => table,
+    _ => toml::Table::new(),
+  };
+  Ok(Approval {
+    source: found.origin.source.clone(),
+    capabilities: toml::to_string(&capabilities)?,
+  })
+}
+
+/// What an approval's capabilities grant, for the user: `(kind, values)`,
+/// the kind a table and key like `fs.read`, or a key like `corona`. Values
+/// are joined with `, `, empty for a flag; off flags and empty lists are left
+/// out.
+pub fn permissions(capabilities: &str) -> Vec<(String, String)> {
+  let table: toml::Table = toml::from_str(capabilities).unwrap_or_default();
+  let mut out = Vec::new();
+  for (group, value) in &table {
+    match value {
+      // `[[network.http]]` is a list of tables, not a table of grants
+      toml::Value::Table(inner) => {
+        for (key, value) in inner {
+          out.extend(describe(value).map(|v| (format!("{group}.{key}"), v)));
+        }
+      }
+      value => out.extend(describe(value).map(|v| (group.clone(), v))),
+    }
+  }
+  out
+}
+
+fn describe(value: &toml::Value) -> Option<String> {
+  use toml::Value as V;
+  match value {
+    V::Boolean(on) => on.then(String::new),
+    V::String(s) => Some(s.clone()),
+    V::Array(items) if items.is_empty() => None,
+    V::Array(items) => Some(
+      items
+        .iter()
+        .map(|item| match item {
+          V::String(s) => s.clone(),
+          V::Table(t) => http(t),
+          other => other.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", "),
+    ),
+    other => Some(other.to_string()),
+  }
+}
+
+/// A `network.http` grant: `GET, POST https://host:port /path, /prefix…`
+fn http(grant: &toml::Table) -> String {
+  let get = |key: &str| grant.get(key).and_then(describe).unwrap_or_default();
+  let scheme = grant
+    .get("scheme")
+    .and_then(|v| v.as_str())
+    .unwrap_or("https");
+  let port = grant
+    .get("port")
+    .map(|p| format!(":{p}"))
+    .unwrap_or_default();
+  let prefixes = get("path_prefixes").replace(", ", "…, ");
+  let prefixes = if prefixes.is_empty() {
+    prefixes
+  } else {
+    prefixes + "…"
+  };
+  format!(
+    "{} {scheme}://{}{port} {} {prefixes}",
+    get("methods"),
+    get("host"),
+    get("paths")
+  )
+  .split_whitespace()
+  .collect::<Vec<_>>()
+  .join(" ")
 }
 
 #[cfg(test)]
@@ -299,6 +418,35 @@ mod tests {
     off[0].enabled = false;
     let active = scan(&paths, &config(off, &["com.a"]), &Default::default());
     assert_eq!(from(&active, "com.a"), "local");
+  }
+
+  #[test]
+  fn permissions_read_plainly() {
+    let text = r#"
+storage = false
+corona = ["secrets"]
+fs = { read = ["${pluginDir}"], write = [], execute = "*" }
+clipboard = { read = true, write = false }
+[[network.http]]
+host = "api.x"
+methods = ["GET"]
+path_prefixes = ["/v1/"]
+"#;
+    let permissions = permissions(text);
+    let kinds: Vec<_> = permissions
+      .iter()
+      .map(|(k, v)| format!("{k}={v}"))
+      .collect();
+    assert_eq!(
+      kinds,
+      [
+        "clipboard.read=",
+        "corona=secrets",
+        "fs.execute=*",
+        "fs.read=${pluginDir}",
+        "network.http=GET https://api.x /v1/…",
+      ]
+    );
   }
 
   #[test]

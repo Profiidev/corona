@@ -184,6 +184,13 @@ export default class Main extends View {
       corona_surface::init(cx).unwrap();
       let mut config = Config::default();
       config.plugins.enabled = vec!["com.clock".into()];
+      config.plugins.approved.insert(
+        "com.clock".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
       config.plugins.source.clear();
       cx.set_global(config);
       cx.set_global(ScriptManager::new(paths.clone()));
@@ -289,6 +296,13 @@ export default async function main(_cx) {
       corona_surface::init(cx).unwrap();
       let mut config = Config::default();
       config.plugins.enabled = vec!["com.echo".into()];
+      config.plugins.approved.insert(
+        "com.echo".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
       config.plugins.source.clear();
       cx.set_global(config);
       cx.set_global(ScriptManager::new(paths.clone()));
@@ -347,6 +361,13 @@ export default async function main(_cx) {
       corona_surface::init(cx).unwrap();
       let mut config = Config::default();
       config.plugins.enabled = vec!["com.clock".into()];
+      config.plugins.approved.insert(
+        "com.clock".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
       config.plugins.source.clear();
       cx.set_global(config);
       cx.set_global(ScriptManager::new(paths.clone()));

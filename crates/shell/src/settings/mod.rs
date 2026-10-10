@@ -221,6 +221,13 @@ default = ["h"]
     cx.update(|cx| {
       let mut config = corona_config::Config::default();
       config.plugins.enabled = vec!["com.p".into()];
+      config.plugins.approved.insert(
+        "com.p".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
       config.plugins.source.clear();
       cx.set_global(config);
       corona_script::PluginManager::init(paths, cx);

@@ -875,6 +875,73 @@ app:
       shadows:
         en: "Also in: %{sources}"
         de: "Auch in: %{sources}"
+      approve:
+        title:
+          en: "Allow %{name}?"
+          de: "%{name} erlauben?"
+        ok:
+          en: "Allow"
+          de: "Erlauben"
+        review:
+          en: "Review permissions"
+          de: "Berechtigungen prüfen"
+        needed:
+          en: "Needs approval"
+          de: "Braucht Zustimmung"
+        nothing:
+          en: "Asks for no permissions."
+          de: "Fragt nach keinen Berechtigungen."
+        fs_read:
+          en: "Read files in: %{values}"
+          de: "Dateien lesen in: %{values}"
+        fs_write:
+          en: "Write files in: %{values}"
+          de: "Dateien schreiben in: %{values}"
+        fs_execute:
+          en: "Run programs: %{values}"
+          de: "Programme ausführen: %{values}"
+        execute_warning:
+          en: "Warning: it can run arbitrary code with these programs, with your permissions and outside every other limit here."
+          de: "Achtung: Es kann mit diesen Programmen beliebigen Code ausführen, mit deinen Rechten und außerhalb aller anderen Grenzen hier."
+        process_env:
+          en: "Pass these environment variables to programs: %{values}"
+          de: "Diese Umgebungsvariablen an Programme weitergeben: %{values}"
+        process_exit:
+          en: "Quit its own script"
+          de: "Das eigene Skript beenden"
+        network_hosts:
+          en: "Connect to: %{values}"
+          de: "Verbinden mit: %{values}"
+        network_http:
+          en: "Send HTTP requests: %{values}"
+          de: "HTTP-Anfragen senden: %{values}"
+        network_unix:
+          en: "Connect to sockets: %{values}"
+          de: "Mit Sockets verbinden: %{values}"
+        dbus_session:
+          en: "Talk to session bus services: %{values}"
+          de: "Mit Diensten am Sitzungsbus sprechen: %{values}"
+        dbus_system:
+          en: "Talk to system bus services: %{values}"
+          de: "Mit Diensten am Systembus sprechen: %{values}"
+        dbus_warning:
+          en: "Warning: D-Bus services can act for you, e.g. start programs or change system settings."
+          de: "Achtung: D-Bus-Dienste können für dich handeln, z. B. Programme starten oder Systemeinstellungen ändern."
+        corona:
+          en: "Use shell modules: %{values}"
+          de: "Shell-Module nutzen: %{values}"
+        privileged_warning:
+          en: "Warning: %{modules} reach your passwords, notifications or windows."
+          de: "Achtung: %{modules} erreichen deine Passwörter, Benachrichtigungen oder Fenster."
+        clipboard_read:
+          en: "Read the clipboard"
+          de: "Die Zwischenablage lesen"
+        clipboard_write:
+          en: "Write the clipboard"
+          de: "In die Zwischenablage schreiben"
+        storage:
+          en: "Store its own data"
+          de: "Eigene Daten speichern"
       list_add:
         en: Add
         de: Hinzufügen

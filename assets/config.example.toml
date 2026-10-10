@@ -225,6 +225,10 @@ kind = "git"
 location = "https://github.com/ProfiiDev/corona-plugins"
 enabled = true
 
+# The permissions you agreed to when enabling each plugin, by id; written by the
+# settings app. A plugin whose source or permissions change waits for you again.
+[plugins.approved]
+
 # Settings of each plugin, by id, as its manifest declares them.
 [plugin_settings]
 # [plugin_settings."com.example.clock"]

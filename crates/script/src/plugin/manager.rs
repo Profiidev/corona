@@ -11,7 +11,9 @@ use std::{
 use anyhow::{Result, bail};
 use corona_config::{
   ConfigProvider, observe_section,
-  plugins::{AutoUpdate, LOCAL_SOURCE, OFFICIAL_SOURCE, SourceConfig, SourceKind, is_flat_name},
+  plugins::{
+    Approval, AutoUpdate, LOCAL_SOURCE, OFFICIAL_SOURCE, SourceConfig, SourceKind, is_flat_name,
+  },
 };
 use gpui_kit::{App, AppContext, Global, Task};
 
@@ -32,6 +34,8 @@ pub const AUTO_UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 pub struct PluginManager {
   worker: Worker,
   active: HashMap<String, Found>,
+  /// Enabled plugins that wait for the user to approve their grants
+  unapproved: HashMap<String, Found>,
   /// What each source offers, as last read
   catalogs: BTreeMap<String, SourceCatalog>,
   enabling: HashSet<String>,
@@ -75,6 +79,7 @@ impl PluginManager {
     cx.set_global(Self {
       worker: Worker::new(paths),
       active: HashMap::new(),
+      unapproved: HashMap::new(),
       catalogs: BTreeMap::new(),
       enabling: HashSet::new(),
       busy: HashSet::new(),
@@ -116,6 +121,11 @@ impl PluginManager {
     self.revision
   }
 
+  /// Enabled, but its source or grants changed since the user approved them
+  pub fn needs_approval(&self, id: &str) -> bool {
+    self.unapproved.contains_key(id)
+  }
+
   pub fn is_enabling(&self, id: &str) -> bool {
     self.enabling.contains(id)
   }
@@ -137,7 +147,15 @@ impl PluginManager {
     let config = cx.config().plugins.clone();
     let settings = cx.config().plugin_settings.clone();
     let this = cx.global_mut::<Self>();
-    this.active = registry::scan(&this.worker.paths, &config, &settings);
+    (this.active, this.unapproved) = registry::scan(&this.worker.paths, &config, &settings)
+      .into_iter()
+      .partition(|(_, found)| registry::is_approved(&config, found));
+    for (id, found) in &this.unapproved {
+      tracing::warn!(
+        "plugin `{id}` from `{}` waits for its grants to be approved",
+        found.origin.source
+      );
+    }
     let signature = signature(&this.active);
     if signature != this.signature {
       this.signature = signature;
@@ -268,8 +286,9 @@ impl PluginManager {
     .detach();
   }
 
-  /// Installs plugin `id` from the source that offers it, then enables it
-  pub fn enable(id: &str, cx: &mut App) {
+  /// Installs plugin `id` from the source that offers it, then has `ask` show
+  /// the user what it may do; [`Self::approve`] enables it
+  pub fn enable(id: &str, ask: impl FnOnce(&str, Approval, &mut App) + 'static, cx: &mut App) {
     let id = id.to_string();
     if !is_flat_name(&id) {
       cx.global_mut::<Self>()
@@ -294,24 +313,51 @@ impl PluginManager {
       let result = task.await;
       cx.update(|cx| {
         cx.global_mut::<Self>().enabling.remove(&id);
-        let result = result.and_then(|_| {
-          corona_config::update(cx, |c| {
-            if !c.plugins.is_enabled(&id) {
-              c.plugins.enabled.push(id.clone());
-            }
-          })
+        let config = cx.config().plugins.clone();
+        let settings = cx.config().plugin_settings.clone();
+        let paths = cx.global::<Self>().paths().clone();
+        let result = result.and_then(|_| match registry::find(&paths, &config, &settings, &id) {
+          Some(found) => registry::approval(&found),
+          None => bail!("plugin `{id}` is not on disk"),
         });
-        if let Err(e) = result {
-          tracing::error!("enabling plugin `{id}`: {e:#}");
-          cx.global_mut::<Self>()
-            .plugin_errors
-            .insert(id, format!("{e:#}"));
+        match result {
+          Ok(approval) => ask(&id, approval, cx),
+          Err(e) => {
+            tracing::error!("enabling plugin `{id}`: {e:#}");
+            cx.global_mut::<Self>()
+              .plugin_errors
+              .insert(id, format!("{e:#}"));
+          }
         }
         // the export may not change the config, when it was enabled already
         Self::rescan(cx);
       })
     })
     .detach();
+  }
+
+  /// Enables plugin `id` with the grants the user saw in `approval`
+  pub fn approve(id: &str, approval: Approval, cx: &mut App) {
+    let result = corona_config::update(cx, |c| {
+      if !c.plugins.is_enabled(id) {
+        c.plugins.enabled.push(id.to_string());
+      }
+      c.plugins.approved.insert(id.to_string(), approval);
+    });
+    Self::record(id, result, cx);
+  }
+
+  /// What plugin `id`, waiting for approval, asks for now
+  pub fn review(id: &str, cx: &mut App) -> Option<Approval> {
+    let found = cx.global::<Self>().unapproved.get(id)?;
+    let result = registry::approval(found);
+    match result {
+      Ok(approval) => Some(approval),
+      Err(e) => {
+        Self::record(id, Err(e), cx);
+        None
+      }
+    }
   }
 
   /// Stops plugin `id`; its files, data and settings stay
@@ -774,7 +820,7 @@ mod tests {
   fn enable_disable_remove_from_git(cx: &mut TestAppContext) {
     let env = env(cx, git_user);
     let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
-    cx.update(|cx| PluginManager::enable("com.a", cx));
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
     assert!(cx.update(|cx| cx.global::<PluginManager>().is_enabling("com.a")));
     cx.run_until_parked();
     assert!(!cx.update(|cx| cx.global::<PluginManager>().is_enabling("com.a")));
@@ -790,7 +836,7 @@ mod tests {
     // disabling keeps the files
     assert!(exported.exists());
 
-    cx.update(|cx| PluginManager::enable("com.a", cx));
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
     cx.run_until_parked();
     cx.update(|cx| PluginManager::remove("com.a", cx));
     cx.run_until_parked();
@@ -801,7 +847,7 @@ mod tests {
   #[gpui::test]
   fn failed_enable_leaves_the_config(cx: &mut TestAppContext) {
     let _env = env(cx, git_user);
-    cx.update(|cx| PluginManager::enable("com.missing", cx));
+    cx.update(|cx| PluginManager::enable("com.missing", PluginManager::approve, cx));
     cx.run_until_parked();
     assert!(config(cx).enabled.is_empty());
     let error = cx.update(|cx| {
@@ -811,7 +857,7 @@ mod tests {
     });
     assert!(error.unwrap().contains("no plugin"));
 
-    cx.update(|cx| PluginManager::enable("../x", cx));
+    cx.update(|cx| PluginManager::enable("../x", PluginManager::approve, cx));
     cx.run_until_parked();
     assert!(config(cx).enabled.is_empty());
   }
@@ -829,8 +875,8 @@ mod tests {
     plugin(&env.base.join("dev/both-work"), "com.both", "2");
 
     cx.update(|cx| {
-      PluginManager::enable("com.mine", cx);
-      PluginManager::enable("com.both", cx);
+      PluginManager::enable("com.mine", PluginManager::approve, cx);
+      PluginManager::enable("com.both", PluginManager::approve, cx);
     });
     cx.run_until_parked();
     assert_eq!(
@@ -843,9 +889,49 @@ mod tests {
     // nothing was copied
     assert!(!env.base.join("state/corona/plugins/materialized").exists());
 
-    // turning the dev source off falls back to the local copy
+    // turning the dev source off falls back to the local copy, which the
+    // user did not approve
     cx.update(|cx| PluginManager::set_source_enabled("dev", false, cx));
+    assert_eq!(active(cx), [("com.mine".to_string(), "local".to_string())]);
+    approve_again(cx, "com.both");
     assert_eq!(active(cx)[0], ("com.both".to_string(), "local".to_string()));
+  }
+
+  /// Approves what plugin `id` asks for now, when it waits for that
+  fn approve_again(cx: &TestAppContext, id: &str) {
+    cx.update(|cx| {
+      if let Some(approval) = PluginManager::review(id, cx) {
+        PluginManager::approve(id, approval, cx);
+      }
+    });
+  }
+
+  #[gpui::test]
+  fn changed_grants_wait_for_approval(cx: &mut TestAppContext) {
+    let env = env(cx, |_, _| String::new());
+    let dir = env.base.join("data/corona/plugins/mine");
+    plugin(&dir, "com.mine", "1");
+    // nothing runs before the user saw what it asks for
+    cx.update(|cx| PluginManager::enable("com.mine", |_, _, _| {}, cx));
+    cx.run_until_parked();
+    assert!(!config(cx).is_enabled("com.mine"));
+    cx.update(|cx| PluginManager::enable("com.mine", PluginManager::approve, cx));
+    cx.run_until_parked();
+    assert_eq!(active(cx).len(), 1);
+
+    let grant = "[capabilities.fs]\nexecute = [\"sh\"]\n";
+    fs::write(dir.join("plugin.toml"), manifest("com.mine", "2") + grant).unwrap();
+    cx.update(PluginManager::rescan);
+    assert!(active(cx).is_empty());
+    assert!(cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.mine")));
+    // still enabled, it only waits
+    assert!(config(cx).is_enabled("com.mine"));
+
+    approve_again(cx, "com.mine");
+    assert_eq!(active(cx).len(), 1);
+    let approved = &config(cx).approved["com.mine"];
+    assert_eq!(approved.source, "local");
+    assert!(approved.capabilities.contains("sh"));
   }
 
   #[gpui::test]
@@ -853,7 +939,7 @@ mod tests {
     let env = env(cx, |_, _| String::new());
     let dir = env.base.join("data/corona/plugins/mine");
     plugin(&dir, "com.mine", "1");
-    cx.update(|cx| PluginManager::enable("com.mine", cx));
+    cx.update(|cx| PluginManager::enable("com.mine", PluginManager::approve, cx));
     cx.run_until_parked();
     // the shell restarts services on a new revision only
     let rescan = |extra: &str| {
@@ -862,6 +948,7 @@ mod tests {
       let manifest = format!("service = \"service.js\"\n{}", manifest("com.mine", "1"));
       fs::write(dir.join("plugin.toml"), manifest + extra).unwrap();
       cx.update(PluginManager::rescan);
+      approve_again(cx, "com.mine");
       cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
     };
     assert!(rescan(""));
@@ -885,7 +972,7 @@ mod tests {
     plugin(&dir, "com.mine", "1");
     let manifest = manifest("com.mine", "1") + &text("url") + &text("other") + hosts;
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
-    cx.update(|cx| PluginManager::enable("com.mine", cx));
+    cx.update(|cx| PluginManager::enable("com.mine", PluginManager::approve, cx));
     cx.run_until_parked();
     let set = |key: &str, cx: &mut TestAppContext| {
       let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
@@ -917,7 +1004,7 @@ mod tests {
   #[gpui::test]
   fn updates_a_source(cx: &mut TestAppContext) {
     let env = env(cx, git_user);
-    cx.update(|cx| PluginManager::enable("com.a", cx));
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
     cx.run_until_parked();
     env
       .remote
@@ -954,7 +1041,7 @@ mod tests {
     let url = remote.url();
     let _env = env(cx, move |_, _| {
       format!(
-        "[plugins]\nenabled = [\"com.a\"]\n[[plugins.source]]\nname = \"git\"\nkind = \"git\"\nlocation = \"{url}\"\n"
+        "[plugins]\nenabled = [\"com.a\"]\n[plugins.approved.\"com.a\"]\nsource = \"git\"\ncapabilities = \"\"\n[[plugins.source]]\nname = \"git\"\nkind = \"git\"\nlocation = \"{url}\"\n"
       )
     });
     assert_eq!(active(cx), [("com.a".to_string(), "git".to_string())]);
@@ -991,7 +1078,7 @@ mod tests {
   #[gpui::test]
   fn sources_are_added_and_removed(cx: &mut TestAppContext) {
     let env = env(cx, git_user);
-    cx.update(|cx| PluginManager::enable("com.a", cx));
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
     cx.run_until_parked();
     cx.update(PluginManager::refresh_catalogs);
     cx.run_until_parked();
@@ -1074,7 +1161,7 @@ mod tests {
         .iter()
         .any(|r| r.entry.id == "com.x" && r.source == "p")
     );
-    cx.update(|cx| PluginManager::enable("com.x", cx));
+    cx.update(|cx| PluginManager::enable("com.x", PluginManager::approve, cx));
     cx.run_until_parked();
     assert!(config(cx).is_enabled("com.x"));
     cx.update(|cx| PluginManager::remove_source("p", cx))

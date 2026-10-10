@@ -2,12 +2,13 @@ use std::borrow::Cow;
 
 use corona_config::{
   Config, ConfigProvider,
-  plugins::{AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
+  plugins::{Approval, AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
 };
 use corona_script::{
   PluginManager, PluginStatus, ScriptManager,
   plugin::{
     manifest::PluginManifest,
+    registry,
     settings::{DynamicOptions, Setting, SettingKind, number as json_number},
   },
   secrets,
@@ -18,7 +19,7 @@ use gpui_kit::{
   assets::IconName,
   base::Disableable,
   component::{
-    ActiveTheme, Icon, Sizable,
+    ActiveTheme, Icon, Sizable, WindowExt,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     setting::{SettingField, SettingGroup, SettingItem, SettingPage},
@@ -307,6 +308,7 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
   let id = row.entry.id.clone();
   let manager = cx.global::<PluginManager>();
   let enabling = manager.is_enabling(&id);
+  let needs_approval = manager.needs_approval(&id);
   let error = manager.plugin_error(&id).map(str::to_string);
   let icon = row
     .entry
@@ -345,6 +347,14 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
         .child(t!("app.settings.plugins.update_available")),
     );
   }
+  if needs_approval {
+    title = title.child(
+      Tag::new()
+        .small()
+        .with_variant(TagVariant::Danger)
+        .child(t!("app.settings.plugins.approve.needed")),
+    );
+  }
   if row.kind == SourceKind::Dev && !row.shadows.is_empty() {
     title = title.child(
       Tag::new()
@@ -374,7 +384,9 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
     })
     .children(error_text(error.as_deref(), cx));
 
-  let (enable_id, remove_id) = (id.clone(), id.clone());
+  let (enable_id, remove_id, review_id) = (id.clone(), id.clone(), id.clone());
+  let name: SharedString = row.entry.name.clone().into();
+  let review_name = name.clone();
   let header = div()
     .flex()
     .items_center()
@@ -401,6 +413,19 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
           }),
       )
     })
+    .when(needs_approval, |d| {
+      d.child(
+        Button::new(format!("plugin-approve-{id}"))
+          .label(t!("app.settings.plugins.approve.review"))
+          .cursor_pointer()
+          .outline()
+          .on_click(move |_, window, cx| {
+            if let Some(approval) = PluginManager::review(&review_id, cx) {
+              confirm(review_id.clone(), review_name.clone(), approval, window, cx);
+            }
+          }),
+      )
+    })
     .when(row.kind == SourceKind::Git && row.installed, |d| {
       d.child(
         Button::new(format!("plugin-remove-{id}"))
@@ -415,8 +440,8 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
       true => Spinner::new().into_any_element(),
       false => Switch::new(format!("plugin-enabled-{id}"))
         .checked(row.enabled)
-        .on_click(move |checked: &bool, _, cx| match checked {
-          true => PluginManager::enable(&enable_id, cx),
+        .on_click(move |checked: &bool, window, cx| match checked {
+          true => PluginManager::enable(&enable_id, ask(name.clone(), window), cx),
           false => PluginManager::disable(&enable_id, cx),
         })
         .into_any_element(),
@@ -436,6 +461,130 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
           .child(TextView::markdown(format!("plugin-readme-text-{id}"), text)),
       )
     })
+}
+
+/// Shows plugin `name`'s grants in `window` once installed; enables it when
+/// the user agrees
+fn ask(name: SharedString, window: &Window) -> impl FnOnce(&str, Approval, &mut App) + 'static {
+  let handle = window.window_handle();
+  move |id, approval, cx| {
+    let id = id.to_string();
+    let shown = handle.update(cx, |_, window, cx| confirm(id, name, approval, window, cx));
+    if let Err(e) = shown {
+      tracing::warn!("asking to approve a plugin: {e:#}");
+    }
+  }
+}
+
+/// Asks whether plugin `id` may do what `approval` grants
+fn confirm(id: String, name: SharedString, approval: Approval, window: &mut Window, cx: &mut App) {
+  window.open_alert_dialog(cx, move |alert, _, cx| {
+    let (id, approval) = (id.clone(), approval.clone());
+    alert
+      .title(t!("app.settings.plugins.approve.title", name = name))
+      .description(permissions(&approval.capabilities, cx))
+      .show_cancel(true)
+      .ok_text(t!("app.settings.plugins.approve.ok"))
+      .on_ok(move |_, _, cx| {
+        PluginManager::approve(&id, approval.clone(), cx);
+        true
+      })
+  });
+}
+
+/// Corona modules that reach the user's credentials, notifications or
+/// windows
+const PRIVILEGED_MODULES: &[&str] = &[
+  "auth",
+  "secrets",
+  "notification_center",
+  "compositor_control",
+];
+
+fn permissions(capabilities: &str, cx: &App) -> Div {
+  let rows = registry::permissions(capabilities);
+  if rows.is_empty() {
+    return muted(t!("app.settings.plugins.approve.nothing"), cx);
+  }
+  div()
+    .flex()
+    .flex_col()
+    .gap_2()
+    .children(rows.into_iter().map(|(kind, values)| {
+      let (text, warning) = permission(&kind, &values);
+      div()
+        .flex()
+        .flex_col()
+        .child(div().text_sm().child(text))
+        .when_some(warning, |d, warning| {
+          d.child(div().text_xs().text_color(cx.theme().danger).child(warning))
+        })
+    }))
+}
+
+/// A grant in plain words, and a warning when it reaches far
+fn permission(kind: &str, values: &str) -> (Cow<'static, str>, Option<Cow<'static, str>>) {
+  match kind {
+    "fs.read" => (
+      t!("app.settings.plugins.approve.fs_read", values = values),
+      None,
+    ),
+    "fs.write" => (
+      t!("app.settings.plugins.approve.fs_write", values = values),
+      None,
+    ),
+    "fs.execute" => (
+      t!("app.settings.plugins.approve.fs_execute", values = values),
+      Some(t!("app.settings.plugins.approve.execute_warning")),
+    ),
+    "process.env" => (
+      t!("app.settings.plugins.approve.process_env", values = values),
+      None,
+    ),
+    "process.exit" => (t!("app.settings.plugins.approve.process_exit"), None),
+    "network.hosts" => (
+      t!(
+        "app.settings.plugins.approve.network_hosts",
+        values = values
+      ),
+      None,
+    ),
+    "network.http" => (
+      t!("app.settings.plugins.approve.network_http", values = values),
+      None,
+    ),
+    "network.unix" => (
+      t!("app.settings.plugins.approve.network_unix", values = values),
+      None,
+    ),
+    "dbus.session" => (
+      t!("app.settings.plugins.approve.dbus_session", values = values),
+      Some(t!("app.settings.plugins.approve.dbus_warning")),
+    ),
+    "dbus.system" => (
+      t!("app.settings.plugins.approve.dbus_system", values = values),
+      Some(t!("app.settings.plugins.approve.dbus_warning")),
+    ),
+    "corona" => {
+      let privileged: Vec<&str> = values
+        .split(", ")
+        .filter(|m| PRIVILEGED_MODULES.contains(m))
+        .collect();
+      (
+        t!("app.settings.plugins.approve.corona", values = values),
+        (!privileged.is_empty()).then(|| {
+          t!(
+            "app.settings.plugins.approve.privileged_warning",
+            modules = privileged.join(", ")
+          )
+        }),
+      )
+    }
+    "clipboard.read" => (t!("app.settings.plugins.approve.clipboard_read"), None),
+    "clipboard.write" => (t!("app.settings.plugins.approve.clipboard_write"), None),
+    "storage" => (t!("app.settings.plugins.approve.storage"), None),
+    _ => (format!("{kind}: {values}").into(), None),
+  }
 }
 
 fn settings_group(manifest: &PluginManifest, cx: &App) -> SettingGroup {
