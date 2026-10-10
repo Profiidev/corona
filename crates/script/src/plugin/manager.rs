@@ -853,24 +853,19 @@ mod tests {
     // the shell restarts services on a new revision only
     let rescan = |extra: &str| {
       let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
-      fs::write(dir.join("plugin.toml"), manifest("com.mine", "1") + extra).unwrap();
+      // the service is a top-level key, before the tables
+      let manifest = format!("service = \"service.js\"\n{}", manifest("com.mine", "1"));
+      fs::write(dir.join("plugin.toml"), manifest + extra).unwrap();
       cx.update(PluginManager::rescan);
       cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
     };
-    let service = "[service]\nview = \"service.js\"\n";
-    assert!(rescan(service));
-    assert!(rescan(&format!(
-      "{service}[capabilities]\nclipboard = {{ read = true }}\n"
-    )));
-    assert!(rescan(&format!(
-      "{service}[capabilities]\ncorona = [\"weather\"]\n"
-    )));
-    assert!(rescan(&format!(
-      "{service}[capabilities.dbus]\nsession = [\"org.a\"]\n"
-    )));
+    assert!(rescan(""));
+    assert!(rescan("[capabilities]\nclipboard = { read = true }\n"));
+    assert!(rescan("[capabilities]\ncorona = [\"weather\"]\n"));
+    assert!(rescan("[capabilities.dbus]\nsession = [\"org.a\"]\n"));
     // settings are read live, nothing restarts for them
     let setting = "[[settings]]\nkey = \"k\"\nlabel = \"K\"\ntype = \"toggle\"\ndefault = true\n";
-    let grant = format!("{service}[capabilities.dbus]\nsession = [\"org.a\"]\n");
+    let grant = "[capabilities.dbus]\nsession = [\"org.a\"]\n";
     assert!(!rescan(&format!("{setting}{grant}")));
   }
 

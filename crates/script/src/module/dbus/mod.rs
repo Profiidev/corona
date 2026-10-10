@@ -624,13 +624,11 @@ pub fn module(grant: DbusGrant, subs: &mut Vec<Subscribe>) -> HostModule {
   let dbus = Dbus::new(grant);
   let state = dbus.state.clone();
   // dropping the script wakes its waiters with null and drops its match rules
-  subs.push(Box::new(move |_, _, _| {
-    Subscription::new(move || {
-      let mut state = lock(&state);
-      state.closed = true;
-      state.slots.clear();
-    })
-  }));
+  subs.push(Subscribe::Cleanup(Subscription::new(move || {
+    let mut state = lock(&state);
+    state.closed = true;
+    state.slots.clear();
+  })));
 
   let d = dbus.clone();
   let module = Module::new("corona/dbus").func(named!(

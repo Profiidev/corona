@@ -1,17 +1,10 @@
-use anyhow::Result;
-use corona_config::APP_NAME;
-use corona_script::{Entry, PluginManager, Script, ScriptManager};
+use corona_script::{Entry, PluginManager, Script, ScriptManager, Service};
 use corona_surface::{
   bar::{BarExt, BarState, WidgetData},
   panel::{PanelData, PanelState},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, IntoElement, ParentElement, Point, Render, Styled,
-  Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
-  div,
-  layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
-  prelude::FluentBuilder,
-  px, size,
+  App, AppContext, IntoElement, ParentElement, Render, Styled, Window, div, prelude::FluentBuilder,
 };
 
 /// The widget and panel names registered for plugins, and their services
@@ -19,9 +12,7 @@ use gpui_kit::{
 struct Registered {
   widgets: Vec<String>,
   panels: Vec<String>,
-  services: Vec<Script>,
-  /// Where the services run, never shown
-  window: Option<AnyWindowHandle>,
+  services: Vec<Service>,
 }
 
 pub fn init(cx: &mut App) {
@@ -57,15 +48,9 @@ fn sync(registered: &mut Registered, cx: &mut App) {
     .collect();
   for manifest in plugins {
     if manifest.service.is_some() {
-      let id = manifest.id.clone();
-      let loaded = service_window(registered, cx).and_then(|window| {
-        window.update(cx, |_, window, cx| {
-          ScriptManager::load(&id, Entry::Service, window, cx)
-        })?
-      });
-      match loaded {
-        Ok(script) => registered.services.push(script),
-        Err(e) => tracing::error!("plugin service `{id}`: {e:#}"),
+      match ScriptManager::start_service(&manifest.id, cx) {
+        Ok(service) => registered.services.push(service),
+        Err(e) => tracing::error!("plugin service `{}`: {e:#}", manifest.id),
       }
     }
     for key in manifest.widgets.keys() {
@@ -109,49 +94,6 @@ fn sync(registered: &mut Registered, cx: &mut App) {
       cx.global_mut::<PanelState>().register_data(data);
       registered.panels.push(name);
     }
-  }
-}
-
-/// A 1×1 window on the background layer that takes no input, for services:
-/// their tasks resume in the window they were loaded in
-fn service_window(registered: &mut Registered, cx: &mut App) -> Result<AnyWindowHandle> {
-  if let Some(window) = registered.window
-    && window.update(cx, |_, _, _| ()).is_ok()
-  {
-    return Ok(window);
-  }
-  let window = cx.open_window(
-    WindowOptions {
-      kind: WindowKind::LayerShell(LayerShellOptions {
-        layer: Layer::Background,
-        namespace: "corona-plugin-services".to_string(),
-        keyboard_interactivity: KeyboardInteractivity::None,
-        ..Default::default()
-      }),
-      window_background: WindowBackgroundAppearance::Transparent,
-      window_decorations: Some(WindowDecorations::Client),
-      app_id: Some(APP_NAME.to_string()),
-      titlebar: None,
-      window_bounds: Some(WindowBounds::Windowed(Bounds {
-        origin: Point::default(),
-        size: size(px(1.), px(1.)),
-      })),
-      ..Default::default()
-    },
-    |window, cx| {
-      window.set_input_region(Some(&[]));
-      cx.new(|_| Empty)
-    },
-  )?;
-  registered.window = Some(window.into());
-  Ok(window.into())
-}
-
-struct Empty;
-
-impl Render for Empty {
-  fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-    div()
   }
 }
 
@@ -300,23 +242,18 @@ export default class Main extends View {
 }
 "#;
 
-  /// Echoes every call
+  /// Echoes every call, with how often it started
   const SERVICE: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import { nextCall, reply } from "corona/plugin";
+import { nextCall, reply, getState, setState } from "corona/plugin";
 
-export default class Service extends View {
-  init(_props, cx) {
-    cx.spawn(async () => {
-      while (true) {
-        const call = await nextCall();
-        if (call.message) break;
-        reply(call.id, [call.method, call.args]);
-      }
-    });
+export default async function main(_cx) {
+  const starts = (getState("starts") ?? 0) + 1;
+  setState("starts", starts);
+  while (true) {
+    const call = await nextCall();
+    if (call.message) break;
+    reply(call.id, [call.method, call.args, starts]);
   }
-  render() { return v_flex(); }
 }
 "#;
 
@@ -332,7 +269,7 @@ export default class Service extends View {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
       dir.join("plugin.toml"),
-      "id = \"com.echo\"\nname = \"Echo\"\n[service]\nview = \"service.js\"\n",
+      "id = \"com.echo\"\nname = \"Echo\"\nservice = \"service.js\"\n",
     )
     .unwrap();
     fs::write(dir.join("service.js"), SERVICE).unwrap();
@@ -357,19 +294,21 @@ export default class Service extends View {
       cx.run_until_parked();
       futures::executor::block_on(answer)
     };
-    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1]));
+    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1, 1]));
+    // no window for it
+    assert!(cx.windows().is_empty());
 
     // changed on disk: restarted
     fs::write(
       dir.join("plugin.toml"),
-      "id = \"com.echo\"\nname = \"Echo\"\nversion = \"2\"\n[service]\nview = \"service.js\"\n",
+      "id = \"com.echo\"\nname = \"Echo\"\nversion = \"2\"\nservice = \"service.js\"\n",
     )
     .unwrap();
     let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
     cx.update(PluginManager::rescan);
     cx.run_until_parked();
     assert!(cx.update(|cx| cx.global::<PluginManager>().revision()) > revision);
-    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1]));
+    assert_eq!(call(cx).unwrap(), serde_json::json!(["ping", 1, 2]));
 
     // disabled: stopped
     cx.update(|cx| cx.global_mut::<Config>().plugins.enabled.clear());

@@ -121,19 +121,49 @@ pub enum Updates {
   Weather(weather::Updates),
 }
 
-type Subscribe = Box<dyn FnOnce(&Rc<ShellRuntime>, &Entity<ShellRoot>, &mut App) -> Subscription>;
+type Refresh = Box<dyn FnOnce(&Rc<ShellRuntime>, &Entity<ShellRoot>, &mut App) -> Subscription>;
+
+/// What a module keeps while its script runs
+pub enum Subscribe {
+  /// Renders the view again on a change; a service has nothing to render
+  Refresh(Refresh),
+  /// Cleans up after the script, view or service
+  Cleanup(Subscription),
+}
+
+impl Subscribe {
+  pub fn subscribe(
+    self,
+    runtime: &Rc<ShellRuntime>,
+    root: &Entity<ShellRoot>,
+    cx: &mut App,
+  ) -> Subscription {
+    match self {
+      Self::Refresh(refresh) => refresh(runtime, root, cx),
+      Self::Cleanup(cleanup) => cleanup,
+    }
+  }
+
+  /// What a service keeps
+  pub fn cleanup(self) -> Option<Subscription> {
+    match self {
+      Self::Refresh(_) => None,
+      Self::Cleanup(cleanup) => Some(cleanup),
+    }
+  }
+}
 
 fn watch<T: 'static>(reads: &Subscriptions, update: Updates, entity: Entity<T>) -> Subscribe {
   let reads = reads.clone();
 
-  Box::new(move |runtime, root, cx| {
+  Subscribe::Refresh(Box::new(move |runtime, root, cx| {
     let (runtime, root) = (runtime.clone(), root.clone());
     cx.observe(&entity, move |_, cx| {
       if reads.contains(update) {
         runtime.refresh(&root, cx).log_err().ok();
       }
     })
-  })
+  }))
 }
 
 /// A read that re-renders the script when `entity` changes, if the script called it.
@@ -288,7 +318,10 @@ export default class Main extends View {{
       let root = runtime.try_load_entry(&main, window, cx);
       policy::set_default(Policy::new());
       let root = root.unwrap();
-      let subs = subs.into_iter().map(|s| s(&runtime, &root, cx)).collect();
+      let subs = subs
+        .into_iter()
+        .map(|s| s.subscribe(&runtime, &root, cx))
+        .collect();
       host.update(cx, |host, cx| {
         host.0 = Some(root.clone().into());
         cx.notify();

@@ -157,9 +157,9 @@ pub fn module(
   let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(plugin.id, cx));
   let load = hub.load();
   let stop = hub.clone();
-  subs.push(Box::new(move |_, _, _| {
-    gpui_kit::Subscription::new(move || stop.stop_actions(load))
-  }));
+  subs.push(Subscribe::Cleanup(gpui_kit::Subscription::new(move || {
+    stop.stop_actions(load)
+  })));
   let (id, name) = (plugin.id.to_string(), plugin.name.to_string());
   let state = cx.notifications();
 

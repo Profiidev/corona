@@ -124,7 +124,7 @@ fn resolved(id: &str, settings: &[Setting], cx: &App) -> Map<String, Value> {
 
 /// Renders the script again when its settings change
 fn watch(current: impl Fn(&App) -> Map<String, Value> + 'static) -> Subscribe {
-  Box::new(move |runtime, root, cx| {
+  Subscribe::Refresh(Box::new(move |runtime, root, cx| {
     let (runtime, root) = (runtime.clone(), root.clone());
     let mut last = current(cx);
     cx.observe_global::<Config>(move |cx| {
@@ -134,7 +134,7 @@ fn watch(current: impl Fn(&App) -> Map<String, Value> + 'static) -> Subscribe {
         runtime.refresh(&root, cx).log_err().ok();
       }
     })
-  })
+  }))
 }
 
 #[cfg(test)]

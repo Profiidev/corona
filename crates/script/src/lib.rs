@@ -2,7 +2,7 @@ use anyhow::Result;
 use gpui_kit::{App, Window};
 use gpui_shell::ShellRuntime;
 
-pub use manager::{Entry, Script, ScriptManager, call};
+pub use manager::{Entry, Script, ScriptManager, Service, call};
 pub use module::dbus::Buses;
 pub use plugin::manager::{PluginManager, PluginStatus};
 

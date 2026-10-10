@@ -11,13 +11,13 @@ use gpui_kit::{
   AnyView, App, BorrowAppContext, Entity, EntityId, Global, Subscription, Window, transparent_black,
 };
 use gpui_shell::{
-  ShellRoot, ShellRuntime, Watcher,
+  ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
 };
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, PluginRef, Subscriptions, dbus, i18n, plugin, settings, surface},
+  module::{ModuleExt, PluginRef, Subscribe, Subscriptions, dbus, i18n, plugin, settings, surface},
   plugin::{manifest::PluginManifest, paths::Paths},
 };
 
@@ -26,16 +26,6 @@ pub struct Script {
   opener: Rc<Cell<Option<EntityId>>>,
   _watcher: Option<Watcher>,
   _subscriptions: Vec<Subscription>,
-  _service: Option<ServiceGuard>,
-}
-
-/// Marks the plugin's service as running until the service script is dropped
-struct ServiceGuard(plugin::Hub);
-
-impl Drop for ServiceGuard {
-  fn drop(&mut self) {
-    self.0.stop_service();
-  }
 }
 
 impl Script {
@@ -52,16 +42,37 @@ impl Script {
   }
 }
 
+/// A plugin's service, running headless until dropped. Restarts as its
+/// sources change.
+pub struct Service {
+  _watcher: ServiceWatcher,
+}
+
+/// One run of a service
+struct Running {
+  _handle: ServiceHandle,
+  _cleanups: Vec<Subscription>,
+  _stop: StopGuard,
+}
+
+/// Fails the calls still waiting for the service once its run is gone
+struct StopGuard(plugin::Hub);
+
+impl Drop for StopGuard {
+  fn drop(&mut self) {
+    self.0.stop_service();
+  }
+}
+
 /// A view a plugin declares in its manifest
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Entry<'a> {
   Widget(&'a str),
   Panel(&'a str),
-  /// Runs in the background, never shown
-  Service,
 }
 
-/// Runs plugin views. Which plugins there are is up to the plugin manager.
+/// Runs plugin views and services. Which plugins there are is up to the
+/// plugin manager.
 pub struct ScriptManager {
   runtime: Rc<ShellRuntime>,
   paths: Paths,
@@ -107,70 +118,72 @@ impl ScriptManager {
       .clone()
   }
 
-  pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
-    let manager = cx.global::<ScriptManager>();
-    let manifest = manager
-      .plugins
-      .get(id)
-      .with_context(|| format!("Plugin `{id}` not found"))?;
-    let view = match entry {
-      Entry::Widget(name) => manifest.widgets.get(name).map(|w| &w.view),
-      Entry::Panel(name) => manifest.panels.get(name).map(|p| &p.view),
-      Entry::Service => manifest.service.as_ref().map(|s| &s.view),
-    }
-    .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
+  fn manifest(id: &str, cx: &App) -> Result<PluginManifest> {
+    let manifest = cx.global::<ScriptManager>().plugins.get(id);
+    manifest
+      .cloned()
+      .with_context(|| format!("Plugin `{id}` not found"))
+  }
 
-    let data_dir = manager.paths.data(id);
+  /// The policy of a script of plugin `manifest`: its grants and the modules
+  /// every script has. `calls` is the service's, `None` for a view.
+  fn policy(
+    manifest: &PluginManifest,
+    opener: Rc<Cell<Option<EntityId>>>,
+    calls: Option<flume::Receiver<plugin::Call>>,
+    cx: &mut App,
+  ) -> Result<(Policy, Vec<Subscribe>)> {
+    let id = &manifest.id;
+    let data_dir = cx.global::<ScriptManager>().paths.data(id);
     if let Err(error) = fs::create_dir_all(&data_dir) {
       tracing::warn!("storage unavailable for `{id}`: {error}");
     }
-
-    let runtime = manager.runtime.clone();
-    let root = manifest.dir.join(view);
-    let (id, name, dir, modules, settings, grant) = (
-      manifest.id.clone(),
-      manifest.name.clone(),
-      manifest.dir.clone(),
-      manifest.modules.clone(),
-      manifest.settings.clone(),
-      manifest.dbus.clone(),
-    );
     let panels: Vec<String> = manifest.panels.keys().cloned().collect();
-    let opener = Rc::new(Cell::new(None));
 
     let (policy, mut subscribes) = Policy::new()
-      .with_application(&id)
+      .with_application(id)
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
       .with_corona_modules(
         PluginRef {
-          id: &id,
-          name: &name,
+          id,
+          name: &manifest.name,
         },
-        &modules,
+        &manifest.modules,
         cx,
       )?;
-    let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(&id, cx));
-    let service = (entry == Entry::Service).then(|| {
-      hub.start_service();
-      ServiceGuard(hub.clone())
-    });
+    let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(id, cx));
     let policy = policy
-      .with_host_module(settings::module(&id, &settings, &mut subscribes))?
+      .with_host_module(settings::module(id, &manifest.settings, &mut subscribes))?
       .with_host_module(surface::module(
-        &id,
+        id,
         panels,
-        opener.clone(),
+        opener,
         &Subscriptions::default(),
         &mut subscribes,
         cx,
       ))?
-      .with_host_module(plugin::module(&hub, service.is_some(), &mut subscribes))?
-      .with_host_module(i18n::module(&dir, &mut subscribes))?;
-    let policy = match grant {
+      .with_host_module(plugin::module(&hub, calls, &mut subscribes))?
+      .with_host_module(i18n::module(&manifest.dir, &mut subscribes))?;
+    let policy = match manifest.dbus.clone() {
       Some(grant) => policy.with_host_module(dbus::module(grant, &mut subscribes))?,
       None => policy,
     };
+    Ok((policy, subscribes))
+  }
+
+  pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
+    let manifest = Self::manifest(id, cx)?;
+    let view = match entry {
+      Entry::Widget(name) => manifest.widgets.get(name).map(|w| &w.view),
+      Entry::Panel(name) => manifest.panels.get(name).map(|p| &p.view),
+    }
+    .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
+
+    let runtime = cx.global::<ScriptManager>().runtime.clone();
+    let root = manifest.dir.join(view);
+    let opener = Rc::new(Cell::new(None));
+    let (policy, subscribes) = Self::policy(&manifest, opener.clone(), None, cx)?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -180,12 +193,12 @@ impl ScriptManager {
     let root = root?;
     root.update(cx, |root, cx| {
       root.set_background(Some(transparent_black()), cx);
-      root.set_fill(!matches!(entry, Entry::Widget(_)), cx);
+      root.set_fill(matches!(entry, Entry::Panel(_)), cx);
     });
 
     let subscriptions = subscribes
       .into_iter()
-      .map(|subscription| subscription(&runtime, &root, cx))
+      .map(|subscription| subscription.subscribe(&runtime, &root, cx))
       .collect();
 
     let watcher = match runtime.watch(&root, window, cx) {
@@ -201,7 +214,35 @@ impl ScriptManager {
       opener,
       _watcher: watcher,
       _subscriptions: subscriptions,
-      _service: service,
+    })
+  }
+
+  /// Starts the service of plugin `id`, without a window. Its `corona/surface`
+  /// opens the plugin's panels where the shell puts them.
+  pub fn start_service(id: &str, cx: &mut App) -> Result<Service> {
+    let manifest = Self::manifest(id, cx)?;
+    let entry = (manifest.service.as_ref())
+      .map(|service| manifest.dir.join(service))
+      .with_context(|| format!("plugin `{id}` has no service"))?;
+    let dir = manifest.dir.clone();
+
+    let start = move |cx: &mut App| {
+      let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(&manifest.id, cx));
+      let calls = hub.start_service();
+      let stop = StopGuard(hub);
+      let (policy, subscribes) = Self::policy(&manifest, Rc::default(), Some(calls), cx)?;
+      let runtime = cx.global::<ScriptManager>().runtime.clone();
+      Ok(Running {
+        _handle: runtime.start_service(&entry, Rc::new(policy), cx)?,
+        _cleanups: subscribes
+          .into_iter()
+          .filter_map(Subscribe::cleanup)
+          .collect(),
+        _stop: stop,
+      })
+    };
+    Ok(Service {
+      _watcher: ServiceWatcher::new(dir, start, cx)?,
     })
   }
 }
@@ -330,15 +371,25 @@ export default class Main extends View {
     (cx, result)
   }
 
+  /// `plugins` running, without a window
+  fn running(cx: &mut TestAppContext, plugins: &Plugins) {
+    cx.set_global(plugins.manager());
+    if !cx.update(|cx| cx.has_global::<Config>()) {
+      cx.set_global(Config::default());
+    }
+  }
+
   /// A window to show views in, with `plugins` running
   fn host<'a>(
     cx: &'a mut TestAppContext,
     plugins: &Plugins,
   ) -> (Entity<Host>, &'a mut VisualTestContext) {
-    cx.set_global(plugins.manager());
-    if !cx.update(|cx| cx.has_global::<Config>()) {
-      cx.set_global(Config::default());
-    }
+    running(cx, plugins);
+    window(cx)
+  }
+
+  /// A window to show views in
+  fn window(cx: &mut TestAppContext) -> (Entity<Host>, &mut VisualTestContext) {
     cx.add_window_view(|_, _| Host(Vec::new()))
   }
 
@@ -358,13 +409,13 @@ export default class Main extends View {
     result
   }
 
-  /// Starts the service of plugin `id` in the window, without showing it.
-  fn service(cx: &mut VisualTestContext, id: &str) -> Script {
-    let script = cx
-      .update(|window, cx| ScriptManager::load(id, Entry::Service, window, cx))
+  /// Starts the service of plugin `id`; it uses no window.
+  fn service(cx: &mut TestAppContext, id: &str) -> Service {
+    let service = cx
+      .update(|cx| ScriptManager::start_service(id, cx))
       .unwrap();
     cx.run_until_parked();
-    script
+    service
   }
 
   #[test]
@@ -823,22 +874,15 @@ export default class Main extends View {
 
   /// Echoes `echo`, never answers `hang`, fails everything else.
   const SERVICE: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
 import { nextCall, reply, fail } from "corona/plugin";
 
-export default class Service extends View {
-  init(_props, cx) {
-    cx.spawn(async () => {
-      while (true) {
-        const call = await nextCall();
-        if (call.message) break;
-        if (call.method === "echo") reply(call.id, call.args);
-        else if (call.method !== "hang") fail(call.id, "no " + call.method);
-      }
-    });
+export default async function main(_cx) {
+  while (true) {
+    const call = await nextCall();
+    if (call.message) break;
+    if (call.method === "echo") reply(call.id, call.args);
+    else if (call.method !== "hang") fail(call.id, "no " + call.method);
   }
-  render() { return v_flex(); }
 }
 "#;
 
@@ -861,7 +905,7 @@ export default class Main extends View {
 
   fn caller(plugins: &Plugins, method: &str, service: bool) {
     let extra = match service {
-      true => "capabilities = { corona = [\"compositor\"] }\n[service]\nview = \"service.js\"",
+      true => "capabilities = { corona = [\"compositor\"] }\nservice = \"service.js\"",
       false => "capabilities = { corona = [\"compositor\"] }",
     };
     plugins.add(
@@ -879,8 +923,10 @@ export default class Main extends View {
     let fake = recorder(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", true);
-    let (host, cx) = host(cx, &plugins);
+    running(cx, &plugins);
     let _service = service(cx, "a");
+    assert!(cx.windows().is_empty());
+    let (host, cx) = window(cx);
     let _view = show(cx, &host, "a").unwrap();
     assert_eq!(reported(&fake, "answer "), ["1"]);
   }
@@ -890,8 +936,9 @@ export default class Main extends View {
     let fake = recorder(cx);
     let plugins = Plugins::new();
     caller(&plugins, "other", true);
-    let (host, cx) = host(cx, &plugins);
+    running(cx, &plugins);
     let _service = service(cx, "a");
+    let (host, cx) = window(cx);
     let _view = show(cx, &host, "a").unwrap();
     assert_eq!(reported(&fake, "answer "), [r#"{"message":"no other"}"#]);
   }
@@ -909,10 +956,10 @@ export default class Main extends View {
     );
     // and there is none to start
     let error = cx
-      .update(|window, cx| ScriptManager::load("a", Entry::Service, window, cx))
+      .update(|_, cx| ScriptManager::start_service("a", cx))
       .err()
       .unwrap();
-    assert!(error.to_string().contains("has no Service"), "{error}");
+    assert!(error.to_string().contains("has no service"), "{error}");
   }
 
   #[gpui::test]
@@ -920,8 +967,9 @@ export default class Main extends View {
     let fake = recorder(cx);
     let plugins = Plugins::new();
     caller(&plugins, "hang", true);
-    let (host, cx) = host(cx, &plugins);
+    running(cx, &plugins);
     let _service = service(cx, "a");
+    let (host, cx) = window(cx);
     let _view = show(cx, &host, "a").unwrap();
     assert!(reported(&fake, "answer ").is_empty());
     cx.executor().advance_clock(Duration::from_secs(31));
@@ -937,9 +985,11 @@ export default class Main extends View {
     let fake = recorder(cx);
     let plugins = Plugins::new();
     caller(&plugins, "hang", true);
-    let (host, cx) = host(cx, &plugins);
+    running(cx, &plugins);
     let service = service(cx, "a");
+    let (host, cx) = window(cx);
     let _view = show(cx, &host, "a").unwrap();
+    assert!(reported(&fake, "answer ").is_empty());
     drop(service);
     cx.run_until_parked();
     assert_eq!(
@@ -948,22 +998,76 @@ export default class Main extends View {
     );
   }
 
+  /// What the service answers `method` with, through `corona ipc`'s path
+  fn ipc(cx: &mut TestAppContext, method: &str) -> Result<serde_json::Value> {
+    let answer = cx.update(|cx| crate::call("a", method.into(), "hi".into(), cx))?;
+    let answer = cx.executor().spawn(answer);
+    cx.run_until_parked();
+    futures_lite::future::block_on(answer)
+  }
+
   #[gpui::test]
   fn ipc_calls_reach_the_service(cx: &mut TestAppContext) {
     recorder(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", true);
-    let (_, cx) = host(cx, &plugins);
+    running(cx, &plugins);
     let _service = service(cx, "a");
-    let answer = cx.update(|_, cx| crate::call("a", "echo".into(), "hi".into(), cx).unwrap());
-    let answer = cx.executor().spawn(answer);
-    cx.run_until_parked();
-    assert_eq!(
-      futures_lite::future::block_on(answer).unwrap(),
-      serde_json::json!("hi")
-    );
-    let missing = cx.update(|_, cx| crate::call("b", "echo".into(), "hi".into(), cx).err());
+    assert_eq!(ipc(cx, "echo").unwrap(), serde_json::json!("hi"));
+    let missing = cx.update(|cx| crate::call("b", "echo".into(), "hi".into(), cx).err());
     assert!(missing.unwrap().to_string().contains("not found"));
+    assert!(cx.windows().is_empty());
+  }
+
+  /// Answers with its version and reports it on a timer.
+  const VERSIONED_SERVICE: &str = r#"
+import { nextCall, reply } from "corona/plugin";
+import { focusWorkspace } from "corona/compositor";
+
+export default async function main(cx) {
+  cx.timer.every(10, () => focusWorkspace("tick VERSION"));
+  while (true) {
+    const call = await nextCall();
+    if (call.message) break;
+    reply(call.id, "VERSION");
+  }
+}
+"#;
+
+  #[gpui::test]
+  fn an_edited_service_restarts(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    caller(&plugins, "echo", true);
+    let path = plugins.paths.local.join("a/service.js");
+    fs::write(&path, VERSIONED_SERVICE.replace("VERSION", "old")).unwrap();
+    running(cx, &plugins);
+    let _service = service(cx, "a");
+    assert_eq!(ipc(cx, "echo").unwrap(), serde_json::json!("old"));
+
+    // older than the write, so the stamp moves
+    std::thread::sleep(Duration::from_millis(20));
+    fs::write(&path, VERSIONED_SERVICE.replace("VERSION", "new")).unwrap();
+    // the poll runs on the executor's clock, the debounce on the wall's
+    for _ in 0..2 {
+      cx.executor().advance_clock(Duration::from_millis(500));
+      cx.run_until_parked();
+      std::thread::sleep(Duration::from_millis(250));
+    }
+    cx.executor().advance_clock(Duration::from_millis(500));
+    cx.run_until_parked();
+    assert_eq!(ipc(cx, "echo").unwrap(), serde_json::json!("new"));
+
+    // the old one is gone
+    let old = reported(&fake, "tick ")
+      .iter()
+      .filter(|t| *t == "old")
+      .count();
+    cx.executor().advance_clock(Duration::from_millis(100));
+    cx.run_until_parked();
+    let ticks = reported(&fake, "tick ");
+    assert_eq!(ticks.iter().filter(|t| *t == "old").count(), old);
+    assert!(ticks.iter().any(|t| t == "new"));
   }
 
   /// Counts its starts in the shared state and reports what it reads.
@@ -971,12 +1075,11 @@ export default class Main extends View {
 import { View } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { focusWorkspace } from "corona/compositor";
-import { getState, setState, nextCall } from "corona/plugin";
+import { getState, setState } from "corona/plugin";
 
 export default class Main extends View {
   init(_props, cx) {
     setState("starts", (getState("starts") ?? 0) + 1);
-    cx.spawn(async () => focusWorkspace("next " + JSON.stringify(await nextCall())));
   }
   render() {
     focusWorkspace("starts " + getState("starts"));
@@ -1004,11 +1107,59 @@ export default class Main extends View {
         >= 2
     );
 
-    // only the service takes calls
-    assert_eq!(
-      reported(&fake, "next "),
-      [r#"{"message":"only the plugin's service takes calls"}"#; 2]
+    // so does the service, which sets it too
+    fs::write(
+      plugins.paths.local.join("a/service.js"),
+      r#"import { getState, setState } from "corona/plugin";
+export default function main() { setState("starts", getState("starts") * 10); }"#,
+    )
+    .unwrap();
+    let manifest = manifest(
+      "a",
+      "capabilities = { corona = [\"compositor\"] }\nservice = \"service.js\"",
     );
+    fs::write(plugins.paths.local.join("a/plugin.toml"), manifest).unwrap();
+    let running = plugins.manager().plugins().clone();
+    cx.update(|_, cx| cx.global_mut::<ScriptManager>().set_plugins(running));
+    let _service = cx
+      .update(|_, cx| ScriptManager::start_service("a", cx))
+      .unwrap();
+    cx.run_until_parked();
+    assert_eq!(reported(&fake, "starts ").last().unwrap(), "20");
+  }
+
+  #[gpui::test]
+  fn only_the_service_takes_calls(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let view = r#"
+import { View } from "gpui-kit";
+import { nextCall } from "corona/plugin";
+export default class Main extends View { render() { return nextCall; } }
+"#;
+    // and only views call it
+    let main = r#"
+import { focusWorkspace } from "corona/compositor";
+import * as plugin from "corona/plugin";
+export default function main() {
+  focusWorkspace(["call", "nextCall", "reply", "fail"].filter((f) => f in plugin).join());
+}
+"#;
+    let extra = "capabilities = { corona = [\"compositor\"] }\nservice = \"service.js\"";
+    plugins.add(
+      "a",
+      &manifest("a", extra),
+      &[("main.js", view), ("service.js", main)],
+    );
+    running(cx, &plugins);
+    let _service = service(cx, "a");
+    assert_eq!(fake.calls.borrow().last().unwrap(), "nextCall,reply,fail");
+    let (host, cx) = window(cx);
+    let error = format!(
+      "{:#}",
+      show(cx, &host, "a").err().expect("the import fails")
+    );
+    assert!(error.contains("nextCall"), "{error}");
   }
 
   /// Counts its starts in the shared state as it starts.
@@ -1110,15 +1261,32 @@ export default class Main extends View {
     plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    let dts = fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
-    for line in [
-      "declare module \"corona/plugin\"",
+    let dts = || fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let (call, next) = (
       "export function call(method: string, args?: JsonValue | null): Promise<JsonValue | Error>;",
       "export function nextCall(): Promise<Call | Error>;",
+    );
+    let view = dts();
+    for line in [
+      "declare module \"corona/plugin\"",
+      call,
+      next,
       "declare module \"corona/i18n\"",
     ] {
-      assert!(dts.contains(line), "missing {line:?} in\n{dts}");
+      assert!(view.contains(line), "missing {line:?} in\n{view}");
     }
+
+    // the service's are the same, or the editor's flip with what ran last
+    plugins.add(
+      "a",
+      &manifest("a", "service = \"service.js\""),
+      &[("service.js", "export default function main() {}")],
+    );
+    cx.set_global(plugins.manager());
+    let _service = service(cx, "a");
+    assert_eq!(dts(), view);
+    // and type its entry
+    assert!(view.contains("export type ServiceMain = (cx: AsyncContext)"));
   }
 
   /// Reports through `focusWorkspace` whether the test name is on the bus,

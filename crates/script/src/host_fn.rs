@@ -20,6 +20,8 @@ use gpui_shell::{HostArguments, HostError, HostModule, HostResult, HostValue, wi
 pub struct Module {
   module: HostModule,
   functions: Vec<String>,
+  /// Declared by [`Self::declare`], not registered
+  type_only: Vec<&'static str>,
   types: Types,
 }
 
@@ -28,12 +30,27 @@ impl Module {
     Self {
       module: HostModule::new(name),
       functions: Vec::new(),
+      type_only: Vec::new(),
       types: Types::default(),
     }
   }
 
   /// `f` comes from `#[host_fn]` or `named!`, which supply the script name and parameter names.
-  pub fn func<I, F: IntoHostFn<I> + 'static>(mut self, f: Named<F>) -> Self {
+  pub fn func<I, F: IntoHostFn<I> + 'static>(self, f: Named<F>) -> Self {
+    let (mut module, name, f) = self.typed(f);
+    module.module = register(module.module, name, f.into_host_fn());
+    module
+  }
+
+  /// Types `f` for the editor without registering it, for a function another
+  /// variant of the module has: importing it fails here.
+  pub fn declare<I, F: IntoHostFn<I> + 'static>(self, f: Named<F>) -> Self {
+    let (mut module, name, _) = self.typed(f);
+    module.type_only.push(name);
+    module
+  }
+
+  fn typed<I, F: IntoHostFn<I> + 'static>(mut self, f: Named<F>) -> (Self, &'static str, F) {
     let name = f.name;
     let (params, ret) = F::HostFn::signature(&mut self.types);
     debug_assert_eq!(
@@ -69,9 +86,7 @@ impl Module {
       jsdoc(f.docs),
       params.join(", ")
     ));
-
-    self.module = register(self.module, name, f.f.into_host_fn());
-    self
+    (self, name, f.f)
   }
 }
 
@@ -133,7 +148,7 @@ impl From<Module> for HostModule {
   fn from(module: Module) -> Self {
     let mut declarations: Vec<String> = module.types.decls.into_values().collect();
     declarations.extend(module.functions);
-    module.module.declarations(declarations.join("\n"))
+    (module.module.declarations(declarations.join("\n"))).type_only(module.type_only)
   }
 }
 

@@ -26,7 +26,8 @@ pub struct PluginManifest {
   pub description: Option<String>,
   pub widgets: BTreeMap<String, WidgetFile>,
   pub panels: BTreeMap<String, PanelFile>,
-  pub service: Option<ServiceFile>,
+  /// The service's script, relative to the plugin directory
+  pub service: Option<String>,
   pub settings: Vec<Setting>,
   pub capabilities: Capabilities,
   /// The corona modules it may import
@@ -80,10 +81,12 @@ pub struct ManifestFile {
   /// Panels by name, opened as `<id>:<name>`.
   #[serde(default, deserialize_with = "flat_keys")]
   pub panels: BTreeMap<String, PanelFile>,
-  /// A view that runs in the background while the plugin is enabled, never
-  /// shown. It answers `call` from `corona/plugin` and from `corona ipc plugin`.
+  /// A script that runs in the background while the plugin is enabled,
+  /// relative to the plugin directory, e.g. `service.js`. It default-exports
+  /// `async function main(cx)` and answers `call` from `corona/plugin` and
+  /// from `corona ipc plugin`.
   #[serde(default)]
-  pub service: Option<ServiceFile>,
+  pub service: Option<String>,
   /// Settings the user can change in the settings app, in this order.
   #[serde(default, deserialize_with = "valid_settings")]
   pub settings: Vec<Setting>,
@@ -121,13 +124,6 @@ pub struct PanelFile {
   pub width: f32,
   #[serde(default = "panel_height")]
   pub height: f32,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ServiceFile {
-  /// The script of the service, relative to the plugin directory.
-  pub view: String,
 }
 
 fn panel_width() -> f32 {
@@ -513,9 +509,10 @@ default = false
   #[test]
   fn service() {
     assert_eq!(with("").unwrap().service, None);
-    let manifest = with("[service]\nview = \"service.js\"").unwrap();
-    assert_eq!(manifest.service.unwrap().view, "service.js");
-    assert!(with("[service]\nview = \"s.js\"\nwidth = 3").is_err());
+    let manifest = with("service = \"service.js\"").unwrap();
+    assert_eq!(manifest.service.as_deref(), Some("service.js"));
+    // the table it was before
+    assert!(with("[service]\nview = \"service.js\"").is_err());
   }
 
   #[test]

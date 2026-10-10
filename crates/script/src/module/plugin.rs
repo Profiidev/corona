@@ -5,7 +5,7 @@ use std::{
   time::Duration,
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow, bail};
 use corona_macros::named;
 use gpui_kit::{App, AppContext, Entity};
 use gpui_shell::HostModule;
@@ -44,11 +44,9 @@ type Answer = Result<Value, String>;
 /// Calls into the plugin's service, and the notification actions for it
 #[derive(Default)]
 pub struct Calls {
-  service: bool,
+  /// To the running service's `nextCall`, made anew as it starts
+  service: Option<flume::Sender<Call>>,
   next_id: u64,
-  queue: VecDeque<Call>,
-  /// The service's `nextCall`, while it waits
-  waiter: Option<flume::Sender<Call>>,
   pending: HashMap<u64, flume::Sender<Answer>>,
   actions: VecDeque<ActionEvent>,
   /// The `nextAction`s waiting, by the load that made them
@@ -58,35 +56,18 @@ pub struct Calls {
 
 impl Calls {
   fn call(&mut self, method: String, args: Value) -> Result<flume::Receiver<Answer>> {
-    if !self.service {
+    let id = self.next_id;
+    let call = Call { id, method, args };
+    let sent = self.service.as_ref().map(|service| service.send(call));
+    if !matches!(sent, Some(Ok(()))) {
       bail!("plugin has no running service");
     }
+    self.next_id += 1;
     // callers that gave up
     self.pending.retain(|_, tx| !tx.is_disconnected());
-    let id = self.next_id;
-    self.next_id += 1;
     let (tx, rx) = flume::bounded(1);
     self.pending.insert(id, tx);
-    let call = Call { id, method, args };
-    match self.waiter.take() {
-      Some(waiter) => {
-        if let Err(flume::SendError(call)) = waiter.send(call) {
-          self.queue.push_back(call);
-        }
-      }
-      None => self.queue.push_back(call),
-    }
     Ok(rx)
-  }
-
-  /// The next call, now or once one comes. A second wait replaces the first.
-  fn next_call(&mut self) -> flume::Receiver<Call> {
-    let (tx, rx) = flume::bounded(1);
-    match self.queue.pop_front() {
-      Some(call) => drop(tx.send(call)),
-      None => self.waiter = Some(tx),
-    }
-    rx
   }
 
   fn answer(&mut self, id: u64, answer: Answer) -> Result<()> {
@@ -99,10 +80,15 @@ impl Calls {
     Ok(())
   }
 
+  /// The calls for a service that starts; the last one's `nextCall`s end
+  fn start_service(&mut self) -> flume::Receiver<Call> {
+    let (tx, rx) = flume::unbounded();
+    self.service = Some(tx);
+    rx
+  }
+
   fn stop_service(&mut self) {
-    self.service = false;
-    self.waiter = None;
-    self.queue.clear();
+    self.service = None;
     for (_, tx) in self.pending.drain() {
       tx.send(Err("service stopped".into())).ok();
     }
@@ -149,8 +135,9 @@ impl Hub {
     }
   }
 
-  pub fn start_service(&self) {
-    self.calls.borrow_mut().service = true;
+  /// The calls for the service that starts, for the service's [`module`]
+  pub fn start_service(&self) -> flume::Receiver<Call> {
+    self.calls.borrow_mut().start_service()
   }
 
   /// Fails every call still waiting for the service
@@ -203,19 +190,60 @@ impl Hub {
   }
 }
 
-/// `corona/plugin`: state shared by all of the plugin's views, and calls into
-/// its service. Every plugin has it; `service` is whether this is the service.
-pub fn module(hub: &Hub, service: bool, subs: &mut Vec<Subscribe>) -> HostModule {
+/// `corona/plugin`: state shared by all of the plugin's views and its
+/// service, and calls from the views into the service. Every plugin has it;
+/// `calls` is the service's, `None` in a view. Only views have `call`, only
+/// the service `nextCall`, `reply` and `fail`, but both are typed with all of
+/// them: they share the plugin's `gpui-kit.d.ts`.
+pub fn module(
+  hub: &Hub,
+  calls: Option<flume::Receiver<Call>>,
+  subs: &mut Vec<Subscribe>,
+) -> HostModule {
   let reads = Subscriptions::default();
   subs.push(watch(&reads, Updates::Plugin, hub.state.clone()));
-  let (get, set, call, next, reply, fail) = (
-    hub.state.clone(),
-    hub.state.clone(),
-    hub.clone(),
-    hub.calls.clone(),
-    hub.calls.clone(),
-    hub.calls.clone(),
+  let service = calls.is_some();
+  let (call, reply, fail) = (hub.clone(), hub.calls.clone(), hub.calls.clone());
+
+  let call = named!(
+    "call",
+    /// Views only: calls `method` of the plugin's service, which answers
+    /// with `reply` or `fail`. Fails when there is no service, or after 30
+    /// seconds.
+    move |cx: &mut App, method: String, args: Option<Value>| {
+      call.call(method, args.unwrap_or_default(), cx)
+    }
   );
+  let next = named!(
+    "nextCall",
+    /// The service only: the next call to answer, once one comes.
+    move || -> Result<_> {
+      let calls = (calls.clone()).context("only the plugin's service takes calls")?;
+      Ok(async move { calls.recv_async().await.map_err(|_| anyhow!("service stopped")) })
+    }
+  );
+  let reply = named!(
+    "reply",
+    /// The service only: answers call `id` with `value`.
+    move |id: u64, value: Value| reply.borrow_mut().answer(id, Ok(value)).err()
+  );
+  let fail = named!(
+    "fail",
+    /// The service only: answers call `id` with an error.
+    move |id: u64, message: String| fail.borrow_mut().answer(id, Err(message)).err()
+  );
+
+  let module = state(hub, reads);
+  match service {
+    true => module.declare(call).func(next).func(reply).func(fail),
+    false => module.func(call).declare(next).declare(reply).declare(fail),
+  }
+  .into()
+}
+
+/// `getState` and `setState`; `reads` records what a view read
+fn state(hub: &Hub, reads: Subscriptions) -> Module {
+  let (get, set) = (hub.state.clone(), hub.state.clone());
 
   Module::new("corona/plugin")
     .func(named!(
@@ -242,36 +270,6 @@ pub fn module(hub: &Hub, service: bool, subs: &mut Vec<Subscribe>) -> HostModule
         })
       }
     ))
-    .func(named!(
-      "call",
-      /// Calls `method` of the plugin's service, which answers with `reply`
-      /// or `fail`. Fails when there is no service, or after 30 seconds.
-      move |cx: &mut App, method: String, args: Option<Value>| {
-        call.call(method, args.unwrap_or_default(), cx)
-      }
-    ))
-    .func(named!(
-      "nextCall",
-      /// The service only: the next call to answer, once one comes.
-      move || -> Result<_> {
-        if !service {
-          bail!("only the plugin's service takes calls");
-        }
-        let rx = next.borrow_mut().next_call();
-        Ok(async move { rx.recv_async().await.map_err(|_| anyhow!("service stopped")) })
-      }
-    ))
-    .func(named!(
-      "reply",
-      /// Answers call `id` with `value`.
-      move |id: u64, value: Value| reply.borrow_mut().answer(id, Ok(value)).err()
-    ))
-    .func(named!(
-      "fail",
-      /// Answers call `id` with an error.
-      move |id: u64, message: String| fail.borrow_mut().answer(id, Err(message)).err()
-    ))
-    .into()
 }
 
 #[cfg(test)]
@@ -281,22 +279,16 @@ mod tests {
   use super::*;
 
   #[test]
-  fn calls_wait_for_the_service() {
+  fn calls_go_to_the_running_service() {
     let mut calls = Calls::default();
-    assert!(calls.call("a".into(), json!(1)).is_err());
+    let error = calls.call("a".into(), json!(1)).unwrap_err();
+    assert_eq!(error.to_string(), "plugin has no running service");
 
-    calls.service = true;
+    let service = calls.start_service();
     let first = calls.call("a".into(), json!(1)).unwrap();
-    // queued until the service asks
-    let next = calls.next_call();
-    assert_eq!(next.try_recv().unwrap().method, "a");
-
-    // a waiting service gets it at once; a new wait replaces the old one
-    let old = calls.next_call();
-    let waiting = calls.next_call();
-    assert!(old.try_recv().is_err());
     let second = calls.call("b".into(), Value::Null).unwrap();
-    let call = waiting.try_recv().unwrap();
+    assert_eq!(service.try_recv().unwrap().method, "a");
+    let call = service.try_recv().unwrap();
     assert_eq!((call.id, call.method.as_str()), (1, "b"));
 
     calls.answer(0, Ok(json!("one"))).unwrap();
@@ -304,23 +296,38 @@ mod tests {
     assert_eq!(first.try_recv().unwrap(), Ok(json!("one")));
     assert_eq!(second.try_recv().unwrap(), Err("no".into()));
     assert!(calls.answer(1, Ok(Value::Null)).is_err());
+
+    // a service that went without stopping takes no calls
+    drop(service);
+    assert!(calls.call("c".into(), Value::Null).is_err());
+  }
+
+  #[test]
+  fn a_restart_ends_the_old_calls() {
+    let mut calls = Calls::default();
+    let old = calls.start_service();
+    let new = calls.start_service();
+    assert!(old.is_disconnected() && old.recv().is_err());
+    calls.call("a".into(), Value::Null).unwrap();
+    assert_eq!(new.try_recv().unwrap().method, "a");
   }
 
   #[test]
   fn stopping_fails_what_waits() {
-    let mut calls = Calls {
-      service: true,
-      ..Default::default()
-    };
-    let queued = calls.call("a".into(), Value::Null).unwrap();
+    let mut calls = Calls::default();
+    let service = calls.start_service();
+    let waiting = calls.call("a".into(), Value::Null).unwrap();
     // a caller that gave up is forgotten
     drop(calls.call("b".into(), Value::Null).unwrap());
     calls.call("c".into(), Value::Null).unwrap();
     assert_eq!(calls.pending.len(), 2);
 
     calls.stop_service();
-    assert_eq!(queued.try_recv().unwrap(), Err("service stopped".into()));
-    assert!(calls.queue.is_empty() && calls.pending.is_empty());
+    assert_eq!(waiting.try_recv().unwrap(), Err("service stopped".into()));
+    assert!(calls.pending.is_empty());
+    // its `nextCall` ends once the queue is read
+    assert_eq!(service.drain().count(), 3);
+    assert!(service.is_disconnected());
     assert!(calls.call("d".into(), Value::Null).is_err());
   }
 
