@@ -428,7 +428,6 @@ mod tests {
   use corona_utils::test_bus::{TestBus, wait_until};
   use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
-  use gpui_shell::ShellRuntime;
 
   use super::*;
   use crate::{module::harness, plugin::paths::Paths};
@@ -496,10 +495,7 @@ mod tests {
       state: dir.path().join("state"),
       local: dir.path().join("local"),
     };
-    cx.set_global(ScriptManager::new(
-      ShellRuntime::new_isolated().unwrap(),
-      paths,
-    ));
+    cx.set_global(ScriptManager::new(paths));
 
     let body = format!(
       r#"if (!globalThis.started) {{

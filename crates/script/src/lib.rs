@@ -1,6 +1,5 @@
 use anyhow::Result;
 use gpui_kit::{App, Window};
-use gpui_shell::ShellRuntime;
 
 pub use manager::{Entry, Script, ScriptManager, Service, call};
 pub use module::{dbus::Buses, secrets};
@@ -15,11 +14,8 @@ mod module;
 pub mod plugin;
 
 pub fn init(cx: &mut App) -> Result<()> {
-  let components = gpui_component_shell::components()?;
-
-  let runtime = ShellRuntime::new_with_components(cx, components)?;
   let paths = plugin::paths::Paths::from_config();
-  cx.set_global(ScriptManager::new(runtime, paths.clone()));
+  cx.set_global(ScriptManager::new(paths.clone()));
   PluginManager::init(paths, cx);
 
   Ok(())

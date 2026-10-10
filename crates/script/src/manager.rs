@@ -75,7 +75,8 @@ pub enum Entry<'a> {
 /// Runs plugin views and services. Which plugins there are is up to the
 /// plugin manager.
 pub struct ScriptManager {
-  runtime: Rc<ShellRuntime>,
+  /// One VM per plugin, so no plugin sees another's globals or microtasks
+  runtimes: HashMap<String, Rc<ShellRuntime>>,
   paths: Paths,
   plugins: HashMap<String, PluginManifest>,
   /// What the instances of each plugin share, made as the first one loads
@@ -90,9 +91,9 @@ pub struct ScriptManager {
 impl Global for ScriptManager {}
 
 impl ScriptManager {
-  pub fn new(runtime: Rc<ShellRuntime>, paths: Paths) -> Self {
+  pub fn new(paths: Paths) -> Self {
     Self {
-      runtime,
+      runtimes: HashMap::new(),
       paths,
       plugins: HashMap::new(),
       hubs: HashMap::new(),
@@ -108,6 +109,13 @@ impl ScriptManager {
 
   pub fn set_plugins(&mut self, plugins: HashMap<String, PluginManifest>) {
     self.hubs.retain(|id, _| plugins.contains_key(id));
+    // An updated plugin starts in a fresh VM; running views keep the old one
+    self.runtimes.retain(|id, _| {
+      let (old, new) = (self.plugins.get(id), plugins.get(id));
+      old
+        .zip(new)
+        .is_some_and(|(old, new)| (&old.dir, &old.version) == (&new.dir, &new.version))
+    });
     self.plugins = plugins;
   }
 
@@ -128,6 +136,17 @@ impl ScriptManager {
       .entry(id.to_string())
       .or_insert_with(|| plugin::Hub::new(cx))
       .clone()
+  }
+
+  /// The runtime of plugin `id`, made as its first script loads
+  fn runtime(id: &str, cx: &mut App) -> Result<Rc<ShellRuntime>> {
+    let runtimes = &mut cx.global_mut::<ScriptManager>().runtimes;
+    if let Some(runtime) = runtimes.get(id) {
+      return Ok(runtime.clone());
+    }
+    let runtime = ShellRuntime::new_isolated_with_components(gpui_component_shell::components()?)?;
+    runtimes.insert(id.to_string(), runtime.clone());
+    Ok(runtime)
   }
 
   fn manifest(id: &str, cx: &App) -> Result<PluginManifest> {
@@ -204,7 +223,7 @@ impl ScriptManager {
     }
     .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
 
-    let runtime = cx.global::<ScriptManager>().runtime.clone();
+    let runtime = Self::runtime(id, cx)?;
     let root = manifest.dir.join(view);
     let opener = Rc::new(Cell::new(None));
     let options = match entry {
@@ -259,7 +278,7 @@ impl ScriptManager {
       let calls = hub.start_service();
       let stop = StopGuard(hub);
       let (policy, subscribes) = Self::policy(&manifest, Rc::default(), Some(calls), None, cx)?;
-      let runtime = cx.global::<ScriptManager>().runtime.clone();
+      let runtime = Self::runtime(&manifest.id, cx)?;
       Ok(Running {
         _handle: runtime.start_service(&entry, Rc::new(policy), cx)?,
         _cleanups: subscribes
@@ -360,10 +379,7 @@ export default class Main extends View {
 
     /// Every plugin in the local directory, all enabled
     fn manager(&self) -> ScriptManager {
-      let runtime =
-        ShellRuntime::new_isolated_with_components(gpui_component_shell::components().unwrap())
-          .unwrap();
-      let mut manager = ScriptManager::new(runtime, self.paths.clone());
+      let mut manager = ScriptManager::new(self.paths.clone());
       let root = &registry::roots(&self.paths, &Default::default())[1];
       manager.set_plugins(
         registry::scan_root(&self.paths, root, &Default::default())
@@ -558,6 +574,29 @@ export default class Main extends View {
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
     assert_eq!(fake.calls.borrow().last().unwrap(), "hello ts");
+  }
+
+  #[gpui::test]
+  fn plugins_do_not_share_globals(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let view = |init: &str| {
+      VIEW
+        .replace("render(", &format!("init() {{ {init} }}\n  render("))
+        .replace(
+          "\"gpui-base\";",
+          "\"gpui-base\";\nimport { focusWorkspace } from \"corona/compositor\";",
+        )
+    };
+    let extra = "capabilities = { corona = [\"compositor\"] }";
+    let a = view("globalThis.leak = 'a'; Promise.prototype.then = () => 'patched';");
+    let b = view("focusWorkspace(`${globalThis.leak} ${Promise.prototype.then.name}`);");
+    plugins.add("a", &manifest("a", extra), &[("main.js", &a)]);
+    plugins.add("b", &manifest("b", extra), &[("main.js", &b)]);
+    let (host, cx) = host(cx, &plugins);
+    let _a = show(cx, &host, "a").unwrap();
+    let _b = show(cx, &host, "b").unwrap();
+    assert_eq!(fake.calls.borrow().last().unwrap(), "undefined then");
   }
 
   #[gpui::test]

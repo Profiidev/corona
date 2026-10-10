@@ -60,11 +60,7 @@ mod tests {
       serde_json::from_value(serde_json::json!({ "id": "a", "name": "A" })).unwrap();
     let manifest = PluginManifest::new(file, tmp.path().into(), Path::new("/data"), None);
     cx.update(|cx| {
-      let runtime = gpui_shell::ShellRuntime::new_isolated_with_components(
-        gpui_component_shell::components().unwrap(),
-      )
-      .unwrap();
-      let mut manager = ScriptManager::new(runtime, paths);
+      let mut manager = ScriptManager::new(paths);
       manager.set_plugins(HashMap::from([("a".into(), manifest)]));
       cx.set_global(manager);
     });

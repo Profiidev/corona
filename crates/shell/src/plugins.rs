@@ -186,11 +186,7 @@ export default class Main extends View {
       config.plugins.enabled = vec!["com.clock".into()];
       config.plugins.source.clear();
       cx.set_global(config);
-      let runtime = gpui_shell::ShellRuntime::new_isolated_with_components(
-        gpui_component_shell::components().unwrap(),
-      )
-      .unwrap();
-      cx.set_global(ScriptManager::new(runtime, paths.clone()));
+      cx.set_global(ScriptManager::new(paths.clone()));
       PluginManager::init(paths.clone(), cx);
       init(cx);
     });
@@ -295,11 +291,7 @@ export default async function main(_cx) {
       config.plugins.enabled = vec!["com.echo".into()];
       config.plugins.source.clear();
       cx.set_global(config);
-      let runtime = gpui_shell::ShellRuntime::new_isolated_with_components(
-        gpui_component_shell::components().unwrap(),
-      )
-      .unwrap();
-      cx.set_global(ScriptManager::new(runtime, paths.clone()));
+      cx.set_global(ScriptManager::new(paths.clone()));
       PluginManager::init(paths, cx);
       init(cx);
     });
@@ -357,11 +349,7 @@ export default async function main(_cx) {
       config.plugins.enabled = vec!["com.clock".into()];
       config.plugins.source.clear();
       cx.set_global(config);
-      let runtime = gpui_shell::ShellRuntime::new_isolated_with_components(
-        gpui_component_shell::components().unwrap(),
-      )
-      .unwrap();
-      cx.set_global(ScriptManager::new(runtime, paths.clone()));
+      cx.set_global(ScriptManager::new(paths.clone()));
       PluginManager::init(paths, cx);
       init(cx);
     });
