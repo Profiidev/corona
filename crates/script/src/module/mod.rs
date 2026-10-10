@@ -99,7 +99,7 @@ impl CoronaModule {
       Self::Tray => tray::module(reads, subs, cx),
       Self::Sysinfo => sysinfo::module(reads, subs, cx),
       Self::Weather => weather::module(reads, subs, cx),
-      Self::Auth => auth::module(),
+      Self::Auth => auth::module(plugin.id),
       Self::Secrets => secrets::module(plugin),
       Self::Desktop => desktop::module(plugin.capabilities.clone(), subs),
     }
