@@ -128,7 +128,7 @@ impl NotificationsPanel {
             notification.actions.iter().any(|a| a.key != "default"),
             |d| {
               d.child(
-                div().flex().gap_1().pt_1().children(
+                div().flex().flex_wrap().gap_1().pt_1().children(
                   notification
                     .actions
                     .iter()
@@ -138,6 +138,7 @@ impl NotificationsPanel {
                       Button::new(format!("notification-{id}-{key}"))
                         .label(action.label.clone())
                         .small()
+                        .max_w_full()
                         .cursor_pointer()
                         .on_click(move |_, _, cx| {
                           cx.stop_propagation();
