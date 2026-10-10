@@ -12,8 +12,8 @@ use gpui_kit::App;
 
 use crate::commands::session::{Action, Session};
 
-pub fn init(cx: &mut App) {
-  corona_idle::init(cx, changed);
+pub fn init(cx: &mut App, session: &zbus::Connection) {
+  corona_idle::init(cx, session, changed);
   watch(cx);
   observe_section(cx, |c| &c.idle, |_, cx| watch(cx));
 }

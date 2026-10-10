@@ -27,7 +27,6 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   lock::init(cx);
-  idle::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
   overlays::switcher::init(cx);
@@ -143,6 +142,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   let serve = cx.config().notification.enabled;
   corona_notifications::init(cx, &session, serve).await?;
   corona_tray::init(cx, &session).await?;
+  idle::init(cx, &session);
   corona_script::init_dbus(cx, &system, &session);
 
   Ok(())

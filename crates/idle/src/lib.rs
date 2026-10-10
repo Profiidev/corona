@@ -33,7 +33,12 @@ impl Global for Idle {}
 
 /// Starts watching, `on_change(name, idle)` runs when the time named `name`
 /// passes without input (`true`) and when input follows (`false`).
-pub fn init(cx: &mut App, on_change: impl Fn(&str, bool, &mut App) + 'static) {
+/// `session` serves the D-Bus idle inhibits.
+pub fn init(
+  cx: &mut App,
+  session: &zbus::Connection,
+  on_change: impl Fn(&str, bool, &mut App) + 'static,
+) {
   let (timeouts, timeouts_rx) = flume::unbounded();
   let (events, events_rx) = flume::unbounded();
   thread::spawn(move || {
@@ -48,9 +53,9 @@ pub fn init(cx: &mut App, on_change: impl Fn(&str, bool, &mut App) + 'static) {
   })
   .detach();
   let (inhibited, inhibited_rx) = flume::unbounded();
+  let session = session.clone();
   cx.background_spawn(async move {
-    let served = async { screensaver::serve(zbus::Connection::session().await?, inhibited).await };
-    if let Err(e) = served.await {
+    if let Err(e) = screensaver::serve(session, inhibited).await {
       tracing::warn!("idle inhibits over D-Bus are ignored: {e:#}");
     }
   })
@@ -208,6 +213,7 @@ mod tests {
     time::Instant,
   };
 
+  use corona_utils::test_bus::TestBus;
   use gpui_kit::{self as gpui, TestAppContext};
   use wayland_protocols::ext::idle_notify::v1::server::{
     ext_idle_notification_v1::ExtIdleNotificationV1 as Notification,
@@ -406,16 +412,19 @@ mod tests {
 
   type Events = Rc<RefCell<Vec<(String, bool)>>>;
 
-  fn start(cx: &mut TestAppContext) -> Events {
+  /// the events, and the session bus to keep alive
+  fn start(cx: &mut TestAppContext) -> (Events, TestBus) {
     cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let session = futures_lite::future::block_on(bus.conn());
     let events = Events::default();
     let seen = events.clone();
     cx.update(|cx| {
-      init(cx, move |name, idle, _| {
+      init(cx, &session, move |name, idle, _| {
         seen.borrow_mut().push((name.into(), idle))
       })
     });
-    events
+    (events, bus)
   }
 
   fn set(cx: &mut TestAppContext, timeouts: &[(&str, u64)]) {
@@ -450,7 +459,7 @@ mod tests {
   #[gpui::test]
   fn watches_the_timeouts(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 300_000), ("off", 0), ("huge", u64::MAX / 2)]);
     // zero is left out, too long is clamped
     wait(cx, || compositor.watched().len() == 2);
@@ -475,7 +484,7 @@ mod tests {
   #[gpui::test]
   fn replacing_resumes_what_was_idle(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000), ("dim", 500)]);
     wait(cx, || compositor.live().len() == 2);
     compositor.send(500, true);
@@ -498,7 +507,7 @@ mod tests {
   #[gpui::test]
   fn events_of_destroyed_notifications_are_dropped(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000)]);
     wait(cx, || compositor.live().len() == 1);
     set(cx, &[("other", 3000)]);
@@ -516,7 +525,7 @@ mod tests {
   #[gpui::test]
   fn duplicate_names_are_cleaned_up(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
-    let _events = start(cx);
+    let _running = start(cx);
     set(cx, &[("lock", 1000), ("lock", 2000)]);
     wait(cx, || compositor.watched().len() == 2);
     set(cx, &[]);
@@ -527,7 +536,7 @@ mod tests {
   #[gpui::test]
   fn without_a_notifier_nothing_happens(cx: &mut TestAppContext) {
     let compositor = Compositor::start(false);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000)]);
     settle(cx);
     assert!(compositor.watched().is_empty());
@@ -541,7 +550,7 @@ mod tests {
       std::env::set_var("XDG_RUNTIME_DIR", dir.path());
       std::env::set_var("WAYLAND_DISPLAY", "nothing-here");
     }
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000)]);
     settle(cx);
     assert!(events.borrow().is_empty());
@@ -589,7 +598,7 @@ mod tests {
   #[gpui::test]
   fn multiple_seats_binds_first_seat(cx: &mut TestAppContext) {
     let compositor = Compositor::start_with_config(true, 2);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000)]);
     wait(cx, || compositor.live().len() == 1);
     compositor.send(1000, true);
@@ -604,7 +613,7 @@ mod tests {
       std::env::set_var("XDG_RUNTIME_DIR", dir.path());
       std::env::set_var("WAYLAND_DISPLAY", "nothing-running-here");
     }
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     settle(cx);
     // Setting timeouts when the watcher thread exited does not panic
     set(cx, &[("lock", 1000), ("dim", 500)]);
@@ -615,7 +624,7 @@ mod tests {
   #[gpui::test]
   fn events_of_destroyed_notifications_are_dropped_when_name_is_reused(cx: &mut TestAppContext) {
     let compositor = Compositor::start(true);
-    let events = start(cx);
+    let (events, _bus) = start(cx);
     set(cx, &[("lock", 1000)]);
     wait(cx, || compositor.live() == [1000]);
 
