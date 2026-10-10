@@ -37,6 +37,10 @@ pub struct ActionEvent {
   /// The notification's id, as `notify` returned it.
   pub id: u32,
   pub key: String,
+  /// The text typed, for key `inline-reply`.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  #[ts(optional)]
+  pub text: Option<String>,
 }
 
 /// That secret `0` of the plugin was stored or removed
@@ -351,6 +355,7 @@ mod tests {
     let action = |id| ActionEvent {
       id,
       key: "default".into(),
+      text: None,
     };
     let (a, b) = (calls.next_action(1), calls.next_action(2));
     calls.push_action(action(1));

@@ -35,6 +35,8 @@ use crate::{
 const NAMESPACE: &str = "corona_notification";
 const STACK_OFFSET: f32 = 12.;
 const SLIDE_SPEED: Duration = Duration::from_millis(250);
+/// the timeout of a popup that stays until clicked
+const NEVER: Duration = Duration::MAX;
 
 type Item = corona_notifications::Notification;
 
@@ -58,10 +60,13 @@ struct Popup {
 
 impl Popup {
   fn new(item: Item, slot: usize, config: &NotificationConfig) -> Self {
-    let timeout = Duration::from_millis(match item.urgency {
-      Urgency::Low | Urgency::Normal => config.timeout_ms,
-      Urgency::Critical => config.critical_timeout_ms,
-    });
+    // the app's own timeout, or the configured one by urgency
+    let timeout = match (item.expire_timeout, item.urgency) {
+      (0, _) => NEVER,
+      (ms @ 1.., _) => Duration::from_millis(ms as u64),
+      (_, Urgency::Low | Urgency::Normal) => Duration::from_millis(config.timeout_ms),
+      (_, Urgency::Critical) => Duration::from_millis(config.critical_timeout_ms),
+    };
     Self {
       item,
       open: true,
@@ -359,14 +364,14 @@ impl Render for Popups {
           }
           // typing a reply holds it like hovering
           let held = popup.hovered || self.replies.typing(popup.item.id, window, cx);
-          if popup.open && !held {
+          let counting = popup.open && !held && popup.timeout != NEVER;
+          if counting {
             popup.remaining = popup.remaining.saturating_sub(now - popup.last_tick);
             if popup.remaining.is_zero() {
               expired.push(popup.item.id);
             }
           }
           popup.last_tick = now;
-          let counting = popup.open && !held;
 
           let (progress, sliding) = popup.anim.value();
           let (at, moving) = popup.slot.value();
@@ -466,6 +471,7 @@ mod tests {
       urgency,
       desktop_entry: None,
       reply_placeholder: None,
+      expire_timeout: -1,
       resident: false,
       time: SystemTime::UNIX_EPOCH,
       read: false,
@@ -518,6 +524,31 @@ mod tests {
       assert_eq!(popup.timeout, Duration::from_millis(ms), "{urgency:?}");
       assert_eq!(popup.remaining, popup.timeout);
       assert!(popup.open && !popup.hovered);
+    }
+  }
+
+  #[test]
+  fn popup_timeout_from_the_app() {
+    let config = NotificationConfig {
+      timeout_ms: 1000,
+      critical_timeout_ms: 9000,
+      ..Default::default()
+    };
+    for (urgency, expire_timeout, timeout) in [
+      (Urgency::Normal, -1, Duration::from_millis(1000)),
+      (Urgency::Critical, -5, Duration::from_millis(9000)),
+      (Urgency::Normal, 0, NEVER),
+      (Urgency::Critical, 0, NEVER),
+      (Urgency::Low, 250, Duration::from_millis(250)),
+      (Urgency::Critical, 250, Duration::from_millis(250)),
+    ] {
+      let item = Item {
+        expire_timeout,
+        ..item("a", "b", "c", urgency)
+      };
+      let popup = Popup::new(item, 0, &config);
+      assert_eq!(popup.timeout, timeout, "{urgency:?} {expire_timeout}");
+      assert_eq!(popup.remaining, timeout);
     }
   }
 }

@@ -80,8 +80,9 @@ pub struct ScriptManager {
   plugins: HashMap<String, PluginManifest>,
   /// What the instances of each plugin share, made as the first one loads
   pub(crate) hubs: HashMap<String, plugin::Hub>,
-  /// The plugin that sent each notification, until an action is picked on it
-  pub(crate) owners: Arc<Mutex<HashMap<u32, String>>>,
+  /// The plugin that sent each notification and whether it is resident, until
+  /// an action is picked on a non-resident one
+  pub(crate) owners: Arc<Mutex<HashMap<u32, (String, bool)>>>,
   /// Whether notification actions are listened for, from the first `notify`
   pub(crate) listening: bool,
 }

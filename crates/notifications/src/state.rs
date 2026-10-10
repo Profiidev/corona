@@ -37,6 +37,8 @@ pub struct Notification {
   /// the `x-kde-reply-placeholder-text` hint, for an `inline-reply` action
   pub reply_placeholder: Option<String>,
   pub resident: bool,
+  /// ms until the popup hides: -1 (or below) the configured default, 0 never
+  pub expire_timeout: i32,
   pub time: SystemTime,
   pub read: bool,
 }
@@ -139,6 +141,7 @@ mod tests {
       urgency: Urgency::Normal,
       desktop_entry: None,
       reply_placeholder: None,
+      expire_timeout: -1,
       resident: false,
       time: SystemTime::UNIX_EPOCH,
       read: false,

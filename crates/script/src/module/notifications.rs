@@ -1,13 +1,15 @@
-use std::{mem, pin::pin, time::UNIX_EPOCH};
+use std::{collections::HashMap, io::Cursor, mem, pin::pin, time::UNIX_EPOCH};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail, ensure};
 use corona_notifications as nt;
 use corona_notifications::NotificationsExt;
-use futures_lite::StreamExt;
+use futures_lite::{StreamExt, future::try_zip, stream};
 use gpui_kit::{App, BorrowAppContext};
 use gpui_shell::HostModule;
-use serde::{Deserialize, Serialize};
+use image::{ImageError, ImageReader, Limits};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use ts_rs::TS;
+use zbus::zvariant::{OwnedValue, Value};
 
 use crate::{
   ScriptManager,
@@ -40,8 +42,39 @@ impl From<Urgency> for nt::Urgency {
   }
 }
 
+/// The action key of a typed reply
+const REPLY: &str = "inline-reply";
+/// Hints set by options, and `desktop-entry` as the plugin shows under its own name
+const RESERVED_HINTS: [&str; 8] = [
+  "urgency",
+  "image-data",
+  "image_data",
+  "icon_data",
+  "image-path",
+  "image_path",
+  "x-kde-reply-placeholder-text",
+  "desktop-entry",
+];
+// ponytail: bigger pictures are rejected, scale them down here if plugins need them
+const MAX_IMAGE_SIDE: u32 = 1024;
+
+/// A spec hint: whole numbers go out as `int32`, others as `double`
+#[derive(Deserialize, TS)]
+#[serde(untagged)]
+enum Hint {
+  Bool(bool),
+  Number(f64),
+  Text(String),
+}
+
+#[derive(Deserialize, TS)]
+struct Reply {
+  #[ts(optional)]
+  placeholder: Option<String>,
+}
+
 /// A notification from the plugin, under its name.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Deserialize, TS)]
 struct NotifyOptions {
   summary: String,
   #[ts(optional)]
@@ -54,6 +87,110 @@ struct NotifyOptions {
   actions: Option<Vec<Action>>,
   #[ts(optional)]
   urgency: Option<Urgency>,
+  /// A picture, PNG or JPEG, at most 1024 pixels a side.
+  #[ts(optional, type = "Uint8Array")]
+  image: Option<Bytes>,
+  /// More spec hints, like `resident` or `category`. The ones options set
+  /// (`urgency`, the image ones, the reply placeholder) and `desktop-entry`
+  /// are rejected.
+  #[ts(optional)]
+  hints: Option<HashMap<String, Hint>>,
+  /// Milliseconds on screen: -1 the default, 0 until dismissed.
+  #[ts(optional)]
+  timeout: Option<i32>,
+  /// A reply field; the text arrives at `nextAction` with key `inline-reply`.
+  #[ts(optional)]
+  reply: Option<Reply>,
+}
+
+/// A `Uint8Array`'s bytes
+struct Bytes(Vec<u8>);
+
+// ponytail: a Uint8Array crosses the host bridge as an object of its bytes by
+// index, a bytes HostValue in gpui-shell if big pictures get slow
+impl<'de> Deserialize<'de> for Bytes {
+  fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+    let indexed = HashMap::<usize, u8>::deserialize(d)?;
+    let mut bytes = vec![0; indexed.len()];
+    for (i, byte) in indexed {
+      *bytes
+        .get_mut(i)
+        .ok_or_else(|| D::Error::custom("not a Uint8Array"))? = byte;
+    }
+    Ok(Self(bytes))
+  }
+}
+
+/// `(iiibiiay)` RGBA pixels for the `image-data` hint
+fn image_data(encoded: &[u8]) -> anyhow::Result<OwnedValue> {
+  let mut reader = ImageReader::new(Cursor::new(encoded)).with_guessed_format()?;
+  let mut limits = Limits::default();
+  limits.max_image_width = Some(MAX_IMAGE_SIDE);
+  limits.max_image_height = Some(MAX_IMAGE_SIDE);
+  reader.limits(limits);
+  let image = match reader.decode() {
+    Ok(image) => image.into_rgba8(),
+    Err(ImageError::Limits(_)) => bail!("image: over {MAX_IMAGE_SIDE} pixels a side"),
+    Err(e) => bail!("image: {e}"),
+  };
+  let (width, height) = (image.width() as i32, image.height() as i32);
+  let data = (width, height, width * 4, true, 8, 4, image.into_raw());
+  Ok(Value::from(data).try_to_owned()?)
+}
+
+impl NotifyOptions {
+  fn into_notify(self, app_name: String) -> anyhow::Result<nt::Notify> {
+    let mut hints = HashMap::new();
+    for (key, hint) in self.hints.unwrap_or_default() {
+      ensure!(
+        !RESERVED_HINTS.contains(&key.as_str()),
+        "hint {key} is reserved"
+      );
+      let value = match hint {
+        Hint::Bool(b) => Value::from(b),
+        Hint::Number(n) if n.fract() == 0. && n >= i32::MIN.into() && n <= i32::MAX.into() => {
+          Value::from(n as i32)
+        }
+        Hint::Number(n) => Value::from(n),
+        Hint::Text(text) => Value::from(text),
+      };
+      hints.insert(key, value.try_to_owned()?);
+    }
+    if let Some(image) = self.image {
+      hints.insert("image-data".into(), image_data(&image.0)?);
+    }
+    let mut actions: Vec<nt::Action> = (self.actions.unwrap_or_default().into_iter())
+      .map(|a| nt::Action {
+        key: a.key,
+        label: a.label,
+      })
+      .collect();
+    if let Some(reply) = self.reply {
+      actions.push(nt::Action {
+        key: REPLY.into(),
+        label: "Reply".into(),
+      });
+      if let Some(placeholder) = reply.placeholder {
+        let placeholder = Value::from(placeholder).try_to_owned()?;
+        hints.insert("x-kde-reply-placeholder-text".into(), placeholder);
+      }
+    }
+    let timeout = self.timeout.unwrap_or(-1);
+    ensure!(
+      timeout >= -1,
+      "timeout {timeout}: -1 for the default, 0 for never or milliseconds"
+    );
+    Ok(nt::Notify {
+      app_name,
+      app_icon: self.icon.unwrap_or_default(),
+      summary: self.summary,
+      body: self.body.unwrap_or_default(),
+      actions,
+      urgency: self.urgency.unwrap_or(Urgency::Normal).into(),
+      hints,
+      timeout,
+    })
+  }
 }
 
 #[derive(Serialize, TS)]
@@ -125,22 +262,43 @@ fn listen(cx: &mut App) {
     return;
   }
   let owners = manager.owners.clone();
-  let actions = cx.notifications().action_invoked();
+  let streams = try_zip(
+    cx.notifications().action_invoked(),
+    cx.notifications().replied(),
+  );
   cx.spawn(async move |cx| {
-    let actions = match actions.await {
-      Ok(actions) => actions,
+    let (actions, replies) = match streams.await {
+      Ok(streams) => streams,
       Err(e) => return tracing::error!("notification actions: {e:#}"),
     };
-    let mut actions = pin!(actions);
-    while let Some((id, key)) = actions.next().await {
-      // ponytail: forgotten after the first action, a resident notification
-      // delivers only that one; keep owners until NotificationClosed if needed
-      let Some(owner) = owners.lock().unwrap().remove(&id) else {
+    let actions = actions.map(|(id, key)| ActionEvent {
+      id,
+      key,
+      text: None,
+    });
+    let replies = replies.map(|(id, text)| ActionEvent {
+      id,
+      key: REPLY.into(),
+      text: Some(text),
+    });
+    let mut events = pin!(stream::or(actions, replies));
+    while let Some(event) = events.next().await {
+      let owner = {
+        let mut owners = owners.lock().unwrap();
+        match owners.get(&event.id) {
+          // ponytail: kept until restart, drop on NotificationClosed if
+          // plugins send many resident ones
+          Some((owner, true)) => Some(owner.clone()),
+          Some(_) => owners.remove(&event.id).map(|(owner, _)| owner),
+          None => None,
+        }
+      };
+      let Some(owner) = owner else {
         continue;
       };
       cx.update(|cx| {
         if let Some(hub) = cx.global::<ScriptManager>().hubs.get(&owner) {
-          hub.push_action(ActionEvent { id, key });
+          hub.push_action(event);
         }
       });
     }
@@ -228,23 +386,16 @@ pub fn module(
       move |cx: &mut App, options: NotifyOptions| {
         listen(cx);
         let owners = cx.global::<ScriptManager>().owners.clone();
-        let sent = cx.notifications().send_notify(nt::Notify {
-          app_name: name.clone(),
-          app_icon: options.icon.unwrap_or_default(),
-          summary: options.summary,
-          body: options.body.unwrap_or_default(),
-          actions: (options.actions.unwrap_or_default().into_iter())
-            .map(|a| nt::Action {
-              key: a.key,
-              label: a.label,
-            })
-            .collect(),
-          urgency: options.urgency.unwrap_or(Urgency::Normal).into(),
+        let notify = options.into_notify(name.clone());
+        let sent = notify.map(|n| {
+          let resident = n.hints.get("resident").is_some_and(|v| **v == Value::Bool(true));
+          (cx.notifications().send_notify(n), resident)
         });
         let id = id.clone();
         async move {
+          let (sent, resident) = sent?;
           let sent = sent.await?;
-          owners.lock().unwrap().insert(sent, id);
+          owners.lock().unwrap().insert(sent, (id, resident));
           anyhow::Ok(sent)
         }
       }
@@ -297,6 +448,7 @@ mod tests {
       urgency,
       desktop_entry: Some("thunderbird".into()),
       reply_placeholder: None,
+      expire_timeout: -1,
       resident: true,
       time,
       read: false,
@@ -349,13 +501,27 @@ mod tests {
       paths,
     ));
 
-    let body = r#"if (!globalThis.started) {
+    let body = format!(
+      r#"if (!globalThis.started) {{
       globalThis.started = true;
-      m.notify({ summary: "hi", actions: [{ key: "open", label: "Open" }] }).then((id) => {
+      m.notify({{
+        summary: "hi",
+        actions: [{{ key: "open", label: "Open" }}],
+        hints: {{ resident: true }},
+        reply: {{ placeholder: "Say hi" }},
+        timeout: 0,
+        image: new Uint8Array({:?}),
+      }}).then((id) => {{
         report(id);
-        m.nextAction().then(report);
-      });
-    }"#;
+        m.nextAction().then((action) => {{
+          report(action);
+          m.nextAction().then(report);
+        }});
+      }});
+    }}"#,
+      png(2, 2)
+    );
+    let body = body.as_str();
     let capabilities = Default::default();
     let plugin = PluginRef {
       id: "a",
@@ -367,11 +533,97 @@ mod tests {
       !view.reports.borrow().is_empty() && cx.read(|cx| !cx.notifications().list(cx).is_empty())
     });
     let id = view.reports.borrow()[0].as_u64().unwrap() as u32;
-    let app_name = cx.read(|cx| cx.notifications().list(cx)[0].app_name.clone());
-    assert_eq!(app_name, "Plugin A");
+    let n = cx.read(|cx| cx.notifications().list(cx)[0].clone());
+    assert_eq!(n.app_name, "Plugin A");
+    assert_eq!(n.reply_placeholder.as_deref(), Some("Say hi"));
+    assert_eq!((n.resident, n.expire_timeout), (true, 0));
+    assert!(matches!(n.image, Some(nt::NotificationImage::Path(_))));
 
     cx.update(|_, cx| cx.notifications().clone().invoke_action(id, "open", cx));
     wait_until(cx, |_| view.reports.borrow().len() == 2);
     assert_eq!(view.last(), serde_json::json!({ "id": id, "key": "open" }));
+    // resident, so the plugin still owns it
+    cx.update(|_, cx| cx.notifications().clone().reply(id, "hey", cx));
+    wait_until(cx, |_| view.reports.borrow().len() == 3);
+    assert_eq!(
+      view.last(),
+      serde_json::json!({ "id": id, "key": "inline-reply", "text": "hey" })
+    );
+  }
+
+  fn png(width: u32, height: u32) -> Vec<u8> {
+    let mut png = Vec::new();
+    image::RgbaImage::new(width, height)
+      .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+      .unwrap();
+    png
+  }
+
+  /// options as a script passes them, a Uint8Array as an object by index
+  fn options(mut json: serde_json::Value) -> NotifyOptions {
+    if let Some(bytes) = json.get("image").and_then(|i| i.as_array()) {
+      let indexed: serde_json::Map<_, _> = (bytes.iter().enumerate())
+        .map(|(i, b)| (i.to_string(), b.clone()))
+        .collect();
+      json["image"] = indexed.into();
+    }
+    serde_json::from_value(json).unwrap()
+  }
+
+  fn error(json: serde_json::Value) -> String {
+    options(json)
+      .into_notify("p".into())
+      .err()
+      .unwrap()
+      .to_string()
+  }
+
+  #[test]
+  fn options_become_hints() {
+    let n = options(serde_json::json!({
+      "summary": "s",
+      "urgency": "critical",
+      "hints": { "resident": true, "x": 5, "volume": 0.5, "category": "im" },
+      "reply": {},
+      "image": png(3, 2),
+    }))
+    .into_notify("p".into())
+    .unwrap();
+    assert_eq!((n.app_name.as_str(), n.timeout), ("p", -1));
+    assert_eq!(n.hints["resident"], OwnedValue::from(true));
+    assert_eq!(n.hints["x"], OwnedValue::from(5i32));
+    assert_eq!(n.hints["volume"], OwnedValue::from(0.5));
+    assert_eq!(&*n.hints["category"], &Value::from("im"));
+    let (w, h, stride, alpha, bits, channels, pixels): (i32, i32, i32, bool, i32, i32, Vec<u8>) = n
+      .hints["image-data"]
+      .try_clone()
+      .unwrap()
+      .try_into()
+      .unwrap();
+    assert_eq!(
+      (w, h, stride, alpha, bits, channels),
+      (3, 2, 12, true, 8, 4)
+    );
+    assert_eq!(pixels.len(), 24);
+    // a reply without placeholder is the action alone
+    assert_eq!(n.actions[0].key, "inline-reply");
+    assert!(!n.hints.contains_key("x-kde-reply-placeholder-text"));
+  }
+
+  #[test]
+  fn bad_options_are_rejected() {
+    for key in RESERVED_HINTS {
+      let json = serde_json::json!({ "summary": "s", "hints": { key: 1 } });
+      assert_eq!(error(json), format!("hint {key} is reserved"));
+    }
+    let json = serde_json::json!({ "summary": "s", "timeout": -2 });
+    assert!(error(json).starts_with("timeout -2"));
+    let json = serde_json::json!({ "summary": "s", "image": [1, 2, 3] });
+    assert!(error(json).starts_with("image: "), "undecodable");
+    let json = serde_json::json!({ "summary": "s", "image": png(MAX_IMAGE_SIDE + 1, 1) });
+    assert_eq!(error(json), "image: over 1024 pixels a side");
+    // holes are no Uint8Array
+    let json = serde_json::json!({ "summary": "s", "image": { "0": 1, "2": 3 } });
+    assert!(serde_json::from_value::<NotifyOptions>(json).is_err());
   }
 }

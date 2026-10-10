@@ -191,7 +191,7 @@ impl Server {
     body: String,
     actions: Vec<String>,
     hints: HashMap<String, OwnedValue>,
-    _expire_timeout: i32,
+    expire_timeout: i32,
   ) -> u32 {
     // only an id this server handed out is replaced, any other one gets a new id
     let issued = |id: u32| id != 0 && id < self.next_id.load(Ordering::Relaxed);
@@ -216,6 +216,7 @@ impl Server {
       desktop_entry: hint(&hints, "desktop-entry"),
       reply_placeholder: hint(&hints, "x-kde-reply-placeholder-text"),
       resident: hint(&hints, "resident").unwrap_or(false),
+      expire_timeout,
       time: SystemTime::now(),
       read: false,
     };
@@ -439,7 +440,7 @@ mod tests {
   }
 
   #[test]
-  fn expire_timeout_parameter_accepted() {
+  fn expire_timeout_is_stored() {
     let (server, rx) = server(1);
     for timeout in [-1, 0, 1000, i32::MAX, i32::MIN] {
       let id = server.notify(
@@ -454,7 +455,7 @@ mod tests {
       );
       assert!(id > 0);
       let n = received(&rx);
-      assert_eq!(n.id, id);
+      assert_eq!((n.id, n.expire_timeout), (id, timeout));
     }
   }
 

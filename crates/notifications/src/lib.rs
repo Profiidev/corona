@@ -9,7 +9,7 @@ use zbus::{
   fdo::{DBusProxy, RequestNameFlags, RequestNameReply},
   message,
   object_server::SignalEmitter,
-  zvariant::Value,
+  zvariant::OwnedValue,
 };
 
 use crate::server::{CloseReason, Event, NAME, PATH, Server};
@@ -38,6 +38,10 @@ pub struct Notify {
   pub body: String,
   pub actions: Vec<Action>,
   pub urgency: Urgency,
+  /// more hints; `urgency` comes from [`Self::urgency`]
+  pub hints: HashMap<String, OwnedValue>,
+  /// ms: -1 the daemon's default, 0 never
+  pub timeout: i32,
 }
 
 pub struct Filter(pub Box<dyn Fn(&Notification) -> bool>);
@@ -110,6 +114,8 @@ impl Notifications {
       body,
       actions: Vec::new(),
       urgency: Urgency::Normal,
+      hints: HashMap::new(),
+      timeout: -1,
     });
     async move { sent.await.map(drop) }
   }
@@ -128,7 +134,8 @@ impl Notifications {
         Urgency::Normal => 1,
         Urgency::Critical => 2,
       };
-      let hints = HashMap::from([("urgency", Value::from(urgency))]);
+      let mut hints = n.hints;
+      hints.insert("urgency".into(), urgency.into());
       let reply = conn
         .call_method(
           Some(NAME),
@@ -143,7 +150,7 @@ impl Notifications {
             n.body.as_str(),
             actions,
             hints,
-            -1i32,
+            n.timeout,
           ),
         )
         .await?;
@@ -156,32 +163,15 @@ impl Notifications {
   pub fn action_invoked(
     &self,
   ) -> impl Future<Output = Result<impl Stream<Item = (u32, String)> + use<>>> + use<> {
-    let conn = self.conn.clone();
-    async move {
-      let rule = MatchRule::builder()
-        .msg_type(message::Type::Signal)
-        .sender(NAME)?
-        .path(PATH)?
-        .interface(NAME)?
-        .member("ActionInvoked")?
-        .build();
-      let stream = MessageStream::for_match_rule(rule, &conn, None).await?;
-      let dbus = DBusProxy::new(&conn).await?;
-      // zbus cannot match a well-known sender, so any client could send one
-      Ok(
-        stream
-          .then(move |message| {
-            let dbus = dbus.clone();
-            async move {
-              let message = message.ok()?;
-              let owner = dbus.get_name_owner(NAME.try_into().ok()?).await.ok()?;
-              (message.header().sender()? == owner.inner()).then_some(())?;
-              message.body().deserialize().ok()
-            }
-          })
-          .filter_map(|action| action),
-      )
-    }
+    signals(self.conn.clone(), "ActionInvoked")
+  }
+
+  /// The text typed into `inline-reply` actions, like [`Self::action_invoked`]:
+  /// the notification id and the text
+  pub fn replied(
+    &self,
+  ) -> impl Future<Output = Result<impl Stream<Item = (u32, String)> + use<>>> + use<> {
+    signals(self.conn.clone(), "NotificationReplied")
   }
 
   pub fn invoke_action(&self, id: u32, key: &str, cx: &mut App) {
@@ -247,6 +237,36 @@ impl Notifications {
       removed
     })
   }
+}
+
+/// The `(id, text)` signals `member` from the daemon
+async fn signals(
+  conn: Connection,
+  member: &'static str,
+) -> Result<impl Stream<Item = (u32, String)>> {
+  let rule = MatchRule::builder()
+    .msg_type(message::Type::Signal)
+    .sender(NAME)?
+    .path(PATH)?
+    .interface(NAME)?
+    .member(member)?
+    .build();
+  let stream = MessageStream::for_match_rule(rule, &conn, None).await?;
+  let dbus = DBusProxy::new(&conn).await?;
+  // zbus cannot match a well-known sender, so any client could send one
+  Ok(
+    stream
+      .then(move |message| {
+        let dbus = dbus.clone();
+        async move {
+          let message = message.ok()?;
+          let owner = dbus.get_name_owner(NAME.try_into().ok()?).await.ok()?;
+          (message.header().sender()? == owner.inner()).then_some(())?;
+          message.body().deserialize().ok()
+        }
+      })
+      .filter_map(|signal| signal),
+  )
 }
 
 async fn closed_signals(emitter: &SignalEmitter<'_>, ids: Vec<u32>) -> zbus::Result<()> {
@@ -355,7 +375,7 @@ mod tests {
   use corona_utils::test_bus::{TestBus, settle, wait_until};
   use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
-  use zbus::{MatchRule, MessageStream, message::Type};
+  use zbus::{MatchRule, MessageStream, message::Type, zvariant::Value};
 
   use super::*;
 
@@ -675,6 +695,8 @@ mod tests {
           label: "Open".into(),
         }],
         urgency: Urgency::Critical,
+        hints: HashMap::from([("resident".into(), true.into())]),
+        timeout: 0,
       })
     });
     let id = block_on(task).unwrap();
@@ -689,6 +711,7 @@ mod tests {
         (n.actions[0].key.as_str(), n.urgency),
         ("open", Urgency::Critical)
       );
+      assert_eq!((n.resident, n.expire_timeout), (true, 0));
     });
 
     // another app's, sent straight to corona, is not the daemon's

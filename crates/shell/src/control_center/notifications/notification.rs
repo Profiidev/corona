@@ -343,6 +343,7 @@ mod tests {
       urgency: Urgency::Normal,
       desktop_entry: desktop_entry.map(Into::into),
       reply_placeholder: None,
+      expire_timeout: -1,
       resident: false,
       time: std::time::SystemTime::UNIX_EPOCH,
       read: false,
