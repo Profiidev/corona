@@ -985,9 +985,9 @@ methods = ["POST"]
   #[test]
   fn dbus_grants() {
     assert_eq!(with("").unwrap().capabilities.dbus, None);
-    let manifest = with_capabilities(r#"dbus = { session = ["org.kde.*"] }"#).unwrap();
+    let manifest = with_capabilities(r#"dbus = { session = ["org.kde.kdeconnect.*"] }"#).unwrap();
     let grant = manifest.capabilities.dbus.unwrap();
-    assert_eq!(grant.session, ["org.kde.*"]);
+    assert_eq!(grant.session, ["org.kde.kdeconnect.*"]);
     assert!(grant.system.is_empty());
 
     for bad in [r#"["*"]"#, r#"["org.freedesktop.*"]"#, r#"[":1.2"]"#] {

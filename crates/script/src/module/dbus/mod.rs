@@ -40,8 +40,33 @@ impl Global for Buses {}
 
 const DBUS: &str = "org.freedesktop.DBus";
 const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
-/// Names that would let a plugin run code or manage units, never granted.
-const DENIED: [&str; 3] = [DBUS, "org.freedesktop.systemd1", "org.freedesktop.Flatpak"];
+/// Names, or `prefix.*` patterns, never granted: they would let a plugin run
+/// code, manage units, sessions or disks, read secrets, escalate through
+/// portals, or impersonate the services corona itself owns.
+const DENIED: [&str; 19] = [
+  DBUS,
+  "org.freedesktop.systemd1",
+  "org.freedesktop.Flatpak",
+  // session
+  "org.freedesktop.secrets",
+  "org.freedesktop.portal.*",
+  "org.freedesktop.impl.portal.*",
+  "ca.desrt.dconf",
+  "org.gnome.keyring",
+  "org.gnome.keyring.*",
+  "org.kde.kwalletd5",
+  "org.kde.kwalletd6",
+  // owned by corona
+  "org.freedesktop.Notifications",
+  "org.kde.StatusNotifierWatcher",
+  "org.freedesktop.ScreenSaver",
+  // system
+  "org.freedesktop.login1",
+  "org.freedesktop.PolicyKit1",
+  "org.freedesktop.Accounts",
+  "org.freedesktop.UDisks2",
+  "org.freedesktop.PackageKit",
+];
 /// Subscriptions a load may make, so a plugin cannot fill the bus with match rules.
 const MAX_SUBSCRIPTIONS: u32 = 32;
 
@@ -50,12 +75,23 @@ const MAX_SUBSCRIPTIONS: u32 = 32;
 #[serde(deny_unknown_fields)]
 pub struct DbusGrant {
   /// Session bus names, e.g. `org.kde.kdeconnect`, or every name below a
-  /// prefix with `org.kde.*`.
+  /// prefix with `org.mpris.MediaPlayer2.*`.
   #[serde(default, deserialize_with = "names")]
   pub session: Vec<String>,
   /// System bus names, as for `session`.
   #[serde(default, deserialize_with = "names")]
   pub system: Vec<String>,
+}
+
+/// Whether the patterns `a` and `b` share a name.
+fn overlaps(a: &str, b: &str) -> bool {
+  let base = |p: &str| p.strip_suffix(".*").unwrap_or(p).to_owned();
+  base(a) == base(b) || covers(a, &base(b)) || covers(b, &base(a))
+}
+
+/// The denied pattern `pattern` would reach, if any.
+fn denied(pattern: &str) -> Option<&'static str> {
+  DENIED.into_iter().find(|denied| overlaps(pattern, denied))
 }
 
 /// Whether `pattern`, a name or `prefix.*`, covers the name `name`.
@@ -77,7 +113,7 @@ fn names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::E
         "invalid bus name `{pattern}`: a well-known name, or one ending in `.*`"
       )));
     }
-    if let Some(denied) = DENIED.iter().find(|denied| covers(pattern, denied)) {
+    if let Some(denied) = denied(pattern) {
       return Err(D::Error::custom(format!(
         "`{pattern}` would grant `{denied}`, which plugins cannot use"
       )));
@@ -241,6 +277,9 @@ impl Dbus {
       Bus::Session => (&self.grant.session, &buses.session),
       Bus::System => (&self.grant.system, &buses.system),
     };
+    if let Some(denied) = denied(name) {
+      bail!("`{denied}` cannot be used by plugins");
+    }
     ensure!(
       granted.iter().any(|pattern| covers(pattern, name)),
       "`{name}` is not in this plugin's {} bus grant",
@@ -826,7 +865,7 @@ mod tests {
     let parse = |names: &str| toml::from_str::<DbusGrant>(&format!("session = {names}"));
     for ok in [
       r#"["org.kde.kdeconnect"]"#,
-      r#"["org.kde.*"]"#,
+      r#"["org.mpris.MediaPlayer2.*"]"#,
       r#"["org.freedesktop.DBus.Foo.*"]"#,
     ] {
       assert!(parse(ok).is_ok(), "{ok}");
@@ -842,6 +881,15 @@ mod tests {
       r#"["org.freedesktop.Flatpak"]"#,
       r#"["org.freedesktop.*"]"#,
       r#"["org.*"]"#,
+      r#"["org.freedesktop.secrets"]"#,
+      r#"["org.freedesktop.portal.Desktop"]"#,
+      r#"["org.freedesktop.portal.*"]"#,
+      r#"["org.freedesktop.portal"]"#,
+      r#"["org.gnome.keyring.SystemPrompter"]"#,
+      r#"["org.kde.kwalletd6"]"#,
+      r#"["org.freedesktop.Notifications"]"#,
+      r#"["org.freedesktop.login1"]"#,
+      r#"["org.freedesktop.UDisks2"]"#,
     ] {
       assert!(parse(bad).is_err(), "{bad}");
     }
