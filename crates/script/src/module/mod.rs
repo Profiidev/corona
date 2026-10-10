@@ -19,6 +19,7 @@ pub mod auth;
 pub mod bluetooth;
 pub mod brightness;
 pub mod compositor;
+pub mod i18n;
 pub mod mpris;
 pub mod network;
 pub mod notifications;

@@ -17,7 +17,7 @@ use gpui_shell::{
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, PluginRef, Subscriptions, plugin, settings, surface},
+  module::{ModuleExt, PluginRef, Subscriptions, i18n, plugin, settings, surface},
   plugin::{manifest::PluginManifest, paths::Paths},
 };
 
@@ -127,9 +127,10 @@ impl ScriptManager {
 
     let runtime = manager.runtime.clone();
     let root = manifest.dir.join(view);
-    let (id, name, modules, settings) = (
+    let (id, name, dir, modules, settings) = (
       manifest.id.clone(),
       manifest.name.clone(),
+      manifest.dir.clone(),
       manifest.modules.clone(),
       manifest.settings.clone(),
     );
@@ -163,7 +164,8 @@ impl ScriptManager {
         &mut subscribes,
         cx,
       ))?
-      .with_host_module(plugin::module(&hub, service.is_some(), &mut subscribes))?;
+      .with_host_module(plugin::module(&hub, service.is_some(), &mut subscribes))?
+      .with_host_module(i18n::module(&dir, &mut subscribes))?;
 
     // The one seam that carries a policy into a view from outside the crate.
     // Reset afterwards so a later load cannot inherit this script's grant.
@@ -1048,8 +1050,57 @@ export default class Main extends View {
     assert_eq!(reported(&fake, "starts "), ["1", "2", "1"]);
   }
 
+  /// Reports translations.
+  const I18N_VIEW: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { t, language } from "corona/i18n";
+
+export default class Main extends View {
+  render() {
+    focusWorkspace([language(), t("greet", { name: "x" }), t("only.en"), t("missing")].join("|"));
+    return v_flex().child("plugin");
+  }
+}
+"#;
+
   #[gpui::test]
-  fn every_plugin_has_plugin(cx: &mut TestAppContext) {
+  fn translations_fall_back_and_rerender(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let extra = r#"capabilities = { corona = ["compositor"] }"#;
+    fs::create_dir_all(plugins.paths.local.join("a/locales")).unwrap();
+    plugins.add(
+      "a",
+      &manifest("a", extra),
+      &[
+        ("main.js", I18N_VIEW),
+        (
+          "locales/app.yml",
+          "_version: 2\ngreet:\n  en: hi %{name}\n  de: hallo %{name}\nonly:\n  en:\n    en: english\n",
+        ),
+      ],
+    );
+    rust_i18n::set_locale("en");
+    let (cx, script) = load(cx, &plugins, "a");
+    let _script = script.unwrap();
+    assert_eq!(
+      fake.calls.borrow().last().unwrap(),
+      "en|hi x|english|missing"
+    );
+
+    rust_i18n::set_locale("de-AT");
+    cx.update(|_, cx| cx.global_mut::<Config>().shell.language = Some("de".into()));
+    cx.run_until_parked();
+    assert_eq!(
+      fake.calls.borrow().last().unwrap(),
+      "de-AT|hallo x|english|missing"
+    );
+  }
+
+  #[gpui::test]
+  fn every_plugin_has_plugin_and_i18n(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
     plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
@@ -1059,6 +1110,7 @@ export default class Main extends View {
       "declare module \"corona/plugin\"",
       "export function call(method: string, args?: JsonValue | null): Promise<JsonValue | Error>;",
       "export function nextCall(): Promise<Call | Error>;",
+      "declare module \"corona/i18n\"",
     ] {
       assert!(dts.contains(line), "missing {line:?} in\n{dts}");
     }
