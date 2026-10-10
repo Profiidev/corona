@@ -1,5 +1,6 @@
-Standalone manifest: inline the gpui-kit workspace inheritance so the crate
-builds as a path dependency outside its workspace.
+Standalone manifest: inline the gpui-kit workspace inheritance (manifest, clippy
+lints, rustfmt config) so the crate builds, lints and formats as it does in
+gpui-kit, as a path dependency and member of corona's workspace.
 
 diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
 index 3ec815f..6a5244a 100644
@@ -77,9 +78,32 @@ index 3ec815f..6a5244a 100644
      "Win32_Foundation",
      "Win32_Security",
      "Win32_Storage_FileSystem",
-@@ -87,5 +90,3 @@ windows = { workspace = true, features = [
+@@ -87,5 +90,19 @@ windows = { workspace = true, features = [
      "Win32_System_Threading",
  ] }
  
 -[lints]
 -workspace = true
++[lints.clippy]
++almost_complete_range = "allow"
++arc_with_non_send_sync = "allow"
++borrowed_box = "allow"
++dbg_macro = "deny"
++let_underscore_future = "allow"
++manual_is_multiple_of = "allow"
++map_entry = "allow"
++module_inception = "allow"
++non_canonical_partial_ord_impl = "allow"
++reversed_empty_ranges = "allow"
++single_range_in_vec_init = "allow"
++style = { level = "allow", priority = -1 }
++todo = "deny"
++type_complexity = "allow"
++useless_conversion = "allow"
+diff --git a/crates/shell/.rustfmt.toml b/crates/shell/.rustfmt.toml
+new file mode 100644
+--- /dev/null
++++ b/crates/shell/.rustfmt.toml
+@@ -0,0 +1,2 @@
++edition = "2024"
++style_edition = "2024"

@@ -2407,7 +2407,7 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
  
      context.run_until_parked();
      draw(&mut context, &object);
-@@ -202,6 +209,277 @@
+@@ -202,6 +209,280 @@
  }
  
  #[cfg(unix)]
@@ -2648,7 +2648,10 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
 +        "rejected:writing to the child failed",
 +        "~0",
 +    ] {
-+        assert!(rendered.contains(expected), "{expected} missing from {rendered}");
++        assert!(
++            rendered.contains(expected),
++            "{expected} missing from {rendered}"
++        );
 +    }
 +    assert!(!rendered.contains("allowed"), "{rendered}");
 +}

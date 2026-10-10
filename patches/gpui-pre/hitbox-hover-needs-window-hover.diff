@@ -5,7 +5,8 @@ re-syncs hover from that stale hit test and re-enters the hitbox one frame after
 the exit cleared it, so `on_hover` listeners and hover styles latch on forever.
 
 `Window::hovered` already tracks pointer enter/leave on the platforms that
-report it, so gate the hit test on it.
+report it, so gate the hit test on it. The test window, which never reported
+being hovered, now always is, so simulated clicks still reach their hitboxes.
 
 --- a/crates/gpui/src/window.rs
 +++ b/crates/gpui/src/window.rs
@@ -37,3 +38,16 @@ report it, so gate the hit test on it.
          self.hit_test(window)
      }
  
+--- a/crates/gpui/src/platform/test/window.rs
++++ b/crates/gpui/src/platform/test/window.rs
+@@ -413,7 +413,9 @@
+     }
+ 
+     fn is_hovered(&self) -> bool {
+-        false
++        // Simulated input never leaves the window, and hitboxes are only hovered in a
++        // hovered window.
++        true
+     }
+ 
+     fn background_appearance(&self) -> WindowBackgroundAppearance {

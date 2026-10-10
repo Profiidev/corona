@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "vendor/gpui-shell",
   "crates/components",
   "crates/bluez",
   "crates/brightness",

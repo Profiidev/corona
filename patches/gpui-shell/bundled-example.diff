@@ -1,0 +1,22 @@
+The runtime's tests that render gpui-kit's bundled js_todolist example read it
+from the workspace root (`../../examples`), which the vendored crate does not
+have, so they are ignored.
+
+--- a/crates/shell/src/tests/render.rs
++++ b/crates/shell/src/tests/render.rs
+@@ -4058,6 +4058,7 @@
+ use std::ops::Deref;
+ 
+ #[gpui::test]
++#[ignore = "needs gpui-kit's examples/, which the vendored crate does not have"]
+ fn the_bundled_example_application_loads_and_renders(cx: &mut TestAppContext) {
+     cx.update(|cx| crate::init(cx));
+ 
+@@ -5645,6 +5646,7 @@
+ /// and a filter that must survive every mutation. If a subsystem regresses,
+ /// this is the test that notices.
+ #[gpui::test]
++#[ignore = "needs gpui-kit's examples/, which the vendored crate does not have"]
+ fn the_todolist_example_exercises_the_runtime(cx: &mut TestAppContext) {
+     cx.update(|cx| crate::init(cx));
+ 

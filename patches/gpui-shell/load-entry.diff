@@ -6,7 +6,7 @@ diff --git a/crates/shell/src/plugin.rs b/crates/shell/src/plugin.rs
 index d791243..7acf230 100644
 --- a/crates/shell/src/plugin.rs
 +++ b/crates/shell/src/plugin.rs
-@@ -1308,6 +1308,50 @@ impl ShellRuntime {
+@@ -1308,6 +1308,53 @@ impl ShellRuntime {
              "main.js".to_owned()
          };
          let root = crate::runtime::resolve_app_root(&root, &entry)?;
@@ -42,7 +42,10 @@ index d791243..7acf230 100644
 +        anyhow::ensure!(path.is_file(), "`{}` is not a file", entry.display());
 +        let (Some(root), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
 +        else {
-+            bail!("`{}` has no parent directory or UTF-8 file name", entry.display());
++            bail!(
++                "`{}` has no parent directory or UTF-8 file name",
++                entry.display()
++            );
 +        };
 +        self.mount_entry(root.to_path_buf(), name.to_owned(), window, cx)
 +    }
