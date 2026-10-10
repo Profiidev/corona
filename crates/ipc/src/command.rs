@@ -1,3 +1,5 @@
+use std::{future::Future, pin::Pin};
+
 use anyhow::Result;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -13,10 +15,17 @@ pub trait IpcCommand {
   const COMMAND: &'static str;
 
   type Payload: Serialize + DeserializeOwned;
-  type Response: Serialize + DeserializeOwned;
+  type Response: Serialize + DeserializeOwned + 'static;
 
   fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response>;
+
+  /// The answer, which may come later; `handle` right away by default
+  fn reply(payload: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
+    Box::pin(std::future::ready(Self::handle(payload, cx)))
+  }
 }
+
+pub type Reply<T> = Pin<Box<dyn Future<Output = Result<T>>>>;
 
 pub trait IpcCommandSend: IpcCommand {
   fn send(payload: Self::Payload) -> Result<Self::Response> {
@@ -28,12 +37,12 @@ pub trait IpcCommandSend: IpcCommand {
 
 impl<T: IpcCommand> IpcCommandSend for T {}
 
-pub(crate) type Handler = Box<dyn Fn(Value, &mut App) -> Result<Value>>;
+pub(crate) type Handler = Box<dyn Fn(Value, &mut App) -> Reply<Value>>;
 
 pub(crate) fn erase<C: IpcCommand>() -> Handler {
   Box::new(|data, cx| {
-    let payload = serde_json::from_value(data)?;
-    Ok(serde_json::to_value(C::handle(payload, cx)?)?)
+    let reply = serde_json::from_value(data).map(|payload| C::reply(payload, cx));
+    Box::pin(async move { Ok(serde_json::to_value(reply?.await?)?) })
   })
 }
 
@@ -79,12 +88,13 @@ pub(crate) mod tests {
   fn erased_handlers(cx: &mut TestAppContext) {
     cx.update(|cx| {
       let shout = erase::<Shout>();
-      assert_eq!(shout(json!("hi"), cx).unwrap(), json!("HI"));
+      let block_on = smol::block_on::<Result<Value>>;
+      assert_eq!(block_on(shout(json!("hi"), cx)).unwrap(), json!("HI"));
       // payload of the wrong type
-      assert!(shout(json!(5), cx).is_err());
-      let err = shout(json!("fail"), cx).unwrap_err();
+      assert!(block_on(shout(json!(5), cx)).is_err());
+      let err = block_on(shout(json!("fail"), cx)).unwrap_err();
       assert!(err.to_string().contains("nope"));
-      assert!(erase::<Unserializable>()(Value::Null, cx).is_err());
+      assert!(block_on(erase::<Unserializable>()(Value::Null, cx)).is_err());
     });
   }
 }

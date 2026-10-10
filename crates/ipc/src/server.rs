@@ -73,15 +73,21 @@ impl IpcServer {
         }
       };
 
-      let res = match self.handlers.get(payload.command.as_str()) {
-        Some(handler) => cx.update(|cx| handler(payload.data, cx)),
-        None => Err(anyhow!("Unknown command: {}", payload.command)),
-      }
-      .map_err(|e| e.to_string());
-
-      if let Err(e) = Self::reply(stream, &res).await {
-        error!("Error replying to connection: {}", e);
-      }
+      let reply = (self.handlers.get(payload.command.as_str()))
+        .map(|handler| cx.update(|cx| handler(payload.data, cx)));
+      let command = payload.command;
+      // a slow answer must not hold up the next connection
+      cx.spawn(async move |_| {
+        let res = match reply {
+          Some(reply) => reply.await,
+          None => Err(anyhow!("Unknown command: {command}")),
+        }
+        .map_err(|e| e.to_string());
+        if let Err(e) = Self::reply(stream, &res).await {
+          error!("Error replying to connection: {}", e);
+        }
+      })
+      .detach();
     }
   }
 }
@@ -95,12 +101,37 @@ mod tests {
   };
 
   use corona_utils::test_bus::wait_until;
-  use gpui_kit::{self as gpui, TestAppContext};
+  use gpui_kit::{self as gpui, App, Global, TestAppContext};
   use serde_json::{Value, json};
   use tempfile::TempDir;
 
   use super::*;
-  use crate::{IpcCommandSend, client, command::tests::Shout};
+  use crate::{IpcCommandSend, Reply, client, command::tests::Shout};
+
+  /// Answers once the test opens the gate
+  struct Gated;
+
+  struct Gate(smol::channel::Receiver<()>);
+
+  impl Global for Gate {}
+
+  impl IpcCommand for Gated {
+    const COMMAND: &'static str = "gated";
+    type Payload = ();
+    type Response = String;
+
+    fn handle(_: (), _: &mut App) -> Result<String> {
+      unreachable!("answered by `reply`")
+    }
+
+    fn reply(_: (), cx: &mut App) -> Reply<String> {
+      let gate = cx.global::<Gate>().0.clone();
+      Box::pin(async move {
+        gate.recv().await?;
+        Ok("open".into())
+      })
+    }
+  }
 
   fn runtime_dir() -> TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -116,7 +147,7 @@ mod tests {
     cx.executor().allow_parking();
     let dir = runtime_dir();
     let mut server = IpcServer::new().unwrap().unwrap();
-    server.register::<Shout>();
+    server.register::<Shout>().register::<Gated>();
     cx.spawn(async move |cx| server.run(&cx).await).detach();
     dir
   }
@@ -181,6 +212,22 @@ mod tests {
     assert!(err.contains("Unknown command"));
     // payload of the wrong type
     assert!(call(cx, || client::send(Shout::COMMAND, json!(5)).is_err()));
+  }
+
+  #[gpui::test]
+  fn a_slow_reply_does_not_hold_up_others(cx: &mut TestAppContext) {
+    let (open, gate) = smol::channel::bounded(1);
+    cx.update(|cx| cx.set_global(Gate(gate)));
+    let _dir = serve(cx);
+    let waiting = thread::spawn(|| client::send(Gated::COMMAND, Value::Null).unwrap());
+    // its reply waits on the gate
+    wait_until(cx, |_| open.receiver_count() == 2);
+    assert_eq!(call(cx, || Shout::send("hi".into()).unwrap()), "HI");
+    assert!(!waiting.is_finished());
+
+    open.try_send(()).unwrap();
+    wait_until(cx, |_| waiting.is_finished());
+    assert_eq!(waiting.join().unwrap(), json!("open"));
   }
 
   #[gpui::test]
