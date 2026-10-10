@@ -362,7 +362,12 @@ impl CapabilitiesFile {
           .iter()
           .filter_map(|host| expand_host(host, settings)),
       )
-      .network_unix(expand_all(&network.unix, plugin_dir, data_dir))
+      // the shell's own socket would let it call other plugins
+      .network_unix(
+        expand_all(&network.unix, plugin_dir, data_dir)
+          .into_iter()
+          .filter(|path| resolve(path) != resolve(&corona_ipc::socket_path())),
+      )
       .http_requests(network.http.into_iter().filter_map(|request| {
         let mut grant = HttpRequestGrant::new(
           expand_host(&request.host, settings)?,
@@ -895,6 +900,10 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     assert!(capabilities.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
     assert!(capabilities.may_connect_unix(Path::new("/data/a/adb.sock")));
     assert!(!capabilities.may_connect_unix(Path::new("/run/other.sock")));
+    // never the shell's own socket
+    let ipc = corona_ipc::socket_path();
+    let body = format!("network = {{ unix = [\"{}\"] }}", ipc.display());
+    assert!(!grant(&body).may_connect_unix(&ipc));
 
     let none = grant("");
     assert!(!none.may_pass_env("HOME"));

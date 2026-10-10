@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::Permissions, os::unix::fs::PermissionsExt};
 
 use anyhow::{Result, anyhow};
 use gpui_kit::AsyncApp;
@@ -21,6 +21,7 @@ pub struct IpcServer {
 impl IpcServer {
   pub fn new() -> Result<Option<Self>> {
     let socket_path = util::socket_path();
+    util::private_dir(&socket_path)?;
 
     let listener = match UnixListener::bind(&socket_path) {
       Ok(listener) => listener,
@@ -33,6 +34,7 @@ impl IpcServer {
       }
       Err(e) => return Err(e.into()),
     };
+    std::fs::set_permissions(&socket_path, Permissions::from_mode(0o600))?;
 
     Ok(Some(Self {
       listener,
@@ -176,6 +178,11 @@ mod tests {
     let _dir = runtime_dir();
     assert!(IpcServer::new().unwrap().is_some());
     assert!(util::socket_path().exists());
+    let mode = std::fs::metadata(util::socket_path())
+      .unwrap()
+      .permissions()
+      .mode();
+    assert_eq!(mode & 0o777, 0o600);
   }
 
   #[test]

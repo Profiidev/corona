@@ -9,7 +9,9 @@ use serde_json::Value;
 use crate::{command::IpcPayload, util};
 
 pub(crate) fn send(command: &str, data: Value) -> Result<Value> {
-  let mut stream = UnixStream::connect(util::socket_path())?;
+  let socket = util::socket_path();
+  util::private_dir(&socket)?;
+  let mut stream = UnixStream::connect(socket)?;
 
   let payload = IpcPayload {
     command: command.to_string(),

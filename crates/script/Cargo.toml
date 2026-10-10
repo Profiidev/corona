@@ -20,6 +20,7 @@ corona_weather.workspace = true
 corona_auth.workspace = true
 corona_surface.workspace = true
 corona_utils.workspace = true
+corona_ipc.workspace = true
 gpui-kit.workspace = true
 gpui-shell.workspace = true
 gpui-component-shell.workspace = true
