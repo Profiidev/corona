@@ -1,0 +1,155 @@
+Plugin I/O, part five: fetch response headers.
+
+fetch responses, buffered and stream: true, carry headers: a plain object
+with lowercase names, repeated headers joined with ", ".
+
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index a84222f..3ce94a5 100644
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -161,6 +161,7 @@ fn send_unix(
+     Ok(Fetched {
+         status: response.status().as_u16(),
+         url: url.to_string(),
++        headers: header_pairs(response.headers()),
+         body: Box::new(UnixBody {
+             runtime,
+             body: response.into_body(),
+@@ -211,6 +212,7 @@ impl std::io::Read for UnixBody {
+ struct Fetched {
+     status: u16,
+     url: String,
++    headers: Vec<(String, String)>,
+     body: Box<dyn std::io::Read + Send>,
+ }
+ 
+@@ -219,11 +221,36 @@ impl From<reqwest::blocking::Response> for Fetched {
+         Self {
+             status: response.status().as_u16(),
+             url: response.url().to_string(),
++            headers: header_pairs(response.headers()),
+             body: Box::new(response),
+         }
+     }
+ }
+ 
++/// Lowercase names, each once, with repeated values joined by `, ` as the
++/// Fetch `Headers` does.
++fn header_pairs(headers: &reqwest::header::HeaderMap) -> Vec<(String, String)> {
++    headers
++        .keys()
++        .map(|name| {
++            let values: Vec<_> = headers
++                .get_all(name)
++                .iter()
++                .map(|value| String::from_utf8_lossy(value.as_bytes()))
++                .collect();
++            (name.as_str().to_owned(), values.join(", "))
++        })
++        .collect()
++}
++
++fn headers_object<'js>(ctx: &Ctx<'js>, headers: Vec<(String, String)>) -> Result<Object<'js>> {
++    let object = Object::new(ctx.clone())?;
++    for (name, value) in headers {
++        object.set(name, value)?;
++    }
++    Ok(object)
++}
++
+ /// The intentionally small, data-only request surface. It keeps HTTP traffic
+ /// capability-gated while allowing OAuth form exchanges and authenticated reads.
+ struct FetchOptions {
+@@ -455,6 +482,7 @@ fn request(response: Fetched) -> std::result::Result<FetchResponse, String> {
+     let Fetched {
+         status,
+         url: final_url,
++        headers,
+         body,
+     } = response;
+     let mut bytes = Vec::new();
+@@ -469,6 +497,7 @@ fn request(response: Fetched) -> std::result::Result<FetchResponse, String> {
+     Ok(FetchResponse {
+         status,
+         url: final_url,
++        headers,
+         body: bytes,
+     })
+ }
+@@ -898,6 +927,7 @@ mod tests {
+ struct FetchResponse {
+     status: u16,
+     url: String,
++    headers: Vec<(String, String)>,
+     body: Vec<u8>,
+ }
+ 
+@@ -907,6 +937,7 @@ impl<'js> IntoJs<'js> for FetchResponse {
+         response.set("status", self.status)?;
+         response.set("ok", (200..300).contains(&self.status))?;
+         response.set("url", self.url)?;
++        response.set("headers", headers_object(ctx, self.headers)?)?;
+         let body = Arc::new(self.body);
+         let text = body.clone();
+         response.set(
+@@ -958,6 +989,7 @@ impl<'js> IntoJs<'js> for FetchStream {
+         response.set("status", status)?;
+         response.set("ok", (200..300).contains(&status))?;
+         response.set("url", self.0.url)?;
++        response.set("headers", headers_object(ctx, self.0.headers)?)?;
+         // Dropped once closed or cancelled, which releases the connection even
+         // while the script still holds the response.
+         let mut body = Some(self.0.body);
+diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
+index e9c7478..1a86393 100644
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -1446,7 +1446,7 @@ export default class Probe extends View {
+           if (chunk === null) break;
+           chunks.push(String.fromCharCode(...chunk));
+         }
+-        this.state = `${origin}|${refused}|${chunked}|${length.status}:${await length.text()}|${stream.status}:${chunks.join("")}`;
++        this.state = `${origin}|${refused}|${chunked}|${length.status}:${await length.text()}:${length.headers["x-a"]}|${stream.status}:${chunks.join("")}:${stream.headers["transfer-encoding"]}`;
+       } catch (error) {
+         this.state = `rejected:${error.message}`;
+       }
+@@ -1481,7 +1481,7 @@ fn fetch_speaks_http_over_a_granted_unix_socket(cx: &mut TestAppContext) {
+             let response: &[u8] = if head.starts_with("get /chunked") {
+                 b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
+             } else if head.starts_with("post /length") {
+-                b"HTTP/1.1 201 Created\r\nContent-Length: 3\r\n\r\nabc"
++                b"HTTP/1.1 201 Created\r\nContent-Length: 3\r\nX-A: 1\r\nx-a: 2\r\n\r\nabc"
+             } else {
+                 stream
+                     .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n")
+@@ -1503,7 +1503,7 @@ fn fetch_speaks_http_over_a_granted_unix_socket(cx: &mut TestAppContext) {
+     let heads = server.join().expect("unix server");
+     let _ = std::fs::remove_dir_all(&directory);
+     assert!(
+-        rendered.contains("TypeError|4|hello world|201:abc|200:onetwo"),
++        rendered.contains("TypeError|4|hello world|201:abc:1, 2|200:onetwo:chunked"),
+         "{rendered}"
+     );
+     assert!(
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index d466fc7..4e138fc 100644
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -3870,6 +3870,8 @@ interface ShellFetchResponse {
+   readonly status: number;
+   readonly ok: boolean;
+   readonly url: string;
++  /** Lowercase names; repeated headers joined with ", ". */
++  readonly headers: Readonly<Record<string, string>>;
+   /** The body, decoded as UTF-8 with invalid bytes replaced. */
+   text(): Promise<string>;
+   json(): Promise<unknown>;
+@@ -3881,6 +3883,8 @@ interface ShellFetchStream {
+   readonly status: number;
+   readonly ok: boolean;
+   readonly url: string;
++  /** Lowercase names; repeated headers joined with ", ". */
++  readonly headers: Readonly<Record<string, string>>;
+   /** The next chunk; null at the end of the body or after close(). */
+   read(): Promise<Uint8Array | null>;
+   /** Stops reading and releases the connection. */
