@@ -504,6 +504,30 @@ export default class Main extends View {
   }
 
   #[gpui::test]
+  fn loads_a_typescript_view(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let view = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { greet } from "./util";
+
+export default class Main extends View {
+  init(): void { focusWorkspace(greet("ts")); }
+  render(_cx: unknown) { return v_flex().child("plugin"); }
+}
+"#;
+    let util = "export const greet = (name: string): string => `hello ${name}`;";
+    let manifest =
+      manifest("a", "capabilities = { corona = [\"compositor\"] }").replace("main.js", "main.ts");
+    plugins.add("a", &manifest, &[("main.ts", view), ("util.ts", util)]);
+    let (_, script) = load(cx, &plugins, "a");
+    script.unwrap();
+    assert_eq!(fake.calls.borrow().last().unwrap(), "hello ts");
+  }
+
+  #[gpui::test]
   fn failed_load_resets_policy(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
     let extra = r#"capabilities = { clipboard = { read = true } }"#;

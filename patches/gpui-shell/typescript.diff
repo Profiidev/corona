@@ -1,0 +1,659 @@
+TypeScript sources: a .ts or .mts module (entry, import, service) is loaded with
+its types erased to whitespace by swc_ts_fast_strip in strip-only mode, padded to
+each erased character's UTF-8 width, so lines and columns in errors and stacks
+still point into the .ts file. Extensionless and .js imports reach a .ts file
+when no .js exists; the watcher and typings scan see .ts too.
+
+diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
+index 069f844..5eadcb2 100644
+--- a/crates/shell/Cargo.toml
++++ b/crates/shell/Cargo.toml
+@@ -69,6 +69,9 @@ smallvec = "1"
+ smol = "2"
+ # Only to find the files an SVG image references; GPUI's version, which renders it.
+ usvg = { version = "0.46", default-features = false }
++# Strips TypeScript types to whitespace, keeping positions. Pinned: swc majors weekly.
++swc_ts_fast_strip = "=59.0.0"
++swc_common = "26"
+ tracing = "0.1.41"
+ 
+ [dev-dependencies]
+diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/quickjs/mod.rs
+index 4e35a1b..422b07a 100644
+--- a/crates/shell/src/engine/quickjs/mod.rs
++++ b/crates/shell/src/engine/quickjs/mod.rs
+@@ -2248,9 +2248,14 @@ impl ShellRuntime {
+ 
+                 let default: Value = module.get("default")?;
+                 let Some(class) = default.as_object() else {
++                    let entry = Path::new(AppModules::untag(name));
++                    let entry = entry.file_name().unwrap_or(entry.as_os_str());
+                     return Err(Exception::throw_message(
+                         ctx,
+-                        "main.js must `export default` a class that extends View",
++                        &format!(
++                            "{} must `export default` a class that extends View",
++                            entry.display()
++                        ),
+                     ));
+                 };
+                 Ok(ViewType {
+@@ -5385,7 +5390,13 @@ impl AppModules {
+             (application.root.join(name), application.root.clone())
+         };
+ 
+-        for candidate in [joined.clone(), joined.with_extension("js")] {
++        // An extensionless or `.js` import reaches a `.ts` file, the way
++        // TypeScript resolves it; a `.js` file beside it wins.
++        for candidate in [
++            joined.clone(),
++            joined.with_extension("js"),
++            joined.with_extension("ts"),
++        ] {
+             if candidate.is_file() {
+                 return candidate.canonicalize().ok().map(|path| (path, boundary));
+             }
+@@ -5487,6 +5498,9 @@ fn read_module_source(path: &Path) -> Result<String> {
+             path.display()
+         );
+     }
++    if crate::typescript::is_typescript(path) {
++        return crate::typescript::strip_types(path, source);
++    }
+     Ok(source)
+ }
+ 
+diff --git a/crates/shell/src/lib.rs b/crates/shell/src/lib.rs
+index 2e4bd2a..a8f5860 100644
+--- a/crates/shell/src/lib.rs
++++ b/crates/shell/src/lib.rs
+@@ -91,6 +91,7 @@ pub(crate) mod style;
+ #[cfg(test)]
+ mod tests;
+ pub(crate) mod theme_tokens;
++pub(crate) mod typescript;
+ mod typings;
+ pub(crate) mod value;
+ pub mod view;
+diff --git a/crates/shell/src/tests/mod.rs b/crates/shell/src/tests/mod.rs
+index a637805..6588239 100644
+--- a/crates/shell/src/tests/mod.rs
++++ b/crates/shell/src/tests/mod.rs
+@@ -19,3 +19,4 @@ mod snapshot;
+ mod standard_runtime;
+ mod structure;
+ mod template;
++mod typescript;
+diff --git a/crates/shell/src/tests/service.rs b/crates/shell/src/tests/service.rs
+index c675678..fcd33ed 100644
+--- a/crates/shell/src/tests/service.rs
++++ b/crates/shell/src/tests/service.rs
+@@ -356,6 +356,48 @@ export default function main(cx) {{ cx.timer.every(10, () => report("{name}"));
+     );
+ }
+ 
++#[gpui::test]
++fn a_typescript_service_starts_and_restarts_on_save(cx: &mut TestAppContext) {
++    let runtime = runtime(cx);
++    let source = |name: &str| {
++        format!(
++            r#"import {{ report }} from "probe";
++export default function main(cx: {{ timer: {{ every(ms: number, f: () => void): void }} }}) {{
++  cx.timer.every(10, () => report("{name}" as string));
++}}
++"#
++        )
++    };
++    let directory = entry("typescript", "").parent().map(Path::to_path_buf);
++    let directory = directory.expect("parent");
++    std::fs::remove_file(directory.join("service.js")).expect("no service.js");
++    let entry = directory.join("service.ts");
++    std::fs::write(&entry, source("old")).expect("service.ts");
++    let log = Log::default();
++    let _watcher = {
++        let (runtime, entry, log) = (runtime.clone(), entry.clone(), log.clone());
++        cx.update(|cx| {
++            ServiceWatcher::new(
++                directory,
++                move |cx| runtime.start_service(&entry, policy(Capabilities::new(), &log), cx),
++                cx,
++            )
++        })
++        .expect("watch")
++    };
++    settle(cx, &log, |log| count(log, "old") >= 1);
++
++    std::thread::sleep(Duration::from_millis(20));
++    std::fs::write(&entry, source("new")).expect("rewrite");
++    for _ in 0..2 {
++        cx.executor().advance_clock(crate::watch::POLL_INTERVAL * 2);
++        cx.run_until_parked();
++        std::thread::sleep(Duration::from_millis(250));
++    }
++    let seen = settle(cx, &log, |log| count(log, "new") >= 1);
++    assert!(count(&seen, "new") >= 1, "{seen:?}");
++}
++
+ #[gpui::test]
+ fn a_service_that_fails_to_start_starts_once_fixed(cx: &mut TestAppContext) {
+     let runtime = runtime(cx);
+diff --git a/crates/shell/src/tests/typescript.rs b/crates/shell/src/tests/typescript.rs
+new file mode 100644
+index 0000000..0554728
+--- /dev/null
++++ b/crates/shell/src/tests/typescript.rs
+@@ -0,0 +1,134 @@
++//! TypeScript applications: `.ts` files are loaded with their types erased.
++
++use std::path::{Path, PathBuf};
++
++use gpui::{TestAppContext, VisualTestContext};
++
++use crate::ShellRuntime;
++
++/// A fresh application directory holding `files`.
++fn application(name: &str, files: &[(&str, &str)]) -> PathBuf {
++    let root = std::env::temp_dir().join(format!(
++        "gpui-shell-typescript-{name}-{}",
++        std::process::id()
++    ));
++    let _ = std::fs::remove_dir_all(&root);
++    std::fs::create_dir_all(&root).expect("application directory");
++    for (file, source) in files {
++        std::fs::write(root.join(file), source).expect("source file");
++    }
++    root
++}
++
++/// Loads `entry` from `root` and renders it once.
++fn render(cx: &mut TestAppContext, root: &Path, entry: &str) -> String {
++    cx.update(crate::init);
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    cx.update(|cx| runtime.set_global(cx));
++    let view_type = runtime.load_app(root, entry).expect("load");
++    let window = cx.add_window(|_, _| gpui::EmptyView);
++    let mut context = VisualTestContext::from_window(*window, cx);
++    let object = context
++        .update(|window, cx| runtime.instantiate(&view_type, window, cx))
++        .expect("instantiate");
++    context.update(|window, cx| {
++        runtime
++            .render_to_spec(&object, None, window, cx)
++            .expect("render")
++    })
++}
++
++#[gpui::test]
++fn a_typescript_entry_loads_and_renders(cx: &mut TestAppContext) {
++    let root = application(
++        "render",
++        &[(
++            "main.ts",
++            r#"import { div, View } from "gpui-kit";
++interface State { count: number }
++export default class Counter extends View {
++  state!: State;
++  init(): void { this.state = { count: 0 } satisfies State; }
++  render(_cx: unknown) { return div().child(`Count: ${this.state.count as number}`); }
++}
++"#,
++        )],
++    );
++    let tree = render(cx, &root, "main.ts");
++    assert!(tree.contains("Count: 0"), "{tree}");
++    let _ = std::fs::remove_dir_all(root);
++}
++
++#[gpui::test]
++fn imports_reach_typescript_and_javascript_wins_a_tie(cx: &mut TestAppContext) {
++    let root = application(
++        "imports",
++        &[
++            (
++                "main.ts",
++                "import { div, View } from 'gpui-kit';\n\
++                 import { a } from './util';\n\
++                 import { a as b } from './util.js';\n\
++                 import { c } from './bridge.js';\n\
++                 import { d } from './both';\n\
++                 export default class Panel extends View {\n\
++                 \x20 render() { return div().child([a, b, c, d].join('/')); }\n\
++                 }\n",
++            ),
++            ("util.ts", "export const a: string = 'ts';"),
++            ("bridge.js", "export { a as c } from './util.ts';"),
++            ("both.js", "export const d = 'js';"),
++            ("both.ts", "export const d: string = 'ts';"),
++        ],
++    );
++    let tree = render(cx, &root, "main.ts");
++    assert!(tree.contains("ts/ts/ts/js"), "{tree}");
++    let _ = std::fs::remove_dir_all(root);
++}
++
++#[test]
++fn an_error_names_the_typescript_line() {
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    let root = application(
++        "error",
++        &[(
++            "main.ts",
++            "type Pair = [\n  number,\n  number,\n];\nconst pair: Pair = [1, 2];\n\
++             const sum = (p: Pair): number => p[0] + p[1];\n\
++             if (sum(pair) as number) throw new Error('boom');\n",
++        )],
++    );
++
++    let error = runtime.load_app(&root, "main.ts").err().expect("throws");
++    let error = format!("{error:#}");
++    let location = error.split("main.ts?v=").nth(1).expect("a stack frame");
++    assert_eq!(location.split(':').nth(1), Some("7"), "{error}");
++    let _ = std::fs::remove_dir_all(root);
++}
++
++#[test]
++fn an_error_after_an_erased_non_ascii_type_names_the_typescript_column() {
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    let line = "let s: \"é\" | \"𝒳\" = \"é\"; throw new Error(s);";
++    let root = application("column", &[("main.ts", &format!("\n{line}"))]);
++
++    let error = runtime.load_app(&root, "main.ts").err().expect("throws");
++    let error = format!("{error:#}");
++    // QuickJS columns count bytes, from 1 past the first line.
++    let column = line.find("Error").expect("Error") + 1;
++    assert!(
++        error.contains(&format!("main.ts?v=1:2:{column})")),
++        "{error}"
++    );
++    let _ = std::fs::remove_dir_all(root);
++}
++
++#[test]
++fn unsupported_syntax_is_reported_at_its_position() {
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    let root = application("enum", &[("main.ts", "\nenum Color { Red }\n")]);
++
++    let error = runtime.load_app(&root, "main.ts").err().expect("refused");
++    assert!(format!("{error:#}").contains("main.ts:2:1:"), "{error:#}");
++    let _ = std::fs::remove_dir_all(root);
++}
+diff --git a/crates/shell/src/typescript.rs b/crates/shell/src/typescript.rs
+new file mode 100644
+index 0000000..ba3fad5
+--- /dev/null
++++ b/crates/shell/src/typescript.rs
+@@ -0,0 +1,240 @@
++//! TypeScript sources, by erasing their types.
++//!
++//! Types are overwritten with whitespace rather than removed, so every line and
++//! column in an error or a stack trace still points into the `.ts` file: QuickJS
++//! has no source maps. Syntax that would need code generated for it (an enum, a
++//! namespace, a parameter property, a decorator) is refused rather than
++//! transformed.
++
++use std::{
++    path::Path,
++    sync::{Arc, Mutex},
++};
++
++use anyhow::{Result, anyhow};
++use swc_common::{
++    BytePos, GLOBALS, SourceMap,
++    errors::{DiagnosticBuilder, Emitter, HANDLER, Handler},
++    sync::Lrc,
++};
++use swc_ts_fast_strip::{Mode, Options, operate};
++
++/// Whether `path` is TypeScript the loader strips before evaluating.
++pub(crate) fn is_typescript(path: &Path) -> bool {
++    matches!(
++        path.extension().and_then(|extension| extension.to_str()),
++        Some("ts" | "mts")
++    )
++}
++
++/// `source` with its types erased, or every reason it cannot be, each as
++/// `file:line:col: message`.
++pub(crate) fn strip_types(path: &Path, source: String) -> Result<String> {
++    let map = Lrc::new(SourceMap::default());
++    let diagnostics = Diagnostics::default();
++    let handler = Handler::with_emitter(true, false, Box::new(diagnostics.clone()));
++    let options = Options {
++        module: Some(true),
++        filename: Some(path.display().to_string()),
++        mode: Mode::StripOnly,
++        ..Default::default()
++    };
++    // swc drops a byte order mark, which would shift the first line.
++    let (bom, source) = match source.strip_prefix('\u{feff}') {
++        Some(rest) => ("\u{feff}", rest.to_owned()),
++        None => ("", source),
++    };
++    let stripped = GLOBALS.set(&Default::default(), || {
++        HANDLER.set(&handler, || {
++            operate(&map, &handler, source.clone(), options)
++        })
++    });
++    match stripped {
++        Ok(output) => Ok(bom.to_owned() + &keep_byte_widths(&source, output.code)),
++        Err(error) => {
++            let diagnostics = std::mem::take(&mut *diagnostics.0.lock().unwrap());
++            let mut message = if diagnostics.is_empty() {
++                format!("{}: {error}", path.display())
++            } else {
++                diagnostics
++                    .into_iter()
++                    .map(|(position, message)| {
++                        let location = map.lookup_char_pos(position);
++                        format!(
++                            "{}:{}:{}: {message}",
++                            path.display(),
++                            location.line,
++                            location.col.0 + 1
++                        )
++                    })
++                    .collect::<Vec<_>>()
++                    .join("\n")
++            };
++            if matches!(error.code, swc_ts_fast_strip::ErrorCode::UnsupportedSyntax) {
++                message.push_str(
++                    "\nenums, namespaces, parameter properties and decorators need a \
++                     transform; use erasable syntax",
++                );
++            }
++            Err(anyhow!(message))
++        }
++    }
++}
++
++/// `stripped` with every erased character as wide in bytes as in `source`.
++///
++/// swc blanks an erased character to as many spaces as its UTF-16 length, and
++/// QuickJS counts columns in bytes, so an erased `é` would shift every column
++/// after it on its line. Kept characters are copied as they are and erasures
++/// are ASCII, so the two walk in step: a non-ASCII source character missing
++/// from the output was erased to its UTF-16 length, padded here to its UTF-8
++/// one.
++fn keep_byte_widths(source: &str, stripped: String) -> String {
++    if stripped.len() == source.len() {
++        return stripped;
++    }
++    let mut output = String::with_capacity(source.len());
++    let mut rest = stripped.as_str();
++    for character in source.chars() {
++        let kept = character.is_ascii() || rest.starts_with(character);
++        let width = if kept {
++            character.len_utf8()
++        } else {
++            character.len_utf16()
++        };
++        // Out of step means swc changed how it erases: positions drift, but
++        // the code still runs.
++        let Some((written, tail)) = rest.split_at_checked(width) else {
++            return stripped;
++        };
++        output.push_str(written);
++        output.extend(std::iter::repeat_n(
++            ' ',
++            character.len_utf8() - written.len(),
++        ));
++        rest = tail;
++    }
++    output
++}
++
++/// The diagnostics swc reports, kept for the error instead of printed.
++#[derive(Clone, Default)]
++struct Diagnostics(Arc<Mutex<Vec<(BytePos, String)>>>);
++
++impl Emitter for Diagnostics {
++    fn emit(&mut self, diagnostic: &mut DiagnosticBuilder<'_>) {
++        let position = diagnostic
++            .span
++            .primary_span()
++            .map_or(BytePos(0), |span| span.lo);
++        self.0
++            .lock()
++            .unwrap()
++            .push((position, diagnostic.message()));
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn strip(source: &str) -> Result<String> {
++        strip_types(Path::new("file.ts"), source.to_owned())
++    }
++
++    #[test]
++    fn types_become_whitespace_in_place() {
++        let source = "import type { A } from './a.ts';\n\
++                      interface Shape { width: number }\n\
++                      type Pair<T> = [T, T];\n\
++                      declare const outside: string;\n\
++                      export function area<T extends Shape>(shape: T, scale?: number): number {\n\
++                      \x20 const value = (shape as Shape).width! * (scale ?? 1);\n\
++                      \x20 return value satisfies number;\n\
++                      }\n\
++                      const label: string = 'é';\n";
++        let stripped = strip(source).expect("strips");
++
++        assert_eq!(stripped.len(), source.len());
++        assert_eq!(stripped.lines().count(), source.lines().count());
++        for (stripped, source) in stripped.lines().zip(source.lines()) {
++            assert_eq!(stripped.len(), source.len(), "{stripped:?}");
++        }
++        for erased in [
++            "import type",
++            "interface",
++            "Pair",
++            "declare",
++            "<T",
++            "as Shape",
++            "!",
++            "satisfies",
++            ": string",
++        ] {
++            assert!(!stripped.contains(erased), "{erased} in {stripped}");
++        }
++        assert!(stripped.contains("export function area"));
++        assert!(stripped.contains("const label         = 'é';"));
++    }
++
++    #[test]
++    fn an_erased_non_ascii_character_keeps_its_byte_width() {
++        let source = "type T = \"é𝒳\"; let a: \"é\" = \"é\"; const b = 1;\r\nb;\n";
++        let stripped = strip(source).expect("strips");
++
++        assert_eq!(stripped.len(), source.len());
++        assert_eq!(stripped.find("const b"), source.find("const b"));
++        assert!(
++            stripped.ends_with("let a       = \"é\"; const b = 1;\r\nb;\n"),
++            "{stripped:?}"
++        );
++    }
++
++    #[test]
++    fn malformed_input_is_an_error_not_a_panic() {
++        for source in [
++            "let a = 'unterminated;\n",
++            "const f = <T>(x: T) => x;\n",
++            "const e = <div>hi</div>;\n",
++            "let x: = 1;\n",
++            "}}}",
++            "\u{feff}",
++        ] {
++            let _ = strip(source);
++        }
++        let error = strip("let a = 1;\r\nlet b: = 2;\r\n")
++            .unwrap_err()
++            .to_string();
++        assert!(error.contains("file.ts:2:"), "{error}");
++        let stripped = strip("\u{feff}let a: number = 1;\n").expect("a BOM strips");
++        assert_eq!(
++            stripped.len(),
++            "\u{feff}let a: number = 1;\n".len(),
++            "{stripped:?}"
++        );
++    }
++
++    #[test]
++    fn non_erasable_syntax_is_refused_with_its_position() {
++        for (source, position) in [
++            ("let a = 1;\nenum Color { Red }\n", "file.ts:2:1:"),
++            (
++                "let a = 1;\n  namespace N { export const x = 1; }\n",
++                "file.ts:2:3:",
++            ),
++            (
++                "class A {\n  constructor(private x: number) {}\n}\n",
++                "file.ts:2:23:",
++            ),
++            (
++                "function d(..._: unknown[]) {}\n@d class A {}\n",
++                "file.ts:2:1:",
++            ),
++        ] {
++            let error = strip(source).expect_err(source).to_string();
++            assert!(error.contains(position), "{source}: {error}");
++        }
++        let error = strip("enum Color { Red }").unwrap_err().to_string();
++        assert!(error.contains("use erasable syntax"), "{error}");
++    }
++}
+diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index eac1382..194835b 100644
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -135,7 +135,11 @@ const EDITOR_CONFIG: &str = r#"{
+     "a preference. A view assigns its state in `init`, which TypeScript cannot",
+     "see as definite assignment the way it sees a constructor, so every field",
+     "would read as possibly-undefined and every use would want a `?.` that",
+-    "means nothing at run time. Turning it on would buy noise, not safety."
++    "means nothing at run time. Turning it on would buy noise, not safety.",
++    "",
++    "The last three are how a .ts file runs: its types are erased, not",
++    "compiled, so an import keeps the extension it names and syntax that",
++    "would need generated code, an enum or a namespace, is an error."
+   ],
+   "compilerOptions": {
+     "target": "ES2022",
+@@ -143,6 +147,9 @@ const EDITOR_CONFIG: &str = r#"{
+     "moduleResolution": "bundler",
+     "lib": ["ES2022"],
+     "checkJs": true,
++    "allowImportingTsExtensions": true,
++    "erasableSyntaxOnly": true,
++    "verbatimModuleSyntax": true,
+     "strict": true,
+     "strictNullChecks": false,
+     "noEmit": true
+@@ -599,10 +606,10 @@ fn directories_importing_builtins(root: &Path) -> Vec<PathBuf> {
+             }
+ 
+             if !imports
+-                && matches!(
+-                    path.extension().and_then(|extension| extension.to_str()),
+-                    Some("js" | "mjs")
+-                )
++                && path
++                    .file_name()
++                    .and_then(|name| name.to_str())
++                    .is_some_and(crate::watch::is_source)
+                 && std::fs::read_to_string(&path).is_ok_and(|source| imports_builtin(&source))
+             {
+                 imports = true;
+@@ -4963,6 +4970,36 @@ mod tests {
+         let _ = std::fs::remove_dir_all(&directory);
+     }
+ 
++    #[test]
++    fn a_typescript_directory_gets_declarations_and_a_typescript_config() {
++        let root = std::env::temp_dir().join(format!(
++            "gpui-shell-typings-typescript-{}",
++            std::process::id()
++        ));
++        let _ = std::fs::remove_dir_all(&root);
++        std::fs::create_dir_all(root.join("widgets")).expect("application root");
++        std::fs::write(
++            root.join("widgets/clock.ts"),
++            "import { View } from 'gpui-kit';",
++        )
++        .expect("script");
++
++        write_application_with_components(&root, &crate::FrozenComponentRegistry::default())
++            .expect("declarations are writable");
++
++        assert!(root.join("widgets").join(FILE_NAME).is_file());
++        let config = std::fs::read_to_string(root.join(CONFIG_FILE_NAME)).expect("config");
++        for option in [
++            "\"allowImportingTsExtensions\": true",
++            "\"erasableSyntaxOnly\": true",
++            "\"verbatimModuleSyntax\": true",
++        ] {
++            assert!(config.contains(option), "{option}");
++        }
++
++        let _ = std::fs::remove_dir_all(&root);
++    }
++
+     #[test]
+     fn an_existing_editor_configuration_is_never_replaced() {
+         let directory = std::env::temp_dir().join(format!(
+diff --git a/crates/shell/src/watch.rs b/crates/shell/src/watch.rs
+index f7dda62..2f5c33b 100644
+--- a/crates/shell/src/watch.rs
++++ b/crates/shell/src/watch.rs
+@@ -72,7 +72,7 @@ const MAX_FILES: usize = 4096;
+ 
+ /// Extensions a reload can be triggered by. Only sources the runtime actually
+ /// evaluates count — a change to a README should not restart the application.
+-const SOURCE_EXTENSIONS: [&str; 2] = ["js", "mjs"];
++const SOURCE_EXTENSIONS: [&str; 4] = ["js", "mjs", "ts", "mts"];
+ 
+ /// Directory names that are never application source, skipped before their
+ /// contents are stated. Hidden entries are skipped separately.
+@@ -239,10 +239,13 @@ fn scan_with_limit(directory: &Path, max_files: usize) -> Result<TreeStamp> {
+     Ok(stamp)
+ }
+ 
+-/// Whether a file name is script source the runtime would evaluate.
+-fn is_source(name: &str) -> bool {
+-    name.rsplit_once('.')
+-        .is_some_and(|(_, extension)| SOURCE_EXTENSIONS.contains(&extension))
++/// Whether a file name is script source the runtime would evaluate. A
++/// declaration file is not, so rewriting `gpui-kit.d.ts` reloads nothing.
++pub(crate) fn is_source(name: &str) -> bool {
++    !(name.ends_with(".d.ts") || name.ends_with(".d.mts"))
++        && name
++            .rsplit_once('.')
++            .is_some_and(|(_, extension)| SOURCE_EXTENSIONS.contains(&extension))
+ }
+ 
+ /// Reloads an application in place, keeping the window and its entity.
+@@ -639,6 +642,23 @@ mod tests {
+         assert!(!watcher.poll().unwrap());
+     }
+ 
++    #[test]
++    fn typescript_is_source_and_declarations_are_not() {
++        let tree = TempTree::new("typescript");
++        tree.write("main.ts", "export default class {}\n");
++        tree.write("gpui-kit.d.ts", "declare module 'gpui-kit' {}\n");
++
++        let mut watcher = SourceWatcher::new(tree.path().to_path_buf())
++            .unwrap()
++            .with_debounce(Duration::ZERO);
++        assert!(!watcher.poll().unwrap());
++
++        tree.write("gpui-kit.d.ts", "declare module 'gpui-kit' { export {} }\n");
++        assert!(!watcher.poll().unwrap(), "a declaration file is not source");
++        tree.write("main.ts", "export default class { render() {} }\n");
++        assert!(watcher.poll().unwrap(), "an edited .ts file is a change");
++    }
++
+     #[test]
+     fn debounce_window_suppresses_a_burst() {
+         let tree = TempTree::new("burst");

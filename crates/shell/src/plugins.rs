@@ -259,6 +259,17 @@ export default async function main(_cx) {
 
   #[gpui::test]
   fn services_run_while_the_plugin_is_enabled(cx: &mut TestAppContext) {
+    services_run(cx, "service.js", SERVICE);
+  }
+
+  #[gpui::test]
+  fn typescript_services_run(cx: &mut TestAppContext) {
+    let typed = SERVICE.replace("main(_cx)", "main(_cx: unknown): Promise<void>");
+    services_run(cx, "service.ts", &typed);
+  }
+
+  /// The service `file`, with `source`, through its plugin's whole lifecycle
+  fn services_run(cx: &mut TestAppContext, file: &str, source: &str) {
     setup(FakeCompositor::default(), cx);
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths {
@@ -269,10 +280,10 @@ export default async function main(_cx) {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
       dir.join("plugin.toml"),
-      "id = \"com.echo\"\nname = \"Echo\"\nservice = \"service.js\"\n",
+      format!("id = \"com.echo\"\nname = \"Echo\"\nservice = \"{file}\"\n"),
     )
     .unwrap();
-    fs::write(dir.join("service.js"), SERVICE).unwrap();
+    fs::write(dir.join(file), source).unwrap();
     cx.update(|cx| {
       corona_surface::init(cx).unwrap();
       let mut config = Config::default();
@@ -301,7 +312,7 @@ export default async function main(_cx) {
     // changed on disk: restarted
     fs::write(
       dir.join("plugin.toml"),
-      "id = \"com.echo\"\nname = \"Echo\"\nversion = \"2\"\nservice = \"service.js\"\n",
+      format!("id = \"com.echo\"\nname = \"Echo\"\nversion = \"2\"\nservice = \"{file}\"\n"),
     )
     .unwrap();
     let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
