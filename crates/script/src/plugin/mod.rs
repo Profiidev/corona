@@ -43,6 +43,13 @@ mod tests {
     ] {
       assert!(property(&plugin, &["properties", key]).is_object(), "{key}");
     }
+    for (def, key) in [
+      ("ProcessGrantFile", "env"),
+      ("NetworkGrantFile", "unix"),
+    ] {
+      let path = ["$defs", def, "properties", key];
+      assert!(property(&plugin, &path).is_object(), "{def}.{key}");
+    }
     let catalog = catalog_schema();
     assert_eq!(catalog["title"], "CatalogFile");
     assert!(property(&catalog, &["properties", "plugin"]).is_object());

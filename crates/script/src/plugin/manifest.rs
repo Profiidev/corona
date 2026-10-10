@@ -531,6 +531,24 @@ default = false
   }
 
   #[test]
+  fn values_of_the_wrong_type_are_rejected() {
+    for body in [
+      r#"storage = "yes""#,
+      r#"fs = { read = "/etc" }"#,
+      r#"fs = { write = ["${home}"] }"#,
+      r#"network = { hosts = "a" }"#,
+      r#"network = { unix = "/run/a.sock" }"#,
+      r#"network = { http = [{ host = "a", methods = ["GET"], port = 70000 }] }"#,
+      r#"clipboard = { read = "yes" }"#,
+      r#"process = { exit = 1 }"#,
+      r#"process = { env = "HOME" }"#,
+      r#"corona = "weather""#,
+    ] {
+      assert!(with_capabilities(body).is_err(), "{body}");
+    }
+  }
+
+  #[test]
   fn http_methods_are_required() {
     assert!(with_capabilities(r#"network = { http = [{ host = "a" }] }"#).is_err());
   }

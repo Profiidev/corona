@@ -102,9 +102,15 @@ impl Setting {
   fn validate(&self) -> Result<()> {
     let key = &self.key;
     if let SettingKind::Slider { min, max, step, .. } = &self.kind
-      && (min >= max || *step <= 0.)
+      && !(min.is_finite() && max.is_finite() && min < max && step.is_finite() && *step > 0.)
     {
-      bail!("setting `{key}`: a slider needs min < max and a positive step");
+      bail!("setting `{key}`: a slider needs finite min < max and a positive step");
+    }
+    if let SettingKind::Number { min, max, step, .. } = &self.kind
+      && !([min, max].into_iter().flatten().all(|v| v.is_finite())
+        && step.is_none_or(|step| step.is_finite() && step > 0.))
+    {
+      bail!("setting `{key}`: a number needs finite bounds and a positive step");
     }
     if let SettingKind::Number {
       min: Some(min),
@@ -287,6 +293,25 @@ default = ["a"]
       setting("type = \"toggle\"\ndefault = false")
     );
     assert!(parse(&twice).unwrap_err().to_string().contains("twice"));
+  }
+
+  #[test]
+  fn numbers_must_be_finite() {
+    let setting = |rest: &str| format!("[[settings]]\nkey = \"k\"\nlabel = \"K\"\n{rest}\n");
+    for bad in [
+      "type = \"number\"\ndefault = inf",
+      "type = \"number\"\ndefault = nan",
+      "type = \"number\"\ndefault = 1\nmin = nan",
+      "type = \"number\"\ndefault = 1\nmax = inf",
+      "type = \"number\"\ndefault = 1\nstep = 0",
+      "type = \"number\"\ndefault = 1\nstep = -1",
+      "type = \"number\"\ndefault = 1\nstep = nan",
+      "type = \"slider\"\ndefault = 0\nmin = nan\nmax = 1\nstep = 0.1",
+      "type = \"slider\"\ndefault = 0\nmin = 0\nmax = 1\nstep = nan",
+      "type = \"slider\"\ndefault = 0\nmin = 0\nmax = inf\nstep = 1",
+    ] {
+      assert!(parse(&setting(bad)).is_err(), "{bad}");
+    }
   }
 
   #[test]
