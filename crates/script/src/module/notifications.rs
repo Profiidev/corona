@@ -356,9 +356,11 @@ mod tests {
         m.nextAction().then(report);
       });
     }"#;
+    let capabilities = Default::default();
     let plugin = PluginRef {
       id: "a",
       name: "Plugin A",
+      capabilities: &capabilities,
     };
     let (view, cx) = harness::view(cx, body, |reads, subs, cx| module(plugin, reads, subs, cx));
     wait_until(cx, |cx| {

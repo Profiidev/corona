@@ -17,7 +17,7 @@ use corona_macros::named;
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use futures_lite::{AsyncReadExt as _, AsyncWriteExt as _, future};
 use gpui_kit::{App, PathPromptOptions, Subscription};
-use gpui_shell::HostModule;
+use gpui_shell::{Capabilities, HostModule};
 use serde::{Deserialize, Serialize};
 use smol::net::{TcpListener, TcpStream};
 use ts_rs::TS;
@@ -198,7 +198,8 @@ async fn redirect(listener: TcpListener) -> Result<Redirect> {
   }
 }
 
-pub fn module(subs: &mut Vec<Subscribe>) -> HostModule {
+/// `capabilities` is the plugin's grant, which a picked path is added to
+pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModule {
   let listeners = Rc::new(RefCell::new(HashMap::<u32, (TcpListener, Duration)>::new()));
   let next_id = Rc::new(Cell::new(0));
   // never sent, dropped on cleanup to stop a waiting `nextRedirect`, whose
@@ -214,9 +215,10 @@ pub fn module(subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/desktop")
     .func(named!(
       "pickFiles",
-      /// Asks the user for files, null when they cancel. Reading them still
-      /// needs an `fs` grant.
-      |cx: &mut App, options: Option<PickFiles>| {
+      /// Asks the user for files, null when they cancel. What they pick is
+      /// readable by this plugin until it restarts, a directory with
+      /// everything in it.
+      move |cx: &mut App, options: Option<PickFiles>| {
         let options = options.unwrap_or_default();
         let directory = options.directory.unwrap_or(false);
         let paths = cx.prompt_for_paths(PathPromptOptions {
@@ -225,12 +227,17 @@ pub fn module(subs: &mut Vec<Subscribe>) -> HostModule {
           multiple: options.multiple.unwrap_or(false),
           prompt: options.accept_label.map(Into::into),
         });
+        let capabilities = capabilities.clone();
         async move {
           let paths = paths.await??;
           anyhow::Ok(paths.map(|paths| {
             paths
               .into_iter()
-              .map(|path| path.to_string_lossy().into_owned())
+              .map(|path| {
+                let shown = path.to_string_lossy().into_owned();
+                capabilities.grant_read(path);
+                shown
+              })
               .collect::<Vec<_>>()
           }))
         }
@@ -311,7 +318,7 @@ mod tests {
   #[gpui::test]
   fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
     let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt")]);"#;
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module(subs));
+    let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
     let reports = view.last();
     assert!(reports[0]["message"].as_str().unwrap().contains("openPath"));
     assert!(
@@ -326,7 +333,7 @@ mod tests {
   #[gpui::test]
   fn opens_uris(cx: &mut TestAppContext) {
     let (view, cx) = harness::view(cx, r#"report(m.openUri("mailto:a@b.c"));"#, |_, subs, _| {
-      module(subs)
+      module(Capabilities::new(), subs)
     });
     assert_eq!(view.last(), serde_json::Value::Null);
     assert_eq!(cx.opened_url().as_deref(), Some("mailto:a@b.c"));
@@ -345,7 +352,7 @@ mod tests {
       m.nextRedirect(l.id).then(report);
       m.nextRedirect(m.listenRedirect({ timeoutMs: 1 }).id).then(report);
     }"#;
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module(subs));
+    let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
     wait_until(cx, |_| view.reports.borrow().len() == 3);
     let listening = view.reports.borrow()[0].clone();
     let port = listening["port"].as_u64().unwrap();

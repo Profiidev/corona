@@ -142,12 +142,14 @@ impl ScriptManager {
 
     let (policy, mut subscribes) = Policy::new()
       .with_application(id)
+      // a clone shares what the user picks with `corona/desktop`'s
       .with_capabilities(manifest.capabilities.clone())
       .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
       .with_corona_modules(
         PluginRef {
           id,
           name: &manifest.name,
+          capabilities: &manifest.capabilities,
         },
         &manifest.modules,
         cx,
@@ -274,6 +276,7 @@ mod tests {
   use gpui_kit::{self as gpui, AppContext, TestAppContext, VisualTestContext};
 
   use corona_config::Config;
+  use corona_utils::test_bus::wait_until;
 
   use super::*;
   use crate::{PLUGIN_MANIFEST_FILENAME, plugin::registry};
@@ -958,6 +961,58 @@ export default class Main extends View {
     let (host, cx) = window(cx);
     let _view = show(cx, &host, "a").unwrap();
     assert_eq!(reported(&fake, "answer "), ["1"]);
+  }
+
+  /// Reads `PATH` before and after picking it, and reports both.
+  const PICKER: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { pickFiles } from "corona/desktop";
+import { readFile } from "fs/promises";
+
+async function read(path) {
+  try {
+    return "read " + await readFile(path, "utf8");
+  } catch (e) {
+    return "denied " + e;
+  }
+}
+
+export default class Main extends View {
+  init(_props, cx) {
+    cx.spawn(async () => {
+      focusWorkspace("before " + await read("PATH"));
+      const [picked] = await pickFiles();
+      focusWorkspace("after " + await read(picked));
+    });
+  }
+  render() { return v_flex().child("plugin"); }
+}
+"#;
+
+  #[gpui::test]
+  fn picked_files_become_readable(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let outside = tempfile::tempdir().unwrap();
+    let file = outside.path().join("picked.txt");
+    fs::write(&file, "hi").unwrap();
+    let path = file.to_string_lossy();
+    let extra = r#"capabilities = { corona = ["compositor", "desktop"] }"#;
+    plugins.add(
+      "a",
+      &manifest("a", extra),
+      &[("main.js", &PICKER.replace("PATH", &path))],
+    );
+    let (cx, script) = load(cx, &plugins, "a");
+    let _script = script.unwrap();
+    wait_until(cx, |cx| cx.did_prompt_for_paths());
+    assert!(reported(&fake, "before ")[0].starts_with("denied"));
+    cx.simulate_path_prompt_response(|_| Some(vec![file.clone()]));
+    wait_until(cx, |_| !reported(&fake, "after ").is_empty());
+    assert_eq!(reported(&fake, "after "), ["read hi"]);
   }
 
   #[gpui::test]

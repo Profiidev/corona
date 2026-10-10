@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, Entity, Subscription};
-use gpui_shell::{HostModule, ShellRoot, ShellRuntime, policy::Policy};
+use gpui_shell::{Capabilities, HostModule, ShellRoot, ShellRuntime, policy::Policy};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -71,6 +71,8 @@ pub enum CoronaModule {
 pub struct PluginRef<'a> {
   pub id: &'a str,
   pub name: &'a str,
+  /// The grant its policy holds, shared by clones: `pickFiles` adds to it
+  pub capabilities: &'a Capabilities,
 }
 
 impl CoronaModule {
@@ -95,7 +97,7 @@ impl CoronaModule {
       Self::Weather => weather::module(reads, subs, cx),
       Self::Auth => auth::module(),
       Self::Secrets => secrets::module(plugin),
-      Self::Desktop => desktop::module(subs),
+      Self::Desktop => desktop::module(plugin.capabilities.clone(), subs),
     }
   }
 }

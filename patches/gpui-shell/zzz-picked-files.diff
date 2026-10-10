@@ -1,0 +1,223 @@
+Plugin I/O, part three: files the user picked.
+
+Capabilities::grant_read(path) makes a path the user picked readable: a file
+alone, a directory as a read root. Resolved when picked, so a link swapped in
+for the pick later moves nothing. Shared by every clone of the grant and left
+out of its Debug, so a host comparing grants does not see a pick.
+
+diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
+index f2619a0..ee2067c 100644
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -4,7 +4,10 @@
+ //! clipboard access until the host grants it. Grants come from a plugin manifest
+ //! (§18.1) or directly from the embedding application.
+ 
+-use std::path::{Path, PathBuf};
++use std::{
++    path::{Path, PathBuf},
++    sync::{Arc, Mutex},
++};
+ 
+ use cap_std::{ambient_authority, fs::Dir};
+ 
+@@ -23,7 +26,7 @@ pub(crate) fn is_openable_url(url: &str) -> bool {
+ 
+ /// A capability grant. Every field is private so adding a capability later is
+ /// not a breaking change for embedders.
+-#[derive(Clone, Debug, Default)]
++#[derive(Clone, Default)]
+ pub struct Capabilities {
+     read_roots: Vec<PathBuf>,
+     write_roots: Vec<PathBuf>,
+@@ -37,6 +40,32 @@ pub struct Capabilities {
+     clipboard_read: bool,
+     clipboard_write: bool,
+     exit: bool,
++    /// Files and directories the user picked for this application, readable
++    /// on top of `read_roots`. Shared by every clone, so a pick reaches the
++    /// views already holding the grant. Resolved when picked, and whether
++    /// each is a directory.
++    picked: Arc<Mutex<Vec<(PathBuf, bool)>>>,
++}
++
++/// Leaves out `picked`: a host comparing grants by their `Debug` text sees
++/// what the manifest granted, not what the user picked since.
++impl std::fmt::Debug for Capabilities {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("Capabilities")
++            .field("read_roots", &self.read_roots)
++            .field("write_roots", &self.write_roots)
++            .field("execute", &self.execute)
++            .field("process_env", &self.process_env)
++            .field("network_hosts", &self.network_hosts)
++            .field("network_unix", &self.network_unix)
++            .field("asset_root", &self.asset_root)
++            .field("http_requests", &self.http_requests)
++            .field("storage", &self.storage)
++            .field("clipboard_read", &self.clipboard_read)
++            .field("clipboard_write", &self.clipboard_write)
++            .field("exit", &self.exit)
++            .finish()
++    }
+ }
+ 
+ /// A scheme-, effective-port-, method-, and path-scoped HTTP grant for one host.
+@@ -149,6 +178,21 @@ impl Capabilities {
+         self
+     }
+ 
++    /// Makes a path the user picked readable: a file alone, a directory as a
++    /// read root.
++    // ponytail: grows with every pick until the plugin restarts.
++    pub fn grant_read(&self, path: PathBuf) {
++        // Resolved now, so a link swapped in for the pick later never moves
++        // the grant, nor turns a picked file into a directory root.
++        let Ok(path) = path.canonicalize() else {
++            return;
++        };
++        let is_dir = path.is_dir();
++        if let Ok(mut picked) = self.picked.lock() {
++            picked.push((path, is_dir));
++        }
++    }
++
+     pub fn execute(mut self, grant: ExecuteGrant) -> Self {
+         self.execute = grant;
+         self
+@@ -304,15 +348,39 @@ impl Capabilities {
+     /// functions and the asset source, so there is no second path policy to keep
+     /// in sync.
+     pub(crate) fn open(&self, path: &Path, access: Access) -> Result<Grant, CapabilityError> {
+-        let roots = match access {
+-            Access::Read => &self.read_roots,
+-            Access::Write => &self.write_roots,
++        let (roots, picked) = match access {
++            Access::Read => (
++                &self.read_roots,
++                self.picked
++                    .lock()
++                    .map(|picked| picked.clone())
++                    .unwrap_or_default(),
++            ),
++            Access::Write => (&self.write_roots, Vec::new()),
+         };
+-        if roots.is_empty() {
++        if roots.is_empty() && picked.is_empty() {
+             return Err(CapabilityError::NotGranted(access));
+         }
+ 
+-        for root in roots {
++        // A picked file grants itself and nothing beside it: its directory,
++        // narrowed to its name. Only by absolute path, resolved as roots are,
++        // against the pick as it resolved then.
++        let (picked_dirs, files): (Vec<_>, Vec<_>) =
++            picked.into_iter().partition(|(_, is_dir)| *is_dir);
++        let picked_dirs: Vec<_> = picked_dirs.into_iter().map(|(dir, _)| dir).collect();
++        if path.is_absolute()
++            && let Some(target) = resolved_root(path)
++            && files.iter().any(|(file, _)| *file == target)
++            && let (Some(parent), Some(name)) = (target.parent(), target.file_name())
++            && let Ok(dir) = Dir::open_ambient_dir(parent, ambient_authority())
++        {
++            return Ok(Grant {
++                dir,
++                relative: PathBuf::from(name),
++            });
++        }
++
++        for root in roots.iter().chain(&picked_dirs) {
+             // Resolved the same way a path is, because a granted directory need
+             // not exist yet and a root reached through a link — `/var` on macOS
+             // — must agree with a path that was not.
+@@ -645,6 +713,46 @@ mod tests {
+         assert_eq!(error, CapabilityError::NotGranted(Access::Read));
+     }
+ 
++    #[test]
++    fn a_picked_file_is_readable_and_nothing_beside_it() {
++        let root = Root::new("picked");
++        std::fs::write(root.0.join("picked.txt"), "x").expect("picked file");
++        std::fs::write(root.0.join("beside.txt"), "x").expect("sibling file");
++        std::fs::create_dir(root.0.join("folder")).expect("picked folder");
++        let capabilities = Capabilities::new();
++        let clone = capabilities.clone();
++        let debug = format!("{capabilities:?}");
++        capabilities.grant_read(root.0.join("picked.txt"));
++        capabilities.grant_read(root.0.join("folder"));
++
++        let grant = clone
++            .open(&root.0.join("picked.txt"), Access::Read)
++            .expect("the picked file");
++        assert_eq!(grant.path(), Path::new("picked.txt"));
++        assert!(
++            clone
++                .open(&root.0.join("folder/new.txt"), Access::Read)
++                .is_ok()
++        );
++        for denied in ["beside.txt", "picked.txt/..", "."] {
++            assert!(
++                clone.open(&root.0.join(denied), Access::Read).is_err(),
++                "{denied}"
++            );
++        }
++        assert!(
++            clone
++                .open(Path::new("../picked.txt"), Access::Read)
++                .is_err()
++        );
++        assert!(
++            clone
++                .open(&root.0.join("picked.txt"), Access::Write)
++                .is_err()
++        );
++        assert_eq!(format!("{clone:?}"), debug);
++    }
++
+     #[test]
+     fn execute_is_denied_by_default_and_allowlisted_when_granted() {
+         assert!(!Capabilities::new().may_run("git"));
+@@ -708,6 +816,26 @@ mod symlink_tests {
+         }
+     }
+ 
++    #[test]
++    fn a_link_swapped_in_for_a_picked_file_grants_nothing() {
++        let sandbox = Sandbox::new("picked");
++        let outside = sandbox.outside();
++        let capabilities = Capabilities::new();
++        let ours = sandbox.root.join("inside/ours.txt");
++        capabilities.grant_read(ours.clone());
++        std::fs::remove_file(&ours).expect("the pick removed");
++        for target in [outside.join("secret.txt"), outside.clone()] {
++            let _ = std::fs::remove_file(&ours);
++            sandbox.link("ours.txt", &target);
++            for path in [&ours, &target, &outside.join("secret.txt")] {
++                let readable = capabilities
++                    .open(path, Access::Read)
++                    .is_ok_and(|grant| grant.dir().read_to_string(grant.path()).is_ok());
++                assert!(!readable, "{}", path.display());
++            }
++        }
++    }
++
+     #[test]
+     fn a_symlink_out_of_a_root_cannot_be_read_through() {
+         let sandbox = Sandbox::new("read");
+diff --git a/crates/shell/src/policy.rs b/crates/shell/src/policy.rs
+index 96e1099..4b673c9 100644
+--- a/crates/shell/src/policy.rs
++++ b/crates/shell/src/policy.rs
+@@ -74,8 +74,10 @@ pub struct Policy {
+     ///
+     /// A grant is frozen with the code it was given to: that is the whole point
+     /// of a policy, and a view that could have its permissions changed after it
+-    /// was built would be back where this started. The module registry is the
+-    /// opposite question. It is not the script's authority but the *host's own
++    /// was built would be back where this started. The one exception only
++    /// adds: a file the user picks becomes readable through
++    /// [`Capabilities::grant_read`], because the user chose it. The module
++    /// registry is the opposite question. It is not the script's authority but the *host's own
+     /// surface*, and every module closure holds GPUI entity handles — so
+     /// [`crate::host_modules::clear_modules`] has to actually revoke, or a host that
+     /// tears itself down leaves handles registered and GPUI reports the leak.

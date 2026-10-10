@@ -110,7 +110,11 @@ mod tests {
 
   #[test]
   fn declarations() {
-    let module: HostModule = module(PluginRef { id: "a", name: "A" });
+    let module: HostModule = module(PluginRef {
+      id: "a",
+      name: "A",
+      capabilities: &Default::default(),
+    });
     let declared = module.declared().unwrap();
     for line in [
       "export function get(key: string): Promise<string | null | Error>;",
@@ -127,7 +131,13 @@ mod tests {
       globalThis.started = true;
       Promise.all([m.get(""), m.set("", "x"), m.remove("")]).then(report);
     }"#;
-    let (view, cx) = harness::view(cx, body, |_, _, _| module(PluginRef { id: "a", name: "A" }));
+    let (view, cx) = harness::view(cx, body, |_, _, _| {
+      module(PluginRef {
+        id: "a",
+        name: "A",
+        capabilities: &Default::default(),
+      })
+    });
     cx.run_until_parked();
     let error = serde_json::json!({ "message": "the key is empty" });
     assert_eq!(view.last(), serde_json::json!([error, error, error]));
