@@ -44,6 +44,7 @@ pub fn clone_blobless(url: &str, dest: &Path) -> Result<()> {
       "--filter=blob:none".into(),
       "--no-checkout".into(),
       "--quiet".into(),
+      "--".into(),
       url.into(),
       dest_arg,
     ],
@@ -61,9 +62,18 @@ pub fn clone_blobless(url: &str, dest: &Path) -> Result<()> {
 /// changed source never fetches from where it used to be. A broken clone is
 /// cloned again; only ever below `parent`.
 pub fn ensure_repo(parent: &Path, repo: &Path, location: &str) -> Result<()> {
+  // git would read it as an option, e.g. `--upload-pack=<command>`
+  if location.starts_with('-') {
+    bail!("invalid git location `{location}`");
+  }
   if repo.join(".git").exists() || repo.join("HEAD").exists() {
     if has_origin(repo) {
-      return git(repo, &["remote", "set-url", "origin", location], LOCAL).map(drop);
+      return git(
+        repo,
+        &["remote", "set-url", "--", "origin", location],
+        LOCAL,
+      )
+      .map(drop);
     }
     remove_tree_under(parent, repo)?;
   }
@@ -209,8 +219,14 @@ fn run_with(
       "http.lowSpeedLimit=1000",
       "-c",
       "http.lowSpeedTime=20",
+      // a fetched repository never runs code or writes through a link
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "core.symlinks=false",
     ])
     .args(&args)
+    .env("GIT_ALLOW_PROTOCOL", "https:http:ssh:git:file")
     .env("GIT_TERMINAL_PROMPT", "0")
     .env("GIT_ASKPASS", "/bin/false")
     .env("SSH_ASKPASS", "/bin/false")
@@ -469,5 +485,15 @@ mod tests {
     let e = ensure_repo(tmp.path(), &repo, "file:///nonexistent/repo").unwrap_err();
     assert!(e.to_string().contains("failed"), "{e}");
     assert!(available());
+  }
+
+  #[test]
+  fn option_like_location_is_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    let e = ensure_repo(tmp.path(), &repo, "--upload-pack=touch /tmp/x").unwrap_err();
+    assert!(e.to_string().contains("invalid"), "{e}");
+    // nor does `ext::` run a command
+    assert!(ensure_repo(tmp.path(), &repo, "ext::sh -c true").is_err());
   }
 }

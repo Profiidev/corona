@@ -13,7 +13,10 @@ use serde_json::{Map, Value};
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
   module::{CoronaModule, dbus::DbusGrant},
-  plugin::settings::{self, Setting, SettingKind},
+  plugin::{
+    catalog::is_relative_file,
+    settings::{self, Setting, SettingKind},
+  },
 };
 
 /// A plugin as it runs: its manifest, where it was found and what it may do
@@ -126,6 +129,14 @@ impl ManifestFile {
   /// `corona/secrets`, so the plugin must be granted it, and a
   /// `${setting:<key>}` host needs a text setting `key`
   fn check(&self) -> Result<()> {
+    let views = self.widgets.values().map(|w| &w.view);
+    let views = views.chain(self.panels.values().map(|p| &p.view));
+    for script in views.chain(&self.service) {
+      ensure!(
+        is_relative_file(script),
+        "`{script}` is not a file inside the plugin directory"
+      );
+    }
     for host in self.capabilities.hosts() {
       let Some(key) = setting_key(host) else {
         ensure!(
@@ -671,6 +682,15 @@ default = false
     assert_eq!(manifest.service.as_deref(), Some("service.js"));
     // the table it was before
     assert!(with("[service]\nview = \"service.js\"").is_err());
+    // entry scripts stay inside the plugin directory
+    for bad in [
+      "service = \"/etc/x.js\"",
+      "service = \"../x.js\"",
+      "[widgets.w]\nview = \"a/../../x.js\"",
+      "[panels.p]\nview = \"/x.js\"",
+    ] {
+      assert!(with(bad).unwrap().check().is_err(), "{bad}");
+    }
   }
 
   #[test]

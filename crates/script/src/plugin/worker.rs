@@ -327,7 +327,10 @@ impl Worker {
         vec![expand_user(&source.location).join(subdir).join(file)]
       }
     };
-    candidates.into_iter().find(|path| path.is_file())
+    // a link could point the settings app at any file
+    candidates
+      .into_iter()
+      .find(|path| fs::symlink_metadata(path).is_ok_and(|m| m.is_file()))
   }
 
   /// Fetches a file of a plugin at the applied revision into the cache

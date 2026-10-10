@@ -36,6 +36,9 @@ fn export(
   let subdir = entry.subdir();
   git::export_subdir(&paths.repo(source), rev, subdir, tmp)?;
   let staged = tmp.join(subdir);
+  if fs::symlink_metadata(&staged)?.file_type().is_symlink() {
+    bail!("`{subdir}` is a symlink");
+  }
   let manifest = ManifestFile::read(&staged)?;
   if manifest.id != entry.id {
     bail!(
