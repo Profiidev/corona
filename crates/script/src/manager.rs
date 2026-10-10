@@ -1199,6 +1199,20 @@ export default class Main extends View {{
     for (id, module, extra, granted) in [
       ("a", "dbus", "", false),
       ("b", "dbus", r#"capabilities = { dbus = {} }"#, true),
+      ("c", "secrets", "", false),
+      (
+        "d",
+        "secrets",
+        r#"capabilities = { corona = ["secrets"] }"#,
+        true,
+      ),
+      ("e", "desktop", "", false),
+      (
+        "f",
+        "desktop",
+        r#"capabilities = { corona = ["desktop"] }"#,
+        true,
+      ),
     ] {
       plugins.add(id, &manifest(id, extra), &[("main.js", &importing(module))]);
       let (_, script) = load(cx, &plugins, id);
@@ -1213,5 +1227,46 @@ export default class Main extends View {{
         }
       }
     }
+  }
+
+  /// Reports what the user picked through `focusWorkspace`.
+  const PICK_VIEW: &str = r#"
+import { View } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { focusWorkspace } from "corona/compositor";
+import { pickFiles } from "corona/desktop";
+
+let started = false;
+
+export default class Main extends View {
+  render(_cx) {
+    if (!started) {
+      started = true;
+      pickFiles({ multiple: true, acceptLabel: "Send" }).then((paths) => focusWorkspace(JSON.stringify(paths)));
+    }
+    return v_flex().child("plugin");
+  }
+}
+"#;
+
+  #[gpui::test]
+  fn picks_files(cx: &mut TestAppContext) {
+    let fake = recorder(cx);
+    let plugins = Plugins::new();
+    let extra = r#"capabilities = { corona = ["compositor", "desktop"] }"#;
+    plugins.add("a", &manifest("a", extra), &[("main.js", PICK_VIEW)]);
+    let (cx, script) = load(cx, &plugins, "a");
+    let _script = script.unwrap();
+
+    cx.simulate_path_prompt_response(|options| {
+      assert!(options.multiple && options.files && !options.directories);
+      assert_eq!(options.prompt.as_deref(), Some("Send"));
+      Some(vec!["/tmp/a".into(), "/tmp/b".into()])
+    });
+    cx.run_until_parked();
+    assert_eq!(
+      fake.calls.borrow().last().unwrap(),
+      r#"["/tmp/a","/tmp/b"]"#
+    );
   }
 }

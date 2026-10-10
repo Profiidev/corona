@@ -38,6 +38,7 @@ uuid = { workspace = true, features = ["v4"] }
 schemars = "1.2.2"
 zbus.workspace = true
 zbus_xml.workspace = true
+oo7.workspace = true
 futures.workspace = true
 
 [dev-dependencies]

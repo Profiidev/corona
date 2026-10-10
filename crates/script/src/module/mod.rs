@@ -20,6 +20,7 @@ pub mod bluetooth;
 pub mod brightness;
 pub mod compositor;
 pub mod dbus;
+pub mod desktop;
 pub mod i18n;
 pub mod mpris;
 pub mod network;
@@ -27,6 +28,7 @@ pub mod notifications;
 pub mod pipewire;
 pub mod plugin;
 pub mod power;
+pub mod secrets;
 pub mod settings;
 pub mod surface;
 pub mod sysinfo;
@@ -58,6 +60,10 @@ pub enum CoronaModule {
   Sysinfo,
   Weather,
   Auth,
+  /// Strings in the user's keyring, e.g. tokens.
+  Secrets,
+  /// The file picker and opening files and URIs in the user's apps.
+  Desktop,
 }
 
 /// The plugin a module is built for.
@@ -88,6 +94,8 @@ impl CoronaModule {
       Self::Sysinfo => sysinfo::module(reads, subs, cx),
       Self::Weather => weather::module(reads, subs, cx),
       Self::Auth => auth::module(),
+      Self::Secrets => secrets::module(plugin),
+      Self::Desktop => desktop::module(),
     }
   }
 }
@@ -204,6 +212,8 @@ mod tests {
       (CoronaModule::Sysinfo, "sysinfo"),
       (CoronaModule::Weather, "weather"),
       (CoronaModule::Auth, "auth"),
+      (CoronaModule::Secrets, "secrets"),
+      (CoronaModule::Desktop, "desktop"),
     ];
     for (module, name) in all {
       assert_eq!(

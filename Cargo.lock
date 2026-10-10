@@ -2139,6 +2139,7 @@ dependencies = [
  "gpui-component-shell",
  "gpui-kit",
  "gpui-shell",
+ "oo7",
  "rust-i18n",
  "rust-i18n-support",
  "schemars",
