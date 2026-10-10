@@ -254,6 +254,7 @@ pub(crate) mod tests {
     unsafe {
       std::env::set_var("XDG_RUNTIME_DIR", dir.path());
       std::env::remove_var("WAYLAND_DISPLAY");
+      std::env::remove_var("CORONA_SOCKET");
     }
     let listener = UnixListener::bind(dir.path().join("corona.sock")).unwrap();
     let shell = thread::spawn(move || {

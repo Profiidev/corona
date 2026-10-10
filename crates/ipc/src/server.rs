@@ -138,6 +138,7 @@ mod tests {
     unsafe {
       std::env::set_var("XDG_RUNTIME_DIR", dir.path());
       std::env::remove_var("WAYLAND_DISPLAY");
+      std::env::remove_var("CORONA_SOCKET");
     }
     dir
   }

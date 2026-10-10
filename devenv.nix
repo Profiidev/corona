@@ -1,6 +1,7 @@
 {
   pkgs,
   lib,
+  config,
   ...
 }:
 
@@ -26,4 +27,5 @@ in
   packages = runtimeDeps ++ buildDeps;
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath runtimeDeps;
+  env.CORONA_SOCKET = "${config.devenv.runtime}/corona.sock";
 }

@@ -9,6 +9,9 @@ fn socket_file_name() -> String {
 }
 
 pub fn socket_path() -> PathBuf {
+  if let Ok(path) = std::env::var("CORONA_SOCKET") {
+    return PathBuf::from(path);
+  }
   let file_name = socket_file_name();
   if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
     PathBuf::from(runtime_dir).join(file_name)
@@ -33,6 +36,7 @@ mod tests {
       (Some("wayland-1"), None, "/tmp/corona-wayland-1.sock"),
       (None, None, "/tmp/corona.sock"),
     ];
+    unsafe { std::env::remove_var("CORONA_SOCKET") };
     for (display, runtime, want) in cases {
       unsafe {
         match display {
@@ -46,5 +50,7 @@ mod tests {
       }
       assert_eq!(socket_path(), PathBuf::from(want));
     }
+    unsafe { std::env::set_var("CORONA_SOCKET", "/tmp/dev.sock") };
+    assert_eq!(socket_path(), PathBuf::from("/tmp/dev.sock"));
   }
 }

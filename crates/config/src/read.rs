@@ -90,9 +90,14 @@ pub fn read_files(files: &[PathBuf]) -> Result<Loaded> {
 
 /// Environment variables: `CORONA_SHELL__LANGUAGE` sets `shell.language`
 fn environment() -> config::Environment {
+  // settings sit in sections, so `CORONA_SOCKET` and the like are no settings
+  let vars = std::env::vars()
+    .filter(|(key, _)| key.starts_with("CORONA_") && key.contains("__"))
+    .collect();
   config::Environment::with_prefix("CORONA")
     .prefix_separator("_")
     .separator("__")
+    .source(Some(vars))
 }
 
 fn deserialize(files: &[PathBuf], env: bool) -> Result<Loaded> {
@@ -350,6 +355,13 @@ pub(crate) mod tests {
     unsafe { std::env::set_var("CORONA_SHELL__LANGUAGE", "de") };
     let loaded = read_files(&[]).unwrap();
     assert_eq!(loaded.config.shell.language.as_deref(), Some("de"));
+  }
+
+  #[test]
+  fn socket_env_var_is_no_setting() {
+    unsafe { std::env::set_var("CORONA_SOCKET", "/tmp/dev.sock") };
+    let loaded = read_files(&[]).unwrap();
+    assert!(loaded.unknown.is_empty(), "{:?}", loaded.unknown);
   }
 
   #[test]
