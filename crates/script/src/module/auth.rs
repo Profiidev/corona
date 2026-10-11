@@ -8,7 +8,7 @@ use anyhow::{Result, bail, ensure};
 use corona_auth::Auth;
 use gpui_shell::HostModule;
 
-use crate::host_fn::{Cx, Glob, Module};
+use crate::host_fn::{Glob, Module};
 use corona_macros::named;
 
 /// Only ever the user running corona, a plugin cannot probe other accounts
@@ -93,23 +93,18 @@ async fn limited<F: Future<Output = Result<bool>>>(started: Result<(Attempt, F)>
   result
 }
 
+/// No password check: a plugin could ask for the password in a look-alike
+/// prompt and confirm what it phished
 pub fn module(plugin: &str) -> HostModule {
-  let (by, scanned_by) = (plugin.to_owned(), plugin.to_owned());
+  let by = plugin.to_owned();
   Module::new("corona/auth")
-    .func(named!(
-      "password",
-      /// Whether `password` is the user's, checked by PAM. After a few
-      /// failures, attempts fail at once for a while.
-      move |cx: Cx, auth: Glob<Auth>, password: String| limited(
-        Attempt::start(&by).map(|a| (a, auth.password(user(), password, &cx)))
-      )
-    ))
     .func(named!(
       "fingerprint",
       /// Waits for one scan on the fingerprint reader. `false` when the finger
-      /// did not match, call again for the next try. Limited as `password`.
+      /// did not match, call again for the next try. After a few failures,
+      /// attempts fail at once for a while.
       move |auth: Glob<Auth>| limited(
-        Attempt::start(&scanned_by).map(|a| (a, auth.fingerprint(user())))
+        Attempt::start(&by).map(|a| (a, auth.fingerprint(user())))
       )
     ))
     .into()
@@ -128,12 +123,9 @@ mod tests {
   fn the_user_is_not_the_plugins_to_pick() {
     let module: HostModule = module("a");
     let declared = module.declared().unwrap();
-    for line in [
-      "export function password(password: string): Promise<boolean | Error>;",
-      "export function fingerprint(): Promise<boolean | Error>;",
-    ] {
-      assert!(declared.lines().any(|l| l == line), "{line} in\n{declared}");
-    }
+    let line = "export function fingerprint(): Promise<boolean | Error>;";
+    assert!(declared.lines().any(|l| l == line), "{line} in\n{declared}");
+    assert!(!declared.contains("password"), "{declared}");
   }
 
   #[test]
