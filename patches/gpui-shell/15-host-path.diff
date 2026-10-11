@@ -1,0 +1,51 @@
+Process: PATH only from the host.
+
+A grant may pass the host's PATH to children, but a script never sets one:
+it could point a child's command lookups at files it wrote itself.
+
+--- a/crates/shell/src/process.rs
++++ b/crates/shell/src/process.rs
+@@ -72,8 +72,9 @@
+ /// A child's environment: the granted host variables, then the script's own.
+ ///
+ /// The child starts from an empty environment either way. A script may only set
+-/// a name the grant lists, so it cannot hand a child `LD_PRELOAD` or a `PATH`
+-/// of its own when the host never granted one.
++/// a name the grant lists, so it cannot hand a child `LD_PRELOAD` of its own
++/// when the host never granted one, and never `PATH`: a granted `PATH` is the
++/// host's, as a script's could point a child's lookups at files it wrote.
+ pub(crate) fn child_env(
+     capabilities: &crate::Capabilities,
+     explicit: Vec<(String, String)>,
+@@ -84,7 +85,7 @@
+         .filter_map(|name| std::env::var_os(name).map(|value| (name.into(), value)))
+         .collect();
+     for (name, value) in explicit {
+-        if !capabilities.may_pass_env(&name) {
++        if name == "PATH" || !capabilities.may_pass_env(&name) {
+             return Err(crate::capability::CapabilityError::EnvDenied(name));
+         }
+         env.retain(|(existing, _)| existing.as_os_str() != OsStr::new(&name));
+@@ -763,6 +764,22 @@
+         );
+     }
+ 
++    #[test]
++    fn a_granted_path_is_the_hosts_never_the_scripts() {
++        let capabilities = crate::Capabilities::new().process_env(["PATH".to_owned()]);
++        let env = child_env(&capabilities, Vec::new()).expect("granted");
++        assert_eq!(env, [("PATH".into(), std::env::var_os("PATH").unwrap())]);
++        let denied = child_env(
++            &capabilities,
++            vec![("PATH".to_owned(), "/plugin/data".to_owned())],
++        )
++        .expect_err("a script's own PATH");
++        assert_eq!(
++            denied,
++            crate::capability::CapabilityError::EnvDenied("PATH".to_owned())
++        );
++    }
++
+     #[cfg(unix)]
+     #[test]
+     fn signalling_the_group_reaches_a_grandchild_and_is_a_no_op_after_exit() {

@@ -722,11 +722,14 @@ const DENIED_ENV: &[&str] = &[
 ];
 
 /// Loader and interpreter variables would run the plugin's own code in any
-/// granted command, the plugin sets their values.
+/// granted command, the plugin sets their values. `PATH` passes the host's
+/// only, gpui-shell refuses one a script sets.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
   let denied = |name: &&String| {
-    name.ends_with("PATH") || name.contains('=') || DENIED_ENV.iter().any(|d| name.starts_with(d))
+    (name.ends_with("PATH") && *name != "PATH")
+      || name.contains('=')
+      || DENIED_ENV.iter().any(|d| name.starts_with(d))
   };
   if let Some(name) = names.iter().find(denied) {
     return Err(D::Error::custom(format!(
@@ -1021,11 +1024,13 @@ process = { exit = true }
   fn process_env_and_unix_sockets() {
     let capabilities = grant(
       r#"
-process = { env = ["HOME", "XDG_RUNTIME_DIR"] }
+process = { env = ["HOME", "XDG_RUNTIME_DIR", "PATH"] }
 network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
 "#,
     );
     assert!(capabilities.may_pass_env("HOME"));
+    // the host's; gpui-shell refuses a script's own
+    assert!(capabilities.may_pass_env("PATH"));
     assert!(!capabilities.may_pass_env("LD_PRELOAD"));
     let unix = format!("{capabilities:?}");
     assert!(unix.contains("/tailscale/tailscaled.sock"), "{unix}");
@@ -1046,7 +1051,6 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       "LD_LIBRARY_PATH",
       "GCONV_PATH",
       "A=B",
-      "PATH",
       "PYTHONPATH",
       "PYTHONSTARTUP",
       "NODE_OPTIONS",
