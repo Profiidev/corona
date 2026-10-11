@@ -14,8 +14,8 @@ use corona_script::{
   secrets,
 };
 use gpui_kit::{
-  App, AppContext, Context, Div, Entity, Focusable, IntoElement, ParentElement, SharedString,
-  Styled, Subscription, Window,
+  App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
+  SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -280,7 +280,7 @@ fn plugins_group(cx: &App) -> SettingGroup {
   };
   let mut items: Vec<SettingItem> = rows
     .into_iter()
-    .map(|row| SettingItem::render(move |_, window, cx| plugin_row(&row, window, cx)))
+    .map(|row| SettingItem::render(move |_, _, cx| plugin_row(&row, cx)))
     .collect();
   if items.is_empty() {
     items.push(SettingItem::render(|_, _, cx| {
@@ -302,10 +302,7 @@ fn plugins_group(cx: &App) -> SettingGroup {
     .items(items)
 }
 
-/// Whether a plugin's README is shown
-struct ReadmeOpen(bool);
-
-fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
+fn plugin_row(row: &PluginStatus, cx: &mut App) -> Div {
   let id = row.entry.id.clone();
   let manager = cx.global::<PluginManager>();
   let enabling = manager.is_enabling(&id);
@@ -316,14 +313,6 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
     .icon
     .as_ref()
     .and_then(|file| PluginManager::asset(row, file, cx));
-  let readme_open: Entity<ReadmeOpen> =
-    window.use_keyed_state(format!("plugin-readme-{id}"), cx, |_, _| ReadmeOpen(false));
-  let readme = match (&row.entry.readme, readme_open.read(cx).0) {
-    (Some(file), true) => {
-      PluginManager::asset(row, file, cx).and_then(|path| std::fs::read_to_string(path).ok())
-    }
-    _ => None,
-  };
 
   let mut title = div()
     .flex()
@@ -387,7 +376,7 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
 
   let (enable_id, remove_id, review_id) = (id.clone(), id.clone(), id.clone());
   let name: SharedString = row.entry.name.clone().into();
-  let header = div()
+  div()
     .flex()
     .items_center()
     .gap_2()
@@ -398,20 +387,8 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
         .into_any_element(),
     })
     .child(details)
-    .when(row.entry.readme.is_some(), |d| {
-      let toggle = readme_open.clone();
-      d.child(
-        Button::new(format!("plugin-readme-{id}"))
-          .icon(IconName::Info)
-          .cursor_pointer()
-          .ghost()
-          .on_click(move |_, _, cx| {
-            toggle.update(cx, |open, cx| {
-              open.0 = !open.0;
-              cx.notify();
-            })
-          }),
-      )
+    .when_some(row.entry.readme.clone(), |d, file| {
+      d.child(readme(row.clone(), file))
     })
     .when(needs_approval, |d| {
       d.child(
@@ -441,21 +418,38 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
           false => PluginManager::disable(&enable_id, cx),
         })
         .into_any_element(),
-    });
+    })
+}
 
-  div()
-    .flex()
-    .flex_col()
-    .gap_2()
-    .child(header)
-    .when_some(readme, |d, text| {
-      d.child(
-        div()
-          .p_2()
-          .rounded_md()
-          .bg(cx.theme().secondary)
-          .child(TextView::markdown(format!("plugin-readme-text-{id}"), text)),
-      )
+/// A button showing plugin `row`'s README `file` in a dialog, fetched once it
+/// opens
+fn readme(row: PluginStatus, file: String) -> Button {
+  let id = row.entry.id.clone();
+  Button::new(format!("plugin-readme-{id}"))
+    .icon(IconName::Info)
+    .cursor_pointer()
+    .ghost()
+    .on_click(move |_, window, cx| {
+      let (row, file, id) = (row.clone(), file.clone(), id.clone());
+      window.open_dialog(cx, move |dialog, window, cx| {
+        let text =
+          PluginManager::asset(&row, &file, cx).and_then(|path| std::fs::read_to_string(path).ok());
+        dialog
+          .title(row.entry.name.clone())
+          .w(window.viewport_size().width * 0.7)
+          .child(
+            div()
+              .id(format!("plugin-readme-text-{id}"))
+              .max_h(window.viewport_size().height * 0.7)
+              .overflow_y_scroll()
+              .child(match text {
+                Some(text) => {
+                  TextView::markdown(format!("plugin-readme-md-{id}"), text).into_any_element()
+                }
+                None => Spinner::new().into_any_element(),
+              }),
+          )
+      });
     })
 }
 
