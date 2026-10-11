@@ -19,6 +19,12 @@ const NETWORK: Duration = Duration::from_secs(60);
 const LOCAL: Duration = Duration::from_secs(20);
 /// The largest file [`show_file`] reads
 pub const SHOW_LIMIT: usize = 4 * 1024 * 1024;
+/// Never `file`: a source could clone any repository on this machine; the
+/// tests serve theirs from a directory
+#[cfg(not(test))]
+const ALLOWED_PROTOCOLS: &str = "https:http:ssh:git";
+#[cfg(test)]
+const ALLOWED_PROTOCOLS: &str = "https:http:ssh:git:file";
 
 /// Whether `git` can be run at all
 pub fn available() -> bool {
@@ -226,7 +232,7 @@ fn run_with(
       "core.symlinks=false",
     ])
     .args(&args)
-    .env("GIT_ALLOW_PROTOCOL", "https:http:ssh:git:file")
+    .env("GIT_ALLOW_PROTOCOL", ALLOWED_PROTOCOLS)
     .env("GIT_TERMINAL_PROMPT", "0")
     .env("GIT_ASKPASS", "/bin/false")
     .env("SSH_ASKPASS", "/bin/false")
