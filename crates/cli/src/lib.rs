@@ -1,11 +1,14 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
-use crate::{config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands};
+use crate::{
+  config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands, types::TypesCommand,
+};
 
 mod config;
 mod ipc;
 mod schema;
+mod types;
 
 /// Corona Shell CLI
 #[derive(Parser)]
@@ -41,6 +44,8 @@ pub enum Commands {
     #[command(subcommand)]
     command: SchemaCommands,
   },
+  /// Print the TypeScript declarations of the plugin API; needs the running shell
+  Types(TypesCommand),
 }
 
 #[cfg(test)]
@@ -69,6 +74,10 @@ mod tests {
     ));
     assert!(parse(&["schema", "catalog", "-o", "x.json"]).is_ok());
     assert!(parse(&["schema", "other"]).is_err());
+    assert!(matches!(
+      parse(&["types", "-o", "x.d.ts"]).unwrap().command,
+      Commands::Types(_)
+    ));
     assert!(parse(&[]).is_err());
     assert!(parse(&["nope"]).is_err());
   }

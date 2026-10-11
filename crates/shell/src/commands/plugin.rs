@@ -6,6 +6,21 @@ use serde_json::Value;
 
 pub fn register_commands(server: &mut IpcServer) {
   server.register::<PluginCall>();
+  server.register::<PluginTypes>();
+}
+
+/// `gpui-kit.d.ts` with every corona module, for writing plugins
+pub struct PluginTypes;
+
+impl IpcCommand for PluginTypes {
+  const COMMAND: &'static str = "plugin:types";
+
+  type Payload = ();
+  type Response = String;
+
+  fn handle(_: (), cx: &mut App) -> Result<String> {
+    corona_script::ScriptManager::type_declarations(cx)
+  }
 }
 
 /// Calls `method` of plugin `id`'s service, its answer

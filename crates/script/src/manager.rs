@@ -1,7 +1,8 @@
 use std::{
   cell::Cell,
-  collections::HashMap,
+  collections::{BTreeMap, BTreeSet, HashMap},
   fs,
+  path::PathBuf,
   rc::Rc,
   sync::{Arc, Mutex},
 };
@@ -11,15 +12,22 @@ use gpui_kit::{
   AnyView, App, BorrowAppContext, Entity, EntityId, Global, Subscription, Window, transparent_black,
 };
 use gpui_shell::{
-  ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
+  Capabilities, ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
 };
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, PluginRef, Subscribe, Subscriptions, dbus, i18n, plugin, settings, surface},
+  module::{
+    CoronaModule, ModuleExt, PluginRef, Subscribe, Subscriptions,
+    dbus::{self, DbusGrant},
+    i18n, plugin, settings, surface,
+  },
   plugin::{manifest::PluginManifest, paths::Paths},
 };
+
+/// The plugin `ScriptManager::type_declarations` types for
+const TYPES_ID: &str = "corona-types";
 
 pub struct Script {
   root: Entity<ShellRoot>,
@@ -171,22 +179,35 @@ impl ScriptManager {
     if let Err(error) = fs::create_dir_all(&data_dir) {
       tracing::warn!("storage unavailable for `{id}`: {error}");
     }
-    let panels: Vec<String> = manifest.panels.keys().cloned().collect();
-
-    let (policy, mut subscribes) = Policy::new()
+    let policy = Policy::new()
       .with_application(id)
       // a clone shares what the user picks with `corona/desktop`'s
       .with_capabilities(manifest.capabilities.clone())
-      .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME))
-      .with_corona_modules(
-        PluginRef {
-          id,
-          name: &manifest.name,
-          capabilities: &manifest.capabilities,
-        },
-        &manifest.modules,
-        cx,
-      )?;
+      .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME));
+    Self::modules(policy, manifest, opener, calls, options, cx)
+  }
+
+  /// `policy` with the modules of plugin `manifest`
+  fn modules(
+    policy: Policy,
+    manifest: &PluginManifest,
+    opener: Rc<Cell<Option<EntityId>>>,
+    calls: Option<flume::Receiver<plugin::Call>>,
+    options: Option<serde_json::Value>,
+    cx: &mut App,
+  ) -> Result<(Policy, Vec<Subscribe>)> {
+    let id = &manifest.id;
+    let panels: Vec<String> = manifest.panels.keys().cloned().collect();
+
+    let (policy, mut subscribes) = policy.with_corona_modules(
+      PluginRef {
+        id,
+        name: &manifest.name,
+        capabilities: &manifest.capabilities,
+      },
+      &manifest.modules,
+      cx,
+    )?;
     let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(id, cx));
     let policy = policy
       .with_host_module(settings::module(
@@ -213,6 +234,35 @@ impl ScriptManager {
       None => policy,
     };
     Ok((policy, subscribes))
+  }
+
+  /// `gpui-kit.d.ts` of a plugin granted every corona module and `corona/dbus`,
+  /// with no settings
+  pub fn type_declarations(cx: &mut App) -> Result<String> {
+    let manifest = PluginManifest {
+      id: TYPES_ID.into(),
+      dir: PathBuf::new(),
+      name: TYPES_ID.into(),
+      version: None,
+      description: None,
+      widgets: BTreeMap::new(),
+      panels: BTreeMap::new(),
+      service: None,
+      settings: Vec::new(),
+      host_settings: BTreeSet::new(),
+      capabilities: Capabilities::default(),
+      modules: CoronaModule::ALL.into(),
+      dbus: Some(DbusGrant::default()),
+    };
+    let (policy, _subscribes) =
+      Self::modules(Policy::new(), &manifest, Rc::default(), None, None, cx)?;
+    // as in `load`, the seam the declarations read the modules through
+    policy::set_default(policy);
+    let types = gpui_component_shell::components()
+      .map(|components| gpui_shell::type_declarations(&components));
+    policy::set_default(Policy::new());
+    cx.global_mut::<ScriptManager>().hubs.remove(TYPES_ID);
+    Ok(types?)
   }
 
   pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {

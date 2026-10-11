@@ -71,6 +71,28 @@ pub enum CoronaModule {
   Desktop,
 }
 
+impl CoronaModule {
+  /// Every module, for `corona types`
+  pub const ALL: [Self; 16] = [
+    Self::Compositor,
+    Self::CompositorControl,
+    Self::Pipewire,
+    Self::Network,
+    Self::Mpris,
+    Self::Bluetooth,
+    Self::Power,
+    Self::Brightness,
+    Self::Notifications,
+    Self::NotificationCenter,
+    Self::Tray,
+    Self::Sysinfo,
+    Self::Weather,
+    Self::Auth,
+    Self::Secrets,
+    Self::Desktop,
+  ];
+}
+
 /// The plugin a module is built for.
 #[derive(Clone, Copy)]
 pub struct PluginRef<'a> {
@@ -373,6 +395,7 @@ mod tests {
       (CoronaModule::Secrets, "secrets"),
       (CoronaModule::Desktop, "desktop"),
     ];
+    assert_eq!(all.map(|(module, _)| module), CoronaModule::ALL);
     for (module, name) in all {
       assert_eq!(
         serde_json::from_value::<CoronaModule>(name.into()).unwrap(),
