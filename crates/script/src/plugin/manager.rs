@@ -121,8 +121,12 @@ impl PluginManager {
     self.revision
   }
 
-  /// Enabled, but its source, grants or files changed since the user approved
-  /// them
+  /// Enabled plugins that wait for approval, by id
+  pub fn unapproved(&self) -> &HashMap<String, Found> {
+    &self.unapproved
+  }
+
+  /// Enabled, but its source or grants changed since the user approved them
   pub fn needs_approval(&self, id: &str) -> bool {
     self.unapproved.contains_key(id)
   }
@@ -153,7 +157,7 @@ impl PluginManager {
       .partition(|(_, found)| registry::is_approved(&config, found));
     for (id, found) in &this.unapproved {
       tracing::warn!(
-        "plugin `{id}` from `{}` waits for its grants or files to be approved",
+        "plugin `{id}` from `{}` waits for its grants to be approved",
         found.origin.source
       );
     }
@@ -438,14 +442,18 @@ impl PluginManager {
     }
   }
 
-  /// Exports enabled plugins of git sources that are missing on disk
+  /// Exports enabled plugins of git sources that are missing on disk. Skips
+  /// the ones the first auto-update fetches, which exports them too: both
+  /// at once would mark the source busy and drop that update.
   fn heal(cx: &mut App) {
     let config = cx.config().plugins.clone();
     if config.enabled.is_empty() {
       return;
     }
     for source in config.source {
-      if source.enabled && source.kind == SourceKind::Git {
+      let updates = in_scope(config.auto_update, &source)
+        && cx.global::<Self>().paths().repo(&source.name).exists();
+      if source.enabled && source.kind == SourceKind::Git && !updates {
         Self::run_update(source, config.enabled.clone(), true, cx);
       }
     }
@@ -948,14 +956,6 @@ mod tests {
       // the service is a top-level key, before the tables
       let manifest = format!("service = \"service.js\"\n{}", manifest("com.mine", "1"));
       fs::write(dir.join("plugin.toml"), manifest + extra).unwrap();
-      // the new files are approved, the grants may not be
-      let digest = registry::digest(&dir).unwrap();
-      cx.update(|cx| {
-        corona_config::update(cx, |c| {
-          c.plugins.approved.get_mut("com.mine").unwrap().digest = digest
-        })
-        .unwrap()
-      });
       cx.update(PluginManager::rescan);
       approve_again(cx, "com.mine");
       cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
@@ -1031,9 +1031,8 @@ mod tests {
     cx.run_until_parked();
     let list = cx.update(|cx| PluginManager::list(cx));
     assert!(!list[0].update_available);
-    // new code, same grants: still waits for the user
-    assert!(cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.a")));
-    approve_again(cx, "com.a");
+    // new code, same grants: runs right away
+    assert!(!cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.a")));
     let version = cx.update(|cx| {
       cx.global::<PluginManager>().active()["com.a"]
         .manifest
@@ -1056,10 +1055,36 @@ mod tests {
         "[plugins]\nenabled = [\"com.a\"]\n[plugins.approved.\"com.a\"]\nsource = \"git\"\ncapabilities = \"\"\n[[plugins.source]]\nname = \"git\"\nkind = \"git\"\nlocation = \"{url}\"\n"
       )
     });
-    // exported again, but an approval without a digest is not for these files
-    assert!(cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.a")));
-    approve_again(cx, "com.a");
     assert_eq!(active(cx), [("com.a".to_string(), "git".to_string())]);
+  }
+
+  // heal and the first auto-update raced for the source in some task orders
+  #[gpui::test(iterations = 10)]
+  fn updates_at_startup(cx: &mut TestAppContext) {
+    let env = env(cx, |remote, base| {
+      format!(
+        "[plugins]\nauto_update = \"all\"\n{}",
+        git_user(remote, base)
+      )
+    });
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
+    cx.run_until_parked();
+    env
+      .remote
+      .write("catalog.toml", &row("com.a", "2"))
+      .write("com.a/plugin.toml", &manifest("com.a", "2"));
+    env.remote.commit();
+
+    // a restart
+    cx.update(|cx| PluginManager::init(Paths::from_config(), cx));
+    cx.run_until_parked();
+    let version = cx.update(|cx| {
+      cx.global::<PluginManager>().active()["com.a"]
+        .manifest
+        .version
+        .clone()
+    });
+    assert_eq!(version.as_deref(), Some("2"));
   }
 
   #[gpui::test]

@@ -108,6 +108,16 @@ pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
   Ok(())
 }
 
+/// Asks about plugin `id`, which waits for approval, in the settings window.
+/// False when that is not open.
+pub fn review_plugin(id: &str, cx: &mut App) -> bool {
+  open_window(cx).is_some_and(|handle| {
+    handle
+      .update(cx, |_, window, cx| plugins::review(id, window, cx))
+      .is_ok()
+  })
+}
+
 pub fn close(cx: &mut App) {
   if let Some(handle) = open_window(cx) {
     let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -225,7 +235,6 @@ default = ["h"]
         "com.p".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
-          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );

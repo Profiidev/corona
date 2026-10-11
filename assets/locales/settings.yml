@@ -875,6 +875,13 @@ app:
       shadows:
         en: "Also in: %{sources}"
         de: "Auch in: %{sources}"
+      updated:
+        title:
+          en: "%{name} updated"
+          de: "%{name} aktualisiert"
+        body:
+          en: "Now on version %{version}."
+          de: "Jetzt auf Version %{version}."
       approve:
         title:
           en: "Allow %{name}?"
@@ -882,6 +889,30 @@ app:
         ok:
           en: "Allow"
           de: "Erlauben"
+        deny:
+          en: "Deny"
+          de: "Ablehnen"
+        deny_disable:
+          en: "Deny and disable"
+          de: "Ablehnen und deaktivieren"
+        changed_title:
+          en: "%{name} changed"
+          de: "%{name} hat sich geändert"
+        changed_body:
+          en: "It does not run until you review what changed in its permissions."
+          de: "Es läuft erst wieder, wenn du die Änderungen an seinen Berechtigungen geprüft hast."
+        source_changed:
+          en: "Now from source %{new}, before from %{old}."
+          de: "Jetzt aus der Quelle %{new}, vorher aus %{old}."
+        same_permissions:
+          en: "Its permissions stay the same."
+          de: "Seine Berechtigungen bleiben gleich."
+        added:
+          en: "New"
+          de: "Neu"
+        removed:
+          en: "Removed"
+          de: "Entfernt"
         review:
           en: "Review permissions"
           de: "Berechtigungen prüfen"

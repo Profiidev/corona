@@ -48,8 +48,8 @@ pub struct PluginsConfig {
   /// Later sources win over earlier ones when both offer a plugin
   #[serde(deserialize_with = "unique_sources")]
   pub source: Vec<SourceConfig>,
-  /// What the user agreed each plugin may do, by id. A plugin whose source,
-  /// capabilities or files differ from this does not run until approved again.
+  /// What the user agreed each plugin may do, by id. A plugin whose source
+  /// or capabilities differ from this does not run until approved again.
   pub approved: BTreeMap<String, Approval>,
 }
 
@@ -61,8 +61,6 @@ pub struct Approval {
   pub source: String,
   /// Its `[capabilities]` table as TOML text
   pub capabilities: String,
-  /// SHA-256 of its files, so an update with new code is approved again
-  pub digest: String,
 }
 
 impl Default for PluginsConfig {

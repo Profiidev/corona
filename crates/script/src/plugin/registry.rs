@@ -4,14 +4,12 @@
 use std::{
   collections::{BTreeMap, HashMap},
   fs,
-  os::unix::ffi::{OsStrExt, OsStringExt},
   path::{Path, PathBuf},
 };
 
 use anyhow::Result;
 use corona_config::plugins::{Approval, LOCAL_SOURCE, PluginsConfig, SourceKind};
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
@@ -72,8 +70,6 @@ pub struct Found {
   pub manifest: PluginManifest,
   /// As written, what the user approves
   pub capabilities: CapabilitiesFile,
-  /// [`digest`] of its directory, what the user approves too
-  pub digest: String,
 }
 
 /// `[plugin_settings]`, by plugin id
@@ -101,9 +97,6 @@ pub fn scan_root(paths: &Paths, root: &Root, settings: &PluginSettings) -> Vec<F
         Some(Found {
           origin: root.origin.clone(),
           capabilities: file.capabilities.clone(),
-          digest: digest(&dir)
-            .inspect_err(|e| tracing::warn!("skipping plugin `{id}`: {e:#}"))
-            .ok()?,
           manifest: PluginManifest::new(file, dir, &data, settings.get(&id)),
         })
       }
@@ -113,39 +106,6 @@ pub fn scan_root(paths: &Paths, root: &Root, settings: &PluginSettings) -> Vec<F
       }
     })
     .collect()
-}
-
-/// SHA-256 over every file below `dir`, by sorted relative path: each path,
-/// then its contents or, for a symlink, its target, which is not followed.
-/// Both are length-prefixed, so no two trees hash alike.
-pub fn digest(dir: &Path) -> Result<String> {
-  let mut files = Vec::new();
-  let mut todo = vec![dir.to_path_buf()];
-  while let Some(next) = todo.pop() {
-    for entry in fs::read_dir(&next)? {
-      let path = entry?.path();
-      let kind = fs::symlink_metadata(&path)?.file_type();
-      if kind.is_dir() {
-        todo.push(path);
-      } else {
-        files.push((path.strip_prefix(dir)?.to_path_buf(), kind.is_symlink()));
-      }
-    }
-  }
-  files.sort();
-  let mut hash = Sha256::new();
-  for (rel, link) in files {
-    let path = dir.join(&rel);
-    let data = match link {
-      true => fs::read_link(&path)?.into_os_string().into_vec(),
-      false => fs::read(&path)?,
-    };
-    for part in [rel.as_os_str().as_bytes(), &[link as u8], &data] {
-      hash.update((part.len() as u64).to_le_bytes());
-      hash.update(part);
-    }
-  }
-  Ok(format!("{:x}", hash.finalize()))
 }
 
 fn hidden(path: &Path) -> bool {
@@ -210,19 +170,17 @@ fn winners(
 }
 
 /// Whether the user approved `found` as it is: from its source, with its
-/// capabilities and files. An update, a rescan or another source winning that
-/// changes any needs a new approval.
+/// capabilities. An update, a rescan or another source winning that changes
+/// either needs a new approval.
 pub fn is_approved(config: &PluginsConfig, found: &Found) -> bool {
   config.approved.get(&found.manifest.id).is_some_and(|a| {
     a.source == found.origin.source
-      && a.digest == found.digest
       && toml::from_str::<CapabilitiesFile>(&a.capabilities)
         .is_ok_and(|capabilities| capabilities == found.capabilities)
   })
 }
 
-/// What approving `found` records: its source, `[capabilities]` as written and
-/// the digest of its files
+/// What approving `found` records: its source and `[capabilities]` as written
 pub fn approval(found: &Found) -> Result<Approval> {
   let text = fs::read_to_string(found.manifest.dir.join(PLUGIN_MANIFEST_FILENAME))?;
   let mut file: toml::Table = toml::from_str(&text)?;
@@ -233,7 +191,6 @@ pub fn approval(found: &Found) -> Result<Approval> {
   Ok(Approval {
     source: found.origin.source.clone(),
     capabilities: toml::to_string(&capabilities)?,
-    digest: found.digest.clone(),
   })
 }
 
@@ -305,6 +262,34 @@ fn http(grant: &toml::Table) -> String {
   .split_whitespace()
   .collect::<Vec<_>>()
   .join(" ")
+}
+
+/// How a grant differs from the approved one
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+  Added,
+  Removed,
+  Kept,
+}
+
+/// [`permissions`] of `new`, each marked against `old`, then the ones `new`
+/// drops. A grant whose values changed shows up removed and added.
+pub fn permission_changes(old: &str, new: &str) -> Vec<(Change, String, String)> {
+  let (old, new) = (permissions(old), permissions(new));
+  let mut out: Vec<_> = new
+    .iter()
+    .map(|grant| match old.contains(grant) {
+      true => (Change::Kept, grant.0.clone(), grant.1.clone()),
+      false => (Change::Added, grant.0.clone(), grant.1.clone()),
+    })
+    .collect();
+  out.extend(
+    old
+      .into_iter()
+      .filter(|grant| !new.contains(grant))
+      .map(|(kind, values)| (Change::Removed, kind, values)),
+  );
+  out
 }
 
 #[cfg(test)]
@@ -464,38 +449,6 @@ mod tests {
   }
 
   #[test]
-  fn changed_files_need_a_new_approval() {
-    let Setup { paths, _tmp, .. } = setup();
-    plugin(&paths.local, "a", "com.a");
-    let dir = paths.local.join("a");
-    fs::write(dir.join("main.js"), "1").unwrap();
-    let mut config = config(Vec::new(), &["com.a"]);
-    let found =
-      |config: &PluginsConfig| find(&paths, config, &Default::default(), "com.a").unwrap();
-    let approval = approval(&found(&config)).unwrap();
-    config.approved.insert("com.a".into(), approval);
-    assert!(is_approved(&config, &found(&config)));
-
-    // an update or edit with the same grants
-    fs::write(dir.join("main.js"), "2").unwrap();
-    assert!(!is_approved(&config, &found(&config)));
-    fs::write(dir.join("main.js"), "1").unwrap();
-    assert!(is_approved(&config, &found(&config)));
-    fs::create_dir(dir.join("lib")).unwrap();
-    fs::write(dir.join("lib/x.js"), "").unwrap();
-    assert!(!is_approved(&config, &found(&config)));
-    fs::remove_dir_all(dir.join("lib")).unwrap();
-    std::os::unix::fs::symlink("/etc/passwd", dir.join("link.js")).unwrap();
-    assert!(!is_approved(&config, &found(&config)));
-    fs::remove_file(dir.join("link.js")).unwrap();
-    assert!(is_approved(&config, &found(&config)));
-
-    // approvals from before digests never match
-    config.approved.get_mut("com.a").unwrap().digest.clear();
-    assert!(!is_approved(&config, &found(&config)));
-  }
-
-  #[test]
   fn permissions_read_plainly() {
     let text = r#"
 storage = false
@@ -521,6 +474,27 @@ path_prefixes = ["/v1/"]
         "fs.read=${pluginDir}",
         "network.http=GET https://api.x /v1/…",
       ]
+    );
+  }
+
+  #[test]
+  fn permission_changes_mark_what_differs() {
+    let old = "storage = true\ncorona = [\"auth\"]\nclipboard = { read = true }\n";
+    let new = "storage = true\ncorona = [\"auth\", \"secrets\"]\nfs = { write = [\"/tmp\"] }\n";
+    assert_eq!(
+      permission_changes(old, new),
+      [
+        (Change::Added, "corona".into(), "auth, secrets".into()),
+        (Change::Added, "fs.write".into(), "/tmp".into()),
+        (Change::Kept, "storage".into(), String::new()),
+        (Change::Removed, "clipboard.read".into(), String::new()),
+        (Change::Removed, "corona".into(), "auth".into()),
+      ]
+    );
+    assert!(
+      permission_changes(new, new)
+        .iter()
+        .all(|(c, ..)| *c == Change::Kept)
     );
   }
 

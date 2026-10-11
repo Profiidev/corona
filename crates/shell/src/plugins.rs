@@ -1,3 +1,10 @@
+use std::{
+  cell::RefCell,
+  collections::{HashMap, HashSet},
+  rc::Rc,
+};
+
+use corona_notifications::{Action, Notifications, Notify, Urgency};
 use corona_script::{Entry, PluginManager, Script, ScriptManager, Service};
 use corona_surface::{
   bar::{BarExt, BarState, WidgetData},
@@ -6,6 +13,7 @@ use corona_surface::{
 use gpui_kit::{
   App, AppContext, IntoElement, ParentElement, Render, Styled, Window, div, prelude::FluentBuilder,
 };
+use rust_i18n::t;
 
 /// The widget and panel names registered for plugins, and their services
 #[derive(Default)]
@@ -16,6 +24,7 @@ struct Registered {
 }
 
 pub fn init(cx: &mut App) {
+  watch_approvals(cx);
   let mut registered = Registered::default();
   sync(&mut registered, cx);
   let mut revision = cx.global::<PluginManager>().revision();
@@ -26,6 +35,138 @@ pub fn init(cx: &mut App) {
       sync(&mut registered, cx);
       BarState::reopen(cx);
     }
+  })
+  .detach();
+}
+
+/// Tells of plugin updates, and asks about each plugin as it starts waiting
+/// for approval: in the settings window when open, else with a notification
+fn watch_approvals(cx: &mut App) {
+  // notification id to plugin id
+  let sent = Rc::new(RefCell::new(HashMap::new()));
+  let mut waiting = HashSet::new();
+  // the running plugins' versions, to tell of updates
+  let mut versions = Versions::new();
+  let mut check = {
+    let sent = sent.clone();
+    move |cx: &mut App| {
+      let manager = cx.global::<PluginManager>();
+      let now: HashSet<String> = manager.unapproved().keys().cloned().collect();
+      let running: Versions = manager
+        .active()
+        .iter()
+        .map(|(id, found)| {
+          let m = &found.manifest;
+          (id.clone(), (m.name.clone(), m.version.clone()))
+        })
+        .collect();
+      for (name, version) in updates(&mut versions, running, &now) {
+        notify_updated(&name, &version, cx);
+      }
+      for id in now.difference(&waiting) {
+        if !crate::settings::review_plugin(id, cx) {
+          notify(id, sent.clone(), cx);
+        }
+      }
+      waiting = now;
+    }
+  };
+  check(cx);
+  cx.observe_global::<PluginManager>(check).detach();
+
+  let Some(actions) = cx.try_global::<Notifications>().map(|n| n.action_invoked()) else {
+    return;
+  };
+  cx.spawn(async move |cx| {
+    let mut actions = match actions.await {
+      Ok(actions) => std::pin::pin!(actions),
+      Err(e) => return tracing::error!("plugin approval notifications: {e:#}"),
+    };
+    use futures::StreamExt;
+    while let Some((notification, _)) = actions.next().await {
+      let Some(id) = sent.borrow_mut().remove(&notification) else {
+        continue;
+      };
+      cx.update(|cx| {
+        if let Err(e) = crate::settings::open(Some("plugins"), cx) {
+          tracing::error!("opening the settings: {e:#}");
+        }
+        crate::settings::review_plugin(&id, cx);
+      });
+    }
+  })
+  .detach();
+}
+
+/// Clicking the notification, no button
+const REVIEW: &str = "default";
+
+/// Name and version, by plugin id
+type Versions = HashMap<String, (String, Option<String>)>;
+
+/// The `running` plugins whose version differs from the one in `versions`, as
+/// name and new version; keeps `versions` up to date. Ones `waiting` for
+/// approval keep their last running version, so approving an update tells of
+/// it too.
+fn updates(
+  versions: &mut Versions,
+  running: Versions,
+  waiting: &HashSet<String>,
+) -> Vec<(String, String)> {
+  let updated = running
+    .iter()
+    .filter_map(|(id, (name, version))| {
+      let (old, new) = (&versions.get(id)?.1, version.clone()?);
+      (old.as_ref() != Some(&new)).then(|| (name.clone(), new))
+    })
+    .collect();
+  versions.retain(|id, _| waiting.contains(id));
+  versions.extend(running);
+  updated
+}
+
+/// Tells that plugin `name` runs `version` now
+fn notify_updated(name: &str, version: &str, cx: &mut App) {
+  let Some(notifications) = cx.try_global::<Notifications>() else {
+    return;
+  };
+  let send = notifications.send(
+    t!("app.settings.plugins.updated.title", name = name).into(),
+    t!("app.settings.plugins.updated.body", version = version).into(),
+  );
+  cx.spawn(async move |_| {
+    if let Err(e) = send.await {
+      tracing::error!("telling of a plugin update: {e:#}");
+    }
+  })
+  .detach();
+}
+
+fn notify(id: &str, sent: Rc<RefCell<HashMap<u32, String>>>, cx: &mut App) {
+  let Some(notifications) = cx.try_global::<Notifications>() else {
+    return;
+  };
+  let name = cx.global::<PluginManager>().unapproved()[id]
+    .manifest
+    .name
+    .clone();
+  let send = notifications.send_notify(Notify {
+    app_name: corona_config::APP_NAME.into(),
+    app_icon: String::new(),
+    summary: t!("app.settings.plugins.approve.changed_title", name = name).into(),
+    body: t!("app.settings.plugins.approve.changed_body").into(),
+    actions: vec![Action {
+      key: REVIEW.into(),
+      label: t!("app.settings.plugins.approve.review").into(),
+    }],
+    urgency: Urgency::Normal,
+    hints: HashMap::new(),
+    timeout: 0,
+  });
+  let id = id.to_string();
+  cx.spawn(async move |_| match send.await {
+    Ok(notification) => drop(sent.borrow_mut().insert(notification, id)),
+    Err(e) => tracing::error!("asking to approve plugin `{id}`: {e:#}"),
   })
   .detach();
 }
@@ -163,6 +304,49 @@ export default class Main extends View {
     })
   }
 
+  #[test]
+  fn tells_of_new_versions() {
+    let v = |pairs: &[(&str, Option<&str>)]| -> Versions {
+      pairs
+        .iter()
+        .map(|(id, version)| (id.to_string(), (id.to_uppercase(), version.map(Into::into))))
+        .collect()
+    };
+    let none = HashSet::new();
+    let mut versions = Versions::new();
+    // the first scan and newly enabled plugins are no update
+    assert!(updates(&mut versions, v(&[("a", Some("1")), ("b", None)]), &none).is_empty());
+    assert_eq!(
+      updates(
+        &mut versions,
+        v(&[("a", Some("2")), ("b", None), ("c", Some("1"))]),
+        &none
+      ),
+      [("A".to_string(), "2".to_string())]
+    );
+    // waiting for approval, then approved
+    let waiting = HashSet::from(["a".to_string()]);
+    assert!(updates(&mut versions, v(&[("c", Some("1"))]), &waiting).is_empty());
+    assert_eq!(
+      updates(
+        &mut versions,
+        v(&[("a", Some("3")), ("c", Some("1"))]),
+        &none
+      ),
+      [("A".to_string(), "3".to_string())]
+    );
+    // disabled, then enabled at another version: not told
+    assert!(updates(&mut versions, v(&[("a", Some("3"))]), &none).is_empty());
+    assert!(
+      updates(
+        &mut versions,
+        v(&[("a", Some("3")), ("c", Some("2"))]),
+        &none
+      )
+      .is_empty()
+    );
+  }
+
   #[gpui::test]
   fn registers_the_widgets_and_panels_of_running_plugins(cx: &mut TestAppContext) {
     setup(FakeCompositor::default(), cx);
@@ -188,7 +372,6 @@ export default class Main extends View {
         "com.clock".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
-          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );
@@ -301,7 +484,6 @@ export default async function main(_cx) {
         "com.echo".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
-          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );
@@ -329,12 +511,6 @@ export default async function main(_cx) {
     )
     .unwrap();
     let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
-    // new files run only once approved
-    cx.update(|cx| {
-      let approved = &mut cx.global_mut::<Config>().plugins.approved;
-      approved.get_mut("com.echo").unwrap().digest =
-        corona_script::plugin::registry::digest(&dir).unwrap();
-    });
     cx.update(PluginManager::rescan);
     cx.run_until_parked();
     assert!(cx.update(|cx| cx.global::<PluginManager>().revision()) > revision);
@@ -373,7 +549,6 @@ export default async function main(_cx) {
         "com.clock".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
-          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );

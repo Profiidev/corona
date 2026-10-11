@@ -8,7 +8,7 @@ use corona_script::{
   PluginManager, PluginStatus, ScriptManager,
   plugin::{
     manifest::PluginManifest,
-    registry,
+    registry::{self, Change},
     settings::{DynamicOptions, Setting, SettingKind, number as json_number},
   },
   secrets,
@@ -386,7 +386,6 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
 
   let (enable_id, remove_id, review_id) = (id.clone(), id.clone(), id.clone());
   let name: SharedString = row.entry.name.clone().into();
-  let review_name = name.clone();
   let header = div()
     .flex()
     .items_center()
@@ -419,11 +418,7 @@ fn plugin_row(row: &PluginStatus, window: &mut Window, cx: &mut App) -> Div {
           .label(t!("app.settings.plugins.approve.review"))
           .cursor_pointer()
           .outline()
-          .on_click(move |_, window, cx| {
-            if let Some(approval) = PluginManager::review(&review_id, cx) {
-              confirm(review_id.clone(), review_name.clone(), approval, window, cx);
-            }
-          }),
+          .on_click(move |_, window, cx| review(&review_id, window, cx)),
       )
     })
     .when(row.kind == SourceKind::Git && row.installed, |d| {
@@ -476,20 +471,126 @@ fn ask(name: SharedString, window: &Window) -> impl FnOnce(&str, Approval, &mut 
   }
 }
 
-/// Asks whether plugin `id` may do what `approval` grants
+/// Asks again about enabled plugin `id`, whose source, grants or files changed
+/// since the user approved it
+pub(crate) fn review(id: &str, window: &mut Window, cx: &mut App) {
+  let Some(name) = cx
+    .global::<PluginManager>()
+    .unapproved()
+    .get(id)
+    .map(|found| SharedString::from(found.manifest.name.clone()))
+  else {
+    return;
+  };
+  if let Some(approval) = PluginManager::review(id, cx) {
+    confirm(id.to_string(), name, approval, window, cx);
+  }
+}
+
+/// Asks whether plugin `id` may do what `approval` grants, showing what
+/// changed since the last approval. Denying disables it.
 fn confirm(id: String, name: SharedString, approval: Approval, window: &mut Window, cx: &mut App) {
+  let previous = cx.config().plugins.approved.get(&id).cloned();
+  let cancel = match cx.config().plugins.is_enabled(&id) {
+    true => t!("app.settings.plugins.approve.deny_disable"),
+    false => t!("app.settings.plugins.approve.deny"),
+  };
   window.open_alert_dialog(cx, move |alert, _, cx| {
-    let (id, approval) = (id.clone(), approval.clone());
+    let (ok_id, ok_approval, deny_id) = (id.clone(), approval.clone(), id.clone());
+    let description = match &previous {
+      Some(previous) => changes(previous, &approval, cx),
+      None => permissions(&approval.capabilities, cx),
+    };
     alert
-      .title(t!("app.settings.plugins.approve.title", name = name))
-      .description(permissions(&approval.capabilities, cx))
+      .title(match previous {
+        Some(_) => t!("app.settings.plugins.approve.changed_title", name = name),
+        None => t!("app.settings.plugins.approve.title", name = name),
+      })
+      .description(description)
+      // so escape does not disable it
+      .keyboard(false)
       .show_cancel(true)
+      .cancel_text(cancel.clone())
       .ok_text(t!("app.settings.plugins.approve.ok"))
       .on_ok(move |_, _, cx| {
-        PluginManager::approve(&id, approval.clone(), cx);
+        PluginManager::approve(&ok_id, ok_approval.clone(), cx);
+        true
+      })
+      .on_cancel(move |_, _, cx| {
+        PluginManager::disable(&deny_id, cx);
         true
       })
   });
+}
+
+/// The grants of `approval` against `previous`: new ones, dropped ones, and
+/// a note when only the source or code changed
+fn changes(previous: &Approval, approval: &Approval, cx: &App) -> Div {
+  let rows = registry::permission_changes(&previous.capabilities, &approval.capabilities);
+  let same = rows.iter().all(|(change, ..)| *change == Change::Kept);
+  div()
+    .flex()
+    .flex_col()
+    .gap_2()
+    .when(previous.source != approval.source, |d| {
+      d.child(muted(
+        t!(
+          "app.settings.plugins.approve.source_changed",
+          old = previous.source,
+          new = approval.source
+        ),
+        cx,
+      ))
+    })
+    .when(same, |d| {
+      d.child(muted(
+        t!("app.settings.plugins.approve.same_permissions"),
+        cx,
+      ))
+    })
+    .when(rows.is_empty(), |d| {
+      d.child(muted(t!("app.settings.plugins.approve.nothing"), cx))
+    })
+    .children(rows.into_iter().map(|(change, kind, values)| {
+      let (text, warning) = permission(&kind, &values);
+      let tag = match change {
+        Change::Added => Some((
+          TagVariant::Success,
+          t!("app.settings.plugins.approve.added"),
+        )),
+        Change::Removed => Some((
+          TagVariant::Secondary,
+          t!("app.settings.plugins.approve.removed"),
+        )),
+        Change::Kept => None,
+      };
+      div()
+        .flex()
+        .flex_col()
+        .child(
+          div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .when_some(tag, |d, (variant, label)| {
+              d.child(Tag::new().small().with_variant(variant).child(label))
+            })
+            .child(
+              div()
+                .text_sm()
+                .when(change == Change::Kept, |d| {
+                  d.text_color(cx.theme().muted_foreground)
+                })
+                .when(change == Change::Removed, |d| d.line_through())
+                .child(text),
+            ),
+        )
+        .when(change == Change::Added, |d| {
+          d.when_some(warning, |d, warning| {
+            d.child(div().text_xs().text_color(cx.theme().danger).child(warning))
+          })
+        })
+    }))
 }
 
 /// Corona modules that reach the user's credentials, notifications or
