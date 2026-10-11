@@ -1,0 +1,35 @@
+cx.theme() colors kept only their RGB, so a translucent token such as a
+border at 10% white reached scripts as solid white. Keep the alpha.
+
+--- a/crates/shell/src/engine/quickjs/theme_api.rs
++++ b/crates/shell/src/engine/quickjs/theme_api.rs
+@@ -372,10 +372,15 @@
+     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+ }
+ 
++/// `#rrggbb`, or `#rrggbbaa` when the color is translucent: a theme's border
++/// is often white at 10%, and dropping the alpha draws it solid white.
+ fn hex(color: gpui::Hsla) -> String {
+     let c = gpui::Rgba::from(color);
+     let b = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
+-    format!("#{:02x}{:02x}{:02x}", b(c.r), b(c.g), b(c.b))
++    match b(c.a) {
++        255 => format!("#{:02x}{:02x}{:02x}", b(c.r), b(c.g), b(c.b)),
++        a => format!("#{:02x}{:02x}{:02x}{a:02x}", b(c.r), b(c.g), b(c.b)),
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -383,6 +388,12 @@
+     use super::*;
+ 
+     #[test]
++    fn hex_keeps_alpha_only_when_translucent() {
++        assert_eq!(hex(gpui::rgb(0x27272a).into()), "#27272a");
++        assert_eq!(hex(gpui::rgba(0xffffff1a).into()), "#ffffff1a");
++    }
++
++    #[test]
+     fn unchanged_theme_snapshot_reuses_its_serialized_storage() {
+         let tokens = gpui_base::SemanticThemeTokens::default();
+         let mut cache = ThemeSnapshotCache::default();
