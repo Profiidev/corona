@@ -1,0 +1,791 @@
+Sandbox hardening from the plugin API security review.
+
+Unix sockets: a grant names a canonical path, and a connection is allowed only
+when the requested path still canonicalizes to that exact grant. net.connect
+and fetch then connect to the canonical path. A symlink planted under a granted
+name later resolves elsewhere and is refused, so it cannot lead to another
+socket such as the host's IPC socket.
+
+fetch never uses a proxy. A proxy resolves names on its own side, which would
+skip the public-address filter and reach the local network. The test-only
+client that existed just to turn proxies off is gone as well.
+
+Public addresses: IPv4-compatible, NAT64 (64:ff9b::/96) and 6to4 (2002::/16)
+addresses are judged by the IPv4 address inside them. Local-use NAT64,
+Teredo, documentation, discard-only and site-local IPv6 ranges, plus the IPv4
+special-purpose, benchmarking and documentation ranges, count as private.
+
+DNS: each lookup runs on its own thread, with at most 64 in flight. Before,
+two shared workers ran every lookup, so two names that never answer stalled
+all of them. A lookup that times out keeps its slot until getaddrinfo returns,
+so hung names cannot pile up threads.
+
+TLS: the `insecure` option is removed. It accepted any certificate, so the
+connection was encrypted but not authenticated. A self-signed server is
+trusted by pinning its certificate.
+
+Frozen builtins: the freeze now also covers the constructors and prototypes of
+Boolean, Symbol, BigInt, RegExp, Date, Promise, Map, Set, WeakMap, WeakSet,
+ArrayBuffer, the typed arrays, every Error type, and the iterator, generator
+and async function prototypes. The name and message properties on the Error
+prototypes become accessors, so `this.name = ...` in an error subclass still
+works on a frozen prototype.
+
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -220,10 +220,20 @@
+         self
+     }
+ 
++    /// Whether `path` is granted as written. Connecting goes through
++    /// [`Self::unix_socket`], which also resolves symlinks.
+     pub fn may_connect_unix(&self, path: &Path) -> bool {
+         path.is_absolute() && self.network_unix.iter().any(|allowed| allowed == path)
+     }
+ 
++    /// The canonical socket `path` names, when that is itself a grant. Hosts
++    /// grant canonical paths, so a symlink planted under a granted name later
++    /// resolves elsewhere and no longer matches. Connect to the returned path.
++    pub fn unix_socket(&self, path: &Path) -> Option<PathBuf> {
++        let canonical = path.canonicalize().ok().filter(|_| path.is_absolute())?;
++        self.network_unix.contains(&canonical).then_some(canonical)
++    }
++
+     /// The directory a relative `image()` path resolves against. Without one a
+     /// relative path names an embedded asset, as it does standalone.
+     pub fn asset_root(mut self, path: PathBuf) -> Self {
+--- a/crates/shell/src/engine/quickjs/mod.rs
++++ b/crates/shell/src/engine/quickjs/mod.rs
+@@ -1417,14 +1417,6 @@
+     terminal_job_error: RefCell<Option<String>>,
+     /// What the runtime is spending. See [`Self::metrics`].
+     metrics: Metrics,
+-    /// An HTTP client supplied by tests that exercise a loopback server.
+-    ///
+-    /// This is deliberately runtime-scoped rather than process state: tests
+-    /// run concurrently, and changing proxy environment variables would leak
+-    /// into unrelated runtimes. Production builds do not carry this field and
+-    /// continue to construct the normal system-configured client in `fetch`.
+-    #[cfg(test)]
+-    test_http_client: RefCell<Option<reqwest::blocking::Client>>,
+     /// The QuickJS context currently executing, while one is.
+     ///
+     /// `Context::with` takes the runtime's lock, so calling it from inside a
+@@ -1727,8 +1719,6 @@
+             active_context: Cell::new(None),
+             terminal_job_error: RefCell::new(None),
+             metrics: Metrics::default(),
+-            #[cfg(test)]
+-            test_http_client: RefCell::new(None),
+             context,
+             app_modules,
+             dependency_store,
+@@ -2009,19 +1999,6 @@
+         &self.metrics
+     }
+ 
+-    #[cfg(test)]
+-    pub(crate) fn use_direct_http_for_tests(&self) {
+-        *self.test_http_client.borrow_mut() = Some(
+-            standard::direct_test_http_client()
+-                .expect("the direct test HTTP client should be constructible"),
+-        );
+-    }
+-
+-    #[cfg(test)]
+-    fn test_http_client(&self) -> Option<reqwest::blocking::Client> {
+-        self.test_http_client.borrow().clone()
+-    }
+-
+     /// Evaluates a fragment of script in this runtime's context.
+     ///
+     /// Test-only, and used by one caller: `tests::benchmark` has to time a loop
+--- a/crates/shell/src/engine/quickjs/sandbox.rs
++++ b/crates/shell/src/engine/quickjs/sandbox.rs
+@@ -198,20 +198,50 @@
+ })();
+ "#;
+ 
+-/// Freezes the prototypes that every piece of script code shares.
++/// Freezes the prototypes that every piece of script code shares, and the
++/// constructors whose statics (`Promise.resolve`, `Array.from`) it calls.
+ ///
+ /// Runs after [`WITHHOLD_DYNAMIC_CODE`] so the swapped `constructor` is what
+ /// gets frozen — freezing first would make the swap impossible.
+ const FREEZE_BUILTINS: &str = r#"
+ (() => {
+-  for (const proto of [
+-    Object.prototype,
+-    Array.prototype,
+-    Function.prototype,
+-    String.prototype,
+-    Number.prototype,
++  const constructors = [
++    Object, Array, Function, String, Number, Boolean, Symbol, BigInt, RegExp, Date,
++    Promise, Map, Set, WeakMap, WeakSet, ArrayBuffer,
++    Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError,
++    AggregateError, Object.getPrototypeOf(Uint8Array),
++  ];
++  // A frozen data property makes `error.message = ...` on an instance throw
++  // (the override mistake), and errors get both set. An accessor that defines
++  // the own property instead keeps that working.
++  for (const constructor of constructors.filter((c) => c === Error || c.prototype instanceof Error)) {
++    for (const key of ["name", "message"]) {
++      const proto = constructor.prototype;
++      const value = proto[key];
++      Object.defineProperty(proto, key, {
++        get() { return value; },
++        set(next) {
++          if (this === proto) throw new TypeError(`${key} is frozen`);
++          Object.defineProperty(this, key, { value: next, writable: true, configurable: true });
++        },
++      });
++    }
++  }
++  const iterator = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));
++  const generator = Object.getPrototypeOf(function* () {});
++  const asyncGenerator = Object.getPrototypeOf(async function* () {});
++  for (const value of [
++    ...constructors,
++    ...constructors.map((constructor) => constructor.prototype),
++    iterator,
++    generator,
++    generator.prototype,
++    asyncGenerator,
++    asyncGenerator.prototype,
++    Object.getPrototypeOf(asyncGenerator.prototype),
++    Object.getPrototypeOf(async function () {}),
+   ]) {
+-    Object.freeze(proto);
++    Object.freeze(value);
+   }
+ })();
+ "#;
+@@ -1003,6 +1033,20 @@
+         // write to a frozen prototype is a `TypeError` the author sees.
+         assert!(rejection(&context, "Object.prototype.polluted = 1;").is_some());
+         assert!(rejection(&context, "Array.prototype.first = () => 1;").is_some());
++        assert!(rejection(&context, "Promise.prototype.then = () => 1;").is_some());
++        assert!(rejection(&context, "Promise.resolve = () => 1;").is_some());
++        assert!(rejection(&context, "Error.prototype.toString = () => '';").is_some());
++        assert!(rejection(&context, "TypeError.prototype.name = 'x';").is_some());
++        // An error still takes its own name and message.
++        let named: String = context
++            .with(|ctx| {
++                ctx.eval(
++                    "class E extends Error { constructor() { super(); this.name = 'E'; } }; \
++                     const e = new E(); e.message = 'm'; String(e)",
++                )
++            })
++            .unwrap();
++        assert_eq!(named, "E: m");
+ 
+         // A sloppy-mode write discards silently instead of throwing — that is
+         // ECMAScript's rule, not a hole in the policy. Assert the outcome that
+--- a/crates/shell/src/engine/quickjs/standard/connect.rs
++++ b/crates/shell/src/engine/quickjs/standard/connect.rs
+@@ -1,82 +1,44 @@
+ use std::{
+-    collections::VecDeque,
+     io,
+     net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs as _},
+-    sync::{Arc, Condvar, Mutex, OnceLock, mpsc},
++    sync::{Condvar, Mutex, PoisonError, mpsc},
+     thread,
+     time::{Duration, Instant},
+ };
+ 
+-const RESOLVER_WORKERS: usize = 2;
+ const RESOLVER_QUEUE_CAPACITY: usize = 64;
+ 
+-type ResolveJob = Box<dyn FnOnce() + Send + 'static>;
+-
+-struct ResolverPool {
+-    queue: Arc<(Mutex<VecDeque<ResolveJob>>, Condvar)>,
+-}
+-
+-impl ResolverPool {
+-    fn new() -> Result<Self, String> {
+-        let queue = Arc::new((Mutex::new(VecDeque::<ResolveJob>::new()), Condvar::new()));
+-        for index in 0..RESOLVER_WORKERS {
+-            let queue = queue.clone();
+-            thread::Builder::new()
+-                .name(format!("gpui-dns-{index}"))
+-                .spawn(move || resolver_worker(queue))
+-                .map_err(|error| format!("starting DNS resolver worker failed: {error}"))?;
+-        }
+-        Ok(Self { queue })
+-    }
+-
+-    fn submit(&self, deadline: Instant, operation: &str, job: ResolveJob) -> Result<(), String> {
+-        let (queue, ready) = &*self.queue;
+-        let mut queue = queue
+-            .lock()
+-            .map_err(|_| "DNS resolver queue stopped unexpectedly".to_owned())?;
+-        while queue.len() == RESOLVER_QUEUE_CAPACITY {
++/// Lookups in flight, each on its own thread. A lookup that timed out keeps its
++/// slot until getaddrinfo returns, so hung names cannot pile up threads.
++// ponytail: 64 hung names still starve every lookup; an async resolver if that matters.
++static IN_FLIGHT: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
++
++struct Slot;
++
++impl Slot {
++    fn acquire(deadline: Instant, operation: &str) -> Result<Self, String> {
++        let (count, freed) = &IN_FLIGHT;
++        let mut count = count.lock().unwrap_or_else(PoisonError::into_inner);
++        while *count == RESOLVER_QUEUE_CAPACITY {
+             let timeout = remaining(deadline, operation)?;
+-            let (next, waited) = ready
+-                .wait_timeout(queue, timeout)
+-                .map_err(|_| "DNS resolver queue stopped unexpectedly".to_owned())?;
+-            queue = next;
+-            if waited.timed_out() && queue.len() == RESOLVER_QUEUE_CAPACITY {
+-                return Err(format!("{operation} timed out"));
+-            }
++            count = freed
++                .wait_timeout(count, timeout)
++                .unwrap_or_else(PoisonError::into_inner)
++                .0;
+         }
+-        queue.push_back(job);
+-        ready.notify_one();
+-        Ok(())
++        *count += 1;
++        Ok(Self)
+     }
+ }
+ 
+-fn resolver_worker(queue: Arc<(Mutex<VecDeque<ResolveJob>>, Condvar)>) {
+-    let (queue, ready) = &*queue;
+-    loop {
+-        let job = {
+-            let mut queue = queue
+-                .lock()
+-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+-            while queue.is_empty() {
+-                queue = ready
+-                    .wait(queue)
+-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+-            }
+-            let job = queue.pop_front().expect("the resolver queue is not empty");
+-            ready.notify_all();
+-            job
+-        };
+-        job();
++impl Drop for Slot {
++    fn drop(&mut self) {
++        let (count, freed) = &IN_FLIGHT;
++        *count.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
++        freed.notify_one();
+     }
+ }
+ 
+-fn resolver_pool() -> Result<&'static ResolverPool, String> {
+-    static POOL: OnceLock<Result<ResolverPool, String>> = OnceLock::new();
+-    POOL.get_or_init(ResolverPool::new)
+-        .as_ref()
+-        .map_err(Clone::clone)
+-}
+-
+ fn remaining(deadline: Instant, operation: &str) -> Result<Duration, String> {
+     deadline
+         .checked_duration_since(Instant::now())
+@@ -89,20 +51,15 @@
+     T: Send + 'static,
+     F: FnOnce() -> Result<T, String> + Send + 'static,
+ {
++    let slot = Slot::acquire(deadline, operation)?;
+     let (sender, receiver) = mpsc::sync_channel(1);
+-    let timeout = format!("{operation} timed out");
+-    resolver_pool()?.submit(
+-        deadline,
+-        operation,
+-        Box::new(move || {
+-            let result = if Instant::now() >= deadline {
+-                Err(timeout)
+-            } else {
+-                resolve()
+-            };
+-            let _ = sender.send(result);
+-        }),
+-    )?;
++    thread::Builder::new()
++        .name("gpui-dns".to_owned())
++        .spawn(move || {
++            let _slot = slot;
++            let _ = sender.send(resolve());
++        })
++        .map_err(|error| format!("starting DNS resolver thread failed: {error}"))?;
+     receiver
+         .recv_timeout(remaining(deadline, operation)?)
+         .map_err(|error| match error {
+@@ -166,26 +123,42 @@
+ pub(super) fn is_public(ip: IpAddr) -> bool {
+     match ip {
+         IpAddr::V4(ip) => {
+-            let [a, b, ..] = ip.octets();
++            let [a, b, c, _] = ip.octets();
+             !(ip.is_private()
+                 || ip.is_loopback()
+                 || ip.is_link_local()
+                 || ip.is_multicast()
+                 || a == 0
+                 || a >= 240
+-                || (a == 100 && b & 0xc0 == 64))
++                || (a == 100 && b & 0xc0 == 64)
++                || (a == 198 && b & 0xfe == 18)
++                || matches!((a, b, c), (192, 0, 0 | 2) | (198, 51, 100) | (203, 0, 113)))
+         }
+-        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
+-            Some(ip) => is_public(IpAddr::V4(ip)),
+-            None => {
+-                let first = ip.segments()[0];
+-                !(ip.is_unspecified()
+-                    || ip.is_loopback()
+-                    || ip.is_multicast()
+-                    || first & 0xfe00 == 0xfc00
+-                    || first & 0xffc0 == 0xfe80)
++        IpAddr::V6(ip) => {
++            let s = ip.segments();
++            let v4 = |high: u16, low: u16| {
++                is_public(IpAddr::V4(((u32::from(high) << 16) | u32::from(low)).into()))
++            };
++            match s {
++                // Mapped, IPv4-compatible and NAT64 addresses reach the IPv4
++                // address in their low bits; 6to4 the one after its prefix.
++                [0, 0, 0, 0, 0, 0xffff | 0, ..] | [0x64, 0xff9b, 0, 0, 0, 0, ..] => v4(s[6], s[7]),
++                [0x2002, ..] => v4(s[1], s[2]),
++                _ => {
++                    !(ip.is_unspecified()
++                        || ip.is_loopback()
++                        || ip.is_multicast()
++                        || s[0] & 0xfe00 == 0xfc00
++                        || s[0] & 0xffc0 == 0xfe80
++                        // Site-local, local NAT64, Teredo, documentation, discard.
++                        || s[0] & 0xffc0 == 0xfec0
++                        || (s[0], s[1], s[2]) == (0x64, 0xff9b, 1)
++                        || (s[0], s[1]) == (0x2001, 0)
++                        || (s[0], s[1]) == (0x2001, 0xdb8)
++                        || s[..4] == [0x100, 0, 0, 0])
++                }
+             }
+-        },
++        }
+     }
+ }
+ 
+@@ -230,12 +203,8 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use std::sync::{
+-        Arc, Barrier,
+-        atomic::{AtomicUsize, Ordering},
+-    };
++    use std::sync::{Arc, Barrier};
+ 
+-    const EXPECTED_RESOLVER_WORKERS: usize = 2;
+     static RESOLVER_TEST_LOCK: Mutex<()> = Mutex::new(());
+ 
+     #[test]
+@@ -258,6 +227,20 @@
+             "ff02::1",
+             "::ffff:127.0.0.1",
+             "::ffff:169.254.169.254",
++            "::127.0.0.1",
++            "64:ff9b::a9fe:a9fe",
++            "64:ff9b:1::1",
++            "2002:7f00:1::1",
++            "2001::1",
++            "2001:db8::1",
++            "100::1",
++            "fec0::1",
++            "192.0.0.1",
++            "192.0.2.1",
++            "198.18.0.1",
++            "198.19.255.255",
++            "198.51.100.1",
++            "203.0.113.1",
+         ] {
+             assert!(!is_public(ip.parse().unwrap()), "{ip}");
+         }
+@@ -266,6 +249,9 @@
+             "100.128.0.1",
+             "2606:4700::1111",
+             "::ffff:8.8.8.8",
++            "64:ff9b::808:808",
++            "2002:808:808::1",
++            "198.20.0.1",
+         ] {
+             assert!(is_public(ip.parse().unwrap()), "{ip}");
+         }
+@@ -363,41 +349,11 @@
+     }
+ 
+     #[test]
+-    fn concurrent_dns_work_uses_a_small_fixed_worker_pool() {
+-        let _guard = RESOLVER_TEST_LOCK.lock().unwrap();
+-        let active = Arc::new(AtomicUsize::new(0));
+-        let maximum = Arc::new(AtomicUsize::new(0));
+-        let callers = (0..8)
+-            .map(|_| {
+-                let active = active.clone();
+-                let maximum = maximum.clone();
+-                thread::spawn(move || {
+-                    resolve_with_deadline(
+-                        Instant::now() + Duration::from_secs(2),
+-                        "resolving concurrent host",
+-                        move || {
+-                            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+-                            maximum.fetch_max(now, Ordering::SeqCst);
+-                            thread::sleep(Duration::from_millis(30));
+-                            active.fetch_sub(1, Ordering::SeqCst);
+-                            Ok(())
+-                        },
+-                    )
+-                })
+-            })
+-            .collect::<Vec<_>>();
+-        for caller in callers {
+-            caller.join().expect("caller").expect("resolution");
+-        }
+-        assert!(maximum.load(Ordering::SeqCst) <= EXPECTED_RESOLVER_WORKERS);
+-    }
+-
+-    #[test]
+     fn queued_dns_work_observes_its_own_deadline() {
+         let _guard = RESOLVER_TEST_LOCK.lock().unwrap();
+-        let occupied = Arc::new(Barrier::new(EXPECTED_RESOLVER_WORKERS + 1));
+-        let release = Arc::new(Barrier::new(EXPECTED_RESOLVER_WORKERS + 1));
+-        let blockers = (0..EXPECTED_RESOLVER_WORKERS)
++        let occupied = Arc::new(Barrier::new(RESOLVER_QUEUE_CAPACITY + 1));
++        let release = Arc::new(Barrier::new(RESOLVER_QUEUE_CAPACITY + 1));
++        let blockers = (0..RESOLVER_QUEUE_CAPACITY)
+             .map(|_| {
+                 let occupied = occupied.clone();
+                 let release = release.clone();
+@@ -422,7 +378,7 @@
+             "queued resolver",
+             || Ok(()),
+         )
+-        .expect_err("queued work must not outlive its deadline");
++        .expect_err("a lookup past the cap must not outlive its deadline");
+         assert_eq!(error, "queued resolver timed out");
+         assert!(started.elapsed() < Duration::from_millis(250));
+ 
+@@ -435,6 +391,6 @@
+             "resolver drain sentinel",
+             || Ok(()),
+         )
+-        .expect("all earlier queued work was drained");
++        .expect("every slot was released");
+     }
+ }
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -44,21 +44,15 @@
+     authorize_request(&capabilities, &options.method, &initial)
+         .map_err(|error| Exception::throw_type(&ctx, &error))?;
+ 
+-    #[cfg(test)]
+-    let injected_client =
+-        crate::scope::current_runtime().and_then(|runtime| runtime.test_http_client());
+-    #[cfg(not(test))]
+-    let injected_client = None;
+-
+     if options.stream {
+         return scheduler::blocking(&ctx, "fetch(url, options)", move || {
+-            send(capabilities, initial, options, injected_client)
++            send(capabilities, initial, options)
+                 .map(Fetched::from)
+                 .map(FetchStream)
+         });
+     }
+     scheduler::blocking(&ctx, "fetch(url, options)", move || {
+-        request(send(capabilities, initial, options, injected_client)?.into())
++        request(send(capabilities, initial, options)?.into())
+     })
+ }
+ 
+@@ -72,7 +66,7 @@
+     url: reqwest::Url,
+     options: FetchOptions,
+ ) -> Result<Promise<'js>> {
+-    if !host::capabilities().may_connect_unix(&path) {
++    let Some(path) = host::capabilities().unix_socket(&path) else {
+         return Err(Exception::throw_type(
+             &ctx,
+             &format!(
+@@ -80,7 +74,7 @@
+                 path.display()
+             ),
+         ));
+-    }
++    };
+     if options.stream {
+         return scheduler::blocking(&ctx, "fetch(url, options)", move || {
+             send_unix(&path, url, options).map(FetchStream)
+@@ -508,15 +502,11 @@
+     capabilities: crate::Capabilities,
+     mut url: reqwest::Url,
+     options: FetchOptions,
+-    injected_client: Option<reqwest::blocking::Client>,
+ ) -> std::result::Result<reqwest::blocking::Response, String> {
+     // The timeout belongs on the client: reqwest's blocking client applies it
+     // per read, while a per-request timeout would also bound the whole body and
+-    // end a stream. A test's injected client only stands for "no proxy".
++    // end a stream.
+     let mut builder = client_builder(options.timeout);
+-    if injected_client.is_some() {
+-        builder = builder.no_proxy();
+-    }
+     if let Some(trust) = options.tls {
+         let mut config = tls::config(Some(trust))?;
+         config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+@@ -596,14 +586,16 @@
+ fn client_builder(timeout: Duration) -> reqwest::blocking::ClientBuilder {
+     reqwest::blocking::Client::builder()
+         .timeout(timeout)
++        // A proxy would resolve names on its own side, past `PublicResolver`.
++        .no_proxy()
+         .redirect(reqwest::redirect::Policy::none())
+         .dns_resolver(Arc::new(PublicResolver))
+ }
+ 
+ /// System DNS, filtered by `connect::reachable`, so a granted name cannot be
+ /// rebound to a private address. IP-literal URLs never reach a resolver; they
+-/// pass `authorize_request` only when granted literally. A proxy resolves on
+-/// its own side and is not covered.
++/// pass `authorize_request` only when granted literally. Proxies are off, so
++/// every connection goes through here.
+ struct PublicResolver;
+ 
+ impl reqwest::dns::Resolve for PublicResolver {
+@@ -617,12 +609,6 @@
+     }
+ }
+ 
+-#[cfg(test)]
+-pub(super) fn direct_test_client() -> std::result::Result<reqwest::blocking::Client, reqwest::Error>
+-{
+-    client_builder(TIMEOUT).no_proxy().build()
+-}
+-
+ fn authorize_redirect(
+     capabilities: &crate::Capabilities,
+     method: &reqwest::Method,
+--- a/crates/shell/src/engine/quickjs/standard/mod.rs
++++ b/crates/shell/src/engine/quickjs/standard/mod.rs
+@@ -21,12 +21,6 @@
+ mod tls;
+ mod websocket;
+ 
+-#[cfg(test)]
+-pub(super) fn direct_test_http_client()
+--> std::result::Result<reqwest::blocking::Client, reqwest::Error> {
+-    fetch::direct_test_client()
+-}
+-
+ pub(super) const NAMES: &[&str] = &[
+     "buffer",
+     "console",
+--- a/crates/shell/src/engine/quickjs/standard/net.rs
++++ b/crates/shell/src/engine/quickjs/standard/net.rs
+@@ -74,7 +74,7 @@
+ 
+ #[cfg(unix)]
+ fn connect_unix<'js>(ctx: Ctx<'js>, path: std::path::PathBuf) -> Result<Promise<'js>> {
+-    if !host::capabilities().may_connect_unix(&path) {
++    let Some(path) = host::capabilities().unix_socket(&path) else {
+         return Err(Exception::throw_type(
+             &ctx,
+             &format!(
+@@ -82,7 +82,7 @@
+                 path.display()
+             ),
+         ));
+-    }
++    };
+     scheduler::blocking(&ctx, "net.connect({ path })", move || {
+         let operation = path.display().to_string();
+         let stream = std::os::unix::net::UnixStream::connect(&path)
+--- a/crates/shell/src/engine/quickjs/standard/tls.rs
++++ b/crates/shell/src/engine/quickjs/standard/tls.rs
+@@ -4,7 +4,7 @@
+ //! compiled into the tree rustls has no process default, and a config built
+ //! from it panics. Without a `tls` option a server is checked against the
+ //! system's roots, as reqwest does; with one, the plugin has decided to trust
+-//! one certificate, or any, for a host its capabilities already grant.
++//! one certificate for a host its capabilities already grant.
+ 
+ use std::sync::{Arc, OnceLock};
+ 
+@@ -23,12 +23,9 @@
+ pub(super) enum Trust {
+     /// Only the certificate whose DER encoding has this SHA-256.
+     Pin([u8; 32]),
+-    /// Any certificate. The connection is encrypted but not authenticated.
+-    Insecure,
+ }
+ 
+-/// Parses `{ pin: "sha256/<hex>" }` or `{ insecure: true }`; `call` names the
+-/// option in errors.
++/// Parses `{ pin: "sha256/<hex>" }`; `call` names the option in errors.
+ pub(super) fn parse<'js>(ctx: &Ctx<'js>, value: Value<'js>, call: &str) -> Result<Option<Trust>> {
+     if value.is_null() || value.is_undefined() {
+         return Ok(None);
+@@ -36,31 +33,24 @@
+     let Some(object) = value.into_object() else {
+         return Err(Exception::throw_type(
+             ctx,
+-            &format!("{call}.tls expects an object with pin or insecure"),
++            &format!("{call}.tls expects an object with pin"),
+         ));
+     };
+     for key in object.keys::<String>() {
+         let key = key?;
+-        if !matches!(key.as_str(), "pin" | "insecure") {
++        if key != "pin" {
+             return Err(Exception::throw_type(
+                 ctx,
+-                &format!("unknown option `{key}` for {call}.tls; expected pin or insecure"),
++                &format!("unknown option `{key}` for {call}.tls; expected pin"),
+             ));
+         }
+     }
+-    let pin = object.get::<_, Option<String>>("pin")?;
+-    let insecure = object.get::<_, Option<bool>>("insecure")?.unwrap_or(false);
+-    match (pin, insecure) {
+-        (Some(_), true) => Err(Exception::throw_type(
+-            ctx,
+-            &format!("{call}.tls takes pin or insecure, not both"),
+-        )),
+-        (Some(pin), false) => parse_pin(&pin)
+-            .map(|pin| Some(Trust::Pin(pin)))
+-            .map_err(|error| Exception::throw_type(ctx, &format!("{call}.tls.pin {error}"))),
+-        (None, true) => Ok(Some(Trust::Insecure)),
+-        (None, false) => Ok(None),
+-    }
++    let Some(pin) = object.get::<_, Option<String>>("pin")? else {
++        return Ok(None);
++    };
++    parse_pin(&pin)
++        .map(|pin| Some(Trust::Pin(pin)))
++        .map_err(|error| Exception::throw_type(ctx, &format!("{call}.tls.pin {error}")))
+ }
+ 
+ /// `sha256/` and 64 hex digits, colons allowed, as `openssl x509 -fingerprint
+@@ -126,12 +116,13 @@
+         _: &[u8],
+         _: UnixTime,
+     ) -> std::result::Result<ServerCertVerified, rustls::Error> {
+-        match self.trust {
+-            Trust::Pin(pin) if sha2::Sha256::digest(end_entity.as_ref()).as_slice() != pin => Err(
+-                rustls::Error::General("certificate does not match the pinned sha256".to_owned()),
+-            ),
+-            _ => Ok(ServerCertVerified::assertion()),
++        let Trust::Pin(pin) = self.trust;
++        if sha2::Sha256::digest(end_entity.as_ref()).as_slice() != pin {
++            return Err(rustls::Error::General(
++                "certificate does not match the pinned sha256".to_owned(),
++            ));
+         }
++        Ok(ServerCertVerified::assertion())
+     }
+ 
+     fn verify_tls12_signature(
+@@ -180,7 +171,6 @@
+         let pin = sha2::Sha256::digest(cert).into();
+         assert!(verify(Trust::Pin(pin), cert));
+         assert!(!verify(Trust::Pin(pin), b"another certificate"));
+-        assert!(verify(Trust::Insecure, b"another certificate"));
+     }
+ 
+     #[test]
+@@ -202,7 +192,7 @@
+ 
+     #[test]
+     fn every_trust_builds_a_config() {
+-        for trust in [None, Some(Trust::Insecure), Some(Trust::Pin([0; 32]))] {
++        for trust in [None, Some(Trust::Pin([0; 32]))] {
+             assert!(config(trust).is_ok());
+         }
+     }
+--- a/crates/shell/src/tests/http_request.rs
++++ b/crates/shell/src/tests/http_request.rs
+@@ -273,7 +273,6 @@
+     cx.update(crate::init);
+     crate::set_capabilities(Capabilities::new().network_hosts(hosts.map(str::to_owned)));
+     let runtime = ShellRuntime::new_isolated().expect("runtime");
+-    runtime.use_direct_http_for_tests();
+     cx.update(|cx| runtime.set_global(cx));
+     let view_type = runtime
+         .load_source("http-request.js", source)
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -1103,7 +1103,6 @@
+     cx.update(crate::init);
+     crate::set_capabilities(Capabilities::new().network_hosts(["127.0.0.1".to_owned()]));
+     let allowed_runtime = ShellRuntime::new_isolated().expect("allowed runtime");
+-    allowed_runtime.use_direct_http_for_tests();
+     cx.update(|cx| allowed_runtime.set_global(cx));
+     let allowed_type = allowed_runtime
+         .load_source("allowed-network.js", &source)
+@@ -1374,6 +1373,21 @@
+ }
+ 
+ #[cfg(unix)]
++#[gpui::test]
++fn net_refuses_a_symlink_planted_under_a_granted_name(cx: &mut TestAppContext) {
++    let (directory, target) = unix_socket_path("symlink");
++    let _listener = std::os::unix::net::UnixListener::bind(&target).expect("unix listener");
++    let link = directory.join("granted.sock");
++    std::os::unix::fs::symlink(&target, &link).expect("symlink");
++    let source = UNIX_PROBE.replace("__PATH__", &link.display().to_string());
++    let (_runtime, view, mut context) =
++        probe_with(cx, Capabilities::new().network_unix([link]), &source);
++    let rendered = settle(&mut context, &view, |text| !text.contains("pending"));
++    let _ = std::fs::remove_dir_all(&directory);
++    assert!(rendered.contains("is not granted"), "{rendered}");
++}
++
++#[cfg(unix)]
+ const UNIX_BYTES_PROBE: &str = r#"
+ import { View } from "gpui-kit";
+ import { v_flex } from "gpui-base";
+@@ -1431,7 +1445,7 @@
+     let origin = "allowed";
+     try { fetch("http://docker/", { unix, headers: { Origin: "x" } }); }
+     catch (error) { origin = error.name; }
+-    const refused = [{ unix, tls: { insecure: true } }, { tls: { pin: "sha1/00" } },
++    const refused = [{ unix, tls: { pin: "sha256/" + "00".repeat(32) } }, { tls: { pin: "sha1/00" } },
+       { tls: { pin: "sha256/" + "00".repeat(32), insecure: true } }, { tls: { verify: false } }]
+       .filter((options) => { try { fetch("https://docker/", options); } catch (error) { return error.name === "TypeError"; } })
+       .length;
+@@ -1744,7 +1758,6 @@
+     cx.update(crate::init);
+     crate::set_capabilities(capabilities);
+     let runtime = ShellRuntime::new_isolated().expect("runtime");
+-    runtime.use_direct_http_for_tests();
+     cx.update(|cx| runtime.set_global(cx));
+     let view_type = runtime.load_source("network.js", source).expect("load");
+     let window = cx.add_window(|_, _| Empty);
+--- a/crates/shell/src/typings.rs
++++ b/crates/shell/src/typings.rs
+@@ -3858,13 +3858,11 @@
+   export const WebSocket: WebSocketType;
+ }
+ /**
+- * One of: `pin`, the SHA-256 of the server's DER certificate as
+- * `sha256/<hex>` (colons allowed), or `insecure: true` to accept any
+- * certificate. Either skips chain and hostname checks.
++ * `pin`, the SHA-256 of the server's DER certificate as `sha256/<hex>`
++ * (colons allowed). It skips chain and hostname checks.
+  */
+ interface ShellTlsOptions {
+   pin?: string;
+-  insecure?: boolean;
+ }
+ interface ShellFetchResponse {
+   readonly status: number;
