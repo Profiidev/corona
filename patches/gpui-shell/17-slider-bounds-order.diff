@@ -1,0 +1,62 @@
+SliderState.new set min before max, and each clamps the value against the
+other: a min above the default max of 100 panicked in f32::clamp and took
+the application down. Set the bound that keeps min <= max first.
+
+--- a/crates/shell/src/entities.rs
++++ b/crates/shell/src/entities.rs
+@@ -431,9 +431,17 @@
+     ) -> Result<EntityHandle, EntityLimitError> {
+         self.ensure_capacity()?;
+         let state = cx.new(|_| {
+-            SliderState::new()
+-                .min(min)
+-                .max(max)
++            let slider = SliderState::new();
++            // Each bound clamps the value against the other, and `f32::clamp`
++            // panics on min > max: a `min` of 256 against the default `max` of
++            // 100 took the application down. Set the bound that keeps them in
++            // order first.
++            let slider = if min >= slider.max_value() {
++                slider.max(max).min(min)
++            } else {
++                slider.min(min).max(max)
++            };
++            slider
+                 .step(step)
+                 .scale(scale)
+                 .default_value(value)
+--- a/crates/shell/src/tests/render.rs
++++ b/crates/shell/src/tests/render.rs
+@@ -4392,6 +4392,32 @@
+     );
+ }
+ 
++/// A range entirely above Base's default `max` of 100 must not clamp `min`
++/// against that default on the way in, which panics in `f32::clamp`.
++#[gpui::test]
++fn a_slider_whose_min_is_above_the_default_max_is_made(cx: &mut TestAppContext) {
++    cx.update(|cx| crate::init(cx));
++
++    let runtime = ShellRuntime::new_isolated().expect("runtime");
++    cx.update(|cx| runtime.set_global(cx));
++    let source = r#"
++import { View } from "gpui-kit";
++import { SliderState } from "gpui-base";
++
++export default class Resolution extends View {
++  init() { this.res = SliderState.new({ min: 256, max: 3840, step: 64, value: 1920 }); }
++  render(cx) { return `${this.res.min_value()}..${this.res.max_value()}=${this.res.value()}`; }
++}
++"#;
++    let view_type = runtime.load_source("resolution", source).expect("load");
++    let window = cx.add_window(|_, _| Empty);
++    let mut context = VisualTestContext::from_window(*window.deref(), cx);
++
++    context
++        .update(|window, cx| runtime.instantiate(&view_type, window, cx))
++        .expect("a range above 100 is a valid slider");
++}
++
+ /// JavaScript numbers are f64, while Base stores slider numbers as f32. A
+ /// finite f64 above f32::MAX must be rejected before narrowing; otherwise two
+ /// distinct logarithmic bounds both become infinity and Base asserts.
