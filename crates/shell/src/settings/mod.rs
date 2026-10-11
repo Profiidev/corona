@@ -225,6 +225,7 @@ default = ["h"]
         "com.p".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
+          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );

@@ -38,6 +38,7 @@ ts-rs = { workspace = true, features = ["serde-json-impl"] }
 uuid = { workspace = true, features = ["v4"] }
 schemars = "1.2.2"
 url = "2.5"
+sha2 = "0.10"
 zbus.workspace = true
 zbus_xml.workspace = true
 oo7.workspace = true

@@ -121,7 +121,8 @@ impl PluginManager {
     self.revision
   }
 
-  /// Enabled, but its source or grants changed since the user approved them
+  /// Enabled, but its source, grants or files changed since the user approved
+  /// them
   pub fn needs_approval(&self, id: &str) -> bool {
     self.unapproved.contains_key(id)
   }
@@ -152,7 +153,7 @@ impl PluginManager {
       .partition(|(_, found)| registry::is_approved(&config, found));
     for (id, found) in &this.unapproved {
       tracing::warn!(
-        "plugin `{id}` from `{}` waits for its grants to be approved",
+        "plugin `{id}` from `{}` waits for its grants or files to be approved",
         found.origin.source
       );
     }
@@ -947,6 +948,14 @@ mod tests {
       // the service is a top-level key, before the tables
       let manifest = format!("service = \"service.js\"\n{}", manifest("com.mine", "1"));
       fs::write(dir.join("plugin.toml"), manifest + extra).unwrap();
+      // the new files are approved, the grants may not be
+      let digest = registry::digest(&dir).unwrap();
+      cx.update(|cx| {
+        corona_config::update(cx, |c| {
+          c.plugins.approved.get_mut("com.mine").unwrap().digest = digest
+        })
+        .unwrap()
+      });
       cx.update(PluginManager::rescan);
       approve_again(cx, "com.mine");
       cx.update(|cx| cx.global::<PluginManager>().revision()) > revision
@@ -1022,6 +1031,9 @@ mod tests {
     cx.run_until_parked();
     let list = cx.update(|cx| PluginManager::list(cx));
     assert!(!list[0].update_available);
+    // new code, same grants: still waits for the user
+    assert!(cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.a")));
+    approve_again(cx, "com.a");
     let version = cx.update(|cx| {
       cx.global::<PluginManager>().active()["com.a"]
         .manifest
@@ -1044,6 +1056,9 @@ mod tests {
         "[plugins]\nenabled = [\"com.a\"]\n[plugins.approved.\"com.a\"]\nsource = \"git\"\ncapabilities = \"\"\n[[plugins.source]]\nname = \"git\"\nkind = \"git\"\nlocation = \"{url}\"\n"
       )
     });
+    // exported again, but an approval without a digest is not for these files
+    assert!(cx.update(|cx| cx.global::<PluginManager>().needs_approval("com.a")));
+    approve_again(cx, "com.a");
     assert_eq!(active(cx), [("com.a".to_string(), "git".to_string())]);
   }
 

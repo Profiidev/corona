@@ -188,6 +188,7 @@ export default class Main extends View {
         "com.clock".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
+          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );
@@ -300,6 +301,7 @@ export default async function main(_cx) {
         "com.echo".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
+          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );
@@ -327,6 +329,12 @@ export default async function main(_cx) {
     )
     .unwrap();
     let revision = cx.update(|cx| cx.global::<PluginManager>().revision());
+    // new files run only once approved
+    cx.update(|cx| {
+      let approved = &mut cx.global_mut::<Config>().plugins.approved;
+      approved.get_mut("com.echo").unwrap().digest =
+        corona_script::plugin::registry::digest(&dir).unwrap();
+    });
     cx.update(PluginManager::rescan);
     cx.run_until_parked();
     assert!(cx.update(|cx| cx.global::<PluginManager>().revision()) > revision);
@@ -365,6 +373,7 @@ export default async function main(_cx) {
         "com.clock".into(),
         corona_config::plugins::Approval {
           source: "local".into(),
+          digest: corona_script::plugin::registry::digest(&dir).unwrap(),
           ..Default::default()
         },
       );
