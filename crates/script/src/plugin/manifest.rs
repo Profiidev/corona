@@ -346,15 +346,20 @@ impl CapabilitiesFile {
     };
 
     let network = self.network.clone().unwrap_or_default();
+    // ponytail: checked once here, a link the plugin makes below a root
+    // later is up to the write check
+    let write: Vec<_> = expand_all(&fs.write, plugin_dir, data_dir)
+      .into_iter()
+      .filter(|root| may_write(root, plugin_dir, data_dir))
+      .collect();
+    let writable: Vec<_> = [plugin_dir, data_dir]
+      .into_iter()
+      .chain(write.iter().map(PathBuf::as_path))
+      .map(resolve)
+      .collect();
     Capabilities::new()
       .read_roots(expand_all(&fs.read, plugin_dir, data_dir))
-      // ponytail: checked once here, a link the plugin makes below a root
-      // later is up to the write check
-      .write_roots(
-        expand_all(&fs.write, plugin_dir, data_dir)
-          .into_iter()
-          .filter(|root| may_write(root, plugin_dir, data_dir)),
-      )
+      .write_roots(write)
       .execute(execute)
       .network_hosts(
         network
@@ -362,11 +367,12 @@ impl CapabilitiesFile {
           .iter()
           .filter_map(|host| expand_host(host, settings)),
       )
-      // the shell's own socket would let it call other plugins
+      // resolved, as the connect compares the socket's canonical path
       .network_unix(
         expand_all(&network.unix, plugin_dir, data_dir)
           .into_iter()
-          .filter(|path| resolve(path) != resolve(&corona_ipc::socket_path())),
+          .filter(|path| may_connect(path, &writable))
+          .map(|path| resolve(&path)),
       )
       .http_requests(network.http.into_iter().filter_map(|request| {
         let mut grant = HttpRequestGrant::new(
@@ -440,11 +446,18 @@ fn expand(raw: &str, plugin_dir: &Path, data_dir: &Path) -> PathBuf {
 /// apart from everything a write would turn into code or grants, the plugin
 /// and its siblings, their data, corona's state and config
 fn may_write(root: &Path, plugin_dir: &Path, data_dir: &Path) -> bool {
-  let root = resolve(root);
-  if root.starts_with(resolve(data_dir)) {
+  let resolved = resolve(root);
+  if resolved.starts_with(resolve(data_dir)) {
     return true;
   }
   let plugins = corona_config::plugins::plugin_dirs();
+  let home = dirs::home_dir();
+  let below = |dir: Option<PathBuf>, names: &[&str]| -> Vec<PathBuf> {
+    names
+      .iter()
+      .filter_map(|name| Some(dir.as_ref()?.join(name)))
+      .collect()
+  };
   let protected = [
     Some(plugin_dir.to_path_buf()),
     plugin_dir.parent().map(Into::into),
@@ -452,16 +465,130 @@ fn may_write(root: &Path, plugin_dir: &Path, data_dir: &Path) -> bool {
     plugins.state.parent().map(Into::into),
     Some(plugins.local),
     corona_config::config_dir().ok(),
-  ];
-  let allowed = protected
-    .into_iter()
-    .flatten()
-    .map(|p| resolve(&p))
-    .all(|p| !root.starts_with(&p) && !p.starts_with(&root));
+    Some("/etc".into()),
+  ]
+  .into_iter()
+  .flatten()
+  // ponytail: what runs at login or in a shell, not every program that runs
+  // code from its config
+  .chain(below(dirs::config_dir(), PROTECTED_CONFIG))
+  .chain(below(dirs::data_dir(), PROTECTED_DATA))
+  .chain(below(home.clone(), &[".local/bin"]));
+  // as written too: a dotfile or config may link out of the home directory
+  let roots = [root.to_path_buf(), resolved];
+  let apart = |p: &PathBuf| roots.iter().all(|r| !r.starts_with(p) && !p.starts_with(r));
+  let mut dotfile = home.iter().flat_map(|h| [resolve(h), h.clone()]);
+  let allowed = protected.flat_map(|p| [resolve(&p), p]).all(|p| apart(&p))
+    && !dotfile.any(|h| roots.iter().any(|r| in_dotfile(r, &h)));
   if !allowed {
     tracing::warn!("write access to {} is not granted", root.display());
   }
   allowed
+}
+
+/// Whether socket `path` may be granted: none where the plugin, its source or
+/// a write root could place a link to any socket, and none of the shell's or
+/// the session's daemons, which act with the user's authority, the buses past
+/// `corona/dbus`'s deny list
+fn may_connect(path: &Path, writable: &[PathBuf]) -> bool {
+  let planted = path
+    .ancestors()
+    .any(|dir| writable.iter().any(|w| resolve(dir).starts_with(w)));
+  let resolved = resolve(path);
+  let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(|dir| resolve(dir.as_ref()));
+  let in_runtime = runtime
+    .as_ref()
+    .and_then(|dir| resolved.strip_prefix(dir).ok()?.iter().next())
+    .is_some_and(|name| {
+      let name = name.to_string_lossy();
+      DENIED_RUNTIME_SOCKETS.iter().any(|d| name.starts_with(d))
+    });
+  let denied = in_runtime
+    || denied_sockets()
+      .iter()
+      .any(|socket| resolved.starts_with(resolve(socket)));
+  if planted || denied {
+    tracing::warn!("socket {} is not granted", path.display());
+  }
+  !planted && !denied
+}
+
+/// Prefixes of names in `$XDG_RUNTIME_DIR` a session daemon listens on
+const DENIED_RUNTIME_SOCKETS: &[&str] = &[
+  "bus",
+  "dbus-",
+  "podman",
+  "docker",
+  "containerd",
+  "gnupg",
+  "keyring",
+  "gcr",
+  "ssh-",
+  "systemd",
+  "hypr",
+  "wayland-",
+  "pipewire-",
+  "pulse",
+  "at-spi",
+];
+
+/// Sockets, and directories of them, the plugin never reaches
+fn denied_sockets() -> Vec<PathBuf> {
+  let mut denied: Vec<PathBuf> = [
+    "/run/dbus",
+    "/var/run/dbus",
+    "/run/docker.sock",
+    "/var/run/docker.sock",
+    "/run/podman",
+    "/run/containerd",
+    "/run/systemd",
+    "/tmp/.X11-unix",
+  ]
+  .map(PathBuf::from)
+  .into();
+  denied.push(corona_ipc::socket_path());
+  denied.extend(std::env::var_os("SSH_AUTH_SOCK").map(PathBuf::from));
+  // `unix:path=/run/user/1000/bus,guid=…`, maybe one of several `;` apart
+  let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
+  denied.extend(bus.split(';').filter_map(|address| {
+    let options = address.strip_prefix("unix:")?;
+    let path = options.split(',').find_map(|o| o.strip_prefix("path="))?;
+    Some(PathBuf::from(path))
+  }));
+  denied
+}
+
+/// Directories in the config directory a session or shell runs from
+const PROTECTED_CONFIG: &[&str] = &[
+  "autostart",
+  "systemd",
+  "environment.d",
+  "uwsm",
+  "hypr",
+  "git",
+  "fish",
+  "nushell",
+  "zsh",
+  "bash",
+  "dbus-1",
+];
+
+/// As [`PROTECTED_CONFIG`], in the data directory
+const PROTECTED_DATA: &[&str] = &["applications", "systemd", "dbus-1", "fish"];
+
+/// Whether `root` is a dotfile in the home directory or inside one, as
+/// `~/.bashrc`, `~/.profile` or `~/.ssh`. `~/.config` and `~/.local` are
+/// checked by their entries instead.
+fn in_dotfile(root: &Path, home: &Path) -> bool {
+  let Some(name) = root
+    .strip_prefix(home)
+    .ok()
+    .and_then(|rest| rest.iter().next())
+  else {
+    return false;
+  };
+  let name = name.to_string_lossy();
+  name.starts_with('.') && name != ".config" && name != ".local"
 }
 
 /// `path` through its links: its nearest existing ancestor canonical, the rest
@@ -481,7 +608,8 @@ struct FsGrantFile {
   #[serde(default, deserialize_with = "grant_paths")]
   read: Vec<String>,
   /// Directories that may be written, absolute or `${dataDir}`; never the
-  /// plugin's own directory, other plugins or corona's state and config.
+  /// plugin's own directory, other plugins, corona's state and config, home
+  /// dotfiles or what runs at login.
   #[serde(default, deserialize_with = "write_paths")]
   write: Vec<String>,
   /// Commands `process.run` may start.
@@ -526,6 +654,8 @@ struct NetworkGrantFile {
   http: Vec<HttpRequestGrantFile>,
   /// Unix sockets `net.connect({ path })` may reach, by exact path, e.g.
   /// `/run/tailscale/tailscaled.sock`. Placeholders expand as in `fs.read`.
+  /// Never one the plugin can write beside, nor the session's buses, agents
+  /// or compositor.
   #[serde(default, deserialize_with = "grant_paths")]
   unix: Vec<String>,
 }
@@ -897,8 +1027,10 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     );
     assert!(capabilities.may_pass_env("HOME"));
     assert!(!capabilities.may_pass_env("LD_PRELOAD"));
-    assert!(capabilities.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
-    assert!(capabilities.may_connect_unix(Path::new("/data/a/adb.sock")));
+    let unix = format!("{capabilities:?}");
+    assert!(unix.contains("/tailscale/tailscaled.sock"), "{unix}");
+    // the plugin could make its data's socket a link to any other
+    assert!(!unix.contains("adb.sock"), "{unix}");
     assert!(!capabilities.may_connect_unix(Path::new("/run/other.sock")));
     // never the shell's own socket
     let ipc = corona_ipc::socket_path();
@@ -925,6 +1057,99 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     ] {
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");
+    }
+  }
+
+  #[test]
+  fn writable_or_daemon_sockets_are_dropped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().canonicalize().unwrap();
+    let runtime = base.join("runtime");
+    std::fs::create_dir_all(base.join("real")).unwrap();
+    std::fs::create_dir_all(base.join("data/a")).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+    std::os::unix::fs::symlink(base.join("real"), base.join("link")).unwrap();
+    std::os::unix::fs::symlink("/run/other.sock", base.join("data/a/x.sock")).unwrap();
+    unsafe {
+      std::env::set_var("XDG_RUNTIME_DIR", &runtime);
+      std::env::set_var("SSH_AUTH_SOCK", base.join("agent.sock"));
+      std::env::set_var(
+        "DBUS_SESSION_BUS_ADDRESS",
+        format!("unix:path={},guid=1", base.join("session-bus").display()),
+      );
+    }
+    let unix = |paths: &[&str]| {
+      let write = base.join("w");
+      let body = format!(
+        "network = {{ unix = {paths:?} }}\nfs = {{ write = [\"{}\"] }}",
+        write.display()
+      );
+      let file = with_capabilities(&body).unwrap();
+      let capabilities =
+        file
+          .capabilities
+          .grant(Path::new("/plugins/a"), &base.join("data/a"), &Map::new());
+      format!("{capabilities:?}")
+    };
+    let b = |name: &str| base.join(name).display().to_string();
+    // stored resolved, as the connect compares
+    let granted = unix(&[&b("link/s.sock"), "/run/tailscale/tailscaled.sock"]);
+    assert!(granted.contains(&b("real/s.sock")), "{granted}");
+    assert!(granted.contains("/tailscale/tailscaled.sock"), "{granted}");
+    for denied in [
+      "${dataDir}/x.sock",
+      "${dataDir}/y.sock",
+      "${pluginDir}/s.sock",
+      &b("w/s.sock"),
+      "/run/dbus/system_bus_socket",
+      "/var/run/docker.sock",
+      "/run/systemd/private",
+      &b("runtime/bus"),
+      &b("runtime/wayland-1"),
+      &b("runtime/hypr/abc/.socket.sock"),
+      &b("runtime/gnupg/S.gpg-agent"),
+      &b("agent.sock"),
+      &b("session-bus"),
+    ] {
+      let granted = unix(&[denied]);
+      assert!(granted.contains("network_unix: []"), "{denied}: {granted}");
+    }
+  }
+
+  #[test]
+  fn startup_files_and_dotfiles_are_not_written() {
+    let home = dirs::home_dir().unwrap();
+    let config = dirs::config_dir().unwrap();
+    let local = dirs::data_dir().unwrap();
+    let writes = |root: &Path| {
+      let body = format!("fs = {{ write = [\"{}\"] }}", root.display());
+      grant(&body).has_write_access()
+    };
+    for root in [
+      home.join(".bashrc"),
+      home.join(".profile"),
+      home.join(".ssh"),
+      home.join(".gnupg/x"),
+      home.join(".pam_environment"),
+      home.join(".local"),
+      home.join(".local/bin/x"),
+      config.clone(),
+      config.join("autostart"),
+      config.join("systemd/user"),
+      config.join("environment.d"),
+      config.join("hypr"),
+      config.join("fish/config.fish"),
+      local.join("applications"),
+      "/etc/x".into(),
+    ] {
+      assert!(!writes(&root), "{}", root.display());
+    }
+    for root in [
+      config.join("myapp"),
+      home.join("Documents/x"),
+      local.join("myapp"),
+    ] {
+      assert!(writes(&root), "{}", root.display());
     }
   }
 

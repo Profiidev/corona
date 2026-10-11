@@ -589,7 +589,8 @@ export default class Main extends View {
         )
     };
     let extra = "capabilities = { corona = [\"compositor\"] }";
-    let a = view("globalThis.leak = 'a'; try { Promise.prototype.then = () => 'patched'; } catch {}");
+    let a =
+      view("globalThis.leak = 'a'; try { Promise.prototype.then = () => 'patched'; } catch {}");
     let b = view("focusWorkspace(`${globalThis.leak} ${Promise.prototype.then.name}`);");
     plugins.add("a", &manifest("a", extra), &[("main.js", &a)]);
     plugins.add("b", &manifest("b", extra), &[("main.js", &b)]);
