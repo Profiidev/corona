@@ -21,6 +21,7 @@ use gpui_kit::{
   component::{
     ActiveTheme, Icon, Sizable, WindowExt,
     button::{Button, ButtonVariants},
+    dialog::DialogFooter,
     input::{Input, InputEvent, InputState},
     setting::{SettingField, SettingGroup, SettingItem, SettingPage},
     spinner::Spinner,
@@ -509,17 +510,29 @@ fn confirm(id: String, name: SharedString, approval: Approval, window: &mut Wind
       .description(description)
       // so escape does not disable it
       .keyboard(false)
-      .show_cancel(true)
-      .cancel_text(cancel.clone())
-      .ok_text(t!("app.settings.plugins.approve.ok"))
-      .on_ok(move |_, _, cx| {
-        PluginManager::approve(&ok_id, ok_approval.clone(), cx);
-        true
-      })
-      .on_cancel(move |_, _, cx| {
-        PluginManager::disable(&deny_id, cx);
-        true
-      })
+      // its own buttons, for their cursor
+      .footer(
+        DialogFooter::new()
+          .child(
+            Button::new("plugin-deny")
+              .label(cancel.clone())
+              .cursor_pointer()
+              .on_click(move |_, window, cx| {
+                PluginManager::disable(&deny_id, cx);
+                window.close_dialog(cx);
+              }),
+          )
+          .child(
+            Button::new("plugin-allow")
+              .label(t!("app.settings.plugins.approve.ok"))
+              .primary()
+              .cursor_pointer()
+              .on_click(move |_, window, cx| {
+                PluginManager::approve(&ok_id, ok_approval.clone(), cx);
+                window.close_dialog(cx);
+              }),
+          ),
+      )
   });
 }
 
