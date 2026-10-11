@@ -8,13 +8,15 @@ hypr_data_cmd!(
   Vec<Workspace>,
   Vec<types::Workspace>,
   |workspaces: Vec<Workspace>| {
-    let mut workspaces: Vec<types::Workspace> = workspaces
+    let mut workspaces: Vec<Workspace> = workspaces
       .into_iter()
       .filter(|w| w.workspace_type != "special")
-      .map(|w| w.into())
       .collect();
-    workspaces.sort_unstable_by_key(|w| w.id.clone());
-    workspaces
+    // by number, so 2 comes before 10; ones without by address
+    workspaces.sort_unstable_by(|a, b| {
+      (a.id.is_none(), a.id, &a.address).cmp(&(b.id.is_none(), b.id, &b.address))
+    });
+    workspaces.into_iter().map(|w| w.into()).collect()
   }
 );
 
@@ -36,6 +38,9 @@ hypr_data_cmd!(
 #[derive(Debug, Deserialize)]
 pub struct Workspace {
   pub address: String,
+  /// Missing on special workspaces
+  #[serde(default)]
+  pub id: Option<i64>,
   #[serde(rename = "type")]
   pub workspace_type: String,
   pub name: String,
@@ -81,6 +86,33 @@ mod tests {
       ]
     );
     assert_eq!(hypr.ipc().active_workspace().unwrap().name, "1");
+  }
+
+  #[test]
+  fn sorts_by_number() {
+    let hypr = FakeHyprland::start();
+    let workspace = |id: &str| {
+      format!(
+        r#"{{"address": "{id}", "id": {id}, "type": "normal", "name": "{id}", "monitor": "DP-1", "monitorID": 0}}"#
+      )
+    };
+    hypr.answer(
+      "j/workspaces",
+      format!(
+        "[{}, {}, {}]",
+        workspace("10"),
+        workspace("2"),
+        workspace("1")
+      ),
+    );
+    let names: Vec<_> = hypr
+      .ipc()
+      .list_workspaces()
+      .unwrap()
+      .into_iter()
+      .map(|w| w.name)
+      .collect();
+    assert_eq!(names, ["1", "2", "10"]);
   }
 
   #[test]
