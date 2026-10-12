@@ -23,6 +23,8 @@ const PADDING: f32 = 4.;
 pub struct Button<W: Widget, P: Panel> {
   id: ElementId,
   icon: Icon,
+  /// Drawn in place of `icon`
+  custom: Option<AnyElement>,
   view: WeakEntity<W>,
   danger: bool,
   dot: bool,
@@ -37,6 +39,7 @@ impl<W: Widget, P: Panel> Button<W, P> {
     Self {
       id: id.into(),
       icon: icon.into(),
+      custom: None,
       view,
       danger: false,
       dot: false,
@@ -52,6 +55,12 @@ impl<W: Widget, P: Panel> Button<W, P> {
 
   pub fn dot(mut self, dot: bool) -> Self {
     self.dot = dot;
+    self
+  }
+
+  /// Replaces the icon with `element`, like a drawn battery
+  pub fn custom(mut self, element: impl IntoElement) -> Self {
+    self.custom = Some(element.into_any_element());
     self
   }
 
@@ -86,7 +95,16 @@ impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
           .flex()
           .items_center()
           .gap_1()
-          .child(self.icon.with_size(px(ICON_SIZE)))
+          .child(match self.custom {
+            // as tall as an icon, so the bar's buttons stay one height
+            Some(custom) => div()
+              .h(px(ICON_SIZE))
+              .flex()
+              .items_center()
+              .child(custom)
+              .into_any_element(),
+            None => self.icon.with_size(px(ICON_SIZE)).into_any_element(),
+          })
           .children(self.suffix),
       )
       .on_click(move |_, window, cx| {
