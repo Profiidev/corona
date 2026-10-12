@@ -1,0 +1,61 @@
+name: Checks and Validation
+on:
+  pull_request:
+
+jobs:
+  linters:
+    name: Run linters
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: write
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: clippy,rustfmt
+
+      - name: refresh apt index (ubuntu only)
+        run: sudo apt-get update
+
+      - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # latest
+        with:
+          packages: pkg-config libfontconfig1-dev libxkbcommon-dev libxcb1-dev libpipewire-0.3-dev libasound2-dev libgbm-dev libpam0g-dev libclang-dev libwayland-dev libvulkan1
+          version: 1.2
+
+      - name: Cache cargo and rust files
+        id: rust_cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          cache-on-failure: true
+          shared-key: "linter_cache"
+
+      - name: Run linters
+        uses: profiidev/rust-lint-action@6592fe2b81f52c155bc416c51b6a860196a96f48 # v4
+        with:
+          rustfmt: true
+          clippy: true
+          auto_fix: true
+          oxfmt: true
+          git_sign_commits: true
+          github_token: ${{ steps.app-token.outputs.token }}
+
+  flake:
+    name: Check flake
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Run flake check
+        run: nix flake check
