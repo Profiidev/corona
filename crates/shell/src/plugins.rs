@@ -161,7 +161,8 @@ fn notify(id: &str, sent: Rc<RefCell<HashMap<u32, String>>>, cx: &mut App) {
     }],
     urgency: Urgency::Normal,
     hints: HashMap::new(),
-    timeout: 0,
+    // the default popup time, then it waits in the notification center
+    timeout: -1,
   });
   let id = id.to_string();
   cx.spawn(async move |_| match send.await {
