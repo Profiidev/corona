@@ -1,0 +1,47 @@
+Test fixes for the vendored crate.
+
+The runtime's tests that render gpui-kit's bundled js_todolist example read it
+from the workspace root (`../../examples`), which the vendored crate does not
+have, so they are ignored.
+
+The pending-read WebSocket test joined the server thread right after the
+client's write, so the client's close only went out if one executor turn
+happened to reach it; otherwise the server's read timed out first. It now
+keeps pumping the executor until the server thread finishes.
+
+--- a/crates/shell/src/tests/render.rs
++++ b/crates/shell/src/tests/render.rs
+@@ -3978,6 +3978,7 @@ impl gpui::Render for Empty {
+ use std::ops::Deref;
+ 
+ #[gpui::test]
++#[ignore = "needs gpui-kit's examples/, which the vendored crate does not have"]
+ fn the_bundled_example_application_loads_and_renders(cx: &mut TestAppContext) {
+     cx.update(|cx| crate::init(cx));
+ 
+@@ -5565,6 +5566,7 @@ export default class ZeroScale extends View {
+ /// and a filter that must survive every mutation. If a subsystem regresses,
+ /// this is the test that notices.
+ #[gpui::test]
++#[ignore = "needs gpui-kit's examples/, which the vendored crate does not have"]
+ fn the_todolist_example_exercises_the_runtime(cx: &mut TestAppContext) {
+     cx.update(|cx| crate::init(cx));
+ 
+--- a/crates/shell/src/tests/network.rs
++++ b/crates/shell/src/tests/network.rs
+@@ -801,8 +801,13 @@
+     text_receiver
+         .recv_timeout(Duration::from_millis(500))
+         .expect("client write while read is pending");
+-    context.executor().advance_clock(Duration::from_millis(10));
+-    context.run_until_parked();
++    // Keep the client running until the server has its close: joining
++    // straight away would stall the close behind the server's read timeout.
++    while !server.is_finished() {
++        context.executor().advance_clock(Duration::from_millis(10));
++        context.run_until_parked();
++        thread::sleep(Duration::from_millis(5));
++    }
+     let server_events = server.join().expect("WebSocket server");
+     context.executor().advance_clock(Duration::from_millis(10));
+     context.run_until_parked();
