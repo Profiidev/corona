@@ -87,9 +87,9 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
                  .bind(
                      &qh,
 @@ -381,6 +387,13 @@
-     outputs: HashMap<ObjectId, Output>,
-     in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
      wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
+     // Registry global names of the outputs, for `global_remove`.
+     output_globals: HashMap<u32, ObjectId>,
 +    session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
 +    /// Whether the compositor has sent `locked`. `unlock_and_destroy` before that is an
 +    /// `invalid_unlock` protocol error — such a lock must be plainly destroyed instead.

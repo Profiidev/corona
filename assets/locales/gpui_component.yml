@@ -86,6 +86,10 @@ gpui_component:
     empty:
       en: No results
       de: Keine Ergebnisse
+  DropdownButton:
+    more_options:
+      en: More options
+      de: Weitere Optionen
   Dock:
     Unnamed:
       en: Unnamed
@@ -206,6 +210,10 @@ gpui_component:
     go_to_slide:
       en: 'Go to slide %{current}'
       de: 'Zu Folie %{current}'
+  Table:
+    SortBy:
+      en: 'Sort by %{column}'
+      de: 'Nach %{column} sortieren'
   Chart:
     open:
       en: Open
@@ -251,3 +259,112 @@ gpui_component:
     Unavailable:
       en: Dictation unavailable
       de: Diktat nicht verfügbar
+  Diff:
+    BinaryChanges:
+      en: Binary file changed
+      de: Binärdatei geändert
+    NoTextChanges:
+      en: No text changes in this patch
+      de: Keine Textänderungen in diesem Patch
+    NoChanges:
+      en: No changes
+      de: Keine Änderungen
+    EmptyFile:
+      en: Empty file
+      de: Leere Datei
+    AddedFile:
+      en: Added file
+      de: Hinzugefügte Datei
+    DeletedFile:
+      en: Deleted file
+      de: Gelöschte Datei
+    RenamedFile:
+      en: Renamed
+      de: Umbenannt
+    CopiedFile:
+      en: Copied
+      de: Kopiert
+    HiddenLines:
+      en: '%{count} lines not in patch'
+      de: '%{count} Zeilen nicht im Patch'
+    ExpandAbove:
+      en: 'Show %{count} lines above'
+      de: '%{count} Zeilen darüber anzeigen'
+    ExpandBelow:
+      en: 'Show %{count} lines below'
+      de: '%{count} Zeilen darunter anzeigen'
+    CollapseFile:
+      en: 'Collapse %{name}'
+      de: '%{name} einklappen'
+    ExpandFile:
+      en: 'Expand %{name}'
+      de: '%{name} ausklappen'
+    AddAnnotation:
+      en: 'Add annotation to line %{line}'
+      de: 'Anmerkung zu Zeile %{line} hinzufügen'
+    ConflictedFile:
+      en: Conflicts
+      de: Konflikte
+    CurrentChange:
+      en: Current change
+      de: Aktuelle Änderung
+    IncomingChange:
+      en: Incoming change
+      de: Eingehende Änderung
+    BaseChange:
+      en: Common ancestor
+      de: Gemeinsamer Vorfahre
+    AcceptCurrent:
+      en: Accept Current
+      de: Aktuelle übernehmen
+    AcceptIncoming:
+      en: Accept Incoming
+      de: Eingehende übernehmen
+    AcceptBoth:
+      en: Accept Both
+      de: Beide übernehmen
+    AcceptedCurrent:
+      en: Accepted current change
+      de: Aktuelle Änderung übernommen
+    AcceptedIncoming:
+      en: Accepted incoming change
+      de: Eingehende Änderung übernommen
+    AcceptedBoth:
+      en: Accepted both changes
+      de: Beide Änderungen übernommen
+    UndoResolution:
+      en: Undo
+      de: Rückgängig
+    Original:
+      en: Original
+      de: Original
+    Modified:
+      en: Modified
+      de: Geändert
+    ExpandLines:
+      en: 'Expand %{count} unchanged lines'
+      de: '%{count} unveränderte Zeilen ausklappen'
+    SourceLine:
+      en: '%{side} line %{line}'
+      de: '%{side} Zeile %{line}'
+    AddedLine:
+      en: '%{side} line %{line}, added'
+      de: '%{side} Zeile %{line}, hinzugefügt'
+    RemovedLine:
+      en: '%{side} line %{line}, removed'
+      de: '%{side} Zeile %{line}, entfernt'
+    UnchangedLines:
+      en: '%{count} unchanged lines'
+      de: '%{count} unveränderte Zeilen'
+    SelectLine:
+      en: 'Select %{side} line %{line}'
+      de: '%{side} Zeile %{line} auswählen'
+    NoNewline:
+      en: No newline at end of file
+      de: Kein Zeilenumbruch am Dateiende
+    Viewer:
+      en: 'Diff for %{name}'
+      de: 'Diff für %{name}'
+    ViewerFiles:
+      en: 'Diff for %{count} files'
+      de: 'Diff für %{count} Dateien'

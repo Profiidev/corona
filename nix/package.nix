@@ -20,7 +20,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.8";
+  gpuiVersion = "0.3.9";
 
   vendorCrate =
     pname: hash:
@@ -41,7 +41,7 @@ let
     src = fetchFromGitHub {
       owner = "longbridge";
       repo = "gpui-kit";
-      tag = "v0.7.1";
+      tag = "v0.7.3";
       hash = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
     };
     patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
@@ -62,7 +62,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "gpui-base-0.7.1" = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
+      "gpui-base-0.7.3" = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
       "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";

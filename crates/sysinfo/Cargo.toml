@@ -11,7 +11,7 @@ anyhow.workspace = true
 flume.workspace = true
 tracing.workspace = true
 sysinfo = "0.39.6"
-nvml-wrapper = "0.11.0"
+nvml-wrapper = "0.13.0"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
