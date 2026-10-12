@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use corona_auth::AuthExt;
+use corona_auth_screen::Fingerprint;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
   image::imageops::{self, FilterType},
@@ -18,7 +19,7 @@ use futures::{
   future::{Either, FutureExt, Shared, select},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Global, Size, Styled, Task,
+  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Size, Styled, Task,
   WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   base::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
@@ -35,6 +36,8 @@ use crate::lock::{
 const UNLOCK_NAMESPACE: &str = "corona_unlock";
 const BLUR_SCALE: u32 = 4;
 const CAPTURE_TIMEOUT: Duration = Duration::from_millis(500);
+/// Suspend drops the reader mid scan and it comes back a moment after resume
+const FINGERPRINT_RETRY: Duration = Duration::from_secs(3);
 
 #[derive(Default)]
 pub struct LockState {
@@ -53,6 +56,8 @@ pub struct LockState {
   /// One scan for all displays, the reader takes one claim at a time.
   /// Dropping it on unlock lets go of the reader
   fingerprint: Option<Task<()>>,
+  /// What the login shows of the scan
+  reader: Option<Entity<Fingerprint>>,
 }
 
 impl Global for LockState {}
@@ -69,6 +74,7 @@ impl LockState {
       });
     }
     cx.set_global(LockState::default());
+    cx.global_mut::<Self>().reader = Some(cx.new(|_| Fingerprint::Off));
 
     let names: Vec<String> = cx
       .compositor()
@@ -195,7 +201,8 @@ impl LockState {
     }
   }
 
-  /// Unlocks on a matching finger, until the reader or fprintd gives up
+  /// Unlocks on a matching finger. Errors retry: the screen usually locks
+  /// right before suspend, which disconnects the reader mid scan
   fn scan_fingerprints(cx: &mut App) {
     if !cx.has_global::<Self>() {
       return;
@@ -203,17 +210,56 @@ impl LockState {
     let scan = cx.auth().clone();
     let user = user(cx).name.to_string();
     let task = cx.spawn(async move |cx| {
+      let mut logged = false;
       loop {
-        match scan.fingerprint(user.clone()).await {
+        let (listening, listens) = oneshot::channel();
+        let shown = async {
+          if listens.await.is_ok() {
+            // a failed finger stays shown until typing clears it
+            cx.update(|cx| {
+              Self::set_reader(cx, |r| {
+                if *r == Fingerprint::Off {
+                  *r = Fingerprint::Ready;
+                }
+              })
+            });
+          }
+        };
+        let (result, ()) =
+          futures::join!(scan.fingerprint_listening(user.clone(), listening), shown);
+        match result {
           Ok(true) => return cx.update(Self::unlock_animated),
           // the next finger
-          Ok(false) => {}
+          Ok(false) => {
+            logged = false;
+            cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Failed));
+          }
           // no reader, no prints enrolled or fprintd missing; the password still works
-          Err(e) => return tracing::info!("lock: no fingerprint unlock: {e:#}"),
+          Err(e) => {
+            cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Off));
+            if !std::mem::replace(&mut logged, true) {
+              tracing::info!("lock: no fingerprint unlock: {e:#}");
+            }
+            cx.background_executor().timer(FINGERPRINT_RETRY).await;
+          }
         }
       }
     });
     cx.global_mut::<Self>().fingerprint = Some(task);
+  }
+
+  fn set_reader(cx: &mut App, update: impl FnOnce(&mut Fingerprint)) {
+    let Some(reader) = cx.try_global::<Self>().and_then(|s| s.reader.clone()) else {
+      return;
+    };
+    reader.update(cx, |state, cx| {
+      update(state);
+      cx.notify();
+    });
+  }
+
+  pub fn reader(cx: &App) -> Option<Entity<Fingerprint>> {
+    cx.try_global::<Self>()?.reader.clone()
   }
 
   /// Unlocks right away, the overlays then play the lock animation backwards

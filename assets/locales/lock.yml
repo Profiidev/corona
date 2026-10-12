@@ -34,6 +34,12 @@ app:
     wrong:
       en: Wrong password
       de: Falsches Passwort
+    fingerprint:
+      en: Touch the fingerprint reader or enter your password
+      de: Fingerabdrucksensor berühren oder Passwort eingeben
+    fingerprint_wrong:
+      en: Fingerprint not recognized
+      de: Fingerabdruck nicht erkannt
     auth_failed:
       en: Could not check the password
       de: Passwort konnte nicht geprüft werden

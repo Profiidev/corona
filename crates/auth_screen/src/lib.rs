@@ -134,6 +134,18 @@ fn availability(action: SessionAction, capabilities: Option<&SessionCapabilities
   }
 }
 
+/// The fingerprint reader, as whoever scans sets it
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Fingerprint {
+  /// No reader, no prints enrolled, or not scanning
+  #[default]
+  Off,
+  /// Waits for a finger
+  Ready,
+  /// The last finger did not match; typing or the next match clears it
+  Failed,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Log {
   Idle,
@@ -172,6 +184,7 @@ pub struct AuthScreen {
   /// A password check runs, the field takes no input until it answered
   checking: bool,
   capabilities: Option<SessionCapabilities>,
+  fingerprint: Option<Entity<Fingerprint>>,
   _subscription: Subscription,
   _layout_change: Subscription,
 }
@@ -189,10 +202,20 @@ impl AuthScreen {
     let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
       InputEvent::PressEnter { .. } => this.submit(window, cx),
       // typing clears an auth error
-      InputEvent::Change if matches!(this.log, Log::Error(_)) || this.invalid => {
-        this.log = Log::Idle;
-        this.invalid = false;
-        cx.notify();
+      InputEvent::Change => {
+        if matches!(this.log, Log::Error(_)) || this.invalid {
+          this.log = Log::Idle;
+          this.invalid = false;
+          cx.notify();
+        }
+        if let Some(fingerprint) = &this.fingerprint {
+          fingerprint.update(cx, |state, cx| {
+            if *state == Fingerprint::Failed {
+              *state = Fingerprint::Ready;
+              cx.notify();
+            }
+          });
+        }
       }
       _ => {}
     });
@@ -206,6 +229,7 @@ impl AuthScreen {
       invalid: false,
       checking: false,
       capabilities: None,
+      fingerprint: None,
       _subscription: subscription,
       _layout_change: cx.on_keyboard_layout_change({
         let this = cx.weak_entity();
@@ -218,6 +242,21 @@ impl AuthScreen {
 
   pub fn focus_handle(&self, cx: &App) -> FocusHandle {
     self.input.read(cx).focus_handle(cx)
+  }
+
+  /// Shows the reader's state next to the password
+  pub fn with_fingerprint(mut self, state: Entity<Fingerprint>, cx: &mut Context<Self>) -> Self {
+    cx.observe(&state, |_, _, cx| cx.notify()).detach();
+    self.fingerprint = Some(state);
+    self
+  }
+
+  fn fingerprint(&self, cx: &App) -> Fingerprint {
+    self
+      .fingerprint
+      .as_ref()
+      .map(|f| *f.read(cx))
+      .unwrap_or_default()
   }
 
   fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -402,6 +441,17 @@ impl AuthScreen {
       .accessibility_label(self.purpose.submit())
       .cursor_pointer()
       .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)));
+    let theme = cx.theme();
+    let reader = match self.fingerprint(cx) {
+      Fingerprint::Off => None,
+      Fingerprint::Ready => Some(theme.muted_foreground),
+      Fingerprint::Failed => Some(theme.danger),
+    }
+    .map(|color| {
+      Icon::new(IconName::FingerprintPattern)
+        .size_4()
+        .text_color(color)
+    });
 
     field().label(t!("app.lock.password").to_string()).child(
       InputGroup::new("auth-password")
@@ -415,6 +465,7 @@ impl AuthScreen {
         .addon(
           InputGroupAddon::new("auth-actions")
             .align(InputGroupAddonAlignment::InlineEnd)
+            .children(reader)
             .child(submit),
         ),
     )
@@ -423,7 +474,15 @@ impl AuthScreen {
   fn log_line(&self, cx: &App) -> impl IntoElement + use<> {
     let theme = cx.theme();
     let (text, color, busy): (SharedString, Hsla, bool) = match &self.log {
-      Log::Idle => (self.purpose.idle(), theme.muted_foreground, false),
+      Log::Idle => match self.fingerprint(cx) {
+        Fingerprint::Off => (self.purpose.idle(), theme.muted_foreground, false),
+        Fingerprint::Ready => (
+          t!("app.lock.fingerprint").into(),
+          theme.muted_foreground,
+          false,
+        ),
+        Fingerprint::Failed => (t!("app.lock.fingerprint_wrong").into(), theme.danger, false),
+      },
       Log::Busy(text) => (text.clone(), theme.muted_foreground, true),
       Log::Error(text) => (text.clone(), theme.danger, false),
     };

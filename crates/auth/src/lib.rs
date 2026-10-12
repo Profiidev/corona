@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use corona_config::APP_NAME;
+use futures::channel::oneshot;
 use futures_lite::StreamExt;
 use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
@@ -78,6 +79,15 @@ impl Auth {
   /// One scan of any enrolled finger. `Ok(false)` when it did not match; start
   /// again for the next try
   pub fn fingerprint(&self, user: String) -> impl Future<Output = Result<bool>> + use<> {
+    self.fingerprint_listening(user, oneshot::channel().0)
+  }
+
+  /// Like `fingerprint`, sending on `listening` once the reader waits for a finger
+  pub fn fingerprint_listening(
+    &self,
+    user: String,
+    listening: oneshot::Sender<()>,
+  ) -> impl Future<Output = Result<bool>> + use<> {
     let conn = self.conn.clone();
     let releasing = self.releasing.clone();
     let scanning = self.scanning.clone();
@@ -95,7 +105,7 @@ impl Auth {
         device: Some(device.clone()),
         releasing,
       };
-      let matched = verify(&device).await;
+      let matched = verify(&device, listening).await;
       claim.release().await;
       matched
     }
@@ -165,7 +175,7 @@ fn pam(service: &str, user: &str, password: String) -> Result<bool> {
   }
 }
 
-async fn verify(device: &DeviceProxy<'_>) -> Result<bool> {
+async fn verify(device: &DeviceProxy<'_>, listening: oneshot::Sender<()>) -> Result<bool> {
   // subscribed before the scan starts, so no result slips past
   let status = device.receive_verify_status().await?.map(Some);
   // fprintd crashing ends no signal stream, so watch for it leaving the bus
@@ -177,6 +187,7 @@ async fn verify(device: &DeviceProxy<'_>) -> Result<bool> {
     .map(|_| None);
   let mut events = status.or(gone);
   device.verify_start("any").await?;
+  let _ = listening.send(());
   while let Some(Some(signal)) = events.next().await {
     let args = signal.args()?;
     match (*args.result(), *args.done()) {
@@ -480,6 +491,41 @@ mod tests {
     });
     // still let go of the device
     assert_eq!(calls.lock().unwrap().last().unwrap(), "release");
+  }
+
+  #[test]
+  fn listening_only_once_the_reader_waits() {
+    let bus = TestBus::new();
+    let calls = Calls::default();
+    block_on(async {
+      let _fprintd = fprintd(
+        &bus,
+        Some(FakeDevice::new(&calls, [vec![("verify-match", true)]])),
+      )
+      .await;
+      let (listening, listens) = oneshot::channel();
+      let auth = auth(&bus).await;
+      assert!(
+        auth
+          .fingerprint_listening("alice".into(), listening)
+          .await
+          .unwrap()
+      );
+      assert!(listens.await.is_ok());
+    });
+    let bus = TestBus::new();
+    block_on(async {
+      let _fprintd = fprintd(&bus, None).await;
+      let (listening, listens) = oneshot::channel();
+      let auth = auth(&bus).await;
+      assert!(
+        auth
+          .fingerprint_listening("alice".into(), listening)
+          .await
+          .is_err()
+      );
+      assert!(listens.await.is_err(), "no reader, never listening");
+    });
   }
 
   #[test]

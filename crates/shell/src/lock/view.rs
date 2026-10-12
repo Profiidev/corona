@@ -68,9 +68,13 @@ impl Lock {
       })
     });
     Self {
-      ui: Ui::Login(
-        cx.new(|cx| AuthScreen::new(Purpose::Unlock, vec![user], 0, check, window, cx)),
-      ),
+      ui: Ui::Login(cx.new(|cx| {
+        let screen = AuthScreen::new(Purpose::Unlock, vec![user], 0, check, window, cx);
+        match LockState::reader(cx) {
+          Some(reader) => screen.with_fingerprint(reader, cx),
+          None => screen,
+        }
+      })),
       background,
     }
   }
