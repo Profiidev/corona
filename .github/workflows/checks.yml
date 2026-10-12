@@ -25,7 +25,7 @@ jobs:
 
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # latest
         with:
-          packages: pkg-config libfontconfig1-dev libxkbcommon-dev libxcb1-dev libpipewire-0.3-dev libasound2-dev libgbm-dev libpam0g-dev libclang-dev libwayland-dev libvulkan1
+          packages: pkg-config libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libpipewire-0.3-dev libasound2-dev libgbm-dev libpam0g-dev libclang-dev libwayland-dev libvulkan1
           version: 1.2
 
       - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
