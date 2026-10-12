@@ -567,8 +567,6 @@ mod tests {
     mode: Mode,
     cx: &mut TestAppContext,
   ) -> (Rc<FakeCompositor>, AnyWindowHandle, Entity<Switcher>) {
-    // live previews fail fast without a compositor
-    unsafe { std::env::set_var("WAYLAND_DISPLAY", "/nonexistent/corona-test") };
     let fake = setup(
       FakeCompositor {
         workspaces: vec![workspace("1", "DP-1"), workspace("2", "DP-1")],

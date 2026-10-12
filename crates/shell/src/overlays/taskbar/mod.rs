@@ -547,7 +547,6 @@ pub(crate) mod tests {
   use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
 
   fn open_taskbar(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Taskbar>) {
-    unsafe { std::env::set_var("WAYLAND_DISPLAY", "/nonexistent/corona-test") };
     setup(
       FakeCompositor {
         windows: vec![

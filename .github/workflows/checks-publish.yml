@@ -22,6 +22,6 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Publish lint results
-        uses: profiidev/rust-lint-action@637f38e740466c1c8db2c818f9d82e0e3dbcfd1b # feat/fork-checks
+        uses: profiidev/rust-lint-action@7d1363b6d697a0c39e344afc86ee6d289f8acfce # feat/fork-checks
         with:
           publish_results: lint-results.json

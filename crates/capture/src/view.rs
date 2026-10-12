@@ -67,7 +67,13 @@ pub struct LiveCapture {
 impl LiveCapture {
   /// `address` is the Hyprland window address, e.g. `0x55d2a4e1b2c0`.
   pub fn window(address: &str, max_fps: u32, cx: &mut Context<Self>) -> Self {
-    let frames = parse_address(address).and_then(|address| capture_window(address, max_fps));
+    // The capture thread's wakeups would trip gpui's deterministic test
+    // scheduler, which only allows activity on the test's own thread.
+    let frames = if cx.is_test() {
+      Err(anyhow::anyhow!("no live capture under the test scheduler"))
+    } else {
+      parse_address(address).and_then(|address| capture_window(address, max_fps))
+    };
     Self::from_frames(frames, cx)
   }
 

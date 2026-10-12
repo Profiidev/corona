@@ -4,13 +4,16 @@ the application down. Set the bound that keeps min <= max first.
 
 --- a/crates/shell/src/entities.rs
 +++ b/crates/shell/src/entities.rs
-@@ -431,9 +431,17 @@
+@@ -431,12 +431,17 @@
      ) -> Result<EntityHandle, EntityLimitError> {
          self.ensure_capacity()?;
          let state = cx.new(|_| {
 -            SliderState::new()
 -                .min(min)
 -                .max(max)
+-                .step(step)
+-                .scale(scale)
+-                .default_value(value)
 +            let slider = SliderState::new();
 +            // Each bound clamps the value against the other, and `f32::clamp`
 +            // panics on min > max: a `min` of 256 against the default `max` of
@@ -21,10 +24,10 @@ the application down. Set the bound that keeps min <= max first.
 +            } else {
 +                slider.min(min).max(max)
 +            };
-+            slider
-                 .step(step)
-                 .scale(scale)
-                 .default_value(value)
++            slider.step(step).scale(scale).default_value(value)
+         });
+ 
+         self.push(Record::Slider {
 --- a/crates/shell/src/tests/render.rs
 +++ b/crates/shell/src/tests/render.rs
 @@ -4392,6 +4392,32 @@
