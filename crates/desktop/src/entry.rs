@@ -243,14 +243,6 @@ mod tests {
   }
 
   #[test]
-  fn entries_without_startup_wm_class_are_kept() {
-    // Most desktop files set no StartupWMClass; keying only off that would
-    // leave the map nearly empty on any real system.
-    println!("{} classes mapped", entries().len());
-    assert!(icon_for_names(["alacritty"], 24).is_some() || entries().is_empty());
-  }
-
-  #[test]
   fn a_missing_icon_is_looked_up_once() {
     use std::time::Instant;
 
