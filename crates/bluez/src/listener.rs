@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bluez_zbus::agent1::Message;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
 use futures_channel::mpsc;
 use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::{App, Entity};
@@ -35,9 +35,10 @@ pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unp
 pub fn listener(
   cx: &mut App,
   conn: Connection,
-  mut changes: impl Stream<Item = ()> + Unpin + 'static,
+  changes: impl Stream<Item = ()> + Unpin + 'static,
   state: Bluetooth,
 ) {
+  let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     loop {
       let snapshot = snapshot(&conn).await.log_err().ok();

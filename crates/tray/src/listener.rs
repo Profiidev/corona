@@ -1,5 +1,5 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
 use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::App;
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
@@ -40,9 +40,10 @@ pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unp
 pub fn listener(
   cx: &mut App,
   conn: Connection,
-  mut changes: impl Stream<Item = ()> + Unpin + 'static,
+  changes: impl Stream<Item = ()> + Unpin + 'static,
   state: Tray,
 ) {
+  let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     let mut activatable = Activatable::new();
     loop {

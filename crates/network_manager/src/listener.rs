@@ -1,5 +1,5 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
+use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
 use cosmic_dbus_networkmanager::interface::{
   NetworkManagerProxy,
   active_connection::ActiveConnectionProxy,
@@ -68,9 +68,10 @@ pub async fn subscribe(
 pub fn listener(
   cx: &mut App,
   conn: Connection,
-  mut changes: impl Stream<Item = zbus::Result<Message>> + Unpin + 'static,
+  changes: impl Stream<Item = zbus::Result<Message>> + Unpin + 'static,
   state: NetworkManager,
 ) {
+  let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     let mut wifi_path = None;
     let mut connecting_ssid = None;

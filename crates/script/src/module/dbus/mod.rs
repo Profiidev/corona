@@ -69,6 +69,8 @@ const DENIED: [&str; 19] = [
 ];
 /// Subscriptions a load may make, so a plugin cannot fill the bus with match rules.
 const MAX_SUBSCRIPTIONS: u32 = 32;
+/// Signals a subscription holds for a plugin, newer ones past it are dropped.
+const QUEUED: usize = 64;
 
 /// The bus names a plugin may talk to.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
@@ -219,9 +221,11 @@ struct Key {
   property: bool,
 }
 
-/// A subscription's stream and the name it listens to.
+/// A subscription's signals and the name it listens to.
 struct Listener {
-  stream: MessageStream,
+  signals: flume::Receiver<zbus::Result<Message>>,
+  /// Reads the bus into `signals`, until dropped.
+  _pump: zbus::Task<()>,
   conn: Connection,
   sender: String,
 }
@@ -448,11 +452,22 @@ impl Dbus {
     let state = self.state.clone();
     Ok(
       async move {
-        let stream = MessageStream::for_match_rule(match_rule, &conn, Some(64)).await?;
+        let stream = MessageStream::for_match_rule(match_rule, &conn, None).await?;
+        // a full stream stalls corona's shared connection, so a plugin that
+        // reads slowly or never loses signals instead
+        let (tx, signals) = flume::bounded(QUEUED);
+        let pump = conn.executor().spawn(
+          stream.for_each(move |message| {
+            tx.try_send(message).ok();
+            future::ready(())
+          }),
+          "plugin signals",
+        );
         let mut state = lock(&state);
         ensure!(!state.closed, "the plugin was unloaded");
         let listener = Listener {
-          stream,
+          signals,
+          _pump: pump,
           conn,
           sender: rule.sender,
         };
@@ -527,7 +542,7 @@ impl Dbus {
 
 impl Listener {
   async fn next(&mut self) -> Result<Option<Signal>> {
-    while let Some(message) = self.stream.next().await {
+    while let Ok(message) = self.signals.recv_async().await {
       let message = message?;
       // zbus cannot match a well-known sender itself, so every signal on the
       // connection that fits the rest of the rule arrives here
@@ -1082,6 +1097,42 @@ mod tests {
       assert!(poll_once(&mut waiting).await.is_none());
       lock(&dbus.state).slots.clear();
       assert!(waiting.await.unwrap().is_none());
+    });
+  }
+
+  /// a plugin not reading its signals must not stall corona's connection
+  #[test]
+  fn unread_signals_keep_calls_working() {
+    let bus = TestBus::new();
+    block_on(async {
+      let server = serve(&bus).await;
+      let conn = zbus::connection::Builder::address(bus.address())
+        .unwrap()
+        .method_timeout(std::time::Duration::from_secs(1))
+        .build()
+        .await
+        .unwrap();
+      let buses = Buses {
+        session: conn.clone(),
+        system: conn,
+      };
+      let dbus = dbus(&["io.corona.Test"]);
+      let id = dbus
+        .subscribe(&buses, rule("io.corona.Test"))
+        .unwrap()
+        .await
+        .unwrap();
+      for _ in 0..QUEUED * 3 {
+        emit(&server, "burst").await;
+      }
+      let sum = dbus
+        .call(&buses, call("Add", Some(json!([1, 2])), None))
+        .unwrap()
+        .await
+        .unwrap();
+      assert_eq!(sum, json!(3));
+      let signal = dbus.next_signal(id).unwrap().await.unwrap().unwrap();
+      assert_eq!(signal.args, [json!("burst")]);
     });
   }
 
