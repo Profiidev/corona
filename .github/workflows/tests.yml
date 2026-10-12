@@ -17,16 +17,24 @@ jobs:
         with:
           components: rustfmt,clippy
 
+      - name: refresh apt index (ubuntu only)
+        run: sudo apt-get update
+
+      - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # latest
+        with:
+          packages: pkg-config libfontconfig1-dev libxkbcommon-dev libxcb1-dev libpipewire-0.3-dev libasound2-dev libgbm-dev libpam0g-dev libclang-dev libwayland-dev libvulkan1
+          version: 1.2
+
+      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
+      - name: Vendor patched gpui crates
+        run: just vendor
+
       - name: Cache cargo and rust files
         id: rust_cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           cache-on-failure: true
           shared-key: "test_cache"
-
-      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
-      - name: Vendor patched gpui crates
-        run: just vendor
 
       - uses: taiki-e/install-action@badb8c3638e0b773c6c17a6025c2306a8f1c4303 # nextest
       - name: "Build and test"

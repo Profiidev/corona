@@ -28,6 +28,10 @@ jobs:
           packages: pkg-config libfontconfig1-dev libxkbcommon-dev libxcb1-dev libpipewire-0.3-dev libasound2-dev libgbm-dev libpam0g-dev libclang-dev libwayland-dev libvulkan1
           version: 1.2
 
+      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
+      - name: Vendor patched gpui crates
+        run: just vendor
+
       - name: Cache cargo and rust files
         id: rust_cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -35,9 +39,8 @@ jobs:
           cache-on-failure: true
           shared-key: "linter_cache"
 
-      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
-      - name: Vendor patched gpui crates
-        run: just vendor
+      - name: Install oxfmt
+        run: npm install -g oxfmt
 
       - name: Run linters
         uses: profiidev/rust-lint-action@6592fe2b81f52c155bc416c51b6a860196a96f48 # v4
