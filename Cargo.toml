@@ -28,7 +28,7 @@ members = [
   "crates/idle",
   "crates/auth",
   "crates/auth_screen",
-  "crates/greeter",
+  "crates/greeter"
 ]
 
 [workspace.dependencies]
@@ -78,7 +78,10 @@ glob = "0.3.4"
 uuid = { version = "1.27.0", features = ["v5"] }
 zbus = "5.19.0"
 zbus_xml = "5.2.1"
-oo7 = { version = "0.6", default-features = false, features = ["async-std", "native_crypto"] }
+oo7 = { version = "0.6", default-features = false, features = [
+  "async-std",
+  "native_crypto"
+] }
 tempfile = "3.27.0"
 futures-lite = "2.6.1"
 futures = "0.3.34"

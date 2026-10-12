@@ -50,22 +50,22 @@ app:
       en: Today
       de: Heute
     rain_chance:
-      en: "%{percent}% rain"
-      de: "%{percent} % Regen"
+      en: '%{percent}% rain'
+      de: '%{percent} % Regen'
     unit:
       kmh:
-        en: "%{value} km/h"
-        de: "%{value} km/h"
+        en: '%{value} km/h'
+        de: '%{value} km/h'
       mph:
-        en: "%{value} mph"
-        de: "%{value} mph"
+        en: '%{value} mph'
+        de: '%{value} mph'
     compass:
-      "n":
-        en: "N"
-        de: "N"
+      'n':
+        en: 'N'
+        de: 'N'
       ne:
         en: NE
-        de: "NO"
+        de: 'NO'
       e:
         en: E
         de: O

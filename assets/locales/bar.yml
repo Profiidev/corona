@@ -15,14 +15,14 @@ app:
         en: just now
         de: gerade eben
       minutes:
-        en: "%{count} min ago"
-        de: "vor %{count} min"
+        en: '%{count} min ago'
+        de: 'vor %{count} min'
       hours:
-        en: "%{count} h ago"
-        de: "vor %{count} h"
+        en: '%{count} h ago'
+        de: 'vor %{count} h'
       days:
-        en: "%{count} d ago"
-        de: "vor %{count} T"
+        en: '%{count} d ago'
+        de: 'vor %{count} T'
   resource:
     load:
       en: Load

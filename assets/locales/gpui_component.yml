@@ -198,14 +198,14 @@ gpui_component:
       en: Next slide
       de: Nächste Folie
     slide:
-      en: "Slide %{current} of %{total}"
-      de: "Folie %{current} von %{total}"
+      en: 'Slide %{current} of %{total}'
+      de: 'Folie %{current} von %{total}'
     pagination:
       en: Carousel pagination
       de: Karussell-Seiten
     go_to_slide:
-      en: "Go to slide %{current}"
-      de: "Zu Folie %{current}"
+      en: 'Go to slide %{current}'
+      de: 'Zu Folie %{current}'
   Chart:
     open:
       en: Open
@@ -221,8 +221,8 @@ gpui_component:
       de: Schluss
   Questionnaire:
     progress:
-      en: "Question %{current} of %{total}"
-      de: "Frage %{current} von %{total}"
+      en: 'Question %{current} of %{total}'
+      de: 'Frage %{current} von %{total}'
     previous:
       en: Previous
       de: Zurück
@@ -237,7 +237,7 @@ gpui_component:
       de: Absenden
     error.required:
       en: Choose an answer to continue.
-      de: "Wähle eine Antwort, um fortzufahren."
+      de: 'Wähle eine Antwort, um fortzufahren.'
     error.optional:
       en: Choose an answer or skip this question.
       de: Wähle eine Antwort oder überspringe diese Frage.

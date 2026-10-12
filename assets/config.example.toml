@@ -68,7 +68,7 @@ start = [{ widget_type = "workspaces" }, { widget_type = "active_window" }]
 center = [
   # options = { format = "%H:%M %a, %b %-d" } sets the strftime format
   { widget_type = "clock" },
-  { widget_type = "player" },
+  { widget_type = "player" }
 ]
 end = [
   { widget_type = "privacy" },
@@ -81,14 +81,14 @@ end = [
     { widget_type = "resource", options = { stat = "memory" } },
     { widget_type = "resource", options = { stat = "download" } },
     { widget_type = "resource", options = { stat = "upload" } },
-    { widget_type = "resource", options = { stat = "disk" } },
+    { widget_type = "resource", options = { stat = "disk" } }
   ] },
   { widget_type = "battery" },
   { widget_type = "bluetooth" },
   { widget_type = "network" },
   { widget_type = "audio" },
   { widget_type = "notifications" },
-  { widget_type = "control_center" },
+  { widget_type = "control_center" }
 ]
 
 [notification]

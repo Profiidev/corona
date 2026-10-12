@@ -24,9 +24,9 @@ app:
       en: Close window
       de: Fenster schließen
     close_windows:
-      en: "Close %{count} windows"
-      de: "%{count} Fenster schließen"
+      en: 'Close %{count} windows'
+      de: '%{count} Fenster schließen'
   switcher:
     workspace:
-      en: "Workspace %{name}"
-      de: "Arbeitsfläche %{name}"
+      en: 'Workspace %{name}'
+      de: 'Arbeitsfläche %{name}'

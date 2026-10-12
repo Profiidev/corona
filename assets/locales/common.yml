@@ -8,11 +8,11 @@ app:
     en: Corona config not loaded
     de: Corona-Konfiguration nicht geladen
   common:
-    "on":
-      en: "On"
+    'on':
+      en: 'On'
       de: An
-    "off":
-      en: "Off"
+    'off':
+      en: 'Off'
       de: Aus
     back:
       en: Back

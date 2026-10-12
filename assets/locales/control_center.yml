@@ -61,21 +61,21 @@ app:
         en: 1 device
         de: 1 Gerät
       other:
-        en: "%{count} devices"
-        de: "%{count} Geräte"
+        en: '%{count} devices'
+        de: '%{count} Geräte'
     settings:
       en: Settings
       de: Einstellungen
     uptime:
       minutes:
-        en: "up %{minutes}m"
-        de: "seit %{minutes} min"
+        en: 'up %{minutes}m'
+        de: 'seit %{minutes} min'
       hours:
-        en: "up %{hours}h %{minutes}m"
-        de: "seit %{hours} h %{minutes} min"
+        en: 'up %{hours}h %{minutes}m'
+        de: 'seit %{hours} h %{minutes} min'
       days:
-        en: "up %{days}d %{hours}h"
-        de: "seit %{days} T %{hours} h"
+        en: 'up %{days}d %{hours}h'
+        de: 'seit %{days} T %{hours} h'
   session:
     lock:
       en: Lock
@@ -91,7 +91,7 @@ app:
       de: Ruhezustand
     suspend_then_hibernate:
       en: Suspend then hibernate
-      de: "Bereitschaft, dann Ruhezustand"
+      de: 'Bereitschaft, dann Ruhezustand'
     reboot:
       en: Reboot
       de: Neustart
@@ -105,8 +105,8 @@ app:
       en: Reboot to…
       de: Neustart in …
     nixos_generation:
-      en: "NixOS generation %{generation}"
-      de: "NixOS-Generation %{generation}"
+      en: 'NixOS generation %{generation}'
+      de: 'NixOS-Generation %{generation}'
   audio:
     input:
       en: Input
@@ -135,8 +135,8 @@ app:
         en: 1 device connected
         de: 1 Gerät verbunden
       other:
-        en: "%{count} devices connected"
-        de: "%{count} Geräte verbunden"
+        en: '%{count} devices connected'
+        de: '%{count} Geräte verbunden'
     scan:
       en: Scan for devices
       de: Nach Geräten suchen
@@ -160,14 +160,14 @@ app:
       de: Koppeln
     prompt:
       title:
-        en: "Pair %{name}"
-        de: "%{name} koppeln"
+        en: 'Pair %{name}'
+        de: '%{name} koppeln'
       code:
         en: Code
         de: Code
       confirm_hint:
         en: Confirm the code matches the one on the device
-        de: "Bestätige, dass der Code mit dem auf dem Gerät übereinstimmt"
+        de: 'Bestätige, dass der Code mit dem auf dem Gerät übereinstimmt'
       authorize_hint:
         en: Allow this device to pair?
         de: Darf sich dieses Gerät koppeln?
@@ -231,11 +231,11 @@ app:
       en: Mirror
       de: Spiegel
     mirrors_detail:
-      en: "Mirrors %{source} · %{mode}"
-      de: "Spiegelt %{source} · %{mode}"
+      en: 'Mirrors %{source} · %{mode}'
+      de: 'Spiegelt %{source} · %{mode}'
     disabled_detail:
-      en: "Disabled · %{mode}"
-      de: "Aus · %{mode}"
+      en: 'Disabled · %{mode}'
+      de: 'Aus · %{mode}'
     mirror:
       en: Mirror
       de: Spiegeln
@@ -272,8 +272,8 @@ app:
       de: Externer Bildschirm
     unavailable:
       ddcutil_disabled:
-        en: "Set enable_ddcutil under [brightness]"
-        de: "enable_ddcutil unter [brightness] setzen"
+        en: 'Set enable_ddcutil under [brightness]'
+        de: 'enable_ddcutil unter [brightness] setzen'
       ddcutil_missing:
         en: Install ddcutil
         de: ddcutil installieren
@@ -363,10 +363,10 @@ app:
       de: Erneut prüfen
     check_off:
       en: "Connectivity check is off, captive portals aren't detected"
-      de: "Verbindungsprüfung ist aus, Anmeldeportale werden nicht erkannt"
+      de: 'Verbindungsprüfung ist aus, Anmeldeportale werden nicht erkannt'
     sign_in:
       en: Sign in to the network to get online
-      de: "Melde dich im Netzwerk an, um online zu gehen"
+      de: 'Melde dich im Netzwerk an, um online zu gehen'
     no_address:
       en: No address
       de: Keine Adresse
@@ -378,8 +378,8 @@ app:
         en: No password provided
         de: Kein Passwort angegeben
       other:
-        en: "Connection failed: %{code}"
-        de: "Verbindung fehlgeschlagen: %{code}"
+        en: 'Connection failed: %{code}'
+        de: 'Verbindung fehlgeschlagen: %{code}'
     hidden:
       title:
         en: Join hidden network
@@ -397,11 +397,11 @@ app:
       en: Username
       de: Benutzername
     password_for:
-      en: "Password for %{name}"
-      de: "Passwort für %{name}"
+      en: 'Password for %{name}'
+      de: 'Passwort für %{name}'
     wrong_password:
-      en: "Wrong password, try again"
-      de: "Falsches Passwort, versuche es erneut"
+      en: 'Wrong password, try again'
+      de: 'Falsches Passwort, versuche es erneut'
     vpns:
       en: VPNs
       de: VPNs
@@ -435,8 +435,8 @@ app:
       en: Clear all
       de: Alle löschen
     all:
-      en: "All (%{count})"
-      de: "Alle (%{count})"
+      en: 'All (%{count})'
+      de: 'Alle (%{count})'
     today:
       en: Today
       de: Heute
@@ -444,8 +444,8 @@ app:
       en: Earlier
       de: Früher
     other_daemon:
-      en: "Another notification daemon is running, corona takes over when it exits"
-      de: "Ein anderer Benachrichtigungsdienst läuft, corona übernimmt, sobald er beendet wird"
+      en: 'Another notification daemon is running, corona takes over when it exits'
+      de: 'Ein anderer Benachrichtigungsdienst läuft, corona übernimmt, sobald er beendet wird'
     empty:
       en: No notifications
       de: Keine Benachrichtigungen
@@ -457,14 +457,14 @@ app:
         en: now
         de: jetzt
       minutes:
-        en: "%{count}m"
-        de: "%{count} min"
+        en: '%{count}m'
+        de: '%{count} min'
       hours:
-        en: "%{count}h"
-        de: "%{count} h"
+        en: '%{count}h'
+        de: '%{count} h'
       days:
-        en: "%{count}d"
-        de: "%{count} T"
+        en: '%{count}d'
+        de: '%{count} T'
   power:
     battery:
       en: Battery
@@ -479,21 +479,21 @@ app:
       en: Capacity
       de: Kapazität
     charge_limit:
-      en: "Limit charging to %{percent}%"
-      de: "Laden auf %{percent} % begrenzen"
+      en: 'Limit charging to %{percent}%'
+      de: 'Laden auf %{percent} % begrenzen'
     remaining:
-      en: "%{duration} remaining"
-      de: "%{duration} verbleibend"
+      en: '%{duration} remaining'
+      de: '%{duration} verbleibend'
     until_full:
-      en: "%{duration} until full"
-      de: "%{duration} bis voll"
+      en: '%{duration} until full'
+      de: '%{duration} bis voll'
     duration:
       minutes:
-        en: "%{minutes} min"
-        de: "%{minutes} min"
+        en: '%{minutes} min'
+        de: '%{minutes} min'
       hours:
-        en: "%{hours} h %{minutes} min"
-        de: "%{hours} h %{minutes} min"
+        en: '%{hours} h %{minutes} min'
+        de: '%{hours} h %{minutes} min'
     state:
       charging:
         en: charging
@@ -549,8 +549,8 @@ app:
         en: Performance
         de: Leistung
       degraded:
-        en: "Performance is limited: %{reason}"
-        de: "Leistung ist eingeschränkt: %{reason}"
+        en: 'Performance is limited: %{reason}'
+        de: 'Leistung ist eingeschränkt: %{reason}'
   sysinfo:
     system:
       en: System
@@ -559,8 +559,8 @@ app:
       en: Resources
       de: Ressourcen
     uptime:
-      en: "Up %{duration}"
-      de: "Seit %{duration} aktiv"
+      en: 'Up %{duration}'
+      de: 'Seit %{duration} aktiv'
     cpu_load:
       en: CPU load
       de: CPU-Last
@@ -593,38 +593,38 @@ app:
       de: Upload
     duration:
       year:
-        en: "%{count} year"
-        de: "%{count} Jahr"
+        en: '%{count} year'
+        de: '%{count} Jahr'
       years:
-        en: "%{count} years"
-        de: "%{count} Jahre"
+        en: '%{count} years'
+        de: '%{count} Jahre'
       month:
-        en: "%{count} month"
-        de: "%{count} Monat"
+        en: '%{count} month'
+        de: '%{count} Monat'
       months:
-        en: "%{count} months"
-        de: "%{count} Monate"
+        en: '%{count} months'
+        de: '%{count} Monate'
       day:
-        en: "%{count} day"
-        de: "%{count} Tag"
+        en: '%{count} day'
+        de: '%{count} Tag'
       days:
-        en: "%{count} days"
-        de: "%{count} Tage"
+        en: '%{count} days'
+        de: '%{count} Tage'
       hour:
-        en: "%{count} hour"
-        de: "%{count} Stunde"
+        en: '%{count} hour'
+        de: '%{count} Stunde'
       hours:
-        en: "%{count} hours"
-        de: "%{count} Stunden"
+        en: '%{count} hours'
+        de: '%{count} Stunden'
       minute:
-        en: "%{count} minute"
-        de: "%{count} Minute"
+        en: '%{count} minute'
+        de: '%{count} Minute'
       minutes:
-        en: "%{count} minutes"
-        de: "%{count} Minuten"
+        en: '%{count} minutes'
+        de: '%{count} Minuten'
       second:
-        en: "%{count} second"
-        de: "%{count} Sekunde"
+        en: '%{count} second'
+        de: '%{count} Sekunde'
       seconds:
-        en: "%{count} seconds"
-        de: "%{count} Sekunden"
+        en: '%{count} seconds'
+        de: '%{count} Sekunden'

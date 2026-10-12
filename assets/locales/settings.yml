@@ -93,7 +93,7 @@ app:
           en: Mode
           de: Modus
         description:
-          en: "Follow the theme, or force dark or light."
+          en: 'Follow the theme, or force dark or light.'
           de: Dem Theme folgen oder dunkel bzw. hell erzwingen.
       font_family:
         title:
@@ -107,7 +107,7 @@ app:
           en: Font scale
           de: Schriftgröße
         description:
-          en: "Text, and the spacing measured in it."
+          en: 'Text, and the spacing measured in it.'
           de: Text und die daran gemessenen Abstände.
       corner_radius_scale:
         title:
@@ -128,8 +128,8 @@ app:
           en: Popup borders
           de: Popup-Rahmen
         description:
-          en: "Around OSDs, tooltips, menus and the window switcher."
-          de: "Um OSDs, Tooltips, Menüs und den Fensterwechsler."
+          en: 'Around OSDs, tooltips, menus and the window switcher.'
+          de: 'Um OSDs, Tooltips, Menüs und den Fensterwechsler.'
       card_borders:
         title:
           en: Card borders
@@ -142,7 +142,7 @@ app:
           en: Animations
           de: Animationen
         description:
-          en: "Turn every animation off, or on."
+          en: 'Turn every animation off, or on.'
           de: Alle Animationen aus- oder einschalten.
       speed:
         title:
@@ -160,8 +160,8 @@ app:
           en: Bars
           de: Leisten
         bar:
-          en: "Bar “%{name}”"
-          de: "Leiste „%{name}“"
+          en: 'Bar “%{name}”'
+          de: 'Leiste „%{name}“'
       position:
         title:
           en: Position
@@ -174,8 +174,8 @@ app:
           en: Thickness
           de: Stärke
         description:
-          en: "Height of a horizontal bar, width of a vertical one."
-          de: "Höhe einer waagerechten, Breite einer senkrechten Leiste."
+          en: 'Height of a horizontal bar, width of a vertical one.'
+          de: 'Höhe einer waagerechten, Breite einer senkrechten Leiste.'
       background_opacity:
         title:
           en: Background opacity
@@ -218,8 +218,8 @@ app:
         en: Remove this bar
         de: Diese Leiste entfernen
       drag_hint:
-        en: "Drag a widget between others to move it, onto one to group them."
-        de: "Ziehe ein Widget zwischen andere, um es zu verschieben, oder auf eines, um sie zu gruppieren."
+        en: 'Drag a widget between others to move it, onto one to group them.'
+        de: 'Ziehe ein Widget zwischen andere, um es zu verschieben, oder auf eines, um sie zu gruppieren.'
       group:
         en: Group
         de: Gruppe
@@ -253,14 +253,14 @@ app:
           en: Mount (disk)
           de: Einhängepunkt (Datenträger)
         hidden_items:
-          en: "Hidden items: case-insensitive regexes against id and title"
-          de: "Ausgeblendete Einträge: Regexe ohne Groß-/Kleinschreibung gegen ID und Titel"
+          en: 'Hidden items: case-insensitive regexes against id and title'
+          de: 'Ausgeblendete Einträge: Regexe ohne Groß-/Kleinschreibung gegen ID und Titel'
         add_pattern:
           en: Add pattern
           de: Muster hinzufügen
         hide_idle:
           en: Hide when nothing records
-          de: "Ausblenden, wenn nichts aufnimmt"
+          de: 'Ausblenden, wenn nichts aufnimmt'
       widget:
         control_center:
           en: Control center
@@ -335,8 +335,8 @@ app:
           en: Picture
           de: Bild
         description:
-          en: "Path, ~/ path or http(s) URL."
-          de: "Pfad, ~/-Pfad oder http(s)-URL."
+          en: 'Path, ~/ path or http(s) URL.'
+          de: 'Pfad, ~/-Pfad oder http(s)-URL.'
     notifications:
       title:
         en: Notifications
@@ -370,8 +370,8 @@ app:
           en: Width
           de: Breite
         description:
-          en: "Of a notification popup, in pixels."
-          de: "Eines Benachrichtigungs-Popups, in Pixeln."
+          en: 'Of a notification popup, in pixels.'
+          de: 'Eines Benachrichtigungs-Popups, in Pixeln.'
       offset:
         title:
           en: Offset
@@ -405,8 +405,8 @@ app:
           en: Hidden notifications
           de: Ausgeblendete Benachrichtigungen
         description:
-          en: "Case-insensitive regex against the app name, summary and body; matches are dropped."
-          de: "Regex ohne Groß-/Kleinschreibung gegen App-Name, Titel und Text; Treffer werden verworfen."
+          en: 'Case-insensitive regex against the app name, summary and body; matches are dropped.'
+          de: 'Regex ohne Groß-/Kleinschreibung gegen App-Name, Titel und Text; Treffer werden verworfen.'
     osd:
       keyboard_layout:
         title:
@@ -420,8 +420,8 @@ app:
           en: Lock keys
           de: Feststelltasten
         description:
-          en: "Caps, num and scroll lock. Bind `corona ipc lock-key caps` (num, scroll) to the keys in Hyprland."
-          de: "Feststell-, Num- und Rollen-Taste. Binde `corona ipc lock-key caps` (num, scroll) in Hyprland an die Tasten."
+          en: 'Caps, num and scroll lock. Bind `corona ipc lock-key caps` (num, scroll) to the keys in Hyprland.'
+          de: 'Feststell-, Num- und Rollen-Taste. Binde `corona ipc lock-key caps` (num, scroll) in Hyprland an die Tasten.'
       title:
         en: OSD
         de: OSD
@@ -437,8 +437,8 @@ app:
           en: OSD
           de: OSD
         description:
-          en: "Show a popup when volume, brightness and the like change."
-          de: "Ein Popup zeigen, wenn sich Lautstärke, Helligkeit und Ähnliches ändern."
+          en: 'Show a popup when volume, brightness and the like change.'
+          de: 'Ein Popup zeigen, wenn sich Lautstärke, Helligkeit und Ähnliches ändern.'
       position:
         title:
           en: Position
@@ -514,8 +514,8 @@ app:
           en: Privacy
           de: Datenschutz
         description:
-          en: "Microphone, camera and screen access."
-          de: "Zugriff auf Mikrofon, Kamera und Bildschirm."
+          en: 'Microphone, camera and screen access.'
+          de: 'Zugriff auf Mikrofon, Kamera und Bildschirm.'
     control_center:
       title:
         en: Control Center
@@ -566,14 +566,14 @@ app:
           de: Taskleiste
         description:
           en: The dock that rises from the bottom edge.
-          de: "Das Dock, das vom unteren Rand aufsteigt."
+          de: 'Das Dock, das vom unteren Rand aufsteigt.'
       icon_size:
         title:
           en: Icon size
           de: Symbolgröße
         description:
-          en: "Of the app icons, in pixels."
-          de: "Der App-Symbole, in Pixeln."
+          en: 'Of the app icons, in pixels.'
+          de: 'Der App-Symbole, in Pixeln.'
       window_previews:
         title:
           en: Window previews
@@ -615,8 +615,8 @@ app:
           en: Card height
           de: Kartenhöhe
         description:
-          en: "Of each workspace card, in pixels."
-          de: "Jeder Arbeitsflächenkarte, in Pixeln."
+          en: 'Of each workspace card, in pixels.'
+          de: 'Jeder Arbeitsflächenkarte, in Pixeln.'
       backdrop:
         title:
           en: Backdrop
@@ -633,8 +633,8 @@ app:
           en: Enabled
           de: Aktiv
         description:
-          en: "Apps can hold it off, a playing video for one. New behaviors go under [idle.behavior.<name>] in the config."
-          de: "Apps können es aufhalten, etwa ein laufendes Video. Neue Abläufe gehören unter [idle.behavior.<name>] in der Konfiguration."
+          en: 'Apps can hold it off, a playing video for one. New behaviors go under [idle.behavior.<name>] in the config.'
+          de: 'Apps können es aufhalten, etwa ein laufendes Video. Neue Abläufe gehören unter [idle.behavior.<name>] in der Konfiguration.'
       action:
         title:
           en: Action
@@ -672,15 +672,15 @@ app:
           en: Command
           de: Befehl
         description:
-          en: "Shell command for the Command action."
-          de: "Shell-Befehl für die Aktion Befehl."
+          en: 'Shell command for the Command action.'
+          de: 'Shell-Befehl für die Aktion Befehl.'
       resume_command:
         title:
           en: Resume command
           de: Befehl beim Fortsetzen
         description:
-          en: "Shell command for the Command action, run when input follows."
-          de: "Shell-Befehl für die Aktion Befehl, läuft bei der nächsten Eingabe."
+          en: 'Shell command for the Command action, run when input follows.'
+          de: 'Shell-Befehl für die Aktion Befehl, läuft bei der nächsten Eingabe.'
     lockscreen:
       title:
         en: Lock Screen
@@ -695,21 +695,21 @@ app:
           de: Vor Bereitschaft sperren
         description:
           en: Lock the screen whenever the system suspends.
-          de: "Den Bildschirm sperren, wann immer das System in Bereitschaft geht."
+          de: 'Den Bildschirm sperren, wann immer das System in Bereitschaft geht.'
       blur:
         title:
           en: Blur
           de: Unschärfe
         description:
-          en: "Of the screen behind the lock, 0 for none."
-          de: "Des Bildschirms hinter der Sperre, 0 für keine."
+          en: 'Of the screen behind the lock, 0 for none.'
+          de: 'Des Bildschirms hinter der Sperre, 0 für keine.'
       monitor:
         title:
           en: Monitor
           de: Monitor
         description:
           en: The monitor showing the login, the others only show the blurred screen.
-          de: "Der Monitor mit der Anmeldung, die anderen zeigen nur den unscharfen Bildschirm."
+          de: 'Der Monitor mit der Anmeldung, die anderen zeigen nur den unscharfen Bildschirm.'
     screenshot:
       title:
         en: Screenshot
@@ -734,8 +734,8 @@ app:
           de: strftime-Muster.
     location:
       title:
-        en: "Location & Weather"
-        de: "Standort & Wetter"
+        en: 'Location & Weather'
+        de: 'Standort & Wetter'
       groups:
         location:
           en: Location
@@ -749,14 +749,14 @@ app:
           de: Stadt
         description:
           en: Looked up when no coordinates are set.
-          de: "Wird gesucht, wenn keine Koordinaten gesetzt sind."
+          de: 'Wird gesucht, wenn keine Koordinaten gesetzt sind.'
       coordinates:
         title:
           en: Coordinates
           de: Koordinaten
         description:
-          en: "Latitude, longitude; used over the city."
-          de: "Breite, Länge; haben Vorrang vor der Stadt."
+          en: 'Latitude, longitude; used over the city.'
+          de: 'Breite, Länge; haben Vorrang vor der Stadt.'
       locate_automatically:
         title:
           en: Locate automatically
@@ -769,8 +769,8 @@ app:
           en: Units
           de: Einheiten
         description:
-          en: "For temperatures, wind and rain."
-          de: "Für Temperaturen, Wind und Regen."
+          en: 'For temperatures, wind and rain.'
+          de: 'Für Temperaturen, Wind und Regen.'
       refresh_every:
         title:
           en: Refresh every
@@ -792,21 +792,21 @@ app:
           de: Mikrofon
         description:
           en: "Case-insensitive regex against the app's name; matches are left out of the privacy widget, its log and OSD."
-          de: "Regex ohne Groß-/Kleinschreibung gegen den Namen der App; Treffer fehlen im Datenschutz-Widget, seinem Protokoll und OSD."
+          de: 'Regex ohne Groß-/Kleinschreibung gegen den Namen der App; Treffer fehlen im Datenschutz-Widget, seinem Protokoll und OSD.'
       camera:
         title:
           en: Camera
           de: Kamera
         description:
-          en: "Same, for camera access."
-          de: "Ebenso, für Kamerazugriff."
+          en: 'Same, for camera access.'
+          de: 'Ebenso, für Kamerazugriff.'
       screen:
         title:
           en: Screen
           de: Bildschirm
         description:
-          en: "Same, for screen sharing and recording."
-          de: "Ebenso, für Bildschirmfreigabe und -aufnahme."
+          en: 'Same, for screen sharing and recording.'
+          de: 'Ebenso, für Bildschirmfreigabe und -aufnahme.'
     plugins:
       title:
         en: Plugins
@@ -873,106 +873,106 @@ app:
         en: Overrides installed
         de: Überschreibt installierte
       shadows:
-        en: "Also in: %{sources}"
-        de: "Auch in: %{sources}"
+        en: 'Also in: %{sources}'
+        de: 'Auch in: %{sources}'
       updated:
         title:
-          en: "%{name} updated"
-          de: "%{name} aktualisiert"
+          en: '%{name} updated'
+          de: '%{name} aktualisiert'
         body:
-          en: "Now on version %{version}."
-          de: "Jetzt auf Version %{version}."
+          en: 'Now on version %{version}.'
+          de: 'Jetzt auf Version %{version}.'
       approve:
         title:
-          en: "Allow %{name}?"
-          de: "%{name} erlauben?"
+          en: 'Allow %{name}?'
+          de: '%{name} erlauben?'
         ok:
-          en: "Allow"
-          de: "Erlauben"
+          en: 'Allow'
+          de: 'Erlauben'
         deny:
-          en: "Deny"
-          de: "Ablehnen"
+          en: 'Deny'
+          de: 'Ablehnen'
         deny_disable:
-          en: "Deny and disable"
-          de: "Ablehnen und deaktivieren"
+          en: 'Deny and disable'
+          de: 'Ablehnen und deaktivieren'
         changed_title:
-          en: "%{name} changed"
-          de: "%{name} hat sich geändert"
+          en: '%{name} changed'
+          de: '%{name} hat sich geändert'
         changed_body:
-          en: "It does not run until you review what changed in its permissions."
-          de: "Es läuft erst wieder, wenn du die Änderungen an seinen Berechtigungen geprüft hast."
+          en: 'It does not run until you review what changed in its permissions.'
+          de: 'Es läuft erst wieder, wenn du die Änderungen an seinen Berechtigungen geprüft hast.'
         source_changed:
-          en: "Now from source %{new}, before from %{old}."
-          de: "Jetzt aus der Quelle %{new}, vorher aus %{old}."
+          en: 'Now from source %{new}, before from %{old}.'
+          de: 'Jetzt aus der Quelle %{new}, vorher aus %{old}.'
         same_permissions:
-          en: "Its permissions stay the same."
-          de: "Seine Berechtigungen bleiben gleich."
+          en: 'Its permissions stay the same.'
+          de: 'Seine Berechtigungen bleiben gleich.'
         added:
-          en: "New"
-          de: "Neu"
+          en: 'New'
+          de: 'Neu'
         removed:
-          en: "Removed"
-          de: "Entfernt"
+          en: 'Removed'
+          de: 'Entfernt'
         review:
-          en: "Review permissions"
-          de: "Berechtigungen prüfen"
+          en: 'Review permissions'
+          de: 'Berechtigungen prüfen'
         needed:
-          en: "Needs approval"
-          de: "Braucht Zustimmung"
+          en: 'Needs approval'
+          de: 'Braucht Zustimmung'
         nothing:
-          en: "Asks for no permissions."
-          de: "Fragt nach keinen Berechtigungen."
+          en: 'Asks for no permissions.'
+          de: 'Fragt nach keinen Berechtigungen.'
         fs_read:
-          en: "Read files in: %{values}"
-          de: "Dateien lesen in: %{values}"
+          en: 'Read files in: %{values}'
+          de: 'Dateien lesen in: %{values}'
         fs_write:
-          en: "Write files in: %{values}"
-          de: "Dateien schreiben in: %{values}"
+          en: 'Write files in: %{values}'
+          de: 'Dateien schreiben in: %{values}'
         fs_execute:
-          en: "Run programs: %{values}"
-          de: "Programme ausführen: %{values}"
+          en: 'Run programs: %{values}'
+          de: 'Programme ausführen: %{values}'
         execute_warning:
-          en: "Warning: it can run arbitrary code with these programs, with your permissions and outside every other limit here."
-          de: "Achtung: Es kann mit diesen Programmen beliebigen Code ausführen, mit deinen Rechten und außerhalb aller anderen Grenzen hier."
+          en: 'Warning: it can run arbitrary code with these programs, with your permissions and outside every other limit here.'
+          de: 'Achtung: Es kann mit diesen Programmen beliebigen Code ausführen, mit deinen Rechten und außerhalb aller anderen Grenzen hier.'
         process_env:
-          en: "Pass these environment variables to programs: %{values}"
-          de: "Diese Umgebungsvariablen an Programme weitergeben: %{values}"
+          en: 'Pass these environment variables to programs: %{values}'
+          de: 'Diese Umgebungsvariablen an Programme weitergeben: %{values}'
         process_exit:
-          en: "Quit its own script"
-          de: "Das eigene Skript beenden"
+          en: 'Quit its own script'
+          de: 'Das eigene Skript beenden'
         network_hosts:
-          en: "Connect to: %{values}"
-          de: "Verbinden mit: %{values}"
+          en: 'Connect to: %{values}'
+          de: 'Verbinden mit: %{values}'
         network_http:
-          en: "Send HTTP requests: %{values}"
-          de: "HTTP-Anfragen senden: %{values}"
+          en: 'Send HTTP requests: %{values}'
+          de: 'HTTP-Anfragen senden: %{values}'
         network_unix:
-          en: "Connect to sockets: %{values}"
-          de: "Mit Sockets verbinden: %{values}"
+          en: 'Connect to sockets: %{values}'
+          de: 'Mit Sockets verbinden: %{values}'
         dbus_session:
-          en: "Talk to session bus services: %{values}"
-          de: "Mit Diensten am Sitzungsbus sprechen: %{values}"
+          en: 'Talk to session bus services: %{values}'
+          de: 'Mit Diensten am Sitzungsbus sprechen: %{values}'
         dbus_system:
-          en: "Talk to system bus services: %{values}"
-          de: "Mit Diensten am Systembus sprechen: %{values}"
+          en: 'Talk to system bus services: %{values}'
+          de: 'Mit Diensten am Systembus sprechen: %{values}'
         dbus_warning:
-          en: "Warning: D-Bus services can act for you, e.g. start programs or change system settings."
-          de: "Achtung: D-Bus-Dienste können für dich handeln, z. B. Programme starten oder Systemeinstellungen ändern."
+          en: 'Warning: D-Bus services can act for you, e.g. start programs or change system settings.'
+          de: 'Achtung: D-Bus-Dienste können für dich handeln, z. B. Programme starten oder Systemeinstellungen ändern.'
         corona:
-          en: "Use shell modules: %{values}"
-          de: "Shell-Module nutzen: %{values}"
+          en: 'Use shell modules: %{values}'
+          de: 'Shell-Module nutzen: %{values}'
         privileged_warning:
-          en: "Warning: %{modules} reach your passwords, notifications or windows."
-          de: "Achtung: %{modules} erreichen deine Passwörter, Benachrichtigungen oder Fenster."
+          en: 'Warning: %{modules} reach your passwords, notifications or windows.'
+          de: 'Achtung: %{modules} erreichen deine Passwörter, Benachrichtigungen oder Fenster.'
         clipboard_read:
-          en: "Read the clipboard"
-          de: "Die Zwischenablage lesen"
+          en: 'Read the clipboard'
+          de: 'Die Zwischenablage lesen'
         clipboard_write:
-          en: "Write the clipboard"
-          de: "In die Zwischenablage schreiben"
+          en: 'Write the clipboard'
+          de: 'In die Zwischenablage schreiben'
         storage:
-          en: "Store its own data"
-          de: "Eigene Daten speichern"
+          en: 'Store its own data'
+          de: 'Eigene Daten speichern'
       list_add:
         en: Add
         de: Hinzufügen
@@ -998,8 +998,8 @@ app:
           en: Avatar
           de: Avatar
         description:
-          en: "Path, ~/ path or http(s) URL of the dashboard picture."
-          de: "Pfad, ~/-Pfad oder http(s)-URL des Bilds in der Übersicht."
+          en: 'Path, ~/ path or http(s) URL of the dashboard picture.'
+          de: 'Pfad, ~/-Pfad oder http(s)-URL des Bilds in der Übersicht.'
       system_monitor:
         title:
           en: System monitor

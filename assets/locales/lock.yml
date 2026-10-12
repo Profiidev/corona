@@ -44,8 +44,8 @@ app:
       en: Could not check the password
       de: Passwort konnte nicht geprüft werden
     failed:
-      en: "%{action} failed"
-      de: "%{action} fehlgeschlagen"
+      en: '%{action} failed'
+      de: '%{action} fehlgeschlagen'
     busy:
       logout:
         en: Logging out…
