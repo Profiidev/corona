@@ -35,6 +35,10 @@ jobs:
           cache-on-failure: true
           shared-key: "linter_cache"
 
+      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
+      - name: Vendor patched gpui crates
+        run: just vendor
+
       - name: Run linters
         uses: profiidev/rust-lint-action@6592fe2b81f52c155bc416c51b6a860196a96f48 # v4
         with:

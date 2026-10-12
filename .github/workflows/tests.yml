@@ -24,6 +24,10 @@ jobs:
           cache-on-failure: true
           shared-key: "test_cache"
 
+      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
+      - name: Vendor patched gpui crates
+        run: just vendor
+
       - uses: taiki-e/install-action@badb8c3638e0b773c6c17a6025c2306a8f1c4303 # nextest
       - name: "Build and test"
         run: cargo nextest run --workspace --all-features

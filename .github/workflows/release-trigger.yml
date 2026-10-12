@@ -21,6 +21,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
+      - uses: taiki-e/install-action@0c0305935e3ef3b9e6205d176ec55ee4fce34cca # just
+      - name: Vendor patched gpui crates
+        run: just vendor
+
       - name: Update version
         id: update_version
         env:
