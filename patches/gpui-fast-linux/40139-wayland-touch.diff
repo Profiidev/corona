@@ -1,8 +1,10 @@
 diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
 index 10f4aab0db1997..d17cf763f3bcc8 100644
+diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
+index 4cce440..00b2a7f 100644
 --- a/crates/gpui_linux/src/linux/wayland/client.rs
 +++ b/crates/gpui_linux/src/linux/wayland/client.rs
-@@ -33,7 +33,7 @@ use wayland_client::{
+@@ -39,7 +39,7 @@ use wayland_client::{
      Connection, Dispatch, Proxy, QueueHandle, delegate_noop,
      protocol::{
          wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
@@ -11,9 +13,9 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
      },
  };
  use wayland_protocols::wp::pointer_gestures::zv1::client::{
-@@ -109,6 +109,14 @@ const MIN_KEYCODE: u32 = 8;
- 
- const UNKNOWN_KEYBOARD_LAYOUT_NAME: SharedString = SharedString::new_static("unknown");
+@@ -237,6 +237,14 @@ pub(crate) fn take_wayland_socket_from_environment() -> Option<UnixStream> {
+     }
+ }
  
 +const TOUCH_SCROLL_SENSITIVITY: f32 = 0.5;
 +
@@ -26,7 +28,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
  #[derive(Clone)]
  pub struct Globals {
      pub qh: QueueHandle<WaylandClientStatePtr>,
-@@ -219,6 +227,7 @@ pub(crate) struct WaylandClientState {
+@@ -364,6 +372,7 @@ pub(crate) struct WaylandClientState {
      pinch_gesture: Option<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1>,
      pinch_scale: f32,
      wl_keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -34,7 +36,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
      cursor_shape_device: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
      data_device: Option<wl_data_device::WlDataDevice>,
      primary_selection: Option<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1>,
-@@ -251,6 +260,18 @@ pub(crate) struct WaylandClientState {
+@@ -403,6 +412,18 @@ pub(crate) struct WaylandClientState {
      button_pressed: Option<MouseButton>,
      mouse_focused_window: Option<WaylandWindowStatePtr>,
      keyboard_focused_window: Option<WaylandWindowStatePtr>,
@@ -53,7 +55,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
      loop_handle: LoopHandle<'static, ()>,
      cursor_style: Option<CursorStyle>,
      cursor_hidden_window: Option<WaylandWindowStatePtr>,
-@@ -607,6 +628,7 @@ impl WaylandClient {
+@@ -1068,6 +1089,7 @@ impl WaylandConnection {
              wl_seat: seat,
              wl_pointer: None,
              wl_keyboard: None,
@@ -61,7 +63,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
              pinch_gesture: None,
              pinch_scale: 1.0,
              cursor_shape_device: None,
-@@ -659,6 +681,18 @@ impl WaylandClient {
+@@ -1126,6 +1148,18 @@ impl WaylandConnection {
              button_pressed: None,
              mouse_focused_window: None,
              keyboard_focused_window: None,
@@ -80,7 +82,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
              loop_handle: handle.clone(),
              enter_token: None,
              cursor_style: None,
-@@ -1362,6 +1396,15 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandClientStatePtr {
+@@ -2037,6 +2071,15 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandClientStatePtr {
  
                  state.wl_pointer = Some(pointer);
              }
@@ -96,7 +98,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
          }
      }
  }
-@@ -2457,6 +2500,340 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
+@@ -3173,6 +3216,340 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
      }
  }
  
@@ -438,7 +440,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
      fn event(
          _: &mut Self,
 diff --git a/crates/gpui_linux/src/linux/wayland/serial.rs b/crates/gpui_linux/src/linux/wayland/serial.rs
-index ed38f14bd130c4..3108d98d255b43 100644
+index 9f5372a..bab140c 100644
 --- a/crates/gpui_linux/src/linux/wayland/serial.rs
 +++ b/crates/gpui_linux/src/linux/wayland/serial.rs
 @@ -7,6 +7,7 @@ pub(crate) enum SerialKind {
@@ -448,4 +450,4 @@ index ed38f14bd130c4..3108d98d255b43 100644
 +    Touch,
  }
  
- #[derive(Debug)]
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]

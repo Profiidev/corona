@@ -20,7 +20,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.9";
+  gpuiVersion = "0.1.7";
 
   vendorCrate =
     pname: hash:
@@ -34,7 +34,7 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-f9FaoOJLrqPgGzH0qMMqZEQu/Up8isYBgzuJWU3Q/Os=";
+  gpui-fast = vendorCrate "gpui-fast" "sha256-NZEZjaXULKfTBW5GgpQNPXG5SFbNNhZzJIyF3i2WGnQ=";
   # Not on crates.io; patched for ShellRuntime::load_entry. Tag matches Cargo.toml.
   gpui-shell = applyPatches {
     name = "gpui-shell-patched";
@@ -42,13 +42,13 @@ let
       owner = "longbridge";
       repo = "gpui-kit";
       tag = "v0.7.3";
-      hash = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
+      hash = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
     };
     patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
     patchFlags = [ "-p1" ];
   };
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-TtGSoMKrW1JbTn6cmgwOLCX8cXXxr6meIkta0phI2vk=";
-  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-/ZwKGDOTUtMO8zYy0ypYQ9mZnSjAYKyFSoWSJr1o5FM=";
+  gpui-fast-linux = vendorCrate "gpui-fast-linux" "sha256-0ecrjlGcWbeAzqgQB1Zmtj0ADTn0Be/rKJ4oQgc0L1U=";
+  gpui-fast-wgpu = vendorCrate "gpui-fast-wgpu" "sha256-8wnj148C5Yq4ZBe8ryOUgbVkrCAbJK/1ygY5rMBuPRw=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -62,7 +62,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "gpui-base-0.7.3" = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
+      "gpui-base-0.7.3" = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
       "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
@@ -98,9 +98,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   postPatch = ''
     mkdir -p vendor
-    cp -r --no-preserve=mode,ownership ${gpui-pre} vendor/gpui-pre
-    cp -r --no-preserve=mode,ownership ${gpui-pre-linux} vendor/gpui-pre-linux
-    cp -r --no-preserve=mode,ownership ${gpui-pre-wgpu} vendor/gpui-pre-wgpu
+    cp -r --no-preserve=mode,ownership ${gpui-fast} vendor/gpui-fast
+    cp -r --no-preserve=mode,ownership ${gpui-fast-linux} vendor/gpui-fast-linux
+    cp -r --no-preserve=mode,ownership ${gpui-fast-wgpu} vendor/gpui-fast-wgpu
     cp -r --no-preserve=mode,ownership ${gpui-shell}/crates/shell vendor/gpui-shell
   '';
 

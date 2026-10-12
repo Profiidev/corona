@@ -1,7 +1,9 @@
 diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+index e232f70..2c34c20 100644
 --- a/crates/gpui_linux/src/linux/wayland/window.rs
 +++ b/crates/gpui_linux/src/linux/wayland/window.rs
-@@ -84,6 +84,10 @@ impl rwh::HasDisplayHandle for RawWindow {
+@@ -90,6 +90,10 @@ impl rwh::HasDisplayHandle for RawWindow {
      }
  }
  
@@ -12,7 +14,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  #[derive(Debug)]
  struct InProgressConfigure {
      size: Option<Size<Pixels>>,
-@@ -162,9 +166,8 @@ impl WaylandSurfaceState {
+@@ -174,9 +178,8 @@ impl WaylandSurfaceState {
                  surface.id(),
              );
  
@@ -24,7 +26,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
  
              layer_surface.set_anchor(super::layer_shell::wayland_anchor(options.anchor));
              layer_surface.set_keyboard_interactivity(
-@@ -420,10 +423,8 @@ impl WaylandSurfaceState {
+@@ -432,10 +435,8 @@ impl WaylandSurfaceState {
              WaylandSurfaceState::Xdg(WaylandXdgSurfaceState { xdg_surface, .. }) => {
                  xdg_surface.set_window_geometry(x, y, width, height);
              }
@@ -37,7 +39,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
              WaylandSurfaceState::Popup(WaylandPopupSurfaceState { xdg_surface, .. }) => {
                  xdg_surface.set_window_geometry(x, y, width, height);
              }
-@@ -552,6 +553,13 @@ impl WaylandWindowState {
+@@ -567,6 +568,13 @@ impl WaylandWindowState {
          options: WindowParams,
          parent: Option<WaylandWindowStatePtr>,
      ) -> anyhow::Result<Self> {
@@ -51,7 +53,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
          let renderer = {
              let raw_window = RawWindow {
                  window: surface.id().as_ptr().cast::<c_void>(),
-@@ -564,8 +572,8 @@ impl WaylandWindowState {
+@@ -579,8 +587,8 @@ impl WaylandWindowState {
              };
              let config = WgpuSurfaceConfig {
                  size: Size {
@@ -62,7 +64,7 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
                  },
                  transparent: true,
                  // Prefer Mailbox to avoid blocking. Falls back to FIFO if Mailbox is unsupported.
-@@ -604,7 +612,7 @@ impl WaylandWindowState {
+@@ -624,7 +632,7 @@ impl WaylandWindowState {
              outputs: HashMap::default(),
              display: None,
              renderer: Some(renderer),
@@ -71,16 +73,16 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
              scale: 1.0,
              input_handler: None,
              decorations: WindowDecorations::Client,
-@@ -612,7 +620,7 @@ impl WaylandWindowState {
-             fullscreen: false,
+@@ -633,7 +641,7 @@ impl WaylandWindowState {
              maximized: false,
+             visibility: WindowVisibility::Visible,
              tiling: Tiling::default(),
 -            window_bounds: options.bounds,
 +            window_bounds: bounds,
              in_progress_configure: None,
              resize_throttle: false,
              client,
-@@ -1467,6 +1475,15 @@ impl PlatformWindow for WaylandWindow {
+@@ -1764,6 +1772,15 @@ impl PlatformWindow for WaylandWindow {
  
      fn resize(&mut self, size: Size<Pixels>) {
          let state = self.borrow();

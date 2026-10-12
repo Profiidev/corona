@@ -1,5 +1,5 @@
-gpui_version := "0.3.9"
-gpui_crates := "gpui-pre gpui-pre-linux gpui-pre-wgpu"
+gpui_version := "0.1.7"
+gpui_crates := "gpui-fast gpui-fast-linux gpui-fast-wgpu"
 # Keep in sync with the gpui-kit tag in Cargo.toml.
 gpui_kit_tag := "v0.7.3"
 

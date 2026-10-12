@@ -1892,8 +1892,8 @@ dependencies = [
  "anyhow",
  "futures",
  "gbm",
+ "gpui-fast-wgpu",
  "gpui-kit",
- "gpui-pre-wgpu",
  "image",
  "rustix",
  "tracing",
@@ -4114,8 +4114,6 @@ dependencies = [
 [[package]]
 name = "gpui-fast"
 version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35cb4c01c92462871c34d560b4ef21b7287a355036afa1a1cafede9c13ce55a0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -4139,6 +4137,7 @@ dependencies = [
  "gpui-pre-shared-string",
  "gpui-pre-sum-tree",
  "gpui-pre-util",
+ "hdrhistogram",
  "heapless",
  "image",
  "inventory",
@@ -4225,8 +4224,6 @@ dependencies = [
 [[package]]
 name = "gpui-fast-linux"
 version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43717a4d762a5d576ec70666d6908457711c70414472d875d2177ea632de577f"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -4368,10 +4365,9 @@ dependencies = [
 [[package]]
 name = "gpui-fast-wgpu"
 version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d250af726008e598b78a603b340539c8df1734199680635df61556398114f7eb"
 dependencies = [
  "anyhow",
+ "ash",
  "bytemuck",
  "cosmic-text",
  "etagere",
@@ -4429,6 +4425,7 @@ version = "0.7.3"
 source = "git+https://github.com/longbridge/gpui-kit?tag=v0.7.3#67265a36e260ffe03c5aaebdcd8d654dbf892eab"
 dependencies = [
  "core-graphics 0.24.0",
+ "gpui-fast",
  "gpui-pre",
  "libc",
  "objc2-core-foundation",
@@ -4449,6 +4446,7 @@ dependencies = [
  "gpui-component",
  "gpui-fast",
  "gpui-fast-platform",
+ "gpui-fast-web",
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-macros",
@@ -4462,6 +4460,7 @@ version = "0.7.3"
 source = "git+https://github.com/longbridge/gpui-kit?tag=v0.7.3#67265a36e260ffe03c5aaebdcd8d654dbf892eab"
 dependencies = [
  "anyhow",
+ "gpui-fast",
  "gpui-pre",
  "gpui-pre-reqwest",
  "log",
@@ -4473,6 +4472,8 @@ dependencies = [
 [[package]]
 name = "gpui-pre"
 version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -4636,6 +4637,8 @@ dependencies = [
 [[package]]
 name = "gpui-pre-linux"
 version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e28213c3fde6f13e91ba0b74b90cbaadec9373e36a031eda98561d31059870f3"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -4907,9 +4910,10 @@ dependencies = [
 [[package]]
 name = "gpui-pre-wgpu"
 version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b1cdb26c1503bf9662ee8fbc5ab0b44b2deeee4b5c12dc67491ba6fb5fc544b"
 dependencies = [
  "anyhow",
- "ash",
  "bytemuck",
  "cosmic-text",
  "etagere",
@@ -4987,6 +4991,8 @@ dependencies = [
  "chrono",
  "fs2",
  "gpui-base",
+ "gpui-fast",
+ "gpui-fast-platform",
  "gpui-fps",
  "gpui-pre",
  "gpui-pre-platform",

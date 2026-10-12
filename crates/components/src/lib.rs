@@ -1,3 +1,6 @@
+// gpui-fast's derives expand to `gpui::` paths.
+extern crate gpui_kit as gpui;
+
 pub mod animation;
 pub mod assets;
 pub mod async_listener;

@@ -16,9 +16,10 @@ Plugin I/O: what a ported shell plugin needs to talk to the system.
   root.
 
 diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
+index 9fe8108..f2619a0 100644
 --- a/crates/shell/src/capability.rs
 +++ b/crates/shell/src/capability.rs
-@@ -28,7 +28,10 @@
+@@ -28,7 +28,10 @@ pub struct Capabilities {
      read_roots: Vec<PathBuf>,
      write_roots: Vec<PathBuf>,
      execute: ExecuteGrant,
@@ -29,7 +30,7 @@ diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
      http_requests: Vec<HttpRequestGrant>,
      storage: bool,
      clipboard_read: bool,
-@@ -151,6 +154,43 @@
+@@ -151,6 +154,43 @@ impl Capabilities {
          self
      }
  
@@ -73,7 +74,7 @@ diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
      pub fn network_hosts(mut self, hosts: impl IntoIterator<Item = String>) -> Self {
          self.network_hosts = hosts
              .into_iter()
-@@ -355,6 +395,7 @@
+@@ -355,6 +395,7 @@ pub enum CapabilityError {
      NotGranted(Access),
      OutsideRoots { path: PathBuf, access: Access },
      ExecuteDenied(String),
@@ -81,7 +82,7 @@ diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
      StorageDenied,
  }
  
-@@ -377,6 +418,10 @@
+@@ -377,6 +418,10 @@ impl std::fmt::Display for CapabilityError {
                  f,
                  "running `{command}` is not granted; add it to capabilities.fs.execute in the manifest"
              ),
@@ -93,9 +94,10 @@ diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
                  f.write_str("storage is not granted; set capabilities.storage to true")
              }
 diff --git a/crates/shell/src/engine/quickjs/host.rs b/crates/shell/src/engine/quickjs/host.rs
+index 5f8ce7a..68f1a9b 100644
 --- a/crates/shell/src/engine/quickjs/host.rs
 +++ b/crates/shell/src/engine/quickjs/host.rs
-@@ -1322,6 +1322,11 @@
+@@ -1322,6 +1322,11 @@ mod tests {
              !message.contains("capabilities"),
              "open_url must not ask for a grant: {message}"
          );
@@ -108,9 +110,10 @@ diff --git a/crates/shell/src/engine/quickjs/host.rs b/crates/shell/src/engine/q
  
      #[test]
 diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/quickjs/mod.rs
+index 18ce4c2..f62212a 100644
 --- a/crates/shell/src/engine/quickjs/mod.rs
 +++ b/crates/shell/src/engine/quickjs/mod.rs
-@@ -6725,7 +6725,7 @@
+@@ -6725,7 +6725,7 @@ globalThis.__gpui = (() => {
      h_flex: () => element(__h_flex()),
      v_flex: () => element(__v_flex()),
      svg: (path) => element(__svg(String(path))),
@@ -119,7 +122,7 @@ diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/qu
      PathBuilder: {
        fill: () => pathBuilder(true, 0),
        stroke: (width) => pathBuilder(false, finitePositive(width, "stroke width")),
-@@ -6805,7 +6805,10 @@
+@@ -6805,7 +6805,10 @@ globalThis.__gpui = (() => {
          visible_pages === undefined ? 7 : Number(visible_pages),
        ),
      Avatar: { new: () => element(__avatar()) },
@@ -131,7 +134,7 @@ diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/qu
      AvatarFallback: { new: () => element(__avatar_fallback()) },
      ProgressTrack: { new: () => element(__progress_track()) },
      ProgressIndicator: { new: () => element(__progress_indicator()) },
-@@ -7159,7 +7162,7 @@
+@@ -7159,7 +7162,7 @@ impl ShellRuntime {
                  }),
              )?;
              text_constructor(&globals, "__svg", runtime.clone(), Component::Svg)?;
@@ -140,7 +143,7 @@ diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/qu
              text_constructor(
                  &globals,
                  "__accordion",
-@@ -7189,9 +7192,10 @@
+@@ -7189,9 +7192,10 @@ impl ShellRuntime {
              )?;
              globals.set("__pagination_items", Func::from(pagination_items))?;
              constructor(&globals, "__avatar", runtime.clone(), || Component::Avatar)?;
@@ -152,7 +155,7 @@ diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/qu
                  runtime.clone(),
                  Component::AvatarImage,
              )?;
-@@ -8719,6 +8723,129 @@
+@@ -8719,6 +8723,129 @@ fn text_constructor(
      )
  }
  
@@ -283,6 +286,7 @@ diff --git a/crates/shell/src/engine/quickjs/mod.rs b/crates/shell/src/engine/qu
  ///
  /// `TableRow::new(id, row_index)` and the two cell types take their index in
 diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engine/quickjs/sandbox.rs
+index 50b0953..495c1e0 100644
 --- a/crates/shell/src/engine/quickjs/sandbox.rs
 +++ b/crates/shell/src/engine/quickjs/sandbox.rs
 @@ -54,17 +54,20 @@
@@ -308,7 +312,7 @@ diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engin
      scope::{self, ScopePhase},
  };
  
-@@ -293,13 +296,26 @@
+@@ -293,13 +296,26 @@ fn install_absent_globals(ctx: &Ctx<'_>) -> JsResult<()> {
  /// Output is captured rather than inherited. A script that runs a command
  /// almost always wants what it said, and in a windowed application a child
  /// writing to the host's stdout is writing to nowhere a user will look.
@@ -336,7 +340,7 @@ diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engin
  
      let args = args.0.unwrap_or_default();
      let cancellation = crate::process::Cancellation::new();
-@@ -312,6 +328,8 @@
+@@ -312,6 +328,8 @@ fn run<'js>(ctx: Ctx<'js>, command: String, args: Opt<Vec<String>>) -> JsResult<
              crate::process::run_bounded(
                  &command,
                  &args,
@@ -345,7 +349,7 @@ diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engin
                  crate::process::Limits::default(),
                  worker_cancellation,
              )
-@@ -319,6 +337,342 @@
+@@ -319,6 +337,342 @@ fn run<'js>(ctx: Ctx<'js>, command: String, args: Opt<Vec<String>>) -> JsResult<
      )
  }
  
@@ -688,7 +692,7 @@ diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engin
  fn next_tick<'js>(ctx: Ctx<'js>, callback: Function<'js>, args: Rest<Value<'js>>) -> JsResult<()> {
      let mut deferred = Args::new(ctx, args.len());
      for argument in args.0 {
-@@ -346,6 +700,8 @@
+@@ -346,6 +700,8 @@ pub(super) fn install_process(ctx: &Ctx<'_>) -> JsResult<()> {
      let process = Object::new(ctx.clone())?;
  
      process.set("run", Func::from(run))?;
@@ -698,12 +702,16 @@ diff --git a/crates/shell/src/engine/quickjs/sandbox.rs b/crates/shell/src/engin
  
      process.set(
 diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/engine/quickjs/scheduler.rs
+index 98ea8d9..973b6f0 100644
 --- a/crates/shell/src/engine/quickjs/scheduler.rs
 +++ b/crates/shell/src/engine/quickjs/scheduler.rs
-@@ -1127,17 +1127,43 @@
- where
-     T: for<'a> IntoJs<'a> + Send + 'static,
- {
+@@ -1124,20 +1124,46 @@ pub(super) fn actor_blocking<'js, T>(
+     ctx: &Ctx<'js>,
+     api: &'static str,
+ ) -> JsResult<(Promise<'js>, ActorCompletion<T>)>
++where
++    T: for<'a> IntoJs<'a> + Send + 'static,
++{
 +    actor_task(ctx, api, None)
 +}
 +
@@ -726,9 +734,9 @@ diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/eng
 +    api: &'static str,
 +    cancel: Option<Box<dyn Fn()>>,
 +) -> JsResult<(Promise<'js>, ActorCompletion<T>)>
-+where
-+    T: for<'a> IntoJs<'a> + Send + 'static,
-+{
+ where
+     T: for<'a> IntoJs<'a> + Send + 'static,
+ {
      let host = host(ctx, api)?;
      let (promise, resolve, reject) = ctx.promise()?;
 -    let task = register(
@@ -753,7 +761,7 @@ diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/eng
      let (completion, receiver) = async_channel::bounded(1);
      let running = task.clone();
      let foreground = host.foreground.scheduler_executor();
-@@ -1151,6 +1177,16 @@
+@@ -1151,6 +1177,16 @@ where
                          break Err("actor stopped before completing the operation".to_owned());
                      }
                      Err(async_channel::TryRecvError::Empty) => {
@@ -770,7 +778,7 @@ diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/eng
                          foreground.timer(Duration::from_millis(10)).await;
                      }
                  }
-@@ -1184,6 +1220,31 @@
+@@ -1184,6 +1220,31 @@ where
      Ok((promise, ActorCompletion(completion)))
  }
  
@@ -803,6 +811,7 @@ diff --git a/crates/shell/src/engine/quickjs/scheduler.rs b/crates/shell/src/eng
  ///
  /// [`blocking`] is this with a synchronous closure in front; this one takes the
 diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index 3f50ad7..711eb2d 100644
 --- a/crates/shell/src/engine/quickjs/standard/fetch.rs
 +++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
 @@ -1,4 +1,11 @@
@@ -818,7 +827,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  
  use rquickjs::{
      Ctx, Exception, FromJs, Function, IntoJs, Object, Promise, Result, TypedArray, Value,
-@@ -10,6 +17,8 @@
+@@ -10,6 +17,8 @@ use super::super::{host, scheduler};
  const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
  const MAX_REDIRECTS: usize = 10;
  const TIMEOUT: Duration = Duration::from_secs(30);
@@ -827,7 +836,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  
  pub(super) fn install(ctx: &Ctx<'_>) -> Result<()> {
      ctx.globals().set("fetch", Func::from(fetch))
-@@ -29,6 +38,11 @@
+@@ -29,6 +38,11 @@ fn fetch<'js>(ctx: Ctx<'js>, url: String, options: Opt<FetchOptions>) -> Result<
      #[cfg(not(test))]
      let injected_client = None;
  
@@ -839,7 +848,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
      scheduler::blocking(&ctx, "fetch(url, options)", move || {
          request(capabilities, initial, options, injected_client)
      })
-@@ -40,6 +54,9 @@
+@@ -40,6 +54,9 @@ struct FetchOptions {
      method: reqwest::Method,
      headers: reqwest::header::HeaderMap,
      body: Vec<u8>,
@@ -849,7 +858,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  }
  
  impl Default for FetchOptions {
-@@ -48,6 +65,8 @@
+@@ -48,6 +65,8 @@ impl Default for FetchOptions {
              method: reqwest::Method::GET,
              headers: reqwest::header::HeaderMap::new(),
              body: Vec::new(),
@@ -858,7 +867,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
          }
      }
  }
-@@ -60,16 +79,19 @@
+@@ -60,16 +79,19 @@ impl<'js> FromJs<'js> for FetchOptions {
          let Some(object) = value.into_object() else {
              return Err(Exception::throw_type(
                  ctx,
@@ -881,7 +890,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
                      ),
                  ));
              }
-@@ -81,10 +103,27 @@
+@@ -81,10 +103,27 @@ impl<'js> FromJs<'js> for FetchOptions {
          };
          let headers = parse_headers(ctx, object.get("headers")?)?;
          let body = parse_body(ctx, object.get("body")?)?;
@@ -909,7 +918,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
          })
      }
  }
-@@ -225,16 +264,48 @@
+@@ -225,16 +264,48 @@ fn authorize_request(
  
  fn request(
      capabilities: crate::Capabilities,
@@ -965,7 +974,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  
      let mut method = options.method;
      let mut headers = options.headers;
-@@ -262,23 +333,7 @@
+@@ -262,23 +333,7 @@ fn request(
              continue;
          }
  
@@ -990,7 +999,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
      }
      Err(format!("fetch exceeded the {MAX_REDIRECTS} redirect limit"))
  }
-@@ -312,16 +367,16 @@
+@@ -312,16 +367,16 @@ fn rewrite_redirect_request(
      }
  }
  
@@ -1010,7 +1019,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  }
  
  fn authorize_redirect(
-@@ -618,7 +673,7 @@
+@@ -618,7 +673,7 @@ mod tests {
  struct FetchResponse {
      status: u16,
      url: String,
@@ -1019,7 +1028,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
  }
  
  impl<'js> IntoJs<'js> for FetchResponse {
-@@ -627,23 +682,24 @@
+@@ -627,23 +682,24 @@ impl<'js> IntoJs<'js> for FetchResponse {
          response.set("status", self.status)?;
          response.set("ok", (200..300).contains(&self.status))?;
          response.set("url", self.url)?;
@@ -1050,7 +1059,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
                      Ok(value) => resolve.call::<_, ()>((value,))?,
                      Err(rquickjs::Error::Exception) => {
                          reject.call::<_, ()>((ctx.catch(),))?;
-@@ -653,6 +709,112 @@
+@@ -653,6 +709,112 @@ impl<'js> IntoJs<'js> for FetchResponse {
                  Ok(promise)
              }),
          )?;
@@ -1063,9 +1072,9 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
 +                Ok(promise)
 +            }),
 +        )?;
-         Ok(response.into_value())
-     }
- }
++        Ok(response.into_value())
++    }
++}
 +
 +/// `fetch(url, { stream: true })`: the live response, read chunk by chunk with
 +/// no body limit. The status is known; the body is not read yet.
@@ -1141,9 +1150,9 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
 +                }
 +            }),
 +        )?;
-+        Ok(response.into_value())
-+    }
-+}
+         Ok(response.into_value())
+     }
+ }
 +
 +fn is_timeout(error: &std::io::Error) -> bool {
 +    error.kind() == std::io::ErrorKind::TimedOut
@@ -1164,9 +1173,10 @@ diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/sr
 +    }
 +}
 diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/engine/quickjs/standard/net.rs
+index 8410cc6..9de8a5c 100644
 --- a/crates/shell/src/engine/quickjs/standard/net.rs
 +++ b/crates/shell/src/engine/quickjs/standard/net.rs
-@@ -6,7 +6,7 @@
+@@ -6,7 +6,7 @@ use std::{
  };
  
  use rquickjs::{
@@ -1175,7 +1185,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/
      function::{Func, Opt},
      module::{Declarations, Exports, ModuleDef},
  };
-@@ -37,7 +37,25 @@
+@@ -37,7 +37,25 @@ impl ModuleDef for NetModule {
      }
  }
  
@@ -1202,7 +1212,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/
      let normalized = host_name.to_ascii_lowercase();
      if !host::capabilities().may_reach(&normalized) {
          return Err(Exception::throw_type(
-@@ -50,26 +68,111 @@
+@@ -50,26 +68,111 @@ fn connect<'js>(ctx: Ctx<'js>, host_name: String, port: u16) -> Result<Promise<'
      scheduler::blocking(&ctx, "net.connect(host, port)", move || {
          let operation = format!("{host_name}:{port}");
          let (stream, _) = network_connect::connect_tcp(&host_name, port, TIMEOUT, &operation)?;
@@ -1327,7 +1337,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/
  }
  
  struct ReadChunk(Option<Vec<u8>>);
-@@ -106,7 +209,20 @@
+@@ -106,7 +209,20 @@ impl<'js> IntoJs<'js> for Socket {
                  })
              }),
          )?;
@@ -1349,7 +1359,7 @@ diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/
          socket.set(
              "read",
              Func::from(
-@@ -118,30 +234,22 @@
+@@ -118,30 +234,22 @@ impl<'js> IntoJs<'js> for Socket {
                              &format!("socket read exceeded the {IO_LIMIT} byte limit"),
                          ));
                      }
@@ -1393,9 +1403,10 @@ diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/
      }
  }
 diff --git a/crates/shell/src/engine/quickjs/standard/process.rs b/crates/shell/src/engine/quickjs/standard/process.rs
+index 3d35e33..fd666ad 100644
 --- a/crates/shell/src/engine/quickjs/standard/process.rs
 +++ b/crates/shell/src/engine/quickjs/standard/process.rs
-@@ -3,7 +3,7 @@
+@@ -3,7 +3,7 @@ use rquickjs::{
      module::{Declarations, Exports, ModuleDef},
  };
  
@@ -1404,31 +1415,11 @@ diff --git a/crates/shell/src/engine/quickjs/standard/process.rs b/crates/shell/
  
  pub(super) struct ProcessModule;
  
-diff --git a/crates/shell/src/materialize/components/avatar.rs b/crates/shell/src/materialize/components/avatar.rs
---- a/crates/shell/src/materialize/components/avatar.rs
-+++ b/crates/shell/src/materialize/components/avatar.rs
-@@ -110,7 +110,7 @@
-     cx: &mut App,
- ) -> Option<AvatarImage> {
-     let node = arena.node(slot)?;
--    let Some(Component::AvatarImage(path)) = node.component() else {
-+    let Some(Component::AvatarImage(spec)) = node.component() else {
-         tracing::warn!(
-             "an Avatar's `image` slot must be an AvatarImage.new(path); a {} there is not \
-              rendered at all",
-@@ -119,7 +119,7 @@
-         return None;
-     };
-     let (refinement, _, _) = resolve_slot(arena, slot, "AvatarImage", window, cx);
--    let mut image = AvatarImage::new(gpui::SharedString::from(path.clone()));
-+    let mut image = AvatarImage::new(spec);
-     image.style().refine(&refinement);
-     Some(image)
- }
 diff --git a/crates/shell/src/materialize.rs b/crates/shell/src/materialize.rs
+index 7c9695f..82927f6 100644
 --- a/crates/shell/src/materialize.rs
 +++ b/crates/shell/src/materialize.rs
-@@ -1430,9 +1430,9 @@
+@@ -1430,9 +1430,9 @@ fn materialize_component(
          ),
          Component::AvatarImage(_) => components::avatar::orphan("AvatarImage"),
          Component::AvatarFallback => components::avatar::orphan("AvatarFallback"),
@@ -1440,7 +1431,30 @@ diff --git a/crates/shell/src/materialize.rs b/crates/shell/src/materialize.rs
              image.style().refine(&refinement);
              image.into_any_element()
          }
+diff --git a/crates/shell/src/materialize/components/avatar.rs b/crates/shell/src/materialize/components/avatar.rs
+index 35b822f..a2a734c 100644
+--- a/crates/shell/src/materialize/components/avatar.rs
++++ b/crates/shell/src/materialize/components/avatar.rs
+@@ -110,7 +110,7 @@ fn avatar_image(
+     cx: &mut App,
+ ) -> Option<AvatarImage> {
+     let node = arena.node(slot)?;
+-    let Some(Component::AvatarImage(path)) = node.component() else {
++    let Some(Component::AvatarImage(spec)) = node.component() else {
+         tracing::warn!(
+             "an Avatar's `image` slot must be an AvatarImage.new(path); a {} there is not \
+              rendered at all",
+@@ -119,7 +119,7 @@ fn avatar_image(
+         return None;
+     };
+     let (refinement, _, _) = resolve_slot(arena, slot, "AvatarImage", window, cx);
+-    let mut image = AvatarImage::new(gpui::SharedString::from(path.clone()));
++    let mut image = AvatarImage::new(spec);
+     image.style().refine(&refinement);
+     Some(image)
+ }
 diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
+index 49028b8..fade80a 100644
 --- a/crates/shell/src/process.rs
 +++ b/crates/shell/src/process.rs
 @@ -1,12 +1,12 @@
@@ -1458,7 +1472,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
          atomic::{AtomicBool, AtomicU8, Ordering},
          mpsc,
      },
-@@ -69,24 +69,61 @@
+@@ -69,24 +69,61 @@ pub(crate) struct Output {
      pub(crate) stderr: String,
  }
  
@@ -1528,7 +1542,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
      let mut process_tree = ProcessTree::new()?;
      let mut child = command_builder
          .spawn()
-@@ -164,6 +201,101 @@
+@@ -164,6 +201,101 @@ pub(crate) fn run_bounded(
      })
  }
  
@@ -1630,7 +1644,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
  fn resolve_executable(command: &str, path: Option<&OsStr>) -> Result<PathBuf, String> {
      let command_path = Path::new(command);
      if command_path.components().count() > 1 {
-@@ -442,6 +574,17 @@
+@@ -442,6 +574,17 @@ mod tests {
      #[cfg(unix)]
      use std::ffi::OsStr;
  
@@ -1648,7 +1662,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
      #[cfg(unix)]
      #[test]
      fn resolves_a_bare_command_from_the_host_path_before_clearing_the_environment() {
-@@ -470,6 +613,8 @@
+@@ -470,6 +613,8 @@ mod tests {
          let result = run_bounded(
              "/bin/sh",
              &["-c".into(), "printf out; printf err >&2".into()],
@@ -1657,7 +1671,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 1024),
              Cancellation::new(),
          )
-@@ -485,6 +630,8 @@
+@@ -485,6 +630,8 @@ mod tests {
          let result = run_bounded(
              "/usr/bin/env",
              &[],
@@ -1666,7 +1680,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 1024),
              Cancellation::new(),
          )
-@@ -500,6 +647,8 @@
+@@ -500,6 +647,8 @@ mod tests {
          let error = run_bounded(
              "/bin/sh",
              &["-c".into(), "sleep 5".into()],
@@ -1675,7 +1689,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_millis(30), 1024),
              Cancellation::new(),
          )
-@@ -514,6 +663,8 @@
+@@ -514,6 +663,8 @@ mod tests {
          let error = run_bounded(
              "/bin/sh",
              &["-c".into(), "(sleep 5) & exit 0".into()],
@@ -1684,7 +1698,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_millis(50), 1024),
              Cancellation::new(),
          )
-@@ -528,6 +679,8 @@
+@@ -528,6 +679,8 @@ mod tests {
          let error = run_bounded(
              "/bin/sh",
              &["-c".into(), "yes x | head -c 4096".into()],
@@ -1693,7 +1707,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 128),
              Cancellation::new(),
          )
-@@ -541,6 +694,8 @@
+@@ -541,6 +694,8 @@ mod tests {
          let error = run_bounded(
              "/bin/sh",
              &["-c".into(), "yes x | head -c 4096 >&2".into()],
@@ -1702,7 +1716,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 128),
              Cancellation::new(),
          )
-@@ -557,6 +712,8 @@
+@@ -557,6 +712,8 @@ mod tests {
          let error = run_bounded(
              "/bin/sh",
              &["-c".into(), "sleep 5".into()],
@@ -1711,7 +1725,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 1024),
              cancellation,
          )
-@@ -565,12 +722,95 @@
+@@ -565,12 +722,95 @@ mod tests {
          assert!(started.elapsed() < Duration::from_secs(1));
      }
  
@@ -1807,7 +1821,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 1024),
              Cancellation::new(),
          )
-@@ -592,6 +832,8 @@
+@@ -592,6 +832,8 @@ mod tests {
                  "/C".into(),
                  "ping.exe -n 20 127.0.0.1 >NUL".into(),
              ],
@@ -1816,7 +1830,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_millis(100), 1024),
              Cancellation::new(),
          )
-@@ -614,6 +856,8 @@
+@@ -614,6 +856,8 @@ mod tests {
                  "/C".into(),
                  "ping.exe -n 20 127.0.0.1 >NUL".into(),
              ],
@@ -1825,7 +1839,7 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Limits::for_test(Duration::from_secs(2), 1024),
              cancellation,
          )
-@@ -662,6 +906,8 @@
+@@ -662,6 +906,8 @@ mod tests {
                  "/C".into(),
                  parent_script.into_os_string().into_string().unwrap(),
              ],
@@ -1835,9 +1849,10 @@ diff --git a/crates/shell/src/process.rs b/crates/shell/src/process.rs
              Cancellation::new(),
          )
 diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
+index 6390940..8d9f0b1 100644
 --- a/crates/shell/src/spec.rs
 +++ b/crates/shell/src/spec.rs
-@@ -228,6 +228,46 @@
+@@ -228,6 +228,46 @@ impl PartialEq for TextViewSpec {
      }
  }
  
@@ -1884,7 +1899,7 @@ diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
  /// Which constructor produced a node.
  #[derive(Clone, Debug, PartialEq)]
  pub(crate) enum Component {
-@@ -306,12 +346,12 @@
+@@ -306,12 +346,12 @@ pub(crate) enum Component {
      /// A component of its own rather than a plain `Image` in the slot, because
      /// base's `Avatar::image` takes an `AvatarImage` and not an element: the
      /// slot has to be resolved into that type, which needs the path back.
@@ -1900,7 +1915,7 @@ diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
      /// A native GPUI path. Its geometry is retained in method operations and
      /// resolved against final element bounds during prepaint.
      Path {
-@@ -1333,7 +1373,6 @@
+@@ -1333,7 +1373,6 @@ impl SpecArena {
              | Component::Checkbox(value)
              | Component::Switch(value)
              | Component::Svg(value)
@@ -1908,7 +1923,7 @@ diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
              | Component::Tabs(value)
              | Component::Tab(value)
              | Component::Progress(value)
-@@ -1349,6 +1388,7 @@
+@@ -1349,6 +1388,7 @@ impl SpecArena {
              // The focus handle is part of what a `DatePicker` *is* rather than
              // something called on it, so the dump carries it beside the id the
              // way a row carries its index.
@@ -1917,9 +1932,10 @@ diff --git a/crates/shell/src/spec.rs b/crates/shell/src/spec.rs
              Component::Table(value)
              | Component::TableHeader(value)
 diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
+index 7cf476c..ff3eead 100644
 --- a/crates/shell/src/tests/network.rs
 +++ b/crates/shell/src/tests/network.rs
-@@ -405,10 +405,9 @@
+@@ -405,10 +405,9 @@ fn net_connect_is_bounded_and_capability_gated(cx: &mut TestAppContext) {
  
      let source = NET_PROBE.replace("__PORT__", &port.to_string());
      let (_runtime, view, mut context) = probe(cx, &source);
@@ -1932,7 +1948,7 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
          "raw TCP reads should preserve bytes and report EOF"
      );
      server.join().expect("TCP server");
-@@ -432,8 +431,7 @@
+@@ -432,8 +431,7 @@ fn net_close_does_not_wait_for_a_pending_read(cx: &mut TestAppContext) {
      let started = std::time::Instant::now();
      context.run_until_parked();
      let close_elapsed = started.elapsed();
@@ -1942,7 +1958,7 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
  
      server.join().expect("TCP server");
      assert!(
-@@ -1144,6 +1142,417 @@
+@@ -1144,6 +1142,431 @@ fn two_runtimes_keep_distinct_network_policies(cx: &mut TestAppContext) {
      server.join().expect("HTTP server");
  }
  
@@ -2195,6 +2211,13 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
 +    let (runtime, view, mut context) = probe(cx, &source);
 +    settle(&mut context, &view, |text| text.contains("connected"));
 +    drop(view);
++    // gpui-fast's window keeps its last frame, and the view drawn in it, until
++    // the next one.
++    context.draw(
++        gpui::Point::default(),
++        gpui::size(gpui::px(1.), gpui::px(1.)),
++        |_, _| gpui::div(),
++    );
 +    let deadline = std::time::Instant::now() + Duration::from_secs(5);
 +    let closed = loop {
 +        context.executor().advance_clock(Duration::from_millis(10));
@@ -2306,6 +2329,13 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
 +    let (runtime, view, mut context) = probe(cx, &source);
 +    settle(&mut context, &view, |text| text.contains("reading"));
 +    drop(view);
++    // gpui-fast's window keeps its last frame, and the view drawn in it, until
++    // the next one.
++    context.draw(
++        gpui::Point::default(),
++        gpui::size(gpui::px(1.), gpui::px(1.)),
++        |_, _| gpui::div(),
++    );
 +    let deadline = std::time::Instant::now() + Duration::from_secs(5);
 +    let closed = loop {
 +        context.executor().advance_clock(Duration::from_millis(10));
@@ -2360,10 +2390,11 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
  fn probe(
      cx: &mut TestAppContext,
      source: &str,
-@@ -1152,8 +1561,24 @@
+@@ -1151,9 +1574,25 @@ fn probe(
+     std::rc::Rc<ShellRuntime>,
      Entity<ScriptView>,
      VisualTestContext,
- ) {
++) {
 +    probe_with(
 +        cx,
 +        Capabilities::new().network_hosts(["127.0.0.1".to_owned()]),
@@ -2379,7 +2410,7 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
 +    std::rc::Rc<ShellRuntime>,
 +    Entity<ScriptView>,
 +    VisualTestContext,
-+) {
+ ) {
      cx.update(crate::init);
 -    crate::set_capabilities(Capabilities::new().network_hosts(["127.0.0.1".to_owned()]));
 +    crate::set_capabilities(capabilities);
@@ -2387,9 +2418,10 @@ diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.
      runtime.use_direct_http_for_tests();
      cx.update(|cx| runtime.set_global(cx));
 diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.rs
+index ac120b6..c5760dc 100644
 --- a/crates/shell/src/tests/process.rs
 +++ b/crates/shell/src/tests/process.rs
-@@ -162,8 +162,15 @@
+@@ -162,8 +162,15 @@ fn process_start_failure_rejects_the_javascript_promise(cx: &mut TestAppContext)
  #[cfg(unix)]
  #[gpui::test]
  fn process_output_limit_rejects_the_javascript_promise(cx: &mut TestAppContext) {
@@ -2407,10 +2439,11 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
  
      context.run_until_parked();
      draw(&mut context, &object);
-@@ -202,6 +209,280 @@
+@@ -201,6 +208,287 @@ fn process_is_denied_and_ambient_authority_is_absent_on_every_platform(cx: &mut
+     );
  }
  
- #[cfg(unix)]
++#[cfg(unix)]
 +const SPAWN_ROUND_TRIP_PROBE: &str = r#"
 +import { View } from "gpui-kit";
 +import { v_flex } from "gpui-base";
@@ -2568,6 +2601,13 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
 +    assert!(alive(pid), "the child should still be running");
 +
 +    drop(view);
++    // gpui-fast's window keeps its last frame, and the view drawn in it, until
++    // the next one.
++    context.draw(
++        gpui::Point::default(),
++        gpui::size(gpui::px(1.), gpui::px(1.)),
++        |_, _| gpui::div(),
++    );
 +    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
 +    while alive(pid) {
 +        assert!(
@@ -2684,11 +2724,10 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
 +    }
 +}
 +
-+#[cfg(unix)]
+ #[cfg(unix)]
  fn probe(
      cx: &mut TestAppContext,
-     command: &str,
-@@ -212,10 +490,27 @@
+@@ -212,10 +500,27 @@ fn probe(
      Entity<ScriptView>,
      VisualTestContext,
  ) {
@@ -2720,9 +2759,10 @@ diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.
      let runtime = ShellRuntime::new_isolated().expect("runtime");
      cx.update(|cx| runtime.set_global(cx));
 diff --git a/crates/shell/src/tests/render.rs b/crates/shell/src/tests/render.rs
+index 1efe65d..d70b088 100644
 --- a/crates/shell/src/tests/render.rs
 +++ b/crates/shell/src/tests/render.rs
-@@ -2370,6 +2370,86 @@
+@@ -2370,6 +2370,86 @@ export default class BrandImage extends View {
      draw(&mut context, &view);
  }
  
@@ -2810,9 +2850,10 @@ diff --git a/crates/shell/src/tests/render.rs b/crates/shell/src/tests/render.rs
  fn an_external_link_survives_the_script_render(cx: &mut TestAppContext) {
      cx.update(crate::init);
 diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
+index 35dcebd..d1159e6 100644
 --- a/crates/shell/src/typings.rs
 +++ b/crates/shell/src/typings.rs
-@@ -2038,13 +2038,18 @@
+@@ -2038,13 +2038,18 @@ const ELEMENTS: &str = r#"
    export function svg(path: string): NativeElement;
  
    /**
@@ -2835,7 +2876,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
  
    /** The visible items, as a half-open `[start, end)` interval. */
    export interface ItemRange {
-@@ -2429,14 +2434,14 @@
+@@ -2429,14 +2434,14 @@ const BASE: &str = r#"  /** A row. */
     */
    export const Avatar: PartType;
    /**
@@ -2853,7 +2894,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
    /**
     * The fallback slot: an ordinary box holding whatever stands in for the
     * image — initials, a shape, an `svg(...)`.
-@@ -3716,12 +3721,46 @@
+@@ -3716,12 +3721,46 @@ declare module "console" {
  }
  declare module "process" {
    export interface CommandOutput { code: number; stdout: string; stderr: string; }
@@ -2902,7 +2943,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
    export default process;
  }
  declare module "os" {
-@@ -3747,11 +3786,16 @@
+@@ -3747,11 +3786,16 @@ declare module "fs/promises" {
  declare module "net" {
    export interface Socket {
      write(data: string): Promise<void>;
@@ -2920,7 +2961,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
    const net: { connect: typeof connect };
    export default net;
  }
-@@ -3778,8 +3822,21 @@
+@@ -3778,8 +3822,21 @@ interface ShellFetchResponse {
    readonly status: number;
    readonly ok: boolean;
    readonly url: string;
@@ -2942,7 +2983,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
  }
  interface ShellFetchOptions {
    /**
-@@ -3791,7 +3848,15 @@
+@@ -3791,7 +3848,15 @@ interface ShellFetchOptions {
    /** Client-managed framing headers such as Host and Content-Length are refused. */
    headers?: Record<string, string>;
    body?: string | Uint8Array;
@@ -2958,7 +2999,7 @@ diff --git a/crates/shell/src/typings.rs b/crates/shell/src/typings.rs
  declare function fetch(url: string, options?: ShellFetchOptions): Promise<ShellFetchResponse>;
  declare const process: typeof import("process").default;
  "#;
-@@ -4446,6 +4511,13 @@
+@@ -4446,6 +4511,13 @@ mod tests {
          assert!(!declarations.contains("export const fs: FileSystem"));
          assert!(!declarations.contains("export const process: Process"));
          assert!(declarations.contains("declare function fetch"));

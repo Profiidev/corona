@@ -9,7 +9,7 @@ anyhow.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 futures.workspace = true
 gbm = { version = "0.18.0", default-features = false }
-gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }
+gpui_wgpu = { package = "gpui-fast-wgpu", version = "0.1.7" }
 tracing.workspace = true
 rustix = { workspace = true, features = ["fs"] }
 wayland-client.workspace = true

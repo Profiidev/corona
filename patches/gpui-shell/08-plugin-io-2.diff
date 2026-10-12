@@ -17,10 +17,10 @@ still lacked.
   owner goes away the child's group gets SIGTERM, then SIGKILL 2 s later.
 
 diff --git a/crates/shell/Cargo.toml b/crates/shell/Cargo.toml
-index 5eadcb2..9a61454 100644
+index 6da6ea9..7feaddc 100644
 --- a/crates/shell/Cargo.toml
 +++ b/crates/shell/Cargo.toml
-@@ -28,6 +28,10 @@ quickjs = [
+@@ -29,6 +29,10 @@ quickjs = [
      "dep:quickjs-jit-stdlib",
      "dep:reqwest",
      "dep:tungstenite",
@@ -31,7 +31,7 @@ index 5eadcb2..9a61454 100644
  ]
  
  [dependencies]
-@@ -55,6 +59,11 @@ sha2 = "0.10"
+@@ -58,6 +62,11 @@ sha2 = "0.10"
  wait-timeout = "0.2"
  reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = ["charset", "http2", "macos-system-configuration", "multipart", "rustls-tls-native-roots", "socks", "stream", "blocking"], optional = true }
  tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots", "url"], optional = true }
@@ -824,7 +824,7 @@ index 0699502..fcfbd56 100644
      cx.update(crate::init);
      crate::set_capabilities(capabilities);
 diff --git a/crates/shell/src/tests/network.rs b/crates/shell/src/tests/network.rs
-index 7f09e26..23e256f 100644
+index ff3eead..da13c28 100644
 --- a/crates/shell/src/tests/network.rs
 +++ b/crates/shell/src/tests/network.rs
 @@ -1373,6 +1373,166 @@ fn net_refuses_an_ungranted_unix_socket(cx: &mut TestAppContext) {
@@ -995,10 +995,10 @@ index 7f09e26..23e256f 100644
  fn dropping_the_view_closes_a_socket_with_a_pending_read(cx: &mut TestAppContext) {
      let listener = TcpListener::bind("127.0.0.1:0").expect("TCP listener");
 diff --git a/crates/shell/src/tests/process.rs b/crates/shell/src/tests/process.rs
-index 503811e..c2a9a7e 100644
+index c5760dc..a1b139e 100644
 --- a/crates/shell/src/tests/process.rs
 +++ b/crates/shell/src/tests/process.rs
-@@ -454,6 +454,79 @@ fn spawn_refuses_malformed_options_and_bounds_its_io(cx: &mut TestAppContext) {
+@@ -461,6 +461,86 @@ fn spawn_refuses_malformed_options_and_bounds_its_io(cx: &mut TestAppContext) {
      assert!(!rendered.contains("allowed"), "{rendered}");
  }
  
@@ -1056,6 +1056,13 @@ index 503811e..c2a9a7e 100644
 +        .expect("the child's pid");
 +
 +    drop(view);
++    // gpui-fast's window keeps its last frame, and the view drawn in it, until
++    // the next one.
++    context.draw(
++        gpui::Point::default(),
++        gpui::size(gpui::px(1.), gpui::px(1.)),
++        |_, _| gpui::div(),
++    );
 +    let started = std::time::Instant::now();
 +    let mut survived_sigterm = false;
 +    while alive(pid) {
