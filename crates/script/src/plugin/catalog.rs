@@ -15,6 +15,8 @@ use crate::{
 };
 
 pub const CATALOG_FILENAME: &str = "catalog.toml";
+/// Shown for a directory plugin its source's catalog does not describe
+const README: &str = "README.md";
 
 /// `catalog.toml` at the root of a git source: every plugin it offers
 #[derive(Deserialize, JsonSchema)]
@@ -128,6 +130,11 @@ pub fn parse_catalog(source: &str, text: &str) -> Result<Vec<CatalogEntry>> {
 
 /// The plugins in the subdirectories of `dir`, from their manifests
 pub fn scan_dir(dir: &Path) -> Vec<CatalogEntry> {
+  // a checked out source repository lists icons and READMEs in its catalog
+  let listed = fs::read_to_string(dir.join(CATALOG_FILENAME))
+    .ok()
+    .and_then(|text| parse_catalog(&dir.display().to_string(), &text).ok())
+    .unwrap_or_default();
   let mut entries: Vec<CatalogEntry> = fs::read_dir(dir)
     .into_iter()
     .flatten()
@@ -136,7 +143,19 @@ pub fn scan_dir(dir: &Path) -> Vec<CatalogEntry> {
     .filter_map(|entry| {
       let subdir = entry.file_name().to_str()?.to_string();
       match ManifestFile::read(&entry.path()) {
-        Ok(manifest) => Some(CatalogEntry::from_manifest(manifest, subdir)),
+        Ok(manifest) => {
+          let mut found = CatalogEntry::from_manifest(manifest, subdir);
+          if let Some(row) = listed.iter().find(|row| row.id == found.id) {
+            found.author = row.author.clone();
+            found.icon = row.icon.clone();
+            found.readme = row.readme.clone();
+            found.tags = row.tags.clone();
+          }
+          if found.readme.is_none() && entry.path().join(README).is_file() {
+            found.readme = Some(README.to_string());
+          }
+          Some(found)
+        }
         Err(e) => {
           tracing::warn!("{e:#}");
           None
@@ -260,13 +279,28 @@ version = "9"
       "one",
       "id = \"com.one\"\nname = \"One\"\nversion = \"1\"\ndescription = \"d\"",
     );
+    write("two", "id = \"com.two\"\nname = \"Two\"");
+    fs::write(tmp.path().join("two/README.md"), "# Two").unwrap();
+    fs::write(
+      tmp.path().join(CATALOG_FILENAME),
+      "[[plugin]]\nid = \"com.one\"\nname = \"Old\"\nversion = \"0\"\nicon = \"i.png\"\nreadme = \"docs.md\"",
+    )
+    .unwrap();
     write("broken", "id =");
     fs::create_dir_all(tmp.path().join("empty")).unwrap();
     let entries = scan_dir(tmp.path());
-    assert_eq!(entries.len(), 1);
+    assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].id, "com.one");
     assert_eq!(entries[0].subdir(), "one");
     assert_eq!(entries[0].description.as_deref(), Some("d"));
+    // the manifest's name and version, the catalog's files
+    assert_eq!(
+      (entries[0].name.as_str(), entries[0].version.as_str()),
+      ("One", "1")
+    );
+    assert_eq!(entries[0].icon.as_deref(), Some("i.png"));
+    assert_eq!(entries[0].readme.as_deref(), Some("docs.md"));
+    assert_eq!(entries[1].readme.as_deref(), Some("README.md"));
     assert!(scan_dir(&tmp.path().join("missing")).is_empty());
   }
 

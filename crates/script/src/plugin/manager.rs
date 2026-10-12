@@ -342,10 +342,23 @@ impl PluginManager {
   }
 
   /// Enables plugin `id` with the grants the user saw in `approval`
-  pub fn approve(id: &str, approval: Approval, cx: &mut App) {
+  pub fn approve(id: &str, mut approval: Approval, cx: &mut App) {
     let result = corona_config::update(cx, |c| {
       if !c.plugins.is_enabled(id) {
         c.plugins.enabled.push(id.to_string());
+      }
+      // a dev override keeps the source approved before, so turning the dev
+      // source off again needs no new approval
+      let dev = |name: &str| {
+        c.plugins
+          .source
+          .iter()
+          .any(|s| s.name == name && s.kind == SourceKind::Dev)
+      };
+      if let Some(old) = c.plugins.approved.get(id)
+        && dev(&approval.source)
+      {
+        approval.source = old.source.clone();
       }
       c.plugins.approved.insert(id.to_string(), approval);
     });
@@ -614,11 +627,17 @@ impl PluginManager {
   }
 
   pub fn set_source_enabled(name: &str, enabled: bool, cx: &mut App) {
+    let mut turned_on = None;
     let result = corona_config::update(cx, |c| {
       if let Some(source) = c.plugins.source.iter_mut().find(|s| s.name == name) {
         source.enabled = enabled;
+        turned_on = enabled.then(|| source.clone());
       }
     });
+    // so the settings app lists what it offers right away
+    if let (Ok(()), Some(source)) = (&result, turned_on) {
+      Self::read_catalog(source, false, cx);
+    }
     Self::record_source(name, result, cx);
   }
 
@@ -904,6 +923,43 @@ mod tests {
     assert_eq!(active(cx), [("com.mine".to_string(), "local".to_string())]);
     approve_again(cx, "com.both");
     assert_eq!(active(cx)[0], ("com.both".to_string(), "local".to_string()));
+  }
+
+  #[gpui::test]
+  fn dev_override_keeps_the_approval(cx: &mut TestAppContext) {
+    let env = env(cx, |_, base| {
+      format!(
+        "[[plugins.source]]\nname = \"dev\"\nkind = \"dev\"\nlocation = \"{}\"\nenabled = false\n",
+        base.join("dev").display()
+      )
+    });
+    plugin(&env.base.join("data/corona/plugins/a"), "com.a", "1");
+    let work = env.base.join("dev/a-work");
+    plugin(&work, "com.a", "2");
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
+    cx.run_until_parked();
+
+    let on = |enabled, cx: &mut TestAppContext| {
+      cx.update(|cx| PluginManager::set_source_enabled("dev", enabled, cx));
+      active(cx)
+    };
+    let from = |source: &str| vec![("com.a".to_string(), source.to_string())];
+    assert_eq!(on(true, cx), from("dev"));
+    cx.run_until_parked();
+    let listed = cx.update(|cx| PluginManager::list(cx));
+    assert_eq!(
+      listed[0].source, "dev",
+      "listed without reopening the settings"
+    );
+    assert_eq!(on(false, cx), from("local"));
+
+    // new grants in the checkout still ask, and stay out of the local approval
+    let grant = "[capabilities.fs]\nexecute = [\"sh\"]\n";
+    fs::write(work.join("plugin.toml"), manifest("com.a", "3") + grant).unwrap();
+    assert!(on(true, cx).is_empty());
+    approve_again(cx, "com.a");
+    assert_eq!(active(cx), from("dev"));
+    assert_eq!(config(cx).approved["com.a"].source, "local");
   }
 
   /// Approves what plugin `id` asks for now, when it waits for that

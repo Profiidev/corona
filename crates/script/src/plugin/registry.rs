@@ -171,10 +171,11 @@ fn winners(
 
 /// Whether the user approved `found` as it is: from its source, with its
 /// capabilities. An update, a rescan or another source winning that changes
-/// either needs a new approval.
+/// either needs a new approval. A dev source is the user's own checkout, so
+/// one overriding an approved plugin only needs the same capabilities.
 pub fn is_approved(config: &PluginsConfig, found: &Found) -> bool {
   config.approved.get(&found.manifest.id).is_some_and(|a| {
-    a.source == found.origin.source
+    (a.source == found.origin.source || found.origin.kind == SourceKind::Dev)
       && toml::from_str::<CapabilitiesFile>(&a.capabilities)
         .is_ok_and(|capabilities| capabilities == found.capabilities)
   })
