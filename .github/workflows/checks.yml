@@ -44,7 +44,7 @@ jobs:
         run: npm install -g oxfmt
 
       - name: Run linters
-        uses: profiidev/rust-lint-action@7d1363b6d697a0c39e344afc86ee6d289f8acfce # feat/fork-checks
+        uses: profiidev/rust-lint-action@7185d73733d1ab71a15c74934a2349622ad60740 # v4
         with:
           rustfmt: true
           clippy: true
