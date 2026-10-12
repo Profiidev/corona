@@ -34,7 +34,7 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-f9FaoOJLrqPgGzH0qMMqZEQu/Up8isYBgzuJWU3Q/Os=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-Z+V7aBXIgjM37GLAkFBA0wS6LV0pzy+kgwd7GloMatM=";
   # Not on crates.io; patched for ShellRuntime::load_entry. Tag matches Cargo.toml.
   gpui-shell = applyPatches {
     name = "gpui-shell-patched";
@@ -42,13 +42,13 @@ let
       owner = "longbridge";
       repo = "gpui-kit";
       tag = "v0.7.3";
-      hash = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
+      hash = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
     };
     patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
     patchFlags = [ "-p1" ];
   };
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-TtGSoMKrW1JbTn6cmgwOLCX8cXXxr6meIkta0phI2vk=";
-  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-/ZwKGDOTUtMO8zYy0ypYQ9mZnSjAYKyFSoWSJr1o5FM=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-Jer7t/39KJZT1Egahxc8NuXezMbPBbwD1ZS1smrsePI=";
+  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-2hqcogWqY1Un/561++THrKPNjQ+k54ufQEw6c79YljE=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -62,7 +62,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "gpui-base-0.7.3" = "sha256-NT59GK9+b1WHOPhJz5JF7Ql1P3Wllw6nmE3Zz+lSpfg=";
+      "gpui-base-0.7.3" = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
       "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
       "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
       "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
