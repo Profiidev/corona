@@ -1,7 +1,12 @@
 [package]
 name = "corona_auth_screen"
-version = "0.1.0"
-edition = "2024"
+description = "Lock and authentication screen of the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 corona_power.workspace = true

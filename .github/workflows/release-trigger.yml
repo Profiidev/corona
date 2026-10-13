@@ -34,9 +34,7 @@ jobs:
           NEW_VERSION="${RAW_TAG#v}"
           echo "Bumping version to $NEW_VERSION"
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
-          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" crates/greeter/Cargo.toml
           cargo metadata -q > /dev/null
-          cd .. && npx -y oxfmt
           # replace flake.nix version (version = "x.y.z";) with sed
           sed -i "s/version = \".*\"/version = \"$NEW_VERSION\"/" nix/package.nix
 

@@ -1,7 +1,12 @@
 [package]
 name = "corona_reqwest"
-version = "0.1.0"
-edition = "2024"
+description = "HTTP client and cache for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.9" }
