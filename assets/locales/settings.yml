@@ -116,6 +116,13 @@ app:
         description:
           en: 0 for square corners.
           de: 0 für eckige Ecken.
+      sync_toolkits:
+        title:
+          en: Theme GTK and Qt apps
+          de: GTK- und Qt-Apps einfärben
+        description:
+          en: Sets the dark/light preference and writes the colors for adw-gtk3, libadwaita and qt5ct/qt6ct. Apps pick up the colors on restart.
+          de: Setzt die Hell/Dunkel-Präferenz und schreibt die Farben für adw-gtk3, libadwaita und qt5ct/qt6ct. Apps übernehmen die Farben beim Neustart.
       shadows:
         title:
           en: Shadows

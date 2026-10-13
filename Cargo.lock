@@ -1930,6 +1930,7 @@ dependencies = [
  "anyhow",
  "corona_config",
  "corona_desktop",
+ "dirs 7.0.0",
  "gpui-kit",
  "include_dir",
  "tempfile",
