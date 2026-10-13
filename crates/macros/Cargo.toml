@@ -1,7 +1,12 @@
 [package]
 name = "corona_macros"
-version = "0.1.0"
-edition = "2024"
+description = "Procedural macros for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 proc-macro = true

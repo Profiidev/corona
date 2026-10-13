@@ -39,6 +39,9 @@ fn apply_config(theme: &ThemeConfig, cx: &mut App) -> Result<()> {
     Theme::change(mode, None, cx);
   }
   apply_style(theme, cx);
+  if theme.sync_toolkits {
+    super::toolkits::sync(cx.theme().is_dark(), cx.theme())?;
+  }
   Ok(())
 }
 

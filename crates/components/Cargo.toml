@@ -1,13 +1,19 @@
 [package]
 name = "corona_components"
-version = "0.1.0"
-edition = "2024"
+description = "Shared UI components, assets and themes of the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 corona_config.workspace = true
 tracing.workspace = true
 corona_desktop.workspace = true
 anyhow.workspace = true
+dirs.workspace = true
 gpui-kit.workspace = true
 include_dir = "0.7.4"
 

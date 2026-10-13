@@ -31,6 +31,14 @@ members = [
   "crates/greeter"
 ]
 
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+repository = "https://github.com/Profiidev/corona"
+license = "GPL-2.0"
+keywords = ["hyprland", "wayland", "compositor", "shell", "desktop"]
+categories = []
+
 [workspace.dependencies]
 corona_macros = { path = "crates/macros" }
 corona_compositor = { path = "crates/compositor" }
@@ -98,8 +106,14 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 
 [package]
 name = "corona"
-version = "0.1.0"
-edition = "2024"
+readme = "README.md"
+description = "A Hyprland shell written in Rust"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 corona_shell.workspace = true

@@ -47,6 +47,12 @@ popup_borders = true
 card_borders = true
 # Round the screen corners no bar rounds.
 screen_corners = true
+# Hand the theme to GTK and Qt apps. Sets the gsettings color-scheme, writes
+# ~/.config/gtk-{3,4}.0/corona.css (libadwaita/adw-gtk3 colors), replaces a
+# gtk.css that does not import it, and writes ~/.config/qt{5,6}ct/colors/corona.conf;
+# pick that scheme in qt5ct/qt6ct once. The home-manager option
+# programs.corona.toolkits.enable sets all of this up.
+sync_toolkits = false
 
 [wallpaper]
 # Path, ~/ path or http(s) URL; no wallpaper when unset.
