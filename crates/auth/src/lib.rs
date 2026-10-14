@@ -12,6 +12,8 @@ use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
 
+pub mod polkit;
+
 const FAIL_DELAY: Duration = Duration::from_secs(2);
 const PAM_DIRS: [&str; 2] = ["/etc/pam.d", "/usr/lib/pam.d"];
 const FALLBACK_SERVICE: &str = "login";
@@ -208,6 +210,7 @@ pub fn init(cx: &mut App, conn: &Connection) {
     checking: Default::default(),
     scanning: Default::default(),
   });
+  polkit::init(cx, conn);
 }
 
 #[cfg(test)]

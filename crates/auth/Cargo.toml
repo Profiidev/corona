@@ -8,6 +8,9 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 corona_config.workspace = true
 gpui-kit.workspace = true
@@ -15,6 +18,8 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 futures.workspace = true
+tracing.workspace = true
+libc = "0.2"
 pam-client = { version = "0.5.0", default-features = false }
 
 [dev-dependencies]

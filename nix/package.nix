@@ -17,6 +17,7 @@
   installShellFiles,
   makeWrapper,
   git,
+  dconf,
 }:
 
 let
@@ -113,7 +114,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
         ]
       } $out/bin/$bin
     done
-    wrapProgram $out/bin/corona --suffix PATH : ${lib.makeBinPath [ git ]}
+    wrapProgram $out/bin/corona --suffix PATH : ${lib.makeBinPath [ git dconf ]}
   '';
 
   postInstall = ''
