@@ -192,6 +192,11 @@ fn appearance(cx: &App) -> SettingPage {
               |c, v| c.theme.corner_radius_scale = v,
             ),
           ),
+          item(
+            t!("app.settings.appearance.sync_toolkits.title"),
+            t!("app.settings.appearance.sync_toolkits.description"),
+            switch(|c| c.theme.sync_toolkits, |c, v| c.theme.sync_toolkits = v),
+          ),
         ],
       ),
       group(

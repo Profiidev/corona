@@ -41,31 +41,75 @@ in
         app) go to ~/.local/state/corona/settings.toml and win over these.
       '';
     };
+
+    toolkits.enable = lib.mkEnableOption ''
+      theming GTK and Qt apps from the Corona theme: turns on
+      theme.sync_toolkits, makes gtk.css import Corona's colors and points
+      qt5ct/qt6ct at its color scheme. Uses adw-gtk3 for GTK 3 apps
+    '';
   };
 
-  config = lib.mkIf cfg.enable {
-    home.packages = [ cfg.package ];
+  config = lib.mkIf cfg.enable (
+    lib.mkMerge [
+      (lib.mkIf cfg.toolkits.enable (
+        let
+          qtct = name: {
+            Appearance = {
+              custom_palette = true;
+              color_scheme_path = "${config.xdg.configHome}/${name}/colors/corona.conf";
+            };
+          };
+        in
+        {
+          programs.corona.settings.theme.sync_toolkits = lib.mkDefault true;
 
-    systemd.user.services.corona = {
-      Unit = {
-        Description = "Corona shell";
-        PartOf = [ config.wayland.systemd.target ];
-        After = [ config.wayland.systemd.target ];
-        X-RestartTriggers =
-          lib.optional (cfg.settings != { }) "${config.xdg.configFile."corona/config.toml".source}"
-          ++ [ "${cfg.package}" ];
-      };
+          gtk = {
+            enable = true;
+            theme = lib.mkDefault {
+              name = "adw-gtk3";
+              package = pkgs.adw-gtk3;
+            };
+            # libadwaita brings its own theme, Corona's colors go over it
+            gtk4.theme = lib.mkDefault null;
+            # Corona writes corona.css next to it
+            gtk3.extraCss = ''@import url("corona.css");'';
+            gtk4.extraCss = ''@import url("corona.css");'';
+          };
+          dconf.enable = true;
 
-      Service = {
-        ExecStart = "${lib.getExe cfg.package} shell";
-        Restart = "on-failure";
-      };
+          qt = {
+            enable = true;
+            platformTheme.name = lib.mkDefault "qtct";
+            qt5ctSettings = qtct "qt5ct";
+            qt6ctSettings = qtct "qt6ct";
+          };
+        }
+      ))
+      {
+        home.packages = [ cfg.package ];
 
-      Install.WantedBy = [ config.wayland.systemd.target ];
-    };
+        systemd.user.services.corona = {
+          Unit = {
+            Description = "Corona shell";
+            PartOf = [ config.wayland.systemd.target ];
+            After = [ config.wayland.systemd.target ];
+            X-RestartTriggers =
+              lib.optional (cfg.settings != { }) "${config.xdg.configFile."corona/config.toml".source}"
+              ++ [ "${cfg.package}" ];
+          };
 
-    xdg.configFile."corona/config.toml" = {
-      source = generateToml "corona.toml" cfg.settings;
-    };
-  };
+          Service = {
+            ExecStart = "${lib.getExe cfg.package} shell";
+            Restart = "on-failure";
+          };
+
+          Install.WantedBy = [ config.wayland.systemd.target ];
+        };
+
+        xdg.configFile."corona/config.toml" = {
+          source = generateToml "corona.toml" cfg.settings;
+        };
+      }
+    ]
+  );
 }

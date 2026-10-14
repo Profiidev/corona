@@ -171,6 +171,9 @@ pub struct ThemeConfig {
   pub card_borders: bool,
   /// Round the screen corners no bar rounds
   pub screen_corners: bool,
+  /// Hand the theme to GTK and Qt apps: the mode through gsettings, the colors
+  /// by overwriting `gtk.css` and writing a qt5ct/qt6ct color scheme
+  pub sync_toolkits: bool,
 }
 
 impl ThemeConfig {
@@ -202,6 +205,7 @@ impl Default for ThemeConfig {
       popup_borders: true,
       card_borders: true,
       screen_corners: true,
+      sync_toolkits: false,
     }
   }
 }

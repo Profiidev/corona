@@ -181,14 +181,12 @@ impl Render for PolkitDialog {
               .child(
                 Button::new("polkit-cancel")
                   .label(t!("app.common.cancel"))
-                  .small()
                   .on_click(|_, _, cx| cx.global::<Polkit>().clone().cancel(cx)),
               )
               .child(
                 Button::new("polkit-authenticate")
                   .primary()
                   .label(t!("app.polkit.authenticate"))
-                  .small()
                   .loading(self.checking)
                   .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
               ),

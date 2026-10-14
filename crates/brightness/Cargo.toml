@@ -1,7 +1,12 @@
 [package]
 name = "corona_brightness"
-version = "0.1.0"
-edition = "2024"
+description = "Backlight and DDC monitor brightness for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 corona_config.workspace = true

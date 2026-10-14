@@ -1,7 +1,12 @@
 [package]
 name = "corona_network_manager"
-version = "0.1.0"
-edition = "2024"
+description = "NetworkManager state and control for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 tracing.workspace = true

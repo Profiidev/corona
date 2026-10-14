@@ -6,7 +6,7 @@ use std::{
   ffi::CStr,
   io::{BufRead, BufReader, Write},
   os::unix::net::UnixStream,
-  path::Path,
+  path::PathBuf,
   process::{Command, Stdio},
 };
 
@@ -28,6 +28,16 @@ const HELPERS: [&str; 3] = [
   "/usr/lib/polkit-1/polkit-agent-helper-1",
   "/usr/libexec/polkit-agent-helper-1",
 ];
+
+#[proxy(
+  interface = "org.freedesktop.login1.Session",
+  default_service = "org.freedesktop.login1",
+  default_path = "/org/freedesktop/login1/session/auto"
+)]
+trait Session {
+  #[zbus(property)]
+  fn id(&self) -> zbus::Result<String>;
+}
 
 #[proxy(
   interface = "org.freedesktop.PolicyKit1.Authority",
@@ -143,17 +153,18 @@ fn user_name(uid: u32) -> Option<String> {
 
 /// Runs polkit's helper for `user`, which tells polkitd itself when the
 /// password was right. `Ok(false)` for a wrong one.
-fn authenticate(user: &str, cookie: &str, password: &str) -> Result<bool> {
-  if Path::new(HELPER_SOCKET).exists() {
-    let socket = UnixStream::connect(HELPER_SOCKET)?;
+fn authenticate(helper: &Helper, user: &str, cookie: &str, password: &str) -> Result<bool> {
+  if helper.socket.exists() {
+    let socket = UnixStream::connect(&helper.socket)?;
     writeln!(&socket, "{user}\n{cookie}")?;
     return converse(BufReader::new(&socket), &socket, password);
   }
-  let helper = HELPERS
-    .into_iter()
-    .find(|path| Path::new(path).exists())
+  let setuid = helper
+    .setuid
+    .iter()
+    .find(|path| path.exists())
     .context("polkit has neither its helper socket nor polkit-agent-helper-1")?;
-  let mut child = Command::new(helper)
+  let mut child = Command::new(setuid)
     .arg(user)
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -182,10 +193,28 @@ fn converse(output: impl BufRead, mut input: impl Write, password: &str) -> Resu
   bail!("polkit's helper quit without an answer")
 }
 
+/// Where polkit's helper is
+#[derive(Clone)]
+struct Helper {
+  socket: PathBuf,
+  /// the first one there runs
+  setuid: Vec<PathBuf>,
+}
+
+impl Default for Helper {
+  fn default() -> Self {
+    Self {
+      socket: HELPER_SOCKET.into(),
+      setuid: HELPERS.map(PathBuf::from).to_vec(),
+    }
+  }
+}
+
 /// The open requests, the shown one first
 #[derive(Clone)]
 pub struct Polkit {
   pub requests: Entity<VecDeque<PolkitRequest>>,
+  helper: Helper,
 }
 
 impl Global for Polkit {}
@@ -202,11 +231,11 @@ impl Polkit {
       return Task::ready(Ok(false));
     };
     let (user, cookie) = (request.user.clone(), request.cookie.clone());
-    let requests = self.requests.clone();
+    let (requests, helper) = (self.requests.clone(), self.helper.clone());
     cx.spawn(async move |cx| {
       let checked = cookie.clone();
       let right = cx
-        .background_spawn(async move { authenticate(&user, &checked, &password) })
+        .background_spawn(async move { authenticate(&helper, &user, &checked, &password) })
         .await?;
       if right {
         requests.update(cx, |requests, cx| {
@@ -237,21 +266,13 @@ async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Event>> {
     .object_server()
     .at(AGENT_PATH, Agent { events })
     .await?;
-  // a shell run as a user service has no session of its own, polkitd looks
-  // the session up from our pid then
-  let subject = match std::env::var("XDG_SESSION_ID") {
-    Ok(id) => (
-      "unix-session",
-      HashMap::from([("session-id", Value::from(id))]),
-    ),
-    Err(_) => (
-      "unix-process",
-      HashMap::from([
-        ("pid", Value::from(std::process::id())),
-        ("start-time", Value::from(0u64)),
-      ]),
-    ),
-  };
+  // a process subject would only cover our own requests. `auto` is our
+  // session, or the user's graphical one when run as a user service
+  let session = SessionProxy::new(conn).await?.id().await?;
+  let subject = (
+    "unix-session",
+    HashMap::from([("session-id", Value::from(session))]),
+  );
   let locale = std::env::var("LANG").unwrap_or_else(|_| "C".into());
   AuthorityProxy::new(conn)
     .await?
@@ -261,11 +282,16 @@ async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Event>> {
 }
 
 pub(crate) fn init(cx: &mut App, conn: &Connection) {
-  let requests = cx.new(|_| VecDeque::new());
-  cx.set_global(Polkit {
-    requests: requests.clone(),
-  });
-  let conn = conn.clone();
+  let polkit = Polkit {
+    requests: cx.new(|_| VecDeque::new()),
+    helper: Helper::default(),
+  };
+  serve(polkit.requests.clone(), conn.clone(), cx);
+  cx.set_global(polkit);
+}
+
+/// Registers the agent on `conn`, its requests go into `requests`
+fn serve(requests: Entity<VecDeque<PolkitRequest>>, conn: Connection, cx: &mut App) {
   cx.spawn(async move |cx| {
     // another agent, like polkit-gnome, keeps asking; everything else works
     let mut events = match register(&conn).await {
@@ -283,6 +309,37 @@ pub(crate) fn init(cx: &mut App, conn: &Connection) {
     }
   })
   .detach();
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Polkit {
+  /// Without polkitd; `helper` speaks polkit-agent-helper-1's protocol: the
+  /// user as its argument, the cookie, then PAM lines
+  pub fn fake(helper: PathBuf, cx: &mut App) -> Self {
+    Self {
+      requests: cx.new(|_| VecDeque::new()),
+      helper: Helper {
+        socket: PathBuf::new(),
+        setuid: vec![helper],
+      },
+    }
+  }
+
+  /// Asks like polkitd does; the receiver fails when the request is canceled
+  pub fn ask(&self, message: &str, cookie: &str, cx: &mut App) -> oneshot::Receiver<()> {
+    let (reply, done) = oneshot::channel();
+    let request = PolkitRequest {
+      message: message.into(),
+      user: "alice".into(),
+      cookie: cookie.into(),
+      reply,
+    };
+    self.requests.update(cx, |requests, cx| {
+      requests.push_back(request);
+      cx.notify();
+    });
+    done
+  }
 }
 
 #[cfg(test)]
