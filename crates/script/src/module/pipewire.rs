@@ -2,7 +2,6 @@ use corona_pipewire::{
   AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
   Pipewire, PipewireExt,
 };
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -143,16 +142,14 @@ fn set_mute(pipewire: Glob<Pipewire>, id: u32, mute: bool) -> anyhow::Result<()>
   pipewire.audio().set_mute(id, mute)
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let pipewire = cx.pipewire();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/pipewire")
     .func(read(
       reads,
       subs,
       "listSinks",
       Updates::Sinks,
-      pipewire.sinks.clone(),
+      |cx| cx.pipewire().sinks.clone(),
       |cx| nodes(cx.pipewire().list_sinks(cx)),
     ))
     .func(read(
@@ -160,7 +157,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listSources",
       Updates::Sources,
-      pipewire.sources.clone(),
+      |cx| cx.pipewire().sources.clone(),
       |cx| nodes(cx.pipewire().list_sources(cx)),
     ))
     .func(read(
@@ -168,7 +165,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listStreams",
       Updates::Streams,
-      pipewire.streams.clone(),
+      |cx| cx.pipewire().streams.clone(),
       |cx| nodes(cx.pipewire().list_streams(cx)),
     ))
     .func(read(
@@ -176,7 +173,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "defaultSink",
       Updates::DefaultSink,
-      pipewire.default_sink.clone(),
+      |cx| cx.pipewire().default_sink.clone(),
       |cx| cx.pipewire().default_sink(cx).map(Node::from),
     ))
     .func(read(
@@ -184,15 +181,13 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "defaultSource",
       Updates::DefaultSource,
-      pipewire.default_source.clone(),
+      |cx| cx.pipewire().default_source.clone(),
       |cx| cx.pipewire().default_source(cx).map(Node::from),
     ))
     .func({
-      subs.push(watch(
-        reads,
-        Updates::Targets.into(),
-        pipewire.targets.clone(),
-      ));
+      subs.push(watch(reads, Updates::Targets.into(), |cx| {
+        cx.pipewire().targets.clone()
+      }));
       let reads = reads.clone();
 
       named!(
@@ -209,7 +204,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listCaptures",
       Updates::Captures,
-      pipewire.captures.clone(),
+      |cx| cx.pipewire().captures.clone(),
       |cx| {
         let captures = cx.pipewire().list_captures(cx);
         captures.iter().map(Capture::from).collect::<Vec<_>>()
@@ -220,7 +215,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "captureLog",
       Updates::CaptureLog,
-      pipewire.capture_log.clone(),
+      |cx| cx.pipewire().capture_log.clone(),
       |cx| {
         let log = cx.pipewire().capture_log(cx);
         log.iter().map(CaptureAccess::from).collect::<Vec<_>>()

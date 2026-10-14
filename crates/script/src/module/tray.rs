@@ -1,6 +1,5 @@
 use corona_tray as tray;
 use corona_tray::{Tray, TrayExt};
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -131,16 +130,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.tray();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/tray")
     .func(read(
       reads,
       subs,
       "listItems",
       Updates::Items,
-      state.items.clone(),
+      |cx| cx.tray().items.clone(),
       |cx| {
         let items = cx.tray().list_items(cx);
         items.iter().map(Item::from).collect::<Vec<_>>()

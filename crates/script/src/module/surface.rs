@@ -110,7 +110,7 @@ pub fn module(
     subs.push(watch(
       reads,
       Updates::OpenPanels.into(),
-      PanelState::open_panels(cx),
+      PanelState::open_panels,
     ));
   }
   let reads = reads.clone();

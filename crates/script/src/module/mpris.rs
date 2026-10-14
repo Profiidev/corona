@@ -125,10 +125,11 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.mpris();
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   // `activePlayer` reads the player too, so its track and status changes re-render it as well
-  subs.push(watch(reads, Updates::Active.into(), state.players.clone()));
+  subs.push(watch(reads, Updates::Active.into(), |cx| {
+    cx.mpris().players.clone()
+  }));
 
   Module::new("corona/mpris")
     .func(read(
@@ -136,7 +137,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listPlayers",
       Updates::Players,
-      state.players.clone(),
+      |cx| cx.mpris().players.clone(),
       |cx| {
         let players = cx.mpris().list_players(cx);
         players.iter().map(Player::from).collect::<Vec<_>>()
@@ -147,7 +148,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "activePlayer",
       Updates::Active,
-      state.active.clone(),
+      |cx| cx.mpris().active.clone(),
       |cx| cx.mpris().active_player(cx).map(Player::from),
     ))
     .func(named!(

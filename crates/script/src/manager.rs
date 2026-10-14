@@ -1,8 +1,8 @@
 use std::{
   cell::Cell,
-  collections::{BTreeMap, BTreeSet, HashMap},
+  collections::HashMap,
   fs,
-  path::PathBuf,
+  path::{Path, PathBuf},
   rc::Rc,
   sync::{Arc, Mutex},
 };
@@ -12,22 +12,18 @@ use gpui_kit::{
   AnyView, App, BorrowAppContext, Entity, EntityId, Global, Subscription, Window, transparent_black,
 };
 use gpui_shell::{
-  Capabilities, ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
+  ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
   policy::{self, Policy},
 };
 
 use crate::{
   PLUGIN_STORAGE_FILENAME,
-  module::{
-    CoronaModule, ModuleExt, PluginRef, Subscribe, Subscriptions,
-    dbus::{self, DbusGrant},
-    i18n, plugin, settings, surface,
+  module::{ModuleExt, PluginRef, Subscribe, Subscriptions, dbus, i18n, plugin, settings, surface},
+  plugin::{
+    manifest::{ManifestFile, PluginManifest},
+    paths::Paths,
   },
-  plugin::{manifest::PluginManifest, paths::Paths},
 };
-
-/// The plugin `ScriptManager::type_declarations` types for
-const TYPES_ID: &str = "corona-types";
 
 pub struct Script {
   root: Entity<ShellRoot>,
@@ -236,33 +232,30 @@ impl ScriptManager {
     Ok((policy, subscribes))
   }
 
-  /// `gpui-kit.d.ts` of a plugin granted every corona module and `corona/dbus`,
-  /// with no settings
-  pub fn type_declarations(cx: &mut App) -> Result<String> {
-    let manifest = PluginManifest {
-      id: TYPES_ID.into(),
-      dir: PathBuf::new(),
-      name: TYPES_ID.into(),
-      version: None,
-      description: None,
-      widgets: BTreeMap::new(),
-      panels: BTreeMap::new(),
-      service: None,
-      settings: Vec::new(),
-      host_settings: BTreeSet::new(),
-      capabilities: Capabilities::default(),
-      modules: CoronaModule::ALL.into(),
-      dbus: Some(DbusGrant::default()),
-    };
+  /// Writes the `gpui-kit.d.ts` of the plugin in `dir` as loading it does, typing its own
+  /// settings and granted modules, without a running shell
+  pub fn write_types(dir: &Path, cx: &mut App) -> Result<Vec<PathBuf>> {
+    let file = ManifestFile::read(dir)?;
+    let data = cx.global::<ScriptManager>().paths.data(&file.id);
+    let manifest = PluginManifest::new(file, dir.to_path_buf(), &data, None);
+    let had_hub = cx.global::<ScriptManager>().hubs.contains_key(&manifest.id);
     let (policy, _subscribes) =
       Self::modules(Policy::new(), &manifest, Rc::default(), None, None, cx)?;
     // as in `load`, the seam the declarations read the modules through
     policy::set_default(policy);
-    let types = gpui_component_shell::components()
-      .map(|components| gpui_shell::type_declarations(&components));
+    let written = gpui_component_shell::components()
+      .map_err(anyhow::Error::from)
+      .and_then(|components| {
+        Ok(gpui_shell::write_type_declarations_with_components(
+          dir,
+          &components,
+        )?)
+      });
     policy::set_default(Policy::new());
-    cx.global_mut::<ScriptManager>().hubs.remove(TYPES_ID);
-    Ok(types?)
+    if !had_hub {
+      cx.global_mut::<ScriptManager>().hubs.remove(&manifest.id);
+    }
+    written
   }
 
   pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
@@ -333,7 +326,7 @@ impl ScriptManager {
         _handle: runtime.start_service(&entry, Rc::new(policy), cx)?,
         _cleanups: subscribes
           .into_iter()
-          .filter_map(Subscribe::cleanup)
+          .filter_map(|s| s.cleanup(cx))
           .collect(),
         _stop: stop,
       })
@@ -369,7 +362,7 @@ mod tests {
   use corona_utils::test_bus::wait_until;
 
   use super::*;
-  use crate::{PLUGIN_MANIFEST_FILENAME, plugin::registry};
+  use crate::{PLUGIN_MANIFEST_FILENAME, module::CoronaModule, plugin::registry};
 
   const VIEW: &str = r#"
 import { View } from "gpui-kit";
@@ -1731,5 +1724,158 @@ export default class Main extends View {
       fake.calls.borrow().last().unwrap(),
       r#"["/tmp/a","/tmp/b"]"#
     );
+  }
+
+  /// Every corona module's name in `capabilities.corona`
+  const ALL_MODULES: [&str; 16] = [
+    "compositor",
+    "compositor_control",
+    "pipewire",
+    "network",
+    "mpris",
+    "bluetooth",
+    "power",
+    "brightness",
+    "notifications",
+    "notification_center",
+    "tray",
+    "sysinfo",
+    "weather",
+    "auth",
+    "secrets",
+    "desktop",
+  ];
+
+  fn dts(plugins: &Plugins, id: &str) -> String {
+    fs::read_to_string(plugins.paths.local.join(id).join("gpui-kit.d.ts")).unwrap()
+  }
+
+  #[gpui::test]
+  fn types_need_no_running_services(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let modules = ALL_MODULES.map(|m| format!("\"{m}\"")).join(", ");
+    let extra = format!(
+      "capabilities = {{ corona = [{modules}], dbus = {{ session = [\"io.corona.Test\"] }} }}"
+    );
+    plugins.add("a", &manifest("a", &extra), &[("main.js", VIEW)]);
+    let dir = plugins.paths.local.join("a");
+
+    // no compositor, pipewire, … nor a script manager or config
+    let written = cx
+      .update(|cx| crate::write_plugin_types(std::slice::from_ref(&dir), cx))
+      .unwrap();
+
+    assert!(written.contains(&dir.join("gpui-kit.d.ts")), "{written:?}");
+    let dts = dts(&plugins, "a");
+    for module in ALL_MODULES
+      .iter()
+      .chain(&["dbus", "settings", "plugin", "i18n", "surface"])
+    {
+      let line = format!("declare module \"corona/{module}\"");
+      assert!(dts.contains(&line), "missing {line:?}");
+    }
+    assert_eq!(CoronaModule::ALL.len(), ALL_MODULES.len());
+  }
+
+  #[gpui::test]
+  fn types_only_declare_granted_modules(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let extra = r#"capabilities = { corona = ["compositor"] }"#;
+    plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
+    running(cx, &plugins);
+    let dir = plugins.paths.local.join("a");
+    cx.update(|cx| ScriptManager::write_types(&dir, cx))
+      .unwrap();
+
+    let dts = dts(&plugins, "a");
+    assert!(dts.contains("declare module \"corona/compositor\""));
+    for module in ["pipewire", "dbus", "weather"] {
+      let line = format!("declare module \"corona/{module}\"");
+      assert!(!dts.contains(&line), "ungranted {line:?}");
+    }
+  }
+
+  #[gpui::test]
+  fn types_type_the_settings(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let extra = "[[settings]]\nkey = \"units\"\nlabel = \"Units\"\ntype = \"select\"\ndefault = \"a\"\noptions = [{ value = \"a\", label = \"A\" }, { value = \"b\", label = \"B\" }]";
+    plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
+    running(cx, &plugins);
+    let dir = plugins.paths.local.join("a");
+    cx.update(|cx| ScriptManager::write_types(&dir, cx))
+      .unwrap();
+
+    let dts = dts(&plugins, "a");
+    let start = dts.find("declare module \"corona/settings\"").unwrap();
+    let module = &dts[start..start + dts[start..].find("\n}").unwrap()];
+    assert!(module.contains("    \"units\": \"a\" | \"b\";"), "{module}");
+    // and leave no hub behind for a plugin that never ran
+    assert!(cx.update(|cx| !cx.global::<ScriptManager>().hubs.contains_key("a")));
+  }
+
+  #[gpui::test]
+  fn types_match_a_load(cx: &mut TestAppContext) {
+    let fake = Rc::new(Fake::default());
+    cx.update(|cx| {
+      let compositor = Compositor::new(cx, fake.clone()).unwrap();
+      cx.set_global(compositor);
+    });
+    let plugins = Plugins::new();
+    let extra = "service = \"service.js\"\ncapabilities = { corona = [\"compositor\"] }\n[[settings]]\nkey = \"label\"\nlabel = \"Label\"\ntype = \"text\"\ndefault = \"\"";
+    plugins.add(
+      "a",
+      &manifest("a", extra),
+      &[
+        ("main.js", COMPOSITOR_VIEW),
+        ("service.js", "export default function main() {}"),
+      ],
+    );
+    let (cx, script) = load(cx, &plugins, "a");
+    script.unwrap();
+    let loaded = dts(&plugins, "a");
+    assert!(loaded.contains("export type ServiceMain = (cx: AsyncContext)"));
+
+    let path = plugins.paths.local.join("a/gpui-kit.d.ts");
+    fs::remove_file(&path).unwrap();
+    let dir = plugins.paths.local.join("a");
+    cx.update(|_, cx| ScriptManager::write_types(&dir, cx))
+      .unwrap();
+    assert_eq!(dts(&plugins, "a"), loaded);
+    // a running plugin keeps its hub
+    assert!(cx.update(|_, cx| cx.global::<ScriptManager>().hubs.contains_key("a")));
+  }
+
+  #[gpui::test]
+  fn types_keep_a_tsconfig(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let tsconfig = "{ \"extends\": \"../tsconfig.json\" }\n";
+    plugins.add(
+      "a",
+      &manifest("a", ""),
+      &[("main.js", VIEW), ("tsconfig.json", tsconfig)],
+    );
+    running(cx, &plugins);
+    let dir = plugins.paths.local.join("a");
+    cx.update(|cx| ScriptManager::write_types(&dir, cx))
+      .unwrap();
+
+    assert!(dir.join("gpui-kit.d.ts").is_file());
+    assert!(!dir.join("jsconfig.json").exists());
+    assert_eq!(
+      fs::read_to_string(dir.join("tsconfig.json")).unwrap(),
+      tsconfig
+    );
+  }
+
+  #[gpui::test]
+  fn types_fail_without_a_manifest(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    running(cx, &plugins);
+    let dir = plugins.paths.local.join("none");
+    assert!(
+      cx.update(|cx| ScriptManager::write_types(&dir, cx))
+        .is_err()
+    );
+    assert!(!dir.join("gpui-kit.d.ts").exists());
   }
 }

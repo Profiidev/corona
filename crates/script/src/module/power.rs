@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, time::UNIX_EPOCH};
 use anyhow::anyhow;
 use corona_power as pw;
 use corona_power::{Power, PowerExt};
-use gpui_kit::{App, Subscription};
+use gpui_kit::Subscription;
 use gpui_shell::HostModule;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -224,24 +224,24 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.power().clone();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   // ponytail: an event while no `nextSleepEvent` waits is lost; buffer like
   // `nextAction` if a plugin misses one
   let waiters = Rc::new(RefCell::new(Vec::<flume::Sender<SleepEvent>>::new()));
-  let wake = waiters.clone();
-  let observe = cx.observe(&state.sleep, move |sleep, cx| {
-    let sleeping = sleep.read(cx).sleeping;
-    for tx in wake.borrow_mut().drain(..) {
-      tx.send(SleepEvent { sleeping }).ok();
-    }
-  });
-  let stop = waiters.clone();
-  // gpui-shell never drops a pending call's future, so wake it with an error
-  subs.push(Subscribe::Cleanup(Subscription::new(move || {
-    drop(observe);
-    stop.borrow_mut().clear();
+  let (wake, stop) = (waiters.clone(), waiters.clone());
+  subs.push(Subscribe::Start(Box::new(move |cx| {
+    let sleep = cx.power().sleep.clone();
+    let observe = cx.observe(&sleep, move |sleep, cx| {
+      let sleeping = sleep.read(cx).sleeping;
+      for tx in wake.borrow_mut().drain(..) {
+        tx.send(SleepEvent { sleeping }).ok();
+      }
+    });
+    // gpui-shell never drops a pending call's future, so wake it with an error
+    Subscription::new(move || {
+      drop(observe);
+      stop.borrow_mut().clear();
+    })
   })));
 
   Module::new("corona/power")
@@ -250,7 +250,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "status",
       Updates::Status,
-      state.status.clone(),
+      |cx| cx.power().status.clone(),
       |cx| {
         cx.power().status(cx).map(|s| Status {
           on_battery: s.on_battery,
@@ -264,7 +264,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "battery",
       Updates::Battery,
-      state.battery.clone(),
+      |cx| cx.power().battery.clone(),
       |cx| cx.power().battery(cx).map(Battery::from),
     ))
     .func(read(
@@ -272,7 +272,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listDevices",
       Updates::Devices,
-      state.devices.clone(),
+      |cx| cx.power().devices.clone(),
       |cx| {
         let devices = cx.power().list_devices(cx);
         devices
@@ -291,7 +291,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "profiles",
       Updates::Profiles,
-      state.profiles.clone(),
+      |cx| cx.power().profiles.clone(),
       |cx| {
         cx.power().profiles(cx).map(|p| Profiles {
           active: p.active.clone(),
@@ -305,7 +305,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "keyboardBacklight",
       Updates::KeyboardBacklight,
-      state.keyboard_backlight.clone(),
+      |cx| cx.power().keyboard_backlight.clone(),
       |cx| {
         cx.power()
           .keyboard_backlight(cx)
@@ -320,7 +320,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "sleeping",
       Updates::Sleep,
-      state.sleep.clone(),
+      |cx| cx.power().sleep.clone(),
       |cx| cx.power().sleep(cx).sleeping,
     ))
     .func(read(
@@ -328,7 +328,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "resumedAt",
       Updates::Sleep,
-      state.sleep.clone(),
+      |cx| cx.power().sleep.clone(),
       // unix seconds of the last resume, null before the first one or while asleep
       |cx| {
         let sleep = cx.power().sleep(cx);
@@ -419,7 +419,7 @@ mod tests {
       m.nextSleepEvent().then((e) => report({ event: e }));
     }
     report([m.sleeping(), m.resumedAt()]);"#;
-    let (view, cx) = harness::view(cx, body, super::module);
+    let (view, cx) = harness::view(cx, body, |reads, subs, _| super::module(reads, subs));
     assert_eq!(view.last(), json!([false, null]));
 
     // the watch may not be up yet, so asleep until it is

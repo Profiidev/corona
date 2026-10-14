@@ -1,6 +1,5 @@
 use corona_brightness as br;
 use corona_brightness::{Brightness, BrightnessExt};
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -80,16 +79,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.brightness();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/brightness")
     .func(read(
       reads,
       subs,
       "listDisplays",
       Updates::Displays,
-      state.displays.clone(),
+      |cx| cx.brightness().displays.clone(),
       |cx| {
         let displays = cx.brightness().list_displays(cx);
         displays.iter().map(Display::from).collect::<Vec<_>>()
@@ -138,7 +135,7 @@ mod tests {
       m.setBrightness("nope", 5).then(report);
     }
     report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil() });"#;
-    let (view, cx) = harness::view(cx, body, module);
+    let (view, cx) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
     wait_until(cx, |_| view.reports.borrow().len() >= 2);
 
     let reports = view.reports.borrow();

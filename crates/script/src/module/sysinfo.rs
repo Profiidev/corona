@@ -1,7 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use corona_sysinfo::{self as si, SystemMonitorExt};
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -218,16 +217,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let monitor = cx.system_monitor();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/sysinfo")
     .func(read(
       reads,
       subs,
       "info",
       Updates::Info,
-      monitor.info.clone(),
+      |cx| cx.system_monitor().info.clone(),
       |cx| cx.system_monitor().info(cx).map(SystemInfo::from),
     ))
     .func(read(
@@ -235,7 +232,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "sample",
       Updates::Sample,
-      monitor.sample.clone(),
+      |cx| cx.system_monitor().sample.clone(),
       // null until the first sample
       |cx| cx.system_monitor().sample(cx).map(Sample::from),
     ))
@@ -244,7 +241,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "history",
       Updates::History,
-      monitor.history.clone(),
+      |cx| cx.system_monitor().history.clone(),
       |cx| History::from(cx.system_monitor().history(cx)),
     ))
     .into()

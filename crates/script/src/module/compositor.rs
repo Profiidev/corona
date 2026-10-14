@@ -1,5 +1,4 @@
 use corona_compositor::{Compositor, CompositorExt};
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -55,16 +54,14 @@ fn cursor_position(compositor: Glob<Compositor>) -> anyhow::Result<Position> {
   Ok(Position { x, y })
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let compositor = cx.compositor();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/compositor")
     .func(read(
       reads,
       subs,
       "listWorkspaces",
       Updates::Workspaces,
-      compositor.workspaces.clone(),
+      |cx| cx.compositor().workspaces.clone(),
       |cx| cx.compositor().list_workspaces(cx).to_vec(),
     ))
     .func(read(
@@ -72,7 +69,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "activeWorkspace",
       Updates::ActiveWorkspace,
-      compositor.active_workspace.clone(),
+      |cx| cx.compositor().active_workspace.clone(),
       |cx| cx.compositor().active_workspace(cx).clone(),
     ))
     .func(read(
@@ -80,7 +77,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listMonitors",
       Updates::Monitors,
-      compositor.monitors.clone(),
+      |cx| cx.compositor().monitors.clone(),
       |cx| cx.compositor().list_monitors(cx).to_vec(),
     ))
     .func(read(
@@ -88,7 +85,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "activeMonitor",
       Updates::ActiveMonitor,
-      compositor.active_monitor.clone(),
+      |cx| cx.compositor().active_monitor.clone(),
       |cx| cx.compositor().active_monitor(cx).clone(),
     ))
     .func(read(
@@ -96,7 +93,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listWindows",
       Updates::Windows,
-      compositor.windows.clone(),
+      |cx| cx.compositor().windows.clone(),
       |cx| cx.compositor().list_windows(cx).to_vec(),
     ))
     .func(read(
@@ -104,7 +101,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "activeWindow",
       Updates::ActiveWindow,
-      compositor.active_window.clone(),
+      |cx| cx.compositor().active_window.clone(),
       |cx| cx.compositor().active_window(cx).cloned(),
     ))
     .func(read(
@@ -112,7 +109,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "keyboardLayout",
       Updates::KeyboardLayout,
-      compositor.keyboard_layout.clone(),
+      |cx| cx.compositor().keyboard_layout.clone(),
       |cx| cx.compositor().keyboard_layout(cx).map(str::to_string),
     ))
     .func(focus_workspace)
@@ -227,7 +224,7 @@ mod tests {
       control: [m.focusWindow, m.closeWindow, m.cursorPosition].every((f) => f === undefined),
       thrown,
     });"#;
-    let (view, _) = harness::view(cx, body, module);
+    let (view, _) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
     let last = view.last();
     let down = json!({ "message": "compositor down" });
     assert_eq!(last["focusWorkspace"], down);
@@ -251,7 +248,9 @@ mod tests {
   #[gpui::test]
   fn renders_again_only_for_what_it_read(cx: &mut TestAppContext) {
     install(cx);
-    let (view, cx) = harness::view(cx, "report(m.activeWindow());", module);
+    let (view, cx) = harness::view(cx, "report(m.activeWindow());", |reads, subs, _| {
+      module(reads, subs)
+    });
     assert_eq!(view.last(), json!(null));
     let read = |update| {
       view

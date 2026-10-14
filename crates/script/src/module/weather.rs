@@ -1,7 +1,6 @@
 use std::time::UNIX_EPOCH;
 
 use corona_weather::{self as wt, WeatherExt, WeatherService};
-use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -165,16 +164,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let service = cx.weather();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/weather")
     .func(read(
       reads,
       subs,
       "current",
       Updates::Weather,
-      service.weather.clone(),
+      |cx| cx.weather().weather.clone(),
       // null until the first forecast arrives
       |cx| cx.weather().current(cx).map(Weather::from),
     ))
@@ -183,7 +180,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "error",
       Updates::Error,
-      service.error.clone(),
+      |cx| cx.weather().error.clone(),
       |cx| cx.weather().error(cx).map(str::to_string),
     ))
     .func(named!(
