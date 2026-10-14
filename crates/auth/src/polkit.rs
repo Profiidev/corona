@@ -344,9 +344,304 @@ impl Polkit {
 
 #[cfg(test)]
 mod tests {
-  use std::io::Cursor;
+  use std::{
+    io::Cursor,
+    os::unix::{fs::PermissionsExt, net::UnixListener},
+    path::Path,
+    sync::{Arc, Mutex},
+    thread,
+  };
+
+  use corona_utils::test_bus::{TestBus, wait_until};
+  use futures_lite::future::block_on;
+  use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
+
+  fn uid() -> u32 {
+    unsafe { libc::getuid() }
+  }
+
+  fn me() -> String {
+    user_name(uid()).unwrap()
+  }
+
+  /// A setuid-less polkit-agent-helper-1 that only takes `user`, cookie `c1`
+  /// and password `right`
+  fn helper(dir: &Path, user: &str) -> PathBuf {
+    let path = dir.join("helper");
+    let script = format!(
+      "#!/bin/sh\nread cookie\necho 'PAM_PROMPT_ECHO_OFF Password: '\nread password\n\
+       [ \"$1 $cookie $password\" = '{user} c1 right' ] && echo SUCCESS || echo FAILURE\n"
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+  }
+
+  #[test]
+  fn runs_the_setuid_helper() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = Helper {
+      socket: dir.path().join("no-socket"),
+      setuid: vec![dir.path().join("missing"), helper(dir.path(), "alice")],
+    };
+    assert!(authenticate(&fake, "alice", "c1", "right").unwrap());
+    assert!(!authenticate(&fake, "alice", "c1", "wrong").unwrap());
+    assert!(!authenticate(&fake, "bob", "c1", "right").unwrap());
+    assert!(!authenticate(&fake, "alice", "c2", "right").unwrap());
+    let none = Helper {
+      socket: dir.path().join("no-socket"),
+      setuid: vec![dir.path().join("missing")],
+    };
+    assert!(authenticate(&none, "alice", "c1", "right").is_err());
+  }
+
+  #[test]
+  fn prefers_the_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("socket");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let polkitd = thread::spawn(move || {
+      let (stream, _) = listener.accept().unwrap();
+      let mut lines = BufReader::new(&stream).lines().map(Result::unwrap);
+      let (user, cookie) = (lines.next().unwrap(), lines.next().unwrap());
+      writeln!(&stream, "PAM_PROMPT_ECHO_OFF Password: ").unwrap();
+      let password = lines.next().unwrap();
+      writeln!(&stream, "SUCCESS").unwrap();
+      [user, cookie, password]
+    });
+    // the setuid helper would refuse bob
+    let fake = Helper {
+      socket,
+      setuid: vec![helper(dir.path(), "alice")],
+    };
+    assert!(authenticate(&fake, "bob", "c2", "pw").unwrap());
+    assert_eq!(polkitd.join().unwrap(), ["bob", "c2", "pw"]);
+  }
+
+  fn identity(uid: u32) -> Identity {
+    let details = HashMap::from([("uid".to_owned(), OwnedValue::from(uid))]);
+    ("unix-user".to_owned(), details)
+  }
+
+  fn begin(agent: &Agent, identities: Vec<Identity>) -> Result<(), AgentError> {
+    block_on(agent.begin_authentication(
+      "org.example.do".into(),
+      "Do it".into(),
+      String::new(),
+      HashMap::new(),
+      "c1".into(),
+      identities,
+    ))
+  }
+
+  #[test]
+  fn agent_answers() {
+    let (events, mut received) = mpsc::unbounded();
+    let agent = Agent { events };
+    let dialog = thread::spawn(move || {
+      let Some(Event::Begin(request)) = block_on(received.next()) else {
+        panic!("no request");
+      };
+      assert_eq!(
+        (request.message.as_str(), request.cookie.as_str()),
+        ("Do it", "c1")
+      );
+      assert_eq!(request.user, me());
+      request.reply.send(()).unwrap();
+      // canceling drops the next one
+      assert!(matches!(block_on(received.next()), Some(Event::Begin(_))));
+      received
+    });
+    begin(&agent, vec![identity(uid())]).unwrap();
+    let canceled = begin(&agent, vec![identity(uid())]);
+    assert!(matches!(canceled, Err(AgentError::Cancelled(ref m)) if m == "canceled"));
+    let mut received = dialog.join().unwrap();
+
+    // nobody to ask for, polkitd never sends that
+    assert!(matches!(begin(&agent, vec![]), Err(AgentError::Failed(_))));
+    block_on(agent.cancel_authentication("c1".into()));
+    assert!(matches!(received.try_recv(), Ok(Event::Cancel(c)) if c == "c1"));
+    drop(received);
+    let gone = begin(&agent, vec![identity(uid())]);
+    assert!(matches!(gone, Err(AgentError::Cancelled(ref m)) if m == "shell is gone"));
+  }
+
+  struct FakePolkitd {
+    registered: Arc<Mutex<Vec<String>>>,
+  }
+
+  #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
+  impl FakePolkitd {
+    fn register_authentication_agent(
+      &self,
+      subject: (String, HashMap<String, OwnedValue>),
+      locale: String,
+      object_path: String,
+    ) {
+      let session = String::try_from(subject.1["session-id"].try_clone().unwrap()).unwrap();
+      let registered = format!("{} {session} {locale} {object_path}", subject.0);
+      self.registered.lock().unwrap().push(registered);
+    }
+  }
+
+  struct FakeSession;
+
+  #[zbus::interface(name = "org.freedesktop.login1.Session")]
+  impl FakeSession {
+    #[zbus(property)]
+    fn id(&self) -> String {
+      "4".into()
+    }
+  }
+
+  #[proxy(
+    interface = "org.freedesktop.PolicyKit1.AuthenticationAgent",
+    default_path = "/org/freedesktop/PolicyKit1/AuthenticationAgent"
+  )]
+  trait AuthenticationAgent {
+    fn begin_authentication(
+      &self,
+      action_id: &str,
+      message: &str,
+      icon_name: &str,
+      details: HashMap<&str, &str>,
+      cookie: &str,
+      identities: &[(&str, HashMap<&str, Value<'_>>)],
+    ) -> zbus::Result<()>;
+    fn cancel_authentication(&self, cookie: &str) -> zbus::Result<()>;
+  }
+
+  async fn polkitd(bus: &TestBus, registered: &Arc<Mutex<Vec<String>>>) -> Connection {
+    let services = bus.conn().await;
+    let server = services.object_server();
+    let polkitd = FakePolkitd {
+      registered: registered.clone(),
+    };
+    server
+      .at("/org/freedesktop/PolicyKit1/Authority", polkitd)
+      .await
+      .unwrap();
+    server
+      .at("/org/freedesktop/login1/session/auto", FakeSession)
+      .await
+      .unwrap();
+    services
+      .request_name("org.freedesktop.PolicyKit1")
+      .await
+      .unwrap();
+    services
+      .request_name("org.freedesktop.login1")
+      .await
+      .unwrap();
+    services
+  }
+
+  /// Asks the agent over the bus like polkitd, answered on another thread
+  fn ask(
+    caller: &Connection,
+    agent: &Connection,
+    cookie: &'static str,
+  ) -> thread::JoinHandle<zbus::Result<()>> {
+    let caller = caller.clone();
+    let destination = agent.unique_name().unwrap().to_owned();
+    thread::spawn(move || {
+      block_on(async {
+        let agent = AuthenticationAgentProxy::builder(&caller)
+          .destination(destination)?
+          .build()
+          .await?;
+        let uid = HashMap::from([("uid", Value::from(uid()))]);
+        agent
+          .begin_authentication(
+            "org.example.do",
+            "Do it",
+            "",
+            HashMap::new(),
+            cookie,
+            &[("unix-user", uid)],
+          )
+          .await
+      })
+    })
+  }
+
+  fn cookies(polkit: &Polkit, cx: &mut TestAppContext) -> Vec<String> {
+    polkit.requests.read_with(cx, |requests, _| {
+      requests.iter().map(|r| r.cookie.clone()).collect()
+    })
+  }
+
+  fn canceled(asked: thread::JoinHandle<zbus::Result<()>>) -> bool {
+    let error = asked.join().unwrap().unwrap_err();
+    matches!(error, zbus::Error::MethodError(ref name, ..) if name.as_str() == "org.freedesktop.PolicyKit1.Error.Cancelled")
+  }
+
+  #[gpui::test]
+  fn over_the_bus(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let bus = TestBus::new();
+    let dir = tempfile::tempdir().unwrap();
+    let registered = Arc::default();
+    let (_services, agent, caller) = block_on(async {
+      let services = polkitd(&bus, &registered).await;
+      (services, bus.conn().await, bus.conn().await)
+    });
+    let polkit = cx.update(|cx| {
+      let polkit = Polkit::fake(helper(dir.path(), &me()), cx);
+      serve(polkit.requests.clone(), agent.clone(), cx);
+      polkit
+    });
+    wait_until(cx, |_| !registered.lock().unwrap().is_empty());
+    let locale = std::env::var("LANG").unwrap_or_else(|_| "C".into());
+    assert_eq!(
+      *registered.lock().unwrap(),
+      [format!("unix-session 4 {locale} {AGENT_PATH}")]
+    );
+
+    // queued in order, the first is shown
+    let first = ask(&caller, &agent, "c1");
+    wait_until(cx, |cx| cookies(&polkit, cx).len() == 1);
+    let second = ask(&caller, &agent, "c2");
+    let third = ask(&caller, &agent, "c3");
+    wait_until(cx, |cx| cookies(&polkit, cx).len() == 3);
+    assert_eq!(cookies(&polkit, cx)[0], "c1");
+    assert_eq!(cx.read(|cx| polkit.request(cx).unwrap().user.clone()), me());
+
+    // polkitd giving up on a queued one
+    block_on(async {
+      AuthenticationAgentProxy::builder(&caller)
+        .destination(agent.unique_name().unwrap().to_owned())
+        .unwrap()
+        .build()
+        .await
+        .unwrap()
+        .cancel_authentication("c2")
+        .await
+        .unwrap()
+    });
+    wait_until(cx, |cx| cookies(&polkit, cx).len() == 2);
+    assert!(canceled(second));
+
+    let check = |password: &str, cx: &mut TestAppContext| {
+      let task = cx.update(|cx| polkit.authenticate(password.into(), cx));
+      cx.run_until_parked();
+      block_on(task).unwrap()
+    };
+    // a wrong password leaves it open for another try
+    assert!(!check("wrong", cx));
+    assert_eq!(cookies(&polkit, cx), ["c1", "c3"]);
+    assert!(check("right", cx));
+    assert_eq!(cookies(&polkit, cx), ["c3"]);
+    first.join().unwrap().unwrap();
+
+    // the dialog's cancel
+    cx.update(|cx| polkit.cancel(cx));
+    assert!(cookies(&polkit, cx).is_empty());
+    assert!(canceled(third));
+    assert!(!check("right", cx));
+  }
 
   fn talk(helper: &str) -> (Result<bool>, String) {
     let mut sent = Vec::new();

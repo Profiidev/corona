@@ -194,3 +194,112 @@ impl Render for PolkitDialog {
       )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::os::unix::fs::PermissionsExt;
+
+  use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
+  use tempfile::TempDir;
+
+  use super::*;
+  use crate::test_support::{FakeCompositor, setup};
+
+  /// A Polkit whose helper takes the password `right`
+  fn polkit(cx: &mut TestAppContext) -> (Polkit, TempDir) {
+    setup(FakeCompositor::default(), cx);
+    let dir = tempfile::tempdir().unwrap();
+    let helper = dir.path().join("helper");
+    let script = "#!/bin/sh\nread cookie\necho 'PAM_PROMPT_ECHO_OFF Password: '\nread password\n\
+                  [ \"$password\" = right ] && echo SUCCESS || echo FAILURE\n";
+    std::fs::write(&helper, script).unwrap();
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let polkit = cx.update(|cx| {
+      let polkit = Polkit::fake(helper, cx);
+      cx.set_global(polkit.clone());
+      polkit
+    });
+    (polkit, dir)
+  }
+
+  #[gpui::test]
+  fn a_window_per_request(cx: &mut TestAppContext) {
+    let (polkit, _dir) = polkit(cx);
+    cx.update(init);
+    let mut first = cx.update(|cx| polkit.ask("Do it", "c1", cx));
+    cx.run_until_parked();
+    let shown = cx.windows();
+    assert_eq!(shown.len(), 1);
+
+    // the next one waits for the first
+    let mut second = cx.update(|cx| polkit.ask("Do that", "c2", cx));
+    cx.run_until_parked();
+    assert_eq!(cx.windows(), shown);
+
+    // and gets a fresh window
+    cx.update(|cx| polkit.cancel(cx));
+    cx.run_until_parked();
+    assert!(first.try_recv().is_err());
+    let next = cx.windows();
+    assert_eq!(next.len(), 1);
+    assert_ne!(next, shown);
+
+    cx.update(|cx| polkit.cancel(cx));
+    cx.run_until_parked();
+    assert!(second.try_recv().is_err());
+    assert!(cx.windows().is_empty());
+  }
+
+  fn enter(dialog: &Entity<PolkitDialog>, password: &str, cx: &mut VisualTestContext) {
+    dialog.update_in(cx, |dialog, window, cx| {
+      dialog
+        .input
+        .update(cx, |input, cx| input.set_value(password, window, cx));
+      dialog.submit(window, cx);
+    });
+    cx.run_until_parked();
+  }
+
+  #[gpui::test]
+  fn passwords(cx: &mut TestAppContext) {
+    let (polkit, _dir) = polkit(cx);
+    let mut asked = cx.update(|cx| polkit.ask("Do it", "c1", cx));
+    let (dialog, cx) = cx.add_window_view(PolkitDialog::new);
+
+    enter(&dialog, "wrong", cx);
+    dialog.read_with(cx, |dialog, cx| {
+      assert_eq!(dialog.error, Some(t!("app.lock.wrong").into()));
+      assert!(!dialog.checking);
+      // cleared for the next try
+      assert_eq!(dialog.input.read(cx).value(), "");
+    });
+    assert!(cx.read(|cx| polkit.request(cx).is_some()));
+
+    enter(&dialog, "right", cx);
+    assert_eq!(asked.try_recv(), Ok(Some(())));
+    assert!(cx.read(|cx| polkit.request(cx).is_none()));
+  }
+
+  #[gpui::test]
+  fn broken_helper_is_no_wrong_password(cx: &mut TestAppContext) {
+    let (polkit, dir) = polkit(cx);
+    std::fs::remove_file(dir.path().join("helper")).unwrap();
+    let _asked = cx.update(|cx| polkit.ask("Do it", "c1", cx));
+    let (dialog, cx) = cx.add_window_view(PolkitDialog::new);
+    enter(&dialog, "right", cx);
+    dialog.read_with(cx, |dialog, _| {
+      assert_eq!(dialog.error, Some(t!("app.lock.auth_failed").into()));
+    });
+    assert!(cx.read(|cx| polkit.request(cx).is_some()));
+  }
+
+  #[gpui::test]
+  fn escape_cancels(cx: &mut TestAppContext) {
+    let (polkit, _dir) = polkit(cx);
+    let mut asked = cx.update(|cx| polkit.ask("Do it", "c1", cx));
+    let (_dialog, cx) = cx.add_window_view(PolkitDialog::new);
+    cx.simulate_keystrokes("escape");
+    assert!(asked.try_recv().is_err());
+    assert!(cx.read(|cx| polkit.request(cx).is_none()));
+  }
+}
