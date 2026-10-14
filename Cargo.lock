@@ -1840,8 +1840,10 @@ dependencies = [
  "futures",
  "futures-lite",
  "gpui-kit",
+ "libc",
  "pam-client",
  "tempfile",
+ "tracing",
  "zbus",
 ]
 

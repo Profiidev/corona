@@ -1,5 +1,15 @@
 _version: 2
 app:
+  polkit:
+    title:
+      en: Authentication required
+      de: Authentifizierung erforderlich
+    as_user:
+      en: "Authenticating as %{user}"
+      de: "Authentifizierung als %{user}"
+    authenticate:
+      en: Authenticate
+      de: Authentifizieren
   screenshot:
     selection:
       en: Selection
