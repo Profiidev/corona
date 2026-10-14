@@ -44,7 +44,7 @@ pub enum Commands {
     #[command(subcommand)]
     command: SchemaCommands,
   },
-  /// Print the TypeScript declarations of the plugin API; needs the running shell
+  /// Write the TypeScript declarations of plugins, as loading them does
   Types(TypesCommand),
 }
 
@@ -75,9 +75,11 @@ mod tests {
     assert!(parse(&["schema", "catalog", "-o", "x.json"]).is_ok());
     assert!(parse(&["schema", "other"]).is_err());
     assert!(matches!(
-      parse(&["types", "-o", "x.d.ts"]).unwrap().command,
+      parse(&["types", "a", "b"]).unwrap().command,
       Commands::Types(_)
     ));
+    assert!(parse(&["types"]).is_err());
+    assert!(parse(&["types", "-o", "x.d.ts"]).is_err());
     assert!(parse(&[]).is_err());
     assert!(parse(&["nope"]).is_err());
   }

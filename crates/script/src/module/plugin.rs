@@ -219,7 +219,8 @@ pub fn module(
   subs: &mut Vec<Subscribe>,
 ) -> HostModule {
   let reads = Subscriptions::default();
-  subs.push(watch(&reads, Updates::Plugin, hub.state.clone()));
+  let shared = hub.state.clone();
+  subs.push(watch(&reads, Updates::Plugin, move |_| shared));
   let service = calls.is_some();
   let (call, reply, fail) = (hub.clone(), hub.calls.clone(), hub.calls.clone());
 

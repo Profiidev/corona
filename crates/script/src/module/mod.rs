@@ -72,7 +72,8 @@ pub enum CoronaModule {
 }
 
 impl CoronaModule {
-  /// Every module, for `corona types`
+  /// Every module
+  #[cfg(test)]
   pub const ALL: [Self; 16] = [
     Self::Compositor,
     Self::CompositorControl,
@@ -111,19 +112,19 @@ impl CoronaModule {
     cx: &mut App,
   ) -> HostModule {
     match self {
-      Self::Compositor => compositor::module(reads, subs, cx),
+      Self::Compositor => compositor::module(reads, subs),
       Self::CompositorControl => compositor::control(),
-      Self::Pipewire => pipewire::module(reads, subs, cx),
-      Self::Network => network::module(reads, subs, cx),
-      Self::Mpris => mpris::module(reads, subs, cx),
-      Self::Bluetooth => bluetooth::module(reads, subs, cx),
-      Self::Power => power::module(reads, subs, cx),
-      Self::Brightness => brightness::module(reads, subs, cx),
+      Self::Pipewire => pipewire::module(reads, subs),
+      Self::Network => network::module(reads, subs),
+      Self::Mpris => mpris::module(reads, subs),
+      Self::Bluetooth => bluetooth::module(reads, subs),
+      Self::Power => power::module(reads, subs),
+      Self::Brightness => brightness::module(reads, subs),
       Self::Notifications => notifications::module(plugin, subs, cx),
-      Self::NotificationCenter => notifications::center(reads, subs, cx),
-      Self::Tray => tray::module(reads, subs, cx),
-      Self::Sysinfo => sysinfo::module(reads, subs, cx),
-      Self::Weather => weather::module(reads, subs, cx),
+      Self::NotificationCenter => notifications::center(reads, subs),
+      Self::Tray => tray::module(reads, subs),
+      Self::Sysinfo => sysinfo::module(reads, subs),
+      Self::Weather => weather::module(reads, subs),
       Self::Auth => auth::module(plugin.id),
       Self::Secrets => secrets::module(plugin),
       Self::Desktop => desktop::module(plugin.capabilities.clone(), subs),
@@ -160,6 +161,8 @@ pub enum Subscribe {
   Refresh(Refresh),
   /// Cleans up after the script, view or service
   Cleanup(Subscription),
+  /// Starts what views and services alike need once the script runs, its cleanup
+  Start(Box<dyn FnOnce(&mut App) -> Subscription>),
 }
 
 impl Subscribe {
@@ -172,24 +175,32 @@ impl Subscribe {
     match self {
       Self::Refresh(refresh) => refresh(runtime, root, cx),
       Self::Cleanup(cleanup) => cleanup,
+      Self::Start(start) => start(cx),
     }
   }
 
   /// What a service keeps
-  pub fn cleanup(self) -> Option<Subscription> {
+  pub fn cleanup(self, cx: &mut App) -> Option<Subscription> {
     match self {
       Self::Refresh(_) => None,
       Self::Cleanup(cleanup) => Some(cleanup),
+      Self::Start(start) => Some(start(cx)),
     }
   }
 }
 
-fn watch<T: 'static>(reads: &Subscriptions, update: Updates, entity: Entity<T>) -> Subscribe {
+/// Re-renders the script when the entity `entity` finds changes, if it read `update`. Found as
+/// the script runs, so building a module needs no running service.
+fn watch<T: 'static>(
+  reads: &Subscriptions,
+  update: Updates,
+  entity: impl FnOnce(&App) -> Entity<T> + 'static,
+) -> Subscribe {
   let reads = reads.clone();
 
   Subscribe::Refresh(Box::new(move |runtime, root, cx| {
     let (runtime, root) = (runtime.clone(), root.clone());
-    cx.observe(&entity, move |_, cx| {
+    cx.observe(&entity(cx), move |_, cx| {
       if reads.contains(update) {
         runtime.refresh(&root, cx).log_err().ok();
       }
@@ -203,7 +214,7 @@ fn read<W: 'static, R: HostReturn<M>, M: 'static>(
   subs: &mut Vec<Subscribe>,
   name: &'static str,
   update: impl Into<Updates>,
-  entity: Entity<W>,
+  entity: impl FnOnce(&App) -> Entity<W> + 'static,
   read: impl Fn(&App) -> R + 'static,
 ) -> Named<impl Fn(Cx) -> R + 'static> {
   let update = update.into();
@@ -373,7 +384,29 @@ export default class Main extends View {{
 
 #[cfg(test)]
 mod tests {
+  use std::cell::Cell;
+
+  use gpui_kit::{self as gpui, TestAppContext};
+
   use super::*;
+
+  #[gpui::test]
+  fn start_runs_for_views_and_services(cx: &mut TestAppContext) {
+    let started = Rc::new(Cell::new(false));
+    let flag = started.clone();
+    let start = Subscribe::Start(Box::new(move |_| {
+      flag.set(true);
+      Subscription::new(|| {})
+    }));
+    assert!(cx.update(|cx| start.cleanup(cx)).is_some());
+    assert!(started.get());
+
+    // a service never renders, so the entity is never looked up
+    let refresh = watch::<()>(&Subscriptions::default(), Updates::Plugin, |_| {
+      unreachable!("looked up without a view")
+    });
+    assert!(cx.update(|cx| refresh.cleanup(cx)).is_none());
+  }
 
   #[test]
   fn module_names() {

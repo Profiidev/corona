@@ -126,16 +126,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.bluetooth();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/bluetooth")
     .func(read(
       reads,
       subs,
       "adapter",
       Updates::Adapter,
-      state.adapter.clone(),
+      |cx| cx.bluetooth().adapter.clone(),
       |cx| cx.bluetooth().adapter(cx).map(Adapter::from),
     ))
     .func(read(
@@ -143,7 +141,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listDevices",
       Updates::Devices,
-      state.devices.clone(),
+      |cx| cx.bluetooth().devices.clone(),
       |cx| {
         let devices = cx.bluetooth().list_devices(cx);
         devices.iter().map(Device::from).collect::<Vec<_>>()
@@ -154,7 +152,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "pairingRequest",
       Updates::PairingRequest,
-      state.pairing_request.clone(),
+      |cx| cx.bluetooth().pairing_request.clone(),
       pairing_request,
     ))
     .func(named!(

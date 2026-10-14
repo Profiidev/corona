@@ -380,16 +380,14 @@ fn owns(cx: &App, plugin: &str, id: u32) -> bool {
 }
 
 /// `corona/notification_center`: every app's notifications and the global state.
-pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let state = cx.notifications();
-
+pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/notification_center")
     .func(read(
       reads,
       subs,
       "listNotifications",
       Updates::Notifications,
-      state.notifications.clone(),
+      |cx| cx.notifications().notifications.clone(),
       |cx| {
         let list = cx.notifications().list(cx);
         list.iter().map(Notification::from).collect::<Vec<_>>()
@@ -400,7 +398,7 @@ pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "hasUnread",
       Updates::Notifications,
-      state.notifications.clone(),
+      |cx| cx.notifications().notifications.clone(),
       |cx| cx.notifications().has_unread(cx),
     ))
     .func(read(
@@ -408,7 +406,7 @@ pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "doNotDisturb",
       Updates::DoNotDisturb,
-      state.do_not_disturb.clone(),
+      |cx| cx.notifications().do_not_disturb.clone(),
       |cx| cx.notifications().do_not_disturb(cx),
     ))
     .func(read(
@@ -416,7 +414,7 @@ pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "active",
       Updates::Active,
-      state.active.clone(),
+      |cx| cx.notifications().active.clone(),
       // false while another notification daemon owns the bus name
       |cx| cx.notifications().active(cx),
     ))

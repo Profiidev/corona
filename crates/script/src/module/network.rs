@@ -282,16 +282,14 @@ impl From<Updates> for super::Updates {
   }
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let network = cx.network_manager();
-
+pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
   Module::new("corona/network")
     .func(read(
       reads,
       subs,
       "listInterfaces",
       Updates::Interfaces,
-      network.interfaces.clone(),
+      |cx| cx.network_manager().interfaces.clone(),
       |cx| {
         let interfaces = cx.network_manager().list_interfaces(cx);
         interfaces.iter().map(Interface::from).collect::<Vec<_>>()
@@ -302,7 +300,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "primaryInterface",
       Updates::PrimaryInterface,
-      network.primary_interface.clone(),
+      |cx| cx.network_manager().primary_interface.clone(),
       |cx| {
         cx.network_manager()
           .primary_interface(cx)
@@ -314,7 +312,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "connectivity",
       Updates::Connectivity,
-      network.connectivity.clone(),
+      |cx| cx.network_manager().connectivity.clone(),
       |cx| Connectivity::from(cx.network_manager().connectivity(cx)),
     ))
     .func(read(
@@ -322,7 +320,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "connectivityCheckEnabled",
       Updates::ConnectivityCheck,
-      network.connectivity_check.clone(),
+      |cx| cx.network_manager().connectivity_check.clone(),
       |cx| cx.network_manager().connectivity_check(cx).is_some(),
     ))
     .func(named!("checkConnectivity", |nm: Glob<NetworkManager>| {
@@ -337,7 +335,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "wifiSupported",
       Updates::WifiSupported,
-      network.wifi_supported.clone(),
+      |cx| cx.network_manager().wifi_supported.clone(),
       |cx| cx.network_manager().wifi_supported(cx),
     ))
     .func(read(
@@ -345,7 +343,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "wifiEnabled",
       Updates::WifiEnabled,
-      network.wifi_enabled.clone(),
+      |cx| cx.network_manager().wifi_enabled.clone(),
       |cx| cx.network_manager().wifi_enabled(cx),
     ))
     .func(read(
@@ -353,7 +351,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "primaryWifi",
       Updates::PrimaryWifi,
-      network.primary_wifi.clone(),
+      |cx| cx.network_manager().primary_wifi.clone(),
       |cx| cx.network_manager().primary_wifi(cx).map(Interface::from),
     ))
     .func(read(
@@ -361,7 +359,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listWifiNetworks",
       Updates::WifiNetworks,
-      network.wifi_networks.clone(),
+      |cx| cx.network_manager().wifi_networks.clone(),
       |cx| {
         let networks = cx.network_manager().list_wifi_networks(cx);
         networks.iter().map(WifiNetwork::from).collect::<Vec<_>>()
@@ -372,7 +370,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "wifiFailure",
       Updates::WifiFailure,
-      network.wifi_failure.clone(),
+      |cx| cx.network_manager().wifi_failure.clone(),
       |cx| cx.network_manager().wifi_failure(cx).map(WifiFailure::from),
     ))
     .func(read(
@@ -380,7 +378,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "secretRequest",
       Updates::SecretRequest,
-      network.secret_request.clone(),
+      |cx| cx.network_manager().secret_request.clone(),
       |cx| {
         let request = cx.network_manager().secret_request(cx);
         request.map(|request| SecretRequest {
@@ -408,7 +406,7 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>, cx: &mut App) ->
       subs,
       "listVpns",
       Updates::Vpns,
-      network.vpns.clone(),
+      |cx| cx.network_manager().vpns.clone(),
       |cx| {
         let vpns = cx.network_manager().list_vpns(cx);
         vpns.iter().map(Vpn::from).collect::<Vec<_>>()
