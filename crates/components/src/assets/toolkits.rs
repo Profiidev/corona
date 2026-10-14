@@ -12,11 +12,24 @@ pub fn sync(dark: bool, colors: &ThemeColor) -> Result<()> {
   let scheme = if dark { "prefer-dark" } else { "prefer-light" };
   // on its own thread, so the shell neither waits for it nor leaves a zombie
   std::thread::spawn(move || {
-    let status = std::process::Command::new("gsettings")
-      .args(["set", "org.gnome.desktop.interface", "color-scheme", scheme])
-      .status();
-    if !matches!(status, Ok(s) if s.success()) {
-      tracing::warn!("Failed to set the GTK color scheme: {status:?}");
+    let run = |program: &str, args: &[&str]| {
+      let status = std::process::Command::new(program).args(args).status();
+      matches!(status, Ok(s) if s.success())
+    };
+    // NixOS has no gsettings on PATH, nor its schemas; dconf is its backend
+    let set = run(
+      "gsettings",
+      &["set", "org.gnome.desktop.interface", "color-scheme", scheme],
+    ) || run(
+      "dconf",
+      &[
+        "write",
+        "/org/gnome/desktop/interface/color-scheme",
+        &format!("'{scheme}'"),
+      ],
+    );
+    if !set {
+      tracing::warn!("Failed to set the GTK color scheme: neither gsettings nor dconf worked");
     }
   });
 
