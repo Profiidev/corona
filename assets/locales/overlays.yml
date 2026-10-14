@@ -5,8 +5,8 @@ app:
       en: Authentication required
       de: Authentifizierung erforderlich
     as_user:
-      en: "Authenticating as %{user}"
-      de: "Authentifizierung als %{user}"
+      en: 'Authenticating as %{user}'
+      de: 'Authentifizierung als %{user}'
     authenticate:
       en: Authenticate
       de: Authentifizieren
