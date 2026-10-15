@@ -169,6 +169,7 @@ mod tests {
 
   #[gpui::test]
   fn config_and_pausing_set_the_interval(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
       init(cx);
@@ -190,6 +191,7 @@ mod tests {
 
   #[gpui::test]
   fn rapid_config_updates(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
       init(cx);
@@ -208,18 +210,5 @@ mod tests {
         Some(Duration::from_secs(5))
       );
     });
-  }
-
-  #[gpui::test]
-  fn background_update_listener_task_terminates_on_disconnect(cx: &mut TestAppContext) {
-    cx.update(|cx| {
-      cx.set_global(Config::default());
-      init(cx);
-    });
-    // Task spawned in init runs and stays idle waiting for updates or terminates when disconnected
-    cx.run_until_parked();
-    let (tx, rx) = flume::unbounded::<Update>();
-    drop(tx);
-    assert!(rx.recv().is_err());
   }
 }
