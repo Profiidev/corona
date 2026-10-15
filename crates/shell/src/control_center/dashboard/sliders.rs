@@ -64,6 +64,13 @@ fn pick_display<'d>(displays: &'d [Display], focused: &str) -> Option<&'d Displa
     .or_else(|| usable().next())
 }
 
+/// the brightness slider's target, `None` while dragging so the drag is not overwritten
+fn brightness_value(displays: &[Display], focused: &str, dragging: bool) -> Option<f32> {
+  pick_display(displays, focused)
+    .map(Display::percent)
+    .filter(|_| !dragging)
+}
+
 fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
   let Some(node) = node else {
     return;
@@ -154,7 +161,11 @@ impl Sliders {
       ),
       (
         &self.brightness,
-        display(cx).map(Display::percent).filter(|_| !self.dragging),
+        brightness_value(
+          cx.brightness().list_displays(cx),
+          &cx.compositor().active_monitor(cx).name,
+          self.dragging,
+        ),
         0.5,
       ),
     ];
@@ -293,6 +304,17 @@ mod tests {
       max: 100,
       unavailable,
     }
+  }
+
+  #[test]
+  fn brightness_value_follows_the_focused_monitor() {
+    let mut dim = display("b", Some("DP-2"), None);
+    dim.brightness = 20;
+    let displays = [display("a", Some("DP-1"), None), dim];
+    assert_eq!(brightness_value(&displays, "DP-1", false), Some(50.));
+    assert_eq!(brightness_value(&displays, "DP-2", false), Some(20.));
+    // a drag in progress keeps its own value
+    assert_eq!(brightness_value(&displays, "DP-2", true), None);
   }
 
   fn picked(displays: &[Display], focused: &str) -> Option<String> {

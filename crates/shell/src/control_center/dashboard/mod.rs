@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
+use corona_compositor::CompositorExt;
 use corona_mpris::MprisExt;
 use corona_network_manager::NetworkManagerExt;
 use corona_notifications::NotificationsExt;
@@ -68,12 +69,16 @@ impl ControlCenterPanel for DashboardPanel {
     let sink = cx.pipewire().default_sink.clone();
     let source = cx.pipewire().default_source.clone();
     let displays = cx.brightness().displays.clone();
+    let monitor = cx.compositor().active_monitor.clone();
     subscriptions.extend([
       cx.observe_in(&sink, window, |this, _, window, cx| this.resync(window, cx)),
       cx.observe_in(&source, window, |this, _, window, cx| {
         this.resync(window, cx)
       }),
       cx.observe_in(&displays, window, |this, _, window, cx| {
+        this.resync(window, cx)
+      }),
+      cx.observe_in(&monitor, window, |this, _, window, cx| {
         this.resync(window, cx)
       }),
     ]);
