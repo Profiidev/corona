@@ -76,12 +76,19 @@ impl PanelState {
     bar_bounds: Bounds<Pixels>,
     placement: Placement,
     opener: EntityId,
-    window: &Window,
+    display_id: DisplayId,
     cx: &mut App,
   ) -> Result<()> {
     let align = Align::from_bounds(button_bounds, bar_bounds, data.width, placement, cx);
-    let display_id = window.display(cx).map(|d| d.id());
-    Self::apply(data, align, placement, display_id, Some(opener), true, cx)
+    Self::apply(
+      data,
+      align,
+      placement,
+      Some(display_id),
+      Some(opener),
+      true,
+      cx,
+    )
   }
 
   pub fn show(name: &str, toggle: bool, cx: &mut App) -> Result<()> {
@@ -111,28 +118,26 @@ impl PanelState {
       .cloned()
       .with_context(|| format!("unknown panel: {name}"))?;
     let found = opener.and_then(|id| Some((id, BarState::bar_with_widget(id, cx)?)));
-    let Some((widget_id, (handle, bar))) = found else {
+    let Some((widget_id, bar)) = found else {
       return Self::show(name, toggle, cx);
     };
     let bar = bar.read(cx);
     let placement = bar.placement();
     let bar_bounds = bar.bounds();
+    let display_id = bar.display();
     let button_bounds = bar
       .widget_bounds(widget_id)
       .context("no bounds for this widget")?;
-    handle.update(cx, |_, window, cx| {
-      let align = Align::from_bounds(button_bounds, bar_bounds, data.width, placement, cx);
-      let display_id = window.display(cx).map(|d| d.id());
-      Self::apply(
-        data,
-        align,
-        placement,
-        display_id,
-        Some(widget_id),
-        toggle,
-        cx,
-      )
-    })?
+    let align = Align::from_bounds(button_bounds, bar_bounds, data.width, placement, cx);
+    Self::apply(
+      data,
+      align,
+      placement,
+      Some(display_id),
+      Some(widget_id),
+      toggle,
+      cx,
+    )
   }
 
   /// Whether panel `name` is open or opening
@@ -325,7 +330,7 @@ impl<W: Widget> WdigetPanelExt for Context<'_, W> {
       bar.bounds(),
       bar.placement(),
       widget_id,
-      window,
+      bar.display(),
       self,
     )
   }

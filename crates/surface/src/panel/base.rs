@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
+use corona_compositor::CompositorExt;
 use corona_config::{
   APP_NAME, ConfigProvider,
   placement::{Placement, PlacementStyle, PlacmentBounds},
@@ -94,10 +95,15 @@ impl BasePanel {
       return;
     }
     let panel = cx.weak_entity();
-    for id in cx.displays().iter().map(|d| d.id()) {
-      if Some(id) == self.display {
-        continue;
-      }
+    let compositor = cx.compositor();
+    let displays: Vec<DisplayId> = cx
+      .displays()
+      .iter()
+      .filter(|d| Some(d.id()) != self.display)
+      .filter(|d| !d.uuid().is_ok_and(|uuid| compositor.is_disabled(uuid, cx)))
+      .map(|d| d.id())
+      .collect();
+    for id in displays {
       let panel = panel.clone();
       match cx.open_window(blocker_options(id), |_, cx| cx.new(|_| Blocker { panel })) {
         Ok(handle) => self.blockers.push(handle.into()),

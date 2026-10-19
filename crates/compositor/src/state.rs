@@ -1,8 +1,9 @@
 use std::{collections::HashSet, rc::Rc};
 
 use anyhow::Result;
-use corona_utils::entity::WriteChangedExt;
+use corona_utils::{display::display_uuid, entity::WriteChangedExt};
 use gpui_kit::{App, AppContext, Entity, Global};
+use uuid::Uuid;
 
 use crate::types;
 
@@ -127,6 +128,15 @@ impl Compositor {
 
   pub fn active_monitor<'c>(&self, cx: &'c App) -> &'c types::Monitor {
     self.active_monitor.read(cx)
+  }
+
+  /// Whether display `uuid` is a monitor the compositor disabled. Wayland can
+  /// still list it for a moment, and a surface opened on it lands on another one
+  pub fn is_disabled(&self, uuid: Uuid, cx: &App) -> bool {
+    self
+      .list_monitors(cx)
+      .iter()
+      .any(|m| m.disabled && display_uuid(&m.name) == uuid)
   }
 
   pub fn list_windows<'c>(&self, cx: &'c App) -> &'c [types::Window] {
@@ -321,6 +331,8 @@ mod tests {
       Compositor::configure_monitor("DP-2", types::MonitorChange::Mirror("DP-1".into()), cx)
         .unwrap();
       assert!(cx.compositor().list_monitors(cx)[0].disabled);
+      assert!(cx.compositor().is_disabled(display_uuid("DP-1"), cx));
+      assert!(!cx.compositor().is_disabled(display_uuid("DP-2"), cx));
     });
     // the windows moved with their workspaces, without an event
     let listed = FakeHyprland::start().ipc().list_windows().unwrap();
