@@ -3,6 +3,7 @@ use std::time::Duration;
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
 use corona_compositor::CompositorExt;
+use corona_idle::IdleExt;
 use corona_mpris::MprisExt;
 use corona_network_manager::NetworkManagerExt;
 use corona_notifications::NotificationsExt;
@@ -60,6 +61,7 @@ impl ControlCenterPanel for DashboardPanel {
       cx.notifications().notifications,
       cx.notifications().do_not_disturb,
       cx.power().profiles,
+      cx.idle().stay_awake,
       cx.mpris().players,
       cx.mpris().active,
       cx.weather().weather,

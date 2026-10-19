@@ -500,6 +500,14 @@ fn osd() -> SettingPage {
             t!("app.settings.osd.lock_keys.description"),
             switch(|c| c.osd.kinds.lock_keys, |c, v| c.osd.kinds.lock_keys = v),
           ),
+          item(
+            t!("app.settings.osd.stay_awake.title"),
+            t!("app.settings.osd.stay_awake.description"),
+            switch(
+              |c| c.osd.kinds.stay_awake,
+              |c, v| c.osd.kinds.stay_awake = v,
+            ),
+          ),
         ],
       ),
     ],

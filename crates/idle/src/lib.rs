@@ -1,7 +1,8 @@
 use std::{collections::HashMap, thread, time::Duration};
 
 use anyhow::{Context, Result};
-use gpui_kit::{App, AppContext, Global};
+use corona_utils::entity::WriteChangedExt;
+use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::{
   Connection, Dispatch, QueueHandle, delegate_noop,
@@ -23,10 +24,17 @@ const COMMAND_POLL: Duration = Duration::from_millis(10);
 
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
+  /// The user keeps the session awake, changed by [`set_stay_awake`](Idle::set_stay_awake)
+  pub stay_awake: Entity<bool>,
+  /// Nothing is watched: staying awake, or an app holds an
+  /// `org.freedesktop.ScreenSaver` inhibit
+  pub inhibited: Entity<bool>,
   timeouts: flume::Sender<Vec<(String, Duration)>>,
   wanted: Vec<(String, Duration)>,
   /// an app holds an `org.freedesktop.ScreenSaver` inhibit
-  inhibited: bool,
+  screensaver: bool,
+  /// ends a timed stay awake
+  expiry: Option<Task<()>>,
 }
 
 impl Global for Idle {}
@@ -63,31 +71,61 @@ pub fn init(
   cx.spawn(async move |cx| {
     while let Ok(inhibited) = inhibited_rx.recv_async().await {
       cx.update(|cx| {
-        let idle = cx.idle();
-        idle.inhibited = inhibited;
-        idle.send();
+        cx.update_global::<Idle, _>(|idle, cx| {
+          idle.screensaver = inhibited;
+          idle.send(cx);
+        })
       });
     }
   })
   .detach();
-  cx.set_global(Idle {
+  let idle = Idle {
+    stay_awake: cx.new(|_| false),
+    inhibited: cx.new(|_| false),
     timeouts,
     wanted: Vec::new(),
-    inhibited: false,
-  });
+    screensaver: false,
+    expiry: None,
+  };
+  cx.set_global(idle);
 }
 
 impl Idle {
+  pub fn stay_awake(&self, cx: &App) -> bool {
+    *self.stay_awake.read(cx)
+  }
+
+  pub fn inhibited(&self, cx: &App) -> bool {
+    *self.inhibited.read(cx)
+  }
+
   /// Replaces what is watched; a zero duration is left out. Each one active
   /// before reports `false` first.
-  pub fn set_timeouts(&mut self, timeouts: Vec<(String, Duration)>) {
+  pub fn set_timeouts(&mut self, timeouts: Vec<(String, Duration)>, cx: &mut App) {
     self.wanted = timeouts;
-    self.send();
+    self.send(cx);
+  }
+
+  /// Keeps the session awake, nothing is watched until it is turned off again
+  /// or `duration` passes. Replaces the duration of an earlier call.
+  pub fn set_stay_awake(&mut self, on: bool, duration: Option<Duration>, cx: &mut App) {
+    self.expiry = duration.filter(|_| on).map(|duration| {
+      cx.spawn(async move |cx| {
+        cx.background_executor().timer(duration).await;
+        cx.update(|cx| {
+          cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(false, None, cx))
+        });
+      })
+    });
+    self.stay_awake.write_changed(cx, on);
+    self.send(cx);
   }
 
   /// Nothing is watched while inhibited, the timeouts start over after
-  fn send(&self) {
-    let timeouts = match self.inhibited {
+  fn send(&self, cx: &mut App) {
+    let inhibited = self.screensaver || self.stay_awake(cx);
+    self.inhibited.write_changed(cx, inhibited);
+    let timeouts = match inhibited {
       true => Vec::new(),
       false => self.wanted.clone(),
     };
@@ -95,13 +133,14 @@ impl Idle {
   }
 }
 
+/// Reads the watcher; changes go through `cx.update_global::<Idle, _>`
 pub trait IdleExt {
-  fn idle(&mut self) -> &mut Idle;
+  fn idle(&self) -> &Idle;
 }
 
 impl IdleExt for App {
-  fn idle(&mut self) -> &mut Idle {
-    self.global_mut::<Idle>()
+  fn idle(&self) -> &Idle {
+    self.global::<Idle>()
   }
 }
 
@@ -432,7 +471,32 @@ mod tests {
       .iter()
       .map(|(name, millis)| (name.to_string(), Duration::from_millis(*millis)))
       .collect();
-    cx.update(|cx| cx.idle().set_timeouts(timeouts));
+    cx.update(|cx| cx.update_global::<Idle, _>(|idle, cx| idle.set_timeouts(timeouts, cx)));
+  }
+
+  fn stay_awake(cx: &mut TestAppContext, on: bool, duration: Option<Duration>) {
+    cx.update(|cx| cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(on, duration, cx)));
+  }
+
+  /// Calls an app's `org.freedesktop.ScreenSaver` method
+  fn screensaver<B>(conn: &zbus::Connection, method: &str, body: &B) -> zbus::Result<zbus::Message>
+  where
+    B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
+  {
+    let name = "org.freedesktop.ScreenSaver";
+    let call = conn.call_method(
+      Some(name),
+      "/org/freedesktop/ScreenSaver",
+      Some(name),
+      method,
+      body,
+    );
+    futures_lite::future::block_on(call)
+  }
+
+  /// (stay awake, inhibited)
+  fn awake(cx: &mut TestAppContext) -> (bool, bool) {
+    cx.read(|cx| (cx.idle().stay_awake(cx), cx.idle().inhibited(cx)))
   }
 
   /// the watcher and compositor are real threads: wait in real time
@@ -446,6 +510,12 @@ mod tests {
       assert!(Instant::now() < deadline, "timed out");
       thread::sleep(Duration::from_millis(5));
     }
+  }
+
+  /// moves the test clock on and runs the timers it reaches
+  fn advance(cx: &mut TestAppContext, by: Duration) {
+    cx.executor().advance_clock(by);
+    cx.run_until_parked();
   }
 
   /// nothing more arrives for a while
@@ -642,6 +712,90 @@ mod tests {
     // The old notification was destroyed, so its events must be dropped even though
     // "lock" exists in state.notifications with the new timeout.
     assert!(events.borrow().is_empty());
+  }
+
+  #[gpui::test]
+  fn staying_awake_watches_nothing(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let (events, _bus) = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live() == [1000]);
+    compositor.send(1000, true);
+    wait(cx, || events.borrow().len() == 1);
+
+    stay_awake(cx, true, None);
+    assert_eq!(awake(cx), (true, true));
+    wait(cx, || compositor.live().is_empty());
+    // what was idle resumes
+    wait(cx, || events.borrow().len() == 2);
+    assert_eq!(events.borrow()[1], ("lock".to_string(), false));
+    // new timeouts wait until it is turned off
+    set(cx, &[("lock", 2000)]);
+    settle(cx);
+    assert!(compositor.live().is_empty());
+
+    stay_awake(cx, false, None);
+    assert_eq!(awake(cx), (false, false));
+    wait(cx, || compositor.live() == [2000]);
+    assert_eq!(events.borrow().len(), 2);
+  }
+
+  #[gpui::test]
+  fn an_app_inhibit_outlasts_staying_awake(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let (_events, bus) = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live() == [1000]);
+
+    let app = futures_lite::future::block_on(bus.conn());
+    let cookie: u32 = loop {
+      match screensaver(&app, "Inhibit", &("game", "playing")) {
+        Ok(reply) => break reply.body().deserialize().unwrap(),
+        // the server is not up yet
+        Err(_) => settle(cx),
+      }
+    };
+    wait(cx, || compositor.live().is_empty());
+    assert_eq!(awake(cx), (false, true));
+
+    stay_awake(cx, true, None);
+    assert_eq!(awake(cx), (true, true));
+    stay_awake(cx, false, None);
+    assert_eq!(awake(cx), (false, true));
+    settle(cx);
+    assert!(compositor.live().is_empty());
+
+    screensaver(&app, "UnInhibit", &cookie).unwrap();
+    wait(cx, || compositor.live() == [1000]);
+    assert_eq!(awake(cx), (false, false));
+  }
+
+  #[gpui::test]
+  fn staying_awake_for_a_while(cx: &mut TestAppContext) {
+    let compositor = Compositor::start(true);
+    let _running = start(cx);
+    set(cx, &[("lock", 1000)]);
+    wait(cx, || compositor.live() == [1000]);
+    let minutes = |m: u64| Duration::from_secs(m * 60);
+
+    stay_awake(cx, true, Some(minutes(30)));
+    wait(cx, || compositor.live().is_empty());
+    advance(cx, minutes(29));
+    assert_eq!(awake(cx), (true, true));
+    advance(cx, minutes(1));
+    assert_eq!(awake(cx), (false, false));
+    wait(cx, || compositor.live() == [1000]);
+
+    // a later call replaces the time, turning off drops it
+    stay_awake(cx, true, Some(minutes(10)));
+    stay_awake(cx, true, None);
+    advance(cx, minutes(10));
+    assert_eq!(awake(cx), (true, true));
+    stay_awake(cx, true, Some(minutes(10)));
+    stay_awake(cx, false, Some(minutes(5)));
+    stay_awake(cx, true, None);
+    advance(cx, minutes(10));
+    assert_eq!(awake(cx), (true, true));
   }
 
   #[test]

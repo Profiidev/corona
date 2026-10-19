@@ -22,6 +22,7 @@ pub mod compositor;
 pub mod dbus;
 pub mod desktop;
 pub mod i18n;
+pub mod idle;
 pub mod mpris;
 pub mod network;
 pub mod notifications;
@@ -69,12 +70,14 @@ pub enum CoronaModule {
   Secrets,
   /// The file picker and opening files and URIs in the user's apps.
   Desktop,
+  /// Staying awake, and whether idling is held back.
+  Idle,
 }
 
 impl CoronaModule {
   /// Every module
   #[cfg(test)]
-  pub const ALL: [Self; 16] = [
+  pub const ALL: [Self; 17] = [
     Self::Compositor,
     Self::CompositorControl,
     Self::Pipewire,
@@ -91,6 +94,7 @@ impl CoronaModule {
     Self::Auth,
     Self::Secrets,
     Self::Desktop,
+    Self::Idle,
   ];
 }
 
@@ -128,6 +132,7 @@ impl CoronaModule {
       Self::Auth => auth::module(plugin.id),
       Self::Secrets => secrets::module(plugin),
       Self::Desktop => desktop::module(plugin.capabilities.clone(), subs),
+      Self::Idle => idle::module(reads, subs),
     }
   }
 }
@@ -140,6 +145,7 @@ pub enum Updates {
   Bluetooth(bluetooth::Updates),
   Brightness(brightness::Updates),
   Compositor(compositor::Updates),
+  Idle(idle::Updates),
   Mpris(mpris::Updates),
   Network(network::Updates),
   Notifications(notifications::Updates),
@@ -427,6 +433,7 @@ mod tests {
       (CoronaModule::Auth, "auth"),
       (CoronaModule::Secrets, "secrets"),
       (CoronaModule::Desktop, "desktop"),
+      (CoronaModule::Idle, "idle"),
     ];
     assert_eq!(all.map(|(module, _)| module), CoronaModule::ALL);
     for (module, name) in all {

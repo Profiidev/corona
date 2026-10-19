@@ -1,10 +1,12 @@
 use corona_bluez::BluetoothExt;
 use corona_components::assets::toggle_mode;
+use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
 use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
 use gpui_kit::{
-  App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, Styled, Window,
+  App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
+  ParentElement, Styled, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -47,6 +49,7 @@ pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Div {
     dark_mode(cx),
     profile(cx),
     airplane(cx),
+    stay_awake(cx),
   ]
   .into_iter()
   .collect();
@@ -54,11 +57,13 @@ pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Div {
   let mut rows = div().flex().flex_col().gap(px(6.));
   let mut tiles = tiles.into_iter().peekable();
   while tiles.peek().is_some() {
-    let row: Vec<_> = tiles
+    let mut row: Vec<_> = tiles
       .by_ref()
       .take(COLUMNS)
       .map(|toggle| div().flex_1().min_w_0().child(tile(toggle)))
       .collect();
+    // a short last row keeps the tiles' width
+    row.resize_with(COLUMNS, || div().flex_1().min_w_0());
     rows = rows.child(div().flex().gap(px(6.)).children(row));
   }
   rows
@@ -272,6 +277,21 @@ fn airplane(cx: &App) -> Toggle {
       }
     })),
     page: Some(ControlCenterType::Network),
+  }
+}
+
+fn stay_awake(cx: &App) -> Toggle {
+  let on = cx.idle().stay_awake(cx);
+  Toggle {
+    id: "toggle-stay-awake",
+    icon: IconName::Coffee,
+    label: t!("app.dashboard.stay_awake"),
+    status: on_off(on),
+    active: on,
+    on_click: Some(Box::new(move |cx| {
+      cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
+    })),
+    page: None,
   }
 }
 

@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
+use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
@@ -70,6 +71,15 @@ pub enum IpcCommands {
   Wifi { switch: Switch },
   /// Bluetooth adapter: on, off, toggle or status
   Bluetooth { switch: Switch },
+  /// Keep the session awake, no idle behaviors and no sleep: on, off, toggle
+  /// or status
+  StayAwake {
+    /// Toggle by default, on with `--for`
+    switch: Option<Switch>,
+    /// Turn it off again after this many minutes
+    #[arg(long = "for", value_name = "MINUTES")]
+    minutes: Option<u32>,
+  },
   /// Power profile commands
   PowerProfile {
     #[command(subcommand)]
@@ -141,6 +151,14 @@ impl IpcCommands {
       IpcCommands::Wifi { switch } => print_switch(Wifi::send(switch), switch, "Wi-Fi"),
       IpcCommands::Bluetooth { switch } => {
         print_switch(Bluetooth::send(switch), switch, "Bluetooth")
+      }
+      IpcCommands::StayAwake { switch, minutes } => {
+        let switch = switch.unwrap_or(match minutes {
+          Some(_) => Switch::On,
+          None => Switch::Toggle,
+        });
+        let request = StayAwakeRequest { switch, minutes };
+        print_switch(StayAwake::send(request), switch, "stay awake")
       }
       IpcCommands::Brightness { command } => command.execute(),
       IpcCommands::Volume { command } => command.execute(Device::Output),
@@ -312,6 +330,8 @@ pub(crate) mod tests {
     assert!(ipc(&["screenshot", "nope"]).is_err());
     assert!(ipc(&["switcher", "--modifier", "meta"]).is_err());
     assert!(ipc(&["wifi", "maybe"]).is_err());
+    assert!(ipc(&["stay-awake", "--for", "-5"]).is_err());
+    assert!(ipc(&["stay-awake", "--for", "soon"]).is_err());
   }
 
   #[test]
@@ -336,6 +356,10 @@ pub(crate) mod tests {
       (&["settings", "toggle"], json!(null), SettingsWindow::COMMAND, json!(["Toggle", null])),
       (&["wifi", "status"], json!(true), Wifi::COMMAND, json!("Status")),
       (&["bluetooth", "off"], json!(false), Bluetooth::COMMAND, json!("Off")),
+      (&["stay-awake"], json!(true), StayAwake::COMMAND, json!({ "switch": "Toggle", "minutes": null })),
+      (&["stay-awake", "--for", "30"], json!(true), StayAwake::COMMAND, json!({ "switch": "On", "minutes": 30 })),
+      (&["stay-awake", "toggle", "--for", "60"], json!(false), StayAwake::COMMAND, json!({ "switch": "Toggle", "minutes": 60 })),
+      (&["stay-awake", "status"], json!(false), StayAwake::COMMAND, json!({ "switch": "Status", "minutes": null })),
       (&["dpms", "off"], json!(null), Dpms::COMMAND, json!("Off")),
       (&["plugin", "a", "ping"], json!(1), PluginCall::COMMAND, json!({ "id": "a", "method": "ping", "args": null })),
       (&["plugin", "a", "set", "{\"x\": 1}"], json!(null), PluginCall::COMMAND, json!({ "id": "a", "method": "set", "args": { "x": 1 } })),
