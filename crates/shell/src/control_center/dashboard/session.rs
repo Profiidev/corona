@@ -3,9 +3,10 @@ use std::rc::Rc;
 use corona_power::{EntryTitle, PowerExt, SessionAction, SessionCapabilities, entry_title};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Context, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-  Render, StatefulInteractiveElement, Styled, Task, Window,
+  App, Context, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, KeyDownEvent,
+  ParentElement, Render, StatefulInteractiveElement, Styled, Task, Window,
   assets::IconName,
+  base::actions::Cancel,
   component::{ActiveTheme, Icon, scroll::ScrollableElement},
   div,
   prelude::FluentBuilder,
@@ -124,6 +125,18 @@ impl SessionMenu {
       _load: load,
     }
   }
+
+  /// Back to the main menu, for when the popover opens again
+  pub fn reset(&mut self, cx: &mut Context<Self>) {
+    self.boot_menu = false;
+    cx.notify();
+  }
+}
+
+impl Focusable for SessionMenu {
+  fn focus_handle(&self, _: &App) -> FocusHandle {
+    self.focus.clone()
+  }
 }
 
 /// The boot menu once capabilities loaded, the main menu otherwise. Only what
@@ -194,15 +207,16 @@ impl SessionMenu {
     (self.on_done)(window, cx);
   }
 
+  /// Escape leaves the boot menu, on the main menu the popover closes
+  fn on_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+    if !self.boot_menu {
+      return cx.propagate();
+    }
+    self.reset(cx);
+  }
+
   fn on_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
     let key = e.keystroke.key.as_str();
-    if key == "escape" {
-      if self.boot_menu {
-        self.boot_menu = false;
-        return cx.notify();
-      }
-      return (self.on_done)(window, cx);
-    }
     let number = key.parse::<usize>().ok().filter(|n| *n > 0);
     if let Some(entry) = number.and_then(|n| self.entries().into_iter().nth(n - 1)) {
       self.activate(entry, window, cx);
@@ -263,6 +277,7 @@ impl Render for SessionMenu {
     div()
       .track_focus(&self.focus)
       .on_key_down(cx.listener(Self::on_key))
+      .on_action(cx.listener(Self::on_cancel))
       .w_full()
       .h(px(ROW * rows.len().min(ROWS) as f32))
       .child(
