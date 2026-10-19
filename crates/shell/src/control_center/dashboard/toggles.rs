@@ -1,10 +1,12 @@
 use corona_bluez::BluetoothExt;
 use corona_components::assets::toggle_mode;
+use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
 use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
 use gpui_kit::{
-  App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, Styled, Window,
+  App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
+  ParentElement, Styled, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -45,7 +47,7 @@ pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Div {
     bluetooth(cx),
     dnd(cx),
     dark_mode(cx),
-    profile(cx),
+    stay_awake(cx),
     airplane(cx),
   ]
   .into_iter()
@@ -229,6 +231,8 @@ fn dark_mode(cx: &App) -> Toggle {
   }
 }
 
+// hidden from the dashboard until its tiles are configurable
+#[allow(dead_code)]
 fn profile(cx: &App) -> Toggle {
   let profiles = cx.power().profiles(cx);
   let active = profiles.map(|p| p.active.clone());
@@ -272,6 +276,21 @@ fn airplane(cx: &App) -> Toggle {
       }
     })),
     page: Some(ControlCenterType::Network),
+  }
+}
+
+fn stay_awake(cx: &App) -> Toggle {
+  let on = cx.idle().stay_awake(cx);
+  Toggle {
+    id: "toggle-stay-awake",
+    icon: IconName::Coffee,
+    label: t!("app.dashboard.stay_awake"),
+    status: on_off(on),
+    active: on,
+    on_click: Some(Box::new(move |cx| {
+      cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
+    })),
+    page: None,
   }
 }
 

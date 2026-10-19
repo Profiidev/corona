@@ -130,6 +130,7 @@ keyboard_layout = true
 # Caps, num and scroll lock. Hyprland has to tell corona about the keys, e.g.
 #   hl.bind("Caps_Lock", hl.dsp.exec_cmd("corona ipc lock-key caps"))
 lock_keys = true
+stay_awake = true
 
 [lockscreen]
 lock_before_suspend = true

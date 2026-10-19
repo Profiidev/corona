@@ -5,10 +5,11 @@ use std::{process::Command, time::Duration};
 
 use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
-use corona_idle::IdleExt;
+use corona_idle::{Idle, IdleExt};
 use corona_ipc::IpcCommand;
+use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
-use gpui_kit::App;
+use gpui_kit::{App, BorrowAppContext};
 
 use crate::commands::session::{Action, Session};
 
@@ -16,11 +17,14 @@ pub fn init(cx: &mut App, session: &zbus::Connection) {
   corona_idle::init(cx, session, changed);
   watch(cx);
   observe_section(cx, |c| &c.idle, |_, cx| watch(cx));
+  // logind's own idle action and sleep wait too
+  let stay_awake = cx.idle().stay_awake.clone();
+  cx.power().clone().stay_awake_while(&stay_awake, cx);
 }
 
 fn watch(cx: &mut App) {
   let timeouts = timeouts(&cx.config().idle);
-  cx.idle().set_timeouts(timeouts);
+  cx.update_global::<Idle, _>(|idle, cx| idle.set_timeouts(timeouts, cx));
 }
 
 /// Each behavior that runs at all, with its timeout

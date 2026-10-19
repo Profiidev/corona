@@ -114,6 +114,31 @@ impl Power {
     .detach();
   }
 
+  /// Blocks logind's idle and sleep while `awake` is true. A lock logind
+  /// refused is asked for again on the next change.
+  pub fn stay_awake_while(&self, awake: &Entity<bool>, cx: &mut App) {
+    let conn = self.conn.clone();
+    let mut held: Option<Task<()>> = None;
+    let mut hold = move |awake: &Entity<bool>, cx: &mut App| {
+      let on = *awake.read(cx);
+      if on == held.is_some() {
+        return;
+      }
+      // dropping the task closes the fd, which ends the lock
+      held = on.then(|| {
+        let inhibit = session::stay_awake(conn.clone());
+        cx.spawn(async move |_| {
+          if let Ok(_fd) = inhibit.await.log_err() {
+            std::future::pending::<()>().await
+          }
+        })
+      });
+    };
+    hold(awake, cx);
+    cx.observe(awake, move |awake, cx| hold(&awake, cx))
+      .detach();
+  }
+
   /// `power-saver`, `balanced` or `performance`
   pub fn set_profile(&self, profile: String) -> impl Future<Output = Result<()>> + use<> {
     let conn = self.conn.clone();
@@ -749,6 +774,8 @@ mod tests {
     inhibitors: Arc<Mutex<Vec<UnixStream>>>,
     fail_reboot: bool,
     fail_inhibit: Arc<std::sync::atomic::AtomicBool>,
+    /// before systemd 257, without `block-weak`
+    old: Arc<std::sync::atomic::AtomicBool>,
   }
 
   impl Manager {
@@ -830,6 +857,11 @@ mod tests {
       if self.fail_inhibit.load(std::sync::atomic::Ordering::Relaxed) {
         return Err(zbus::fdo::Error::Failed("inhibit failed".into()));
       }
+      if mode == "block-weak" && self.old.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(zbus::fdo::Error::InvalidArgs(format!(
+          "Invalid mode specification {mode}"
+        )));
+      }
       record(&self.calls, format!("Inhibit {what} {who} {why} {mode}"));
       let (ours, theirs) = UnixStream::pair().unwrap();
       ours.set_nonblocking(true).unwrap();
@@ -843,6 +875,7 @@ mod tests {
     calls: Calls,
     inhibitors: Arc<Mutex<Vec<UnixStream>>>,
     fail_inhibit: Arc<std::sync::atomic::AtomicBool>,
+    old: Arc<std::sync::atomic::AtomicBool>,
   }
 
   impl Logind {
@@ -860,6 +893,7 @@ mod tests {
       let inhibitors = Arc::<Mutex<Vec<UnixStream>>>::default();
       let fail_inhibit = Arc::new(std::sync::atomic::AtomicBool::new(fail_inhibit));
       let fail_inhibit_mgr = fail_inhibit.clone();
+      let old = Arc::<std::sync::atomic::AtomicBool>::default();
       let conn = block_on(async {
         let conn = bus.conn().await;
         conn
@@ -872,6 +906,7 @@ mod tests {
               inhibitors: inhibitors.clone(),
               fail_reboot,
               fail_inhibit: fail_inhibit_mgr,
+              old: old.clone(),
             },
           )
           .await
@@ -884,6 +919,7 @@ mod tests {
         calls,
         inhibitors,
         fail_inhibit,
+        old,
       }
     }
 
@@ -1104,6 +1140,88 @@ mod tests {
     assert!(logind.held().is_empty());
     cx.executor().advance_clock(RETRY);
     wait_until(cx, |_| logind.held() == [true]);
+  }
+
+  #[gpui::test]
+  fn staying_awake_blocks_idle_and_sleep(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    let power = power_on(cx, &bus);
+    let awake = cx.new(|_| false);
+    cx.update(|cx| power.stay_awake_while(&awake, cx));
+    settle(cx);
+    assert!(logind.held().is_empty());
+
+    awake.update(cx, |awake, cx| {
+      *awake = true;
+      cx.notify();
+    });
+    wait_until(cx, |_| logind.held() == [true]);
+    assert_eq!(
+      logind.calls(),
+      ["Inhibit idle:sleep corona Stay awake enabled by user block-weak"]
+    );
+    // a notify without a change keeps the lock
+    awake.update(cx, |_, cx| cx.notify());
+    settle(cx);
+    assert_eq!(logind.held(), [true]);
+
+    awake.update(cx, |awake, cx| {
+      *awake = false;
+      cx.notify();
+    });
+    wait_until(cx, |_| logind.held() == [false]);
+    awake.update(cx, |awake, cx| {
+      *awake = true;
+      cx.notify();
+    });
+    wait_until(cx, |_| logind.held() == [false, true]);
+  }
+
+  #[gpui::test]
+  fn staying_awake_from_the_start(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    let power = power_on(cx, &bus);
+    let awake = cx.new(|_| true);
+    cx.update(|cx| power.stay_awake_while(&awake, cx));
+    wait_until(cx, |_| logind.held() == [true]);
+  }
+
+  #[gpui::test]
+  fn staying_awake_blocks_fully_on_old_logind(cx: &mut TestAppContext) {
+    let bus = TestBus::new();
+    let logind = Logind::start(&bus, HashMap::new());
+    logind.old.store(true, std::sync::atomic::Ordering::Relaxed);
+    let power = power_on(cx, &bus);
+    let awake = cx.new(|_| true);
+    cx.update(|cx| power.stay_awake_while(&awake, cx));
+    wait_until(cx, |_| logind.held() == [true]);
+    assert_eq!(
+      logind.calls(),
+      ["Inhibit idle:sleep corona Stay awake enabled by user block"]
+    );
+  }
+
+  #[gpui::test]
+  fn staying_awake_asks_again_after_a_refusal(cx: &mut TestAppContext) {
+    use std::sync::atomic::Ordering;
+    let bus = TestBus::new();
+    let logind = Logind::start_with_flags(&bus, HashMap::new(), false, true);
+    let power = power_on(cx, &bus);
+    let awake = cx.new(|_| true);
+    cx.update(|cx| power.stay_awake_while(&awake, cx));
+    settle(cx);
+    assert!(logind.held().is_empty());
+
+    logind.fail_inhibit.store(false, Ordering::Relaxed);
+    for on in [false, true] {
+      awake.update(cx, |awake, cx| {
+        *awake = on;
+        cx.notify();
+      });
+    }
+    wait_until(cx, |_| logind.held().last() == Some(&true));
   }
 
   #[gpui::test]

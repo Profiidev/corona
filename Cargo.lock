@@ -2151,6 +2151,7 @@ dependencies = [
  "corona_brightness",
  "corona_compositor",
  "corona_config",
+ "corona_idle",
  "corona_ipc",
  "corona_macros",
  "corona_mpris",
