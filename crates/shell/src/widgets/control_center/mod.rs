@@ -15,6 +15,7 @@ mod media;
 mod network;
 mod notifications;
 mod power;
+pub(crate) mod printers;
 mod sysinfo;
 mod weather;
 
@@ -28,6 +29,7 @@ pub use media::MediaButton;
 pub use network::NetworkButton;
 pub use notifications::NotificationsButton;
 pub use power::PowerButton;
+pub use printers::PrintersButton;
 pub use sysinfo::SysinfoButton;
 pub use weather::WeatherButton;
 

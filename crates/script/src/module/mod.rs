@@ -29,6 +29,7 @@ pub mod notifications;
 pub mod pipewire;
 pub mod plugin;
 pub mod power;
+pub mod printing;
 pub mod secrets;
 pub mod settings;
 pub mod surface;
@@ -72,12 +73,14 @@ pub enum CoronaModule {
   Desktop,
   /// Staying awake, and whether idling is held back.
   Idle,
+  /// Printers, print jobs and document scanners.
+  Printing,
 }
 
 impl CoronaModule {
   /// Every module
   #[cfg(test)]
-  pub const ALL: [Self; 17] = [
+  pub const ALL: [Self; 18] = [
     Self::Compositor,
     Self::CompositorControl,
     Self::Pipewire,
@@ -95,6 +98,7 @@ impl CoronaModule {
     Self::Secrets,
     Self::Desktop,
     Self::Idle,
+    Self::Printing,
   ];
 }
 
@@ -133,6 +137,7 @@ impl CoronaModule {
       Self::Secrets => secrets::module(plugin),
       Self::Desktop => desktop::module(plugin.capabilities.clone(), subs),
       Self::Idle => idle::module(reads, subs),
+      Self::Printing => printing::module(plugin.capabilities.clone(), reads, subs),
     }
   }
 }
@@ -153,6 +158,7 @@ pub enum Updates {
   /// `corona/plugin`'s shared state
   Plugin,
   Power(power::Updates),
+  Printing(printing::Updates),
   Surface(surface::Updates),
   Sysinfo(sysinfo::Updates),
   Tray(tray::Updates),
@@ -434,6 +440,7 @@ mod tests {
       (CoronaModule::Secrets, "secrets"),
       (CoronaModule::Desktop, "desktop"),
       (CoronaModule::Idle, "idle"),
+      (CoronaModule::Printing, "printing"),
     ];
     assert_eq!(all.map(|(module, _)| module), CoronaModule::ALL);
     for (module, name) in all {

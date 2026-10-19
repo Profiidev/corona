@@ -19,6 +19,7 @@ corona_desktop.workspace = true
 corona_network_manager.workspace = true
 corona_mpris.workspace = true
 corona_bluez.workspace = true
+corona_printing.workspace = true
 corona_power.workspace = true
 corona_brightness.workspace = true
 corona_notifications.workspace = true
@@ -60,6 +61,7 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb5
 
 [dev-dependencies]
 corona_auth = { workspace = true, features = ["test-support"] }
+corona_printing = { workspace = true, features = ["test-support"] }
 corona_utils = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
 gpui-shell.workspace = true

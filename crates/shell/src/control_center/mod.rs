@@ -11,6 +11,7 @@ mod network;
 mod notifications;
 mod panel;
 mod power;
+mod printers;
 pub(crate) mod sysinfo;
 mod variants;
 mod weather;
@@ -30,6 +31,7 @@ pub use crate::control_center::{
   notifications::{NotificationsPanel, ReplyInputs},
   panel::{ControlCenter, Standalone},
   power::PowerPanel,
+  printers::PrintersPanel,
   sysinfo::SysinfoPanel,
   variants::ControlCenterType,
   weather::WeatherPanel,
@@ -42,6 +44,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<Standalone<AudioPanel>>()
     .register::<Standalone<NetworkPanel>>()
     .register::<Standalone<BluetoothPanel>>()
+    .register::<Standalone<PrintersPanel>>()
     .register::<Standalone<PowerPanel>>()
     .register::<Standalone<BrightnessPanel>>()
     .register::<Standalone<DisplaysPanel>>()

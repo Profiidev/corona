@@ -1727,7 +1727,7 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona`
-  const ALL_MODULES: [&str; 17] = [
+  const ALL_MODULES: [&str; 18] = [
     "compositor",
     "compositor_control",
     "pipewire",
@@ -1745,6 +1745,7 @@ export default class Main extends View {
     "secrets",
     "desktop",
     "idle",
+    "printing",
   ];
 
   fn dts(plugins: &Plugins, id: &str) -> String {

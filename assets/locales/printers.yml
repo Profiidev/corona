@@ -1,0 +1,131 @@
+_version: 2
+app:
+  printers:
+    tab:
+      printers:
+        en: Printers
+        de: Drucker
+      scan:
+        en: Scan
+        de: Scannen
+    no_printers:
+      en: No printers
+      de: Keine Drucker
+    state:
+      idle:
+        en: Ready
+        de: Bereit
+      processing:
+        en: Printing
+        de: Druckt
+      stopped:
+        en: Paused
+        de: Angehalten
+    not_accepting:
+      en: Not accepting jobs
+      de: Nimmt keine Aufträge an
+    paused:
+      en: Pause printer
+      de: Drucker anhalten
+    print_file:
+      en: Print file…
+      de: Datei drucken…
+    found:
+      en: Found on the network
+      de: Im Netzwerk gefunden
+    add:
+      en: Add printer
+      de: Drucker hinzufügen
+    jobs:
+      en: Print jobs
+      de: Druckaufträge
+    no_jobs:
+      en: No print jobs
+      de: Keine Druckaufträge
+    cancel_job:
+      en: Cancel job
+      de: Auftrag abbrechen
+    pages:
+      en: '%{done} pages'
+      de: '%{done} Seiten'
+    pages_of:
+      en: '%{done} of %{total} pages'
+      de: '%{done} von %{total} Seiten'
+    job_state:
+      pending:
+        en: Waiting
+        de: Wartet
+      held:
+        en: Held
+        de: Zurückgehalten
+      processing:
+        en: Printing
+        de: Druckt
+      stopped:
+        en: Stopped
+        de: Angehalten
+      canceled:
+        en: Canceled
+        de: Abgebrochen
+      aborted:
+        en: Failed
+        de: Fehlgeschlagen
+      completed:
+        en: Done
+        de: Fertig
+    scanners:
+      en: Scanners
+      de: Scanner
+    no_scanners:
+      en: No scanners found
+      de: Keine Scanner gefunden
+    tls_only:
+      en: Only offers encrypted eSCL, not supported
+      de: Bietet nur verschlüsseltes eSCL, nicht unterstützt
+    resolution:
+      en: Resolution
+      de: Auflösung
+    dpi:
+      en: '%{dpi} dpi'
+      de: '%{dpi} dpi'
+    color_mode:
+      en: Color
+      de: Farbe
+    color:
+      color:
+        en: Color
+        de: Farbe
+      grayscale:
+        en: Grayscale
+        de: Graustufen
+      monochrome:
+        en: Black & white
+        de: Schwarzweiß
+    source:
+      en: Source
+      de: Quelle
+    sources:
+      flatbed:
+        en: Flatbed
+        de: Flachbett
+      adf:
+        en: Feeder
+        de: Einzug
+    format:
+      en: Format
+      de: Format
+    destination:
+      en: Save to
+      de: Speichern in
+    choose_folder:
+      en: Choose folder
+      de: Ordner wählen
+    scan:
+      en: Scan
+      de: Scannen
+    scanning:
+      en: 'Scanning… %{pages} pages'
+      de: 'Scanne… %{pages} Seiten'
+    saved:
+      en: '%{count} files saved'
+      de: '%{count} Dateien gespeichert'
