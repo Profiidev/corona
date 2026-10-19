@@ -32,6 +32,7 @@ pub struct Brightness {
   pub ddcutil_enabled: bool,
   conn: Connection,
   ddc: Option<flume::Sender<DdcCommand>>,
+  events: flume::Sender<Event>,
 }
 
 impl Global for Brightness {}
@@ -63,6 +64,7 @@ impl Brightness {
   ) -> impl Future<Output = Result<()>> + use<> {
     let conn = self.conn.clone();
     let ddc = self.ddc.clone();
+    let events = self.events.clone();
     let display = self
       .display(id, cx)
       .with_context(|| format!("no display {id}"))
@@ -75,17 +77,21 @@ impl Brightness {
       let (kind, max) = display?;
       let brightness = brightness.min(max);
       match (kind, id.split_once('/')) {
-        (DisplayKind::Backlight, Some((_, name))) => backlight::set(&conn, name, brightness).await,
+        (DisplayKind::Backlight, Some((_, name))) => {
+          backlight::set(&conn, name, brightness).await?
+        }
         (DisplayKind::External, Some((_, bus))) => {
           let ddc = ddc.context("ddcutil is off")?;
           ddc.send(DdcCommand::Set {
             bus: bus.parse()?,
             brightness,
           })?;
-          Ok(())
         }
         _ => bail!("malformed display id {id}"),
       }
+      // show the new level now instead of after the next sysfs poll or ddcutil round trip
+      let _ = events.send(Event::Set { id, brightness });
+      Ok(())
     }
   }
 }
@@ -96,6 +102,11 @@ enum Event {
     outputs: Vec<Output>,
   },
   Ddc(Update),
+  /// a level just written, before sysfs or `ddcutil` report it
+  Set {
+    id: String,
+    brightness: u32,
+  },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -231,6 +242,7 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     ddcutil_enabled,
     conn: conn.clone(),
     ddc,
+    events: events_tx,
   };
 
   let displays = state.displays.clone();
@@ -260,6 +272,15 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
         }
         Event::Ddc(Update::Failed { bus }) => _ = failed.insert(format!("ddc/{bus}")),
         Event::Ddc(Update::Recovered { bus }) => _ = failed.remove(&format!("ddc/{bus}")),
+        Event::Set { id, brightness } => {
+          let detected = match &mut ddc {
+            Ddc::Detected(list) => list.as_mut_slice(),
+            _ => &mut [],
+          };
+          if let Some(display) = backlights.iter_mut().chain(detected).find(|d| d.id == id) {
+            display.brightness = brightness;
+          }
+        }
       }
       displays.write(cx, merge(&backlights, &outputs, &ddc, &failed));
     }
@@ -611,6 +632,7 @@ mod global_tests {
         ddcutil_enabled: true,
         conn: conn.clone(),
         ddc,
+        events: flume::unbounded().0,
       };
       cx.set_global(state);
     });
@@ -814,11 +836,12 @@ mod global_tests {
     wait(cx, |d| {
       d.iter().any(|d| d.id == "ddc/5" && d.brightness == 70)
     });
-    assert!(
+    // shown before ddcutil gets to it, which happens soon after
+    wait(cx, |_| {
       ddcutil
         .calls()
         .contains(&"--noconfig --bus 5 setvcp 10 70".to_string())
-    );
+    });
 
     // sysfs changes are polled
     fs::write(
@@ -829,6 +852,37 @@ mod global_tests {
     )
     .unwrap();
     wait(cx, |d| d[0].brightness == 900);
+  }
+
+  #[gpui::test]
+  fn set_backlight_shows_before_the_next_poll(cx: &mut TestAppContext) {
+    let _root = sysfs();
+    let bus = TestBus::new();
+    // logind takes the level but leaves the sysfs fixture alone, so polling never sees it
+    let _logind = block_on(async {
+      let logind = bus.conn().await;
+      logind
+        .object_server()
+        .at(
+          "/org/freedesktop/login1/session/auto",
+          Session {
+            calls: Default::default(),
+            refuse: false,
+          },
+        )
+        .await
+        .unwrap();
+      logind.request_name("org.freedesktop.login1").await.unwrap();
+      logind
+    });
+    let _bus = start_on(cx, false, bus);
+    wait(cx, |d| d.first().is_some_and(|d| d.brightness == 300));
+    let task = cx.update(|cx| {
+      cx.brightness()
+        .set_brightness("backlight/intel_backlight", 600, cx)
+    });
+    block_on(task).unwrap();
+    wait(cx, |d| d[0].brightness == 600);
   }
 
   #[gpui::test]

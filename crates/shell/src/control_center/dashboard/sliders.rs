@@ -71,6 +71,11 @@ fn brightness_value(displays: &[Display], focused: &str, dragging: bool) -> Opti
     .filter(|_| !dragging)
 }
 
+/// the brightness label: the slider while dragging, else the display's level
+fn brightness_label(display: Option<f32>, slider: f32, dragging: bool) -> Option<f32> {
+  display.map(|percent| if dragging { slider } else { percent })
+}
+
 fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
   let Some(node) = node else {
     return;
@@ -116,6 +121,7 @@ impl Sliders {
           SliderEvent::Change(value) => {
             this.sliders.dragging = true;
             this.sliders.throttle(value.start(), cx);
+            cx.notify();
           }
           SliderEvent::Release(value) => {
             this.sliders.dragging = false;
@@ -184,7 +190,11 @@ impl Sliders {
   pub fn render(&self, cx: &mut Context<DashboardPanel>) -> Div {
     let output = sink(cx).map(|n| (n.id, n.mute, to_slider(n.volume())));
     let input = source(cx).map(|n| (n.id, n.mute, to_slider(n.volume())));
-    let brightness = display(cx).map(Display::percent);
+    let brightness = brightness_label(
+      display(cx).map(Display::percent),
+      self.brightness.read(cx).value().start(),
+      self.dragging,
+    );
 
     let mute = |id: &'static str, node: Option<(u32, bool, f32)>, icon: IconName| {
       Button::new(id)
@@ -304,6 +314,13 @@ mod tests {
       max: 100,
       unavailable,
     }
+  }
+
+  #[test]
+  fn brightness_label_follows_the_drag() {
+    assert_eq!(brightness_label(Some(40.), 70., true), Some(70.));
+    assert_eq!(brightness_label(Some(40.), 70., false), Some(40.));
+    assert_eq!(brightness_label(None, 70., true), None);
   }
 
   #[test]
