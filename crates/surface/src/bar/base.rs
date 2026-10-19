@@ -5,7 +5,7 @@ use std::{
 };
 
 use gpui_kit::{
-  AnyView, App, Bounds, Div, EntityId, Path, PathBuilder, Pixels, Window, canvas,
+  AnyView, App, Bounds, DisplayId, Div, EntityId, Path, PathBuilder, Pixels, Window, canvas,
   component::{ActiveTheme, *},
   div, point,
   prelude::*,
@@ -21,6 +21,9 @@ use corona_config::{
 };
 
 pub struct Bar {
+  /// The display it was opened for. Its window's `display()` stays `None`
+  /// until the compositor says which output the surface entered
+  display: DisplayId,
   placement: Placement,
   height: f32,
   background_opacity: f32,
@@ -46,6 +49,7 @@ impl Bar {
     config: BarConfig,
     window: &mut Window,
     cx: &mut Context<Bar>,
+    display: DisplayId,
     display_id: Uuid,
   ) -> Self {
     let mut grouped = HashSet::new();
@@ -73,6 +77,7 @@ impl Bar {
     let end_widgets = init_widgets(config.end, window, cx);
 
     Self {
+      display,
       placement: config.position,
       height: config.thickness,
       background_opacity: config.background_opacity,
@@ -96,6 +101,10 @@ impl Bar {
 
   pub fn placement(&self) -> Placement {
     self.placement
+  }
+
+  pub fn display(&self) -> DisplayId {
+    self.display
   }
 
   pub fn widget_bounds(&self, widget_id: EntityId) -> Option<Bounds<Pixels>> {

@@ -182,12 +182,20 @@ impl Ipc {
       // a monitor that goes away, or starts mirroring another (which Hyprland
       // reports as removed and added), hands its workspaces and their windows
       // to the monitors left, without workspace or window events
-      "monitorremoved" | "monitoradded" => vec![
-        CompositorEvent::Monitor(self.list_monitors()?),
-        CompositorEvent::Workspace(self.list_workspaces()?),
-        CompositorEvent::ActiveWorkspace(self.active_workspace()?),
-        CompositorEvent::Window(self.list_windows()?),
-      ],
+      "monitorremoved" | "monitoradded" => {
+        let monitors = self.list_monitors()?;
+        // nor a focus event when the focused one went; optional, so a moment
+        // with no monitor focused does not lose the monitor list
+        let active = monitors.iter().find(|m| m.focused && !m.disabled).cloned();
+        let mut events = vec![
+          CompositorEvent::Monitor(monitors),
+          CompositorEvent::Workspace(self.list_workspaces()?),
+          CompositorEvent::ActiveWorkspace(self.active_workspace()?),
+          CompositorEvent::Window(self.list_windows()?),
+        ];
+        events.extend(active.map(CompositorEvent::ActiveMonitor));
+        events
+      }
       _ => {
         debug!(
           "Hyprland event parsing is not implemented yet for: {}",
@@ -272,7 +280,13 @@ mod tests {
     for name in ["monitoradded", "monitorremoved"] {
       assert_eq!(
         names(&parse(&hypr, &format!("{name}>>DP-2")).unwrap()),
-        ["Monitor", "Workspace", "ActiveWorkspace", "Window"],
+        [
+          "Monitor",
+          "Workspace",
+          "ActiveWorkspace",
+          "Window",
+          "ActiveMonitor"
+        ],
         "{name}"
       );
     }
@@ -319,17 +333,22 @@ mod tests {
   }
 
   #[test]
-  fn monitorremoved_does_not_refresh_active_monitor() {
+  fn monitorremoved_refreshes_active_monitor() {
     let hypr = FakeHyprland::start();
+    let events = parse(&hypr, "monitorremoved>>DP-1").unwrap();
+    let Some(CompositorEvent::ActiveMonitor(active)) = events.last() else {
+      panic!("{events:?}");
+    };
+    assert_eq!(active.name, "eDP-1");
+
+    // none focused for a moment: the lists still refresh, the active one stays
+    let none_focused =
+      crate::hyprland::fake::MONITORS.replace(r#""focused": true"#, r#""focused": false"#);
+    hypr.answer("j/monitors all", none_focused);
     let events = parse(&hypr, "monitorremoved>>DP-1").unwrap();
     assert_eq!(
       names(&events),
       ["Monitor", "Workspace", "ActiveWorkspace", "Window"]
-    );
-    assert!(
-      !events
-        .iter()
-        .any(|e| matches!(e, CompositorEvent::ActiveMonitor(_)))
     );
   }
 

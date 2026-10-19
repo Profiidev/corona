@@ -143,9 +143,12 @@ impl LockState {
       return None;
     }
 
+    let compositor = cx.compositor();
     let screens: Vec<_> = cx
       .displays()
       .into_iter()
+      // only those known disabled: every output that shows needs a lock surface
+      .filter(|d| !d.uuid().is_ok_and(|uuid| compositor.is_disabled(uuid, cx)))
       .map(|display| {
         let uuid = display.uuid().ok();
         let background = frames
