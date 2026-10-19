@@ -176,14 +176,14 @@ mod tests {
     }
   }
 
-  fn scanner(name: &str, tls_only: bool) -> Scanner {
+  fn scanner(name: &str, tls: bool) -> Scanner {
     Scanner {
       name: name.into(),
       model: None,
       address: "10.0.0.5".into(),
       port: 80,
       root: "eSCL".into(),
-      tls_only,
+      tls,
     }
   }
 

@@ -361,7 +361,7 @@ async fn post(sock: &Path, body: &[u8], auth: Option<&str>) -> Result<Vec<u8>> {
 }
 
 /// Whether `raw` is a whole response, by its Content-Length or last chunk.
-fn complete(raw: &[u8]) -> bool {
+pub fn complete(raw: &[u8]) -> bool {
   let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
     return false;
   };
@@ -371,8 +371,23 @@ fn complete(raw: &[u8]) -> bool {
   framed && http_body(raw).is_ok()
 }
 
-/// Splits a whole HTTP/1.1 response into its status and decoded body.
-pub fn http_body(raw: &[u8]) -> Result<(u16, Vec<u8>)> {
+/// A whole HTTP/1.1 response, its body decoded.
+pub struct HttpResponse {
+  pub status: u16,
+  pub headers: Vec<(String, String)>,
+  pub body: Vec<u8>,
+}
+
+impl HttpResponse {
+  pub fn header(&self, name: &str) -> Option<&str> {
+    self
+      .headers
+      .iter()
+      .find_map(|(k, v)| k.eq_ignore_ascii_case(name).then_some(v.as_str()))
+  }
+}
+
+pub fn parse_response(raw: &[u8]) -> Result<HttpResponse> {
   let end = raw
     .windows(4)
     .position(|w| w == b"\r\n\r\n")
@@ -385,24 +400,34 @@ pub fn http_body(raw: &[u8]) -> Result<(u16, Vec<u8>)> {
     .and_then(|l| l.split(' ').nth(1))
     .and_then(|s| s.parse().ok())
     .context("HTTP status line")?;
-  let header = |name: &str| {
-    head.split("\r\n").skip(1).find_map(|l| {
+  let headers = lines
+    .filter_map(|l| {
       let (k, v) = l.split_once(':')?;
-      k.trim()
-        .eq_ignore_ascii_case(name)
-        .then(|| v.trim().to_string())
+      Some((k.trim().to_string(), v.trim().to_string()))
     })
-  };
-  if header("transfer-encoding").is_some_and(|v| v.eq_ignore_ascii_case("chunked")) {
-    return Ok((status, dechunk(body)?));
-  }
-  let len = header("content-length")
-    .and_then(|v| v.parse().ok())
-    .unwrap_or(body.len());
-  Ok((
+    .collect();
+  let mut response = HttpResponse {
     status,
-    body.get(..len).context("HTTP body truncated")?.to_vec(),
-  ))
+    headers,
+    body: Vec::new(),
+  };
+  response.body = match response.header("transfer-encoding") {
+    Some(v) if v.eq_ignore_ascii_case("chunked") => dechunk(body)?,
+    _ => {
+      let len = response
+        .header("content-length")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(body.len());
+      body.get(..len).context("HTTP body truncated")?.to_vec()
+    }
+  };
+  Ok(response)
+}
+
+/// Splits a whole HTTP/1.1 response into its status and decoded body.
+pub fn http_body(raw: &[u8]) -> Result<(u16, Vec<u8>)> {
+  let response = parse_response(raw)?;
+  Ok((response.status, response.body))
 }
 
 fn dechunk(mut body: &[u8]) -> Result<Vec<u8>> {

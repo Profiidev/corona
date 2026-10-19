@@ -73,8 +73,8 @@ struct Job {
 struct Scanner {
   name: String,
   model: Option<String>,
-  /// false when it only offers eSCL over TLS, which corona cannot scan with
-  supported: bool,
+  /// talks HTTPS, its certificate pinned on first use
+  tls: bool,
 }
 
 #[derive(Serialize, TS)]
@@ -186,7 +186,7 @@ impl From<&pr::Scanner> for Scanner {
     Self {
       name: s.name.clone(),
       model: s.model.clone(),
-      supported: !s.tls_only,
+      tls: s.tls,
     }
   }
 }

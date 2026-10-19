@@ -22,10 +22,8 @@ pub fn scanner(service: &Service) -> Scanner {
       .record("rs")
       .map(|rs| rs.trim_matches('/').to_string())
       .unwrap_or_else(|| "eSCL".into()),
-    // shortcut: gpui's HTTP client rejects the self-signed certificates
-    // these use, so TLS-only scanners are listed but cannot scan. Upgrade
-    // once the client can pin a scanner's certificate.
-    tls_only: service.kind == SCANS,
+    // only announced over TLS, see `tls::PinnedClient`
+    tls: service.kind == SCANS,
   }
 }
 
@@ -175,9 +173,6 @@ pub async fn scan(
   stamp: &str,
   mut on_page: impl FnMut(u32),
 ) -> Result<Vec<PathBuf>> {
-  if scanner.tls_only {
-    bail!("{} only offers eSCL over TLS", scanner.name);
-  }
   let base = scanner.base_url();
   let request = Request::builder()
     .method(Method::POST)
@@ -294,8 +289,8 @@ mod tests {
     assert_eq!(s.base_url(), "http://10.0.0.5:8080/eSCL");
     assert_eq!(s.model.as_deref(), Some("Test Scan 1"));
     let v6 = scanner(&Service::new("v6", SCANS, "fd00::1", 443, &[]));
-    assert_eq!(v6.base_url(), "http://[fd00::1]:443/eSCL");
-    assert!(v6.tls_only);
+    assert_eq!(v6.base_url(), "https://[fd00::1]:443/eSCL");
+    assert!(v6.tls);
   }
 
   #[test]
@@ -434,17 +429,42 @@ mod tests {
   }
 
   #[test]
-  fn empty_job_and_tls_fail() {
+  fn scans_over_tls() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = crate::tls::tests::serve("a", |method, path, body| match (method, path) {
+      ("GET", "/eSCL/ScannerCapabilities") => (200, vec![], CAPS.into()),
+      ("GET", "/eSCL/ScannerStatus") => (200, vec![], STATUS.into()),
+      ("POST", "/eSCL/ScanJobs") if body.contains("<pwg:InputSource>Platen</pwg:InputSource>") => (
+        201,
+        vec![("Location".into(), "/eSCL/ScanJobs/7".into())],
+        vec![],
+      ),
+      ("GET", "/eSCL/ScanJobs/7/NextDocument") => (200, vec![], b"tls page".to_vec()),
+      _ => (404, vec![], vec![]),
+    });
+    let scanner = scanner(&Service::new("Secure", SCANS, "127.0.0.1", port, &[]));
+    let client = crate::tls::PinnedClient::new(&scanner.name, &dir.path().join("pins"));
+    let caps = block_on(capabilities(&client, &scanner)).unwrap();
+    assert_eq!(caps.state, "Idle");
+    let files = block_on(scan(
+      &client,
+      &scanner,
+      &caps,
+      &settings(dir.path(), InputSource::Flatbed),
+      "x",
+      |_| {},
+    ))
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(&files[0]).unwrap(), "tls page");
+  }
+
+  #[test]
+  fn empty_job_fails() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _) = fake_scanner(0);
     let caps = parse_capabilities(CAPS).unwrap();
     let flatbed = settings(dir.path(), InputSource::Flatbed);
     let run = |scanner: Scanner| block_on(scan(&*client, &scanner, &caps, &flatbed, "x", |_| {}));
     assert!(run(test_scanner()).is_err());
-    let tls = Scanner {
-      tls_only: true,
-      ..test_scanner()
-    };
-    assert!(run(tls).unwrap_err().to_string().contains("TLS"));
   }
 }

@@ -138,11 +138,14 @@ impl PrintersPanel {
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let selected = self.scanner.as_deref() == Some(&scanner.name);
-    let details = match (scanner.tls_only, selected, &self.caps) {
-      (true, ..) => t!("app.printers.tls_only").to_string(),
-      (_, true, Some(caps)) if !caps.state.is_empty() => caps.state.clone(),
-      _ => scanner.model.clone().unwrap_or_default(),
+    let mut details = match (selected, &self.caps) {
+      (true, Some(caps)) if !caps.state.is_empty() => vec![caps.state.clone()],
+      _ => scanner.model.clone().into_iter().collect(),
     };
+    if scanner.tls {
+      details.push(t!("app.printers.tls").to_string());
+    }
+    let details = details.join(" · ");
     let name = scanner.name.clone();
 
     div()
@@ -179,7 +182,6 @@ impl PrintersPanel {
           .small()
           .cursor_pointer()
           .when(selected, |b| b.primary())
-          .disabled(scanner.tls_only)
           .loading(selected && self.caps.is_none())
           .on_click(cx.async_listener(
             move |this, _, _, cx| {

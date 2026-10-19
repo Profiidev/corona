@@ -336,8 +336,8 @@ mod tests {
     .collect();
     let list = scanners(&found);
     assert_eq!(list.len(), 2);
-    assert_eq!((list[0].name.as_str(), list[0].tls_only), ("A", false));
-    assert_eq!((list[1].name.as_str(), list[1].tls_only), ("B", true));
+    assert_eq!((list[0].name.as_str(), list[0].tls), ("A", false));
+    assert_eq!((list[1].name.as_str(), list[1].tls), ("B", true));
   }
 
   #[test]

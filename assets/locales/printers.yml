@@ -79,9 +79,9 @@ app:
     no_scanners:
       en: No scanners found
       de: Keine Scanner gefunden
-    tls_only:
-      en: Only offers encrypted eSCL, not supported
-      de: Bietet nur verschlüsseltes eSCL, nicht unterstützt
+    tls:
+      en: Encrypted
+      de: Verschlüsselt
     resolution:
       en: Resolution
       de: Auflösung

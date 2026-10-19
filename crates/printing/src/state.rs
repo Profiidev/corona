@@ -97,8 +97,8 @@ pub struct Scanner {
   pub port: u16,
   /// eSCL root path from the `rs` TXT record, without slashes
   pub root: String,
-  /// only announced as `_uscans._tcp`, which we cannot talk to
-  pub tls_only: bool,
+  /// only announced as `_uscans._tcp`, so it speaks HTTPS
+  pub tls: bool,
 }
 
 impl Scanner {
@@ -108,7 +108,8 @@ impl Scanner {
     } else {
       self.address.clone()
     };
-    format!("http://{host}:{}/{}", self.port, self.root)
+    let scheme = if self.tls { "https" } else { "http" };
+    format!("{scheme}://{host}:{}/{}", self.port, self.root)
   }
 }
 

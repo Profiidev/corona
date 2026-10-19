@@ -28,6 +28,7 @@ mod listener;
 #[cfg(test)]
 mod mock;
 mod state;
+mod tls;
 
 #[derive(Clone)]
 pub struct Printing {
@@ -41,6 +42,8 @@ pub struct Printing {
   sock: Arc<Path>,
   /// the system bus, for asking Avahi
   avahi: Option<Connection>,
+  /// pinned certificates of TLS scanners
+  pins: Arc<Path>,
   /// asks the listener to read printers and jobs again
   poke: flume::Sender<()>,
 }
@@ -225,6 +228,14 @@ impl Printing {
     })
   }
 
+  /// HTTPS with a pinned certificate for a TLS scanner, the app's client else.
+  fn client(&self, scanner: &Scanner, cx: &App) -> Arc<dyn gpui_kit::http_client::HttpClient> {
+    match scanner.tls {
+      true => Arc::new(tls::PinnedClient::new(&scanner.name, &self.pins)),
+      false => cx.http_client(),
+    }
+  }
+
   fn scanner(&self, name: &str, cx: &App) -> Result<Scanner> {
     self
       .list_scanners(cx)
@@ -240,8 +251,12 @@ impl Printing {
     name: &str,
     cx: &App,
   ) -> impl Future<Output = Result<ScannerCaps>> + use<> {
-    let (scanner, client) = (self.scanner(name, cx), cx.http_client());
-    async move { escl::capabilities(&*client, &scanner?).await }
+    let scanner = self.scanner(name, cx);
+    let client = scanner.as_ref().ok().map(|s| self.client(s, cx));
+    async move {
+      let scanner = scanner?;
+      escl::capabilities(&*client.context("no client")?, &scanner).await
+    }
   }
 
   /// Scans into `settings.destination` and returns the saved files.
@@ -251,13 +266,16 @@ impl Printing {
     settings: ScanSettings,
     cx: &mut App,
   ) -> Task<Result<Vec<PathBuf>>> {
-    let (scanner, client, progress) = (self.scanner(name, cx), cx.http_client(), self.scan.clone());
+    let scanner = self.scanner(name, cx);
+    let client = scanner.as_ref().ok().map(|s| self.client(s, cx));
+    let progress = self.scan.clone();
     let running = progress.read(cx).is_some();
     cx.spawn(async move |cx| {
       if running {
         bail!("a scan is already running");
       }
       let scanner = scanner?;
+      let client = client.context("no client")?;
       progress.write(
         cx,
         Some(ScanProgress {
@@ -310,6 +328,7 @@ impl Printing {
       scan: cx.new(|_| None),
       sock: Arc::from(Path::new("/nonexistent/cups.sock")),
       avahi: None,
+      pins: Arc::from(Path::new("/nonexistent/scanner-certs")),
       poke: flume::unbounded().0,
     };
     cx.set_global(state);
@@ -372,6 +391,7 @@ async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {
     scan: cx.new(|_| None),
     sock: sock.clone(),
     avahi: Some(conn.clone()),
+    pins: Arc::from(tls::pins_file()),
     poke: poke.clone(),
   };
 
@@ -808,7 +828,7 @@ mod tests {
       cx.printing()
         .list_scanners(cx)
         .iter()
-        .map(|s| (s.name.clone(), s.tls_only))
+        .map(|s| (s.name.clone(), s.tls))
         .collect()
     })
   }
