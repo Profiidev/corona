@@ -14,8 +14,8 @@ use corona_sysinfo::SystemMonitorExt;
 use corona_utils::error::ErrorLogExt;
 use corona_weather::WeatherExt;
 use gpui_kit::{
-  Anchor, AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled,
-  Subscription, Task, Window,
+  Anchor, AnyElement, App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement,
+  Render, Styled, Subscription, Task, Window,
   assets::IconName,
   component::{button::Button, popover::Popover},
   div, px,
@@ -117,7 +117,7 @@ impl ControlCenterPanel for DashboardPanel {
     }
   }
 
-  fn buttons(&mut self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
+  fn buttons(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
     vec![
       Button::new("settings")
         .icon(IconName::Settings)
@@ -133,6 +133,15 @@ impl ControlCenterPanel for DashboardPanel {
       Popover::new("power-menu")
         .anchor(Anchor::TopRight)
         .p_1()
+        .track_focus(&self.session.focus_handle(cx))
+        .on_open_change({
+          let session = self.session.clone();
+          move |open, _, cx| {
+            if *open {
+              session.update(cx, |session, cx| session.reset(cx));
+            }
+          }
+        })
         .trigger(
           Button::new("power-menu-trigger")
             .icon(IconName::Power)
