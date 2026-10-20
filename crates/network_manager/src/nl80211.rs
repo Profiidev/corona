@@ -1,6 +1,6 @@
 //! Just enough nl80211 to keep wifi connected beside a hotspot: whether a radio serves a station
-//! and an access point at once, which anyone may ask, and adding the access point's interface,
-//! which needs root.
+//! and an access point at once and which clients an access point has, which anyone may ask, and
+//! adding the access point's interface, which needs root.
 
 use std::{
   collections::HashMap,
@@ -40,7 +40,9 @@ const CTRL_ATTR_FAMILY_NAME: u16 = 2;
 // nl80211
 const CMD_GET_WIPHY: u8 = 1;
 const CMD_NEW_INTERFACE: u8 = 7;
+const CMD_GET_STATION: u8 = 17;
 const ATTR_WIPHY: u16 = 1;
+const ATTR_IFINDEX: u16 = 3;
 const ATTR_IFNAME: u16 = 4;
 const ATTR_IFTYPE: u16 = 5;
 const ATTR_MAC: u16 = 6;
@@ -274,6 +276,34 @@ pub fn ap_mac(radio: [u8; 6]) -> [u8; 6] {
   mac
 }
 
+/// a station dump reply's MAC
+fn station_mac(reply: &[u8]) -> Option<[u8; 6]> {
+  attrs(reply).find_map(|(kind, payload)| {
+    (kind == ATTR_MAC)
+      .then(|| payload.try_into().ok())
+      .flatten()
+  })
+}
+
+/// the MACs of the stations associated with `interface`, an access point's clients; anyone may ask
+pub fn stations(interface: &str) -> Result<Vec<[u8; 6]>> {
+  let index: u32 = fs::read_to_string(Path::new("/sys/class/net").join(interface).join("ifindex"))
+    .with_context(|| format!("{interface} does not exist"))?
+    .trim()
+    .parse()?;
+  let mut stations = Vec::new();
+  request(
+    &message(
+      nl80211()?,
+      NLM_F_DUMP,
+      CMD_GET_STATION,
+      &attr(ATTR_IFINDEX, &index.to_ne_bytes()),
+    ),
+    |reply| stations.extend(station_mac(reply)),
+  )?;
+  Ok(stations)
+}
+
 pub fn valid_interface_name(name: &str) -> bool {
   (1..16).contains(&name.len())
     && name
@@ -410,6 +440,22 @@ mod tests {
       ap_mac([0x16, 0xac, 0x60, 0x6e, 0xb8, 0xb5]),
       [0x16, 0xac, 0x60, 0x6e, 0xb8, 0xb4]
     );
+  }
+
+  #[test]
+  fn station_macs() {
+    const ATTR_STA_INFO: u16 = 21;
+    let mac = [0x5e, 0x0b, 0x2a, 0x11, 0x42, 0x07];
+    // as the kernel dumps a station: its interface, MAC and nested statistics
+    let reply = [
+      attr(ATTR_IFINDEX, &9u32.to_ne_bytes()),
+      attr(ATTR_MAC, &mac),
+      attr(ATTR_STA_INFO | 0x8000, &attr(1, &0u32.to_ne_bytes())),
+    ]
+    .concat();
+    assert_eq!(station_mac(&reply), Some(mac));
+    assert_eq!(station_mac(&reply[..8]), None);
+    assert_eq!(station_mac(&attr(ATTR_MAC, &mac[..5])), None);
   }
 
   #[test]

@@ -655,6 +655,7 @@ mod tests {
       ssid: "corona".into(),
       band: nm::HotspotBand::A,
       connection_path: Default::default(),
+      interface: "wlan0".into(),
     };
     let json = json(Hotspot::from(&hotspot));
     assert_eq!(json["band"], "a");

@@ -446,6 +446,9 @@ app:
       asks_admin:
         en: 'Wi-Fi stays connected. The first start per boot asks for administrator rights and may reconnect Wi-Fi once'
         de: 'WLAN bleibt verbunden. Der erste Start pro Systemstart fragt nach Administratorrechten und kann das WLAN einmal neu verbinden'
+      clients:
+        en: 'Connected devices (%{count})'
+        de: 'Verbundene Geräte (%{count})'
   notifications:
     dnd:
       en: Do not disturb

@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use cosmic_dbus_networkmanager::{
   config::ip4::AddressData,
   interface::enums::{ActiveConnectionState, DeviceState},
@@ -72,6 +74,15 @@ impl HotspotBand {
   }
 }
 
+/// a device connected to the hotspot
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HotspotClient {
+  pub mac: String,
+  /// None until it took a DHCP lease
+  pub ip: Option<Ipv4Addr>,
+  pub hostname: Option<String>,
+}
+
 /// a wifi device runs an access point
 #[derive(Clone, Debug, PartialEq)]
 pub struct HotspotInfo {
@@ -81,4 +92,6 @@ pub struct HotspotInfo {
   pub band: HotspotBand,
   /// the hotspot's saved profile
   pub connection_path: OwnedObjectPath,
+  /// the wifi device running it
+  pub interface: String,
 }

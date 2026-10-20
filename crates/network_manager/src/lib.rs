@@ -11,7 +11,7 @@ use crate::listener::{agent_listener, listener, subscribe};
 pub use crate::{
   actions::{EnterpriseConfig, HiddenSecurity, HotspotConfig, ScanResult},
   snapshot::{FailReason, WifiFailure, WifiNetwork, WifiStatus},
-  state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
+  state::{HotspotBand, HotspotClient, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
 };
 pub use cosmic_dbus_networkmanager::interface::enums::{
   ActiveConnectionState, DeviceState, NmConnectivityState,
@@ -283,6 +283,16 @@ impl NetworkManager {
         None => actions::start_hotspot(&conn, primary.path, config, None, &executor).await,
       }
     }
+  }
+
+  /// the devices connected to the running hotspot, none without one
+  pub fn hotspot_clients(
+    &self,
+    cx: &App,
+  ) -> impl Future<Output = Result<Vec<HotspotClient>>> + use<> {
+    let interface = self.hotspot(cx).map(|h| h.interface.clone());
+    cx.background_executor()
+      .spawn(async move { interface.map_or(Ok(Vec::new()), |i| actions::hotspot_clients(&i)) })
   }
 
   pub fn stop_hotspot(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
@@ -714,6 +724,7 @@ mod tests {
           ssid: "corona".into(),
           band: HotspotBand::Bg,
           connection_path: OwnedObjectPath::try_from(format!("{SETTINGS}/5")).unwrap(),
+          interface: "wlan0".into(),
         })
       );
       // an access point does not scan
@@ -754,6 +765,8 @@ mod tests {
     let (_bus, mock) = start(cx, world);
     wait_until(cx, |cx| hotspot(cx).is_some() && !networks(cx).is_empty());
     assert_eq!(networks(cx)[0].3, WifiStatus::Connected);
+    // its clients are read from the interface running it
+    assert_eq!(hotspot(cx).unwrap().interface, "corona-ap");
     let nm = nm(cx);
     cx.read(|cx| {
       assert_eq!(nm.primary_wifi(cx).unwrap().name, "wlan0");

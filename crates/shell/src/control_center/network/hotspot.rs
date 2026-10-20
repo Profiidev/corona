@@ -1,10 +1,15 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
-use corona_network_manager::{DeviceState, HotspotBand, HotspotConfig, NetworkManagerExt};
+use corona_network_manager::{
+  DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt,
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, AppContext, Context, Entity, IntoElement, ParentElement, Styled, Window,
+  App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Task,
+  TestSupportExt, Window,
   assets::IconName,
   base::{Disableable, IndexPath, StyledExt, input::InputState},
   black,
@@ -34,9 +39,12 @@ pub struct HotspotForm {
   pending: bool,
   /// the running hotspot as Wi-Fi QR code text
   qr: Option<String>,
+  clients: Vec<HotspotClient>,
+  _poll_clients: Option<Task<()>>,
 }
 
 const BANDS: [HotspotBand; 2] = [HotspotBand::Bg, HotspotBand::A];
+const CLIENTS_POLL: Duration = Duration::from_secs(3);
 
 fn band_label(band: HotspotBand) -> String {
   match band {
@@ -106,6 +114,8 @@ impl HotspotForm {
       expanded: false,
       pending: false,
       qr: None,
+      clients: Vec::new(),
+      _poll_clients: None,
     }
   }
 
@@ -126,6 +136,7 @@ impl HotspotForm {
 impl NetworkPanel {
   /// fills the form and the QR code from the running or the saved hotspot
   pub fn load_hotspot(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    self.poll_hotspot_clients(cx);
     let load = cx.network_manager().hotspot_config(cx);
     cx.spawn_in(window, async move |this, cx| {
       let Ok(config) = load.await.log_err() else {
@@ -136,6 +147,32 @@ impl NetworkPanel {
         .ok();
     })
     .detach();
+  }
+
+  /// NM signals no client joining, so the running hotspot's are asked for every few seconds
+  fn poll_hotspot_clients(&mut self, cx: &mut Context<Self>) {
+    let running = cx.network_manager().hotspot(cx).is_some();
+    let form = &mut self.hotspot_form;
+    form.clients.clear();
+    form._poll_clients = running.then(|| {
+      cx.spawn(async move |this, cx| {
+        loop {
+          let clients = cx.update(|cx| cx.network_manager().hotspot_clients(cx));
+          // a radio without nl80211 stays so, no point in asking again
+          let Ok(clients) = clients.await.log_err() else {
+            break;
+          };
+          let updated = this.update(cx, |this, cx| {
+            this.hotspot_form.clients = clients;
+            cx.notify();
+          });
+          if updated.is_err() {
+            break;
+          }
+          cx.background_executor().timer(CLIENTS_POLL).await;
+        }
+      })
+    });
   }
 
   fn fill_hotspot(
@@ -288,14 +325,44 @@ impl NetworkPanel {
                 .child(t!("app.network.hotspot.scan", ssid = hotspot.ssid)),
             )
           },
-        ),
+        )
+        .when(running && !form.clients.is_empty(), |d| {
+          d.child(div().text_xs().font_bold().child(t!(
+            "app.network.hotspot.clients",
+            count = form.clients.len()
+          )))
+          .children(form.clients.iter().enumerate().map(|(i, client)| {
+            div()
+              .id(("hotspot-client", i))
+              .flex()
+              .justify_between()
+              .gap_2()
+              .text_xs()
+              .child(
+                client
+                  .hostname
+                  .clone()
+                  .unwrap_or_else(|| client.mac.clone()),
+              )
+              .when_some(client.ip, |d, ip| {
+                d.child(
+                  div()
+                    .text_color(theme.colors.muted_foreground)
+                    .child(ip.to_string()),
+                )
+              })
+              .test_support()
+          }))
+        }),
     )
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use corona_network_manager::{HotspotInfo, Interface, InterfaceType, NetworkManager};
+  use corona_network_manager::{
+    HotspotClient, HotspotInfo, Interface, InterfaceType, NetworkManager,
+  };
   use corona_utils::test_bus::TestBus;
   use futures::executor::block_on;
   use gpui_kit::{
@@ -373,6 +440,8 @@ mod tests {
           connection_path: "/org/freedesktop/NetworkManager/Settings/5"
             .try_into()
             .unwrap(),
+          // no interface of this machine, the panel finds no clients of its own
+          interface: "corona-test0".into(),
         });
         cx.notify();
       });
@@ -380,11 +449,29 @@ mod tests {
     panel.update(cx, |panel, cx| {
       panel.hotspot_form.qr = Some(wifi_qr_text("corona", Some("hunter22")));
       panel.hotspot_form.expanded = true;
+      panel.hotspot_form.clients = vec![HotspotClient {
+        mac: "5e:0b:2a:11:42:07".into(),
+        ip: Some([10, 42, 0, 65].into()),
+        hostname: Some("phone".into()),
+      }];
       cx.notify();
     });
     cx.update(|window, cx| {
       window.render_frame(cx);
       assert_eq!(window.find("hotspot-enabled").checked(), Some(true));
+      assert!(window.try_find(("hotspot-client", 0usize)).is_some());
+      cx.network_manager()
+        .hotspot
+        .clone()
+        .update(cx, |hotspot, cx| {
+          *hotspot = None;
+          cx.notify();
+        });
+    });
+    // a stopped hotspot has no clients
+    cx.update(|window, cx| {
+      window.render_frame(cx);
+      assert!(window.try_find(("hotspot-client", 0usize)).is_none());
     });
   }
 

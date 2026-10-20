@@ -30,7 +30,7 @@ use crate::{
   },
   nl80211,
   snapshot::{AP_MODE, WIFI_SETTING, profile, read_access_point, saved_ssid},
-  state::HotspotBand,
+  state::{HotspotBand, HotspotClient},
 };
 
 /// the profile `start_hotspot` creates once and updates after
@@ -674,6 +674,42 @@ pub(crate) async fn wait_for_device(
   bail!("NetworkManager did not take up {name}")
 }
 
+/// the access point's associated stations, named by their DHCP leases: `expiry mac ip hostname
+/// client-id` lines, `*` for no hostname
+fn clients(stations: &[[u8; 6]], leases: &str) -> Vec<HotspotClient> {
+  let leases: Vec<Vec<&str>> = leases
+    .lines()
+    .map(|line| line.split_whitespace().collect())
+    .collect();
+  stations
+    .iter()
+    .map(|&mac| {
+      let lease = leases
+        .iter()
+        .find(|lease| lease.get(1).and_then(|m| nl80211::parse_mac(m)) == Some(mac));
+      HotspotClient {
+        mac: nl80211::format_mac(mac),
+        ip: lease.and_then(|l| l.get(2)?.parse().ok()),
+        hostname: lease
+          .and_then(|l| l.get(3))
+          .filter(|name| **name != "*")
+          .map(|name| name.to_string()),
+      }
+    })
+    .collect()
+}
+
+/// the devices connected to the hotspot on `interface`, from nl80211 and NM's dnsmasq
+pub(crate) fn hotspot_clients(interface: &str) -> Result<Vec<HotspotClient>> {
+  let stations = nl80211::stations(interface)?;
+  // NM writes it world readable; absent until the first lease
+  let leases = std::fs::read_to_string(format!(
+    "/var/lib/NetworkManager/dnsmasq-{interface}.leases"
+  ))
+  .unwrap_or_default();
+  Ok(clients(&stations, &leases))
+}
+
 pub(crate) async fn stop_hotspot(conn: &Connection, profile: OwnedObjectPath) -> Result<()> {
   let nm = NetworkManager::new(conn).await?;
   for active in nm.active_connections().await? {
@@ -722,6 +758,8 @@ pub(crate) async fn hotspot_config(
 
 #[cfg(test)]
 mod tests {
+  use std::net::Ipv4Addr;
+
   use super::*;
 
   fn config(eap: EapMethod) -> EnterpriseConfig {
@@ -927,6 +965,40 @@ mod tests {
     let beside = hotspot_settings(hotspot("corona", None), None, Some((HotspotBand::Bg, 6)));
     assert_eq!(beside[WIFI_SETTING]["band"], string("bg"));
     assert_eq!(beside[WIFI_SETTING]["channel"], Value::from(6u32));
+  }
+
+  #[test]
+  fn hotspot_clients_from_leases() {
+    let leases = "1792496989 5e:0b:2a:11:42:07 10.42.0.65 Mac 01:5e:0b:2a:11:42:07\n\
+                  1792496000 AA:BB:CC:DD:EE:FF 10.42.0.70 * *\n\
+                  1792490000 12:34:56:78:9a:bc 10.42.0.80 gone *\n\
+                  duid 00:01:00:01\n";
+    let phone = [0x5e, 0x0b, 0x2a, 0x11, 0x42, 0x07];
+    let unnamed = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+    // associated, but no lease yet
+    let fresh = [0x02, 0, 0, 0, 0, 0x01];
+    assert_eq!(
+      clients(&[phone, unnamed, fresh], leases),
+      [
+        HotspotClient {
+          mac: "5e:0b:2a:11:42:07".into(),
+          ip: Some(Ipv4Addr::new(10, 42, 0, 65)),
+          hostname: Some("Mac".into()),
+        },
+        HotspotClient {
+          mac: "aa:bb:cc:dd:ee:ff".into(),
+          ip: Some(Ipv4Addr::new(10, 42, 0, 70)),
+          hostname: None,
+        },
+        HotspotClient {
+          mac: "02:00:00:00:00:01".into(),
+          ip: None,
+          hostname: None,
+        },
+      ]
+    );
+    // a lease outlives its client's connection
+    assert_eq!(clients(&[], leases), []);
   }
 
   #[test]

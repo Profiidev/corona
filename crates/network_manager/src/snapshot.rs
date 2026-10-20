@@ -220,6 +220,7 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
     ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
     band: HotspotBand::from_setting(wifi.band.as_deref()),
     connection_path,
+    interface: device.name.clone(),
   }))
 }
 
