@@ -157,6 +157,24 @@ struct SecretRequest {
   retry: bool,
 }
 
+#[derive(Serialize, TS)]
+struct Hotspot {
+  /// Up, not still activating.
+  active: bool,
+  ssid: String,
+  band: nm::HotspotBand,
+}
+
+impl From<&nm::HotspotInfo> for Hotspot {
+  fn from(hotspot: &nm::HotspotInfo) -> Self {
+    Self {
+      active: hotspot.active,
+      ssid: hotspot.ssid.clone(),
+      band: hotspot.band,
+    }
+  }
+}
+
 impl From<&nm::Interface> for Interface {
   fn from(interface: &nm::Interface) -> Self {
     Self {
@@ -274,6 +292,7 @@ pub enum Updates {
   WifiFailure,
   SecretRequest,
   Vpns,
+  Hotspot,
 }
 
 impl From<Updates> for super::Updates {
@@ -461,6 +480,29 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
       "connect",
       |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.connect(&name, &cx)
     ))
+    .func(read(
+      reads,
+      subs,
+      "hotspot",
+      Updates::Hotspot,
+      |cx| cx.network_manager().hotspot.clone(),
+      |cx| cx.network_manager().hotspot(cx).map(Hotspot::from),
+    ))
+    .func(named!(
+      "startHotspot",
+      /// Turns the wifi device into an access point; a null password makes it open.
+      |cx: Cx, nm: Glob<NetworkManager>, config: nm::HotspotConfig| {
+        nm.start_hotspot(config, &cx)
+      }
+    ))
+    .func(named!("stopHotspot", |cx: Cx, nm: Glob<NetworkManager>| {
+      nm.stop_hotspot(&cx)
+    }))
+    .func(named!(
+      "hotspotConfig",
+      /// The running hotspot's settings with its password, else the saved ones, else null.
+      |cx: Cx, nm: Glob<NetworkManager>| nm.hotspot_config(&cx)
+    ))
     .func(named!(
       "disconnect",
       |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.disconnect(&name, &cx)
@@ -604,6 +646,23 @@ mod tests {
         assert_eq!(json["uuid"], "u");
       }
     }
+  }
+
+  #[test]
+  fn hotspots() {
+    let hotspot = nm::HotspotInfo {
+      active: true,
+      ssid: "corona".into(),
+      band: nm::HotspotBand::A,
+      connection_path: Default::default(),
+    };
+    let json = json(Hotspot::from(&hotspot));
+    assert_eq!(json["band"], "a");
+    assert_eq!(json["active"], true);
+    assert!(json.get("connection_path").is_none());
+    let config: nm::HotspotConfig =
+      serde_json::from_str(r#"{"ssid": "corona", "password": null, "band": "bg"}"#).unwrap();
+    assert_eq!(config.band, nm::HotspotBand::Bg);
   }
 
   #[test]

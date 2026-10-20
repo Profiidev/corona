@@ -9,9 +9,9 @@ use zbus::{Connection, zvariant::OwnedObjectPath};
 use crate::listener::{agent_listener, listener, subscribe};
 
 pub use crate::{
-  actions::{EnterpriseConfig, HiddenSecurity, ScanResult},
+  actions::{EnterpriseConfig, HiddenSecurity, HotspotConfig, ScanResult},
   snapshot::{FailReason, WifiFailure, WifiNetwork, WifiStatus},
-  state::{Interface, InterfaceType, Vpn, VpnKind},
+  state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
 };
 pub use cosmic_dbus_networkmanager::interface::enums::{
   ActiveConnectionState, DeviceState, NmConnectivityState,
@@ -41,6 +41,7 @@ pub struct NetworkManager {
   pub wifi_failure: Entity<Option<WifiFailure>>,
   pub secret_request: Entity<Option<SecretRequest>>,
   pub vpns: Entity<Vec<Vpn>>,
+  pub hotspot: Entity<Option<HotspotInfo>>,
   conn: Connection,
 }
 
@@ -99,6 +100,10 @@ impl NetworkManager {
 
   pub fn secret_request<'c>(&self, cx: &'c App) -> Option<&'c SecretRequest> {
     self.secret_request.read(cx).as_ref()
+  }
+
+  pub fn hotspot<'c>(&self, cx: &'c App) -> Option<&'c HotspotInfo> {
+    self.hotspot.read(cx).as_ref()
   }
 
   fn interface_path(&self, name: &str, cx: &App) -> Result<OwnedObjectPath> {
@@ -215,6 +220,38 @@ impl NetworkManager {
     async move { actions::disconnect_device(&conn, device?).await }
   }
 
+  /// turns the primary wifi device into an access point through the Corona Hotspot profile, its
+  /// wifi connection drops meanwhile
+  pub fn start_hotspot(
+    &self,
+    config: HotspotConfig,
+    cx: &App,
+  ) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, device) = (self.conn.clone(), self.wifi_path(cx));
+    async move { actions::start_hotspot(&conn, device?, config).await }
+  }
+
+  pub fn stop_hotspot(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    let profile = self
+      .hotspot(cx)
+      .map(|h| h.connection_path.clone())
+      .context("the hotspot is not running");
+    async move { actions::stop_hotspot(&conn, profile?).await }
+  }
+
+  /// the running hotspot's settings and password, else the saved Corona Hotspot's
+  pub fn hotspot_config(
+    &self,
+    cx: &App,
+  ) -> impl Future<Output = Result<Option<HotspotConfig>>> + use<> {
+    let (conn, running) = (
+      self.conn.clone(),
+      self.hotspot(cx).map(|h| h.connection_path.clone()),
+    );
+    async move { actions::hotspot_config(&conn, running).await }
+  }
+
   /// answer the pending secret request, None cancels it
   pub fn answer_secret(&self, cx: &mut App, secret: Option<Secret>) {
     let request = self.secret_request.update(cx, |request, cx| {
@@ -225,23 +262,34 @@ impl NetworkManager {
       let _ = request.reply.send(secret);
     }
   }
+
+  fn new(conn: &Connection, cx: &mut App) -> Self {
+    Self {
+      interfaces: cx.new(|_| Vec::new()),
+      primary_interface: cx.new(|_| None),
+      connectivity: cx.new(|_| NmConnectivityState::Unknown),
+      connectivity_check: cx.new(|_| None),
+      wifi_supported: cx.new(|_| false),
+      wifi_enabled: cx.new(|_| false),
+      primary_wifi: cx.new(|_| None),
+      wifi_networks: cx.new(|_| Vec::new()),
+      wifi_failure: cx.new(|_| None),
+      secret_request: cx.new(|_| None),
+      vpns: cx.new(|_| Vec::new()),
+      hotspot: cx.new(|_| None),
+      conn: conn.clone(),
+    }
+  }
+
+  /// Without listening to NetworkManager; tests write the entities themselves
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn fake(conn: &Connection, cx: &mut App) -> Self {
+    Self::new(conn, cx)
+  }
 }
 
 pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
-  let state = NetworkManager {
-    interfaces: cx.new(|_| Vec::new()),
-    primary_interface: cx.new(|_| None),
-    connectivity: cx.new(|_| NmConnectivityState::Unknown),
-    connectivity_check: cx.new(|_| None),
-    wifi_supported: cx.new(|_| false),
-    wifi_enabled: cx.new(|_| false),
-    primary_wifi: cx.new(|_| None),
-    wifi_networks: cx.new(|_| Vec::new()),
-    wifi_failure: cx.new(|_| None),
-    secret_request: cx.new(|_| None),
-    vpns: cx.new(|_| Vec::new()),
-    conn: conn.clone(),
-  };
+  let state = NetworkManager::new(conn, cx);
 
   // subscribe before the first snapshot so no change can slip in between
   let changes = subscribe(conn).await?;
@@ -273,7 +321,7 @@ mod tests {
   use zbus::zvariant::{OwnedValue, Value};
 
   use super::*;
-  use crate::mock::{ETH, MockNm, NM, SETTINGS, SettingsMap, WLAN, World, ap};
+  use crate::mock::{Active, ETH, MockNm, NM, SETTINGS, SettingsMap, WLAN, World, ap, profile};
 
   fn start(cx: &mut TestAppContext, world: World) -> (TestBus, MockNm) {
     cx.executor().allow_parking();
@@ -344,6 +392,7 @@ mod tests {
         ]
       );
       assert!(nm.wifi_failure(cx).is_none() && nm.secret_request(cx).is_none());
+      assert!(nm.hotspot(cx).is_none());
     });
     // the same SSID twice merges: strongest signal, saved first
     assert_eq!(
@@ -570,6 +619,170 @@ mod tests {
       get(&cafe, "802-11-wireless", "ssid"),
       Some(Value::from(b"cafe".to_vec()).try_to_owned().unwrap())
     );
+  }
+
+  /// wlan0 runs the saved Corona Hotspot, its connection in `state`
+  fn hotspot_world(state: u32) -> World {
+    let mut world = World::default();
+    let mut hotspot = profile(5, "Corona Hotspot", "802-11-wireless", Some(b"corona"));
+    hotspot.mode = Some("ap".into());
+    hotspot.band = Some("bg".into());
+    hotspot.psk = Some("hunter22".into());
+    world.profiles.push(hotspot);
+    world.wlan_state = 100;
+    world.wlan_active = format!("{NM}/ActiveConnection/3");
+    world.active.push(Active {
+      path: format!("{NM}/ActiveConnection/3"),
+      uuid: "uuid-Corona Hotspot".into(),
+      state,
+      devices: vec![WLAN.into()],
+      connection: format!("{SETTINGS}/5"),
+    });
+    world
+  }
+
+  fn hotspot(cx: &mut TestAppContext) -> Option<HotspotInfo> {
+    cx.read(|cx| cx.network_manager().hotspot(cx).cloned())
+  }
+
+  #[gpui::test]
+  fn detects_a_running_hotspot(cx: &mut TestAppContext) {
+    for (state, active) in [(1, false), (2, true)] {
+      let (_bus, mock) = start(cx, hotspot_world(state));
+      wait_until(cx, |cx| hotspot(cx).is_some());
+      assert_eq!(
+        hotspot(cx),
+        Some(HotspotInfo {
+          active,
+          ssid: "corona".into(),
+          band: HotspotBand::Bg,
+          connection_path: OwnedObjectPath::try_from(format!("{SETTINGS}/5")).unwrap(),
+        })
+      );
+      // an access point does not scan
+      assert!(networks(cx).is_empty());
+
+      let nm = nm(cx);
+      let config = block_on(cx.read(|cx| nm.hotspot_config(cx))).unwrap();
+      assert_eq!(
+        config,
+        Some(HotspotConfig {
+          ssid: "corona".into(),
+          password: Some("hunter22".into()),
+          band: HotspotBand::Bg,
+        })
+      );
+      block_on(cx.read(|cx| nm.stop_hotspot(cx))).unwrap();
+      let calls = mock.calls();
+      assert!(calls.contains(&format!("GetSecrets {SETTINGS}/5")));
+      assert!(calls.contains(&format!("DeactivateConnection {NM}/ActiveConnection/3")));
+      cx.update(|cx| cx.remove_global::<NetworkManager>());
+    }
+  }
+
+  #[gpui::test]
+  fn starts_a_new_hotspot(cx: &mut TestAppContext) {
+    let (_bus, mock) = start(cx, World::default());
+    let nm = nm(cx);
+    // nothing saved, nothing running
+    assert_eq!(block_on(cx.read(|cx| nm.hotspot_config(cx))).unwrap(), None);
+    assert_eq!(
+      block_on(cx.read(|cx| nm.stop_hotspot(cx)))
+        .unwrap_err()
+        .to_string(),
+      "the hotspot is not running"
+    );
+
+    let config = HotspotConfig {
+      ssid: "corona".into(),
+      password: Some("password".into()),
+      band: HotspotBand::A,
+    };
+    block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
+    assert!(
+      mock
+        .calls()
+        .contains(&format!("AddAndActivateConnection {WLAN} /"))
+    );
+    let added = added(&mock);
+    assert_eq!(
+      text(&added, "connection", "id").as_deref(),
+      Some("Corona Hotspot")
+    );
+    assert_eq!(
+      get(&added, "connection", "autoconnect"),
+      Some(Value::from(false).try_to_owned().unwrap())
+    );
+    assert_eq!(
+      get(&added, "802-11-wireless", "ssid"),
+      Some(Value::from(b"corona".to_vec()).try_to_owned().unwrap())
+    );
+    assert_eq!(
+      text(&added, "802-11-wireless", "mode").as_deref(),
+      Some("ap")
+    );
+    assert_eq!(
+      text(&added, "802-11-wireless", "band").as_deref(),
+      Some("a")
+    );
+    assert_eq!(text(&added, "ipv4", "method").as_deref(), Some("shared"));
+    assert_eq!(
+      text(&added, "802-11-wireless-security", "key-mgmt").as_deref(),
+      Some("wpa-psk")
+    );
+    assert_eq!(
+      text(&added, "802-11-wireless-security", "psk").as_deref(),
+      Some("password")
+    );
+
+    // too short a password never reaches NM
+    let short = HotspotConfig {
+      password: Some("short".into()),
+      ..config
+    };
+    assert!(block_on(cx.read(|cx| nm.start_hotspot(short, cx))).is_err());
+    assert_eq!(mock.world().added.len(), 1);
+  }
+
+  #[gpui::test]
+  fn reuses_the_saved_hotspot(cx: &mut TestAppContext) {
+    let mut world = hotspot_world(2);
+    world.active.pop();
+    world.wlan_active = "/".into();
+    world.wlan_state = 30;
+    let (_bus, mock) = start(cx, world);
+    settle(cx);
+    assert!(hotspot(cx).is_none());
+    let nm = nm(cx);
+    // not running: the saved one fills the form
+    let saved = block_on(cx.read(|cx| nm.hotspot_config(cx)))
+      .unwrap()
+      .unwrap();
+    assert_eq!(saved.password.as_deref(), Some("hunter22"));
+
+    let open = HotspotConfig {
+      password: None,
+      ..saved
+    };
+    block_on(cx.read(|cx| nm.start_hotspot(open, cx))).unwrap();
+    let calls: Vec<_> = mock
+      .calls()
+      .into_iter()
+      .filter(|c| !c.starts_with("Register") && !c.starts_with("GetSecrets"))
+      .collect();
+    assert_eq!(
+      calls,
+      [
+        format!("Update {SETTINGS}/5"),
+        format!("ActivateConnection {SETTINGS}/5 {WLAN} /"),
+      ]
+    );
+    let updated = added(&mock);
+    assert_eq!(
+      text(&updated, "connection", "uuid").as_deref(),
+      Some("uuid-Corona Hotspot")
+    );
+    assert!(!updated.contains_key("802-11-wireless-security"));
   }
 
   #[gpui::test]

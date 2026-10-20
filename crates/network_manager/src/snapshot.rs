@@ -18,10 +18,13 @@ use cosmic_dbus_networkmanager::{
 };
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
-use crate::state::{Interface, InterfaceType, Vpn, VpnKind};
+use crate::state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind};
 
 const VPN_TYPE: &str = "vpn";
 const WIREGUARD_TYPE: &str = "wireguard";
+pub(crate) const WIFI_SETTING: &str = "802-11-wireless";
+/// 802-11-wireless.mode of an access point
+pub(crate) const AP_MODE: &str = "ap";
 
 pub struct Snapshot {
   pub interfaces: Vec<Interface>,
@@ -33,6 +36,7 @@ pub struct Snapshot {
   pub primary_wifi: Option<Interface>,
   pub wifi_networks: Vec<WifiNetwork>,
   pub vpns: Vec<Vpn>,
+  pub hotspot: Option<HotspotInfo>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -143,12 +147,17 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     .iter()
     .any(|i| i.kind == InterfaceType::Wireless && i.state != DeviceState::Unmanaged);
 
+  let hotspot = match &primary_wifi {
+    Some(device) => hotspot(conn, device).await.log_err().unwrap_or_default(),
+    None => None,
+  };
+  // an access point does not scan, its list is stale
   let wifi_networks = match &primary_wifi {
-    Some(device) => wifi_networks(conn, device)
+    Some(device) if hotspot.is_none() => wifi_networks(conn, device)
       .await
       .log_err()
       .unwrap_or_default(),
-    None => Vec::new(),
+    _ => Vec::new(),
   };
 
   Ok(Snapshot {
@@ -161,7 +170,41 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     primary_wifi,
     wifi_networks,
     vpns: vpns(conn, &nm).await.log_err().unwrap_or_default(),
+    hotspot,
   })
+}
+
+/// the device's active connection, when its profile is an access point
+async fn hotspot(conn: &Connection, device: &Interface) -> Result<Option<HotspotInfo>> {
+  let active = DeviceProxy::builder(conn)
+    .path(device.path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .active_connection()
+    .await?;
+  if active == OwnedObjectPath::default() {
+    return Ok(None);
+  }
+  let active = ActiveConnectionProxy::builder(conn)
+    .path(active)?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?;
+  let connection_path = active.connection_().await?;
+  let wifi = profile(conn, connection_path.clone())
+    .await?
+    .wifi
+    .filter(|wifi| wifi.mode.as_deref() == Some(AP_MODE));
+  let Some(wifi) = wifi else {
+    return Ok(None);
+  };
+  Ok(Some(HotspotInfo {
+    active: ActiveConnectionState::from(active.state().await?) == ActiveConnectionState::Activated,
+    ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
+    band: HotspotBand::from_setting(wifi.band.as_deref()),
+    connection_path,
+  }))
 }
 
 async fn connectivity_check(nm: &NetworkManager<'_>) -> Option<String> {
@@ -319,7 +362,7 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
   Ok(networks)
 }
 
-async fn profile(conn: &Connection, path: OwnedObjectPath) -> Result<Settings> {
+pub(crate) async fn profile(conn: &Connection, path: OwnedObjectPath) -> Result<Settings> {
   let settings = ConnectionSettingsProxy::builder(conn)
     .path(path)?
     .cache_properties(CacheProperties::No)

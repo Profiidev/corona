@@ -1,16 +1,19 @@
 use corona_network_manager::NetworkManagerExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  component::ActiveTheme, div, prelude::FluentBuilder,
+  component::{ActiveTheme, scroll::ScrollableElement},
+  div,
+  prelude::FluentBuilder,
 };
 
 use crate::control_center::{
   ControlCenterPanel,
-  network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt},
+  network::{hidden_network::HiddenPrompt, hotspot::HotspotForm, secret_prompt::SecretPrompt},
   variants::ControlCenterType,
 };
 
 mod hidden_network;
+mod hotspot;
 mod interface;
 mod secret_prompt;
 mod status;
@@ -41,7 +44,9 @@ pub struct NetworkPanel {
   error: Option<String>,
   secret_prompt: Option<SecretPrompt>,
   hidden_prompt: Option<HiddenPrompt>,
+  hotspot_form: HotspotForm,
   _secret_request: Subscription,
+  _hotspot: Subscription,
 }
 
 impl ControlCenterPanel for NetworkPanel {
@@ -52,8 +57,13 @@ impl ControlCenterPanel for NetworkPanel {
     let subscription = cx.observe_in(&secret_request, window, |this, _, window, cx| {
       this.sync_secret_prompt(window, cx)
     });
+    let hotspot = cx.network_manager().hotspot.clone();
+    let hotspot = cx.observe_in(&hotspot, window, |this, _, window, cx| {
+      this.load_hotspot(window, cx)
+    });
     cx.defer_in(window, |this, window, cx| {
-      this.sync_secret_prompt(window, cx)
+      this.sync_secret_prompt(window, cx);
+      this.load_hotspot(window, cx);
     });
 
     Self {
@@ -62,7 +72,9 @@ impl ControlCenterPanel for NetworkPanel {
       error: None,
       secret_prompt: None,
       hidden_prompt: None,
+      hotspot_form: HotspotForm::new(window, cx),
       _secret_request: subscription,
+      _hotspot: hotspot,
     }
   }
 }
@@ -73,15 +85,22 @@ impl Render for NetworkPanel {
 
     div()
       .relative()
-      .flex()
-      .flex_col()
       .size_full()
-      .gap_2()
-      .child(self.status(theme, cx))
-      .when_some(self.error(cx), |d, error| d.child(error))
-      .child(self.wifi(theme, cx))
-      .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
-      .child(self.interfaces(theme, cx))
+      .child(
+        div()
+          .flex()
+          .flex_col()
+          .size_full()
+          .gap_2()
+          .overflow_y_scrollbar()
+          .child(self.status(theme, cx))
+          .when_some(self.error(cx), |d, error| d.child(error))
+          .child(self.wifi(theme, cx))
+          .when_some(self.hotspot(theme, cx), |d, hotspot| d.child(hotspot))
+          .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
+          .child(self.interfaces(theme, cx)),
+      )
+      // outside the scroll area, so they cover the panel wherever it is scrolled to
       .when_some(self.hidden_prompt(theme, cx), |d, prompt| d.child(prompt))
       .when_some(self.secret_prompt(theme, cx), |d, prompt| d.child(prompt))
   }

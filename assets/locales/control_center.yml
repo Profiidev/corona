@@ -427,6 +427,22 @@ app:
       saved:
         en: Saved
         de: Gespeichert
+    hotspot:
+      title:
+        en: Hotspot
+        de: Hotspot
+      settings:
+        en: Hotspot settings
+        de: Hotspot-Einstellungen
+      password:
+        en: 'Password, empty for an open hotspot'
+        de: 'Passwort, leer für einen offenen Hotspot'
+      scan:
+        en: 'Scan to join %{ssid}'
+        de: 'Scannen, um %{ssid} beizutreten'
+      takes_wifi:
+        en: Wi-Fi disconnects while the hotspot is on
+        de: 'WLAN wird getrennt, solange der Hotspot läuft'
   notifications:
     dnd:
       en: Do not disturb

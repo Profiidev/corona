@@ -1,18 +1,18 @@
 use std::{collections::HashMap, path::Path};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use cosmic_dbus_networkmanager::{
   device::{Device, wireless::WirelessDevice},
   interface::{
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
     enums::NmConnectivityState,
-    settings::SettingsProxy,
+    settings::{SettingsProxy, connection::ConnectionSettingsProxy},
   },
   nm::NetworkManager,
   settings::connection::{Connection as NmConnection, Settings, WifiSecurity, WifiSettings},
 };
 use futures_lite::{StreamExt, future::or};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use zbus::{
   Connection,
@@ -24,8 +24,12 @@ use crate::{
   agent::{
     ENTERPRISE_SETTING, IDENTITY_KEY, PASSWORD_KEY, PRIVATE_KEY_PASSWORD_KEY, WIFI_SECURITY_SETTING,
   },
-  snapshot::{read_access_point, saved_ssid},
+  snapshot::{AP_MODE, WIFI_SETTING, profile, read_access_point, saved_ssid},
+  state::HotspotBand,
 };
+
+/// the profile `start_hotspot` creates once and updates after
+pub(crate) const HOTSPOT_ID: &str = "Corona Hotspot";
 
 // 802-11-wireless-security.key-mgmt values
 const KEY_MGMT_PSK: &str = "wpa-psk";
@@ -95,6 +99,32 @@ pub enum EapMethod {
 pub enum Phase2 {
   Mschapv2,
   Pap,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct HotspotConfig {
+  pub ssid: String,
+  /// WPA2 personal, None: an open hotspot
+  pub password: Option<String>,
+  pub band: HotspotBand,
+}
+
+impl HotspotConfig {
+  /// what NM rejects, caught before asking it
+  pub fn validate(&self) -> Result<()> {
+    ensure!(
+      (1..=32).contains(&self.ssid.len()),
+      "the hotspot name needs 1 to 32 bytes"
+    );
+    if let Some(password) = &self.password {
+      let hex_key = password.len() == 64 && password.bytes().all(|b| b.is_ascii_hexdigit());
+      ensure!(
+        (8..=63).contains(&password.len()) || hex_key,
+        "the hotspot password needs 8 to 63 characters"
+      );
+    }
+    Ok(())
+  }
 }
 
 async fn proxy<P, T>(conn: &Connection, path: OwnedObjectPath) -> Result<T>
@@ -428,6 +458,139 @@ pub(crate) async fn disconnect_device(conn: &Connection, device: OwnedObjectPath
   Ok(device.disconnect().await?)
 }
 
+/// the saved Corona Hotspot profile: its path and UUID
+async fn saved_hotspot(conn: &Connection) -> Result<Option<(OwnedObjectPath, Option<String>)>> {
+  let settings = SettingsProxy::builder(conn)
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?;
+  for path in settings.list_connections().await? {
+    let Ok(saved) = profile(conn, path.clone()).await else {
+      continue;
+    };
+    if let Some(connection) = saved
+      .connection
+      .filter(|c| c.id.as_deref() == Some(HOTSPOT_ID))
+    {
+      return Ok(Some((path, connection.uuid)));
+    }
+  }
+  Ok(None)
+}
+
+fn hotspot_settings(config: HotspotConfig, uuid: Option<String>) -> SettingsMap<'static> {
+  let mut connection = HashMap::from([
+    ("id".to_owned(), string(HOTSPOT_ID)),
+    ("type".to_owned(), string(WIFI_SETTING)),
+    ("autoconnect".to_owned(), Value::from(false)),
+  ]);
+  if let Some(uuid) = uuid {
+    connection.insert("uuid".to_owned(), string(uuid));
+  }
+  let mut settings = HashMap::from([
+    ("connection".to_owned(), connection),
+    (
+      WIFI_SETTING.to_owned(),
+      HashMap::from([
+        ("ssid".to_owned(), Value::from(config.ssid.into_bytes())),
+        ("mode".to_owned(), string(AP_MODE)),
+        ("band".to_owned(), string(config.band.setting())),
+      ]),
+    ),
+    // NM runs DHCP and NAT for the clients
+    (
+      "ipv4".to_owned(),
+      HashMap::from([("method".to_owned(), string("shared"))]),
+    ),
+  ]);
+  if let Some(password) = config.password {
+    let ccmp = || Value::from(vec!["ccmp".to_owned()]);
+    settings.insert(
+      WIFI_SECURITY_SETTING.to_owned(),
+      HashMap::from([
+        ("key-mgmt".to_owned(), string(KEY_MGMT_PSK)),
+        ("psk".to_owned(), string(password)),
+        ("proto".to_owned(), Value::from(vec!["rsn".to_owned()])),
+        ("pairwise".to_owned(), ccmp()),
+        ("group".to_owned(), ccmp()),
+      ]),
+    );
+  }
+  settings
+}
+
+pub(crate) async fn start_hotspot(
+  conn: &Connection,
+  device: OwnedObjectPath,
+  config: HotspotConfig,
+) -> Result<()> {
+  config.validate()?;
+  let nm = NetworkManager::new(conn).await?;
+  // one profile, updated on every start, instead of a new one each time
+  match saved_hotspot(conn).await? {
+    Some((path, uuid)) => {
+      let settings = hotspot_settings(config, uuid);
+      proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
+        .await?
+        .update(borrowed(&settings))
+        .await?;
+      nm.activate_connection_by_paths(&path, &device).await?;
+    }
+    None => {
+      let settings = hotspot_settings(config, None);
+      nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
+        .await?;
+    }
+  }
+  Ok(())
+}
+
+pub(crate) async fn stop_hotspot(conn: &Connection, profile: OwnedObjectPath) -> Result<()> {
+  let nm = NetworkManager::new(conn).await?;
+  for active in nm.active_connections().await? {
+    if active.connection_().await.is_ok_and(|c| c == profile) {
+      nm.deactivate_connection(&active).await?;
+      return Ok(());
+    }
+  }
+  bail!("the hotspot is not running")
+}
+
+/// the running hotspot's profile, else the saved Corona Hotspot; None without either
+pub(crate) async fn hotspot_config(
+  conn: &Connection,
+  running: Option<OwnedObjectPath>,
+) -> Result<Option<HotspotConfig>> {
+  let path = match running {
+    Some(path) => path,
+    None => match saved_hotspot(conn).await? {
+      Some((path, _)) => path,
+      None => return Ok(None),
+    },
+  };
+  let profile = proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path).await?;
+  let mut settings = profile.get_settings().await?;
+  let wifi = settings
+    .remove(WIFI_SETTING)
+    .map(WifiSettings::new)
+    .unwrap_or_default();
+  // NM leaves the password out of the settings and hands it out on its own
+  let password = if settings.contains_key(WIFI_SECURITY_SETTING) {
+    let mut secrets = profile.get_secrets(WIFI_SECURITY_SETTING).await?;
+    secrets
+      .remove(WIFI_SECURITY_SETTING)
+      .map(WifiSecurity::new)
+      .and_then(|security| security.psk)
+  } else {
+    None
+  };
+  Ok(Some(HotspotConfig {
+    ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
+    password,
+    band: HotspotBand::from_setting(wifi.band.as_deref()),
+  }))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -586,6 +749,58 @@ mod tests {
       (EapMethod::Ttls, Some(Phase2::Pap))
     );
     assert!(serde_json::from_str::<EnterpriseConfig>(r#"{"eap": "md5"}"#).is_err());
+  }
+
+  fn hotspot(ssid: &str, password: Option<&str>) -> HotspotConfig {
+    HotspotConfig {
+      ssid: ssid.into(),
+      password: password.map(Into::into),
+      band: HotspotBand::A,
+    }
+  }
+
+  #[test]
+  fn hotspot_validation() {
+    assert!(hotspot("corona", Some("12345678")).validate().is_ok());
+    assert!(hotspot("corona", None).validate().is_ok());
+    assert!(hotspot("corona", Some(&"a".repeat(63))).validate().is_ok());
+    // a raw 64 hex digit key is fine, 64 other characters are not
+    assert!(hotspot("corona", Some(&"ab".repeat(32))).validate().is_ok());
+    assert!(hotspot("corona", Some(&"x".repeat(64))).validate().is_err());
+    assert_eq!(
+      hotspot("corona", Some("1234567"))
+        .validate()
+        .unwrap_err()
+        .to_string(),
+      "the hotspot password needs 8 to 63 characters"
+    );
+    assert!(hotspot("", None).validate().is_err());
+    assert!(hotspot(&"s".repeat(33), None).validate().is_err());
+  }
+
+  #[test]
+  fn hotspot_settings_spell_out_wpa2() {
+    let settings = hotspot_settings(hotspot("corona", Some("password")), Some("u".into()));
+    assert_eq!(settings["connection"]["id"], string(HOTSPOT_ID));
+    assert_eq!(settings["connection"]["uuid"], string("u"));
+    assert_eq!(settings["connection"]["autoconnect"], Value::from(false));
+    assert_eq!(settings[WIFI_SETTING]["band"], string("a"));
+    let security = &settings[WIFI_SECURITY_SETTING];
+    assert_eq!(security["proto"], Value::from(vec!["rsn".to_owned()]));
+    assert_eq!(security["group"], Value::from(vec!["ccmp".to_owned()]));
+
+    let open = hotspot_settings(hotspot("corona", None), None);
+    assert!(!open.contains_key(WIFI_SECURITY_SETTING));
+    assert!(!open["connection"].contains_key("uuid"));
+  }
+
+  #[test]
+  fn hotspot_bands_round_trip() {
+    for band in [HotspotBand::Bg, HotspotBand::A] {
+      assert_eq!(HotspotBand::from_setting(Some(band.setting())), band);
+    }
+    // NM picks when unset, the hotspot is shown as 2.4 GHz then
+    assert_eq!(HotspotBand::from_setting(None), HotspotBand::Bg);
   }
 
   #[test]

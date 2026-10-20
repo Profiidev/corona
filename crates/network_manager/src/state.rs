@@ -2,6 +2,8 @@ use cosmic_dbus_networkmanager::{
   config::ip4::AddressData,
   interface::enums::{ActiveConnectionState, DeviceState},
 };
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use zbus::zvariant::OwnedObjectPath;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,4 +33,42 @@ pub struct Vpn {
   pub name: String,
   pub kind: VpnKind,
   pub state: ActiveConnectionState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum HotspotBand {
+  /// 2.4 GHz
+  Bg,
+  /// 5 GHz
+  A,
+}
+
+impl HotspotBand {
+  /// its 802-11-wireless.band value
+  pub(crate) fn setting(self) -> &'static str {
+    match self {
+      HotspotBand::Bg => "bg",
+      HotspotBand::A => "a",
+    }
+  }
+
+  /// "a" is 5 GHz, anything else, unset included, 2.4 GHz
+  pub(crate) fn from_setting(band: Option<&str>) -> Self {
+    match band {
+      Some("a") => HotspotBand::A,
+      _ => HotspotBand::Bg,
+    }
+  }
+}
+
+/// the primary wifi device runs an access point
+#[derive(Clone, Debug, PartialEq)]
+pub struct HotspotInfo {
+  /// up, not still activating
+  pub active: bool,
+  pub ssid: String,
+  pub band: HotspotBand,
+  /// the hotspot's saved profile
+  pub connection_path: OwnedObjectPath,
 }

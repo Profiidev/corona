@@ -40,6 +40,11 @@ pub(crate) struct Profile {
   pub uuid: String,
   pub kind: String,
   pub ssid: Option<Vec<u8>>,
+  /// 802-11-wireless.mode
+  pub mode: Option<String>,
+  pub band: Option<String>,
+  /// only GetSecrets hands it out
+  pub psk: Option<String>,
 }
 
 #[derive(Clone)]
@@ -48,11 +53,13 @@ pub(crate) struct Active {
   pub uuid: String,
   pub state: u32,
   pub devices: Vec<String>,
+  /// the profile's path
+  pub connection: String,
 }
 
 pub(crate) struct World {
   pub calls: Vec<String>,
-  /// the settings of every AddAndActivateConnection, in order
+  /// the settings of every AddAndActivateConnection and Update, in order
   pub added: Vec<SettingsMap>,
   pub wifi_enabled: bool,
   pub connectivity: u32,
@@ -62,6 +69,8 @@ pub(crate) struct World {
   pub eth_state: u32,
   pub wlan_state: u32,
   pub wlan_type: u32,
+  /// the wifi device's active connection
+  pub wlan_active: String,
   pub active_ap: String,
   pub aps: Vec<Ap>,
   pub last_scan: i64,
@@ -94,6 +103,9 @@ pub(crate) fn profile(n: u32, id: &str, kind: &str, ssid: Option<&[u8]>) -> Prof
     uuid: format!("uuid-{id}"),
     kind: kind.into(),
     ssid: ssid.map(<[u8]>::to_vec),
+    mode: None,
+    band: None,
+    psk: None,
   }
 }
 
@@ -112,6 +124,7 @@ impl Default for World {
       eth_state: 100,
       wlan_state: 30,
       wlan_type: 2,
+      wlan_active: "/".into(),
       active_ap: "/".into(),
       aps: vec![
         ap(1, b"home", 40, psk),
@@ -134,12 +147,14 @@ impl Default for World {
           uuid: "uuid-Wired".into(),
           state: 2,
           devices: vec![ETH.into()],
+          connection: format!("{SETTINGS}/1"),
         },
         Active {
           path: format!("{NM}/ActiveConnection/2"),
           uuid: "uuid-wg0".into(),
           state: 1,
           devices: vec![],
+          connection: format!("{SETTINGS}/4"),
         },
       ],
       agent: None,
@@ -313,6 +328,13 @@ impl Device {
     }
   }
   #[zbus(property)]
+  fn active_connection(&self) -> OwnedObjectPath {
+    match self.path {
+      ETH => path(&format!("{NM}/ActiveConnection/1")),
+      _ => path(&self.world.lock().unwrap().wlan_active),
+    }
+  }
+  #[zbus(property)]
   fn available_connections(&self) -> Vec<OwnedObjectPath> {
     match self.path {
       ETH => vec![path(&format!("{SETTINGS}/1"))],
@@ -443,6 +465,10 @@ impl ActiveConnection {
   fn state(&self) -> u32 {
     self.active().map_or(4, |a| a.state)
   }
+  #[zbus(property)]
+  fn connection(&self) -> OwnedObjectPath {
+    path(&self.active().map_or_else(|| "/".into(), |a| a.connection))
+  }
 }
 
 struct Settings(Shared);
@@ -466,15 +492,18 @@ struct ProfileObject {
   path: String,
 }
 
+impl ProfileObject {
+  fn profile(&self) -> zbus::fdo::Result<Profile> {
+    let world = self.world.lock().unwrap();
+    let profile = world.profiles.iter().find(|p| p.path == self.path).cloned();
+    profile.ok_or_else(|| zbus::fdo::Error::UnknownObject(self.path.clone()))
+  }
+}
+
 #[interface(name = "org.freedesktop.NetworkManager.Settings.Connection")]
 impl ProfileObject {
   fn get_settings(&self) -> zbus::fdo::Result<SettingsMap> {
-    let world = self.world.lock().unwrap();
-    let profile = world
-      .profiles
-      .iter()
-      .find(|p| p.path == self.path)
-      .ok_or_else(|| zbus::fdo::Error::UnknownObject(self.path.clone()))?;
+    let profile = self.profile()?;
     let mut settings = HashMap::from([(
       "connection".to_string(),
       HashMap::from([
@@ -484,12 +513,42 @@ impl ProfileObject {
       ]),
     )]);
     if let Some(ssid) = &profile.ssid {
+      let mut wifi = HashMap::from([("ssid".to_string(), owned(ssid.clone().into()))]);
+      for (key, value) in [("mode", &profile.mode), ("band", &profile.band)] {
+        if let Some(value) = value {
+          wifi.insert(key.into(), owned(value.as_str().into()));
+        }
+      }
+      settings.insert("802-11-wireless".into(), wifi);
+    }
+    if profile.psk.is_some() {
       settings.insert(
-        "802-11-wireless".into(),
-        HashMap::from([("ssid".to_string(), owned(ssid.clone().into()))]),
+        "802-11-wireless-security".into(),
+        HashMap::from([("key-mgmt".to_string(), owned("wpa-psk".into()))]),
       );
     }
     Ok(settings)
+  }
+
+  fn get_secrets(&self, setting: String) -> zbus::fdo::Result<SettingsMap> {
+    let psk = self.profile()?.psk;
+    self
+      .world
+      .lock()
+      .unwrap()
+      .calls
+      .push(format!("GetSecrets {}", self.path));
+    let psk = psk.ok_or_else(|| zbus::fdo::Error::Failed(format!("{setting} has no secrets")))?;
+    Ok(HashMap::from([(
+      setting,
+      HashMap::from([("psk".to_string(), owned(psk.as_str().into()))]),
+    )]))
+  }
+
+  fn update(&self, settings: SettingsMap) {
+    let mut world = self.world.lock().unwrap();
+    world.calls.push(format!("Update {}", self.path));
+    world.added.push(settings);
   }
 
   fn delete(&self) {
