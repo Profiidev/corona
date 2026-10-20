@@ -18,7 +18,10 @@ use cosmic_dbus_networkmanager::{
 };
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
-use crate::state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind};
+use crate::{
+  nl80211::{self, AP_INTERFACE},
+  state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
+};
 
 const VPN_TYPE: &str = "vpn";
 const WIREGUARD_TYPE: &str = "wireguard";
@@ -37,6 +40,7 @@ pub struct Snapshot {
   pub wifi_networks: Vec<WifiNetwork>,
   pub vpns: Vec<Vpn>,
   pub hotspot: Option<HotspotInfo>,
+  pub hotspot_beside_wifi: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -128,32 +132,43 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
       .iter()
       .filter(|i| i.kind == InterfaceType::Wireless)
   };
+
+  // any wifi device may run the hotspot, one beside the primary leaves it connected
+  let mut hotspot = None;
+  for device in wifi() {
+    if let Ok(Some(info)) = read_hotspot(conn, device).await.log_err() {
+      hotspot = Some((device.path.clone(), info));
+      break;
+    }
+  }
+  let hotspot_path = hotspot.as_ref().map(|(path, _)| path);
+  // neither the hotspot's device nor the interface corona adds for one connect to networks
+  let client = |i: &&Interface| Some(&i.path) != hotspot_path && i.name != AP_INTERFACE;
+
   let primary_wifi = primary_interface
     .clone()
-    .filter(|i| i.kind == InterfaceType::Wireless)
-    .or_else(|| wifi().find(|i| i.state == DeviceState::Activated).cloned())
+    .filter(|i| i.kind == InterfaceType::Wireless && client(&i))
     .or_else(|| {
       wifi()
-        .find(|i| {
-          !matches!(
-            i.state,
-            DeviceState::Unmanaged | DeviceState::Unavailable | DeviceState::Unknown
-          )
-        })
+        .filter(client)
+        .find(|i| i.state == DeviceState::Activated)
         .cloned()
-    });
+    })
+    .or_else(|| wifi().filter(client).find(|i| i.usable()).cloned())
+    // the only wifi device runs the hotspot
+    .or_else(|| wifi().find(|i| Some(&i.path) == hotspot_path).cloned());
+  let hotspot_beside_wifi = primary_wifi
+    .as_ref()
+    .and_then(|i| nl80211::radio(&i.name))
+    .is_some_and(|(phy, _)| nl80211::station_beside_ap(phy));
 
   let wifi_supported = interfaces
     .iter()
     .any(|i| i.kind == InterfaceType::Wireless && i.state != DeviceState::Unmanaged);
 
-  let hotspot = match &primary_wifi {
-    Some(device) => hotspot(conn, device).await.log_err().unwrap_or_default(),
-    None => None,
-  };
   // an access point does not scan, its list is stale
   let wifi_networks = match &primary_wifi {
-    Some(device) if hotspot.is_none() => wifi_networks(conn, device)
+    Some(device) if Some(&device.path) != hotspot_path => wifi_networks(conn, device)
       .await
       .log_err()
       .unwrap_or_default(),
@@ -170,12 +185,13 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     primary_wifi,
     wifi_networks,
     vpns: vpns(conn, &nm).await.log_err().unwrap_or_default(),
-    hotspot,
+    hotspot: hotspot.map(|(_, info)| info),
+    hotspot_beside_wifi,
   })
 }
 
 /// the device's active connection, when its profile is an access point
-async fn hotspot(conn: &Connection, device: &Interface) -> Result<Option<HotspotInfo>> {
+async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<HotspotInfo>> {
   let active = DeviceProxy::builder(conn)
     .path(device.path.clone())?
     .cache_properties(CacheProperties::No)

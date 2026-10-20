@@ -21,6 +21,16 @@ pub struct Interface {
   pub state: DeviceState,
 }
 
+impl Interface {
+  /// NM manages it and it can connect
+  pub(crate) fn usable(&self) -> bool {
+    !matches!(
+      self.state,
+      DeviceState::Unmanaged | DeviceState::Unavailable | DeviceState::Unknown
+    )
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VpnKind {
   Plugin,
@@ -62,7 +72,7 @@ impl HotspotBand {
   }
 }
 
-/// the primary wifi device runs an access point
+/// a wifi device runs an access point
 #[derive(Clone, Debug, PartialEq)]
 pub struct HotspotInfo {
   /// up, not still activating

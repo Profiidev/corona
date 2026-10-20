@@ -443,6 +443,9 @@ app:
       takes_wifi:
         en: Wi-Fi disconnects while the hotspot is on
         de: 'WLAN wird getrennt, solange der Hotspot läuft'
+      asks_admin:
+        en: 'Wi-Fi stays connected. The first start per boot asks for administrator rights and may reconnect Wi-Fi once'
+        de: 'WLAN bleibt verbunden. Der erste Start pro Systemstart fragt nach Administratorrechten und kann das WLAN einmal neu verbinden'
   notifications:
     dnd:
       en: Do not disturb

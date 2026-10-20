@@ -30,6 +30,8 @@ pub struct HotspotForm {
   password: Entity<InputState>,
   band: Entity<SelectState<Vec<String>>>,
   expanded: bool,
+  /// starting or stopping, which can take a password and a wifi reconnect
+  pending: bool,
   /// the running hotspot as Wi-Fi QR code text
   qr: Option<String>,
 }
@@ -102,6 +104,7 @@ impl HotspotForm {
         )
       }),
       expanded: false,
+      pending: false,
       qr: None,
     }
   }
@@ -171,6 +174,7 @@ impl NetworkPanel {
     if on && config.validate().is_err() {
       self.hotspot_form.expanded = true;
     }
+    self.hotspot_form.pending = true;
     let start = cx.network_manager().start_hotspot(config, cx);
     let stop = cx.network_manager().stop_hotspot(cx);
     async move { if on { start.await } else { stop.await } }
@@ -184,10 +188,18 @@ impl NetworkPanel {
     let hotspot = nm.hotspot(cx);
     let form = &self.hotspot_form;
     let running = hotspot.is_some();
-    // the hotspot takes over the wifi device, its connection drops
-    let takes_wifi = nm
+    // without a second interface the hotspot takes over the connected one, where the radio
+    // allows corona adds one, asking for root
+    let connected = nm
       .primary_wifi(cx)
       .is_some_and(|wifi| wifi.state == DeviceState::Activated);
+    let hint = (connected && nm.spare_wifi(cx).is_none()).then(|| {
+      if nm.hotspot_beside_wifi(cx) && !running {
+        t!("app.network.hotspot.asks_admin")
+      } else {
+        t!("app.network.hotspot.takes_wifi")
+      }
+    });
 
     Some(
       div()
@@ -210,7 +222,7 @@ impl NetworkPanel {
                 .text_sm()
                 .child(t!("app.network.hotspot.title")),
             )
-            .when(hotspot.is_some_and(|h| !h.active), |d| {
+            .when(form.pending || hotspot.is_some_and(|h| !h.active), |d| {
               d.child(Spinner::new().small())
             })
             .child(
@@ -232,10 +244,12 @@ impl NetworkPanel {
             .child(
               Switch::new("hotspot-enabled")
                 .checked(running)
-                .disabled(nm.primary_wifi(cx).is_none())
+                // a second start while the first waits would take over the wifi
+                .disabled(form.pending || nm.primary_wifi(cx).is_none())
                 .on_change(cx.async_listener(
                   |this, checked, _, cx| this.toggle_hotspot(*checked, cx),
                   |this, result, _| {
+                    this.hotspot_form.pending = false;
                     if let Err(e) = result.log_err() {
                       this.error = Some(e.to_string());
                     }
@@ -243,12 +257,12 @@ impl NetworkPanel {
                 )),
             ),
         )
-        .when(takes_wifi, |d| {
+        .when_some(hint, |d, hint| {
           d.child(
             div()
               .text_xs()
               .text_color(theme.colors.muted_foreground)
-              .child(t!("app.network.hotspot.takes_wifi")),
+              .child(hint),
           )
         })
         // a running hotspot keeps its settings until it is restarted
@@ -412,6 +426,8 @@ mod tests {
         panel.toggle_hotspot(true, cx)
       })
     });
+    // the switch is locked against a second start while this one runs
+    panel.read_with(cx, |panel, _| assert!(panel.hotspot_form.pending));
     assert_eq!(
       block_on(start).unwrap_err().to_string(),
       "the hotspot password needs 8 to 63 characters"

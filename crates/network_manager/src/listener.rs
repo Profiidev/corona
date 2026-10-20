@@ -107,6 +107,9 @@ pub fn listener(
           .write_changed(cx, snapshot.wifi_networks);
         state.vpns.write_changed(cx, snapshot.vpns);
         state.hotspot.write_changed(cx, snapshot.hotspot);
+        state
+          .hotspot_beside_wifi
+          .write_changed(cx, snapshot.hotspot_beside_wifi);
       }
 
       let Some(state_changes) = next_changes(&mut changes).await else {

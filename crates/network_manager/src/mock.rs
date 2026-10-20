@@ -18,6 +18,8 @@ use zbus::{
 pub(crate) const NM: &str = "/org/freedesktop/NetworkManager";
 pub(crate) const ETH: &str = "/org/freedesktop/NetworkManager/Devices/1";
 pub(crate) const WLAN: &str = "/org/freedesktop/NetworkManager/Devices/2";
+/// corona's access point interface on wlan0's radio, listed with `World::ap0_state`
+pub(crate) const AP0: &str = "/org/freedesktop/NetworkManager/Devices/3";
 pub(crate) const IP4: &str = "/org/freedesktop/NetworkManager/IP4Config/1";
 pub(crate) const SETTINGS: &str = "/org/freedesktop/NetworkManager/Settings";
 
@@ -31,6 +33,8 @@ pub(crate) struct Ap {
   pub flags: u32,
   pub wpa: u32,
   pub rsn: u32,
+  /// MHz
+  pub frequency: u32,
 }
 
 #[derive(Clone)]
@@ -71,6 +75,9 @@ pub(crate) struct World {
   pub wlan_type: u32,
   /// the wifi device's active connection
   pub wlan_active: String,
+  /// None: there is no corona-ap
+  pub ap0_state: Option<u32>,
+  pub ap0_active: String,
   pub active_ap: String,
   pub aps: Vec<Ap>,
   pub last_scan: i64,
@@ -93,6 +100,7 @@ pub(crate) fn ap(n: u32, ssid: &[u8], strength: u8, rsn: u32) -> Ap {
     flags: 0,
     wpa: 0,
     rsn,
+    frequency: 2437,
   }
 }
 
@@ -125,6 +133,8 @@ impl Default for World {
       wlan_state: 30,
       wlan_type: 2,
       wlan_active: "/".into(),
+      ap0_state: None,
+      ap0_active: "/".into(),
       active_ap: "/".into(),
       aps: vec![
         ap(1, b"home", 40, psk),
@@ -182,6 +192,11 @@ impl Root {
   fn world(&self) -> MutexGuard<'_, World> {
     self.0.lock().unwrap()
   }
+
+  fn device_paths(&self) -> Vec<OwnedObjectPath> {
+    let ap0 = self.world().ap0_state.map(|_| path(AP0));
+    [path(ETH), path(WLAN)].into_iter().chain(ap0).collect()
+  }
 }
 
 #[interface(name = "org.freedesktop.NetworkManager")]
@@ -223,11 +238,21 @@ impl Root {
   }
 
   fn get_all_devices(&self) -> Vec<OwnedObjectPath> {
-    vec![path(ETH), path(WLAN)]
+    self.device_paths()
   }
 
   fn get_devices(&self) -> Vec<OwnedObjectPath> {
-    vec![path(ETH), path(WLAN)]
+    self.device_paths()
+  }
+
+  fn get_device_by_ip_iface(&self, iface: String) -> zbus::fdo::Result<OwnedObjectPath> {
+    let ap0 = self.world().ap0_state.is_some();
+    match iface.as_str() {
+      "eth0" => Ok(path(ETH)),
+      "wlan0" => Ok(path(WLAN)),
+      "corona-ap" if ap0 => Ok(path(AP0)),
+      _ => Err(zbus::fdo::Error::Failed(format!("no device {iface}"))),
+    }
   }
 
   fn check_connectivity(&self) -> u32 {
@@ -237,7 +262,7 @@ impl Root {
 
   #[zbus(property)]
   fn devices(&self) -> Vec<OwnedObjectPath> {
-    vec![path(ETH), path(WLAN)]
+    self.device_paths()
   }
   #[zbus(property)]
   fn primary_connection(&self) -> OwnedObjectPath {
@@ -302,14 +327,16 @@ impl Device {
   fn device_type(&self) -> u32 {
     match self.path {
       ETH => 1,
-      _ => self.world.lock().unwrap().wlan_type,
+      WLAN => self.world.lock().unwrap().wlan_type,
+      _ => 2,
     }
   }
   #[zbus(property)]
   fn interface(&self) -> String {
     match self.path {
       ETH => "eth0".into(),
-      _ => "wlan0".into(),
+      WLAN => "wlan0".into(),
+      _ => "corona-ap".into(),
     }
   }
   #[zbus(property)]
@@ -317,7 +344,8 @@ impl Device {
     let world = self.world.lock().unwrap();
     match self.path {
       ETH => world.eth_state,
-      _ => world.wlan_state,
+      WLAN => world.wlan_state,
+      _ => world.ap0_state.unwrap_or(10),
     }
   }
   #[zbus(property)]
@@ -329,16 +357,30 @@ impl Device {
   }
   #[zbus(property)]
   fn active_connection(&self) -> OwnedObjectPath {
+    let world = self.world.lock().unwrap();
     match self.path {
       ETH => path(&format!("{NM}/ActiveConnection/1")),
-      _ => path(&self.world.lock().unwrap().wlan_active),
+      WLAN => path(&world.wlan_active),
+      _ => path(&world.ap0_active),
     }
+  }
+  #[zbus(property)]
+  fn autoconnect(&self) -> bool {
+    true
+  }
+  #[zbus(property)]
+  fn set_autoconnect(&mut self, autoconnect: bool) {
+    let mut world = self.world.lock().unwrap();
+    world
+      .calls
+      .push(format!("Autoconnect {} {autoconnect}", self.path));
   }
   #[zbus(property)]
   fn available_connections(&self) -> Vec<OwnedObjectPath> {
     match self.path {
       ETH => vec![path(&format!("{SETTINGS}/1"))],
-      _ => paths(&self.world.lock().unwrap().available),
+      WLAN => paths(&self.world.lock().unwrap().available),
+      _ => Vec::new(),
     }
   }
 }
@@ -423,6 +465,10 @@ impl AccessPoint {
   #[zbus(property)]
   fn rsn_flags(&self) -> u32 {
     self.ap().rsn
+  }
+  #[zbus(property)]
+  fn frequency(&self) -> u32 {
+    self.ap().frequency
   }
 }
 
@@ -603,6 +649,12 @@ impl MockNm {
         .await
         .unwrap();
       server.at(WLAN, Wireless(world.clone())).await.unwrap();
+      // always served, so it can show up later
+      let ap0 = Device {
+        world: world.clone(),
+        path: AP0,
+      };
+      server.at(AP0, ap0).await.unwrap();
       server.at(IP4, Ip4).await.unwrap();
       server.at(SETTINGS, Settings(world.clone())).await.unwrap();
       server

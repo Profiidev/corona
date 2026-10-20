@@ -1,9 +1,12 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
+use corona_utils::error::ErrorLogExt;
 use cosmic_dbus_networkmanager::{
   device::{Device, wireless::WirelessDevice},
   interface::{
+    NetworkManagerProxy,
+    access_point::AccessPointProxy,
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
     enums::NmConnectivityState,
     settings::{SettingsProxy, connection::ConnectionSettingsProxy},
@@ -12,6 +15,7 @@ use cosmic_dbus_networkmanager::{
   settings::connection::{Connection as NmConnection, Settings, WifiSecurity, WifiSettings},
 };
 use futures_lite::{StreamExt, future::or};
+use gpui_kit::BackgroundExecutor;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use zbus::{
@@ -24,6 +28,7 @@ use crate::{
   agent::{
     ENTERPRISE_SETTING, IDENTITY_KEY, PASSWORD_KEY, PRIVATE_KEY_PASSWORD_KEY, WIFI_SECURITY_SETTING,
   },
+  nl80211,
   snapshot::{AP_MODE, WIFI_SETTING, profile, read_access_point, saved_ssid},
   state::HotspotBand,
 };
@@ -478,7 +483,58 @@ async fn saved_hotspot(conn: &Connection) -> Result<Option<(OwnedObjectPath, Opt
   Ok(None)
 }
 
-fn hotspot_settings(config: HotspotConfig, uuid: Option<String>) -> SettingsMap<'static> {
+/// the band and channel of a frequency in MHz, None outside 2.4 and 5 GHz
+fn channel(frequency: u32) -> Option<(HotspotBand, u32)> {
+  match frequency {
+    2484 => Some((HotspotBand::Bg, 14)),
+    2412..=2472 => Some((HotspotBand::Bg, (frequency - 2407) / 5)),
+    5160..=5885 => Some((HotspotBand::A, (frequency - 5000) / 5)),
+    _ => None,
+  }
+}
+
+/// the band and channel a wifi device is connected on, None when it is not. Adding an interface
+/// may restart wpa_supplicant (NixOS does), which drops `device` for a while: one `was_connected`
+/// is waited for, like one still connecting
+async fn client_channel(
+  conn: &Connection,
+  device: OwnedObjectPath,
+  was_connected: bool,
+  executor: &BackgroundExecutor,
+) -> Result<Option<(HotspotBand, u32)>> {
+  const ACTIVATED: u32 = 100;
+  let state = proxy::<DeviceProxy, DeviceProxy>(conn, device.clone()).await?;
+  // a minute, eduroam's 802.1X takes its time
+  for _ in 0..300 {
+    match state.state().await? {
+      ACTIVATED => break,
+      // prepare up to secondaries
+      40..=90 => {}
+      _ if was_connected => {}
+      _ => return Ok(None),
+    }
+    executor.timer(Duration::from_millis(200)).await;
+  }
+  let access_point = proxy::<WirelessDeviceProxy, WirelessDeviceProxy>(conn, device)
+    .await?
+    .active_access_point()
+    .await?;
+  if access_point == OwnedObjectPath::default() {
+    return Ok(None);
+  }
+  let frequency = proxy::<AccessPointProxy, AccessPointProxy>(conn, access_point)
+    .await?
+    .frequency()
+    .await?;
+  Ok(channel(frequency))
+}
+
+/// `channel` overrides the configured band
+fn hotspot_settings(
+  config: HotspotConfig,
+  uuid: Option<String>,
+  channel: Option<(HotspotBand, u32)>,
+) -> SettingsMap<'static> {
   let mut connection = HashMap::from([
     ("id".to_owned(), string(HOTSPOT_ID)),
     ("type".to_owned(), string(WIFI_SETTING)),
@@ -487,16 +543,18 @@ fn hotspot_settings(config: HotspotConfig, uuid: Option<String>) -> SettingsMap<
   if let Some(uuid) = uuid {
     connection.insert("uuid".to_owned(), string(uuid));
   }
+  let band = channel.map_or(config.band, |(band, _)| band);
+  let mut wifi = HashMap::from([
+    ("ssid".to_owned(), Value::from(config.ssid.into_bytes())),
+    ("mode".to_owned(), string(AP_MODE)),
+    ("band".to_owned(), string(band.setting())),
+  ]);
+  if let Some((_, channel)) = channel {
+    wifi.insert("channel".to_owned(), Value::from(channel));
+  }
   let mut settings = HashMap::from([
     ("connection".to_owned(), connection),
-    (
-      WIFI_SETTING.to_owned(),
-      HashMap::from([
-        ("ssid".to_owned(), Value::from(config.ssid.into_bytes())),
-        ("mode".to_owned(), string(AP_MODE)),
-        ("band".to_owned(), string(config.band.setting())),
-      ]),
-    ),
+    (WIFI_SETTING.to_owned(), wifi),
     // NM runs DHCP and NAT for the clients
     (
       "ipv4".to_owned(),
@@ -519,17 +577,26 @@ fn hotspot_settings(config: HotspotConfig, uuid: Option<String>) -> SettingsMap<
   settings
 }
 
+/// `client`: the wifi device sharing `device`'s radio, which stays connected beside the hotspot,
+/// and whether it was connected when asked
 pub(crate) async fn start_hotspot(
   conn: &Connection,
   device: OwnedObjectPath,
   config: HotspotConfig,
+  client: Option<(OwnedObjectPath, bool)>,
+  executor: &BackgroundExecutor,
 ) -> Result<()> {
   config.validate()?;
+  // the radio serves both on one channel, the client's
+  let channel = match client {
+    Some((client, was_connected)) => client_channel(conn, client, was_connected, executor).await?,
+    None => None,
+  };
   let nm = NetworkManager::new(conn).await?;
   // one profile, updated on every start, instead of a new one each time
   match saved_hotspot(conn).await? {
     Some((path, uuid)) => {
-      let settings = hotspot_settings(config, uuid);
+      let settings = hotspot_settings(config, uuid, channel);
       proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
         .await?
         .update(borrowed(&settings))
@@ -537,12 +604,74 @@ pub(crate) async fn start_hotspot(
       nm.activate_connection_by_paths(&path, &device).await?;
     }
     None => {
-      let settings = hotspot_settings(config, None);
+      let settings = hotspot_settings(config, None, channel);
       nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
         .await?;
     }
   }
   Ok(())
+}
+
+/// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
+/// its clients through the firewall, then waits for NM to take it up
+pub(crate) async fn add_ap_interface(
+  conn: &Connection,
+  beside: &str,
+  executor: &BackgroundExecutor,
+) -> Result<OwnedObjectPath> {
+  let (phy, mac) = nl80211::radio(beside).with_context(|| format!("{beside} has no radio"))?;
+  let mut helper = Command::new("pkexec");
+  helper.arg(std::env::current_exe()?).args([
+    "network",
+    "add-ap-interface",
+    &phy.to_string(),
+    nl80211::AP_INTERFACE,
+    &nl80211::format_mac(nl80211::ap_mac(mac)),
+  ]);
+  // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
+  let (done, output) = flume::bounded(1);
+  std::thread::spawn(move || done.send(helper.output()));
+  let output = output
+    .recv_async()
+    .await?
+    .context("keeping wifi connected beside the hotspot needs pkexec")?;
+  ensure!(
+    output.status.success(),
+    "{}",
+    String::from_utf8_lossy(&output.stderr).trim()
+  );
+  let device = wait_for_device(conn, nl80211::AP_INTERFACE, executor).await?;
+  // NM would connect saved networks on it otherwise
+  proxy::<DeviceProxy, DeviceProxy>(conn, device.clone())
+    .await?
+    .set_autoconnect(false)
+    .await
+    .log_err()
+    .ok();
+  Ok(device)
+}
+
+/// NM lists a new interface after a moment, and can use it once it left `unavailable`
+pub(crate) async fn wait_for_device(
+  conn: &Connection,
+  name: &str,
+  executor: &BackgroundExecutor,
+) -> Result<OwnedObjectPath> {
+  const DISCONNECTED: u32 = 30;
+  let nm = NetworkManagerProxy::new(conn).await?;
+  for _ in 0..50 {
+    if let Ok(device) = nm.get_device_by_ip_iface(name).await {
+      let state = proxy::<DeviceProxy, DeviceProxy>(conn, device.clone())
+        .await?
+        .state()
+        .await?;
+      if state >= DISCONNECTED {
+        return Ok(device);
+      }
+    }
+    executor.timer(Duration::from_millis(200)).await;
+  }
+  bail!("NetworkManager did not take up {name}")
 }
 
 pub(crate) async fn stop_hotspot(conn: &Connection, profile: OwnedObjectPath) -> Result<()> {
@@ -780,7 +909,7 @@ mod tests {
 
   #[test]
   fn hotspot_settings_spell_out_wpa2() {
-    let settings = hotspot_settings(hotspot("corona", Some("password")), Some("u".into()));
+    let settings = hotspot_settings(hotspot("corona", Some("password")), Some("u".into()), None);
     assert_eq!(settings["connection"]["id"], string(HOTSPOT_ID));
     assert_eq!(settings["connection"]["uuid"], string("u"));
     assert_eq!(settings["connection"]["autoconnect"], Value::from(false));
@@ -789,9 +918,27 @@ mod tests {
     assert_eq!(security["proto"], Value::from(vec!["rsn".to_owned()]));
     assert_eq!(security["group"], Value::from(vec!["ccmp".to_owned()]));
 
-    let open = hotspot_settings(hotspot("corona", None), None);
+    let open = hotspot_settings(hotspot("corona", None), None, None);
     assert!(!open.contains_key(WIFI_SECURITY_SETTING));
     assert!(!open["connection"].contains_key("uuid"));
+    assert!(!open[WIFI_SETTING].contains_key("channel"));
+
+    // beside a connection on the same radio, its channel wins over the configured band
+    let beside = hotspot_settings(hotspot("corona", None), None, Some((HotspotBand::Bg, 6)));
+    assert_eq!(beside[WIFI_SETTING]["band"], string("bg"));
+    assert_eq!(beside[WIFI_SETTING]["channel"], Value::from(6u32));
+  }
+
+  #[test]
+  fn channels() {
+    assert_eq!(channel(2412), Some((HotspotBand::Bg, 1)));
+    assert_eq!(channel(2472), Some((HotspotBand::Bg, 13)));
+    assert_eq!(channel(2484), Some((HotspotBand::Bg, 14)));
+    assert_eq!(channel(5180), Some((HotspotBand::A, 36)));
+    assert_eq!(channel(5825), Some((HotspotBand::A, 165)));
+    // 6 GHz and nonsense
+    assert_eq!(channel(5955), None);
+    assert_eq!(channel(0), None);
   }
 
   #[test]
