@@ -617,29 +617,18 @@ pub(crate) async fn start_hotspot(
 pub(crate) async fn add_ap_interface(
   conn: &Connection,
   beside: &str,
+  uplink: Option<&str>,
   executor: &BackgroundExecutor,
 ) -> Result<OwnedObjectPath> {
   let (phy, mac) = nl80211::radio(beside).with_context(|| format!("{beside} has no radio"))?;
-  let mut helper = Command::new("pkexec");
-  helper.arg(std::env::current_exe()?).args([
-    "network",
-    "add-ap-interface",
-    &phy.to_string(),
-    nl80211::AP_INTERFACE,
-    &nl80211::format_mac(nl80211::ap_mac(mac)),
-  ]);
-  // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
-  let (done, output) = flume::bounded(1);
-  std::thread::spawn(move || done.send(helper.output()));
-  let output = output
-    .recv_async()
-    .await?
-    .context("keeping wifi connected beside the hotspot needs pkexec")?;
-  ensure!(
-    output.status.success(),
-    "{}",
-    String::from_utf8_lossy(&output.stderr).trim()
-  );
+  let mut args = vec![
+    "add-ap-interface".to_owned(),
+    phy.to_string(),
+    nl80211::AP_INTERFACE.to_owned(),
+    nl80211::format_mac(nl80211::ap_mac(mac)),
+  ];
+  args.extend(uplink.map(|u| format!("--uplink={u}")));
+  as_root(args).await?;
   let device = wait_for_device(conn, nl80211::AP_INTERFACE, executor).await?;
   // NM would connect saved networks on it otherwise
   proxy::<DeviceProxy, DeviceProxy>(conn, device.clone())
@@ -649,6 +638,38 @@ pub(crate) async fn add_ap_interface(
     .log_err()
     .ok();
   Ok(device)
+}
+
+/// asks for root through pkexec to let the clients of a hotspot on `interface` through the
+/// firewall to `uplink`, which would drop their DHCP requests otherwise
+pub(crate) async fn allow_hotspot(interface: &str, uplink: Option<&str>) -> Result<()> {
+  let mut args = vec!["allow-hotspot".to_owned(), interface.to_owned()];
+  args.extend(uplink.map(|u| format!("--uplink={u}")));
+  as_root(args).await
+}
+
+/// asks for root through pkexec to remove the firewall rules `allow_hotspot` added
+pub(crate) async fn disallow_hotspot() -> Result<()> {
+  as_root(vec!["disallow-hotspot".to_owned()]).await
+}
+
+/// runs `corona network <args>` through pkexec
+async fn as_root(args: Vec<String>) -> Result<()> {
+  let mut helper = Command::new("pkexec");
+  helper.arg(std::env::current_exe()?).arg("network").args(args);
+  // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
+  let (done, output) = flume::bounded(1);
+  std::thread::spawn(move || done.send(helper.output()));
+  let output = output
+    .recv_async()
+    .await?
+    .context("the hotspot needs pkexec")?;
+  ensure!(
+    output.status.success(),
+    "{}",
+    String::from_utf8_lossy(&output.stderr).trim()
+  );
+  Ok(())
 }
 
 /// NM lists a new interface after a moment, and can use it once it left `unavailable`

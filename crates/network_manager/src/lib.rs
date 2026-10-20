@@ -26,6 +26,21 @@ pub mod nl80211;
 mod snapshot;
 mod state;
 
+async fn allow_hotspot(interface: &str, uplink: Option<String>) -> Result<()> {
+  // the tests run without pkexec
+  if cfg!(test) {
+    return Ok(());
+  }
+  actions::allow_hotspot(interface, uplink.as_deref()).await
+}
+
+async fn disallow_hotspot() -> Result<()> {
+  if cfg!(test) {
+    return Ok(());
+  }
+  actions::disallow_hotspot().await
+}
+
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
 
@@ -239,7 +254,8 @@ impl NetworkManager {
 
   /// runs an access point through the Corona Hotspot profile: on a spare wifi device or corona's
   /// own interface, else on an interface added beside the primary one where its radio allows,
-  /// asking for root once per boot, else on the primary one, whose connection drops meanwhile
+  /// else on the primary one, whose connection drops meanwhile. Asks for root to let the clients
+  /// through the firewall to the uplink, along with adding the interface
   pub fn start_hotspot(
     &self,
     config: HotspotConfig,
@@ -256,32 +272,44 @@ impl NetworkManager {
       .iter()
       .any(|i| i.name == nl80211::AP_INTERFACE);
     let beside = self.hotspot_beside_wifi(cx);
+    let uplink = self.primary_interface(cx).map(|i| i.name.clone());
     let executor = cx.background_executor().clone();
     async move {
+      // before the password is asked for
+      config.validate()?;
       let primary = primary.context("no usable wifi device")?;
       let connected = primary.state == DeviceState::Activated;
-      let device = match spare {
-        Some(spare) => Some(spare),
-        None if ours => {
-          let ours = actions::wait_for_device(&conn, nl80211::AP_INTERFACE, &executor).await?;
-          Some((ours, nl80211::AP_INTERFACE.to_owned()))
-        }
-        // only a connection is worth the password
-        None if beside && connected => {
-          let added = actions::add_ap_interface(&conn, &primary.name, &executor).await?;
-          Some((added, nl80211::AP_INTERFACE.to_owned()))
-        }
-        None => None,
-      };
-      match device {
+      // the hotspot's own interface, or one it takes over, is no way out
+      let uplink_beside = |name: &str| uplink.clone().filter(|u| u != name);
+      let (device, name) = match spare {
         Some((device, name)) => {
-          let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
-          let shared = radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
-          let client = shared.then_some((primary.path, connected));
-          actions::start_hotspot(&conn, device, config, client, &executor).await
+          allow_hotspot(&name, uplink_beside(&name)).await?;
+          (device, name)
         }
-        None => actions::start_hotspot(&conn, primary.path, config, None, &executor).await,
-      }
+        None if ours => {
+          let name = nl80211::AP_INTERFACE.to_owned();
+          allow_hotspot(&name, uplink_beside(&name)).await?;
+          let ours = actions::wait_for_device(&conn, &name, &executor).await?;
+          (ours, name)
+        }
+        // only a connection is worth an interface beside it, adding it lets the clients through
+        None if beside && connected => {
+          let name = nl80211::AP_INTERFACE.to_owned();
+          let uplink = uplink_beside(&name);
+          let added = actions::add_ap_interface(&conn, &primary.name, uplink.as_deref(), &executor)
+            .await?;
+          (added, name)
+        }
+        None => {
+          allow_hotspot(&primary.name, uplink_beside(&primary.name)).await?;
+          (primary.path.clone(), primary.name.clone())
+        }
+      };
+      let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
+      let shared = name != primary.name
+        && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
+      let client = shared.then_some((primary.path, connected));
+      actions::start_hotspot(&conn, device, config, client, &executor).await
     }
   }
 
@@ -301,7 +329,12 @@ impl NetworkManager {
       .hotspot(cx)
       .map(|h| h.connection_path.clone())
       .context("the hotspot is not running");
-    async move { actions::stop_hotspot(&conn, profile?).await }
+    async move {
+      actions::stop_hotspot(&conn, profile?).await?;
+      // shortcut: a hotspot that ends otherwise, through nmcli say, keeps its rules until the next
+      // start or reboot, remove them on the listener's hotspot change if that bites
+      disallow_hotspot().await
+    }
   }
 
   /// the running hotspot's settings and password, else the saved Corona Hotspot's
