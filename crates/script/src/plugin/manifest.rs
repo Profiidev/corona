@@ -320,12 +320,12 @@ impl CapabilitiesFile {
     self.corona.clone()
   }
 
-  /// Every host granted, by `hosts` and by `http`, as written
+  /// Every host granted, by `hosts`, `lan_hosts` and `http`, as written
   fn hosts(&self) -> impl Iterator<Item = &str> {
     let network = self.network.iter();
     let hosts = network
       .clone()
-      .flat_map(|n| n.hosts.iter().map(String::as_str));
+      .flat_map(|n| n.hosts.iter().chain(&n.lan_hosts).map(String::as_str));
     hosts.chain(network.flat_map(|n| n.http.iter().map(|r| r.host.as_str())))
   }
 
@@ -364,6 +364,12 @@ impl CapabilitiesFile {
       .network_hosts(
         network
           .hosts
+          .iter()
+          .filter_map(|host| expand_host(host, settings)),
+      )
+      .network_lan_hosts(
+        network
+          .lan_hosts
           .iter()
           .filter_map(|host| expand_host(host, settings)),
       )
@@ -649,6 +655,13 @@ struct NetworkGrantFile {
   /// while it is empty; the plugin cannot change that setting itself.
   #[serde(default)]
   hosts: Vec<String>,
+  /// Hosts reached like `hosts` whose name may also resolve to the local
+  /// network, e.g. `${setting:url}` for a server at `homeassistant.local`.
+  /// A name in `hosts` reaches only public addresses, so DNS cannot turn it
+  /// into access to the LAN; this grants that access on purpose. Loopback and
+  /// link-local addresses stay closed.
+  #[serde(default)]
+  lan_hosts: Vec<String>,
   /// HTTP requests constrained by host, method and URL path.
   #[serde(default)]
   http: Vec<HttpRequestGrantFile>,
@@ -1263,11 +1276,20 @@ methods = ["POST"]
     let manifest = with_url(http, Some("")).unwrap();
     assert!(!format!("{:?}", manifest.capabilities).contains("HttpRequestGrant"));
 
+    let lan = r#"network = { lan_hosts = ["${setting:url}"] }"#;
+    let manifest = with_url(lan, Some("http://homeassistant.local:8123")).unwrap();
+    assert!(manifest.capabilities.may_reach("homeassistant.local"));
+    assert!(manifest.capabilities.may_reach_lan("homeassistant.local"));
+    assert_eq!(manifest.host_settings, BTreeSet::from(["url".into()]));
+    let manifest = with_url(hosts, Some("http://homeassistant.local:8123")).unwrap();
+    assert!(!manifest.capabilities.may_reach_lan("homeassistant.local"));
+
     // only declared text settings, only as a whole host
     for body in [
       r#"network = { hosts = ["${setting:other}"] }"#,
       r#"network = { hosts = ["${setting:url}.example.com"] }"#,
       r#"network = { hosts = ["${pluginDir}"] }"#,
+      r#"network = { lan_hosts = ["${setting:other}"] }"#,
       r#"network = { http = [{ host = "${setting:nope}", methods = ["GET"] }] }"#,
     ] {
       assert!(with_url(body, None).is_err(), "{body}");

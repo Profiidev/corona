@@ -657,6 +657,13 @@ fn permission(kind: &str, values: &str) -> (Cow<'static, str>, Option<Cow<'stati
       ),
       None,
     ),
+    "network.lan_hosts" => (
+      t!(
+        "app.settings.plugins.approve.network_lan_hosts",
+        values = values
+      ),
+      Some(t!("app.settings.plugins.approve.lan_warning")),
+    ),
     "network.http" => (
       t!("app.settings.plugins.approve.network_http", values = values),
       None,
