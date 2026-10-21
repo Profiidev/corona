@@ -7,6 +7,7 @@ use cosmic_dbus_networkmanager::{
   interface::{
     NetworkManagerProxy,
     access_point::AccessPointProxy,
+    active_connection::ActiveConnectionProxy,
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
     enums::NmConnectivityState,
     settings::{SettingsProxy, connection::ConnectionSettingsProxy},
@@ -503,6 +504,7 @@ async fn client_channel(
   executor: &BackgroundExecutor,
 ) -> Result<Option<(HotspotBand, u32)>> {
   const ACTIVATED: u32 = 100;
+  const FAILED: u32 = 120;
   let state = proxy::<DeviceProxy, DeviceProxy>(conn, device.clone()).await?;
   // a minute, eduroam's 802.1X takes its time
   for _ in 0..300 {
@@ -510,6 +512,8 @@ async fn client_channel(
       ACTIVATED => break,
       // prepare up to secondaries
       40..=90 => {}
+      // gave up, no reconnect is coming
+      FAILED => return Ok(None),
       _ if was_connected => {}
       _ => return Ok(None),
     }
@@ -594,22 +598,55 @@ pub(crate) async fn start_hotspot(
   };
   let nm = NetworkManager::new(conn).await?;
   // one profile, updated on every start, instead of a new one each time
-  match saved_hotspot(conn).await? {
+  let active = match saved_hotspot(conn).await? {
     Some((path, uuid)) => {
       let settings = hotspot_settings(config, uuid, channel);
       proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
         .await?
         .update(borrowed(&settings))
         .await?;
-      nm.activate_connection_by_paths(&path, &device).await?;
+      let active = nm.activate_connection_by_paths(&path, &device).await?;
+      active.inner().path().to_owned().into()
     }
     None => {
       let settings = hotspot_settings(config, None, channel);
       nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
-        .await?;
+        .await?
+        .1
+    }
+  };
+  if wait_for_activation(conn, active, executor).await? {
+    return Ok(());
+  }
+  match channel {
+    // the band was the connection's, not the chosen one
+    Some((_, channel)) => bail!(
+      "the hotspot did not start on channel {channel}, which Wi-Fi is connected on, the wifi \
+       device may not run an access point there"
+    ),
+    None => bail!("the hotspot did not start, the wifi device may not support the chosen band"),
+  }
+}
+
+/// NM answers an activation once it is queued, a radio refusing the band fails it only later:
+/// whether it came up
+async fn wait_for_activation(
+  conn: &Connection,
+  active: OwnedObjectPath,
+  executor: &BackgroundExecutor,
+) -> Result<bool> {
+  const ACTIVATED: u32 = 2;
+  const DEACTIVATED: u32 = 4;
+  let active = proxy::<ActiveConnectionProxy, ActiveConnectionProxy>(conn, active).await?;
+  for _ in 0..150 {
+    // NM drops a failed activation's object
+    match active.state().await.ok() {
+      Some(ACTIVATED) => return Ok(true),
+      Some(DEACTIVATED) | None => break,
+      _ => executor.timer(Duration::from_millis(200)).await,
     }
   }
-  Ok(())
+  Ok(false)
 }
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let

@@ -3,6 +3,7 @@ pub use agent::{Secret, SecretKind, SecretRequest};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, zvariant::OwnedObjectPath};
 
@@ -309,7 +310,13 @@ impl NetworkManager {
       let shared = name != primary.name
         && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
       let client = shared.then_some((primary.path, connected));
-      actions::start_hotspot(&conn, device, config, client, &executor).await
+      let started = actions::start_hotspot(&conn, device, config, client, &executor).await;
+      // nothing stops a hotspot that never ran, its rules would let in the peers of a later
+      // client connection on the interface
+      if started.is_err() {
+        disallow_hotspot().await.log_err().ok();
+      }
+      started
     }
   }
 
@@ -330,10 +337,13 @@ impl NetworkManager {
       .map(|h| h.connection_path.clone())
       .context("the hotspot is not running");
     async move {
-      actions::stop_hotspot(&conn, profile?).await?;
+      let profile = profile?;
+      // first: a cancelled password prompt keeps the hotspot running with its rules, instead of
+      // leaving them on an interface that may connect as a client later
       // shortcut: a hotspot that ends otherwise, through nmcli say, keeps its rules until the next
       // start or reboot, remove them on the listener's hotspot change if that bites
-      disallow_hotspot().await
+      disallow_hotspot().await?;
+      actions::stop_hotspot(&conn, profile).await
     }
   }
 
@@ -942,13 +952,7 @@ mod tests {
     assert!(block_on(poll_once(&mut task)).is_none());
 
     mock.world().ap0_state = Some(30);
-    let mut result = None;
-    wait_until(cx, |cx| {
-      cx.executor().advance_clock(Duration::from_millis(200));
-      result = block_on(poll_once(&mut task));
-      result.is_some()
-    });
-    assert_eq!(result.unwrap().unwrap(), object(AP0));
+    assert_eq!(finish(cx, &mut task).unwrap(), object(AP0));
   }
 
   #[gpui::test]
@@ -1013,6 +1017,23 @@ mod tests {
     };
     assert!(block_on(cx.read(|cx| nm.start_hotspot(short, cx))).is_err());
     assert_eq!(mock.world().added.len(), 1);
+  }
+
+  #[gpui::test]
+  fn a_hotspot_failing_after_activation_is_an_error(cx: &mut TestAppContext) {
+    // the mock answers every activation with ActiveConnection/1, which NM then drops
+    let mut world = World::default();
+    world.active[0].state = 4;
+    let (_bus, _mock) = start(cx, world);
+    let (conn, executor) = (nm(cx).conn, cx.executor());
+    let started = block_on(actions::start_hotspot(
+      &conn,
+      object(WLAN),
+      open_hotspot(),
+      None,
+      &executor,
+    ));
+    assert!(started.is_err());
   }
 
   #[gpui::test]

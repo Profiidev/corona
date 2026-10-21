@@ -228,13 +228,18 @@ fn query_station_beside_ap(phy: u32) -> Result<bool> {
 }
 
 /// radio `phy` runs an access point while its station stays connected; a radio does not change
-/// its combinations, so each is asked once
+/// its combinations, so each is asked once; a failed query, a driver still loading say, is retried
 pub fn station_beside_ap(phy: u32) -> bool {
   static ASKED: OnceLock<Mutex<HashMap<u32, bool>>> = OnceLock::new();
   let mut asked = ASKED.get_or_init(Default::default).lock().unwrap();
-  *asked
-    .entry(phy)
-    .or_insert_with(|| query_station_beside_ap(phy).log_err().unwrap_or_default())
+  if let Some(&fits) = asked.get(&phy) {
+    return fits;
+  }
+  let Ok(fits) = query_station_beside_ap(phy).log_err() else {
+    return false;
+  };
+  asked.insert(phy, fits);
+  fits
 }
 
 pub fn parse_mac(text: &str) -> Option<[u8; 6]> {

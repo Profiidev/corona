@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{pin::Pin, time::Duration};
 
 use anyhow::Result;
 use corona_components::async_listener::AsyncListenerExt;
@@ -205,16 +205,17 @@ impl NetworkPanel {
     &mut self,
     on: bool,
     cx: &mut Context<Self>,
-  ) -> impl Future<Output = Result<()>> + use<> {
+  ) -> Pin<Box<dyn Future<Output = Result<()>>>> {
+    self.hotspot_form.pending = true;
+    if !on {
+      return Box::pin(cx.network_manager().stop_hotspot(cx));
+    }
     let config = self.hotspot_form.config(cx);
     // show what has to be fixed
-    if on && config.validate().is_err() {
+    if config.validate().is_err() {
       self.hotspot_form.expanded = true;
     }
-    self.hotspot_form.pending = true;
-    let start = cx.network_manager().start_hotspot(config, cx);
-    let stop = cx.network_manager().stop_hotspot(cx);
-    async move { if on { start.await } else { stop.await } }
+    Box::pin(cx.network_manager().start_hotspot(config, cx))
   }
 
   pub fn hotspot(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {

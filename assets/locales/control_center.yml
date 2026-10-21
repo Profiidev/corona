@@ -441,11 +441,11 @@ app:
         en: 'Scan to join %{ssid}'
         de: 'Scannen, um %{ssid} beizutreten'
       takes_wifi:
-        en: Wi-Fi disconnects while the hotspot is on
-        de: 'WLAN wird getrennt, solange der Hotspot läuft'
+        en: 'Wi-Fi disconnects while the hotspot is on. Starting and stopping it asks for administrator rights'
+        de: 'WLAN wird getrennt, solange der Hotspot läuft. Starten und Stoppen fragt nach Administratorrechten'
       asks_admin:
-        en: 'Wi-Fi stays connected. The first start per boot asks for administrator rights and may reconnect Wi-Fi once'
-        de: 'WLAN bleibt verbunden. Der erste Start pro Systemstart fragt nach Administratorrechten und kann das WLAN einmal neu verbinden'
+        en: 'Wi-Fi stays connected. Starting and stopping the hotspot asks for administrator rights, the first start per boot may reconnect Wi-Fi once'
+        de: 'WLAN bleibt verbunden. Starten und Stoppen fragt nach Administratorrechten, der erste Start pro Systemstart kann das WLAN einmal neu verbinden'
       clients:
         en: 'Connected devices (%{count})'
         de: 'Verbundene Geräte (%{count})'
