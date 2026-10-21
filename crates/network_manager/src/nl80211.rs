@@ -309,11 +309,13 @@ pub fn stations(interface: &str) -> Result<Vec<[u8; 6]>> {
   Ok(stations)
 }
 
+/// what the kernel takes, minus iptables' `+` wildcard; `.` for VLANs like `eth0.100`
 pub fn valid_interface_name(name: &str) -> bool {
   (1..16).contains(&name.len())
+    && !matches!(name, "." | "..")
     && name
       .bytes()
-      .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+      .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
 /// adds an access point interface on radio `phy`, needs root
@@ -466,7 +468,17 @@ mod tests {
   #[test]
   fn interface_names() {
     assert!(valid_interface_name(AP_INTERFACE));
-    for bad in ["", "a/b", "../x", "with space", "sixteen-chars-xx"] {
+    assert!(valid_interface_name("enp3s0.100"));
+    for bad in [
+      "",
+      ".",
+      "..",
+      "a/b",
+      "../x",
+      "eth+",
+      "with space",
+      "sixteen-chars-xx",
+    ] {
       assert!(!valid_interface_name(bad), "{bad}");
     }
     assert!(add_ap_interface(0, "a/b", [0; 6]).is_err());

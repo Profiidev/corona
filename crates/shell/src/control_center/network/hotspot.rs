@@ -231,13 +231,13 @@ impl NetworkPanel {
     let connected = nm
       .primary_wifi(cx)
       .is_some_and(|wifi| wifi.state == DeviceState::Activated);
-    let hint = (connected && nm.spare_wifi(cx).is_none()).then(|| {
-      if nm.hotspot_beside_wifi(cx) && !running {
-        t!("app.network.hotspot.asks_admin")
-      } else {
-        t!("app.network.hotspot.takes_wifi")
-      }
-    });
+    let beside = nm.spare_wifi(cx).is_some() || (nm.hotspot_beside_wifi(cx) && !running);
+    // every start and stop asks for root, corona-ap existing or not
+    let hint = match (connected, beside) {
+      (false, _) => None,
+      (true, false) => Some(t!("app.network.hotspot.takes_wifi")),
+      (true, true) => (!running).then(|| t!("app.network.hotspot.asks_admin")),
+    };
 
     Some(
       div()

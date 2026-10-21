@@ -27,21 +27,6 @@ pub mod nl80211;
 mod snapshot;
 mod state;
 
-async fn allow_hotspot(interface: &str, uplink: Option<String>) -> Result<()> {
-  // the tests run without pkexec
-  if cfg!(test) {
-    return Ok(());
-  }
-  actions::allow_hotspot(interface, uplink.as_deref()).await
-}
-
-async fn disallow_hotspot() -> Result<()> {
-  if cfg!(test) {
-    return Ok(());
-  }
-  actions::disallow_hotspot().await
-}
-
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
 
@@ -284,12 +269,12 @@ impl NetworkManager {
       let uplink_beside = |name: &str| uplink.clone().filter(|u| u != name);
       let (device, name) = match spare {
         Some((device, name)) => {
-          allow_hotspot(&name, uplink_beside(&name)).await?;
+          actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
           (device, name)
         }
         None if ours => {
           let name = nl80211::AP_INTERFACE.to_owned();
-          allow_hotspot(&name, uplink_beside(&name)).await?;
+          actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
           let ours = actions::wait_for_device(&conn, &name, &executor).await?;
           (ours, name)
         }
@@ -297,24 +282,24 @@ impl NetworkManager {
         None if beside && connected => {
           let name = nl80211::AP_INTERFACE.to_owned();
           let uplink = uplink_beside(&name);
-          let added = actions::add_ap_interface(&conn, &primary.name, uplink.as_deref(), &executor)
-            .await?;
+          let added =
+            actions::add_ap_interface(&conn, &primary.name, uplink.as_deref(), &executor).await?;
           (added, name)
         }
         None => {
-          allow_hotspot(&primary.name, uplink_beside(&primary.name)).await?;
+          actions::allow_hotspot(&primary.name, uplink_beside(&primary.name).as_deref()).await?;
           (primary.path.clone(), primary.name.clone())
         }
       };
       let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
-      let shared = name != primary.name
-        && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
+      let shared =
+        name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
       let client = shared.then_some((primary.path, connected));
       let started = actions::start_hotspot(&conn, device, config, client, &executor).await;
       // nothing stops a hotspot that never ran, its rules would let in the peers of a later
       // client connection on the interface
       if started.is_err() {
-        disallow_hotspot().await.log_err().ok();
+        actions::disallow_hotspot().await.log_err().ok();
       }
       started
     }
@@ -342,7 +327,7 @@ impl NetworkManager {
       // leaving them on an interface that may connect as a client later
       // shortcut: a hotspot that ends otherwise, through nmcli say, keeps its rules until the next
       // start or reboot, remove them on the listener's hotspot change if that bites
-      disallow_hotspot().await?;
+      actions::disallow_hotspot().await?;
       actions::stop_hotspot(&conn, profile).await
     }
   }

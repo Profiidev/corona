@@ -1,4 +1,7 @@
-use std::{path::Path, process::Command};
+use std::{
+  path::Path,
+  process::{Command, Output},
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use clap::Subcommand;
@@ -91,14 +94,29 @@ fn allow(interface: &str, uplink: Option<&str>) -> Result<()> {
 fn allow_hotspot(iptables: &Path, interface: &str, uplink: Option<&str>) -> Result<()> {
   let mut rules: Vec<Vec<&str>> = vec![
     vec![
-      "INPUT", "-i", interface, "-p", "udp", "-m", "multiport", "--dports", "53,67",
+      "INPUT",
+      "-i",
+      interface,
+      "-p",
+      "udp",
+      "-m",
+      "multiport",
+      "--dports",
+      "53,67",
     ],
     vec!["INPUT", "-i", interface, "-p", "tcp", "--dport", "53"],
   ];
   if let Some(uplink) = uplink {
     rules.push(vec!["FORWARD", "-i", interface, "-o", uplink]);
     rules.push(vec![
-      "FORWARD", "-i", uplink, "-o", interface, "-m", "conntrack", "--ctstate",
+      "FORWARD",
+      "-i",
+      uplink,
+      "-o",
+      interface,
+      "-m",
+      "conntrack",
+      "--ctstate",
       "RELATED,ESTABLISHED",
     ]);
   }
@@ -113,12 +131,7 @@ fn allow_hotspot(iptables: &Path, interface: &str, uplink: Option<&str>) -> Resu
     if run("-C")?.status.success() {
       continue;
     }
-    let output = run("-I")?;
-    ensure!(
-      output.status.success(),
-      "iptables: {}",
-      String::from_utf8_lossy(&output.stderr).trim()
-    );
+    checked(run("-I")?)?;
   }
   Ok(())
 }
@@ -127,22 +140,27 @@ fn allow_hotspot(iptables: &Path, interface: &str, uplink: Option<&str>) -> Resu
 /// client later on, routes nothing into the host's networks
 fn disallow_hotspot(iptables: &Path) -> Result<()> {
   for chain in ["INPUT", "FORWARD"] {
-    let listed = Command::new(iptables).args(["-w", "-S", chain]).output()?;
-    ensure!(
-      listed.status.success(),
-      "iptables: {}",
-      String::from_utf8_lossy(&listed.stderr).trim()
-    );
+    let listed = checked(Command::new(iptables).args(["-w", "-S", chain]).output()?)?;
     for rule in tagged(&String::from_utf8_lossy(&listed.stdout)) {
-      let output = Command::new(iptables).args(["-w", "-D"]).args(rule).output()?;
-      ensure!(
-        output.status.success(),
-        "iptables: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-      );
+      checked(
+        Command::new(iptables)
+          .args(["-w", "-D"])
+          .args(rule)
+          .output()?,
+      )?;
     }
   }
   Ok(())
+}
+
+/// `output`, an error with its stderr when iptables failed
+fn checked(output: Output) -> Result<Output> {
+  ensure!(
+    output.status.success(),
+    "iptables: {}",
+    String::from_utf8_lossy(&output.stderr).trim()
+  );
+  Ok(output)
 }
 
 /// the rules `iptables -S` lists with corona's tag, without their `-A`
@@ -177,8 +195,17 @@ mod tests {
     assert_eq!(
       tagged(listed),
       vec![vec![
-        "FORWARD", "-i", "wlan0", "-o", "eth0", "-m", "comment", "--comment", "corona-hotspot",
-        "-j", "ACCEPT"
+        "FORWARD",
+        "-i",
+        "wlan0",
+        "-o",
+        "eth0",
+        "-m",
+        "comment",
+        "--comment",
+        "corona-hotspot",
+        "-j",
+        "ACCEPT"
       ]]
     );
   }

@@ -692,8 +692,15 @@ pub(crate) async fn disallow_hotspot() -> Result<()> {
 
 /// runs `corona network <args>` through pkexec
 async fn as_root(args: Vec<String>) -> Result<()> {
+  // the tests run without pkexec
+  if cfg!(test) {
+    return Ok(());
+  }
   let mut helper = Command::new("pkexec");
-  helper.arg(std::env::current_exe()?).arg("network").args(args);
+  helper
+    .arg(std::env::current_exe()?)
+    .arg("network")
+    .args(args);
   // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
   let (done, output) = flume::bounded(1);
   std::thread::spawn(move || done.send(helper.output()));
