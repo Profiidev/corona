@@ -25,7 +25,7 @@ pub enum Switch {
 
 impl Switch {
   /// The state to switch to from `current`, none for [`Switch::Status`]
-  fn target(self, current: bool) -> Option<bool> {
+  pub(crate) fn target(self, current: bool) -> Option<bool> {
     match self {
       Switch::On => Some(true),
       Switch::Off => Some(false),

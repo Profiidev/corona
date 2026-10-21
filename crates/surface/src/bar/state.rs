@@ -147,7 +147,7 @@ impl BarState {
         ..Default::default()
       },
       |window, cx| {
-        let view = cx.new(|cx| Bar::new(config, window, cx, display_uuid));
+        let view = cx.new(|cx| Bar::new(config, window, cx, display_id, display_uuid));
 
         let state = cx.global_mut::<BarState>();
         state.bars.retain(|_, bar| bar.upgrade().is_some());
@@ -162,26 +162,18 @@ impl BarState {
     Ok(handle.into())
   }
 
-  /// The window and bar showing widget `widget_id`
-  pub(crate) fn bar_with_widget(
-    widget_id: EntityId,
-    cx: &App,
-  ) -> Option<(AnyWindowHandle, Entity<Bar>)> {
-    let (window_id, bar) = cx.global::<BarState>().bars.iter().find_map(|(id, bar)| {
+  /// The bar showing widget `widget_id`
+  pub(crate) fn bar_with_widget(widget_id: EntityId, cx: &App) -> Option<Entity<Bar>> {
+    cx.global::<BarState>().bars.values().find_map(|bar| {
       let bar = bar.upgrade()?;
-      bar.read(cx).widget_bounds(widget_id).map(|_| (*id, bar))
-    })?;
-    let handle = cx
-      .windows()
-      .into_iter()
-      .find(|h| h.window_id() == window_id)?;
-    Some((handle, bar))
+      bar.read(cx).widget_bounds(widget_id).map(|_| bar)
+    })
   }
 
   /// Where widget `widget_id` is shown: its bar's side and whether it goes
   /// without a pill of its own; `None` when it is in no bar
   pub fn widget_place(widget_id: EntityId, cx: &App) -> Option<(Placement, bool)> {
-    let (_, bar) = Self::bar_with_widget(widget_id, cx)?;
+    let bar = Self::bar_with_widget(widget_id, cx)?;
     let bar = bar.read(cx);
     Some((bar.placement(), bar.is_bare(widget_id)))
   }

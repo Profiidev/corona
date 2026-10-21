@@ -1,0 +1,15 @@
+diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -175,6 +175,11 @@
+             let Some(layer_shell) = globals.layer_shell.as_ref() else {
+                 return Err(LayerShellNotSupportedError.into());
+             };
++            // Without an output the compositor picks one, so a surface meant for an
++            // output that just went away would show up on another one.
++            if params.display_id.is_some() && target_output.is_none() {
++                anyhow::bail!("the output of {:?} is gone", params.display_id);
++            }
+ 
+             let layer_surface = layer_shell.get_layer_surface(
+                 &surface,

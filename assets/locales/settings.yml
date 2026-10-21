@@ -429,6 +429,13 @@ app:
         description:
           en: 'Caps, num and scroll lock. Bind `corona ipc lock-key caps` (num, scroll) to the keys in Hyprland.'
           de: 'Feststell-, Num- und Rollen-Taste. Binde `corona ipc lock-key caps` (num, scroll) in Hyprland an die Tasten.'
+      stay_awake:
+        title:
+          en: Stay awake
+          de: Wach bleiben
+        description:
+          en: 'When stay awake is turned on or off, e.g. with `corona ipc stay-awake`.'
+          de: 'Wenn „Wach bleiben“ ein- oder ausgeschaltet wird, z. B. mit `corona ipc stay-awake`.'
       title:
         en: OSD
         de: OSD

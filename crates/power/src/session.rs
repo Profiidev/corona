@@ -181,6 +181,24 @@ pub(crate) async fn before_sleep(
   }
 }
 
+/// Blocks idle and sleep until the returned fd closes. `block-weak` holds back
+/// only what logind does on its own, this user can still suspend by hand.
+pub(crate) async fn stay_awake(conn: Connection) -> Result<zbus::zvariant::OwnedFd> {
+  let manager = manager(&conn).await?;
+  let inhibit = async |mode| {
+    let why = "Stay awake enabled by user";
+    manager.inhibit("idle:sleep", "corona", why, mode).await
+  };
+  let fd = match inhibit("block-weak").await {
+    // logind before systemd 257 knows only `block`
+    Err(zbus::Error::MethodError(name, ..)) if name == "org.freedesktop.DBus.Error.InvalidArgs" => {
+      inhibit("block").await?
+    }
+    fd => fd?,
+  };
+  Ok(fd)
+}
+
 /// Calls `on` with `PrepareForSleep`'s `start`, without holding sleep back
 pub(crate) async fn sleep_changes(
   conn: Connection,

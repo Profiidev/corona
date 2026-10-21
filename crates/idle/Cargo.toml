@@ -9,6 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+corona_utils.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true
 flume.workspace = true

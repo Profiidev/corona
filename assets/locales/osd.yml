@@ -4,6 +4,9 @@ app:
     keyboard_layout:
       en: Keyboard layout
       de: Tastaturbelegung
+    stay_awake:
+      en: Stay awake
+      de: Wach bleiben
     caps_lock:
       en: Caps Lock
       de: Feststelltaste

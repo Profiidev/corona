@@ -310,6 +310,7 @@ pub struct OsdKinds {
   pub privacy: bool,
   pub keyboard_layout: bool,
   pub lock_keys: bool,
+  pub stay_awake: bool,
 }
 
 impl Default for OsdKinds {
@@ -324,6 +325,7 @@ impl Default for OsdKinds {
       privacy: true,
       keyboard_layout: true,
       lock_keys: true,
+      stay_awake: true,
     }
   }
 }

@@ -4,6 +4,7 @@ use gpui_kit::{App, Entity};
 
 mod bluetooth;
 mod brightness;
+mod caffeine;
 mod dnd;
 mod keyboard;
 pub(crate) mod lock_keys;
@@ -27,6 +28,7 @@ pub fn init(cx: &mut App) {
       dnd::init(cx);
       privacy::init(cx);
       keyboard::init(cx);
+      caffeine::init(cx);
     });
   })
   .detach();

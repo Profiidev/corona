@@ -56,6 +56,9 @@ app:
     airplane:
       en: Airplane
       de: Flugmodus
+    stay_awake:
+      en: Stay awake
+      de: Wach bleiben
     devices:
       one:
         en: 1 device
