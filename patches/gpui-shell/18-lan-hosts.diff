@@ -1,0 +1,320 @@
+Network: LAN host grants.
+
+A name in `network_hosts` reaches only public addresses (12). A
+`network_lan_hosts` name may also resolve to private networks: the private
+IPv4 ranges, shared address space and IPv6 unique local addresses, for a
+server the user names, like `homeassistant.local`. Loopback and link-local,
+and with it the metadata endpoint, stay closed. Covers net.connect,
+WebSocket and fetch.
+
+diff --git a/crates/shell/src/capability.rs b/crates/shell/src/capability.rs
+index d94940c..4a6b9d9 100644
+--- a/crates/shell/src/capability.rs
++++ b/crates/shell/src/capability.rs
+@@ -33,6 +33,7 @@ pub struct Capabilities {
+     execute: ExecuteGrant,
+     process_env: Vec<String>,
+     network_hosts: Vec<String>,
++    network_lan_hosts: Vec<String>,
+     network_unix: Vec<PathBuf>,
+     asset_root: Option<PathBuf>,
+     http_requests: Vec<HttpRequestGrant>,
+@@ -57,6 +58,7 @@ impl std::fmt::Debug for Capabilities {
+             .field("execute", &self.execute)
+             .field("process_env", &self.process_env)
+             .field("network_hosts", &self.network_hosts)
++            .field("network_lan_hosts", &self.network_lan_hosts)
+             .field("network_unix", &self.network_unix)
+             .field("asset_root", &self.asset_root)
+             .field("http_requests", &self.http_requests)
+@@ -253,6 +255,18 @@ impl Capabilities {
+         self
+     }
+ 
++    /// Hosts that may also resolve to the local network, e.g. a `.local` name
++    /// the user points at a server of theirs. Reachable like `network_hosts`,
++    /// and the name may also resolve to private addresses; loopback and
++    /// link-local stay closed.
++    pub fn network_lan_hosts(mut self, hosts: impl IntoIterator<Item = String>) -> Self {
++        self.network_lan_hosts = hosts
++            .into_iter()
++            .map(|host| host.to_ascii_lowercase())
++            .collect();
++        self
++    }
++
+     pub fn http_requests(mut self, requests: impl IntoIterator<Item = HttpRequestGrant>) -> Self {
+         self.http_requests = requests.into_iter().collect();
+         self
+@@ -325,6 +339,19 @@ impl Capabilities {
+ 
+     pub fn may_reach(&self, host: &str) -> bool {
+         self.network_hosts
++            .iter()
++            .chain(&self.network_lan_hosts)
++            .any(|allowed| allowed.eq_ignore_ascii_case(host))
++    }
++
++    pub(crate) fn lan_hosts(&self) -> &[String] {
++        &self.network_lan_hosts
++    }
++
++    /// Whether `host` may resolve to the local network, not only to public
++    /// addresses.
++    pub fn may_reach_lan(&self, host: &str) -> bool {
++        self.network_lan_hosts
+             .iter()
+             .any(|allowed| allowed.eq_ignore_ascii_case(host))
+     }
+@@ -674,6 +701,16 @@ mod tests {
+         assert!(capabilities.may_reach("Api.Example.Com"));
+     }
+ 
++    #[test]
++    fn lan_hosts_are_reachable_and_only_they_reach_the_lan() {
++        let capabilities = Capabilities::new()
++            .network_hosts(["api.example.com".to_owned()])
++            .network_lan_hosts(["HA.local".to_owned()]);
++        assert!(capabilities.may_reach("ha.local"));
++        assert!(capabilities.may_reach_lan("ha.LOCAL"));
++        assert!(!capabilities.may_reach_lan("api.example.com"));
++    }
++
+     #[test]
+     fn traversal_out_of_a_root_is_rejected() {
+         let root = Root::new("traversal");
+diff --git a/crates/shell/src/engine/quickjs/standard/connect.rs b/crates/shell/src/engine/quickjs/standard/connect.rs
+index de47660..d55d59a 100644
+--- a/crates/shell/src/engine/quickjs/standard/connect.rs
++++ b/crates/shell/src/engine/quickjs/standard/connect.rs
+@@ -70,9 +70,11 @@ where
+         })?
+ }
+ 
++/// `lan` lets `host` resolve to the local network, see [`reachable`]
+ pub(super) fn connect_tcp(
+     host: &str,
+     port: u16,
++    lan: bool,
+     timeout: Duration,
+     operation: &str,
+ ) -> Result<(TcpStream, Instant), String> {
+@@ -86,7 +88,7 @@ pub(super) fn connect_tcp(
+             .map(|addresses| addresses.collect())
+             .map_err(|error| format!("{resolution_error} failed: {error}"))
+     })?;
+-    let addresses = reachable(host, addresses)?;
++    let addresses = reachable(host, lan, addresses)?;
+     let stream = connect_addresses(addresses, deadline, operation, TcpStream::connect_timeout)?;
+     Ok((stream, deadline))
+ }
+@@ -164,11 +166,30 @@ pub(super) fn is_public(ip: IpAddr) -> bool {
+     }
+ }
+ 
++/// Whether `ip` is in a private network a LAN host grant may resolve to: the
++/// private IPv4 ranges, shared address space (carrier NAT, Tailscale) and
++/// IPv6 unique local addresses. Never loopback or link-local, where the
++/// metadata endpoint lives, nor anything else reserved.
++pub(super) fn is_lan(ip: IpAddr) -> bool {
++    match ip {
++        IpAddr::V4(ip) => {
++            let [a, b, ..] = ip.octets();
++            ip.is_private() || (a == 100 && b & 0xc0 == 64)
++        }
++        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
++            Some(ip) => is_lan(IpAddr::V4(ip)),
++            None => ip.segments()[0] & 0xfe00 == 0xfc00,
++        },
++    }
++}
++
+ /// The resolved addresses `host` may connect to. A literal IP was granted as
+-/// exactly that address; `localhost` may reach loopback; any other name only
+-/// public addresses. A private address needs a literal-IP grant.
++/// exactly that address; `localhost` may reach loopback; a `lan` host public
++/// and private network addresses; any other name only public addresses. A
++/// private address needs a literal-IP or a LAN host grant.
+ pub(super) fn reachable(
+     host: &str,
++    lan: bool,
+     addresses: impl IntoIterator<Item = SocketAddr>,
+ ) -> Result<Vec<SocketAddr>, String> {
+     let literal = host
+@@ -186,14 +207,18 @@ pub(super) fn reachable(
+                 || if localhost {
+                     address.ip().is_loopback()
+                 } else {
+-                    is_public(address.ip())
++                    is_public(address.ip()) || (lan && is_lan(address.ip()))
+                 }
+         })
+         .collect();
+     if allowed.is_empty() && resolved > 0 {
+-        return Err(format!(
+-            "`{host}` resolved only to private or reserved addresses; grant the address itself as a literal IP to reach it"
+-        ));
++        return Err(if lan {
++            format!("`{host}` resolved only to loopback, link-local or reserved addresses")
++        } else {
++            format!(
++                "`{host}` resolved only to private or reserved addresses; grant the address itself as a literal IP, or the name in capabilities.network.lan_hosts, to reach it"
++            )
++        });
+     }
+     Ok(allowed)
+ }
+@@ -267,16 +292,57 @@ mod tests {
+         let metadata: SocketAddr = "169.254.169.254:80".parse().unwrap();
+ 
+         assert_eq!(
+-            reachable("example.com", [private, public]).unwrap(),
++            reachable("example.com", false, [private, public]).unwrap(),
+             vec![public]
+         );
+-        assert!(reachable("example.com", [local]).is_err());
+-        assert!(reachable("example.com", [metadata]).is_err());
+-        assert_eq!(reachable("LocalHost", [local]).unwrap(), vec![local]);
+-        assert!(reachable("localhost", [private]).is_err());
+-        assert_eq!(reachable("10.0.0.1", [private]).unwrap(), vec![private]);
++        assert!(reachable("example.com", false, [local]).is_err());
++        assert!(reachable("example.com", false, [metadata]).is_err());
++        assert_eq!(reachable("LocalHost", false, [local]).unwrap(), vec![local]);
++        assert!(reachable("localhost", false, [private]).is_err());
++        assert_eq!(
++            reachable("10.0.0.1", false, [private]).unwrap(),
++            vec![private]
++        );
+         let v6: SocketAddr = "[::1]:80".parse().unwrap();
+-        assert_eq!(reachable("[::1]", [v6]).unwrap(), vec![v6]);
++        assert_eq!(reachable("[::1]", false, [v6]).unwrap(), vec![v6]);
++    }
++
++    #[test]
++    fn lan_hosts_reach_private_networks_and_nothing_closer() {
++        for ip in [
++            "10.1.2.3",
++            "172.16.0.1",
++            "192.168.1.10",
++            "100.64.0.1",
++            "fd12::1",
++            "::ffff:192.168.1.10",
++        ] {
++            assert!(is_lan(ip.parse().unwrap()), "{ip}");
++        }
++        for ip in [
++            "127.0.0.1",
++            "169.254.169.254",
++            "0.0.0.0",
++            "224.0.0.1",
++            "1.1.1.1",
++            "::1",
++            "fe80::1",
++            "ff02::1",
++            "::ffff:127.0.0.1",
++        ] {
++            assert!(!is_lan(ip.parse().unwrap()), "{ip}");
++        }
++
++        let private: SocketAddr = "192.168.1.10:8123".parse().unwrap();
++        let public: SocketAddr = "1.1.1.1:8123".parse().unwrap();
++        let local: SocketAddr = "127.0.0.1:8123".parse().unwrap();
++        let metadata: SocketAddr = "169.254.169.254:80".parse().unwrap();
++        assert_eq!(
++            reachable("ha.local", true, [private, local, metadata, public]).unwrap(),
++            vec![private, public]
++        );
++        assert!(reachable("ha.local", true, [local, metadata]).is_err());
++        assert!(reachable("ha.local", false, [private]).is_err());
+     }
+ 
+     #[test]
+diff --git a/crates/shell/src/engine/quickjs/standard/fetch.rs b/crates/shell/src/engine/quickjs/standard/fetch.rs
+index 4652607..bf994ff 100644
+--- a/crates/shell/src/engine/quickjs/standard/fetch.rs
++++ b/crates/shell/src/engine/quickjs/standard/fetch.rs
+@@ -506,7 +506,7 @@ fn send(
+     // The timeout belongs on the client: reqwest's blocking client applies it
+     // per read, while a per-request timeout would also bound the whole body and
+     // end a stream.
+-    let mut builder = client_builder(options.timeout);
++    let mut builder = client_builder(options.timeout, capabilities.lan_hosts().to_vec());
+     if let Some(trust) = options.tls {
+         let mut config = tls::config(Some(trust))?;
+         config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+@@ -583,27 +583,34 @@ fn rewrite_redirect_request(
+     }
+ }
+ 
+-fn client_builder(timeout: Duration) -> reqwest::blocking::ClientBuilder {
++fn client_builder(timeout: Duration, lan_hosts: Vec<String>) -> reqwest::blocking::ClientBuilder {
+     reqwest::blocking::Client::builder()
+         .timeout(timeout)
+         // A proxy would resolve names on its own side, past `PublicResolver`.
+         .no_proxy()
+         .redirect(reqwest::redirect::Policy::none())
+-        .dns_resolver(Arc::new(PublicResolver))
++        .dns_resolver(Arc::new(PublicResolver { lan_hosts }))
+ }
+ 
+ /// System DNS, filtered by `connect::reachable`, so a granted name cannot be
+ /// rebound to a private address. IP-literal URLs never reach a resolver; they
+ /// pass `authorize_request` only when granted literally. Proxies are off, so
+ /// every connection goes through here.
+-struct PublicResolver;
++struct PublicResolver {
++    /// Names that may also resolve to the local network
++    lan_hosts: Vec<String>,
++}
+ 
+ impl reqwest::dns::Resolve for PublicResolver {
+     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
++        let lan = self
++            .lan_hosts
++            .iter()
++            .any(|allowed| allowed.eq_ignore_ascii_case(name.as_str()));
+         Box::pin(async move {
+             let host = name.as_str();
+             let addresses = tokio::net::lookup_host((host, 0)).await?;
+-            let addresses = super::connect::reachable(host, addresses)?;
++            let addresses = super::connect::reachable(host, lan, addresses)?;
+             Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs)
+         })
+     }
+diff --git a/crates/shell/src/engine/quickjs/standard/net.rs b/crates/shell/src/engine/quickjs/standard/net.rs
+index 4e20848..834ee42 100644
+--- a/crates/shell/src/engine/quickjs/standard/net.rs
++++ b/crates/shell/src/engine/quickjs/standard/net.rs
+@@ -65,9 +65,10 @@ fn connect<'js>(ctx: Ctx<'js>, target: Value<'js>, port: Opt<u16>) -> Result<Pro
+             ),
+         ));
+     }
++    let lan = host::capabilities().may_reach_lan(&normalized);
+     scheduler::blocking(&ctx, "net.connect(host, port)", move || {
+         let operation = format!("{host_name}:{port}");
+-        let (stream, _) = network_connect::connect_tcp(&host_name, port, TIMEOUT, &operation)?;
++        let (stream, _) = network_connect::connect_tcp(&host_name, port, lan, TIMEOUT, &operation)?;
+         Socket::new(Stream::Tcp(stream), &operation)
+     })
+ }
+diff --git a/crates/shell/src/engine/quickjs/standard/websocket.rs b/crates/shell/src/engine/quickjs/standard/websocket.rs
+index e5d175e..152ad50 100644
+--- a/crates/shell/src/engine/quickjs/standard/websocket.rs
++++ b/crates/shell/src/engine/quickjs/standard/websocket.rs
+@@ -158,6 +158,7 @@ fn connect<'js>(ctx: Ctx<'js>, url: String, options: Opt<ConnectOptions>) -> Res
+     let port = parsed.port_or_known_default().ok_or_else(|| {
+         Exception::throw_type(&ctx, "WebSocket URL has no port and no known default")
+     })?;
++    let lan = host::capabilities().may_reach_lan(&host_name);
+     let ConnectOptions { headers, tls } = options.0.unwrap_or_default();
+     let secure = parsed.scheme() == "wss";
+     scheduler::blocking(&ctx, "WebSocket.connect(url)", move || {
+@@ -177,7 +178,7 @@ fn connect<'js>(ctx: Ctx<'js>, url: String, options: Opt<ConnectOptions>) -> Res
+         request.headers_mut().extend(headers);
+         let operation = format!("WebSocket host {host_name}:{port}");
+         let (stream, deadline) =
+-            network_connect::connect_tcp(&host_name, port, IO_TIMEOUT, &operation)
++            network_connect::connect_tcp(&host_name, port, lan, IO_TIMEOUT, &operation)
+                 .map_err(|error| format!("WebSocket connection failed: {error}"))?;
+         let handshake_timeout =
+             network_connect::remaining_io_timeout(deadline, "WebSocket handshake")?;
