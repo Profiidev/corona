@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::atomic::AtomicU32};
+use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use corona_config::APP_NAME;
 use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, AppContext, Entity, Global};
@@ -276,6 +276,29 @@ async fn closed_signals(emitter: &SignalEmitter<'_>, ids: Vec<u32>) -> zbus::Res
   Ok(())
 }
 
+/// zbus starts the object server's listener in a task of its own and drops a method call that
+/// lands before it listens, unanswered: pings ourselves until one is answered
+async fn object_server_listening(conn: &Connection) -> Result<()> {
+  let me = conn.unique_name().context("no unique name")?.to_owned();
+  loop {
+    let ping = conn.call_method(
+      Some(&me),
+      PATH,
+      Some("org.freedesktop.DBus.Peer"),
+      "Ping",
+      &(),
+    );
+    let answered = futures_lite::future::or(async { Some(ping.await) }, async {
+      smol::Timer::after(Duration::from_millis(50)).await;
+      None
+    });
+    // any answer, an error included, comes from the listening object server
+    if answered.await.is_some() {
+      return Ok(());
+    }
+  }
+}
+
 /// `serve`: be the notification daemon. Without it the state stays empty, for
 /// when another daemon is wanted.
 pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
@@ -295,6 +318,8 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
         },
       )
       .await?;
+    // before the name sends clients our way
+    object_server_listening(conn).await?;
     let reply = conn
       .request_name_with_flags(NAME, RequestNameFlags::AllowReplacement.into())
       .await?;
