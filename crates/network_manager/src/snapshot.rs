@@ -19,6 +19,7 @@ use cosmic_dbus_networkmanager::{
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 use crate::{
+  actions,
   nl80211::{self, AP_INTERFACE},
   state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
 };
@@ -208,8 +209,15 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
     .build()
     .await?;
   let connection_path = active.connection_().await?;
-  let wifi = profile(conn, connection_path.clone())
+  let settings = ConnectionSettingsProxy::builder(conn)
+    .path(connection_path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
     .await?
+    .get_settings()
+    .await?;
+  let auto_off = actions::auto_off(&settings);
+  let wifi = Settings::new(settings)
     .wifi
     .filter(|wifi| wifi.mode.as_deref() == Some(AP_MODE));
   let Some(wifi) = wifi else {
@@ -221,6 +229,7 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
     band: HotspotBand::from_setting(wifi.band.as_deref()),
     connection_path,
     interface: device.name.clone(),
+    auto_off,
   }))
 }
 

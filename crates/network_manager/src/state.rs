@@ -94,4 +94,6 @@ pub struct HotspotInfo {
   pub connection_path: OwnedObjectPath,
   /// the wifi device running it
   pub interface: String,
+  /// minutes without clients the Corona Hotspot turns off after, None: never, as any other
+  pub auto_off: Option<u32>,
 }

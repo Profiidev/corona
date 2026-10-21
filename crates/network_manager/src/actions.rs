@@ -22,7 +22,7 @@ use ts_rs::TS;
 use zbus::{
   Connection,
   proxy::{Builder, CacheProperties, Defaults},
-  zvariant::{ObjectPath, OwnedObjectPath, Value},
+  zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value},
 };
 
 use crate::{
@@ -36,8 +36,10 @@ use crate::{
 
 /// the profile `start_hotspot` creates once and updates after
 pub(crate) const HOTSPOT_ID: &str = "Corona Hotspot";
-/// how long a hotspot without clients keeps running
-const HOTSPOT_IDLE_OFF: Duration = Duration::from_secs(10 * 60);
+/// minutes a hotspot without clients keeps running, unless set otherwise
+const AUTO_OFF_DEFAULT: u32 = 10;
+/// the Corona Hotspot's user.data key for its auto-off minutes, 0 for never
+const AUTO_OFF_KEY: &str = "corona.auto-off";
 
 // 802-11-wireless-security.key-mgmt values
 const KEY_MGMT_PSK: &str = "wpa-psk";
@@ -115,6 +117,31 @@ pub struct HotspotConfig {
   /// WPA2 personal, None: an open hotspot
   pub password: Option<String>,
   pub band: HotspotBand,
+  /// WPA3 personal (SAE) instead of WPA2, which radios without it fall back to
+  #[serde(default)]
+  pub wpa3: bool,
+  /// minutes without clients it turns off after, None: never
+  #[serde(default = "auto_off_default")]
+  pub auto_off: Option<u32>,
+}
+
+fn auto_off_default() -> Option<u32> {
+  Some(AUTO_OFF_DEFAULT)
+}
+
+/// the Corona Hotspot profile's auto-off minutes, None: never, as for any other profile
+pub(crate) fn auto_off(settings: &HashMap<String, HashMap<String, OwnedValue>>) -> Option<u32> {
+  let value = |setting: &str, key: &str| settings.get(setting)?.get(key)?.try_clone().ok();
+  let id = value("connection", "id").and_then(|id| String::try_from(id).ok());
+  if id.as_deref() != Some(HOTSPOT_ID) {
+    return None;
+  }
+  let data = value("user", "data").and_then(|data| HashMap::<String, String>::try_from(data).ok());
+  match data.as_ref().and_then(|data| data.get(AUTO_OFF_KEY)) {
+    Some(minutes) => minutes.parse().ok().filter(|minutes| *minutes > 0),
+    // saved before it was settable
+    None => auto_off_default(),
+  }
 }
 
 impl HotspotConfig {
@@ -141,6 +168,8 @@ impl HotspotConfig {
           .collect(),
       ),
       band: HotspotBand::Bg,
+      wpa3: false,
+      auto_off: auto_off_default(),
     })
   }
 
@@ -572,6 +601,7 @@ fn hotspot_settings(
     ("type".to_owned(), string(WIFI_SETTING)),
     ("autoconnect".to_owned(), Value::from(false)),
   ]);
+  let auto_off = config.auto_off.unwrap_or(0).to_string();
   if let Some(uuid) = uuid {
     connection.insert("uuid".to_owned(), string(uuid));
   }
@@ -592,19 +622,30 @@ fn hotspot_settings(
       "ipv4".to_owned(),
       HashMap::from([("method".to_owned(), string("shared"))]),
     ),
+    (
+      "user".to_owned(),
+      HashMap::from([(
+        "data".to_owned(),
+        Value::from(HashMap::from([(AUTO_OFF_KEY.to_owned(), auto_off)])),
+      )]),
+    ),
   ]);
   if let Some(password) = config.password {
     let ccmp = || Value::from(vec!["ccmp".to_owned()]);
-    settings.insert(
-      WIFI_SECURITY_SETTING.to_owned(),
-      HashMap::from([
-        ("key-mgmt".to_owned(), string(KEY_MGMT_PSK)),
-        ("psk".to_owned(), string(password)),
-        ("proto".to_owned(), Value::from(vec!["rsn".to_owned()])),
-        ("pairwise".to_owned(), ccmp()),
-        ("group".to_owned(), ccmp()),
-      ]),
-    );
+    let mut security = HashMap::from([
+      ("key-mgmt".to_owned(), string(KEY_MGMT_PSK)),
+      ("psk".to_owned(), string(password)),
+      ("proto".to_owned(), Value::from(vec!["rsn".to_owned()])),
+      ("pairwise".to_owned(), ccmp()),
+      ("group".to_owned(), ccmp()),
+    ]);
+    if config.wpa3 {
+      // WPA3 requires management frame protection
+      const PMF_REQUIRED: i32 = 3;
+      security.insert("key-mgmt".to_owned(), string(KEY_MGMT_SAE));
+      security.insert("pmf".to_owned(), Value::from(PMF_REQUIRED));
+    }
+    settings.insert(WIFI_SECURITY_SETTING.to_owned(), security);
   }
   settings
 }
@@ -625,26 +666,35 @@ pub(crate) async fn start_hotspot(
     None => None,
   };
   let nm = NetworkManager::new(conn).await?;
-  // one profile, updated on every start, instead of a new one each time
-  let active = match saved_hotspot(conn).await? {
-    Some((path, uuid)) => {
-      let settings = hotspot_settings(config, uuid, channel);
-      proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
-        .await?
-        .update(borrowed(&settings))
-        .await?;
-      let active = nm.activate_connection_by_paths(&path, &device).await?;
-      active.inner().path().to_owned().into()
+  let mut config = config;
+  loop {
+    // one profile, updated on every start, instead of a new one each time
+    let active = match saved_hotspot(conn).await? {
+      Some((path, uuid)) => {
+        let settings = hotspot_settings(config.clone(), uuid, channel);
+        proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
+          .await?
+          .update(borrowed(&settings))
+          .await?;
+        let active = nm.activate_connection_by_paths(&path, &device).await?;
+        active.inner().path().to_owned().into()
+      }
+      None => {
+        let settings = hotspot_settings(config.clone(), None, channel);
+        nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
+          .await?
+          .1
+      }
+    };
+    if wait_for_activation(conn, active.clone(), executor).await? {
+      return Ok(active);
     }
-    None => {
-      let settings = hotspot_settings(config, None, channel);
-      nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
-        .await?
-        .1
+    // many radios run no WPA3 access point, the saved profile then shows WPA2
+    if !(config.wpa3 && config.password.is_some()) {
+      break;
     }
-  };
-  if wait_for_activation(conn, active.clone(), executor).await? {
-    return Ok(active);
+    tracing::warn!("the hotspot did not start with WPA3, falling back to WPA2");
+    config.wpa3 = false;
   }
   match channel {
     // the band was the connection's, not the chosen one
@@ -675,38 +725,6 @@ async fn wait_for_activation(
     }
   }
   Ok(false)
-}
-
-/// stops the hotspot's activation `active` on `interface` once no client was connected for
-/// `HOTSPOT_IDLE_OFF`, like Android, and returns when it ended otherwise
-pub(crate) async fn stop_hotspot_when_idle(
-  conn: &Connection,
-  active: OwnedObjectPath,
-  interface: &str,
-  executor: &BackgroundExecutor,
-) -> Result<()> {
-  const ACTIVATED: u32 = 2;
-  const CHECK: Duration = Duration::from_secs(30);
-  let state = proxy::<ActiveConnectionProxy, ActiveConnectionProxy>(conn, active.clone()).await?;
-  let mut idle = Duration::ZERO;
-  while idle < HOTSPOT_IDLE_OFF {
-    executor.timer(CHECK).await;
-    // NM drops the object of a stopped hotspot, a later start gets a new one
-    if state.state().await.ok() != Some(ACTIVATED) {
-      return Ok(());
-    }
-    idle = if nl80211::stations(interface)?.is_empty() {
-      idle + CHECK
-    } else {
-      Duration::ZERO
-    };
-  }
-  disallow_hotspot().await?;
-  NetworkManagerProxy::new(conn)
-    .await?
-    .deactivate_connection(&active)
-    .await?;
-  Ok(())
 }
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
@@ -860,10 +878,16 @@ pub(crate) async fn hotspot_config(
   };
   let profile = proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path).await?;
   let mut settings = profile.get_settings().await?;
+  let auto_off = auto_off(&settings);
   let wifi = settings
     .remove(WIFI_SETTING)
     .map(WifiSettings::new)
     .unwrap_or_default();
+  let wpa3 = settings
+    .get(WIFI_SECURITY_SETTING)
+    .and_then(|security| security.get("key-mgmt"))
+    .and_then(|key_mgmt| <&str>::try_from(&**key_mgmt).ok())
+    == Some(KEY_MGMT_SAE);
   // NM leaves the password out of the settings and hands it out on its own
   let password = if settings.contains_key(WIFI_SECURITY_SETTING) {
     let mut secrets = profile.get_secrets(WIFI_SECURITY_SETTING).await?;
@@ -878,6 +902,8 @@ pub(crate) async fn hotspot_config(
     ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
     password,
     band: HotspotBand::from_setting(wifi.band.as_deref()),
+    wpa3,
+    auto_off,
   }))
 }
 
@@ -1048,6 +1074,8 @@ mod tests {
       ssid: ssid.into(),
       password: password.map(Into::into),
       band: HotspotBand::A,
+      wpa3: false,
+      auto_off: Some(10),
     }
   }
 

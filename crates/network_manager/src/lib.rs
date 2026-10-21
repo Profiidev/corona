@@ -1,10 +1,13 @@
 pub use agent::{Secret, SecretKind, SecretRequest};
 
-use std::time::Duration;
+use std::{
+  sync::{Arc, Mutex},
+  time::Duration,
+};
 
 use anyhow::{Context, Result};
 use corona_utils::error::ErrorLogExt;
-use gpui_kit::{App, AppContext, Entity, Global};
+use gpui_kit::{App, AppContext, AsyncApp, BackgroundExecutor, Entity, Global, Task};
 use zbus::{Connection, zvariant::OwnedObjectPath};
 
 use crate::listener::{agent_listener, listener, subscribe};
@@ -46,8 +49,19 @@ pub struct NetworkManager {
   pub hotspot: Entity<Option<HotspotInfo>>,
   /// the primary wifi device's radio runs a hotspot beside its connection
   pub hotspot_beside_wifi: Entity<bool>,
+  /// the firewall rules corona let the hotspot's clients through with, None: none
+  hotspot_rules: Arc<Mutex<Option<HotspotRules>>>,
   conn: Connection,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+struct HotspotRules {
+  interface: String,
+  uplink: Option<String>,
+}
+
+/// how often a hotspot that turns itself off counts its clients
+const AUTO_OFF_CHECK: Duration = Duration::from_secs(30);
 
 impl Global for NetworkManager {}
 
@@ -260,6 +274,7 @@ impl NetworkManager {
     let beside = self.hotspot_beside_wifi(cx);
     let uplink = self.primary_interface(cx).map(|i| i.name.clone());
     let executor = cx.background_executor().clone();
+    let rules = self.hotspot_rules.clone();
     async move {
       // before the password is asked for
       config.validate()?;
@@ -295,29 +310,17 @@ impl NetworkManager {
       let shared =
         name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
       let client = shared.then_some((primary.path, connected));
+      *rules.lock().unwrap() = Some(HotspotRules {
+        uplink: uplink_beside(&name),
+        interface: name,
+      });
       let started = actions::start_hotspot(&conn, device, config, client, &executor).await;
       // nothing stops a hotspot that never ran, its rules would let in the peers of a later
-      // client connection on the interface
-      let active = match started {
-        Ok(active) => active,
-        Err(e) => {
-          actions::disallow_hotspot().await.log_err().ok();
-          return Err(e);
-        }
-      };
-      // shortcut: lost on a corona restart, the hotspot then runs until stopped
-      executor
-        .spawn({
-          let executor = executor.clone();
-          async move {
-            actions::stop_hotspot_when_idle(&conn, active, &name, &executor)
-              .await
-              .log_err()
-              .ok();
-          }
-        })
-        .detach();
-      Ok(())
+      // client connection on the interface. The listener may have seen it end already
+      if started.is_err() && rules.lock().unwrap().take().is_some() {
+        actions::disallow_hotspot().await.log_err().ok();
+      }
+      started.map(|_| ())
     }
   }
 
@@ -337,15 +340,80 @@ impl NetworkManager {
       .hotspot(cx)
       .map(|h| h.connection_path.clone())
       .context("the hotspot is not running");
+    let rules = self.hotspot_rules.clone();
     async move {
       let profile = profile?;
       // first: a cancelled password prompt keeps the hotspot running with its rules, instead of
       // leaving them on an interface that may connect as a client later
-      // shortcut: a hotspot that ends otherwise, through nmcli say, keeps its rules until the next
-      // start or reboot, remove them on the listener's hotspot change if that bites
-      actions::disallow_hotspot().await?;
+      let ours = rules.lock().unwrap().take();
+      if let Err(e) = actions::disallow_hotspot().await {
+        *rules.lock().unwrap() = ours;
+        return Err(e);
+      }
       actions::stop_hotspot(&conn, profile).await
     }
+  }
+
+  /// keeps corona's firewall rules with the hotspot: removed once it `ended` without corona
+  /// stopping it, through nmcli say, and moved along to a new `uplink`
+  fn follow_hotspot_rules(&self, ended: bool, uplink: Option<&str>, executor: &BackgroundExecutor) {
+    let mut rules = self.hotspot_rules.lock().unwrap();
+    if ended {
+      if rules.take().is_some() {
+        executor
+          .spawn(async { actions::disallow_hotspot().await.log_err().ok() })
+          .detach();
+      }
+      return;
+    }
+    let Some(rules) = rules.as_mut() else {
+      return;
+    };
+    let uplink = uplink.filter(|uplink| *uplink != rules.interface);
+    // no route for a moment while switching: the old rules stay until a new uplink is up
+    if uplink.is_none() || uplink == rules.uplink.as_deref() {
+      return;
+    }
+    rules.uplink = uplink.map(str::to_owned);
+    let rules = rules.clone();
+    // shortcut: races a stop asked for in the same moment, which may leave the rules until the
+    // next start or reboot; serialize the root calls if that bites
+    executor
+      .spawn(async move {
+        actions::allow_hotspot(&rules.interface, rules.uplink.as_deref())
+          .await
+          .log_err()
+          .ok()
+      })
+      .detach();
+  }
+
+  /// stops the hotspot on `interface` once it had no clients for `minutes`
+  fn auto_off(&self, interface: String, minutes: u32, cx: &mut AsyncApp) -> Task<()> {
+    let state = self.clone();
+    cx.spawn(async move |cx| {
+      let limit = Duration::from_secs(60 * u64::from(minutes));
+      let mut idle = Duration::ZERO;
+      while idle < limit {
+        cx.background_executor().timer(AUTO_OFF_CHECK).await;
+        let interface = interface.clone();
+        let stations = cx
+          .background_executor()
+          .spawn(async move { nl80211::stations(&interface) })
+          .await;
+        // a radio without nl80211 stays so
+        let Ok(stations) = stations.log_err() else {
+          return;
+        };
+        idle = if stations.is_empty() {
+          idle + AUTO_OFF_CHECK
+        } else {
+          Duration::ZERO
+        };
+      }
+      let stop = cx.update(|cx| state.stop_hotspot(cx));
+      stop.await.log_err().ok();
+    })
   }
 
   /// the running hotspot's settings and password, else the saved Corona Hotspot's
@@ -386,6 +454,7 @@ impl NetworkManager {
       vpns: cx.new(|_| Vec::new()),
       hotspot: cx.new(|_| None),
       hotspot_beside_wifi: cx.new(|_| false),
+      hotspot_rules: Arc::default(),
       conn: conn.clone(),
     }
   }
@@ -769,6 +838,8 @@ mod tests {
           band: HotspotBand::Bg,
           connection_path: OwnedObjectPath::try_from(format!("{SETTINGS}/5")).unwrap(),
           interface: "wlan0".into(),
+          // saved before auto-off was settable
+          auto_off: Some(10),
         })
       );
       // an access point does not scan
@@ -782,6 +853,8 @@ mod tests {
           ssid: "corona".into(),
           password: Some("hunter22".into()),
           band: HotspotBand::Bg,
+          wpa3: false,
+          auto_off: Some(10),
         })
       );
       block_on(cx.read(|cx| nm.stop_hotspot(cx))).unwrap();
@@ -823,6 +896,8 @@ mod tests {
       ssid: "corona".into(),
       password: None,
       band: HotspotBand::Bg,
+      wpa3: false,
+      auto_off: Some(10),
     };
     block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
     assert!(
@@ -856,6 +931,8 @@ mod tests {
       ssid: "corona".into(),
       password: None,
       band: HotspotBand::Bg,
+      wpa3: false,
+      auto_off: Some(10),
     }
   }
 
@@ -973,6 +1050,8 @@ mod tests {
       ssid: "corona".into(),
       password: Some("password".into()),
       band: HotspotBand::A,
+      wpa3: false,
+      auto_off: None,
     };
     block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
     assert!(
@@ -1010,6 +1089,11 @@ mod tests {
       text(&added, "802-11-wireless-security", "psk").as_deref(),
       Some("password")
     );
+    // never turns off
+    let data = get(&added, "user", "data").unwrap();
+    let data = std::collections::HashMap::<String, String>::try_from(data).unwrap();
+    assert_eq!(data["corona.auto-off"], "0");
+    assert_eq!(actions::auto_off(&added), None);
 
     // too short a password never reaches NM
     let short = HotspotConfig {
@@ -1035,6 +1119,67 @@ mod tests {
       &executor,
     ));
     assert!(started.is_err());
+  }
+
+  #[gpui::test]
+  fn hotspot_rules_follow_the_uplink(cx: &mut TestAppContext) {
+    let (_bus, _mock) = start(cx, World::default());
+    let nm = nm(cx);
+    let executor = cx.executor();
+    let rules = |uplink: Option<&str>| {
+      Some(HotspotRules {
+        interface: "corona-ap".into(),
+        uplink: uplink.map(Into::into),
+      })
+    };
+    *nm.hotspot_rules.lock().unwrap() = rules(Some("eth0"));
+    // no route while switching, or the hotspot's own interface: kept
+    nm.follow_hotspot_rules(false, None, &executor);
+    nm.follow_hotspot_rules(false, Some("corona-ap"), &executor);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("eth0")));
+    nm.follow_hotspot_rules(false, Some("wlan0"), &executor);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("wlan0")));
+    // ended without corona stopping it
+    nm.follow_hotspot_rules(true, Some("wlan0"), &executor);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
+    // none of corona's, nothing to follow
+    nm.follow_hotspot_rules(false, Some("eth0"), &executor);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
+  }
+
+  #[gpui::test]
+  fn a_failing_wpa3_hotspot_falls_back_to_wpa2(cx: &mut TestAppContext) {
+    // the mock answers every activation with ActiveConnection/1, which NM then drops
+    let mut world = World::default();
+    world.active[0].state = 4;
+    let (_bus, mock) = start(cx, world);
+    let (conn, executor) = (nm(cx).conn, cx.executor());
+    let config = HotspotConfig {
+      password: Some("password".into()),
+      wpa3: true,
+      auto_off: Some(30),
+      ..open_hotspot()
+    };
+    let started = block_on(actions::start_hotspot(
+      &conn,
+      object(WLAN),
+      config,
+      None,
+      &executor,
+    ));
+    assert!(started.is_err());
+    let tried = mock.world().added.clone();
+    let key_mgmt = |settings| text(settings, "802-11-wireless-security", "key-mgmt");
+    assert_eq!(
+      tried.iter().map(key_mgmt).collect::<Vec<_>>(),
+      [Some("sae".into()), Some("wpa-psk".into())]
+    );
+    assert_eq!(
+      get(&tried[0], "802-11-wireless-security", "pmf"),
+      Some(Value::from(3i32).try_to_owned().unwrap())
+    );
+    assert_eq!(get(&tried[1], "802-11-wireless-security", "pmf"), None);
+    assert_eq!(actions::auto_off(&tried[1]), Some(30));
   }
 
   #[gpui::test]

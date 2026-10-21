@@ -76,6 +76,10 @@ pub fn listener(
     let mut wifi_path = None;
     let mut connecting_ssid = None;
     let mut failed_path = None;
+    // the running hotspot's interface and auto-off minutes, and the task counting its clients
+    let mut auto_off = None;
+    // dropping it cancels it
+    let mut _auto_off_task = None;
     loop {
       if let Ok(snapshot) = snapshot(&conn).await.log_err() {
         wifi_path = snapshot.primary_wifi.as_ref().map(|i| i.path.clone());
@@ -89,6 +93,7 @@ pub fn listener(
           .find(|n| matches!(n.status, WifiStatus::Connecting | WifiStatus::NeedAuth))
           .map(|n| n.ssid.clone());
 
+        let uplink = snapshot.primary_interface.as_ref().map(|i| i.name.clone());
         state.interfaces.write_changed(cx, snapshot.interfaces);
         state
           .primary_interface
@@ -106,6 +111,21 @@ pub fn listener(
           .wifi_networks
           .write_changed(cx, snapshot.wifi_networks);
         state.vpns.write_changed(cx, snapshot.vpns);
+
+        let ended = snapshot.hotspot.is_none() && cx.update(|cx| state.hotspot(cx).is_some());
+        state.follow_hotspot_rules(ended, uplink.as_deref(), cx.background_executor());
+        // restarts with every hotspot, corona's own or one found running on startup
+        let running = snapshot
+          .hotspot
+          .as_ref()
+          .filter(|h| h.active)
+          .and_then(|h| Some((h.interface.clone(), h.auto_off?)));
+        if running != auto_off {
+          _auto_off_task = running
+            .clone()
+            .map(|(interface, minutes)| state.auto_off(interface, minutes, cx));
+          auto_off = running;
+        }
         state.hotspot.write_changed(cx, snapshot.hotspot);
         state
           .hotspot_beside_wifi

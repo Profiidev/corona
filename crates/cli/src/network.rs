@@ -88,9 +88,8 @@ fn allow(interface: &str, uplink: Option<&str>) -> Result<()> {
 /// lets the hotspot's clients reach NM's dnsmasq (DHCP, DNS) and `uplink` past firewalls that
 /// drop the unknown, like NixOS's input or Docker's forward policy: NM's own accepts sit in their
 /// own nftables table, which cannot override a drop in another. Only `uplink`, so the clients stay
-/// out of VPNs and Docker's networks. Inserted on top, once.
-/// shortcut: forwarding stops when the uplink changes while the hotspot runs, re-run on route
-/// changes if that bites
+/// out of VPNs and Docker's networks. Inserted on top, once. The shell re-runs it when the
+/// uplink changes while the hotspot runs
 fn allow_hotspot(iptables: &Path, interface: &str, uplink: Option<&str>) -> Result<()> {
   let mut rules: Vec<Vec<&str>> = vec![
     vec![

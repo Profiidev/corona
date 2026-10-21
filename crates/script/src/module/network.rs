@@ -656,6 +656,7 @@ mod tests {
       band: nm::HotspotBand::A,
       connection_path: Default::default(),
       interface: "wlan0".into(),
+      auto_off: Some(10),
     };
     let json = json(Hotspot::from(&hotspot));
     assert_eq!(json["band"], "a");
@@ -664,6 +665,9 @@ mod tests {
     let config: nm::HotspotConfig =
       serde_json::from_str(r#"{"ssid": "corona", "password": null, "band": "bg"}"#).unwrap();
     assert_eq!(config.band, nm::HotspotBand::Bg);
+    // older scripts leave them out
+    assert!(!config.wpa3);
+    assert_eq!(config.auto_off, Some(10));
   }
 
   #[test]

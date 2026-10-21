@@ -34,6 +34,9 @@ pub struct HotspotForm {
   ssid: Entity<InputState>,
   password: Entity<InputState>,
   band: Entity<SelectState<Vec<String>>>,
+  /// WPA3 or WPA2
+  security: Entity<SelectState<Vec<String>>>,
+  auto_off: Entity<SelectState<Vec<String>>>,
   expanded: bool,
   /// starting or stopping, which can take a password and a wifi reconnect
   pending: bool,
@@ -44,6 +47,10 @@ pub struct HotspotForm {
 }
 
 const BANDS: [HotspotBand; 2] = [HotspotBand::Bg, HotspotBand::A];
+/// whether it runs WPA3
+const SECURITY: [bool; 2] = [false, true];
+/// minutes without clients, None: never
+const AUTO_OFF: [Option<u32>; 5] = [None, Some(5), Some(10), Some(30), Some(60)];
 const CLIENTS_POLL: Duration = Duration::from_secs(3);
 
 fn band_label(band: HotspotBand) -> String {
@@ -52,6 +59,29 @@ fn band_label(band: HotspotBand) -> String {
     HotspotBand::A => "5 GHz",
   }
   .into()
+}
+
+fn security_label(wpa3: bool) -> String {
+  if wpa3 { "WPA3" } else { "WPA2" }.into()
+}
+
+fn auto_off_label(minutes: Option<u32>) -> String {
+  match minutes {
+    Some(minutes) => t!("app.network.hotspot.auto_off", minutes = minutes),
+    None => t!("app.network.hotspot.auto_off_never"),
+  }
+  .into()
+}
+
+/// the option of `options` selected in `select`, labelled by `label`
+fn selected<T: Copy>(
+  options: &[T],
+  label: impl Fn(T) -> String,
+  select: &Entity<SelectState<Vec<String>>>,
+  cx: &App,
+) -> Option<T> {
+  let selected = select.read(cx).selected_value()?;
+  options.iter().copied().find(|o| label(*o) == *selected)
 }
 
 /// what phone cameras read to join a network
@@ -111,6 +141,23 @@ impl HotspotForm {
           cx,
         )
       }),
+      security: cx.new(|cx| {
+        SelectState::new(
+          SECURITY.map(security_label).to_vec(),
+          Some(IndexPath::default()),
+          window,
+          cx,
+        )
+      }),
+      // 10 minutes, like Android
+      auto_off: cx.new(|cx| {
+        SelectState::new(
+          AUTO_OFF.map(auto_off_label).to_vec(),
+          Some(IndexPath::new(2)),
+          window,
+          cx,
+        )
+      }),
       expanded: false,
       pending: false,
       qr: None,
@@ -121,14 +168,12 @@ impl HotspotForm {
 
   fn config(&self, cx: &App) -> HotspotConfig {
     let password = self.password.read(cx).value().to_string();
-    let band = self.band.read(cx).selected_value();
     HotspotConfig {
       ssid: self.ssid.read(cx).value().trim().to_string(),
       password: Some(password).filter(|password| !password.is_empty()),
-      band: BANDS
-        .into_iter()
-        .find(|b| band.is_some_and(|label| *label == band_label(*b)))
-        .unwrap_or(HotspotBand::Bg),
+      band: selected(&BANDS, band_label, &self.band, cx).unwrap_or(HotspotBand::Bg),
+      wpa3: selected(&SECURITY, security_label, &self.security, cx).unwrap_or_default(),
+      auto_off: selected(&AUTO_OFF, auto_off_label, &self.auto_off, cx).unwrap_or(Some(10)),
     }
   }
 }
@@ -197,6 +242,12 @@ impl NetworkPanel {
       });
       form.band.update(cx, |select, cx| {
         select.set_selected_value(&band_label(config.band), window, cx)
+      });
+      form.security.update(cx, |select, cx| {
+        select.set_selected_value(&security_label(config.wpa3), window, cx)
+      });
+      form.auto_off.update(cx, |select, cx| {
+        select.set_selected_value(&auto_off_label(config.auto_off), window, cx)
       });
     }
     cx.notify();
@@ -314,6 +365,8 @@ impl NetworkPanel {
                 .disabled(running),
             )
             .child(Select::new(&form.band).small().disabled(running))
+            .child(Select::new(&form.security).small().disabled(running))
+            .child(Select::new(&form.auto_off).small().disabled(running))
         })
         .when_some(
           hotspot.zip(form.qr.as_deref().and_then(qr_code)),
@@ -444,6 +497,7 @@ mod tests {
             .unwrap(),
           // no interface of this machine, the panel finds no clients of its own
           interface: "corona-test0".into(),
+          auto_off: None,
         });
         cx.notify();
       });

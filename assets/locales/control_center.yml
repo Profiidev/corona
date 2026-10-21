@@ -452,6 +452,12 @@ app:
       clients:
         en: 'Connected devices (%{count})'
         de: 'Verbundene Geräte (%{count})'
+      auto_off:
+        en: 'Turn off after %{minutes} min without devices'
+        de: 'Nach %{minutes} Min. ohne Geräte ausschalten'
+      auto_off_never:
+        en: 'Stay on without devices'
+        de: 'Ohne Geräte eingeschaltet lassen'
   notifications:
     dnd:
       en: Do not disturb
