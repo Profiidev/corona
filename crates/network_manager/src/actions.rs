@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, process::Command, time::Duration};
+use std::{collections::HashMap, io::Read, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
 use corona_utils::error::ErrorLogExt;
@@ -36,6 +36,8 @@ use crate::{
 
 /// the profile `start_hotspot` creates once and updates after
 pub(crate) const HOTSPOT_ID: &str = "Corona Hotspot";
+/// how long a hotspot without clients keeps running
+const HOTSPOT_IDLE_OFF: Duration = Duration::from_secs(10 * 60);
 
 // 802-11-wireless-security.key-mgmt values
 const KEY_MGMT_PSK: &str = "wpa-psk";
@@ -116,6 +118,32 @@ pub struct HotspotConfig {
 }
 
 impl HotspotConfig {
+  /// a first hotspot: named after the machine, with a random password
+  pub fn generated() -> Result<Self> {
+    // no l, o, 0 or 1 to misread, 32 letters for an unbiased pick from a byte
+    const LETTERS: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789";
+    let mut random = [0u8; 12];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut random)?;
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    let mut ssid = hostname.trim().to_owned();
+    if ssid.is_empty() {
+      ssid = HOTSPOT_ID.to_owned();
+    }
+    while ssid.len() > 32 {
+      ssid.pop();
+    }
+    Ok(Self {
+      ssid,
+      password: Some(
+        random
+          .iter()
+          .map(|b| LETTERS[*b as usize % 32] as char)
+          .collect(),
+      ),
+      band: HotspotBand::Bg,
+    })
+  }
+
   /// what NM rejects, caught before asking it
   pub fn validate(&self) -> Result<()> {
     ensure!(
@@ -589,7 +617,7 @@ pub(crate) async fn start_hotspot(
   config: HotspotConfig,
   client: Option<(OwnedObjectPath, bool)>,
   executor: &BackgroundExecutor,
-) -> Result<()> {
+) -> Result<OwnedObjectPath> {
   config.validate()?;
   // the radio serves both on one channel, the client's
   let channel = match client {
@@ -615,8 +643,8 @@ pub(crate) async fn start_hotspot(
         .1
     }
   };
-  if wait_for_activation(conn, active, executor).await? {
-    return Ok(());
+  if wait_for_activation(conn, active.clone(), executor).await? {
+    return Ok(active);
   }
   match channel {
     // the band was the connection's, not the chosen one
@@ -647,6 +675,38 @@ async fn wait_for_activation(
     }
   }
   Ok(false)
+}
+
+/// stops the hotspot's activation `active` on `interface` once no client was connected for
+/// `HOTSPOT_IDLE_OFF`, like Android, and returns when it ended otherwise
+pub(crate) async fn stop_hotspot_when_idle(
+  conn: &Connection,
+  active: OwnedObjectPath,
+  interface: &str,
+  executor: &BackgroundExecutor,
+) -> Result<()> {
+  const ACTIVATED: u32 = 2;
+  const CHECK: Duration = Duration::from_secs(30);
+  let state = proxy::<ActiveConnectionProxy, ActiveConnectionProxy>(conn, active.clone()).await?;
+  let mut idle = Duration::ZERO;
+  while idle < HOTSPOT_IDLE_OFF {
+    executor.timer(CHECK).await;
+    // NM drops the object of a stopped hotspot, a later start gets a new one
+    if state.state().await.ok() != Some(ACTIVATED) {
+      return Ok(());
+    }
+    idle = if nl80211::stations(interface)?.is_empty() {
+      idle + CHECK
+    } else {
+      Duration::ZERO
+    };
+  }
+  disallow_hotspot().await?;
+  NetworkManagerProxy::new(conn)
+    .await?
+    .deactivate_connection(&active)
+    .await?;
+  Ok(())
 }
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
@@ -1095,5 +1155,19 @@ mod tests {
     assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TLS.to_owned()]));
     assert!(!enterprise.contains_key(CLIENT_CERT_KEY));
     assert!(!enterprise.contains_key(PRIVATE_KEY_KEY));
+  }
+
+  #[test]
+  fn generated_hotspots_are_valid() {
+    let config = HotspotConfig::generated().unwrap();
+    config.validate().unwrap();
+    let password = config.password.unwrap();
+    assert_eq!(password.len(), 12);
+    assert!(
+      password
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() && !b"lo01".contains(&b))
+    );
+    assert_ne!(Some(password), HotspotConfig::generated().unwrap().password);
   }
 }

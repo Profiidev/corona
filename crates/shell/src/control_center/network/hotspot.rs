@@ -187,7 +187,8 @@ impl NetworkPanel {
       .as_ref()
       .filter(|_| running)
       .map(|c| wifi_qr_text(&c.ssid, c.password.as_deref()));
-    if let Some(config) = config {
+    // the first start shares a password, not an open network
+    if let Some(config) = config.or_else(|| HotspotConfig::generated().log_err().ok()) {
       form
         .ssid
         .update(cx, |input, cx| input.set_value(config.ssid, window, cx));

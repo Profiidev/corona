@@ -298,10 +298,26 @@ impl NetworkManager {
       let started = actions::start_hotspot(&conn, device, config, client, &executor).await;
       // nothing stops a hotspot that never ran, its rules would let in the peers of a later
       // client connection on the interface
-      if started.is_err() {
-        actions::disallow_hotspot().await.log_err().ok();
-      }
-      started
+      let active = match started {
+        Ok(active) => active,
+        Err(e) => {
+          actions::disallow_hotspot().await.log_err().ok();
+          return Err(e);
+        }
+      };
+      // shortcut: lost on a corona restart, the hotspot then runs until stopped
+      executor
+        .spawn({
+          let executor = executor.clone();
+          async move {
+            actions::stop_hotspot_when_idle(&conn, active, &name, &executor)
+              .await
+              .log_err()
+              .ok();
+          }
+        })
+        .detach();
+      Ok(())
     }
   }
 
