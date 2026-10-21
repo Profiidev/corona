@@ -2096,6 +2096,7 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "image",
+ "smol",
  "tracing",
  "zbus",
 ]
