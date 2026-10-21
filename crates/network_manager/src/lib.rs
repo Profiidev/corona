@@ -282,45 +282,62 @@ impl NetworkManager {
       let connected = primary.state == DeviceState::Activated;
       // the hotspot's own interface, or one it takes over, is no way out
       let uplink_beside = |name: &str| uplink.clone().filter(|u| u != name);
-      let (device, name) = match spare {
-        Some((device, name)) => {
-          actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
-          (device, name)
-        }
-        None if ours => {
-          let name = nl80211::AP_INTERFACE.to_owned();
-          actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
-          let ours = actions::wait_for_device(&conn, &name, &executor).await?;
-          (ours, name)
-        }
-        // only a connection is worth an interface beside it, adding it lets the clients through
-        None if beside && connected => {
-          let name = nl80211::AP_INTERFACE.to_owned();
-          let uplink = uplink_beside(&name);
-          let added =
-            actions::add_ap_interface(&conn, &primary.name, uplink.as_deref(), &executor).await?;
-          (added, name)
-        }
-        None => {
-          actions::allow_hotspot(&primary.name, uplink_beside(&primary.name).as_deref()).await?;
-          (primary.path.clone(), primary.name.clone())
-        }
-      };
-      let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
-      let shared =
-        name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
-      let client = shared.then_some((primary.path, connected));
-      *rules.lock().unwrap() = Some(HotspotRules {
-        uplink: uplink_beside(&name),
-        interface: name,
-      });
-      let started = actions::start_hotspot(&conn, device, config, client, &executor).await;
-      // nothing stops a hotspot that never ran, its rules would let in the peers of a later
-      // client connection on the interface. The listener may have seen it end already
-      if started.is_err() && rules.lock().unwrap().take().is_some() {
-        actions::disallow_hotspot().await.log_err().ok();
+      // set by the first root call, which lets the clients through
+      let mut allowed = false;
+      let started = async {
+        let (device, name) = match spare {
+          Some((device, name)) => {
+            actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
+            allowed = true;
+            (device, name)
+          }
+          None if ours => {
+            let name = nl80211::AP_INTERFACE.to_owned();
+            actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
+            allowed = true;
+            let ours = actions::wait_for_device(&conn, &name, &executor).await?;
+            (ours, name)
+          }
+          // only a connection is worth an interface beside it, adding it lets the clients through
+          None if beside && connected => {
+            let name = nl80211::AP_INTERFACE.to_owned();
+            actions::add_ap_interface(&primary.name, uplink_beside(&name).as_deref()).await?;
+            allowed = true;
+            (actions::take_up_ap_interface(&conn, &executor).await?, name)
+          }
+          None => {
+            actions::allow_hotspot(&primary.name, uplink_beside(&primary.name).as_deref()).await?;
+            allowed = true;
+            (primary.path.clone(), primary.name.clone())
+          }
+        };
+        let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
+        let shared =
+          name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
+        let client = shared.then_some((primary.path.clone(), connected));
+        actions::start_hotspot(&conn, device, config, client, &executor).await?;
+        anyhow::Ok(HotspotRules {
+          uplink: uplink_beside(&name),
+          interface: name,
+        })
       }
-      started.map(|_| ())
+      .await;
+      match started {
+        // only now: the listener would take a failed WPA3 try, gone before the WPA2 one, for a
+        // hotspot stopped outside corona and remove the rules
+        Ok(started) => {
+          *rules.lock().unwrap() = Some(started);
+          Ok(())
+        }
+        // nothing stops a hotspot that never ran, its rules would let in the peers of a later
+        // client connection on the interface
+        Err(e) => {
+          if allowed {
+            actions::disallow_hotspot().await.log_err().ok();
+          }
+          Err(e)
+        }
+      }
     }
   }
 
@@ -855,6 +872,7 @@ mod tests {
           band: HotspotBand::Bg,
           wpa3: false,
           auto_off: Some(10),
+          isolate: false,
         })
       );
       block_on(cx.read(|cx| nm.stop_hotspot(cx))).unwrap();
@@ -898,6 +916,7 @@ mod tests {
       band: HotspotBand::Bg,
       wpa3: false,
       auto_off: Some(10),
+      isolate: false,
     };
     block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
     assert!(
@@ -933,6 +952,7 @@ mod tests {
       band: HotspotBand::Bg,
       wpa3: false,
       auto_off: Some(10),
+      isolate: false,
     }
   }
 
@@ -1052,6 +1072,7 @@ mod tests {
       band: HotspotBand::A,
       wpa3: false,
       auto_off: None,
+      isolate: true,
     };
     block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
     assert!(
@@ -1059,6 +1080,8 @@ mod tests {
         .calls()
         .contains(&format!("AddAndActivateConnection {WLAN} /"))
     );
+    // the listener follows them from now on
+    assert!(nm.hotspot_rules.lock().unwrap().is_some());
     let added = added(&mock);
     assert_eq!(
       text(&added, "connection", "id").as_deref(),
@@ -1093,6 +1116,19 @@ mod tests {
     let data = get(&added, "user", "data").unwrap();
     let data = std::collections::HashMap::<String, String>::try_from(data).unwrap();
     assert_eq!(data["corona.auto-off"], "0");
+    assert_eq!(text(&added, "ipv6", "method").as_deref(), Some("disabled"));
+    assert_eq!(
+      text(&added, "802-11-wireless", "cloned-mac-address").as_deref(),
+      Some("random")
+    );
+    assert_eq!(
+      get(&added, "802-11-wireless", "ap-isolation"),
+      Some(Value::from(1i32).try_to_owned().unwrap())
+    );
+    assert_eq!(
+      get(&added, "802-11-wireless-security", "pmf"),
+      Some(Value::from(2i32).try_to_owned().unwrap())
+    );
     assert_eq!(actions::auto_off(&added), None);
 
     // too short a password never reaches NM
@@ -1119,6 +1155,10 @@ mod tests {
       &executor,
     ));
     assert!(started.is_err());
+    // its rules are gone again, nothing is left for the listener to follow
+    let nm = nm(cx);
+    assert!(block_on(cx.read(|cx| nm.start_hotspot(open_hotspot(), cx))).is_err());
+    assert!(nm.hotspot_rules.lock().unwrap().is_none());
   }
 
   #[gpui::test]
@@ -1149,8 +1189,12 @@ mod tests {
 
   #[gpui::test]
   fn a_failing_wpa3_hotspot_falls_back_to_wpa2(cx: &mut TestAppContext) {
-    // the mock answers every activation with ActiveConnection/1, which NM then drops
-    let mut world = World::default();
+    // the saved hotspot, not running; the mock answers every activation with
+    // ActiveConnection/1, which NM then drops
+    let mut world = hotspot_world(2);
+    world.active.pop();
+    world.wlan_active = "/".into();
+    world.wlan_state = 30;
     world.active[0].state = 4;
     let (_bus, mock) = start(cx, world);
     let (conn, executor) = (nm(cx).conn, cx.executor());
@@ -1170,15 +1214,23 @@ mod tests {
     assert!(started.is_err());
     let tried = mock.world().added.clone();
     let key_mgmt = |settings| text(settings, "802-11-wireless-security", "key-mgmt");
+    // WPA2 failed too: the profile goes back to the WPA3 asked for
     assert_eq!(
       tried.iter().map(key_mgmt).collect::<Vec<_>>(),
-      [Some("sae".into()), Some("wpa-psk".into())]
+      [
+        Some("sae".into()),
+        Some("wpa-psk".into()),
+        Some("sae".into())
+      ]
     );
     assert_eq!(
       get(&tried[0], "802-11-wireless-security", "pmf"),
       Some(Value::from(3i32).try_to_owned().unwrap())
     );
-    assert_eq!(get(&tried[1], "802-11-wireless-security", "pmf"), None);
+    assert_eq!(
+      get(&tried[1], "802-11-wireless-security", "pmf"),
+      Some(Value::from(2i32).try_to_owned().unwrap())
+    );
     assert_eq!(actions::auto_off(&tried[1]), Some(30));
   }
 

@@ -37,6 +37,8 @@ pub struct HotspotForm {
   /// WPA3 or WPA2
   security: Entity<SelectState<Vec<String>>>,
   auto_off: Entity<SelectState<Vec<String>>>,
+  /// whether the clients are kept from each other
+  isolate: Entity<SelectState<Vec<String>>>,
   expanded: bool,
   /// starting or stopping, which can take a password and a wifi reconnect
   pending: bool,
@@ -51,6 +53,8 @@ const BANDS: [HotspotBand; 2] = [HotspotBand::Bg, HotspotBand::A];
 const SECURITY: [bool; 2] = [false, true];
 /// minutes without clients, None: never
 const AUTO_OFF: [Option<u32>; 5] = [None, Some(5), Some(10), Some(30), Some(60)];
+/// whether the clients are kept from each other
+const ISOLATE: [bool; 2] = [true, false];
 const CLIENTS_POLL: Duration = Duration::from_secs(3);
 
 fn band_label(band: HotspotBand) -> String {
@@ -63,6 +67,15 @@ fn band_label(band: HotspotBand) -> String {
 
 fn security_label(wpa3: bool) -> String {
   if wpa3 { "WPA3" } else { "WPA2" }.into()
+}
+
+fn isolate_label(isolate: bool) -> String {
+  if isolate {
+    t!("app.network.hotspot.isolate")
+  } else {
+    t!("app.network.hotspot.shared")
+  }
+  .into()
 }
 
 fn auto_off_label(minutes: Option<u32>) -> String {
@@ -158,6 +171,14 @@ impl HotspotForm {
           cx,
         )
       }),
+      isolate: cx.new(|cx| {
+        SelectState::new(
+          ISOLATE.map(isolate_label).to_vec(),
+          Some(IndexPath::default()),
+          window,
+          cx,
+        )
+      }),
       expanded: false,
       pending: false,
       qr: None,
@@ -174,6 +195,7 @@ impl HotspotForm {
       band: selected(&BANDS, band_label, &self.band, cx).unwrap_or(HotspotBand::Bg),
       wpa3: selected(&SECURITY, security_label, &self.security, cx).unwrap_or_default(),
       auto_off: selected(&AUTO_OFF, auto_off_label, &self.auto_off, cx).unwrap_or(Some(10)),
+      isolate: selected(&ISOLATE, isolate_label, &self.isolate, cx).unwrap_or(true),
     }
   }
 }
@@ -249,6 +271,9 @@ impl NetworkPanel {
       form.auto_off.update(cx, |select, cx| {
         select.set_selected_value(&auto_off_label(config.auto_off), window, cx)
       });
+      form.isolate.update(cx, |select, cx| {
+        select.set_selected_value(&isolate_label(config.isolate), window, cx)
+      });
     }
     cx.notify();
   }
@@ -284,7 +309,7 @@ impl NetworkPanel {
       .primary_wifi(cx)
       .is_some_and(|wifi| wifi.state == DeviceState::Activated);
     let beside = nm.spare_wifi(cx).is_some() || (nm.hotspot_beside_wifi(cx) && !running);
-    // every start and stop asks for root, corona-ap existing or not
+    // every start and stop runs as root, a password unless the polkit policy is installed
     let hint = match (connected, beside) {
       (false, _) => None,
       (true, false) => Some(t!("app.network.hotspot.takes_wifi")),
@@ -367,6 +392,15 @@ impl NetworkPanel {
             .child(Select::new(&form.band).small().disabled(running))
             .child(Select::new(&form.security).small().disabled(running))
             .child(Select::new(&form.auto_off).small().disabled(running))
+            .child(Select::new(&form.isolate).small().disabled(running))
+            .when(form.password.read(cx).value().is_empty(), |d| {
+              d.child(
+                div()
+                  .text_xs()
+                  .text_color(theme.colors.warning)
+                  .child(t!("app.network.hotspot.open_warning")),
+              )
+            })
         })
         .when_some(
           hotspot.zip(form.qr.as_deref().and_then(qr_code)),

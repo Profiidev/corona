@@ -38,6 +38,9 @@ use crate::{
 pub(crate) const HOTSPOT_ID: &str = "Corona Hotspot";
 /// minutes a hotspot without clients keeps running, unless set otherwise
 const AUTO_OFF_DEFAULT: u32 = 10;
+// 802-11-wireless-security.pmf values
+const PMF_OPTIONAL: i32 = 2;
+const PMF_REQUIRED: i32 = 3;
 /// the Corona Hotspot's user.data key for its auto-off minutes, 0 for never
 const AUTO_OFF_KEY: &str = "corona.auto-off";
 
@@ -123,6 +126,13 @@ pub struct HotspotConfig {
   /// minutes without clients it turns off after, None: never
   #[serde(default = "auto_off_default")]
   pub auto_off: Option<u32>,
+  /// keeps the clients from reaching each other
+  #[serde(default = "isolate_default")]
+  pub isolate: bool,
+}
+
+fn isolate_default() -> bool {
+  true
 }
 
 fn auto_off_default() -> Option<u32> {
@@ -145,31 +155,21 @@ pub(crate) fn auto_off(settings: &HashMap<String, HashMap<String, OwnedValue>>) 
 }
 
 impl HotspotConfig {
-  /// a first hotspot: named after the machine, with a random password
+  /// a first hotspot with a random name and password; the hostname would tell everyone around
+  /// whose it is
   pub fn generated() -> Result<Self> {
     // no l, o, 0 or 1 to misread, 32 letters for an unbiased pick from a byte
     const LETTERS: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789";
-    let mut random = [0u8; 12];
+    let mut random = [0u8; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut random)?;
-    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
-    let mut ssid = hostname.trim().to_owned();
-    if ssid.is_empty() {
-      ssid = HOTSPOT_ID.to_owned();
-    }
-    while ssid.len() > 32 {
-      ssid.pop();
-    }
+    let mut text = random.iter().map(|b| LETTERS[*b as usize % 32] as char);
     Ok(Self {
-      ssid,
-      password: Some(
-        random
-          .iter()
-          .map(|b| LETTERS[*b as usize % 32] as char)
-          .collect(),
-      ),
+      ssid: format!("Corona-{}", text.by_ref().take(4).collect::<String>()),
+      password: Some(text.collect()),
       band: HotspotBand::Bg,
       wpa3: false,
       auto_off: auto_off_default(),
+      isolate: isolate_default(),
     })
   }
 
@@ -610,6 +610,12 @@ fn hotspot_settings(
     ("ssid".to_owned(), Value::from(config.ssid.into_bytes())),
     ("mode".to_owned(), string(AP_MODE)),
     ("band".to_owned(), string(band.setting())),
+    // a BSSID of its own each start, the radio's would follow the machine from place to place
+    ("cloned-mac-address".to_owned(), string("random")),
+    (
+      "ap-isolation".to_owned(),
+      Value::from(i32::from(config.isolate)),
+    ),
   ]);
   if let Some((_, channel)) = channel {
     wifi.insert("channel".to_owned(), Value::from(channel));
@@ -621,6 +627,11 @@ fn hotspot_settings(
     (
       "ipv4".to_owned(),
       HashMap::from([("method".to_owned(), string("shared"))]),
+    ),
+    // the firewall rules are IPv4 only, link-local IPv6 would reach the host past them
+    (
+      "ipv6".to_owned(),
+      HashMap::from([("method".to_owned(), string("disabled"))]),
     ),
     (
       "user".to_owned(),
@@ -638,10 +649,11 @@ fn hotspot_settings(
       ("proto".to_owned(), Value::from(vec!["rsn".to_owned()])),
       ("pairwise".to_owned(), ccmp()),
       ("group".to_owned(), ccmp()),
+      // against deauthentication by anyone around, optional for clients without
+      ("pmf".to_owned(), Value::from(PMF_OPTIONAL)),
     ]);
     if config.wpa3 {
-      // WPA3 requires management frame protection
-      const PMF_REQUIRED: i32 = 3;
+      // WPA3 requires it
       security.insert("key-mgmt".to_owned(), string(KEY_MGMT_SAE));
       security.insert("pmf".to_owned(), Value::from(PMF_REQUIRED));
     }
@@ -666,6 +678,7 @@ pub(crate) async fn start_hotspot(
     None => None,
   };
   let nm = NetworkManager::new(conn).await?;
+  let wpa3 = config.wpa3;
   let mut config = config;
   loop {
     // one profile, updated on every start, instead of a new one each time
@@ -695,6 +708,18 @@ pub(crate) async fn start_hotspot(
     }
     tracing::warn!("the hotspot did not start with WPA3, falling back to WPA2");
     config.wpa3 = false;
+  }
+  // WPA2 failed too, WPA3 was not the cause: the profile keeps the choice
+  if wpa3
+    && !config.wpa3
+    && let Some((path, uuid)) = saved_hotspot(conn).await?
+  {
+    config.wpa3 = true;
+    let settings = hotspot_settings(config, uuid, channel);
+    proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path)
+      .await?
+      .update(borrowed(&settings))
+      .await?;
   }
   match channel {
     // the band was the connection's, not the chosen one
@@ -728,13 +753,8 @@ async fn wait_for_activation(
 }
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
-/// its clients through the firewall, then waits for NM to take it up
-pub(crate) async fn add_ap_interface(
-  conn: &Connection,
-  beside: &str,
-  uplink: Option<&str>,
-  executor: &BackgroundExecutor,
-) -> Result<OwnedObjectPath> {
+/// its clients through the firewall
+pub(crate) async fn add_ap_interface(beside: &str, uplink: Option<&str>) -> Result<()> {
   let (phy, mac) = nl80211::radio(beside).with_context(|| format!("{beside} has no radio"))?;
   let mut args = vec![
     "add-ap-interface".to_owned(),
@@ -743,7 +763,14 @@ pub(crate) async fn add_ap_interface(
     nl80211::format_mac(nl80211::ap_mac(mac)),
   ];
   args.extend(uplink.map(|u| format!("--uplink={u}")));
-  as_root(args).await?;
+  as_root(args).await
+}
+
+/// waits for NM to take up the interface `add_ap_interface` added
+pub(crate) async fn take_up_ap_interface(
+  conn: &Connection,
+  executor: &BackgroundExecutor,
+) -> Result<OwnedObjectPath> {
   let device = wait_for_device(conn, nl80211::AP_INTERFACE, executor).await?;
   // NM would connect saved networks on it otherwise
   proxy::<DeviceProxy, DeviceProxy>(conn, device.clone())
@@ -879,6 +906,12 @@ pub(crate) async fn hotspot_config(
   let profile = proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path).await?;
   let mut settings = profile.get_settings().await?;
   let auto_off = auto_off(&settings);
+  // NM's default, -1, is off
+  let isolate = settings
+    .get(WIFI_SETTING)
+    .and_then(|wifi| wifi.get("ap-isolation"))
+    .and_then(|isolation| i32::try_from(&**isolation).ok())
+    == Some(1);
   let wifi = settings
     .remove(WIFI_SETTING)
     .map(WifiSettings::new)
@@ -904,6 +937,7 @@ pub(crate) async fn hotspot_config(
     band: HotspotBand::from_setting(wifi.band.as_deref()),
     wpa3,
     auto_off,
+    isolate,
   }))
 }
 
@@ -1076,6 +1110,7 @@ mod tests {
       band: HotspotBand::A,
       wpa3: false,
       auto_off: Some(10),
+      isolate: true,
     }
   }
 
@@ -1189,6 +1224,8 @@ mod tests {
   fn generated_hotspots_are_valid() {
     let config = HotspotConfig::generated().unwrap();
     config.validate().unwrap();
+    // tells nothing about the machine
+    assert!(config.ssid.starts_with("Corona-") && config.ssid.len() == 11);
     let password = config.password.unwrap();
     assert_eq!(password.len(), 12);
     assert!(

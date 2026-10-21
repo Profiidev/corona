@@ -668,6 +668,7 @@ mod tests {
     // older scripts leave them out
     assert!(!config.wpa3);
     assert_eq!(config.auto_off, Some(10));
+    assert!(config.isolate);
   }
 
   #[test]

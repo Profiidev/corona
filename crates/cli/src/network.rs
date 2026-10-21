@@ -27,7 +27,7 @@ pub enum NetworkCommands {
     phy: u32,
     name: String,
     mac: String,
-    /// The interface the clients reach the internet through, none keeps them on the hotspot
+    /// The host's way to the internet, closed to routing into other networks meanwhile
     #[arg(long)]
     uplink: Option<String>,
   },
@@ -35,7 +35,7 @@ pub enum NetworkCommands {
   /// of an earlier hotspot. Needs root, the shell runs it through pkexec
   AllowHotspot {
     name: String,
-    /// The interface the clients reach the internet through, none keeps them on the hotspot
+    /// The host's way to the internet, closed to routing into other networks meanwhile
     #[arg(long)]
     uplink: Option<String>,
   },
@@ -56,7 +56,12 @@ impl NetworkCommands {
         .and_then(|mac| {
           // first, so the interface never runs without
           allow(&name, uplink.as_deref())?;
-          nl80211::add_ap_interface(phy, &name, mac)
+          nl80211::add_ap_interface(phy, &name, mac).inspect_err(|_| {
+            // the uplink stays closed to forwarding otherwise
+            if let Some(iptables) = iptables() {
+              disallow_hotspot(iptables).ok();
+            }
+          })
         }),
       NetworkCommands::AllowHotspot { name, uplink } => allow(&name, uplink.as_deref()),
       NetworkCommands::DisallowHotspot => iptables().map_or(Ok(()), disallow_hotspot),
@@ -79,58 +84,88 @@ fn allow(interface: &str, uplink: Option<&str>) -> Result<()> {
       bail!("{name:?} is no interface name");
     }
   }
-  iptables().map_or(Ok(()), |iptables| {
-    disallow_hotspot(iptables)?;
-    allow_hotspot(iptables, interface, uplink)
-  })
+  // without its rules a hotspot's clients reach the host's networks: fail closed
+  let iptables = iptables().context("the hotspot needs iptables to keep its clients apart")?;
+  disallow_hotspot(iptables)?;
+  allow_hotspot(iptables, interface, uplink)
 }
 
-/// lets the hotspot's clients reach NM's dnsmasq (DHCP, DNS) and `uplink` past firewalls that
-/// drop the unknown, like NixOS's input or Docker's forward policy: NM's own accepts sit in their
-/// own nftables table, which cannot override a drop in another. Only `uplink`, so the clients stay
-/// out of VPNs and Docker's networks. Inserted on top, once. The shell re-runs it when the
-/// uplink changes while the hotspot runs
+/// what hotspot clients never reach through the host: private, shared (CGNAT) and link-local
+/// addresses, the uplink's LAN and VPNs among them
+const PRIVATE_NETWORKS: [&str; 5] = [
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "100.64.0.0/10",
+  "169.254.0.0/16",
+];
+
+/// lets the hotspot's clients reach NM's dnsmasq (DHCP, DNS) and the internet past firewalls
+/// that drop the unknown, like NixOS's input or Docker's forward policy: NM's own accepts sit in
+/// their own nftables table, which cannot override a drop in another. A reject here wins over
+/// NM's accepts: the host's other services and private networks (the uplink's LAN, VPNs,
+/// Docker's) are. The internet is reached the host's way, through a VPN carrying its default
+/// route too. NM turns on forwarding for the hotspot, `uplink` is closed to routing anywhere
+/// else meanwhile, Docker's published ports aside. The shell re-runs it when the uplink changes
 fn allow_hotspot(iptables: &Path, interface: &str, uplink: Option<&str>) -> Result<()> {
-  let mut rules: Vec<Vec<&str>> = vec![
-    vec![
-      "INPUT",
-      "-i",
-      interface,
-      "-p",
-      "udp",
-      "-m",
-      "multiport",
-      "--dports",
-      "53,67",
-    ],
-    vec!["INPUT", "-i", interface, "-p", "tcp", "--dport", "53"],
+  let established = ["-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED"];
+  // each is inserted on top: the last one listed is checked first
+  let mut rules: Vec<(Vec<&str>, &str)> = vec![
+    (vec!["INPUT", "-i", interface], "REJECT"),
+    (
+      [&["INPUT", "-i", interface][..], &established].concat(),
+      "ACCEPT",
+    ),
+    (
+      vec![
+        "INPUT",
+        "-i",
+        interface,
+        "-p",
+        "udp",
+        "-m",
+        "multiport",
+        "--dports",
+        "53,67",
+      ],
+      "ACCEPT",
+    ),
+    (
+      vec!["INPUT", "-i", interface, "-p", "tcp", "--dport", "53"],
+      "ACCEPT",
+    ),
+    (vec!["FORWARD", "-i", interface], "ACCEPT"),
+    (
+      [&["FORWARD", "-o", interface][..], &established].concat(),
+      "ACCEPT",
+    ),
   ];
   if let Some(uplink) = uplink {
-    rules.push(vec!["FORWARD", "-i", interface, "-o", uplink]);
-    rules.push(vec![
-      "FORWARD",
-      "-i",
-      uplink,
-      "-o",
-      interface,
-      "-m",
-      "conntrack",
-      "--ctstate",
-      "RELATED,ESTABLISHED",
-    ]);
+    rules.push((
+      vec![
+        "FORWARD",
+        "-i",
+        uplink,
+        "-m",
+        "conntrack",
+        "!",
+        "--ctstate",
+        "RELATED,ESTABLISHED,DNAT",
+      ],
+      "REJECT",
+    ));
   }
-  for rule in rules {
-    let run = |action| {
+  for network in PRIVATE_NETWORKS {
+    rules.push((vec!["FORWARD", "-i", interface, "-d", network], "REJECT"));
+  }
+  for (rule, target) in rules {
+    checked(
       Command::new(iptables)
-        .args(["-w", action])
+        .args(["-w", "-I"])
         .args(&rule)
-        .args(["-m", "comment", "--comment", TAG, "-j", "ACCEPT"])
-        .output()
-    };
-    if run("-C")?.status.success() {
-      continue;
-    }
-    checked(run("-I")?)?;
+        .args(["-m", "comment", "--comment", TAG, "-j", target])
+        .output()?,
+    )?;
   }
   Ok(())
 }
@@ -177,12 +212,69 @@ mod tests {
   use super::*;
 
   #[test]
-  fn firewall_rules_are_inserted_once() {
-    // every rule is there already
+  fn failing_iptables_is_an_error() {
     allow_hotspot(Path::new("true"), "corona-ap", Some("eth0")).unwrap();
     disallow_hotspot(Path::new("true")).unwrap();
-    // none is, and inserting fails
     assert!(allow_hotspot(Path::new("false"), "corona-ap", None).is_err());
+  }
+
+  /// the chain's rules after `allow_hotspot`, first checked first
+  fn inserted(uplink: Option<&str>, chain: &str) -> Vec<String> {
+    let dir = std::env::temp_dir().join(format!("corona-iptables-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (fake, log) = (
+      dir.join("iptables"),
+      dir.join(format!("{chain}-{uplink:?}")),
+    );
+    // logs the rule
+    std::fs::write(
+      &fake,
+      format!("#!/bin/sh\nshift 2\necho \"$*\" >> '{}'\n", log.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    allow_hotspot(&fake, "ap0", uplink).unwrap();
+    let logged = std::fs::read_to_string(&log).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    let rule = |line: &str| line.replace(&format!(" -m comment --comment {TAG}"), "");
+    logged
+      .lines()
+      .rev()
+      .filter(|line| line.starts_with(chain))
+      .map(rule)
+      .collect()
+  }
+
+  #[test]
+  fn hotspot_clients_reach_only_the_internet_and_dnsmasq() {
+    assert_eq!(
+      inserted(Some("eth0"), "FORWARD"),
+      [
+        "FORWARD -i ap0 -d 169.254.0.0/16 -j REJECT",
+        "FORWARD -i ap0 -d 100.64.0.0/10 -j REJECT",
+        "FORWARD -i ap0 -d 192.168.0.0/16 -j REJECT",
+        "FORWARD -i ap0 -d 172.16.0.0/12 -j REJECT",
+        "FORWARD -i ap0 -d 10.0.0.0/8 -j REJECT",
+        "FORWARD -i eth0 -m conntrack ! --ctstate RELATED,ESTABLISHED,DNAT -j REJECT",
+        "FORWARD -o ap0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+        "FORWARD -i ap0 -j ACCEPT",
+      ]
+    );
+    assert_eq!(
+      inserted(None, "INPUT"),
+      [
+        "INPUT -i ap0 -p tcp --dport 53 -j ACCEPT",
+        "INPUT -i ap0 -p udp -m multiport --dports 53,67 -j ACCEPT",
+        "INPUT -i ap0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+        "INPUT -i ap0 -j REJECT",
+      ]
+    );
+    // nothing to close without an uplink
+    assert!(
+      !inserted(None, "FORWARD")
+        .iter()
+        .any(|r| r.contains("! --ctstate"))
+    );
   }
 
   #[test]

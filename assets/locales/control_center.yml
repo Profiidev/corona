@@ -444,11 +444,11 @@ app:
         en: 'Scan to join %{ssid}'
         de: 'Scannen, um %{ssid} beizutreten'
       takes_wifi:
-        en: 'Wi-Fi disconnects while the hotspot is on. Starting and stopping it asks for administrator rights'
-        de: 'WLAN wird getrennt, solange der Hotspot läuft. Starten und Stoppen fragt nach Administratorrechten'
+        en: 'Wi-Fi disconnects while the hotspot is on. Starting and stopping it may ask for administrator rights'
+        de: 'WLAN wird getrennt, solange der Hotspot läuft. Starten und Stoppen kann nach Administratorrechten fragen'
       asks_admin:
-        en: 'Wi-Fi stays connected. Starting and stopping the hotspot asks for administrator rights, the first start per boot may reconnect Wi-Fi once'
-        de: 'WLAN bleibt verbunden. Starten und Stoppen fragt nach Administratorrechten, der erste Start pro Systemstart kann das WLAN einmal neu verbinden'
+        en: 'Wi-Fi stays connected. Starting and stopping the hotspot may ask for administrator rights, the first start per boot may reconnect Wi-Fi once'
+        de: 'WLAN bleibt verbunden. Starten und Stoppen kann nach Administratorrechten fragen, der erste Start pro Systemstart kann das WLAN einmal neu verbinden'
       clients:
         en: 'Connected devices (%{count})'
         de: 'Verbundene Geräte (%{count})'
@@ -458,6 +458,15 @@ app:
       auto_off_never:
         en: 'Stay on without devices'
         de: 'Ohne Geräte eingeschaltet lassen'
+      isolate:
+        en: 'Keep devices apart from each other'
+        de: 'Geräte voneinander trennen'
+      shared:
+        en: 'Devices see each other'
+        de: 'Geräte sehen einander'
+      open_warning:
+        en: 'Without a password anyone nearby can join and go online through your connection'
+        de: 'Ohne Passwort kann jeder in der Nähe beitreten und über deine Verbindung surfen'
   notifications:
     dnd:
       en: Do not disturb
