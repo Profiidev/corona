@@ -51,22 +51,16 @@ fn load() -> HashMap<String, bool> {
   parse(&fs::read_to_string(path).unwrap_or_default(), &boot)
 }
 
+/// the value interfaces created later start with; no interface may be named so
+const DEFAULT: &str = "default";
+
 /// records the interfaces not seen yet this boot; call only while no hotspot runs
 pub(crate) fn observe<'a>(interfaces: impl Iterator<Item = &'a str>) {
   let mut known = load();
-  let mut changed = false;
-  for interface in interfaces {
-    if !known.contains_key(interface)
-      && let Some(on) = read(interface)
-    {
-      known.insert(interface.to_owned(), on);
-      changed = true;
-    }
-  }
   let (Some(path), Some(boot)) = (store(), boot_id()) else {
     return;
   };
-  if !changed {
+  if !record(&mut known, interfaces, read) {
     return;
   }
   let body: String = known
@@ -79,9 +73,41 @@ pub(crate) fn observe<'a>(interfaces: impl Iterator<Item = &'a str>) {
   fs::write(path, format!("{boot}\n{body}")).ok();
 }
 
+/// adds the interfaces missing from `known`, true if any. One created after the first observation
+/// inherits `default`, which a hotspot NM left forwarding on may have set since: it counts as
+/// forwarding only if `default` was on at first
+fn record<'a>(
+  known: &mut HashMap<String, bool>,
+  interfaces: impl Iterator<Item = &'a str>,
+  read: impl Fn(&str) -> Option<bool>,
+) -> bool {
+  let first = !known.contains_key(DEFAULT);
+  let mut changed = false;
+  // unreadable: off, later interfaces are locked
+  if first {
+    known.insert(DEFAULT.to_owned(), read(DEFAULT) == Some(true));
+    changed = true;
+  }
+  let inherited = first || known.get(DEFAULT) == Some(&true);
+  for interface in interfaces {
+    if !known.contains_key(interface)
+      && let Some(on) = read(interface)
+    {
+      known.insert(interface.to_owned(), on && inherited);
+      changed = true;
+    }
+  }
+  changed
+}
+
 /// the uplink needs closing: it did not route before, or nobody knows
 pub(crate) fn lock_needed(uplink: &str) -> bool {
-  load().get(uplink).copied() != Some(true)
+  needs_lock(&load(), uplink)
+}
+
+/// one unseen inherits `default`, the value it would have started with before any hotspot
+fn needs_lock(known: &HashMap<String, bool>, uplink: &str) -> bool {
+  known.get(uplink).or(known.get(DEFAULT)) != Some(&true)
 }
 
 #[cfg(test)]
@@ -98,5 +124,37 @@ mod tests {
     assert!(parse(text, "boot-b").is_empty());
     // unknown in tests: always locked
     assert!(lock_needed("eth0"));
+  }
+
+  #[test]
+  fn unseen_interfaces_inherit_the_default() {
+    let known = HashMap::from([(DEFAULT.into(), true), ("eth0".into(), false)]);
+    assert!(needs_lock(&known, "eth0"));
+    assert!(!needs_lock(&known, "wg0"));
+    assert!(needs_lock(&HashMap::from([(DEFAULT.into(), false)]), "wg0"));
+    assert!(needs_lock(&HashMap::new(), "wg0"));
+  }
+
+  #[test]
+  fn later_interfaces_route_only_if_the_default_did_at_first() {
+    let mut known = HashMap::new();
+    // a hotspot ran since: everything forwards now
+    let on = |_: &str| Some(true);
+    assert!(record(&mut known, ["eth0"].into_iter(), |i| Some(
+      i == "eth0"
+    )));
+    assert!(record(&mut known, ["eth0", "usb0"].into_iter(), on));
+    assert!(!record(&mut known, ["eth0", "usb0"].into_iter(), on));
+    assert_eq!(
+      known,
+      HashMap::from([
+        (DEFAULT.into(), false),
+        ("eth0".into(), true),
+        ("usb0".into(), false)
+      ])
+    );
+    let mut known = HashMap::from([(DEFAULT.into(), true)]);
+    record(&mut known, ["usb0"].into_iter(), on);
+    assert_eq!(known.get("usb0"), Some(&true));
   }
 }

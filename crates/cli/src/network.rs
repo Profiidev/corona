@@ -4,7 +4,7 @@ use std::{
   process::{Command, Output},
 };
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Subcommand;
 use corona_network_manager::nl80211;
 
@@ -28,23 +28,19 @@ pub enum NetworkCommands {
     phy: u32,
     name: String,
     mac: String,
-    /// The host's way to the internet, never the hotspot's way into other networks
+    /// Close an interface to routing into other networks meanwhile: it did not route before.
+    /// Repeated for each
     #[arg(long)]
-    uplink: Option<String>,
-    /// Close the uplink to routing into other networks meanwhile: it did not route before
-    #[arg(long)]
-    lock_uplink: bool,
+    lock: Vec<String>,
   },
   /// Let a hotspot's clients on an existing wifi interface through the firewall, replacing the
   /// rules of an earlier hotspot. Needs root, the shell runs it through pkexec
   AllowHotspot {
     name: String,
-    /// The host's way to the internet, never the hotspot's way into other networks
+    /// Close an interface to routing into other networks meanwhile: it did not route before.
+    /// Repeated for each
     #[arg(long)]
-    uplink: Option<String>,
-    /// Close the uplink to routing into other networks meanwhile: it did not route before
-    #[arg(long)]
-    lock_uplink: bool,
+    lock: Vec<String>,
   },
   /// Remove the firewall rules a hotspot added. Needs root, the shell runs it through pkexec
   DisallowHotspot,
@@ -57,8 +53,7 @@ impl NetworkCommands {
         phy,
         name,
         mac,
-        uplink,
-        lock_uplink,
+        lock,
       } => nl80211::parse_mac(&mac)
         .with_context(|| format!("{mac:?} is no MAC address"))
         .and_then(|mac| {
@@ -69,17 +64,13 @@ impl NetworkCommands {
             nl80211::AP_INTERFACE
           );
           // first, so the interface never runs without
-          allow(&name, uplink.as_deref(), lock_uplink)?;
+          allow(&name, &lock)?;
           nl80211::add_ap_interface(phy, &name, mac).inspect_err(|_| {
-            // the uplink stays closed to forwarding otherwise
+            // the locked interfaces stay closed to forwarding otherwise
             disallow().ok();
           })
         }),
-      NetworkCommands::AllowHotspot {
-        name,
-        uplink,
-        lock_uplink,
-      } => {
+      NetworkCommands::AllowHotspot { name, lock } => {
         // pkexec lets the session run this without a password: no rules for a wired interface
         let wifi = nl80211::valid_interface_name(&name)
           && Path::new("/sys/class/net")
@@ -87,7 +78,7 @@ impl NetworkCommands {
             .join("phy80211")
             .exists();
         if wifi {
-          allow(&name, uplink.as_deref(), lock_uplink)
+          allow(&name, &lock)
         } else {
           Err(anyhow::anyhow!("{name:?} is no wifi interface"))
         }
@@ -118,47 +109,51 @@ fn ip6tables() -> Option<PathBuf> {
   binary(&["ip6tables-nft", "ip6tables"])
 }
 
+/// both, one failing: the other's rules go anyway
 fn disallow() -> Result<()> {
-  if let Some(ip6tables) = ip6tables() {
-    disallow_hotspot(&ip6tables)?;
-  }
-  iptables().map_or(Ok(()), |iptables| disallow_hotspot(&iptables))
+  let v4 = iptables().map_or(Ok(()), |iptables| disallow_hotspot(&iptables));
+  let v6 = ip6tables().map_or(Ok(()), |ip6tables| disallow_hotspot(&ip6tables));
+  v4.and(v6)
 }
 
-fn allow(interface: &str, uplink: Option<&str>, lock_uplink: bool) -> Result<()> {
+fn allow(interface: &str, locks: &[String]) -> Result<()> {
   // iptables reads `+` in a name as a wildcard
-  for name in std::iter::once(interface).chain(uplink) {
-    if !nl80211::valid_interface_name(name) {
-      bail!("{name:?} is no interface name");
-    }
-  }
-  if let Some(uplink) = uplink {
-    ensure!(
-      Path::new("/sys/class/net").join(uplink).exists(),
-      "{uplink} does not exist"
-    );
-  }
+  ensure!(
+    nl80211::valid_interface_name(interface),
+    "{interface:?} is no interface name"
+  );
+  let locks = existing(locks);
   // without its rules a hotspot's clients reach the host's networks: fail closed
   let iptables = iptables().context("the hotspot needs iptables to keep its clients apart")?;
-  disallow_hotspot(&iptables)?;
-  // br_netfilter sends bridged frames through FORWARD; they are switched, not routed
-  let bridged = Path::new("/proc/sys/net/bridge").exists();
-  let routes = std::fs::read_to_string("/proc/net/route").unwrap_or_default();
-  allow_hotspot(
-    &iptables,
-    interface,
-    uplink.filter(|_| lock_uplink),
-    bridged,
-    &direct_networks(&routes, interface),
-  )?;
-  // the profile disables IPv6, a hotspot started elsewhere may not
-  match ip6tables() {
-    Some(ip6tables) => {
-      disallow_hotspot(&ip6tables)?;
-      allow_ipv6(&ip6tables, interface)?;
+  // an earlier hotspot's rules go once the new ones are in, the chains are never open meanwhile
+  let replace = || -> Result<()> {
+    let old = listed(&iptables)?;
+    // br_netfilter sends bridged frames through FORWARD; they are switched, not routed
+    let bridged = Path::new("/proc/sys/net/bridge").exists();
+    let routes = std::fs::read_to_string("/proc/net/route").unwrap_or_default();
+    allow_hotspot(
+      &iptables,
+      interface,
+      &locks,
+      bridged,
+      &direct_networks(&routes, interface),
+    )?;
+    remove(&iptables, &old)?;
+    // the profile disables IPv6, a hotspot started elsewhere may not
+    match ip6tables() {
+      Some(ip6tables) => {
+        let old = listed(&ip6tables)?;
+        allow_ipv6(&ip6tables, interface)?;
+        remove(&ip6tables, &old)?;
+      }
+      None => eprintln!("warning: no ip6tables, IPv6 from the hotspot's clients is not rejected"),
     }
-    None => eprintln!("warning: no ip6tables, IPv6 from the hotspot's clients is not rejected"),
-  }
+    Ok(())
+  };
+  // half of them may let the clients through: none at all, the shell stops a running hotspot
+  replace().inspect_err(|_| {
+    disallow().ok();
+  })?;
   if let Some(nft) = binary(&["nft"])
     && let Ok(output) = Command::new(nft).args(["list", "ruleset"]).output()
   {
@@ -170,6 +165,18 @@ fn allow(interface: &str, uplink: Option<&str>, lock_uplink: bool) -> Result<()>
     }
   }
   Ok(())
+}
+
+/// the valid names of interfaces in `locks` that exist: one gone since the shell looked routes
+/// nothing to close
+fn existing(locks: &[String]) -> Vec<&str> {
+  locks
+    .iter()
+    .map(String::as_str)
+    .filter(|lock| {
+      nl80211::valid_interface_name(lock) && Path::new("/sys/class/net").join(lock).exists()
+    })
+    .collect()
 }
 
 /// what hotspot clients never reach through the host: private, shared (CGNAT), link-local and
@@ -215,18 +222,18 @@ fn direct_networks(routes: &str, interface: &str) -> Vec<String> {
 /// their own nftables table, which cannot override a drop in another. A reject here wins over
 /// NM's accepts: the host's other services and private networks (the uplink's LAN, VPNs,
 /// Docker's) are. The internet is reached the host's way, through a VPN carrying its default
-/// route too. NM turns on forwarding for the hotspot, `uplink`, when given, is closed to routing
+/// route too. NM turns on forwarding for the hotspot, each of `locks` is closed to routing
 /// anywhere else meanwhile, Docker's published ports and bridged frames aside. The shell re-runs
-/// it when the uplink or the host's networks change
+/// it when the host's networks change
 fn allow_hotspot(
   iptables: &Path,
   interface: &str,
-  uplink: Option<&str>,
+  locks: &[&str],
   bridged: bool,
   direct: &[String],
 ) -> Result<()> {
   let established = ["-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED"];
-  // each is inserted on top: the last one listed is checked first
+  // the last one listed is checked first
   let mut rules: Vec<(Vec<&str>, &str)> = vec![
     (vec!["INPUT", "-i", interface], "REJECT"),
     (
@@ -257,8 +264,8 @@ fn allow_hotspot(
       "ACCEPT",
     ),
   ];
-  if let Some(uplink) = uplink {
-    let mut rule = vec!["FORWARD", "-i", uplink];
+  for lock in locks {
+    let mut rule = vec!["FORWARD", "-i", lock];
     if bridged {
       rule.extend(["-m", "physdev", "!", "--physdev-is-bridged"]);
     }
@@ -278,8 +285,17 @@ fn allow_hotspot(
   {
     rules.push((vec!["FORWARD", "-i", interface, "-d", network], "REJECT"));
   }
-  for (rule, target) in rules {
-    insert(iptables, &rule, target)?;
+  // rejects first, so the clients never get through unchecked meanwhile. Each goes above the ones
+  // in already that are listed after it: the order comes out the same
+  let mut placed = vec![false; rules.len()];
+  for target in ["REJECT", "ACCEPT"] {
+    for i in (0..rules.len()).filter(|&i| rules[i].1 == target) {
+      let above = (i + 1..rules.len())
+        .filter(|&j| placed[j] && rules[j].0[0] == rules[i].0[0])
+        .count();
+      insert(iptables, &rules[i].0, above + 1, target)?;
+      placed[i] = true;
+    }
   }
   Ok(())
 }
@@ -287,16 +303,17 @@ fn allow_hotspot(
 /// rejects all IPv6 from the hotspot's clients, the rules above are IPv4 only
 fn allow_ipv6(ip6tables: &Path, interface: &str) -> Result<()> {
   for chain in ["INPUT", "FORWARD"] {
-    insert(ip6tables, &[chain, "-i", interface], "REJECT")?;
+    insert(ip6tables, &[chain, "-i", interface], 1, "REJECT")?;
   }
   Ok(())
 }
 
-fn insert(iptables: &Path, rule: &[&str], target: &str) -> Result<()> {
+/// `rule`, its chain first, at `position` in that chain, 1 the top
+fn insert(iptables: &Path, rule: &[&str], position: usize, target: &str) -> Result<()> {
   checked(
     Command::new(iptables)
-      .args(["-w", "-I"])
-      .args(rule)
+      .args(["-w", "-I", rule[0], &position.to_string()])
+      .args(&rule[1..])
       .args(["-m", "comment", "--comment", TAG, "-j", target])
       .output()?,
   )?;
@@ -336,16 +353,34 @@ fn input_drops(ruleset: &str, interface: &str) -> Vec<String> {
 /// removes every rule tagged by `allow_hotspot`, so a stopped hotspot's interface, connected as a
 /// client later on, routes nothing into the host's networks
 fn disallow_hotspot(iptables: &Path) -> Result<()> {
+  remove(iptables, &listed(iptables)?)
+}
+
+/// the tagged rules of INPUT and FORWARD
+fn listed(iptables: &Path) -> Result<Vec<Vec<String>>> {
+  let mut rules = Vec::new();
   for chain in ["INPUT", "FORWARD"] {
     let listed = checked(Command::new(iptables).args(["-w", "-S", chain]).output()?)?;
-    for rule in tagged(&String::from_utf8_lossy(&listed.stdout)) {
-      checked(
-        Command::new(iptables)
-          .args(["-w", "-D"])
-          .args(rule)
-          .output()?,
-      )?;
-    }
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    rules.extend(
+      tagged(&listed)
+        .into_iter()
+        .map(|rule| rule.into_iter().map(str::to_owned).collect()),
+    );
+  }
+  Ok(rules)
+}
+
+/// deletes `rules`, each the first one equal to it: of an old one and an equal new one the new one
+/// above it, which keeps every reject above the accepts
+fn remove(iptables: &Path, rules: &[Vec<String>]) -> Result<()> {
+  for rule in rules {
+    checked(
+      Command::new(iptables)
+        .args(["-w", "-D"])
+        .args(rule)
+        .output()?,
+    )?;
   }
   Ok(())
 }
@@ -376,20 +411,20 @@ mod tests {
 
   #[test]
   fn failing_iptables_is_an_error() {
-    allow_hotspot(Path::new("true"), "corona-ap", Some("eth0"), false, &[]).unwrap();
+    allow_hotspot(Path::new("true"), "corona-ap", &["eth0"], false, &[]).unwrap();
     allow_ipv6(Path::new("true"), "corona-ap").unwrap();
     disallow_hotspot(Path::new("true")).unwrap();
-    assert!(allow_hotspot(Path::new("false"), "corona-ap", None, false, &[]).is_err());
+    assert!(allow_hotspot(Path::new("false"), "corona-ap", &[], false, &[]).is_err());
     assert!(allow_ipv6(Path::new("false"), "corona-ap").is_err());
   }
 
   /// the chain's rules after `allow_hotspot`, first checked first
-  fn inserted(uplink: Option<&str>, bridged: bool, chain: &str) -> Vec<String> {
+  fn inserted(locks: &[&str], bridged: bool, chain: &str) -> Vec<String> {
     let dir = std::env::temp_dir().join(format!("corona-iptables-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (fake, log) = (
       dir.join("iptables"),
-      dir.join(format!("{chain}-{uplink:?}-{bridged}")),
+      dir.join(format!("{chain}-{locks:?}-{bridged}")),
     );
     // logs the rule
     std::fs::write(
@@ -399,22 +434,31 @@ mod tests {
     .unwrap();
     std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let direct = ["203.0.113.0/24".to_owned()];
-    allow_hotspot(&fake, "ap0", uplink, bridged, &direct).unwrap();
+    allow_hotspot(&fake, "ap0", locks, bridged, &direct).unwrap();
     let logged = std::fs::read_to_string(&log).unwrap();
     std::fs::remove_dir_all(&dir).ok();
-    let rule = |line: &str| line.replace(&format!(" -m comment --comment {TAG}"), "");
-    logged
-      .lines()
-      .rev()
-      .filter(|line| line.starts_with(chain))
-      .map(rule)
-      .collect()
+    // never an accept without all rejects in
+    let mut after_accept = logged.lines().skip_while(|l| !l.ends_with("ACCEPT"));
+    assert!(!after_accept.any(|l| l.ends_with("REJECT")));
+    let mut rules = Vec::new();
+    for line in logged.lines().filter(|line| line.starts_with(chain)) {
+      let mut words = line.splitn(3, ' ');
+      let (chain, position, rule) = (words.next().unwrap(), words.next().unwrap(), words.next());
+      let rule = rule
+        .unwrap()
+        .replace(&format!(" -m comment --comment {TAG}"), "");
+      rules.insert(
+        position.parse::<usize>().unwrap() - 1,
+        format!("{chain} {rule}"),
+      );
+    }
+    rules
   }
 
   #[test]
   fn hotspot_clients_reach_only_the_internet_and_dnsmasq() {
     assert_eq!(
-      inserted(Some("eth0"), false, "FORWARD"),
+      inserted(&["eth0", "usb0"], false, "FORWARD"),
       [
         "FORWARD -i ap0 -d 203.0.113.0/24 -j REJECT",
         "FORWARD -i ap0 -d 198.18.0.0/15 -j REJECT",
@@ -425,6 +469,7 @@ mod tests {
         "FORWARD -i ap0 -d 192.168.0.0/16 -j REJECT",
         "FORWARD -i ap0 -d 172.16.0.0/12 -j REJECT",
         "FORWARD -i ap0 -d 10.0.0.0/8 -j REJECT",
+        "FORWARD -i usb0 -m conntrack ! --ctstate RELATED,ESTABLISHED,DNAT -j REJECT",
         "FORWARD -i eth0 -m conntrack ! --ctstate RELATED,ESTABLISHED,DNAT -j REJECT",
         "FORWARD -o ap0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
         "FORWARD -i ap0 -j ACCEPT",
@@ -432,14 +477,14 @@ mod tests {
     );
     // bridged frames to VMs and containers are switched, not routed through the uplink
     assert!(
-      inserted(Some("eth0"), true, "FORWARD").contains(
+      inserted(&["eth0"], true, "FORWARD").contains(
         &"FORWARD -i eth0 -m physdev ! --physdev-is-bridged -m conntrack ! --ctstate \
         RELATED,ESTABLISHED,DNAT -j REJECT"
           .to_owned()
       )
     );
     assert_eq!(
-      inserted(None, false, "INPUT"),
+      inserted(&[], false, "INPUT"),
       [
         "INPUT -i ap0 -p tcp --dport 53 -j ACCEPT",
         "INPUT -i ap0 -p udp -m multiport --dports 53,67 -j ACCEPT",
@@ -447,9 +492,9 @@ mod tests {
         "INPUT -i ap0 -j REJECT",
       ]
     );
-    // nothing to close without an uplink
+    // nothing to close without locks
     assert!(
-      !inserted(None, false, "FORWARD")
+      !inserted(&[], false, "FORWARD")
         .iter()
         .any(|r| r.contains("! --ctstate"))
     );
@@ -481,9 +526,10 @@ mod tests {
 
   #[test]
   fn interface_names_are_checked() {
-    assert!(allow("wlan0", Some("eth+"), true).is_err());
-    assert!(allow("wlan+", None, false).is_err());
-    assert!(allow("wlan0", Some("no-such-uplink"), true).is_err());
+    let locks = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+    assert!(allow("wlan+", &[]).is_err());
+    // a lock gone or invalid is left out, not the whole hotspot
+    assert_eq!(existing(&locks(&["lo", "eth+", "no-such-lock"])), ["lo"]);
   }
 
   #[test]

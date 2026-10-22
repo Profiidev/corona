@@ -86,6 +86,19 @@ fn auto_off_label(minutes: Option<u32>) -> String {
   .into()
 }
 
+/// the listed option for `minutes`: the next longer one, at most the longest; a plugin or nmcli
+/// may have saved any
+fn listed_auto_off(minutes: Option<u32>) -> Option<u32> {
+  let listed = AUTO_OFF.into_iter().flatten();
+  minutes.map(|minutes| {
+    listed
+      .clone()
+      .find(|listed| *listed >= minutes)
+      .or(listed.max())
+      .unwrap_or(minutes)
+  })
+}
+
 /// the option of `options` selected in `select`, labelled by `label`
 fn selected<T: Copy>(
   options: &[T],
@@ -269,7 +282,11 @@ impl NetworkPanel {
         select.set_selected_value(&security_label(config.wpa3), window, cx)
       });
       form.auto_off.update(cx, |select, cx| {
-        select.set_selected_value(&auto_off_label(config.auto_off), window, cx)
+        select.set_selected_value(
+          &auto_off_label(listed_auto_off(config.auto_off)),
+          window,
+          cx,
+        )
       });
       form.isolate.update(cx, |select, cx| {
         select.set_selected_value(&isolate_label(config.isolate), window, cx)
@@ -473,6 +490,15 @@ mod tests {
       r#"WIFI:T:WPA;S:a\;b\,c\:d\"e\\f;P:\;;;"#
     );
     assert!(QrCode::new(wifi_qr_text("corona", Some(&"x".repeat(63)))).is_ok());
+  }
+
+  #[test]
+  fn unlisted_auto_off_snaps_up() {
+    assert_eq!(listed_auto_off(None), None);
+    assert_eq!(listed_auto_off(Some(10)), Some(10));
+    assert_eq!(listed_auto_off(Some(15)), Some(30));
+    assert_eq!(listed_auto_off(Some(1)), Some(5));
+    assert_eq!(listed_auto_off(Some(90)), Some(60));
   }
 
   #[test]

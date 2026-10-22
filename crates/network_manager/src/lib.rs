@@ -50,6 +50,8 @@ pub struct NetworkManager {
   pub hotspot: Entity<Option<HotspotInfo>>,
   /// the primary wifi device's radio runs a hotspot beside its connection
   pub hotspot_beside_wifi: Entity<bool>,
+  /// the connected interfaces of any kind, each a way for NM's forwarding to route
+  routing: Entity<Vec<String>>,
   /// the firewall rules corona let the hotspot's clients through with, None: none
   hotspot_rules: Arc<Mutex<Option<HotspotRules>>>,
   /// one root call at a time, so a late one cannot undo a later one
@@ -60,27 +62,27 @@ pub struct NetworkManager {
 #[derive(Clone, Debug, PartialEq)]
 struct HotspotRules {
   interface: String,
-  uplink: Option<String>,
-  /// the uplink is closed to routing elsewhere: it did not route before the hotspot
-  lock_uplink: bool,
+  /// closed to routing elsewhere: they did not route before the hotspot, NM's forwarding would
+  /// let any connected one route otherwise
+  locks: Vec<String>,
 }
 
 impl HotspotRules {
-  /// `uplink` unless it is the hotspot's own interface, which is no way out
-  fn new(interface: &str, uplink: Option<&str>) -> Self {
-    let uplink = uplink.filter(|u| *u != interface).map(str::to_owned);
+  /// locks the `activated` interfaces but the hotspot's own
+  fn new(interface: &str, activated: &[String]) -> Self {
     Self {
-      lock_uplink: uplink.as_deref().is_some_and(forwarding::lock_needed),
-      uplink,
+      locks: activated
+        .iter()
+        .filter(|i| *i != interface && forwarding::lock_needed(i))
+        .cloned()
+        .collect(),
       interface: interface.to_owned(),
     }
   }
 
   fn allow(&self) -> impl Future<Output = Result<()>> + use<> {
     let rules = self.clone();
-    async move {
-      actions::allow_hotspot(&rules.interface, rules.uplink.as_deref(), rules.lock_uplink).await
-    }
+    async move { actions::allow_hotspot(&rules.interface, &rules.locks).await }
   }
 }
 
@@ -97,9 +99,15 @@ impl RootLock {
 
   async fn run<T>(&self, f: impl Future<Output = T>) -> T {
     self.1.recv_async().await.ok();
-    let out = f.await;
-    self.0.send(()).ok();
-    out
+    // given back on drop too: a dropped call would hold every later one forever
+    struct Release<'a>(&'a flume::Sender<()>);
+    impl Drop for Release<'_> {
+      fn drop(&mut self) {
+        self.0.send(()).ok();
+      }
+    }
+    let _release = Release(&self.0);
+    f.await
   }
 }
 
@@ -320,7 +328,7 @@ impl NetworkManager {
       .iter()
       .any(|i| i.name == nl80211::AP_INTERFACE);
     let beside = self.hotspot_beside_wifi(cx);
-    let uplink = self.primary_interface(cx).map(|i| i.name.clone());
+    let activated = self.routing.read(cx).clone();
     let executor = cx.background_executor().clone();
     let (rules, root) = (self.hotspot_rules.clone(), self.root.clone());
     async move {
@@ -328,7 +336,7 @@ impl NetworkManager {
       config.validate()?;
       let primary = primary.context("no usable wifi device")?;
       let connected = primary.state == DeviceState::Activated;
-      let rules_for = |name: &str| HotspotRules::new(name, uplink.as_deref());
+      let rules_for = |name: &str| HotspotRules::new(name, &activated);
       // set by the first root call, which lets the clients through
       let mut allowed = None;
       let started = async {
@@ -349,9 +357,8 @@ impl NetworkManager {
           // only a connection is worth an interface beside it, adding it lets the clients through
           None if beside && connected => {
             let rules = rules_for(nl80211::AP_INTERFACE);
-            let (uplink, lock) = (rules.uplink.as_deref(), rules.lock_uplink);
             root
-              .run(actions::add_ap_interface(&primary.name, uplink, lock))
+              .run(actions::add_ap_interface(&primary.name, &rules.locks))
               .await?;
             allowed = Some(rules);
             let ours = actions::wait_for_device(&conn, nl80211::AP_INTERFACE, &executor).await?;
@@ -430,14 +437,14 @@ impl NetworkManager {
   }
 
   /// keeps corona's firewall rules with the hotspot: removed once it `ended` without corona
-  /// stopping it, through nmcli say, moved along to a new `uplink`, renewed when the host's
-  /// networks changed (a VPN connecting, say), and taken up again for the Corona Hotspot found
+  /// stopping it, through nmcli say, renewed for the `activated` interfaces when the host's
+  /// networks changed (a new uplink or VPN connecting, say), and taken up again for the Corona Hotspot found
   /// running on `adopt` when corona restarted meanwhile
   fn follow_hotspot_rules(
     &self,
     ended: bool,
     adopt: Option<&str>,
-    uplink: Option<&str>,
+    activated: &[String],
     networks_changed: bool,
     executor: &BackgroundExecutor,
   ) {
@@ -453,37 +460,53 @@ impl NetworkManager {
     }
     let rules = match (guard.as_mut(), adopt) {
       (Some(rules), _) => {
-        let uplink = uplink.filter(|uplink| *uplink != rules.interface);
-        // no route for a moment while switching: the old rules stay until a new uplink is up
-        let moved = uplink.is_some() && uplink != rules.uplink.as_deref();
-        if moved {
-          // recorded only while no hotspot runs: an uplink unseen until now stays locked
-          *rules = HotspotRules::new(&rules.interface, uplink);
-        } else if !networks_changed {
+        if !networks_changed {
           return;
         }
+        // recorded only while no hotspot runs: one unseen until now is locked, unless the default
+        // forwarded before any hotspot
+        *rules = HotspotRules::new(&rules.interface, activated);
         rules.clone()
       }
       (None, Some(interface)) => {
-        let rules = HotspotRules::new(interface, uplink);
+        let rules = HotspotRules::new(interface, activated);
         *guard = Some(rules.clone());
         rules
       }
       (None, None) => return,
     };
     drop(guard);
-    let (current, root) = (self.hotspot_rules.clone(), self.root.clone());
+    let (current, root, conn) = (
+      self.hotspot_rules.clone(),
+      self.root.clone(),
+      self.conn.clone(),
+    );
+    let background = executor.clone();
     executor
       .spawn(async move {
-        root
+        let allowed = root
           .run(async {
             // a stop or another move came first
             if current.lock().unwrap().as_ref() != Some(&rules) {
-              return;
+              return Ok(());
             }
-            rules.allow().await.log_err().ok();
+            rules.allow().await
           })
-          .await
+          .await;
+        // the helper failing removed every rule, the clients would reach the host's networks: the
+        // hotspot stops, ending it removes the rules here
+        // a stop came meanwhile, NM may have put another connection on the interface
+        if allowed.log_err().is_err()
+          && current.lock().unwrap().as_ref() == Some(&rules)
+          && let Ok(device) = actions::wait_for_device(&conn, &rules.interface, &background)
+            .await
+            .log_err()
+        {
+          actions::deactivate_hotspot_on(&conn, device)
+            .await
+            .log_err()
+            .ok();
+        }
       })
       .detach();
   }
@@ -599,6 +622,7 @@ impl NetworkManager {
       vpns: cx.new(|_| Vec::new()),
       hotspot: cx.new(|_| None),
       hotspot_beside_wifi: cx.new(|_| false),
+      routing: cx.new(|_| Vec::new()),
       hotspot_rules: Arc::default(),
       root: RootLock::new(),
       conn: conn.clone(),
@@ -1293,37 +1317,42 @@ mod tests {
   }
 
   #[gpui::test]
-  fn hotspot_rules_follow_the_uplink(cx: &mut TestAppContext) {
+  fn hotspot_rules_follow_the_networks(cx: &mut TestAppContext) {
     let (_bus, _mock) = start(cx, World::default());
     let nm = nm(cx);
     let executor = cx.executor();
-    let rules = |uplink: Option<&str>| {
+    let names = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+    let rules = |locks: &[&str]| {
       Some(HotspotRules {
         interface: "corona-ap".into(),
-        uplink: uplink.map(Into::into),
-        // the tests record no forwarding: every uplink is locked
-        lock_uplink: uplink.is_some(),
+        // the tests record no forwarding: every interface is locked
+        locks: names(locks),
       })
     };
-    let follow = |ended, adopt, uplink, changed| {
-      nm.follow_hotspot_rules(ended, adopt, uplink, changed, &executor)
+    let follow = |ended, adopt, activated: &[&str], changed| {
+      nm.follow_hotspot_rules(ended, adopt, &names(activated), changed, &executor)
     };
-    *nm.hotspot_rules.lock().unwrap() = rules(Some("eth0"));
-    // no route while switching, or the hotspot's own interface: kept
-    follow(false, None, None, false);
-    follow(false, None, Some("corona-ap"), true);
-    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("eth0")));
-    follow(false, Some("corona-ap"), Some("wlan0"), false);
-    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("wlan0")));
+    *nm.hotspot_rules.lock().unwrap() = rules(&["eth0"]);
+    // the networks unchanged: kept
+    follow(false, None, &["wlan0"], false);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(&["eth0"]));
+    // every connected interface but the hotspot's own
+    follow(
+      false,
+      Some("corona-ap"),
+      &["corona-ap", "wlan0", "usb0"],
+      true,
+    );
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(&["wlan0", "usb0"]));
     // ended without corona stopping it
-    follow(true, None, Some("wlan0"), false);
+    follow(true, None, &["wlan0"], false);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
     // none of corona's, nothing to follow
-    follow(false, None, Some("eth0"), true);
+    follow(false, None, &["eth0"], true);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
     // the Corona Hotspot an earlier corona left running is taken up
-    follow(false, Some("corona-ap"), Some("eth0"), false);
-    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("eth0")));
+    follow(false, Some("corona-ap"), &["eth0"], false);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(&["eth0"]));
   }
 
   #[gpui::test]

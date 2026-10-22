@@ -101,12 +101,10 @@ pub fn listener(
           .find(|n| matches!(n.status, WifiStatus::Connecting | WifiStatus::NeedAuth))
           .map(|n| n.ssid.clone());
 
-        let uplink = snapshot.primary_interface.as_ref().map(|i| i.name.clone());
-        let routing: Vec<_> = snapshot
-          .interfaces
+        let activated = snapshot.routing.clone();
+        let routing: Vec<_> = activated
           .iter()
-          .filter(|i| i.state == DeviceState::Activated)
-          .map(|i| i.name.clone())
+          .cloned()
           .chain(
             snapshot
               .vpns
@@ -119,16 +117,28 @@ pub fn listener(
         networks = routing;
         if snapshot.hotspot.is_none() {
           // NM may leave forwarding on after a hotspot, so it is recorded before one only
-          let names: Vec<_> = snapshot.interfaces.iter().map(|i| i.name.clone()).collect();
+          let names: Vec<_> = snapshot
+            .interfaces
+            .iter()
+            .map(|i| i.name.clone())
+            .chain(activated.iter().cloned())
+            .collect();
           cx.background_executor()
             .spawn(async move { forwarding::observe(names.iter().map(String::as_str)) })
             .detach();
         }
-        // NM would connect saved networks on corona's interface, from the moment it appears
+        // NM would connect saved networks on corona's interface, from the moment it appears and
+        // again after each hotspot on it: activating one turns autoconnect back on
         let ap = snapshot
           .interfaces
           .iter()
           .find(|i| i.name == AP_INTERFACE && i.usable())
+          .filter(|_| {
+            snapshot
+              .hotspot
+              .as_ref()
+              .is_none_or(|h| h.interface != AP_INTERFACE)
+          })
           .map(|i| i.path.clone());
         if let Some(ap) = ap.clone().filter(|_| !ap_seen) {
           let conn = conn.clone();
@@ -155,6 +165,7 @@ pub fn listener(
 
         let primary_wifi = snapshot.primary_wifi.as_ref().map(|i| i.name.clone());
         state.interfaces.write_changed(cx, snapshot.interfaces);
+        state.routing.write_changed(cx, snapshot.routing);
         state
           .primary_interface
           .write_changed(cx, snapshot.primary_interface);
@@ -182,7 +193,7 @@ pub fn listener(
         state.follow_hotspot_rules(
           ended,
           adopt,
-          uplink.as_deref(),
+          &activated,
           networks_changed,
           cx.background_executor(),
         );

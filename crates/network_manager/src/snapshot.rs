@@ -33,6 +33,8 @@ pub(crate) const AP_MODE: &str = "ap";
 
 pub struct Snapshot {
   pub interfaces: Vec<Interface>,
+  /// the connected interfaces of any kind, each a way for NM's forwarding to route
+  pub routing: Vec<String>,
   pub primary_interface: Option<Interface>,
   pub connectivity: NmConnectivityState,
   pub connectivity_check: Option<String>,
@@ -100,7 +102,11 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
   let nm = NetworkManager::new(conn).await?;
 
   let mut interfaces = Vec::new();
+  let mut routing = Vec::new();
   for device in nm.devices().await? {
+    if let Ok(Some(name)) = routing_interface(&device).await.log_err() {
+      routing.push(name);
+    }
     if let Ok(Some(i)) = read_device(device).await.log_err() {
       interfaces.push(i);
     }
@@ -184,6 +190,7 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
 
   Ok(Snapshot {
     interfaces,
+    routing,
     primary_interface,
     connectivity: nm.connectivity().await?,
     connectivity_check: connectivity_check(&nm).await,
@@ -315,6 +322,24 @@ async fn vpns(conn: &Connection, nm: &NetworkManager<'_>) -> Result<Vec<Vpn>> {
   }
   vpns.sort_by(|a, b| a.name.cmp(&b.name));
   Ok(vpns)
+}
+
+/// the interface a connected device routes through: Ethernet, wifi, a VPN's tunnel, a bridge,
+/// VLAN or bond, a modem's ppp0. Any tunnel counts, a VPN plugin's shows unmanaged on older NM.
+/// Unmanaged devices count too (e.g. wg-quick's wg0): the global ip_forward flip opens them as well
+async fn routing_interface(device: &Device<'_>) -> Result<Option<String>> {
+  let routes = matches!(
+    device.state().await?,
+    DeviceState::Activated | DeviceState::Unmanaged
+  ) || device.device_type().await? == DeviceType::TunTap;
+  if !routes {
+    return Ok(None);
+  }
+  let name = match device.ip_interface().await {
+    Ok(name) if !name.is_empty() => name,
+    _ => device.interface().await?,
+  };
+  Ok((name != "lo").then_some(name))
 }
 
 async fn read_device(device: Device<'_>) -> Result<Option<Interface>> {

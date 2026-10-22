@@ -76,7 +76,8 @@ in
       (lib.mkIf (cfg.hotspot.interface != null) {
         systemd.services.corona-ap = {
           description = "Corona hotspot interface";
-          wantedBy = [ "multi-user.target" ];
+          # pulled in by the radio: a radio missing at boot would hold up NetworkManager otherwise
+          wantedBy = [ radioDevice ];
           before = [ "NetworkManager.service" ];
           bindsTo = [ radioDevice ];
           after = [ radioDevice ];
