@@ -1,7 +1,6 @@
 use std::{collections::HashMap, io::Read, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
-use corona_utils::error::ErrorLogExt;
 use cosmic_dbus_networkmanager::{
   device::{Device, wireless::WirelessDevice},
   interface::{
@@ -542,7 +541,7 @@ async fn saved_hotspot(conn: &Connection) -> Result<Option<(OwnedObjectPath, Opt
 }
 
 /// the band and channel of a frequency in MHz, None outside 2.4 and 5 GHz
-fn channel(frequency: u32) -> Option<(HotspotBand, u32)> {
+pub(crate) fn channel(frequency: u32) -> Option<(HotspotBand, u32)> {
   match frequency {
     2484 => Some((HotspotBand::Bg, 14)),
     2412..=2472 => Some((HotspotBand::Bg, (frequency - 2407) / 5)),
@@ -754,7 +753,11 @@ async fn wait_for_activation(
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
 /// its clients through the firewall
-pub(crate) async fn add_ap_interface(beside: &str, uplink: Option<&str>) -> Result<()> {
+pub(crate) async fn add_ap_interface(
+  beside: &str,
+  uplink: Option<&str>,
+  lock_uplink: bool,
+) -> Result<()> {
   let (phy, mac) = nl80211::radio(beside).with_context(|| format!("{beside} has no radio"))?;
   let mut args = vec![
     "add-ap-interface".to_owned(),
@@ -762,31 +765,39 @@ pub(crate) async fn add_ap_interface(beside: &str, uplink: Option<&str>) -> Resu
     nl80211::AP_INTERFACE.to_owned(),
     nl80211::format_mac(nl80211::ap_mac(mac)),
   ];
-  args.extend(uplink.map(|u| format!("--uplink={u}")));
+  args.extend(uplink_args(uplink, lock_uplink));
   as_root(args).await
 }
 
-/// waits for NM to take up the interface `add_ap_interface` added
-pub(crate) async fn take_up_ap_interface(
-  conn: &Connection,
-  executor: &BackgroundExecutor,
-) -> Result<OwnedObjectPath> {
-  let device = wait_for_device(conn, nl80211::AP_INTERFACE, executor).await?;
-  // NM would connect saved networks on it otherwise
-  proxy::<DeviceProxy, DeviceProxy>(conn, device.clone())
+fn uplink_args(uplink: Option<&str>, lock_uplink: bool) -> Vec<String> {
+  let mut args: Vec<_> = uplink
+    .map(|u| format!("--uplink={u}"))
+    .into_iter()
+    .collect();
+  if lock_uplink {
+    args.push("--lock-uplink".to_owned());
+  }
+  args
+}
+
+/// keeps NM from connecting saved networks on corona's interface
+pub(crate) async fn no_autoconnect(conn: &Connection, device: OwnedObjectPath) -> Result<()> {
+  proxy::<DeviceProxy, DeviceProxy>(conn, device)
     .await?
     .set_autoconnect(false)
-    .await
-    .log_err()
-    .ok();
-  Ok(device)
+    .await?;
+  Ok(())
 }
 
 /// asks for root through pkexec to let the clients of a hotspot on `interface` through the
 /// firewall to `uplink`, which would drop their DHCP requests otherwise
-pub(crate) async fn allow_hotspot(interface: &str, uplink: Option<&str>) -> Result<()> {
+pub(crate) async fn allow_hotspot(
+  interface: &str,
+  uplink: Option<&str>,
+  lock_uplink: bool,
+) -> Result<()> {
   let mut args = vec!["allow-hotspot".to_owned(), interface.to_owned()];
-  args.extend(uplink.map(|u| format!("--uplink={u}")));
+  args.extend(uplink_args(uplink, lock_uplink));
   as_root(args).await
 }
 
@@ -813,11 +824,12 @@ async fn as_root(args: Vec<String>) -> Result<()> {
     .recv_async()
     .await?
     .context("the hotspot needs pkexec")?;
-  ensure!(
-    output.status.success(),
-    "{}",
-    String::from_utf8_lossy(&output.stderr).trim()
-  );
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  ensure!(output.status.success(), "{}", stderr.trim());
+  // the helper's warnings, a firewall dropping the clients' DHCP say
+  for line in stderr.lines().filter(|line| !line.trim().is_empty()) {
+    tracing::warn!("corona network: {line}");
+  }
   Ok(())
 }
 

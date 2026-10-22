@@ -23,6 +23,7 @@ pub use cosmic_dbus_networkmanager::interface::enums::{
 
 mod actions;
 mod agent;
+mod forwarding;
 mod listener;
 #[cfg(test)]
 mod mock;
@@ -51,6 +52,8 @@ pub struct NetworkManager {
   pub hotspot_beside_wifi: Entity<bool>,
   /// the firewall rules corona let the hotspot's clients through with, None: none
   hotspot_rules: Arc<Mutex<Option<HotspotRules>>>,
+  /// one root call at a time, so a late one cannot undo a later one
+  root: RootLock,
   conn: Connection,
 }
 
@@ -58,7 +61,52 @@ pub struct NetworkManager {
 struct HotspotRules {
   interface: String,
   uplink: Option<String>,
+  /// the uplink is closed to routing elsewhere: it did not route before the hotspot
+  lock_uplink: bool,
 }
+
+impl HotspotRules {
+  /// `uplink` unless it is the hotspot's own interface, which is no way out
+  fn new(interface: &str, uplink: Option<&str>) -> Self {
+    let uplink = uplink.filter(|u| *u != interface).map(str::to_owned);
+    Self {
+      lock_uplink: uplink.as_deref().is_some_and(forwarding::lock_needed),
+      uplink,
+      interface: interface.to_owned(),
+    }
+  }
+
+  fn allow(&self) -> impl Future<Output = Result<()>> + use<> {
+    let rules = self.clone();
+    async move {
+      actions::allow_hotspot(&rules.interface, rules.uplink.as_deref(), rules.lock_uplink).await
+    }
+  }
+}
+
+/// a one token semaphore
+#[derive(Clone)]
+struct RootLock(flume::Sender<()>, flume::Receiver<()>);
+
+impl RootLock {
+  fn new() -> Self {
+    let (token, wait) = flume::bounded(1);
+    token.send(()).unwrap();
+    Self(token, wait)
+  }
+
+  async fn run<T>(&self, f: impl Future<Output = T>) -> T {
+    self.1.recv_async().await.ok();
+    let out = f.await;
+    self.0.send(()).ok();
+    out
+  }
+}
+
+/// how long the wifi connection has to stay on another channel before the hotspot follows it
+const ROAM_DEBOUNCE: Duration = Duration::from_secs(5);
+/// failed client counts in a row auto-off gives up after
+const AUTO_OFF_FAILURES: u32 = 5;
 
 /// how often a hotspot that turns itself off counts its clients
 const AUTO_OFF_CHECK: Duration = Duration::from_secs(30);
@@ -274,66 +322,76 @@ impl NetworkManager {
     let beside = self.hotspot_beside_wifi(cx);
     let uplink = self.primary_interface(cx).map(|i| i.name.clone());
     let executor = cx.background_executor().clone();
-    let rules = self.hotspot_rules.clone();
+    let (rules, root) = (self.hotspot_rules.clone(), self.root.clone());
     async move {
       // before the password is asked for
       config.validate()?;
       let primary = primary.context("no usable wifi device")?;
       let connected = primary.state == DeviceState::Activated;
-      // the hotspot's own interface, or one it takes over, is no way out
-      let uplink_beside = |name: &str| uplink.clone().filter(|u| u != name);
+      let rules_for = |name: &str| HotspotRules::new(name, uplink.as_deref());
       // set by the first root call, which lets the clients through
-      let mut allowed = false;
+      let mut allowed = None;
       let started = async {
         let (device, name) = match spare {
           Some((device, name)) => {
-            actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
-            allowed = true;
+            let rules = rules_for(&name);
+            root.run(rules.allow()).await?;
+            allowed = Some(rules);
             (device, name)
           }
           None if ours => {
-            let name = nl80211::AP_INTERFACE.to_owned();
-            actions::allow_hotspot(&name, uplink_beside(&name).as_deref()).await?;
-            allowed = true;
-            let ours = actions::wait_for_device(&conn, &name, &executor).await?;
-            (ours, name)
+            let rules = rules_for(nl80211::AP_INTERFACE);
+            root.run(rules.allow()).await?;
+            allowed = Some(rules);
+            let ours = actions::wait_for_device(&conn, nl80211::AP_INTERFACE, &executor).await?;
+            (ours, nl80211::AP_INTERFACE.to_owned())
           }
           // only a connection is worth an interface beside it, adding it lets the clients through
           None if beside && connected => {
-            let name = nl80211::AP_INTERFACE.to_owned();
-            actions::add_ap_interface(&primary.name, uplink_beside(&name).as_deref()).await?;
-            allowed = true;
-            (actions::take_up_ap_interface(&conn, &executor).await?, name)
+            let rules = rules_for(nl80211::AP_INTERFACE);
+            let (uplink, lock) = (rules.uplink.as_deref(), rules.lock_uplink);
+            root
+              .run(actions::add_ap_interface(&primary.name, uplink, lock))
+              .await?;
+            allowed = Some(rules);
+            let ours = actions::wait_for_device(&conn, nl80211::AP_INTERFACE, &executor).await?;
+            (ours, nl80211::AP_INTERFACE.to_owned())
           }
           None => {
-            actions::allow_hotspot(&primary.name, uplink_beside(&primary.name).as_deref()).await?;
-            allowed = true;
+            let rules = rules_for(&primary.name);
+            root.run(rules.allow()).await?;
+            allowed = Some(rules);
             (primary.path.clone(), primary.name.clone())
           }
         };
+        // on every path: NM would connect saved networks on it otherwise
+        if name == nl80211::AP_INTERFACE {
+          actions::no_autoconnect(&conn, device.clone())
+            .await
+            .log_err()
+            .ok();
+        }
         let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
         let shared =
           name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
         let client = shared.then_some((primary.path.clone(), connected));
         actions::start_hotspot(&conn, device, config, client, &executor).await?;
-        anyhow::Ok(HotspotRules {
-          uplink: uplink_beside(&name),
-          interface: name,
-        })
+        anyhow::Ok(())
       }
       .await;
-      match started {
+      match (started, allowed) {
         // only now: the listener would take a failed WPA3 try, gone before the WPA2 one, for a
         // hotspot stopped outside corona and remove the rules
-        Ok(started) => {
+        (Ok(()), Some(started)) => {
           *rules.lock().unwrap() = Some(started);
           Ok(())
         }
+        (Ok(()), None) => unreachable!("every path lets the clients through first"),
         // nothing stops a hotspot that never ran, its rules would let in the peers of a later
         // client connection on the interface
-        Err(e) => {
-          if allowed {
-            actions::disallow_hotspot().await.log_err().ok();
+        (Err(e), allowed) => {
+          if allowed.is_some() {
+            root.run(actions::disallow_hotspot()).await.log_err().ok();
           }
           Err(e)
         }
@@ -357,13 +415,13 @@ impl NetworkManager {
       .hotspot(cx)
       .map(|h| h.connection_path.clone())
       .context("the hotspot is not running");
-    let rules = self.hotspot_rules.clone();
+    let (rules, root) = (self.hotspot_rules.clone(), self.root.clone());
     async move {
       let profile = profile?;
       // first: a cancelled password prompt keeps the hotspot running with its rules, instead of
       // leaving them on an interface that may connect as a client later
       let ours = rules.lock().unwrap().take();
-      if let Err(e) = actions::disallow_hotspot().await {
+      if let Err(e) = root.run(actions::disallow_hotspot()).await {
         *rules.lock().unwrap() = ours;
         return Err(e);
       }
@@ -372,35 +430,60 @@ impl NetworkManager {
   }
 
   /// keeps corona's firewall rules with the hotspot: removed once it `ended` without corona
-  /// stopping it, through nmcli say, and moved along to a new `uplink`
-  fn follow_hotspot_rules(&self, ended: bool, uplink: Option<&str>, executor: &BackgroundExecutor) {
-    let mut rules = self.hotspot_rules.lock().unwrap();
+  /// stopping it, through nmcli say, moved along to a new `uplink`, renewed when the host's
+  /// networks changed (a VPN connecting, say), and taken up again for the Corona Hotspot found
+  /// running on `adopt` when corona restarted meanwhile
+  fn follow_hotspot_rules(
+    &self,
+    ended: bool,
+    adopt: Option<&str>,
+    uplink: Option<&str>,
+    networks_changed: bool,
+    executor: &BackgroundExecutor,
+  ) {
+    let mut guard = self.hotspot_rules.lock().unwrap();
     if ended {
-      if rules.take().is_some() {
+      if guard.take().is_some() {
+        let root = self.root.clone();
         executor
-          .spawn(async { actions::disallow_hotspot().await.log_err().ok() })
+          .spawn(async move { root.run(actions::disallow_hotspot()).await.log_err().ok() })
           .detach();
       }
       return;
     }
-    let Some(rules) = rules.as_mut() else {
-      return;
+    let rules = match (guard.as_mut(), adopt) {
+      (Some(rules), _) => {
+        let uplink = uplink.filter(|uplink| *uplink != rules.interface);
+        // no route for a moment while switching: the old rules stay until a new uplink is up
+        let moved = uplink.is_some() && uplink != rules.uplink.as_deref();
+        if moved {
+          // recorded only while no hotspot runs: an uplink unseen until now stays locked
+          *rules = HotspotRules::new(&rules.interface, uplink);
+        } else if !networks_changed {
+          return;
+        }
+        rules.clone()
+      }
+      (None, Some(interface)) => {
+        let rules = HotspotRules::new(interface, uplink);
+        *guard = Some(rules.clone());
+        rules
+      }
+      (None, None) => return,
     };
-    let uplink = uplink.filter(|uplink| *uplink != rules.interface);
-    // no route for a moment while switching: the old rules stay until a new uplink is up
-    if uplink.is_none() || uplink == rules.uplink.as_deref() {
-      return;
-    }
-    rules.uplink = uplink.map(str::to_owned);
-    let rules = rules.clone();
-    // shortcut: races a stop asked for in the same moment, which may leave the rules until the
-    // next start or reboot; serialize the root calls if that bites
+    drop(guard);
+    let (current, root) = (self.hotspot_rules.clone(), self.root.clone());
     executor
       .spawn(async move {
-        actions::allow_hotspot(&rules.interface, rules.uplink.as_deref())
+        root
+          .run(async {
+            // a stop or another move came first
+            if current.lock().unwrap().as_ref() != Some(&rules) {
+              return;
+            }
+            rules.allow().await.log_err().ok();
+          })
           .await
-          .log_err()
-          .ok()
       })
       .detach();
   }
@@ -411,6 +494,7 @@ impl NetworkManager {
     cx.spawn(async move |cx| {
       let limit = Duration::from_secs(60 * u64::from(minutes));
       let mut idle = Duration::ZERO;
+      let mut failures = 0;
       while idle < limit {
         cx.background_executor().timer(AUTO_OFF_CHECK).await;
         let interface = interface.clone();
@@ -418,10 +502,15 @@ impl NetworkManager {
           .background_executor()
           .spawn(async move { nl80211::stations(&interface) })
           .await;
-        // a radio without nl80211 stays so
+        // a transient error keeps the count, a radio without nl80211 stays so
         let Ok(stations) = stations.log_err() else {
-          return;
+          failures += 1;
+          if failures == AUTO_OFF_FAILURES {
+            return;
+          }
+          continue;
         };
+        failures = 0;
         idle = if stations.is_empty() {
           idle + AUTO_OFF_CHECK
         } else {
@@ -430,6 +519,45 @@ impl NetworkManager {
       }
       let stop = cx.update(|cx| state.stop_hotspot(cx));
       stop.await.log_err().ok();
+    })
+  }
+
+  /// re-activates the Corona Hotspot on corona's interface on the channel of `client`, the wifi
+  /// device beside it on one radio, once it stayed on another channel for a moment
+  fn follow_channel(&self, client: Interface, cx: &mut AsyncApp) -> Task<()> {
+    let state = self.clone();
+    cx.spawn(async move |cx| {
+      cx.background_executor().timer(ROAM_DEBOUNCE).await;
+      let name = client.name.clone();
+      let shared = cx
+        .background_executor()
+        .spawn(async move {
+          let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
+          radio(nl80211::AP_INTERFACE).is_some_and(|phy| radio(&name) == Some(phy))
+        })
+        .await;
+      // a radio of its own keeps its channel
+      if !shared {
+        return;
+      }
+      let (config, device, conn, executor) = cx.update(|cx| {
+        (
+          state.hotspot_config(cx),
+          state.interface_path(nl80211::AP_INTERFACE, cx),
+          state.conn.clone(),
+          cx.background_executor().clone(),
+        )
+      });
+      let restarted = async move {
+        let config = config.await?.context("the hotspot has no profile")?;
+        tracing::info!("the wifi connection moved channel, the hotspot follows");
+        let client = Some((client.path, true));
+        actions::start_hotspot(&conn, device?, config, client, &executor).await
+      };
+      // detached: re-activating shows the hotspot activating, which drops this task
+      cx.background_executor()
+        .spawn(async move { restarted.await.log_err().ok() })
+        .detach();
     })
   }
 
@@ -472,6 +600,7 @@ impl NetworkManager {
       hotspot: cx.new(|_| None),
       hotspot_beside_wifi: cx.new(|_| false),
       hotspot_rules: Arc::default(),
+      root: RootLock::new(),
       conn: conn.clone(),
     }
   }
@@ -857,6 +986,8 @@ mod tests {
           interface: "wlan0".into(),
           // saved before auto-off was settable
           auto_off: Some(10),
+          corona: true,
+          channel: None,
         })
       );
       // an access point does not scan
@@ -1170,21 +1301,59 @@ mod tests {
       Some(HotspotRules {
         interface: "corona-ap".into(),
         uplink: uplink.map(Into::into),
+        // the tests record no forwarding: every uplink is locked
+        lock_uplink: uplink.is_some(),
       })
+    };
+    let follow = |ended, adopt, uplink, changed| {
+      nm.follow_hotspot_rules(ended, adopt, uplink, changed, &executor)
     };
     *nm.hotspot_rules.lock().unwrap() = rules(Some("eth0"));
     // no route while switching, or the hotspot's own interface: kept
-    nm.follow_hotspot_rules(false, None, &executor);
-    nm.follow_hotspot_rules(false, Some("corona-ap"), &executor);
+    follow(false, None, None, false);
+    follow(false, None, Some("corona-ap"), true);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("eth0")));
-    nm.follow_hotspot_rules(false, Some("wlan0"), &executor);
+    follow(false, Some("corona-ap"), Some("wlan0"), false);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("wlan0")));
     // ended without corona stopping it
-    nm.follow_hotspot_rules(true, Some("wlan0"), &executor);
+    follow(true, None, Some("wlan0"), false);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
     // none of corona's, nothing to follow
-    nm.follow_hotspot_rules(false, Some("eth0"), &executor);
+    follow(false, None, Some("eth0"), true);
     assert_eq!(*nm.hotspot_rules.lock().unwrap(), None);
+    // the Corona Hotspot an earlier corona left running is taken up
+    follow(false, Some("corona-ap"), Some("eth0"), false);
+    assert_eq!(*nm.hotspot_rules.lock().unwrap(), rules(Some("eth0")));
+  }
+
+  #[gpui::test]
+  fn root_calls_take_turns(cx: &mut TestAppContext) {
+    let root = RootLock::new();
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let (first_in, first_wait) = flume::bounded::<()>(1);
+    let first = cx.executor().spawn({
+      let (root, order) = (root.clone(), order.clone());
+      async move {
+        root
+          .run(async {
+            first_wait.recv_async().await.ok();
+            order.lock().unwrap().push(1);
+          })
+          .await
+      }
+    });
+    settle(cx);
+    let second = cx.executor().spawn({
+      let (root, order) = (root.clone(), order.clone());
+      async move { root.run(async { order.lock().unwrap().push(2) }).await }
+    });
+    settle(cx);
+    // waits for the first, which holds the token
+    assert!(order.lock().unwrap().is_empty());
+    first_in.send(()).unwrap();
+    settle(cx);
+    drop((first, second));
+    assert_eq!(*order.lock().unwrap(), [1, 2]);
   }
 
   #[gpui::test]

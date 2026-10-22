@@ -3,12 +3,16 @@ self:
   config,
   lib,
   pkgs,
+  utils,
   ...
 }:
 
 let
   inherit (pkgs.stdenv.hostPlatform) system;
   cfg = config.programs.corona;
+  # corona's own name for the interface it runs a hotspot on beside a wifi connection
+  ap = "corona-ap";
+  radioDevice = "sys-subsystem-net-devices-${utils.escapeSystemdPath cfg.hotspot.interface}.device";
 in
 {
   options.programs.corona = {
@@ -25,6 +29,19 @@ in
         default = "graphical-session.target";
         description = "The systemd target to start Corona on.";
       };
+    };
+
+    hotspot.interface = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "wlp1s0";
+      description = ''
+        The wifi interface whose radio gets Corona's hotspot interface (corona-ap) at boot, so a
+        hotspot runs beside its connection without dropping it while the interface is added.
+        Also keeps NetworkManager from connecting client profiles on corona-ap and opens DHCP and
+        DNS for the hotspot's clients in the firewall. Only for radios that run a station and an
+        access point at once.
+      '';
     };
 
     recommendedServices.enable = lib.mkOption {
@@ -55,6 +72,53 @@ in
           };
         };
       }
+
+      (lib.mkIf (cfg.hotspot.interface != null) {
+        systemd.services.corona-ap = {
+          description = "Corona hotspot interface";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "NetworkManager.service" ];
+          bindsTo = [ radioDevice ];
+          after = [ radioDevice ];
+          path = [
+            pkgs.iw
+            pkgs.iproute2
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          # never removed: the interface going away restarts wpa_supplicant on some setups
+          script = ''
+            iw dev ${ap} info >/dev/null 2>&1 && exit 0
+            radio=$(cat /sys/class/net/${cfg.hotspot.interface}/phy80211/macaddress)
+            # corona's ap_mac: locally administered, distinct from the radio's
+            first=$(printf '%02x' $(( 0x''${radio%%:*} | 2 )))
+            mac=$first:''${radio#*:}
+            if [ "$mac" = "$radio" ]; then
+              mac=''${mac%:*}:$(printf '%02x' $(( 0x''${radio##*:} ^ 1 )))
+            fi
+            iw dev ${cfg.hotspot.interface} interface add ${ap} type __ap
+            ip link set ${ap} address "$mac"
+          '';
+        };
+
+        # no client profile on it from boot on, before corona runs
+        networking.networkmanager.settings."device-${ap}" = {
+          match-device = "interface-name:${ap}";
+          allowed-connections = "id:Corona Hotspot";
+        };
+
+        # an accept in another nftables table cannot override this firewall's drop; corona's
+        # rejects still keep the clients off everything else
+        networking.firewall.interfaces.${ap} = {
+          allowedUDPPorts = [
+            53
+            67
+          ];
+          allowedTCPPorts = [ 53 ];
+        };
+      })
 
       (lib.mkIf cfg.recommendedServices.enable {
         networking.networkmanager.enable = lib.mkDefault true;

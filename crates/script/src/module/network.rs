@@ -165,6 +165,33 @@ struct Hotspot {
   band: nm::HotspotBand,
 }
 
+/// The hotspot's settings without its password, which plugins never see.
+#[derive(Serialize, TS)]
+struct HotspotSettings {
+  ssid: String,
+  /// It has a password, which `startHotspot` needs again to keep it.
+  secured: bool,
+  band: nm::HotspotBand,
+  wpa3: bool,
+  /// Minutes without clients it turns off after, null: never.
+  auto_off: Option<u32>,
+  /// Keeps the clients from reaching each other.
+  isolate: bool,
+}
+
+impl From<nm::HotspotConfig> for HotspotSettings {
+  fn from(config: nm::HotspotConfig) -> Self {
+    Self {
+      ssid: config.ssid,
+      secured: config.password.is_some(),
+      band: config.band,
+      wpa3: config.wpa3,
+      auto_off: config.auto_off,
+      isolate: config.isolate,
+    }
+  }
+}
+
 impl From<&nm::HotspotInfo> for Hotspot {
   fn from(hotspot: &nm::HotspotInfo) -> Self {
     Self {
@@ -500,8 +527,11 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
     }))
     .func(named!(
       "hotspotConfig",
-      /// The running hotspot's settings with its password, else the saved ones, else null.
-      |cx: Cx, nm: Glob<NetworkManager>| nm.hotspot_config(&cx)
+      /// The running hotspot's settings, else the saved ones, else null. Never its password.
+      |cx: Cx, nm: Glob<NetworkManager>| {
+        let config = nm.hotspot_config(&cx);
+        async move { config.await.map(|config| config.map(HotspotSettings::from)) }
+      }
     ))
     .func(named!(
       "disconnect",
@@ -657,6 +687,8 @@ mod tests {
       connection_path: Default::default(),
       interface: "wlan0".into(),
       auto_off: Some(10),
+      corona: true,
+      channel: None,
     };
     let json = json(Hotspot::from(&hotspot));
     assert_eq!(json["band"], "a");
@@ -669,6 +701,13 @@ mod tests {
     assert!(!config.wpa3);
     assert_eq!(config.auto_off, Some(10));
     assert!(config.isolate);
+    let secured = nm::HotspotConfig {
+      password: Some("hunter22".into()),
+      ..config
+    };
+    let settings = super::tests::json(HotspotSettings::from(secured));
+    assert!(settings.get("password").is_none());
+    assert_eq!(settings["secured"], true);
   }
 
   #[test]

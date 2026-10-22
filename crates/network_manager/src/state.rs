@@ -96,4 +96,8 @@ pub struct HotspotInfo {
   pub interface: String,
   /// minutes without clients the Corona Hotspot turns off after, None: never, as any other
   pub auto_off: Option<u32>,
+  /// the Corona Hotspot, not one started elsewhere
+  pub corona: bool,
+  /// the channel its profile pins it to, the connection's beside it on one radio
+  pub channel: Option<u32>,
 }

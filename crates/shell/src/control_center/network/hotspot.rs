@@ -532,6 +532,8 @@ mod tests {
           // no interface of this machine, the panel finds no clients of its own
           interface: "corona-test0".into(),
           auto_off: None,
+          corona: false,
+          channel: None,
         });
         cx.notify();
       });

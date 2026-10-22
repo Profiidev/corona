@@ -6,6 +6,7 @@ use cosmic_dbus_networkmanager::{
   access_point::AccessPoint,
   device::{Device, wireless::WirelessDevice},
   interface::{
+    access_point::AccessPointProxy,
     active_connection::ActiveConnectionProxy,
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
     enums::{
@@ -20,7 +21,7 @@ use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 use crate::{
   actions,
-  nl80211::{self, AP_INTERFACE},
+  nl80211::AP_INTERFACE,
   state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
 };
 
@@ -41,7 +42,8 @@ pub struct Snapshot {
   pub wifi_networks: Vec<WifiNetwork>,
   pub vpns: Vec<Vpn>,
   pub hotspot: Option<HotspotInfo>,
-  pub hotspot_beside_wifi: bool,
+  /// MHz of the access point the primary wifi device is connected to
+  pub primary_wifi_frequency: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -158,10 +160,14 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     .or_else(|| wifi().filter(client).find(|i| i.usable()).cloned())
     // the only wifi device runs the hotspot
     .or_else(|| wifi().find(|i| Some(&i.path) == hotspot_path).cloned());
-  let hotspot_beside_wifi = primary_wifi
-    .as_ref()
-    .and_then(|i| nl80211::radio(&i.name))
-    .is_some_and(|(phy, _)| nl80211::station_beside_ap(phy));
+  let primary_wifi_frequency = match &primary_wifi {
+    Some(device)
+      if device.state == DeviceState::Activated && Some(&device.path) != hotspot_path =>
+    {
+      frequency(conn, device).await.log_err().ok().flatten()
+    }
+    _ => None,
+  };
 
   let wifi_supported = interfaces
     .iter()
@@ -187,7 +193,7 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     wifi_networks,
     vpns: vpns(conn, &nm).await.log_err().unwrap_or_default(),
     hotspot: hotspot.map(|(_, info)| info),
-    hotspot_beside_wifi,
+    primary_wifi_frequency,
   })
 }
 
@@ -217,6 +223,11 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
     .get_settings()
     .await?;
   let auto_off = actions::auto_off(&settings);
+  let corona = settings
+    .get("connection")
+    .and_then(|connection| connection.get("id"))
+    .and_then(|id| <&str>::try_from(&**id).ok())
+    == Some(actions::HOTSPOT_ID);
   let wifi = Settings::new(settings)
     .wifi
     .filter(|wifi| wifi.mode.as_deref() == Some(AP_MODE));
@@ -230,7 +241,31 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
     connection_path,
     interface: device.name.clone(),
     auto_off,
+    corona,
+    channel: wifi.channel,
   }))
+}
+
+/// the frequency of the access point `device` is connected to
+async fn frequency(conn: &Connection, device: &Interface) -> Result<Option<u32>> {
+  let access_point = WirelessDeviceProxy::builder(conn)
+    .path(device.path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .active_access_point()
+    .await?;
+  if access_point == OwnedObjectPath::default() {
+    return Ok(None);
+  }
+  let frequency = AccessPointProxy::builder(conn)
+    .path(access_point)?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .frequency()
+    .await?;
+  Ok(Some(frequency))
 }
 
 async fn connectivity_check(nm: &NetworkManager<'_>) -> Option<String> {

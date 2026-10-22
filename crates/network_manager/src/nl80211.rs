@@ -12,10 +12,13 @@ use std::{
 
 use anyhow::{Context, Result, bail, ensure};
 use corona_utils::error::ErrorLogExt;
-use rustix::net::{
-  AddressFamily, RecvFlags, SendFlags, SocketFlags, SocketType,
-  netlink::{self, SocketAddrNetlink},
-  recv, sendto, socket_with,
+use rustix::{
+  io::Errno,
+  net::{
+    AddressFamily, RecvFlags, SendFlags, SocketFlags, SocketType,
+    netlink::{self, SocketAddrNetlink},
+    recv, sendto, socket_with,
+  },
 };
 
 /// the interface corona adds for its hotspot
@@ -144,7 +147,37 @@ fn request(message: &[u8], mut reply: impl FnMut(&[u8])) -> Result<()> {
   }
 }
 
-fn nl80211() -> Result<u16> {
+/// runs `f` with nl80211's family ID, resolved once; resolved again once when a request fails as
+/// if the ID were stale, after a module reload say
+fn with_nl80211<T>(f: impl Fn(u16) -> Result<T>) -> Result<T> {
+  static FAMILY: Mutex<Option<u16>> = Mutex::new(None);
+  let cached = *FAMILY.lock().unwrap();
+  let family = match cached {
+    Some(family) => family,
+    None => resolve_nl80211()?,
+  };
+  *FAMILY.lock().unwrap() = Some(family);
+  match f(family) {
+    Err(e)
+      if cached.is_some()
+        && e
+          .downcast_ref::<std::io::Error>()
+          .and_then(std::io::Error::raw_os_error)
+          .is_some_and(|errno| {
+            [Errno::NOENT, Errno::INVAL]
+              .map(Errno::raw_os_error)
+              .contains(&errno)
+          }) =>
+    {
+      let family = resolve_nl80211()?;
+      *FAMILY.lock().unwrap() = Some(family);
+      f(family)
+    }
+    result => result,
+  }
+}
+
+fn resolve_nl80211() -> Result<u16> {
   let mut family = None;
   let name = attr(CTRL_ATTR_FAMILY_NAME, b"nl80211\0");
   request(
@@ -203,7 +236,10 @@ fn station_and_ap(combinations: &[u8]) -> bool {
 }
 
 fn query_station_beside_ap(phy: u32) -> Result<bool> {
-  let family = nl80211()?;
+  with_nl80211(|family| query_station_beside_ap_with(family, phy))
+}
+
+fn query_station_beside_ap_with(family: u16, phy: u32) -> Result<bool> {
   let filter = [
     attr(ATTR_WIPHY, &phy.to_ne_bytes()),
     attr(ATTR_SPLIT_WIPHY_DUMP, &[]),
@@ -296,17 +332,19 @@ pub fn stations(interface: &str) -> Result<Vec<[u8; 6]>> {
     .with_context(|| format!("{interface} does not exist"))?
     .trim()
     .parse()?;
-  let mut stations = Vec::new();
-  request(
-    &message(
-      nl80211()?,
-      NLM_F_DUMP,
-      CMD_GET_STATION,
-      &attr(ATTR_IFINDEX, &index.to_ne_bytes()),
-    ),
-    |reply| stations.extend(station_mac(reply)),
-  )?;
-  Ok(stations)
+  with_nl80211(|family| {
+    let mut stations = Vec::new();
+    request(
+      &message(
+        family,
+        NLM_F_DUMP,
+        CMD_GET_STATION,
+        &attr(ATTR_IFINDEX, &index.to_ne_bytes()),
+      ),
+      |reply| stations.extend(station_mac(reply)),
+    )?;
+    Ok(stations)
+  })
 }
 
 /// what the kernel takes, minus iptables' `+` wildcard; `.` for VLANs like `eth0.100`
@@ -323,7 +361,7 @@ pub fn add_ap_interface(phy: u32, name: &str, mac: [u8; 6]) -> Result<()> {
   if !valid_interface_name(name) {
     bail!("{name:?} is no interface name");
   }
-  let family = nl80211()?;
+  let family = resolve_nl80211()?;
   let mut name = name.as_bytes().to_vec();
   name.push(0);
   let attrs = [
