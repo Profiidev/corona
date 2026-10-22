@@ -10,6 +10,9 @@ app:
     network:
       en: Network
       de: Netzwerk
+    hotspot:
+      en: Hotspot
+      de: Hotspot
     bluetooth:
       en: Bluetooth
       de: Bluetooth
@@ -430,6 +433,43 @@ app:
       saved:
         en: Saved
         de: Gespeichert
+    hotspot:
+      title:
+        en: Hotspot
+        de: Hotspot
+      unsupported:
+        en: 'No Wi-Fi device that can run a hotspot'
+        de: 'Kein WLAN-Gerät, das einen Hotspot betreiben kann'
+      password:
+        en: 'Password, empty for an open hotspot'
+        de: 'Passwort, leer für einen offenen Hotspot'
+      scan:
+        en: 'Scan to join %{ssid}'
+        de: 'Scannen, um %{ssid} beizutreten'
+      takes_wifi:
+        en: 'Wi-Fi disconnects while the hotspot is on. Starting and stopping it may ask for administrator rights'
+        de: 'WLAN wird getrennt, solange der Hotspot läuft. Starten und Stoppen kann nach Administratorrechten fragen'
+      asks_admin:
+        en: 'Wi-Fi stays connected. Starting and stopping the hotspot may ask for administrator rights, the first start per boot may reconnect Wi-Fi once'
+        de: 'WLAN bleibt verbunden. Starten und Stoppen kann nach Administratorrechten fragen, der erste Start pro Systemstart kann das WLAN einmal neu verbinden'
+      clients:
+        en: 'Connected devices (%{count})'
+        de: 'Verbundene Geräte (%{count})'
+      auto_off:
+        en: 'Turn off after %{minutes} min without devices'
+        de: 'Nach %{minutes} Min. ohne Geräte ausschalten'
+      auto_off_never:
+        en: 'Stay on without devices'
+        de: 'Ohne Geräte eingeschaltet lassen'
+      isolate:
+        en: 'Keep devices apart from each other'
+        de: 'Geräte voneinander trennen'
+      shared:
+        en: 'Devices see each other'
+        de: 'Geräte sehen einander'
+      open_warning:
+        en: 'Without a password anyone nearby can join and go online through your connection'
+        de: 'Ohne Passwort kann jeder in der Nähe beitreten und über deine Verbindung surfen'
   notifications:
     dnd:
       en: Do not disturb

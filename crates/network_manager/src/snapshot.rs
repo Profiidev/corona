@@ -6,6 +6,7 @@ use cosmic_dbus_networkmanager::{
   access_point::AccessPoint,
   device::{Device, wireless::WirelessDevice},
   interface::{
+    access_point::AccessPointProxy,
     active_connection::ActiveConnectionProxy,
     device::{DeviceProxy, wireless::WirelessDeviceProxy},
     enums::{
@@ -18,13 +19,22 @@ use cosmic_dbus_networkmanager::{
 };
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
-use crate::state::{Interface, InterfaceType, Vpn, VpnKind};
+use crate::{
+  actions,
+  nl80211::AP_INTERFACE,
+  state::{HotspotBand, HotspotInfo, Interface, InterfaceType, Vpn, VpnKind},
+};
 
 const VPN_TYPE: &str = "vpn";
 const WIREGUARD_TYPE: &str = "wireguard";
+pub(crate) const WIFI_SETTING: &str = "802-11-wireless";
+/// 802-11-wireless.mode of an access point
+pub(crate) const AP_MODE: &str = "ap";
 
 pub struct Snapshot {
   pub interfaces: Vec<Interface>,
+  /// the connected interfaces of any kind, each a way for NM's forwarding to route
+  pub routing: Vec<String>,
   pub primary_interface: Option<Interface>,
   pub connectivity: NmConnectivityState,
   pub connectivity_check: Option<String>,
@@ -33,6 +43,9 @@ pub struct Snapshot {
   pub primary_wifi: Option<Interface>,
   pub wifi_networks: Vec<WifiNetwork>,
   pub vpns: Vec<Vpn>,
+  pub hotspot: Option<HotspotInfo>,
+  /// MHz of the access point the primary wifi device is connected to
+  pub primary_wifi_frequency: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -89,7 +102,11 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
   let nm = NetworkManager::new(conn).await?;
 
   let mut interfaces = Vec::new();
+  let mut routing = Vec::new();
   for device in nm.devices().await? {
+    if let Ok(Some(name)) = routing_interface(&device).await.log_err() {
+      routing.push(name);
+    }
     if let Ok(Some(i)) = read_device(device).await.log_err() {
       interfaces.push(i);
     }
@@ -124,35 +141,56 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
       .iter()
       .filter(|i| i.kind == InterfaceType::Wireless)
   };
+
+  // any wifi device may run the hotspot, one beside the primary leaves it connected
+  let mut hotspot = None;
+  for device in wifi() {
+    if let Ok(Some(info)) = read_hotspot(conn, device).await.log_err() {
+      hotspot = Some((device.path.clone(), info));
+      break;
+    }
+  }
+  let hotspot_path = hotspot.as_ref().map(|(path, _)| path);
+  // neither the hotspot's device nor the interface corona adds for one connect to networks
+  let client = |i: &&Interface| Some(&i.path) != hotspot_path && i.name != AP_INTERFACE;
+
   let primary_wifi = primary_interface
     .clone()
-    .filter(|i| i.kind == InterfaceType::Wireless)
-    .or_else(|| wifi().find(|i| i.state == DeviceState::Activated).cloned())
+    .filter(|i| i.kind == InterfaceType::Wireless && client(&i))
     .or_else(|| {
       wifi()
-        .find(|i| {
-          !matches!(
-            i.state,
-            DeviceState::Unmanaged | DeviceState::Unavailable | DeviceState::Unknown
-          )
-        })
+        .filter(client)
+        .find(|i| i.state == DeviceState::Activated)
         .cloned()
-    });
+    })
+    .or_else(|| wifi().filter(client).find(|i| i.usable()).cloned())
+    // the only wifi device runs the hotspot
+    .or_else(|| wifi().find(|i| Some(&i.path) == hotspot_path).cloned());
+  let primary_wifi_frequency = match &primary_wifi {
+    Some(device)
+      if device.state == DeviceState::Activated && Some(&device.path) != hotspot_path =>
+    {
+      frequency(conn, device).await.log_err().ok().flatten()
+    }
+    _ => None,
+  };
 
   let wifi_supported = interfaces
     .iter()
     .any(|i| i.kind == InterfaceType::Wireless && i.state != DeviceState::Unmanaged);
 
+  // an access point does not scan, its list is stale
   let wifi_networks = match &primary_wifi {
-    Some(device) => wifi_networks(conn, device)
+    Some(device) if Some(&device.path) != hotspot_path => wifi_networks(conn, device)
       .await
       .log_err()
       .unwrap_or_default(),
-    None => Vec::new(),
+    _ => Vec::new(),
   };
 
   Ok(Snapshot {
     interfaces,
+    routing,
     primary_interface,
     connectivity: nm.connectivity().await?,
     connectivity_check: connectivity_check(&nm).await,
@@ -161,7 +199,80 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
     primary_wifi,
     wifi_networks,
     vpns: vpns(conn, &nm).await.log_err().unwrap_or_default(),
+    hotspot: hotspot.map(|(_, info)| info),
+    primary_wifi_frequency,
   })
+}
+
+/// the device's active connection, when its profile is an access point
+async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<HotspotInfo>> {
+  let active = DeviceProxy::builder(conn)
+    .path(device.path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .active_connection()
+    .await?;
+  if active == OwnedObjectPath::default() {
+    return Ok(None);
+  }
+  let active = ActiveConnectionProxy::builder(conn)
+    .path(active)?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?;
+  let connection_path = active.connection_().await?;
+  let settings = ConnectionSettingsProxy::builder(conn)
+    .path(connection_path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .get_settings()
+    .await?;
+  let auto_off = actions::auto_off(&settings);
+  let corona = settings
+    .get("connection")
+    .and_then(|connection| connection.get("id"))
+    .and_then(|id| <&str>::try_from(&**id).ok())
+    == Some(actions::HOTSPOT_ID);
+  let wifi = Settings::new(settings)
+    .wifi
+    .filter(|wifi| wifi.mode.as_deref() == Some(AP_MODE));
+  let Some(wifi) = wifi else {
+    return Ok(None);
+  };
+  Ok(Some(HotspotInfo {
+    active: ActiveConnectionState::from(active.state().await?) == ActiveConnectionState::Activated,
+    ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
+    band: HotspotBand::from_setting(wifi.band.as_deref()),
+    connection_path,
+    interface: device.name.clone(),
+    auto_off,
+    corona,
+    channel: wifi.channel,
+  }))
+}
+
+/// the frequency of the access point `device` is connected to
+async fn frequency(conn: &Connection, device: &Interface) -> Result<Option<u32>> {
+  let access_point = WirelessDeviceProxy::builder(conn)
+    .path(device.path.clone())?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .active_access_point()
+    .await?;
+  if access_point == OwnedObjectPath::default() {
+    return Ok(None);
+  }
+  let frequency = AccessPointProxy::builder(conn)
+    .path(access_point)?
+    .cache_properties(CacheProperties::No)
+    .build()
+    .await?
+    .frequency()
+    .await?;
+  Ok(Some(frequency))
 }
 
 async fn connectivity_check(nm: &NetworkManager<'_>) -> Option<String> {
@@ -211,6 +322,24 @@ async fn vpns(conn: &Connection, nm: &NetworkManager<'_>) -> Result<Vec<Vpn>> {
   }
   vpns.sort_by(|a, b| a.name.cmp(&b.name));
   Ok(vpns)
+}
+
+/// the interface a connected device routes through: Ethernet, wifi, a VPN's tunnel, a bridge,
+/// VLAN or bond, a modem's ppp0. Any tunnel counts, a VPN plugin's shows unmanaged on older NM.
+/// Unmanaged devices count too (e.g. wg-quick's wg0): the global ip_forward flip opens them as well
+async fn routing_interface(device: &Device<'_>) -> Result<Option<String>> {
+  let routes = matches!(
+    device.state().await?,
+    DeviceState::Activated | DeviceState::Unmanaged
+  ) || device.device_type().await? == DeviceType::TunTap;
+  if !routes {
+    return Ok(None);
+  }
+  let name = match device.ip_interface().await {
+    Ok(name) if !name.is_empty() => name,
+    _ => device.interface().await?,
+  };
+  Ok((name != "lo").then_some(name))
 }
 
 async fn read_device(device: Device<'_>) -> Result<Option<Interface>> {
@@ -319,7 +448,7 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
   Ok(networks)
 }
 
-async fn profile(conn: &Connection, path: OwnedObjectPath) -> Result<Settings> {
+pub(crate) async fn profile(conn: &Connection, path: OwnedObjectPath) -> Result<Settings> {
   let settings = ConnectionSettingsProxy::builder(conn)
     .path(path)?
     .cache_properties(CacheProperties::No)

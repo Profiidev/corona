@@ -278,6 +278,9 @@ app:
         network:
           en: Network
           de: Netzwerk
+        hotspot:
+          en: Hotspot
+          de: Hotspot
         bluetooth:
           en: Bluetooth
           de: Bluetooth

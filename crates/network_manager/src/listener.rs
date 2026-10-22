@@ -16,8 +16,10 @@ use zbus::{
 };
 
 use crate::{
-  NetworkManager, SecretRequest,
+  ActiveConnectionState, NetworkManager, SecretRequest, actions,
   agent::AgentEvent,
+  forwarding,
+  nl80211::{self, AP_INTERFACE},
   snapshot::{WifiFailure, WifiStatus, snapshot},
 };
 
@@ -76,6 +78,16 @@ pub fn listener(
     let mut wifi_path = None;
     let mut connecting_ssid = None;
     let mut failed_path = None;
+    // the running hotspot's interface and auto-off minutes, and the task counting its clients
+    let mut auto_off = None;
+    // dropping it cancels it
+    let mut _auto_off_task = None;
+    // the channel the hotspot is about to follow the wifi connection to, and the task doing so
+    let mut roam = None;
+    let mut _roam_task = None;
+    // the activated interfaces and VPNs, which route the host's networks
+    let mut networks = Vec::new();
+    let mut ap_seen = false;
     loop {
       if let Ok(snapshot) = snapshot(&conn).await.log_err() {
         wifi_path = snapshot.primary_wifi.as_ref().map(|i| i.path.clone());
@@ -89,7 +101,71 @@ pub fn listener(
           .find(|n| matches!(n.status, WifiStatus::Connecting | WifiStatus::NeedAuth))
           .map(|n| n.ssid.clone());
 
+        let activated = snapshot.routing.clone();
+        let routing: Vec<_> = activated
+          .iter()
+          .cloned()
+          .chain(
+            snapshot
+              .vpns
+              .iter()
+              .filter(|v| v.state == ActiveConnectionState::Activated)
+              .map(|v| v.uuid.clone()),
+          )
+          .collect();
+        let networks_changed = routing != networks;
+        networks = routing;
+        if snapshot.hotspot.is_none() {
+          // NM may leave forwarding on after a hotspot, so it is recorded before one only
+          let names: Vec<_> = snapshot
+            .interfaces
+            .iter()
+            .map(|i| i.name.clone())
+            .chain(activated.iter().cloned())
+            .collect();
+          cx.background_executor()
+            .spawn(async move { forwarding::observe(names.iter().map(String::as_str)) })
+            .detach();
+        }
+        // NM would connect saved networks on corona's interface, from the moment it appears and
+        // again after each hotspot on it: activating one turns autoconnect back on
+        let ap = snapshot
+          .interfaces
+          .iter()
+          .find(|i| i.name == AP_INTERFACE && i.usable())
+          .filter(|_| {
+            snapshot
+              .hotspot
+              .as_ref()
+              .is_none_or(|h| h.interface != AP_INTERFACE)
+          })
+          .map(|i| i.path.clone());
+        if let Some(ap) = ap.clone().filter(|_| !ap_seen) {
+          let conn = conn.clone();
+          cx.background_executor()
+            .spawn(async move { actions::no_autoconnect(&conn, ap).await.log_err().ok() })
+            .detach();
+        }
+        ap_seen = ap.is_some();
+
+        // the primary's channel, when the Corona Hotspot on corona's interface sits on another
+        let moved = snapshot
+          .hotspot
+          .as_ref()
+          .filter(|h| h.active && h.corona && h.interface == AP_INTERFACE)
+          .and_then(|h| {
+            let (_, channel) = actions::channel(snapshot.primary_wifi_frequency?)?;
+            (h.channel.is_some_and(|c| c != channel)).then_some(channel)
+          })
+          .zip(snapshot.primary_wifi.clone());
+        if moved.as_ref().map(|(channel, _)| *channel) != roam {
+          roam = moved.as_ref().map(|(channel, _)| *channel);
+          _roam_task = moved.map(|(_, primary)| state.follow_channel(primary, cx));
+        }
+
+        let primary_wifi = snapshot.primary_wifi.as_ref().map(|i| i.name.clone());
         state.interfaces.write_changed(cx, snapshot.interfaces);
+        state.routing.write_changed(cx, snapshot.routing);
         state
           .primary_interface
           .write_changed(cx, snapshot.primary_interface);
@@ -106,6 +182,44 @@ pub fn listener(
           .wifi_networks
           .write_changed(cx, snapshot.wifi_networks);
         state.vpns.write_changed(cx, snapshot.vpns);
+
+        let ended = snapshot.hotspot.is_none() && cx.update(|cx| state.hotspot(cx).is_some());
+        // a Corona Hotspot left running by an earlier corona
+        let adopt = snapshot
+          .hotspot
+          .as_ref()
+          .filter(|h| h.active && h.corona)
+          .map(|h| h.interface.as_str());
+        state.follow_hotspot_rules(
+          ended,
+          adopt,
+          &activated,
+          networks_changed,
+          cx.background_executor(),
+        );
+        // restarts with every hotspot, corona's own or one found running on startup
+        let running = snapshot
+          .hotspot
+          .as_ref()
+          .filter(|h| h.active)
+          .and_then(|h| Some((h.interface.clone(), h.auto_off?)));
+        if running != auto_off {
+          _auto_off_task = running
+            .clone()
+            .map(|(interface, minutes)| state.auto_off(interface, minutes, cx));
+          auto_off = running;
+        }
+        state.hotspot.write_changed(cx, snapshot.hotspot);
+        // sysfs and a netlink dump, off the foreground
+        let beside = cx
+          .background_executor()
+          .spawn(async move {
+            primary_wifi
+              .and_then(|name| nl80211::radio(&name))
+              .is_some_and(|(phy, _)| nl80211::station_beside_ap(phy))
+          })
+          .await;
+        state.hotspot_beside_wifi.write_changed(cx, beside);
       }
 
       let Some(state_changes) = next_changes(&mut changes).await else {
