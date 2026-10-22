@@ -1,22 +1,22 @@
 use std::{pin::Pin, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::CardExt;
+use corona_components::components::card::{CardExt, ErrorCard};
 use corona_network_manager::{
   DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt,
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Task,
-  TestSupportExt, Window,
+  App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render, Styled,
+  Subscription, Task, TestSupportExt, Window,
   assets::IconName,
   base::{Disableable, IndexPath, StyledExt, input::InputState},
   black,
   component::{
-    Icon, Sizable, Theme,
-    button::Button,
+    ActiveTheme, Icon, Sizable, Theme,
     input::Input,
+    scroll::ScrollableElement,
     select::{Select, SelectState},
     spinner::Spinner,
     switch::Switch,
@@ -27,10 +27,11 @@ use gpui_kit::{
 };
 use qrcode::{Color, QrCode};
 
-use crate::control_center::network::NetworkPanel;
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
-pub struct HotspotForm {
+pub struct HotspotPanel {
+  error: Option<String>,
   ssid: Entity<InputState>,
   password: Entity<InputState>,
   band: Entity<SelectState<Vec<String>>>,
@@ -39,13 +40,13 @@ pub struct HotspotForm {
   auto_off: Entity<SelectState<Vec<String>>>,
   /// whether the clients are kept from each other
   isolate: Entity<SelectState<Vec<String>>>,
-  expanded: bool,
   /// starting or stopping, which can take a password and a wifi reconnect
   pending: bool,
   /// the running hotspot as Wi-Fi QR code text
   qr: Option<String>,
   clients: Vec<HotspotClient>,
   _poll_clients: Option<Task<()>>,
+  _hotspot: Subscription,
 }
 
 const BANDS: [HotspotBand; 2] = [HotspotBand::Bg, HotspotBand::A];
@@ -56,6 +57,9 @@ const AUTO_OFF: [Option<u32>; 5] = [None, Some(5), Some(10), Some(30), Some(60)]
 /// whether the clients are kept from each other
 const ISOLATE: [bool; 2] = [true, false];
 const CLIENTS_POLL: Duration = Duration::from_secs(3);
+/// how long a start that turned wifi on waits for its device, 10s in all
+const WIFI_UP_WAIT: Duration = Duration::from_millis(250);
+const WIFI_UP_WAITS: u32 = 40;
 
 fn band_label(band: HotspotBand) -> String {
   match band {
@@ -136,13 +140,13 @@ fn qr_code(text: &str) -> Option<impl IntoElement> {
       div()
         .flex()
         .flex_col()
-        .p_4()
+        .p_2()
         .rounded_md()
         .bg(white())
         .children(rows.chunks(code.width()).map(|row| {
           div().flex().children(row.iter().map(|module| {
             div()
-              .size(px(4.))
+              .size(px(3.))
               .when(*module == Color::Dark, |d| d.bg(black()))
           }))
         })),
@@ -150,9 +154,18 @@ fn qr_code(text: &str) -> Option<impl IntoElement> {
   )
 }
 
-impl HotspotForm {
-  pub fn new(window: &mut Window, cx: &mut App) -> Self {
+impl ControlCenterPanel for HotspotPanel {
+  const TYPE: ControlCenterType = ControlCenterType::Hotspot;
+
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
+    let hotspot = cx.network_manager().hotspot.clone();
+    let hotspot = cx.observe_in(&hotspot, window, |this, _, window, cx| {
+      this.load_hotspot(window, cx)
+    });
+    cx.defer_in(window, |this, window, cx| this.load_hotspot(window, cx));
+
     Self {
+      error: None,
       ssid: cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.hidden.ssid"))),
       password: cx.new(|cx| {
         InputState::new(window, cx)
@@ -192,14 +205,73 @@ impl HotspotForm {
           cx,
         )
       }),
-      expanded: false,
       pending: false,
       qr: None,
       clients: Vec::new(),
       _poll_clients: None,
+      _hotspot: hotspot,
     }
   }
+}
 
+impl Render for HotspotPanel {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let theme = cx.theme();
+
+    div()
+      .flex()
+      .flex_col()
+      .size_full()
+      .gap_2()
+      .overflow_y_scrollbar()
+      .when_some(self.error.clone(), |d, error| {
+        d.child(
+          ErrorCard::new("error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
+            this.error = None;
+            cx.notify();
+          })),
+        )
+      })
+      .child(match self.hotspot(theme, cx) {
+        Some(hotspot) => hotspot.into_any_element(),
+        None => div()
+          .text_sm()
+          .text_color(theme.colors.muted_foreground)
+          .child(t!("app.network.hotspot.unsupported"))
+          .into_any_element(),
+      })
+  }
+}
+
+/// NM signals no client joining, so the running hotspot's are asked for every few seconds,
+/// handed to `set`; None while no hotspot runs
+pub fn poll_clients<T: 'static>(
+  cx: &mut Context<T>,
+  set: impl Fn(&mut T, Vec<HotspotClient>) + 'static,
+) -> Option<Task<()>> {
+  let running = cx.network_manager().hotspot(cx).is_some();
+  running.then(|| {
+    cx.spawn(async move |this, cx| {
+      loop {
+        let clients = cx.update(|cx| cx.network_manager().hotspot_clients(cx));
+        // a radio without nl80211 stays so, no point in asking again
+        let Ok(clients) = clients.await.log_err() else {
+          break;
+        };
+        let updated = this.update(cx, |this, cx| {
+          set(this, clients);
+          cx.notify();
+        });
+        if updated.is_err() {
+          break;
+        }
+        cx.background_executor().timer(CLIENTS_POLL).await;
+      }
+    })
+  })
+}
+
+impl HotspotPanel {
   fn config(&self, cx: &App) -> HotspotConfig {
     let password = self.password.read(cx).value().to_string();
     HotspotConfig {
@@ -211,12 +283,11 @@ impl HotspotForm {
       isolate: selected(&ISOLATE, isolate_label, &self.isolate, cx).unwrap_or(true),
     }
   }
-}
 
-impl NetworkPanel {
   /// fills the form and the QR code from the running or the saved hotspot
   pub fn load_hotspot(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    self.poll_hotspot_clients(cx);
+    self.clients.clear();
+    self._poll_clients = poll_clients(cx, |this, clients| this.clients = clients);
     let load = cx.network_manager().hotspot_config(cx);
     cx.spawn_in(window, async move |this, cx| {
       let Ok(config) = load.await.log_err() else {
@@ -229,32 +300,6 @@ impl NetworkPanel {
     .detach();
   }
 
-  /// NM signals no client joining, so the running hotspot's are asked for every few seconds
-  fn poll_hotspot_clients(&mut self, cx: &mut Context<Self>) {
-    let running = cx.network_manager().hotspot(cx).is_some();
-    let form = &mut self.hotspot_form;
-    form.clients.clear();
-    form._poll_clients = running.then(|| {
-      cx.spawn(async move |this, cx| {
-        loop {
-          let clients = cx.update(|cx| cx.network_manager().hotspot_clients(cx));
-          // a radio without nl80211 stays so, no point in asking again
-          let Ok(clients) = clients.await.log_err() else {
-            break;
-          };
-          let updated = this.update(cx, |this, cx| {
-            this.hotspot_form.clients = clients;
-            cx.notify();
-          });
-          if updated.is_err() {
-            break;
-          }
-          cx.background_executor().timer(CLIENTS_POLL).await;
-        }
-      })
-    });
-  }
-
   fn fill_hotspot(
     &mut self,
     config: Option<HotspotConfig>,
@@ -262,7 +307,7 @@ impl NetworkPanel {
     cx: &mut Context<Self>,
   ) {
     let running = cx.network_manager().hotspot(cx).is_some();
-    let form = &mut self.hotspot_form;
+    let form = &mut *self;
     form.qr = config
       .as_ref()
       .filter(|_| running)
@@ -300,16 +345,34 @@ impl NetworkPanel {
     on: bool,
     cx: &mut Context<Self>,
   ) -> Pin<Box<dyn Future<Output = Result<()>>>> {
-    self.hotspot_form.pending = true;
+    self.pending = true;
     if !on {
       return Box::pin(cx.network_manager().stop_hotspot(cx));
     }
-    let config = self.hotspot_form.config(cx);
-    // show what has to be fixed
-    if config.validate().is_err() {
-      self.hotspot_form.expanded = true;
+    let config = self.config(cx);
+    let nm = cx.network_manager();
+    if nm.wifi_enabled(cx) {
+      return Box::pin(nm.start_hotspot(config, cx));
     }
-    Box::pin(cx.network_manager().start_hotspot(config, cx))
+    // a bad form is no reason to turn wifi on
+    if let Err(e) = config.validate() {
+      return Box::pin(async { Err(e) });
+    }
+    let enable = nm.set_wifi_enabled(true);
+    Box::pin(cx.spawn(async move |_, cx| {
+      enable.await?;
+      // the device comes up a moment after the radio
+      let mut waits = WIFI_UP_WAITS;
+      while !cx.update(|cx| {
+        let wifi = cx.network_manager().primary_wifi(cx);
+        wifi.is_some_and(|wifi| wifi.state != DeviceState::Unavailable)
+      }) {
+        waits = waits.checked_sub(1).context("wifi did not come up")?;
+        cx.background_executor().timer(WIFI_UP_WAIT).await;
+      }
+      cx.update(|cx| cx.network_manager().start_hotspot(config, cx))
+        .await
+    }))
   }
 
   pub fn hotspot(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
@@ -318,7 +381,7 @@ impl NetworkPanel {
       return None;
     }
     let hotspot = nm.hotspot(cx);
-    let form = &self.hotspot_form;
+    let form = self;
     let running = hotspot.is_some();
     // without a second interface the hotspot takes over the connected one, where the radio
     // allows corona adds one, asking for root
@@ -358,32 +421,18 @@ impl NetworkPanel {
               d.child(Spinner::new().small())
             })
             .child(
-              Button::new("hotspot-settings")
-                .icon(if form.expanded {
-                  IconName::ChevronUp
-                } else {
-                  IconName::ChevronDown
-                })
-                .small()
-                .ml_auto()
-                .cursor_pointer()
-                .tooltip(t!("app.network.hotspot.settings"))
-                .on_click(cx.listener(|this, _, _, cx| {
-                  this.hotspot_form.expanded = !this.hotspot_form.expanded;
-                  cx.notify();
-                })),
-            )
-            .child(
               Switch::new("hotspot-enabled")
+                .ml_auto()
                 .checked(running)
-                // a second start while the first waits would take over the wifi
-                .disabled(form.pending || nm.primary_wifi(cx).is_none())
+                // a second start while the first waits would take over the wifi; with wifi off
+                // there is no device until the start turns it on
+                .disabled(form.pending || (nm.wifi_enabled(cx) && nm.primary_wifi(cx).is_none()))
                 .on_change(cx.async_listener(
                   |this, checked, _, cx| this.toggle_hotspot(*checked, cx),
                   |this, result, _| {
-                    this.hotspot_form.pending = false;
+                    this.pending = false;
                     if let Err(e) = result.log_err() {
-                      this.error = Some(e.to_string());
+                      this.error = Some(format!("{e:#}"));
                     }
                   },
                 )),
@@ -398,26 +447,38 @@ impl NetworkPanel {
           )
         })
         // a running hotspot keeps its settings until it is restarted
-        .when(form.expanded, |d| {
-          d.child(Input::new(&form.ssid).small().disabled(running))
+        .child(Input::new(&form.ssid).small().disabled(running))
+        .child(
+          Input::new(&form.password)
+            .mask_toggle()
+            .small()
+            .disabled(running),
+        )
+        // side by side, so the card fits the panel with the QR code
+        .child(
+          div()
+            .flex()
+            .gap_2()
             .child(
-              Input::new(&form.password)
-                .mask_toggle()
-                .small()
-                .disabled(running),
+              div()
+                .flex_1()
+                .child(Select::new(&form.band).small().disabled(running)),
             )
-            .child(Select::new(&form.band).small().disabled(running))
-            .child(Select::new(&form.security).small().disabled(running))
-            .child(Select::new(&form.auto_off).small().disabled(running))
-            .child(Select::new(&form.isolate).small().disabled(running))
-            .when(form.password.read(cx).value().is_empty(), |d| {
-              d.child(
-                div()
-                  .text_xs()
-                  .text_color(theme.colors.warning)
-                  .child(t!("app.network.hotspot.open_warning")),
-              )
-            })
+            .child(
+              div()
+                .flex_1()
+                .child(Select::new(&form.security).small().disabled(running)),
+            ),
+        )
+        .child(Select::new(&form.auto_off).small().disabled(running))
+        .child(Select::new(&form.isolate).small().disabled(running))
+        .when(form.password.read(cx).value().is_empty(), |d| {
+          d.child(
+            div()
+              .text_xs()
+              .text_color(theme.colors.warning)
+              .child(t!("app.network.hotspot.open_warning")),
+          )
         })
         .when_some(
           hotspot.zip(form.qr.as_deref().and_then(qr_code)),
@@ -476,7 +537,6 @@ mod tests {
   };
 
   use super::*;
-  use crate::control_center::ControlCenterPanel;
 
   #[test]
   fn wifi_qr_texts() {
@@ -513,7 +573,7 @@ mod tests {
   }
 
   /// a panel over a fake NetworkManager with a wifi device, and the bus it sits on
-  fn panel(cx: &mut TestAppContext) -> (TestBus, Entity<NetworkPanel>, &mut VisualTestContext) {
+  fn panel(cx: &mut TestAppContext) -> (TestBus, Entity<HotspotPanel>, &mut VisualTestContext) {
     cx.executor().allow_parking();
     let bus = TestBus::new();
     let conn = block_on(bus.conn());
@@ -536,7 +596,7 @@ mod tests {
       });
       cx.set_global(nm);
     });
-    let (panel, cx) = cx.add_window_view(NetworkPanel::init);
+    let (panel, cx) = cx.add_window_view(HotspotPanel::init);
     (bus, panel, cx)
   }
 
@@ -565,9 +625,8 @@ mod tests {
       });
     });
     panel.update(cx, |panel, cx| {
-      panel.hotspot_form.qr = Some(wifi_qr_text("corona", Some("hunter22")));
-      panel.hotspot_form.expanded = true;
-      panel.hotspot_form.clients = vec![HotspotClient {
+      panel.qr = Some(wifi_qr_text("corona", Some("hunter22")));
+      panel.clients = vec![HotspotClient {
         mac: "5e:0b:2a:11:42:07".into(),
         ip: Some([10, 42, 0, 65].into()),
         hostname: Some("phone".into()),
@@ -595,12 +654,8 @@ mod tests {
 
   #[gpui::test]
   fn a_tall_panel_scrolls(cx: &mut TestAppContext) {
-    let (_bus, panel, cx) = panel(cx);
+    let (_bus, _panel, cx) = panel(cx);
     cx.simulate_resize(size(px(320.), px(240.)));
-    panel.update(cx, |panel, cx| {
-      panel.hotspot_form.expanded = true;
-      cx.notify();
-    });
     let top = |cx: &mut VisualTestContext| {
       cx.update(|window, cx| {
         window.render_frame(cx);
@@ -610,34 +665,36 @@ mod tests {
     let before = top(cx);
     cx.update(|window, cx| {
       let delta = ScrollDelta::Pixels(point(px(0.), px(-200.)));
-      window.scroll("hotspot-settings", delta, cx);
+      window.scroll("hotspot-enabled", delta, cx);
     });
     assert!(top(cx) < before);
   }
 
   #[gpui::test]
-  fn short_passwords_open_the_form(cx: &mut TestAppContext) {
+  fn short_passwords_fail_before_wifi_turns_on(cx: &mut TestAppContext) {
     let (_bus, panel, cx) = panel(cx);
+    cx.update(|_, cx| assert!(!cx.network_manager().wifi_enabled(cx)));
     let start = cx.update(|window, cx| {
       panel.update(cx, |panel, cx| {
-        let form = &panel.hotspot_form;
+        let form = &*panel;
         form
           .ssid
           .update(cx, |input, cx| input.set_value("corona", window, cx));
         form
           .password
           .update(cx, |input, cx| input.set_value("short", window, cx));
-        assert!(!form.expanded);
         panel.toggle_hotspot(true, cx)
       })
     });
     // the switch is locked against a second start while this one runs
-    panel.read_with(cx, |panel, _| assert!(panel.hotspot_form.pending));
+    panel.read_with(cx, |panel, _| assert!(panel.pending));
     assert_eq!(
       block_on(start).unwrap_err().to_string(),
       "the hotspot password needs 8 to 63 characters"
     );
-    panel.read_with(cx, |panel, _| assert!(panel.hotspot_form.expanded));
-    cx.update(|window, cx| window.render_frame(cx));
+    cx.update(|window, cx| {
+      window.render_frame(cx);
+      assert!(!cx.network_manager().wifi_enabled(cx));
+    });
   }
 }

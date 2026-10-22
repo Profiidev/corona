@@ -1273,7 +1273,7 @@ mod tests {
     assert_eq!(data["corona.auto-off"], "0");
     assert_eq!(text(&added, "ipv6", "method").as_deref(), Some("disabled"));
     assert_eq!(
-      text(&added, "802-11-wireless", "cloned-mac-address").as_deref(),
+      text(&added, "802-11-wireless", "assigned-mac-address").as_deref(),
       Some("random")
     );
     assert_eq!(

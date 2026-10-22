@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
   brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
-  displays::DisplaysPanel, media::MediaPanel, network::NetworkPanel,
+  displays::DisplaysPanel, hotspot::HotspotPanel, media::MediaPanel, network::NetworkPanel,
   notifications::NotificationsPanel, power::PowerPanel, sysinfo::SysinfoPanel,
   weather::WeatherPanel,
 };
@@ -15,6 +15,7 @@ pub enum ControlCenterType {
   Dashboard,
   Audio,
   Network,
+  Hotspot,
   Bluetooth,
   Power,
   Brightness,
@@ -32,6 +33,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => "dashboard",
       ControlCenterType::Audio => "audio",
       ControlCenterType::Network => "network",
+      ControlCenterType::Hotspot => "hotspot",
       ControlCenterType::Bluetooth => "bluetooth",
       ControlCenterType::Power => "power",
       ControlCenterType::Brightness => "brightness",
@@ -49,6 +51,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => IconName::LayoutDashboard,
       ControlCenterType::Audio => IconName::Volume2,
       ControlCenterType::Network => IconName::Wifi,
+      ControlCenterType::Hotspot => IconName::RadioTower,
       ControlCenterType::Bluetooth => IconName::Bluetooth,
       ControlCenterType::Power => IconName::Zap,
       ControlCenterType::Brightness => IconName::Sun,
@@ -66,6 +69,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => t!("app.control_center.dashboard"),
       ControlCenterType::Audio => t!("app.control_center.audio"),
       ControlCenterType::Network => t!("app.control_center.network"),
+      ControlCenterType::Hotspot => t!("app.control_center.hotspot"),
       ControlCenterType::Bluetooth => t!("app.control_center.bluetooth"),
       ControlCenterType::Power => t!("app.control_center.power"),
       ControlCenterType::Brightness => t!("app.control_center.brightness"),
@@ -83,6 +87,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard,
       ControlCenterType::Audio,
       ControlCenterType::Network,
+      ControlCenterType::Hotspot,
       ControlCenterType::Bluetooth,
       ControlCenterType::Power,
       ControlCenterType::Brightness,
@@ -101,6 +106,7 @@ impl ControlCenterType {
       ControlCenterType::Dashboard => DashboardPanel::handle(window, cx),
       ControlCenterType::Audio => AudioPanel::handle(window, cx),
       ControlCenterType::Network => NetworkPanel::handle(window, cx),
+      ControlCenterType::Hotspot => HotspotPanel::handle(window, cx),
       ControlCenterType::Bluetooth => BluetoothPanel::handle(window, cx),
       ControlCenterType::Power => PowerPanel::handle(window, cx),
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
@@ -127,6 +133,7 @@ mod tests {
         ControlCenterType::Dashboard
         | ControlCenterType::Audio
         | ControlCenterType::Network
+        | ControlCenterType::Hotspot
         | ControlCenterType::Bluetooth
         | ControlCenterType::Power
         | ControlCenterType::Brightness
@@ -138,7 +145,7 @@ mod tests {
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 12);
+    assert_eq!(all.len(), 13);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 

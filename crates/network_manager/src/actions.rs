@@ -634,7 +634,9 @@ fn hotspot_settings(
     ("mode".to_owned(), string(AP_MODE)),
     ("band".to_owned(), string(band.setting())),
     // a BSSID of its own each start, the radio's would follow the machine from place to place
-    ("cloned-mac-address".to_owned(), string("random")),
+    // the string form, cloned-mac-address is bytes over D-Bus: NM drops the whole setting on a
+    // string there and then fails without a wireless setting
+    ("assigned-mac-address".to_owned(), string("random")),
     (
       "ap-isolation".to_owned(),
       Value::from(i32::from(config.isolate)),
@@ -711,14 +713,19 @@ pub(crate) async fn start_hotspot(
         proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone())
           .await?
           .update(borrowed(&settings))
-          .await?;
-        let active = nm.activate_connection_by_paths(&path, &device).await?;
+          .await
+          .context("updating the saved hotspot profile")?;
+        let active = nm
+          .activate_connection_by_paths(&path, &device)
+          .await
+          .with_context(|| format!("activating the saved hotspot {path} on {device}"))?;
         active.inner().path().to_owned().into()
       }
       None => {
         let settings = hotspot_settings(config.clone(), None, channel);
         nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
-          .await?
+          .await
+          .with_context(|| format!("adding the hotspot profile on {device}"))?
           .1
       }
     };

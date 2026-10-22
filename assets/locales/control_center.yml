@@ -10,6 +10,9 @@ app:
     network:
       en: Network
       de: Netzwerk
+    hotspot:
+      en: Hotspot
+      de: Hotspot
     bluetooth:
       en: Bluetooth
       de: Bluetooth
@@ -434,9 +437,9 @@ app:
       title:
         en: Hotspot
         de: Hotspot
-      settings:
-        en: Hotspot settings
-        de: Hotspot-Einstellungen
+      unsupported:
+        en: 'No Wi-Fi device that can run a hotspot'
+        de: 'Kein WLAN-Gerät, das einen Hotspot betreiben kann'
       password:
         en: 'Password, empty for an open hotspot'
         de: 'Passwort, leer für einen offenen Hotspot'
