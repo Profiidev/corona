@@ -13,8 +13,8 @@ use active_window::ActiveWindow;
 use clock::Clock;
 use control_center::{
   AudioButton, BatteryButton, BluetoothButton, BrightnessButton, CalendarButton,
-  ControlCenterButton, DisplaysButton, MediaButton, NetworkButton, NotificationsButton,
-  PowerButton, PrintersButton, SysinfoButton, WeatherButton,
+  ControlCenterButton, DisplaysButton, HotspotButton, MediaButton, NetworkButton,
+  NotificationsButton, PowerButton, PrintersButton, SysinfoButton, WeatherButton,
 };
 use corona_surface::bar::BarExt;
 use gpui_kit::App;
@@ -30,6 +30,7 @@ pub fn register_widgets(cx: &mut App) {
     .register::<ControlCenterButton>()
     .register::<AudioButton>()
     .register::<NetworkButton>()
+    .register::<HotspotButton>()
     .register::<BluetoothButton>()
     .register::<PrintersButton>()
     .register::<PowerButton>()

@@ -54,7 +54,7 @@ in
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "corona";
-  version = "0.1.1";
+  version = "0.1.3";
 
   __structuredAttrs = true;
 
@@ -127,6 +127,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
     $out/bin/corona schema plugin --output $out/share/corona/schema/plugin.schema.json
     $out/bin/corona schema catalog --output $out/share/corona/schema/catalog.schema.json
     install -Dm644 assets/corona-settings.svg $out/share/icons/hicolor/scalable/apps/corona-settings.svg
+    # pkexec is handed current_exe, the binary wrapProgram moves aside in postFixup
+    install -Dm644 assets/corona-network.policy $out/share/polkit-1/actions/corona.network.policy
+    substituteInPlace $out/share/polkit-1/actions/corona.network.policy \
+      --replace-fail "@corona@" "$out/bin/.corona-wrapped"
     install -Dm644 assets/corona-settings.desktop $out/share/applications/corona-settings.desktop
     substituteInPlace $out/share/applications/corona-settings.desktop \
       --replace-fail "Exec=corona" "Exec=$out/bin/corona"

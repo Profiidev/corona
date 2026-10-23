@@ -1732,7 +1732,7 @@ dependencies = [
 
 [[package]]
 name = "corona"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "corona_cli",
  "corona_components",
@@ -1831,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "corona_auth"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "bindgen 0.69.5",
@@ -1849,7 +1849,7 @@ dependencies = [
 
 [[package]]
 name = "corona_auth_screen"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_power",
@@ -1861,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "corona_bluez"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona-zbus-bluez",
@@ -1874,7 +1874,7 @@ dependencies = [
 
 [[package]]
 name = "corona_brightness"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -1889,7 +1889,7 @@ dependencies = [
 
 [[package]]
 name = "corona_capture"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "futures",
@@ -1908,13 +1908,14 @@ dependencies = [
 
 [[package]]
 name = "corona_cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
  "corona_config",
  "corona_ipc",
+ "corona_network_manager",
  "corona_script",
  "corona_shell",
  "corona_surface",
@@ -1927,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "corona_components"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -1941,7 +1942,7 @@ dependencies = [
 
 [[package]]
 name = "corona_compositor"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -1959,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "corona_config"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "config",
@@ -1978,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "corona_desktop"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "corona-freedesktop-icons",
  "dirs 7.0.0",
@@ -1987,7 +1988,7 @@ dependencies = [
 
 [[package]]
 name = "corona_greeter"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_auth_screen",
@@ -2012,7 +2013,7 @@ dependencies = [
 
 [[package]]
 name = "corona_idle"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2030,7 +2031,7 @@ dependencies = [
 
 [[package]]
 name = "corona_ipc"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2045,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "corona_macros"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2054,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "corona_mpris"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona-zbus-mpris2",
@@ -2066,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "corona_network_manager"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona-zbus-networkmanager",
@@ -2075,6 +2076,7 @@ dependencies = [
  "flume",
  "futures-lite",
  "gpui-kit",
+ "rustix",
  "serde",
  "serde_json",
  "tracing",
@@ -2084,7 +2086,7 @@ dependencies = [
 
 [[package]]
 name = "corona_notifications"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -2094,13 +2096,14 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "image",
+ "smol",
  "tracing",
  "zbus",
 ]
 
 [[package]]
 name = "corona_pipewire"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2116,7 +2119,7 @@ dependencies = [
 
 [[package]]
 name = "corona_power"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona-zbus-upower",
@@ -2151,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "corona_reqwest"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "dirs 7.0.0",
@@ -2165,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "corona_script"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_auth",
@@ -2214,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "corona_shell"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -2252,6 +2255,7 @@ dependencies = [
  "icu_locale",
  "jiff",
  "jiff-icu",
+ "qrcode",
  "regex",
  "rodio",
  "rust-i18n",
@@ -2265,7 +2269,7 @@ dependencies = [
 
 [[package]]
 name = "corona_surface"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_components",
@@ -2283,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "corona_sysinfo"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -2298,7 +2302,7 @@ dependencies = [
 
 [[package]]
 name = "corona_tray"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_desktop",
@@ -2314,7 +2318,7 @@ dependencies = [
 
 [[package]]
 name = "corona_utils"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "flume",
  "futures-lite",
@@ -2327,7 +2331,7 @@ dependencies = [
 
 [[package]]
 name = "corona_weather"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona-zbus-geoclue2",
@@ -8456,6 +8460,12 @@ checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quick-error"

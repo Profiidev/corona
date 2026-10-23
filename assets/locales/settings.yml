@@ -281,6 +281,9 @@ app:
         network:
           en: Network
           de: Netzwerk
+        hotspot:
+          en: Hotspot
+          de: Hotspot
         bluetooth:
           en: Bluetooth
           de: Bluetooth
@@ -963,6 +966,12 @@ app:
         network_hosts:
           en: 'Connect to: %{values}'
           de: 'Verbinden mit: %{values}'
+        network_lan_hosts:
+          en: 'Connect to, also in your local network: %{values}'
+          de: 'Verbinden mit, auch im lokalen Netz: %{values}'
+        lan_warning:
+          en: 'Warning: whoever controls these names (on your network, anyone answering mDNS for .local) can point it at another device in your local network.'
+          de: 'Achtung: Wer diese Namen kontrolliert (im lokalen Netz bei .local jeder, der per mDNS antwortet), kann es auf ein anderes Gerät in deinem lokalen Netz lenken.'
         network_http:
           en: 'Send HTTP requests: %{values}'
           de: 'HTTP-Anfragen senden: %{values}'

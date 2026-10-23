@@ -157,6 +157,51 @@ struct SecretRequest {
   retry: bool,
 }
 
+#[derive(Serialize, TS)]
+struct Hotspot {
+  /// Up, not still activating.
+  active: bool,
+  ssid: String,
+  band: nm::HotspotBand,
+}
+
+/// The hotspot's settings without its password, which plugins never see.
+#[derive(Serialize, TS)]
+struct HotspotSettings {
+  ssid: String,
+  /// It has a password, which `startHotspot` needs again to keep it.
+  secured: bool,
+  band: nm::HotspotBand,
+  wpa3: bool,
+  /// Minutes without clients it turns off after, null: never.
+  auto_off: Option<u32>,
+  /// Keeps the clients from reaching each other.
+  isolate: bool,
+}
+
+impl From<nm::HotspotConfig> for HotspotSettings {
+  fn from(config: nm::HotspotConfig) -> Self {
+    Self {
+      ssid: config.ssid,
+      secured: config.password.is_some(),
+      band: config.band,
+      wpa3: config.wpa3,
+      auto_off: config.auto_off,
+      isolate: config.isolate,
+    }
+  }
+}
+
+impl From<&nm::HotspotInfo> for Hotspot {
+  fn from(hotspot: &nm::HotspotInfo) -> Self {
+    Self {
+      active: hotspot.active,
+      ssid: hotspot.ssid.clone(),
+      band: hotspot.band,
+    }
+  }
+}
+
 impl From<&nm::Interface> for Interface {
   fn from(interface: &nm::Interface) -> Self {
     Self {
@@ -274,6 +319,7 @@ pub enum Updates {
   WifiFailure,
   SecretRequest,
   Vpns,
+  Hotspot,
 }
 
 impl From<Updates> for super::Updates {
@@ -461,6 +507,32 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
       "connect",
       |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.connect(&name, &cx)
     ))
+    .func(read(
+      reads,
+      subs,
+      "hotspot",
+      Updates::Hotspot,
+      |cx| cx.network_manager().hotspot.clone(),
+      |cx| cx.network_manager().hotspot(cx).map(Hotspot::from),
+    ))
+    .func(named!(
+      "startHotspot",
+      /// Turns the wifi device into an access point; a null password makes it open.
+      |cx: Cx, nm: Glob<NetworkManager>, config: nm::HotspotConfig| {
+        nm.start_hotspot(config, &cx)
+      }
+    ))
+    .func(named!("stopHotspot", |cx: Cx, nm: Glob<NetworkManager>| {
+      nm.stop_hotspot(&cx)
+    }))
+    .func(named!(
+      "hotspotConfig",
+      /// The running hotspot's settings, else the saved ones, else null. Never its password.
+      |cx: Cx, nm: Glob<NetworkManager>| {
+        let config = nm.hotspot_config(&cx);
+        async move { config.await.map(|config| config.map(HotspotSettings::from)) }
+      }
+    ))
     .func(named!(
       "disconnect",
       |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.disconnect(&name, &cx)
@@ -604,6 +676,38 @@ mod tests {
         assert_eq!(json["uuid"], "u");
       }
     }
+  }
+
+  #[test]
+  fn hotspots() {
+    let hotspot = nm::HotspotInfo {
+      active: true,
+      ssid: "corona".into(),
+      band: nm::HotspotBand::A,
+      connection_path: Default::default(),
+      interface: "wlan0".into(),
+      auto_off: Some(10),
+      corona: true,
+      channel: None,
+    };
+    let json = json(Hotspot::from(&hotspot));
+    assert_eq!(json["band"], "a");
+    assert_eq!(json["active"], true);
+    assert!(json.get("connection_path").is_none());
+    let config: nm::HotspotConfig =
+      serde_json::from_str(r#"{"ssid": "corona", "password": null, "band": "bg"}"#).unwrap();
+    assert_eq!(config.band, nm::HotspotBand::Bg);
+    // older scripts leave them out
+    assert!(!config.wpa3);
+    assert_eq!(config.auto_off, Some(10));
+    assert!(config.isolate);
+    let secured = nm::HotspotConfig {
+      password: Some("hunter22".into()),
+      ..config
+    };
+    let settings = super::tests::json(HotspotSettings::from(secured));
+    assert!(settings.get("password").is_none());
+    assert_eq!(settings["secured"], true);
   }
 
   #[test]

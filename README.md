@@ -22,6 +22,28 @@ hl.bind("SUPER + TAB", hl.dsp.exec_cmd("corona ipc switcher"))
 hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc switcher --mode workspace"))
 ```
 
+### Hotspot
+
+The hotspot sets its firewall rules through `pkexec corona network ...`. The polkit policy
+`assets/corona-network.policy` lets the active session do this without a password. The Nix package
+installs it. Elsewhere, install it with the path of the installed binary:
+
+```sh
+sed 's|@corona@|/usr/bin/corona|' assets/corona-network.policy \
+  | sudo tee /usr/share/polkit-1/actions/corona.network.policy >/dev/null
+```
+
+Without it, pkexec asks for the admin password every time.
+
+Corona's iptables rules accept DHCP and DNS from the hotspot's clients. A firewall in its own
+nftables table (NixOS with `networking.nftables.enable`, firewalld) still drops them, because an
+accept only ends evaluation inside its own table. Open UDP 53 and 67 and TCP 53 on the hotspot's
+interface in that firewall. Corona logs a warning when it finds such a table.
+
+On NixOS, set `programs.corona.hotspot.interface` to your wifi interface (for example `"wlp1s0"`).
+The module then creates `corona-ap` at boot, keeps NetworkManager's client profiles off it and
+opens these ports on it.
+
 ## Development
 
 ### Gpui-pre update

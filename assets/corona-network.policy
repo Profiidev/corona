@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- lets the active session run `corona network ...` (hotspot firewall rules and access point
+     interface) through pkexec without a password; @corona@ is the binary pkexec is handed -->
+<policyconfig>
+  <action id="corona.network">
+    <description>Set up the Corona hotspot</description>
+    <message>Authentication is required to set up the hotspot's firewall and Wi-Fi interface</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@corona@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">network</annotate>
+  </action>
+</policyconfig>

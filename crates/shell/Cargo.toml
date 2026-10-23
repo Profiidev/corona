@@ -53,6 +53,7 @@ icu_calendar = "2.3"
 icu_datetime = "2.3"
 icu_decimal = "2.3"
 icu_locale = "2.3"
+qrcode = { version = "0.14.1", default-features = false }
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
   "playback",
   "vorbis",
@@ -61,6 +62,7 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb5
 
 [dev-dependencies]
 corona_auth = { workspace = true, features = ["test-support"] }
+corona_network_manager = { workspace = true, features = ["test-support"] }
 corona_printing = { workspace = true, features = ["test-support"] }
 corona_utils = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }

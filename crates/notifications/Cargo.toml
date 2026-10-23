@@ -16,6 +16,7 @@ zbus.workspace = true
 anyhow.workspace = true
 flume.workspace = true
 futures-lite.workspace = true
+smol.workspace = true
 tracing.workspace = true
 dirs.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }

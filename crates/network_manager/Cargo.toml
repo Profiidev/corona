@@ -8,12 +8,16 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 tracing.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 zbus.workspace = true
 anyhow.workspace = true
+rustix = { workspace = true, features = ["net"] }
 futures-lite.workspace = true
 flume.workspace = true
 serde.workspace = true

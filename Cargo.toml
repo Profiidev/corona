@@ -33,7 +33,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.3"
 edition = "2024"
 repository = "https://github.com/Profiidev/corona"
 license = "GPL-2.0"
