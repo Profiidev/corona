@@ -17,7 +17,7 @@ pub(crate) mod sysinfo;
 mod variants;
 mod weather;
 
-use corona_surface::panel::{AppPanelExt, Panel};
+use corona_surface::panel::AppPanelExt;
 use gpui_kit::{AnyElement, AnyView, App, AppContext, Context, Entity, Render, Window};
 
 pub use crate::control_center::{
@@ -60,7 +60,8 @@ pub fn register_panels(cx: &mut App) {
 
 pub trait ControlCenterPanel: Render {
   const TYPE: ControlCenterType;
-  const HEIGHT: f32 = ControlCenter::HEIGHT;
+  // a standalone panel has no nav rail, so it keeps the old height
+  const HEIGHT: f32 = 500.0;
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self;
 
