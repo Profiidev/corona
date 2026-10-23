@@ -11,6 +11,63 @@ use crate::{
 
 pub const SOCKET: &str = "/run/cups/cups.sock";
 
+/// how long a network printer gets to accept a connection
+const PROBE: Duration = Duration::from_millis(1500);
+
+/// Host and port of a network device URI, `None` for USB, dnssd and the like.
+/// Not for `socket` or `lpd`: such printers take one connection at a time, and
+/// a probe could block a job or even print an empty one.
+pub fn device_addr(uri: &str) -> Option<(String, u16)> {
+  let (scheme, rest) = uri.split_once("://")?;
+  let default = match scheme {
+    "ipp" | "ipps" => 631,
+    "http" => 80,
+    "https" => 443,
+    _ => return None,
+  };
+  let authority = rest.split(['/', '?']).next()?.rsplit('@').next()?;
+  let (host, port) = match authority.strip_prefix('[') {
+    Some(v6) => {
+      let (host, rest) = v6.split_once(']')?;
+      (host, rest.strip_prefix(':'))
+    }
+    None => match authority.rsplit_once(':') {
+      Some((host, port)) => (host, Some(port)),
+      None => (authority, None),
+    },
+  };
+  let port = match port {
+    Some(port) => port.parse().ok()?,
+    None => default,
+  };
+  (!host.is_empty()).then(|| (host.to_string(), port))
+}
+
+/// Marks the network printers that do not accept a connection, all at once.
+pub async fn mark_offline(printers: &mut [Printer]) {
+  let probes: Vec<_> = printers
+    .iter()
+    .map(|p| {
+      // a printer that is printing is there, and busy with CUPS
+      let addr = (p.state != PrinterState::Processing)
+        .then(|| device_addr(&p.device_uri))
+        .flatten();
+      smol::spawn(async move {
+        let Some(addr) = addr else { return false };
+        let connect = async { smol::net::TcpStream::connect(addr).await.is_err() };
+        futures_lite::future::or(connect, async {
+          smol::Timer::after(PROBE).await;
+          true
+        })
+        .await
+      })
+    })
+    .collect();
+  for (printer, probe) in printers.iter_mut().zip(probes) {
+    printer.offline = probe.await;
+  }
+}
+
 /// What the D-Bus notifier signals about. CUPS sends job events of every
 /// printer to a subscription on the server URI.
 const EVENTS: [&str; 7] = [
@@ -155,6 +212,7 @@ fn printer(group: &Group) -> Option<Printer> {
       .and_then(Attr::bool)
       .unwrap_or(true),
     markers,
+    offline: false,
   })
 }
 
@@ -165,10 +223,13 @@ fn color(value: &str) -> Option<u32> {
 }
 
 /// Active jobs, then the most recent finished ones.
-pub async fn jobs(sock: &Path) -> Result<Vec<Job>> {
+/// Unfinished jobs, then the last finished ones created at or after `since`
+/// (unix seconds), so weeks-old history stays out.
+pub async fn jobs(sock: &Path, since: i32) -> Result<Vec<Job>> {
   const RECENT: usize = 10;
   let mut active = get_jobs(sock, "not-completed").await?;
   let mut done = get_jobs(sock, "completed").await?;
+  done.retain(|j| j.created.is_none_or(|t| t >= since));
   done.sort_by_key(|j| std::cmp::Reverse(j.id));
   done.truncate(RECENT);
   active.sort_by_key(|j| j.id);
@@ -429,6 +490,26 @@ mod tests {
     assert_eq!(p.markers[1].level, None);
     assert_eq!(p.markers[1].color, Some(0x00FFFF));
     assert_eq!(p.markers[1].kind, "");
+  }
+
+  #[test]
+  fn device_addresses() {
+    let addr = |uri| device_addr(uri).map(|(h, p)| format!("{h} {p}"));
+    assert_eq!(
+      addr("ipp://192.168.178.119:631/ipp/print?version=1.0").as_deref(),
+      Some("192.168.178.119 631")
+    );
+    assert_eq!(
+      addr("ipps://Brother.local/ipp/print").as_deref(),
+      Some("Brother.local 631")
+    );
+    assert_eq!(addr("socket://10.0.0.7?waiteof=false"), None);
+    assert_eq!(
+      addr("ipp://user@[fe80::1]:8631/").as_deref(),
+      Some("fe80::1 8631")
+    );
+    assert_eq!(addr("usb://Samsung/CLX-3180"), None);
+    assert_eq!(addr("dnssd://Office._ipp._tcp.local/"), None);
   }
 
   #[test]

@@ -42,6 +42,8 @@ struct Printer {
   state: PrinterState,
   reasons: Vec<String>,
   accepting: bool,
+  /// the device did not answer, though CUPS may still call it idle
+  offline: bool,
   markers: Vec<Marker>,
 }
 
@@ -145,6 +147,7 @@ impl From<&pr::Printer> for Printer {
       },
       reasons: p.reasons.clone(),
       accepting: p.accepting,
+      offline: p.offline,
       markers: p
         .markers
         .iter()
@@ -428,6 +431,7 @@ mod tests {
       state: pr::PrinterState::Stopped,
       reasons: vec!["paused".into()],
       accepting: false,
+      offline: true,
       markers: vec![pr::Marker {
         name: "Cyan".into(),
         level: None,

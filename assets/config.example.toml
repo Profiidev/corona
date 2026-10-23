@@ -78,6 +78,9 @@ center = [
 ]
 end = [
   { widget_type = "privacy" },
+  # options = { hide_when_idle = true } shows it only while a print job or a
+  # scan runs
+  { widget_type = "printers" },
   # options = { blacklist = ["nm-applet"] } hides tray items whose id or title
   # matches one of the case-insensitive regexes
   { widget_type = "tray" },

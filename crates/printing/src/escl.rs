@@ -3,6 +3,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use crate::avahi::{SCANS, Service};
+use crate::ipp::MAX_RESPONSE;
 use crate::state::{
   ColorMode, Format, InputSource, ScanSettings, Scanner, ScannerCaps, SourceCaps,
 };
@@ -24,12 +25,21 @@ pub fn scanner(service: &Service) -> Scanner {
       .unwrap_or_else(|| "eSCL".into()),
     // only announced over TLS, see `tls::PinnedClient`
     tls: service.kind == SCANS,
+    sane: None,
   }
 }
 
 async fn read(response: &mut Response<AsyncBody>) -> Result<Vec<u8>> {
   let mut body = Vec::new();
-  response.body_mut().read_to_end(&mut body).await?;
+  let limit = MAX_RESPONSE as u64 + 1;
+  response
+    .body_mut()
+    .take(limit)
+    .read_to_end(&mut body)
+    .await?;
+  if body.len() > MAX_RESPONSE {
+    bail!("the scanner answered with more than {MAX_RESPONSE} bytes");
+  }
   Ok(body)
 }
 
@@ -200,6 +210,27 @@ pub async fn scan(
     format!("{origin}/{}", location.trim_matches('/'))
   };
 
+  let pages = pages(client, &job, settings, stamp, &mut on_page).await;
+  if pages.is_err() {
+    // scanners keep a broken job open and refuse new ones until it times out
+    let delete = Request::builder()
+      .method(Method::DELETE)
+      .uri(&job)
+      .body(AsyncBody::empty());
+    if let Ok(delete) = delete {
+      client.send(delete).await.ok();
+    }
+  }
+  pages
+}
+
+async fn pages(
+  client: &dyn HttpClient,
+  job: &str,
+  settings: &ScanSettings,
+  stamp: &str,
+  on_page: &mut impl FnMut(u32),
+) -> Result<Vec<PathBuf>> {
   let ext = settings.format.extension();
   let mut files = Vec::new();
   let mut busy = 0;
@@ -218,6 +249,8 @@ pub async fn scan(
           .with_context(|| format!("saving {}", path.display()))?;
         files.push(path);
         on_page(files.len() as u32);
+        // each page gets its own time to feed and scan
+        busy = 0;
         // a flatbed has one page, asking again can error on some scanners
         if settings.source == InputSource::Flatbed {
           break;

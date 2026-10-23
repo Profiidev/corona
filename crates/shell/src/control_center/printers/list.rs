@@ -91,7 +91,11 @@ impl PrintersPanel {
 
   fn printer(&self, theme: &Theme, printer: &Printer, cx: &Context<'_, Self>) -> impl IntoElement {
     let name = printer.name.clone();
-    let mut details = vec![printer_state(printer.state).to_string()];
+    let state = match printer.offline {
+      true => t!("app.printers.offline"),
+      false => printer_state(printer.state),
+    };
+    let mut details = vec![state.to_string()];
     if !printer.accepting {
       details.push(t!("app.printers.not_accepting").to_string());
     }
@@ -122,9 +126,10 @@ impl PrintersPanel {
               .when(printer.state == PrinterState::Processing, |i| {
                 i.text_color(theme.colors.primary)
               })
-              .when(printer.state == PrinterState::Stopped, |i| {
-                i.text_color(theme.colors.danger)
-              }),
+              .when(
+                printer.state == PrinterState::Stopped || printer.offline,
+                |i| i.text_color(theme.colors.danger),
+              ),
           )
           .child(
             div()
@@ -150,7 +155,8 @@ impl PrintersPanel {
               .on_click(cx.async_listener(
                 {
                   let name = name.clone();
-                  move |_, _, _, cx| {
+                  move |this, _, _, cx| {
+                    this.error = None;
                     let paths = cx.prompt_for_paths(PathPromptOptions {
                       files: true,
                       directories: false,
@@ -173,9 +179,12 @@ impl PrintersPanel {
           .child(
             Switch::new(format!("printer-pause-{name}"))
               .checked(printer.state != PrinterState::Stopped)
-              .tooltip(t!("app.printers.paused"))
+              .tooltip(t!("app.printers.enabled"))
               .on_change(cx.async_listener(
-                move |_, running: &bool, _, cx| cx.printing().set_paused(&name, !*running),
+                move |this, running: &bool, _, cx| {
+                  this.error = None;
+                  cx.printing().set_paused(&name, !*running)
+                },
                 Self::show_error,
               )),
           ),
@@ -264,6 +273,7 @@ impl PrintersPanel {
             .on_click(cx.async_listener(
               move |this, _, _, cx| {
                 this.adding = Some(name.clone());
+                this.error = None;
                 cx.printing().add_printer(&name, cx)
               },
               |this, result, cx| {
@@ -317,6 +327,7 @@ impl PrintersPanel {
   fn job(&self, theme: &Theme, job: &Job, cx: &Context<'_, Self>) -> impl IntoElement {
     let pages = match (job.pages_done, job.pages_total) {
       (Some(done), Some(total)) => Some(t!("app.printers.pages_of", done = done, total = total)),
+      (Some(1), None) => Some(t!("app.printers.pages_one")),
       (Some(done), None) if done > 0 => Some(t!("app.printers.pages", done = done)),
       _ => None,
     };
@@ -375,7 +386,10 @@ impl PrintersPanel {
                 .tooltip(t!("app.printers.cancel_job"))
                 .cursor_pointer()
                 .on_click(cx.async_listener(
-                  move |_, _, _, cx| cx.printing().cancel_job(id),
+                  move |this, _, _, cx| {
+                    this.error = None;
+                    cx.printing().cancel_job(id)
+                  },
                   Self::show_error,
                 )),
             )

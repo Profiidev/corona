@@ -48,10 +48,19 @@ impl ControlCenterPanel for PrintersPanel {
     let printing = cx.printing().clone();
     // the notifier may be missing, read the current state on open
     printing.refresh();
+    printing.find_sane_scanners(cx);
     let subscriptions = [
       cx.observe(&printing.printers, |_, _, cx| cx.notify()),
       cx.observe(&printing.jobs, |_, _, cx| cx.notify()),
-      cx.observe(&printing.scanners, |_, _, cx| cx.notify()),
+      cx.observe(&printing.scanners, |this, scanners, cx| {
+        // the picked scanner went away
+        if let Some(name) = &this.scanner
+          && !scanners.read(cx).iter().any(|s| &s.name == name)
+        {
+          (this.scanner, this.caps, this.settings, this.saved) = (None, None, None, None);
+        }
+        cx.notify()
+      }),
       cx.observe(&printing.scan, |_, _, cx| cx.notify()),
       cx.observe(&printing.network_printers, |_, _, cx| cx.notify()),
     ];
@@ -105,6 +114,7 @@ impl PrintersPanel {
           .when(tab == self.tab, |b| b.primary())
           .on_click(cx.listener(move |this, _, _, cx| {
             this.tab = tab;
+            this.error = None;
             cx.notify();
           }))
       }),
@@ -155,6 +165,7 @@ mod tests {
       state: PrinterState::Idle,
       reasons: vec![],
       accepting: true,
+      offline: false,
       markers: vec![Marker {
         name: "Black".into(),
         level: Some(40),
@@ -184,6 +195,7 @@ mod tests {
       port: 80,
       root: "eSCL".into(),
       tls,
+      sane: None,
     }
   }
 
@@ -290,6 +302,14 @@ mod tests {
       (settings.resolution, settings.format, settings.source),
       (300, Format::Pdf, InputSource::Flatbed)
     );
+    // another scanner leaving keeps the pick
+    let scanners = cx.update(|cx| cx.printing().scanners.clone());
+    scanners.update(cx, |s, cx| {
+      s.retain(|s| s.name != "Secure");
+      cx.notify();
+    });
+    cx.run_until_parked();
+    panel.read_with(cx, |p, _| assert!(p.caps.is_some()));
     cx.update_window(window, |_, window, cx| {
       window.render_frame(cx);
       for id in [
@@ -306,5 +326,15 @@ mod tests {
       );
     })
     .unwrap();
+
+    // the picked scanner leaving drops the pick and its settings
+    scanners.update(cx, |s, cx| {
+      s.clear();
+      cx.notify();
+    });
+    cx.run_until_parked();
+    panel.read_with(cx, |p, _| {
+      assert!(p.scanner.is_none() && p.caps.is_none() && p.settings.is_none())
+    });
   }
 }

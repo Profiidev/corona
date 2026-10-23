@@ -1,4 +1,4 @@
-use std::{cell::Cell, path::Path, rc::Rc, sync::Arc, time::Duration};
+use std::{cell::Cell, collections::HashSet, path::Path, rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
@@ -56,12 +56,15 @@ pub fn listener(
   state: Printing,
 ) {
   let mut changes = pump(cx, changes).or(pokes.into_stream());
+  // finished jobs count from the shell's start, older ones are history
+  let since = jiff::Timestamp::now().as_second() as i32;
   cx.spawn(async move |cx| {
     loop {
-      let printers = cups::printers(&sock).await.log_err().unwrap_or_default();
+      let mut printers = cups::printers(&sock).await.log_err().unwrap_or_default();
+      cups::mark_offline(&mut printers).await;
       let jobs = match printers.is_empty() {
         true => Vec::new(),
-        false => cups::jobs(&sock).await.log_err().unwrap_or_default(),
+        false => cups::jobs(&sock, since).await.log_err().unwrap_or_default(),
       };
       state.printers.write_changed(cx, printers);
       state.jobs.write_changed(cx, jobs);
@@ -145,7 +148,13 @@ pub fn avahi_listener(
   scanners: Entity<Vec<Scanner>>,
   printers: Entity<Vec<NetworkPrinter>>,
 ) {
-  let mut messages = pump(cx, messages);
+  // resolving runs aside, one dead announcement must not hold up the rest
+  let (resolved_tx, resolved) = flume::unbounded();
+  let mut events = pump(cx, messages).map(Event::Message).or(
+    resolved
+      .into_stream()
+      .map(|(key, service)| Event::Resolved(key, service)),
+  );
   cx.spawn(async move |cx| {
     let Ok(server) = ServerProxy::new(&conn).await.log_err() else {
       return;
@@ -153,7 +162,19 @@ pub fn avahi_listener(
     // fails when avahi-daemon is not running, NameOwnerChanged retries
     avahi::browse(&server).await.ok();
     let mut found = Found::new();
-    while let Some(message) = messages.next().await {
+    // announced and still being resolved, a removal in between drops the result
+    let mut pending = HashSet::new();
+    while let Some(event) = events.next().await {
+      let message = match event {
+        Event::Resolved(key, service) => {
+          if pending.remove(&key) {
+            found.insert(key, service);
+          }
+          scanners_changed(&scanners, &printers, &found, cx);
+          continue;
+        }
+        Event::Message(message) => message,
+      };
       let header = message.header();
       let member = header.member().map(|m| m.as_str()).unwrap_or_default();
       let body = message.body();
@@ -162,17 +183,25 @@ pub fn avahi_listener(
           let Ok(item) = body.deserialize::<Item>() else {
             continue;
           };
-          if let Ok(service) = avahi::resolve(&server, &item).await.log_err() {
-            found.insert(avahi::key(&item), service);
-          }
+          pending.insert(avahi::key(&item));
+          let (server, tx) = (server.clone(), resolved_tx.clone());
+          cx.spawn(async move |_| {
+            if let Ok(service) = avahi::resolve(&server, &item).await.log_err() {
+              tx.send((avahi::key(&item), service)).ok();
+            }
+          })
+          .detach();
+          continue;
         }
         "ItemRemove" => {
           if let Ok(item) = body.deserialize::<Item>() {
+            pending.remove(&avahi::key(&item));
             found.remove(&avahi::key(&item));
           }
         }
         "NameOwnerChanged" => {
           found.clear();
+          pending.clear();
           let Ok((_, _, owner)) = body.deserialize::<(String, String, String)>() else {
             continue;
           };
@@ -182,9 +211,23 @@ pub fn avahi_listener(
         }
         _ => continue,
       }
-      scanners.write_changed(cx, avahi::scanners(&found));
-      printers.write_changed(cx, avahi::printers(&found));
+      scanners_changed(&scanners, &printers, &found, cx);
     }
   })
   .detach();
+}
+
+enum Event {
+  Message(Message),
+  Resolved((String, String, i32, i32), avahi::Service),
+}
+
+fn scanners_changed(
+  scanners: &Entity<Vec<Scanner>>,
+  printers: &Entity<Vec<NetworkPrinter>>,
+  found: &Found,
+  cx: &mut gpui_kit::AsyncApp,
+) {
+  crate::set_scanners(scanners, cx, false, avahi::scanners(found));
+  printers.write_changed(cx, avahi::printers(found));
 }

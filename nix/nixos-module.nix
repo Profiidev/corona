@@ -125,6 +125,13 @@ in
         networking.networkmanager.enable = lib.mkDefault true;
         hardware.bluetooth.enable = lib.mkDefault true;
         services.upower.enable = lib.mkDefault true;
+        # printers panel: CUPS, network printers and eSCL scanners over mDNS, admin actions over D-Bus
+        services.printing.enable = lib.mkDefault true;
+        services.avahi.enable = lib.mkDefault true;
+        services.avahi.nssmdns4 = lib.mkDefault true;
+        services.dbus.packages = [ pkgs.cups-pk-helper ];
+        # scanimage for scanners without AirScan
+        hardware.sane.enable = lib.mkDefault true;
       })
     ]
   );

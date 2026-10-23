@@ -356,19 +356,36 @@ async fn post(sock: &Path, body: &[u8], auth: Option<&str>) -> Result<Vec<u8>> {
     if complete(&raw) {
       break;
     }
+    if raw.len() > MAX_RESPONSE {
+      bail!("cupsd answered with more than {MAX_RESPONSE} bytes");
+    }
   }
   Ok(raw)
 }
 
 /// Whether `raw` is a whole response, by its Content-Length or last chunk.
+/// Most bytes an HTTP answer may have, a high resolution multi-page PDF fits.
+pub const MAX_RESPONSE: usize = 512 << 20;
+
+/// Whether `raw` holds a whole response. Cheap, it runs after every read.
 pub fn complete(raw: &[u8]) -> bool {
   let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
     return false;
   };
   let head = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
-  let framed =
-    head.contains("\r\ncontent-length:") || head.contains("\r\ntransfer-encoding: chunked");
-  framed && http_body(raw).is_ok()
+  if head.contains("\r\ntransfer-encoding: chunked") {
+    // the last chunk, without trailers
+    return raw.ends_with(b"\r\n0\r\n\r\n") || raw[end + 4..] == *b"0\r\n\r\n";
+  }
+  head
+    .lines()
+    .find_map(|l| {
+      l.strip_prefix("content-length:")?
+        .trim()
+        .parse::<usize>()
+        .ok()
+    })
+    .is_some_and(|len| raw.len() >= end + 4 + len)
 }
 
 /// A whole HTTP/1.1 response, its body decoded.

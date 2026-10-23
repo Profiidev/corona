@@ -21,12 +21,15 @@ app:
       stopped:
         en: Paused
         de: Angehalten
+    offline:
+      en: Unreachable
+      de: Nicht erreichbar
     not_accepting:
       en: Not accepting jobs
       de: Nimmt keine Aufträge an
-    paused:
-      en: Pause printer
-      de: Drucker anhalten
+    enabled:
+      en: Printer enabled
+      de: Drucker aktiv
     print_file:
       en: Print file…
       de: Datei drucken…
@@ -45,6 +48,9 @@ app:
     cancel_job:
       en: Cancel job
       de: Auftrag abbrechen
+    pages_one:
+      en: 1 page
+      de: 1 Seite
     pages:
       en: '%{done} pages'
       de: '%{done} Seiten'
@@ -79,6 +85,9 @@ app:
     no_scanners:
       en: No scanners found
       de: Keine Scanner gefunden
+    sane_hint:
+      en: 'Older scanners without AirScan need SANE: install sane-backends (NixOS: hardware.sane.enable = true), add network scanners to the backend config (e.g. "tcp <ip>" in xerox_mfp.conf) and check with "scanimage -L".'
+      de: 'Ältere Scanner ohne AirScan brauchen SANE: sane-backends installieren (NixOS: hardware.sane.enable = true), Netzwerkscanner in der Backend-Konfiguration eintragen (z. B. "tcp <IP>" in xerox_mfp.conf) und mit "scanimage -L" prüfen.'
     tls:
       en: Encrypted
       de: Verschlüsselt
@@ -123,9 +132,21 @@ app:
     scan:
       en: Scan
       de: Scannen
+    scanning_start:
+      en: Scanning…
+      de: Scanne…
+    scanning_one:
+      en: Scanning… 1 page
+      de: Scanne… 1 Seite
     scanning:
       en: 'Scanning… %{pages} pages'
       de: 'Scanne… %{pages} Seiten'
+    scanning_other:
+      en: '%{scanner} is scanning…'
+      de: '%{scanner} scannt…'
+    saved_one:
+      en: 1 file saved
+      de: 1 Datei gespeichert
     saved:
       en: '%{count} files saved'
       de: '%{count} Dateien gespeichert'

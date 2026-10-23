@@ -24,7 +24,7 @@ use rustls::{
   pki_types::{CertificateDer, ServerName, UnixTime},
 };
 
-use crate::ipp::{HttpResponse, complete, parse_response};
+use crate::ipp::{HttpResponse, MAX_RESPONSE, complete, parse_response};
 
 const CONNECT: Duration = Duration::from_secs(10);
 /// a high resolution page can take a while before its first byte
@@ -138,6 +138,13 @@ fn fetch(
   tls.write_all(head.as_bytes())?;
   tls.write_all(body)?;
   tls.flush()?;
+  // the handshake is done, so the scanner proved it holds the key: pin now
+  let cert = tls
+    .conn
+    .peer_certificates()
+    .and_then(|c| c.first())
+    .context("no server certificate")?;
+  pin(pins, key, &fingerprint(cert))?;
 
   let mut raw = Vec::new();
   let mut buf = [0; 16 * 1024];
@@ -148,6 +155,9 @@ fn fetch(
         raw.extend(&buf[..n]);
         if complete(&raw) {
           break;
+        }
+        if raw.len() > MAX_RESPONSE {
+          bail!("{host} answered with more than {MAX_RESPONSE} bytes");
         }
       }
       // embedded servers often hang up without a TLS close_notify
@@ -163,9 +173,13 @@ fn fingerprint(cert: &[u8]) -> String {
   digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Accepts `print` for `key` if it is the pinned one, pinning it when none is.
-fn pin(pins: &Path, key: &str, print: &str) -> Result<()> {
-  let known = std::fs::read_to_string(pins).unwrap_or_default();
+/// Whether `print` is pinned for `key`, an error if another one is.
+fn check(pins: &Path, key: &str, print: &str) -> Result<bool> {
+  let known = match std::fs::read_to_string(pins) {
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+    // unreadable pins must not turn into "trust anything"
+    known => known.with_context(|| format!("reading {}", pins.display()))?,
+  };
   let pinned = known.lines().find_map(|line| {
     line
       .split_once('\t')
@@ -173,12 +187,20 @@ fn pin(pins: &Path, key: &str, print: &str) -> Result<()> {
       .map(|(_, v)| v)
   });
   match pinned {
-    Some(pinned) if pinned == print => Ok(()),
+    Some(pinned) if pinned == print => Ok(true),
     Some(_) => bail!(
       "the certificate of {key} changed since it was first used. If the scanner was reset, remove its line from {}",
       pins.display()
     ),
-    None => {
+    None => Ok(false),
+  }
+}
+
+/// Pins `print` for `key` unless it already is.
+fn pin(pins: &Path, key: &str, print: &str) -> Result<()> {
+  match check(pins, key, print)? {
+    true => Ok(()),
+    false => {
       if let Some(dir) = pins.parent() {
         std::fs::create_dir_all(dir)?;
       }
@@ -208,8 +230,9 @@ impl ServerCertVerifier for Pinning {
     _ocsp_response: &[u8],
     _now: UnixTime,
   ) -> Result<ServerCertVerified, rustls::Error> {
-    pin(&self.pins, &self.key, &fingerprint(end_entity))
-      .map(|()| ServerCertVerified::assertion())
+    // only checked here, pinned once the handshake proved the key
+    check(&self.pins, &self.key, &fingerprint(end_entity))
+      .map(|_| ServerCertVerified::assertion())
       .map_err(|e| rustls::Error::General(e.to_string()))
   }
 
@@ -363,5 +386,17 @@ pub(crate) mod tests {
     // another scanner pins its own
     get(&PinnedClient::new("Lab", &pins), b).unwrap();
     assert_eq!(std::fs::read_to_string(&pins).unwrap().lines().count(), 2);
+  }
+
+  #[test]
+  fn unreadable_pins_refuse() {
+    let dir = tempfile::tempdir().unwrap();
+    let ok = |_: &str, _: &str, _: &str| (200, vec![], Vec::new());
+    // a directory where the pins file should be cannot be read
+    let err = format!(
+      "{:?}",
+      get(&PinnedClient::new("Office", dir.path()), serve("a", ok)).unwrap_err()
+    );
+    assert!(err.contains("reading"), "{err}");
   }
 }

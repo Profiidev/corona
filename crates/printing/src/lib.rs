@@ -1,5 +1,5 @@
-//! CUPS printers and print jobs, and network printers and eSCL scanners
-//! found through Avahi.
+//! CUPS printers and print jobs, network printers and eSCL scanners found
+//! through Avahi, and SANE scanners.
 
 use std::{
   path::{Path, PathBuf},
@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use gpui_kit::{App, AppContext, Entity, Global, Task};
+use gpui_kit::{App, AppContext, AsyncApp, Entity, Global, Task};
 use zbus::Connection;
 
 use corona_utils::error::ErrorLogExt;
@@ -27,6 +27,7 @@ mod ipp;
 mod listener;
 #[cfg(test)]
 mod mock;
+mod sane;
 mod state;
 mod tls;
 
@@ -46,6 +47,8 @@ pub struct Printing {
   pins: Arc<Path>,
   /// asks the listener to read printers and jobs again
   poke: flume::Sender<()>,
+  /// whether to ask SANE for scanners, never in tests
+  sane: bool,
 }
 
 impl Global for Printing {}
@@ -110,9 +113,10 @@ impl Printing {
       };
 
       // pk-helper's errors are plain text, so anything but a clear refusal
-      // from CUPS is worth another try
+      // from CUPS is worth another try, unless the password prompt failed
       let retry = |e: &anyhow::Error| {
-        cups::device_error(e) || e.downcast_ref::<IppError>().is_none()
+        e.downcast_ref::<AdminRefused>().is_none()
+          && (cups::device_error(e) || e.downcast_ref::<IppError>().is_none())
       };
       let attempt = async |uri: &str, ppd: &str| match cups::add_printer(&sock, &queue, uri, ppd, &info).await {
         Err(e) if unauthorized(&e) => {
@@ -171,6 +175,24 @@ impl Printing {
   /// Reads printers and jobs again, for when the panel opens.
   pub fn refresh(&self) {
     self.poke.send(()).ok();
+  }
+
+  /// Asks SANE for scanners without eSCL in the background. It probes USB
+  /// and the network for seconds, so only when the panel opens.
+  pub fn find_sane_scanners(&self, cx: &mut App) {
+    // a probe could disturb the device that is scanning
+    if !self.sane || self.scan.read(cx).is_some() {
+      return;
+    }
+    let scanners = self.scanners.clone();
+    cx.spawn(async move |cx| {
+      let found = sane::scanners().await.unwrap_or_else(|e| {
+        tracing::debug!("no SANE scanners: {e:?}");
+        Vec::new()
+      });
+      set_scanners(&scanners, cx, true, found);
+    })
+    .detach();
   }
 
   fn after<F: Future<Output = Result<()>>>(
@@ -255,7 +277,10 @@ impl Printing {
     let client = scanner.as_ref().ok().map(|s| self.client(s, cx));
     async move {
       let scanner = scanner?;
-      escl::capabilities(&*client.context("no client")?, &scanner).await
+      match &scanner.sane {
+        Some(device) => sane::capabilities(device).await,
+        None => escl::capabilities(&*client.context("no client")?, &scanner).await,
+      }
     }
   }
 
@@ -266,30 +291,43 @@ impl Printing {
     settings: ScanSettings,
     cx: &mut App,
   ) -> Task<Result<Vec<PathBuf>>> {
-    let scanner = self.scanner(name, cx);
-    let client = scanner.as_ref().ok().map(|s| self.client(s, cx));
+    let scanner = match self.scanner(name, cx) {
+      Ok(scanner) => scanner,
+      Err(e) => return Task::ready(Err(e)),
+    };
+    let client = self.client(&scanner, cx);
     let progress = self.scan.clone();
-    let running = progress.read(cx).is_some();
+    // claimed right away, so a second call in the same tick is refused
+    if progress.read(cx).is_some() {
+      return Task::ready(Err(anyhow!("a scan is already running")));
+    }
+    progress.write(
+      cx,
+      Some(ScanProgress {
+        scanner: scanner.name.clone(),
+        pages: 0,
+      }),
+    );
     cx.spawn(async move |cx| {
-      if running {
-        bail!("a scan is already running");
-      }
-      let scanner = scanner?;
-      let client = client.context("no client")?;
-      progress.write(
-        cx,
-        Some(ScanProgress {
-          scanner: scanner.name.clone(),
-          pages: 0,
-        }),
-      );
+      let mut guard = ClearScan {
+        progress: Some(progress.clone()),
+        cx: cx.clone(),
+      };
       let result = async {
-        let caps = escl::capabilities(&*client, &scanner).await?;
         let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
         let (pages, mut rx) = futures_channel::mpsc::unbounded();
-        let scan = escl::scan(&*client, &scanner, &caps, &settings, &stamp, move |n| {
+        let on_page = move |n| {
           pages.unbounded_send(n).ok();
-        });
+        };
+        let scan = async {
+          match &scanner.sane {
+            Some(device) => sane::scan(device, &settings, &stamp, on_page).await,
+            None => {
+              let caps = escl::capabilities(&*client, &scanner).await?;
+              escl::scan(&*client, &scanner, &caps, &settings, &stamp, on_page).await
+            }
+          }
+        };
         let watch = async {
           use futures_lite::StreamExt;
           while let Some(n) = rx.next().await {
@@ -306,6 +344,7 @@ impl Printing {
         files
       }
       .await;
+      guard.progress = None;
       progress.write(cx, None);
       result
     })
@@ -330,9 +369,62 @@ impl Printing {
       avahi: None,
       pins: Arc::from(Path::new("/nonexistent/scanner-certs")),
       poke: flume::unbounded().0,
+      sane: false,
     };
     cx.set_global(state);
   }
+}
+
+/// Ends the running scan when its task is dropped before it finished, which
+/// would leave every later scan refused.
+struct ClearScan {
+  progress: Option<Entity<Option<ScanProgress>>>,
+  cx: AsyncApp,
+}
+
+impl Drop for ClearScan {
+  fn drop(&mut self) {
+    let Some(progress) = self.progress.take() else {
+      return;
+    };
+    let mut cx = self.cx.clone();
+    // the app may be borrowed right now, so not in place
+    self
+      .cx
+      .foreground_executor()
+      .spawn(async move { progress.write(&mut cx, None) })
+      .detach();
+  }
+}
+
+/// cups-pk-helper could not run an action: no rights, no agent, no answer.
+/// Trying again would only show the password prompt again.
+#[derive(Debug)]
+struct AdminRefused(String);
+
+impl std::fmt::Display for AdminRefused {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.0)
+  }
+}
+
+impl std::error::Error for AdminRefused {}
+
+/// Swaps the eSCL or the SANE scanners and keeps the others, eSCL first.
+fn set_scanners(
+  entity: &Entity<Vec<Scanner>>,
+  cx: &mut impl AppContext,
+  sane: bool,
+  mut next: Vec<Scanner>,
+) {
+  entity.update(cx, |list, cx| {
+    next.extend(list.iter().filter(|s| s.sane.is_some() != sane).cloned());
+    next.sort_by_key(|s| s.sane.is_some());
+    if *list != next {
+      *list = next;
+      cx.notify();
+    }
+  });
 }
 
 /// `$XDG_PICTURES_DIR`, else the home directory, where scans go by default.
@@ -369,7 +461,8 @@ where
     smol::Timer::after(PROMPT).await;
     bail!("no answer to the password prompt, is a polkit agent running in this session?")
   })
-  .await?;
+  .await
+  .map_err(|e| AdminRefused(format!("{e:#}")))?;
   if !error.is_empty() {
     bail!("{error}");
   }
@@ -393,6 +486,7 @@ async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {
     avahi: Some(conn.clone()),
     pins: Arc::from(tls::pins_file()),
     poke: poke.clone(),
+    sane: !cfg!(test),
   };
 
   // subscribe before the first snapshot so no change can slip in between
@@ -872,14 +966,17 @@ mod tests {
     emit(&avahi, "ItemNew", "Secure", avahi::SCANS);
     emit(&avahi, "ItemNew", "Brother", avahi::SCANS);
     emit(&avahi, "ItemNew", "Brother", avahi::SCAN);
-    // the plain announcement replaces the TLS one of the same scanner
+    // the TLS announcement wins over the plain one of the same scanner
     wait_until(cx, |cx| {
-      scanner_names(cx) == [("Brother".into(), false), ("Secure".into(), true)]
+      scanner_names(cx) == [("Brother".into(), true), ("Secure".into(), true)]
     });
     let base = cx.update(|cx| cx.printing().list_scanners(cx)[0].base_url());
-    assert_eq!(base, "http://10.0.0.9:8080/eSCL");
+    assert_eq!(base, "https://10.0.0.9:8080/eSCL");
 
     emit(&avahi, "ItemRemove", "Secure", avahi::SCANS);
+    wait_until(cx, |cx| scanner_names(cx) == [("Brother".into(), true)]);
+    // without its TLS announcement the plain one is used
+    emit(&avahi, "ItemRemove", "Brother", avahi::SCANS);
     wait_until(cx, |cx| scanner_names(cx) == [("Brother".into(), false)]);
 
     // a network printer without a queue can be added, by address when

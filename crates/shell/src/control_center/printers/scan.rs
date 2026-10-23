@@ -129,6 +129,14 @@ impl PrintersPanel {
           .id("scanners-list")
           .children(scanners.iter().map(|s| self.scanner_row(theme, s, cx))),
       )
+      .when(!scanners.iter().any(|s| s.sane.is_some()), |d| {
+        d.child(
+          div()
+            .text_xs()
+            .text_color(theme.colors.muted_foreground)
+            .child(t!("app.printers.sane_hint")),
+        )
+      })
   }
 
   fn scanner_row(
@@ -138,10 +146,14 @@ impl PrintersPanel {
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let selected = self.scanner.as_deref() == Some(&scanner.name);
-    let mut details = match (selected, &self.caps) {
-      (true, Some(caps)) if !caps.state.is_empty() => vec![caps.state.clone()],
-      _ => scanner.model.clone().into_iter().collect(),
-    };
+    let mut details: Vec<_> = scanner.model.clone().into_iter().collect();
+    if cx
+      .printing()
+      .scan_progress(cx)
+      .is_some_and(|p| p.scanner == scanner.name)
+    {
+      details.push(t!("app.printers.scanning_start").to_string());
+    }
     if scanner.tls {
       details.push(t!("app.printers.tls").to_string());
     }
@@ -186,6 +198,7 @@ impl PrintersPanel {
           .on_click(cx.async_listener(
             move |this, _, _, cx| {
               this.scanner = Some(name.clone());
+              this.error = None;
               (this.caps, this.settings, this.saved) = (None, None, None);
               let caps = cx.printing().scanner_capabilities(&name, cx);
               let name = name.clone();
@@ -256,10 +269,17 @@ impl PrintersPanel {
     cx: &Context<'_, Self>,
   ) -> Option<impl IntoElement> {
     let (caps, settings) = (self.caps.as_ref()?, self.settings.as_ref()?);
-    let progress = cx.printing().scan_progress(cx);
-    let status = match (progress, self.saved) {
-      (Some(p), _) => Some(t!("app.printers.scanning", pages = p.pages)),
-      (None, Some(count)) => Some(t!("app.printers.saved", count = count)),
+    // one scan at a time, on any scanner
+    let busy = cx.printing().scan_progress(cx);
+    let progress = busy.filter(|p| self.scanner.as_ref() == Some(&p.scanner));
+    let status = match (busy, progress, self.saved) {
+      // a flatbed or a PDF reports no page before the end
+      (_, Some(p), _) if p.pages == 0 => Some(t!("app.printers.scanning_start")),
+      (_, Some(p), _) if p.pages == 1 => Some(t!("app.printers.scanning_one")),
+      (_, Some(p), _) => Some(t!("app.printers.scanning", pages = p.pages)),
+      (Some(p), None, _) => Some(t!("app.printers.scanning_other", scanner = p.scanner)),
+      (None, _, Some(1)) => Some(t!("app.printers.saved_one")),
+      (None, _, Some(count)) => Some(t!("app.printers.saved", count = count)),
       _ => None,
     };
     let dpi: Vec<_> = caps
@@ -273,44 +293,53 @@ impl PrintersPanel {
         .flex()
         .flex_col()
         .w_full()
-        .flex_shrink_0()
+        .min_h(px(160.))
         .gap_2()
         .p_2()
         .card(cx)
-        .child(self.choice(
-          "resolution",
-          t!("app.printers.resolution"),
-          dpi,
-          settings.resolution,
-          |s, v| s.resolution = v,
-          cx,
-        ))
-        .child(self.choice(
-          "color",
-          t!("app.printers.color_mode"),
-          labeled(caps.color_modes.iter().copied(), color_label),
-          settings.color_mode,
-          |s, v| s.color_mode = v,
-          cx,
-        ))
-        .when(caps.sources.len() > 1, |d| {
-          d.child(self.choice(
-            "source",
-            t!("app.printers.source"),
-            labeled(caps.sources.iter().map(|s| s.source), source_label),
-            settings.source,
-            |s, v| s.source = v,
-            cx,
-          ))
-        })
-        .child(self.choice(
-          "format",
-          t!("app.printers.format"),
-          labeled(caps.formats.iter().copied(), format_label),
-          settings.format,
-          |s, v| s.format = v,
-          cx,
-        ))
+        .child(
+          div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .h_auto()
+            .overflow_y_scrollbar()
+            .id("scan-options")
+            .child(self.choice(
+              "resolution",
+              t!("app.printers.resolution"),
+              dpi,
+              settings.resolution,
+              |s, v| s.resolution = v,
+              cx,
+            ))
+            .child(self.choice(
+              "color",
+              t!("app.printers.color_mode"),
+              labeled(caps.color_modes.iter().copied(), color_label),
+              settings.color_mode,
+              |s, v| s.color_mode = v,
+              cx,
+            ))
+            .when(caps.sources.len() > 1, |d| {
+              d.child(self.choice(
+                "source",
+                t!("app.printers.source"),
+                labeled(caps.sources.iter().map(|s| s.source), source_label),
+                settings.source,
+                |s, v| s.source = v,
+                cx,
+              ))
+            })
+            .child(self.choice(
+              "format",
+              t!("app.printers.format"),
+              labeled(caps.formats.iter().copied(), format_label),
+              settings.format,
+              |s, v| s.format = v,
+              cx,
+            )),
+        )
         .child(
           div()
             .flex()
@@ -342,7 +371,8 @@ impl PrintersPanel {
                 .cursor_pointer()
                 .tooltip(t!("app.printers.choose_folder"))
                 .on_click(cx.async_listener(
-                  |_, _, _, cx| {
+                  |this, _, _, cx| {
+                    this.error = None;
                     let paths = cx.prompt_for_paths(PathPromptOptions {
                       files: false,
                       directories: true,
@@ -389,10 +419,10 @@ impl PrintersPanel {
                 .primary()
                 .cursor_pointer()
                 .loading(progress.is_some())
-                .disabled(progress.is_some())
+                .disabled(busy.is_some())
                 .on_click(cx.async_listener(
                   |this, _, _, cx| {
-                    this.saved = None;
+                    (this.saved, this.error) = (None, None);
                     let printing = cx.printing().clone();
                     let task = match (this.scanner.clone(), this.settings.clone()) {
                       (Some(name), Some(settings)) => Some(printing.scan(&name, settings, cx)),

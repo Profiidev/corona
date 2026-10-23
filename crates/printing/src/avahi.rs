@@ -148,9 +148,10 @@ fn by_name<'a>(found: &'a Found, preferred: &str, other: &str) -> Vec<&'a Servic
   by_name.into_values().collect()
 }
 
-/// Scanners, the plain-HTTP announcement over the TLS one.
+/// Scanners, the TLS announcement over the plain one: anyone on the network
+/// could announce a pinned scanner's name over plain HTTP.
 pub fn scanners(found: &Found) -> Vec<Scanner> {
-  by_name(found, SCAN, SCANS)
+  by_name(found, SCANS, SCAN)
     .into_iter()
     .map(crate::escl::scanner)
     .collect()
@@ -320,11 +321,12 @@ mod tests {
       reasons: vec![],
       accepting: true,
       markers: vec![],
+      offline: false,
     }
   }
 
   #[test]
-  fn prefers_plain_scanners() {
+  fn prefers_tls_scanners() {
     let found: Found = [
       service("B", SCANS, 1, &[]),
       service("A", SCANS, 1, &[]),
@@ -336,7 +338,7 @@ mod tests {
     .collect();
     let list = scanners(&found);
     assert_eq!(list.len(), 2);
-    assert_eq!((list[0].name.as_str(), list[0].tls), ("A", false));
+    assert_eq!((list[0].name.as_str(), list[0].tls), ("A", true));
     assert_eq!((list[1].name.as_str(), list[1].tls), ("B", true));
   }
 

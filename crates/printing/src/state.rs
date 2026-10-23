@@ -28,6 +28,8 @@ pub struct Printer {
   pub reasons: Vec<String>,
   pub accepting: bool,
   pub markers: Vec<Marker>,
+  /// the device did not answer a connect, CUPS only notices on the next job
+  pub offline: bool,
 }
 
 /// An IPP printer on the network that CUPS has no queue for yet.
@@ -99,6 +101,8 @@ pub struct Scanner {
   pub root: String,
   /// only announced as `_uscans._tcp`, so it speaks HTTPS
   pub tls: bool,
+  /// the SANE device, for a scanner without eSCL
+  pub sane: Option<String>,
 }
 
 impl Scanner {

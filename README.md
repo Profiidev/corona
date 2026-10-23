@@ -44,6 +44,17 @@ On NixOS, set `programs.corona.hotspot.interface` to your wifi interface (for ex
 The module then creates `corona-ap` at boot, keeps NetworkManager's client profiles off it and
 opens these ports on it.
 
+### Printing
+
+The printers panel talks to CUPS. Network printers and AirScan (eSCL) scanners are found over
+Avahi (mDNS). Adding queues and pausing printers go through `cups-pk-helper` and need a running
+polkit agent. Older scanners without AirScan need sane-backends' `scanimage`.
+
+On NixOS, `programs.corona.recommendedServices.enable` (on by default) turns on CUPS, Avahi,
+cups-pk-helper and SANE. Network SANE scanners go in the backend config, for example
+`hardware.sane.extraConfig.xerox_mfp = "tcp <ip>";`. Log in again after enabling SANE so its
+environment variables are set.
+
 ## Development
 
 ### Gpui-pre update
