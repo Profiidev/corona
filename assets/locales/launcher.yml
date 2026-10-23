@@ -557,3 +557,313 @@ app:
       search_workspaces:
         en: 'Search workspaces…'
         de: 'Arbeitsflächen suchen …'
+      close_all:
+        en: 'Close all windows'
+        de: 'Alle Fenster schließen'
+      close_others:
+        en: 'Close all other windows'
+        de: 'Alle anderen Fenster schließen'
+      close_all_message:
+        en: 'Unsaved work may be lost.'
+        de: 'Ungespeicherte Arbeit kann verloren gehen.'
+      closed:
+        en: 'Closed %{count} windows'
+        de: '%{count} Fenster geschlossen'
+      float:
+        en: 'Toggle floating'
+        de: 'Schwebend umschalten'
+      fullscreen:
+        en: 'Toggle fullscreen'
+        de: 'Vollbild umschalten'
+      pin:
+        en: 'Pin window'
+        de: 'Fenster anheften'
+      focus_monitor:
+        en: 'Focus monitor'
+        de: 'Monitor fokussieren'
+      search_monitors:
+        en: 'Search monitors…'
+        de: 'Monitore suchen …'
+      keyboard_layout:
+        en: 'Keyboard layout'
+        de: 'Tastaturbelegung'
+      search_layouts:
+        en: 'Search layouts…'
+        de: 'Belegungen suchen …'
+      next_layout:
+        en: 'Next layout'
+        de: 'Nächste Belegung'
+      layout:
+        en: 'Window layout'
+        de: 'Fensteranordnung'
+      position:
+        en: 'position'
+        de: 'Position'
+      place:
+        en: 'Place window'
+        de: 'Fenster platzieren'
+      monitor:
+        en: 'monitor'
+        de: 'Monitor'
+      move:
+        en: 'Move'
+        de: 'Verschieben'
+      move_to_monitor:
+        en: 'Move window to monitor'
+        de: 'Fenster auf Monitor verschieben'
+      move_to_workspace:
+        en: 'Move window to workspace'
+        de: 'Fenster auf Arbeitsfläche verschieben'
+      show_desktop:
+        en: 'Show desktop'
+        de: 'Schreibtisch anzeigen'
+    bluetooth:
+      battery:
+        en: 'Battery %{level}%'
+        de: 'Akku %{level} %'
+      connect:
+        en: 'Connect %{name}'
+        de: '%{name} verbinden'
+      connected:
+        en: 'Connected'
+        de: 'Verbunden'
+      connected_to:
+        en: 'Connected to %{name}'
+        de: 'Mit %{name} verbunden'
+      disconnect:
+        en: 'Disconnect %{name}'
+        de: '%{name} trennen'
+      disconnected:
+        en: '%{name} disconnected'
+        de: '%{name} getrennt'
+      forget:
+        en: 'Forget device'
+        de: 'Gerät entfernen'
+      forget_title:
+        en: 'Forget %{name}?'
+        de: '%{name} entfernen?'
+      forget_message:
+        en: 'It has to be paired again to connect.'
+        de: 'Zum Verbinden muss es neu gekoppelt werden.'
+      forgotten:
+        en: '%{name} forgotten'
+        de: '%{name} entfernt'
+      pair:
+        en: 'Pair %{name}'
+        de: '%{name} koppeln'
+      paired:
+        en: '%{name} paired'
+        de: '%{name} gekoppelt'
+      pair_new:
+        en: 'Pair new device'
+        de: 'Neues Gerät koppeln'
+      scanning:
+        en: 'Looking for devices…'
+        de: 'Suche nach Geräten …'
+      search:
+        en: 'Search devices…'
+        de: 'Geräte suchen …'
+    devices:
+      app_volume:
+        en: 'App volume'
+        de: 'App-Lautstärke'
+      input:
+        en: 'Input: %{name}'
+        de: 'Eingang: %{name}'
+      output:
+        en: 'Output: %{name}'
+        de: 'Ausgang: %{name}'
+      make_default:
+        en: 'Use as default'
+        de: 'Als Standard verwenden'
+      mute_app:
+        en: 'Mute active app'
+        de: 'Aktive App stummschalten'
+      no_streams:
+        en: 'No app plays audio'
+        de: 'Keine App gibt Ton aus'
+      play_on:
+        en: 'Play on %{name}'
+        de: 'Auf %{name} abspielen'
+      search_apps:
+        en: 'Search apps…'
+        de: 'Apps suchen …'
+      switched:
+        en: 'Audio device switched'
+        de: 'Audiogerät gewechselt'
+      unmuted:
+        en: 'Unmuted'
+        de: 'Ton an'
+    monitors:
+      title:
+        en: 'Monitor settings'
+        de: 'Monitoreinstellungen'
+      search:
+        en: 'Search monitors…'
+        de: 'Monitore suchen …'
+      enable:
+        en: 'Enable'
+        de: 'Einschalten'
+      disable:
+        en: 'Disable'
+        de: 'Ausschalten'
+      enabled:
+        en: 'On'
+        de: 'An'
+      disabled:
+        en: 'Off'
+        de: 'Aus'
+      mirror:
+        en: 'Mirror %{source}'
+        de: '%{source} spiegeln'
+      mirrors:
+        en: 'Mirrors %{source}'
+        de: 'Spiegelt %{source}'
+      stop_mirroring:
+        en: 'Stop mirroring'
+        de: 'Spiegeln beenden'
+    network:
+      connect:
+        en: 'Connect'
+        de: 'Verbinden'
+      connect_to:
+        en: 'Connect Wi-Fi %{ssid}'
+        de: 'WLAN %{ssid} verbinden'
+      connected:
+        en: 'Connected to %{ssid}'
+        de: 'Mit %{ssid} verbunden'
+      connected_tag:
+        en: 'Connected'
+        de: 'Verbunden'
+      connecting:
+        en: 'Connecting…'
+        de: 'Verbinde …'
+      connecting_tag:
+        en: 'Connecting'
+        de: 'Verbinde'
+      saved:
+        en: 'Saved'
+        de: 'Gespeichert'
+      disconnect:
+        en: 'Disconnect Wi-Fi'
+        de: 'WLAN trennen'
+      disconnected:
+        en: 'Wi-Fi disconnected'
+        de: 'WLAN getrennt'
+      forget:
+        en: 'Forget network'
+        de: 'Netzwerk vergessen'
+      forget_title:
+        en: 'Forget %{ssid}?'
+        de: '%{ssid} vergessen?'
+      forget_message:
+        en: 'Its password is removed.'
+        de: 'Das Passwort wird gelöscht.'
+      hotspot:
+        en: 'Hotspot'
+        de: 'Hotspot'
+      join_hidden:
+        en: 'Join hidden network'
+        de: 'Verstecktem Netzwerk beitreten'
+      networks:
+        en: 'Wi-Fi networks'
+        de: 'WLAN-Netzwerke'
+      search:
+        en: 'Search networks…'
+        de: 'Netzwerke suchen …'
+      open:
+        en: 'Open'
+        de: 'Offen'
+      wpa:
+        en: 'WPA/WPA2'
+        de: 'WPA/WPA2'
+      wpa3:
+        en: 'WPA3'
+        de: 'WPA3'
+      ssid:
+        en: 'Network name'
+        de: 'Netzwerkname'
+      security:
+        en: 'Security'
+        de: 'Sicherheit'
+      password:
+        en: 'Wi-Fi password'
+        de: 'WLAN-Passwort'
+      password_for:
+        en: '%{ssid} needs a password'
+        de: '%{ssid} braucht ein Passwort'
+      wrong_password:
+        en: 'Wrong password for %{ssid}, try again'
+        de: 'Falsches Passwort für %{ssid}, nochmal versuchen'
+      portal:
+        en: 'Log in to the network'
+        de: 'Im Netzwerk anmelden'
+      rescan:
+        en: 'Rescan Wi-Fi'
+        de: 'Nach WLAN suchen'
+      scanned:
+        en: 'Scan finished'
+        de: 'Suche beendet'
+      vpn:
+        en: 'VPN %{name}'
+        de: 'VPN %{name}'
+    notifications:
+      app:
+        en: 'App'
+        de: 'App'
+      time:
+        en: 'Time'
+        de: 'Zeit'
+      dismiss:
+        en: 'Dismiss notifications'
+        de: 'Benachrichtigungen ausblenden'
+      none:
+        en: 'No notifications'
+        de: 'Keine Benachrichtigungen'
+      open:
+        en: 'Open'
+        de: 'Öffnen'
+      remove:
+        en: 'Remove'
+        de: 'Entfernen'
+      search:
+        en: 'Search notifications…'
+        de: 'Benachrichtigungen suchen …'
+      search_title:
+        en: 'Search notifications'
+        de: 'Benachrichtigungen durchsuchen'
+    player:
+      now_playing:
+        en: 'Now playing'
+        de: 'Wiedergabe'
+      nothing:
+        en: 'Nothing is playing'
+        de: 'Es läuft nichts'
+      seek:
+        en: 'Seek'
+        de: 'Springen'
+      seconds:
+        en: 'seconds, like 90 or +10'
+        de: 'Sekunden, etwa 90 oder +10'
+      shuffle:
+        en: 'Shuffle'
+        de: 'Zufallswiedergabe'
+      loop:
+        en: 'Loop'
+        de: 'Wiederholen'
+      mode:
+        en: 'mode'
+        de: 'Modus'
+    tray:
+      activate:
+        en: 'Activate'
+        de: 'Aktivieren'
+      empty:
+        en: 'Nothing in the tray'
+        de: 'Nichts im Tray'
+      search:
+        en: 'Search tray…'
+        de: 'Tray durchsuchen …'
+      search_title:
+        en: 'Search tray'
+        de: 'Tray durchsuchen'
