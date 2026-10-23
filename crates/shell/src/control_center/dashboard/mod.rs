@@ -32,7 +32,7 @@ use rust_i18n::t;
 mod cards;
 mod session;
 pub(crate) mod sliders;
-mod toggles;
+pub(crate) mod toggles;
 
 pub struct DashboardPanel {
   sliders: Sliders,

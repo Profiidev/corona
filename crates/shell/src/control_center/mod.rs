@@ -13,7 +13,7 @@ mod notifications;
 mod panel;
 mod power;
 pub(crate) mod sysinfo;
-mod variants;
+pub(crate) mod variants;
 mod weather;
 
 use corona_surface::panel::{AppPanelExt, Panel};

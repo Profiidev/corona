@@ -477,7 +477,14 @@ impl Launcher {
   pub(super) fn select(&mut self, index: usize, cx: &mut Context<Self>) {
     let page = self.page_mut();
     page.selected = index.min(page.rows.len().saturating_sub(1));
+    let before = page.selected_id.take();
     page.selected_id = page.selected_row().map(Row::id);
+    if page.selected_id != before
+      && let Some(command) = page.selected_row().map(|r| r.command.clone())
+    {
+      command.on_select(cx);
+    }
+    let page = self.page_mut();
     let item = match page.layout() {
       Layout::Grid { columns, .. } => page.selected / columns.max(1),
       Layout::List => page

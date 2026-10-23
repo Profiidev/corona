@@ -3,6 +3,7 @@ pub use corona_utils::level::parse_level;
 
 pub mod brightness;
 pub mod caffeine;
+pub mod control_center;
 pub mod dpms;
 pub mod lock_key;
 
@@ -19,6 +20,7 @@ pub mod volume;
 pub fn register_commands(server: &mut IpcServer) {
   brightness::register_commands(server);
   caffeine::register_commands(server);
+  control_center::register_commands(server);
   dpms::register_commands(server);
   lock_key::register_commands(server);
   media::register_commands(server);

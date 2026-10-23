@@ -210,3 +210,350 @@ app:
       search_for:
         en: 'Search %{engine} for "%{query}"'
         de: '„%{query}“ mit %{engine} suchen'
+    on:
+      en: 'on'
+      de: 'an'
+    off:
+      en: 'off'
+      de: 'aus'
+    enable:
+      en: 'Enable %{name}'
+      de: '%{name} einschalten'
+    disable:
+      en: 'Disable %{name}'
+      de: '%{name} ausschalten'
+    state:
+      en: 'state'
+      de: 'Zustand'
+    state_is:
+      en: '%{name} is %{state}'
+      de: '%{name} ist %{state}'
+    switch:
+      en: 'Switch'
+      de: 'Umschalten'
+    unavailable:
+      en: 'Unavailable'
+      de: 'Nicht verfügbar'
+    pick:
+      en: 'Choose'
+      de: 'Auswählen'
+    audio:
+      volume:
+        en: 'Volume'
+        de: 'Lautstärke'
+      mic:
+        en: 'Microphone volume'
+        de: 'Mikrofonlautstärke'
+      muted:
+        en: 'Muted'
+        de: 'Stumm'
+      level:
+        en: 'level'
+        de: 'Pegel'
+      set:
+        en: 'Set'
+        de: 'Setzen'
+      set_to:
+        en: 'Set %{name} to %{level}'
+        de: '%{name} auf %{level} setzen'
+      toggle_mute:
+        en: 'Toggle mute of %{name}'
+        de: '%{name} stumm schalten oder freigeben'
+      up:
+        en: 'Louder'
+        de: 'Lauter'
+      down:
+        en: 'Quieter'
+        de: 'Leiser'
+      mute_mic:
+        en: 'Mute microphone'
+        de: 'Mikrofon stummschalten'
+      unmute_mic:
+        en: 'Unmute microphone'
+        de: 'Mikrofon einschalten'
+      preset:
+        en: 'Set volume to %{level}%'
+        de: 'Lautstärke auf %{level} % setzen'
+    display:
+      brightness:
+        en: 'Brightness'
+        de: 'Helligkeit'
+      brightness_of:
+        en: 'Brightness: %{monitor}'
+        de: 'Helligkeit: %{monitor}'
+      focused:
+        en: 'the focused monitor'
+        de: 'fokussierten Monitor'
+      level:
+        en: 'level'
+        de: 'Stufe'
+      monitor:
+        en: 'monitor'
+        de: 'Monitor'
+      no_display:
+        en: 'No display with adjustable brightness'
+        de: 'Kein Bildschirm mit einstellbarer Helligkeit'
+      set:
+        en: 'Set brightness'
+        de: 'Helligkeit setzen'
+      set_to:
+        en: 'Set brightness of %{monitor} to %{level}'
+        de: 'Helligkeit von %{monitor} auf %{level} setzen'
+    info:
+      system:
+        en: 'System info'
+        de: 'Systeminfo'
+      battery:
+        en: 'Battery'
+        de: 'Akku'
+      weather:
+        en: 'Weather'
+        de: 'Wetter'
+      uptime:
+        en: 'Uptime'
+        de: 'Laufzeit'
+      kernel:
+        en: 'Kernel'
+        de: 'Kernel'
+      cpu:
+        en: 'CPU'
+        de: 'CPU'
+      cpu_usage:
+        en: 'CPU usage'
+        de: 'CPU-Last'
+      gpu:
+        en: 'GPU'
+        de: 'GPU'
+      compositor:
+        en: 'Compositor'
+        de: 'Compositor'
+      memory:
+        en: 'Memory'
+        de: 'Arbeitsspeicher'
+      free:
+        en: 'free'
+        de: 'frei'
+      state:
+        en: 'State'
+        de: 'Zustand'
+      to_empty:
+        en: 'Until empty'
+        de: 'Bis leer'
+      to_full:
+        en: 'Until full'
+        de: 'Bis voll'
+      health:
+        en: 'Health'
+        de: 'Zustand der Zellen'
+      rate:
+        en: 'Power draw'
+        de: 'Leistungsaufnahme'
+      no_battery:
+        en: 'No battery'
+        de: 'Kein Akku'
+      feels_like:
+        en: 'Feels like'
+        de: 'Gefühlt'
+      humidity:
+        en: 'Humidity'
+        de: 'Luftfeuchtigkeit'
+      wind:
+        en: 'Wind'
+        de: 'Wind'
+      uv:
+        en: 'UV index'
+        de: 'UV-Index'
+      no_weather:
+        en: 'No weather yet'
+        de: 'Noch kein Wetter'
+      refresh:
+        en: 'Refresh'
+        de: 'Aktualisieren'
+    media:
+      play:
+        en: 'Play'
+        de: 'Abspielen'
+      pause:
+        en: 'Pause'
+        de: 'Pausieren'
+      next:
+        en: 'Next track'
+        de: 'Nächster Titel'
+      previous:
+        en: 'Previous track'
+        de: 'Vorheriger Titel'
+    session:
+      lock:
+        en: 'Lock'
+        de: 'Sperren'
+      suspend:
+        en: 'Suspend'
+        de: 'Bereitschaft'
+      lock_suspend:
+        en: 'Lock and suspend'
+        de: 'Sperren und Bereitschaft'
+      hibernate:
+        en: 'Suspend then hibernate'
+        de: 'Bereitschaft, dann Ruhezustand'
+      lock_hibernate:
+        en: 'Lock, suspend then hibernate'
+        de: 'Sperren, Bereitschaft, dann Ruhezustand'
+      logout:
+        en: 'Log out'
+        de: 'Abmelden'
+      reboot:
+        en: 'Reboot'
+        de: 'Neu starten'
+      shutdown:
+        en: 'Shut down'
+        de: 'Herunterfahren'
+      confirm_title:
+        en: '%{action}?'
+        de: '%{action}?'
+      confirm_message:
+        en: 'Unsaved work in open apps may be lost.'
+        de: 'Ungespeicherte Arbeit in offenen Apps kann verloren gehen.'
+    system:
+      wifi:
+        en: 'Wi-Fi'
+        de: 'WLAN'
+      bluetooth:
+        en: 'Bluetooth'
+        de: 'Bluetooth'
+      dnd:
+        en: 'Do not disturb'
+        de: 'Nicht stören'
+      airplane:
+        en: 'Airplane mode'
+        de: 'Flugmodus'
+      caffeine:
+        en: 'Stay awake'
+        de: 'Wach bleiben'
+      caffeine_on:
+        en: 'Stay awake'
+        de: 'Wach bleiben'
+      caffeine_off:
+        en: 'Stop staying awake'
+        de: 'Nicht mehr wach bleiben'
+      awake_for:
+        en: 'Staying awake for %{minutes} minutes'
+        de: 'Bleibt %{minutes} Minuten wach'
+      minutes:
+        en: 'minutes'
+        de: 'Minuten'
+      dark_mode:
+        en: 'Dark mode'
+        de: 'Dunkler Modus'
+      light_mode:
+        en: 'Light mode'
+        de: 'Heller Modus'
+      mode:
+        en: 'mode'
+        de: 'Modus'
+      name:
+        en: 'name'
+        de: 'Name'
+      theme:
+        en: 'Theme'
+        de: 'Design'
+      search_themes:
+        en: 'Search themes…'
+        de: 'Designs suchen …'
+      power_profile:
+        en: 'Power profile'
+        de: 'Energieprofil'
+      search_profiles:
+        en: 'Search profiles…'
+        de: 'Profile suchen …'
+      cycle_profile:
+        en: 'Next power profile'
+        de: 'Nächstes Energieprofil'
+      displays_off:
+        en: 'Turn displays off'
+        de: 'Bildschirme ausschalten'
+    tools:
+      screenshot:
+        en: 'Screenshot'
+        de: 'Bildschirmfoto'
+      screenshot_monitor:
+        en: 'Screenshot of the monitor'
+        de: 'Bildschirmfoto des Monitors'
+      screenshot_window:
+        en: 'Screenshot of a window'
+        de: 'Bildschirmfoto eines Fensters'
+      color_picker:
+        en: 'Color picker'
+        de: 'Farbpipette'
+      settings:
+        en: 'Settings'
+        de: 'Einstellungen'
+      page:
+        en: 'page'
+        de: 'Seite'
+      panels:
+        en: 'Panels'
+        de: 'Panels'
+      search_panels:
+        en: 'Search panels…'
+        de: 'Panels suchen …'
+      toggle_panel:
+        en: 'Toggle panel'
+        de: 'Panel umschalten'
+      control_center:
+        en: 'Control center'
+        de: 'Kontrollzentrum'
+      show_notifications:
+        en: 'Show notifications'
+        de: 'Benachrichtigungen zeigen'
+      clear_notifications:
+        en: 'Clear notification history'
+        de: 'Benachrichtigungsverlauf leeren'
+      notification_count:
+        en: '%{count} notifications'
+        de: '%{count} Benachrichtigungen'
+      cleared:
+        en: 'Notification history cleared'
+        de: 'Benachrichtigungsverlauf geleert'
+    windows:
+      switch:
+        en: 'Switch to window'
+        de: 'Zu Fenster wechseln'
+      search:
+        en: 'Search windows…'
+        de: 'Fenster suchen …'
+      focus:
+        en: 'Switch to window'
+        de: 'Zum Fenster wechseln'
+      close:
+        en: 'Close window'
+        de: 'Fenster schließen'
+      close_window:
+        en: 'Close window'
+        de: 'Fenster schließen'
+      close_focused:
+        en: 'Close the focused window'
+        de: 'Fokussiertes Fenster schließen'
+      close_pick:
+        en: 'Choose a window to close'
+        de: 'Fenster zum Schließen wählen'
+      none_focused:
+        en: 'No window is focused'
+        de: 'Kein Fenster fokussiert'
+      workspace:
+        en: 'Workspace %{id}'
+        de: 'Arbeitsfläche %{id}'
+      go:
+        en: 'Go'
+        de: 'Wechseln'
+      go_to_workspace:
+        en: 'Go to workspace'
+        de: 'Zu Arbeitsfläche wechseln'
+      number:
+        en: 'number'
+        de: 'Nummer'
+      switch_workspace:
+        en: 'Switch workspace'
+        de: 'Arbeitsfläche wechseln'
+      search_workspaces:
+        en: 'Search workspaces…'
+        de: 'Arbeitsflächen suchen …'

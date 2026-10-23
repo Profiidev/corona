@@ -4,6 +4,7 @@ pub mod commands;
 pub mod common;
 pub mod dmenu;
 pub mod hooks;
+pub mod kit;
 pub mod matching;
 pub mod paste;
 pub mod registry;

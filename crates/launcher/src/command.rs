@@ -36,6 +36,9 @@ pub trait Command: 'static {
     None
   }
 
+  /// Runs when the selection lands on this command, for live previews
+  fn on_select(&self, _cx: &mut App) {}
+
   /// What the preview pane shows
   fn detail(&self, _cx: &App) -> Option<Detail> {
     None

@@ -2,6 +2,7 @@ use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
+use corona_shell::commands::control_center::{ListPages, OpenPage};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
@@ -34,6 +35,11 @@ mod volume;
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
+  /// Open the control center on a page, like audio or network
+  ControlCenter {
+    #[arg(add = clap_complete::ArgValueCandidates::new(|| candidates(ListPages::send(()))))]
+    page: String,
+  },
   /// Open, close or toggle the launcher
   Launcher {
     #[command(subcommand)]
@@ -137,6 +143,11 @@ impl IpcCommands {
   pub fn execute(self) {
     match self {
       IpcCommands::Launcher { command } => command.execute(),
+      IpcCommands::ControlCenter { page } => {
+        if let Err(e) = OpenPage::send(page) {
+          tracing::error!("Failed to open the control center: {}", e);
+        }
+      }
       IpcCommands::Panel { command } => command.execute(),
       IpcCommands::Screenshot { mode } => {
         if let Err(e) = Screenshot::send(mode) {
@@ -386,6 +397,7 @@ pub(crate) mod tests {
       (&["theme", "mode", "get"], json!("dark"), SetMode::COMMAND, json!("Get")),
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
+      (&["control-center", "audio"], json!(null), OpenPage::COMMAND, json!("audio")),
       (&["launcher", "toggle"], json!(null), corona_shell::launcher::commands::Toggle::COMMAND, json!(null)),
       (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),
       (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
