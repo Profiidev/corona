@@ -31,6 +31,11 @@ pub trait Command: 'static {
   /// The first one is the primary action, the rest go to the action panel
   fn actions(&self, cx: &App) -> Vec<Action>;
 
+  /// The row title while inline arguments are typed, like "Set volume to 40%"
+  fn describe(&self, _args: &Args, _cx: &App) -> Option<SharedString> {
+    None
+  }
+
   /// What the preview pane shows
   fn detail(&self, _cx: &App) -> Option<Detail> {
     None
@@ -338,25 +343,27 @@ pub struct Scope {
   pub source: Rc<dyn CommandSource>,
 }
 
+type MetaFn = Box<dyn Fn(&App) -> Meta>;
+type ActionsFn = Box<dyn Fn(&App) -> Vec<Action>>;
+
 /// A command built from closures, for the many fixed entries
 pub struct SimpleCommand {
   pub id: SharedString,
-  pub meta: Box<dyn Fn(&App) -> Meta>,
-  pub actions: Box<dyn Fn(&App) -> Vec<Action>>,
+  pub meta: MetaFn,
+  pub actions: ActionsFn,
 }
 
-impl SimpleCommand {
-  pub fn new(
-    id: impl Into<SharedString>,
-    meta: impl Fn(&App) -> Meta + 'static,
-    actions: impl Fn(&App) -> Vec<Action> + 'static,
-  ) -> Rc<dyn Command> {
-    Rc::new(Self {
-      id: id.into(),
-      meta: Box::new(meta),
-      actions: Box::new(actions),
-    })
-  }
+/// A [`SimpleCommand`] ready to register
+pub fn simple(
+  id: impl Into<SharedString>,
+  meta: impl Fn(&App) -> Meta + 'static,
+  actions: impl Fn(&App) -> Vec<Action> + 'static,
+) -> Rc<dyn Command> {
+  Rc::new(SimpleCommand {
+    id: id.into(),
+    meta: Box::new(meta),
+    actions: Box::new(actions),
+  })
 }
 
 impl Command for SimpleCommand {

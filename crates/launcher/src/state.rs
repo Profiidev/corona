@@ -10,6 +10,10 @@ use tracing::warn;
 
 /// `~/.local/state/corona/launcher`, where runtime data lives
 pub fn dir() -> Option<PathBuf> {
+  // tests never touch the user's state
+  if cfg!(test) {
+    return Some(std::env::temp_dir().join(format!("corona-launcher-test-{}", std::process::id())));
+  }
   Some(dirs::state_dir()?.join("corona").join("launcher"))
 }
 

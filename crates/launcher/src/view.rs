@@ -120,6 +120,9 @@ impl Filter {
 pub type FormValues = HashMap<SharedString, String>;
 pub type Submit = Rc<dyn Fn(FormValues, &mut Window, &mut App) -> Task<Result<Outcome>>>;
 pub type Validate = Rc<dyn Fn(&str) -> Option<SharedString>>;
+pub type Cancel = Rc<dyn Fn(&mut App)>;
+pub type OnQuery = Rc<dyn Fn(&str, &mut App)>;
+pub type Build = Rc<dyn Fn(&mut Window, &mut App) -> AnyView>;
 
 pub struct FormView {
   pub title: SharedString,
@@ -127,7 +130,7 @@ pub struct FormView {
   pub submit_label: SharedString,
   pub submit: Submit,
   /// Asked for a secret: Esc answers none through `cancel`
-  pub cancel: Option<Rc<dyn Fn(&mut App)>>,
+  pub cancel: Option<Cancel>,
   /// Shown above the fields, like the network a password is for
   pub message: Option<SharedString>,
 }
@@ -211,6 +214,6 @@ pub struct CustomView {
   pub size: Option<Size<Pixels>>,
   /// Keeps the search field, its text goes to the view through `on_query`
   pub search: bool,
-  pub build: Rc<dyn Fn(&mut Window, &mut App) -> AnyView>,
-  pub on_query: Option<Rc<dyn Fn(&str, &mut App)>>,
+  pub build: Build,
+  pub on_query: Option<OnQuery>,
 }

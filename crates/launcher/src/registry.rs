@@ -306,11 +306,11 @@ fn empty_sections(rows: Vec<Row>, cx: &App) -> Vec<(Section, Vec<Row>)> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::command::{Action, SimpleCommand};
+  use crate::command::{Action, simple};
   use gpui_kit::{self as gpui, TestAppContext};
 
   fn command(id: &'static str, title: &'static str, section: Section) -> Rc<dyn Command> {
-    SimpleCommand::new(
+    simple(
       id,
       move |_| Meta {
         title: title.into(),

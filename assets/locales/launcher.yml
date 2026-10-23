@@ -1,0 +1,87 @@
+_version: 2
+app:
+  launcher:
+    placeholder:
+      en: Search for apps and commands…
+      de: Apps und Befehle suchen …
+    unknown_command:
+      en: 'No command "%{id}"'
+      de: 'Kein Befehl „%{id}“'
+    retry:
+      en: Retry
+      de: Wiederholen
+    failed:
+      en: Failed
+      de: Fehlgeschlagen
+    submit:
+      en: Submit
+      de: Absenden
+    required:
+      en: Required
+      de: Pflichtfeld
+    form_hint:
+      en: 'Ctrl+Enter: %{action}'
+      de: 'Strg+Enter: %{action}'
+    form_status:
+      en: Tab moves between fields
+      de: Tab wechselt das Feld
+    no_results:
+      en: No results
+      de: Keine Ergebnisse
+    working:
+      en: Working…
+      de: Wird ausgeführt …
+    results:
+      en: '%{count} results'
+      de: '%{count} Ergebnisse'
+    actions:
+      en: Actions
+      de: Aktionen
+    search_actions:
+      en: Search actions…
+      de: Aktionen suchen …
+    dont_ask:
+      en: Don't ask again
+      de: Nicht mehr fragen
+    discard:
+      title:
+        en: Discard changes?
+        de: Änderungen verwerfen?
+      message:
+        en: What you entered is lost.
+        de: Die Eingaben gehen verloren.
+      button:
+        en: Discard
+        de: Verwerfen
+    hud:
+      copied:
+        en: Copied to clipboard
+        de: In die Zwischenablage kopiert
+      pasted:
+        en: Pasted
+        de: Eingefügt
+      copied_only:
+        en: Copied to clipboard, paste unavailable
+        de: Kopiert, Einfügen nicht möglich
+    section:
+      favorites:
+        en: Favorites
+        de: Favoriten
+      recent:
+        en: Recent
+        de: Zuletzt verwendet
+      suggestions:
+        en: Suggestions
+        de: Vorschläge
+      applications:
+        en: Applications
+        de: Anwendungen
+      commands:
+        en: Commands
+        de: Befehle
+      results:
+        en: Results
+        de: Ergebnisse
+      fallback:
+        en: Use query with
+        de: Suche verwenden mit
