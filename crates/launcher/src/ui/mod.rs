@@ -48,6 +48,7 @@ gpui_kit::actions!(
     Pop,
     ToggleActions,
     TogglePreview,
+    CycleFilter,
     Submit,
   ]
 );
@@ -78,6 +79,7 @@ pub fn bind_keys(cx: &mut App) {
       KeyBinding::new("escape", Back, c),
       KeyBinding::new("ctrl-o", ToggleActions, c),
       KeyBinding::new("ctrl-p", TogglePreview, c),
+      KeyBinding::new("ctrl-f", CycleFilter, c),
       KeyBinding::new("ctrl-s", Submit, c),
     ]);
   }

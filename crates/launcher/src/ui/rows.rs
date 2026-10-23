@@ -120,6 +120,36 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
         .when(!page.searches(), |el| el.invisible())
         .child(Input::new(&this.input).appearance(false)),
     )
+    .when_some(
+      match &page.body {
+        Body::List(view) => view.filter.clone(),
+        _ => None,
+      },
+      |el, filter| {
+        let label = filter
+          .options
+          .get(filter.selected.get())
+          .map(|(_, l)| l.clone())
+          .unwrap_or_default();
+        el.child(
+          div()
+            .id("launcher-filter")
+            .h(px(28.))
+            .px(px(10.))
+            .flex()
+            .items_center()
+            .gap_1()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(theme.colors.border)
+            .text_size(px(12.5))
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| this.cycle_filter(cx)))
+            .child(format!("{}: {label}", filter.label))
+            .child(KitIcon::new(IconName::ChevronDown).with_size(px(12.))),
+        )
+      },
+    )
     .when_some(page.args.as_ref(), |el, args| {
       el.children(args.inputs.iter().enumerate().map(|(i, input)| {
         let error = args.error.as_ref().filter(|(e, _)| *e == i);

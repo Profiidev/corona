@@ -7,6 +7,7 @@ pub mod hooks;
 pub mod kit;
 pub mod matching;
 pub mod paste;
+pub mod placeholders;
 pub mod registry;
 pub mod state;
 pub mod ui;

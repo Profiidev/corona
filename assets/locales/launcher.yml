@@ -895,3 +895,123 @@ app:
       refresh_rates:
         en: 'Refresh exchange rates'
         de: 'Wechselkurse aktualisieren'
+    clipboard:
+      all:
+        en: 'All'
+        de: 'Alle'
+      text:
+        en: 'Text'
+        de: 'Text'
+      image:
+        en: 'Image'
+        de: 'Bild'
+      link:
+        en: 'Link'
+        de: 'Link'
+      color:
+        en: 'Color'
+        de: 'Farbe'
+      type:
+        en: 'Type'
+        de: 'Typ'
+      size:
+        en: 'Size'
+        de: 'Größe'
+      copied:
+        en: 'Copied'
+        de: 'Kopiert'
+      now:
+        en: 'now'
+        de: 'jetzt'
+      image_title:
+        en: 'Image, %{size} KiB'
+        de: 'Bild, %{size} KiB'
+      history:
+        en: 'Clipboard history'
+        de: 'Zwischenablage-Verlauf'
+      search:
+        en: 'Search the clipboard…'
+        de: 'Zwischenablage durchsuchen …'
+      empty:
+        en: 'Nothing copied yet'
+        de: 'Noch nichts kopiert'
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      pin:
+        en: 'Pin'
+        de: 'Anheften'
+      unpin:
+        en: 'Unpin'
+        de: 'Lösen'
+      pinned:
+        en: 'Pinned'
+        de: 'Angeheftet'
+      delete:
+        en: 'Delete entry'
+        de: 'Eintrag löschen'
+      clear:
+        en: 'Clear clipboard history'
+        de: 'Zwischenablage-Verlauf leeren'
+      clear_button:
+        en: 'Clear'
+        de: 'Leeren'
+      clear_message:
+        en: 'Pinned entries stay.'
+        de: 'Angeheftete Einträge bleiben.'
+      cleared:
+        en: 'Removed %{count} entries'
+        de: '%{count} Einträge entfernt'
+      off:
+        en: 'The clipboard history is off'
+        de: 'Der Zwischenablage-Verlauf ist aus'
+    quicklinks:
+      create:
+        en: 'Create quicklink'
+        de: 'Schnelllink anlegen'
+      edit:
+        en: 'Edit quicklink'
+        de: 'Schnelllink bearbeiten'
+      delete:
+        en: 'Delete quicklink'
+        de: 'Schnelllink löschen'
+      saved:
+        en: 'Quicklink saved'
+        de: 'Schnelllink gespeichert'
+    snippets:
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      create:
+        en: 'Create snippet'
+        de: 'Textbaustein anlegen'
+      edit:
+        en: 'Edit snippet'
+        de: 'Textbaustein bearbeiten'
+      duplicate:
+        en: 'Duplicate'
+        de: 'Duplizieren'
+      delete:
+        en: 'Delete snippet'
+        de: 'Textbaustein löschen'
+      delete_message:
+        en: '%{name} is deleted.'
+        de: '%{name} wird gelöscht.'
+      saved:
+        en: 'Snippet saved'
+        de: 'Textbaustein gespeichert'
+      none:
+        en: 'No snippets yet'
+        de: 'Noch keine Textbausteine'
+      search:
+        en: 'Search snippets…'
+        de: 'Textbausteine suchen …'
+      search_title:
+        en: 'Search snippets'
+        de: 'Textbausteine durchsuchen'

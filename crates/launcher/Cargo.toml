@@ -13,6 +13,7 @@ corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
 corona_desktop.workspace = true
+corona_clipboard.workspace = true
 corona_surface.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true

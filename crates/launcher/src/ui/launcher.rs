@@ -12,9 +12,9 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use super::{
-  Back, Complete, CompleteBack, LauncherState, Open, PageDown, PageUp, Pop, Run, RunKeepOpen,
-  RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit, ToggleActions,
-  TogglePreview, form::FormPage, hud, style, window_size,
+  Back, Complete, CompleteBack, CycleFilter, LauncherState, Open, PageDown, PageUp, Pop, Run,
+  RunKeepOpen, RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit,
+  ToggleActions, TogglePreview, form::FormPage, hud, style, window_size,
 };
 use crate::{
   args::{ArgSpec, Args},
@@ -1107,6 +1107,23 @@ impl Launcher {
     self.open_panel(window, cx);
   }
 
+  fn on_cycle_filter(&mut self, _: &CycleFilter, _: &mut Window, cx: &mut Context<Self>) {
+    self.cycle_filter(cx);
+  }
+
+  /// The next option of the view's dropdown
+  pub(super) fn cycle_filter(&mut self, cx: &mut Context<Self>) {
+    let Body::List(view) = &self.page().body else {
+      return;
+    };
+    let Some(filter) = &view.filter else {
+      return;
+    };
+    let n = filter.options.len().max(1);
+    filter.selected.set((filter.selected.get() + 1) % n);
+    self.refresh(cx);
+  }
+
   fn on_toggle_preview(&mut self, _: &TogglePreview, _: &mut Window, cx: &mut Context<Self>) {
     self.preview = !self.preview;
     cx.notify();
@@ -1115,7 +1132,11 @@ impl Launcher {
   /// Whether the preview pane shows for the current page and selection
   pub(super) fn shows_preview(&self, cx: &App) -> bool {
     let page = self.page();
-    self.preview && page.previews() && page.rows.iter().any(|r| r.command.detail(cx).is_some())
+    self.preview
+      && page.previews()
+      && page
+        .selected_row()
+        .is_some_and(|r| r.command.detail(cx).is_some())
   }
 
   pub(super) fn click(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1222,6 +1243,7 @@ impl Render for Launcher {
       .on_action(cx.listener(Self::on_pop))
       .on_action(cx.listener(Self::on_toggle_actions))
       .on_action(cx.listener(Self::on_toggle_preview))
+      .on_action(cx.listener(Self::on_cycle_filter))
       .size_full()
       .child(super::rows::frame(self, window, cx))
   }

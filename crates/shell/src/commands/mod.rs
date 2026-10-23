@@ -6,6 +6,7 @@ pub mod bluetooth;
 pub mod brightness;
 pub mod caffeine;
 pub mod calculator;
+pub mod clipboard;
 pub mod control_center;
 pub mod dpms;
 pub mod lock_key;
@@ -31,6 +32,7 @@ pub fn register_commands(server: &mut IpcServer) {
   brightness::register_commands(server);
   caffeine::register_commands(server);
   calculator::register_commands(server);
+  clipboard::register_commands(server);
   control_center::register_commands(server);
   dpms::register_commands(server);
   lock_key::register_commands(server);

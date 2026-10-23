@@ -25,6 +25,7 @@ use corona_shell::settings::PAGES;
 use crate::ipc::{
   audio::AudioCommands,
   brightness::BrightnessCommands,
+  clipboard::ClipboardCommands,
   launcher::LauncherCommands,
   network::NetworkCommands,
   notification::NotificationCommands,
@@ -39,6 +40,7 @@ use crate::ipc::{
 
 mod audio;
 mod brightness;
+mod clipboard;
 mod launcher;
 mod network;
 mod notification;
@@ -90,6 +92,11 @@ pub enum IpcCommands {
   Player {
     #[command(subcommand)]
     command: PlayerCommands,
+  },
+  /// The clipboard history
+  Clipboard {
+    #[command(subcommand)]
+    command: ClipboardCommands,
   },
   /// Tray items and their menus
   Tray {
@@ -217,6 +224,7 @@ impl IpcCommands {
       IpcCommands::Network { command } => command.execute(),
       IpcCommands::Player { command } => command.execute(),
       IpcCommands::Tray { command } => command.execute(),
+      IpcCommands::Clipboard { command } => command.execute(),
       IpcCommands::BluetoothDevices => match ListBluetooth::send(()) {
         Ok(devices) => {
           for d in devices {
@@ -536,6 +544,8 @@ pub(crate) mod tests {
       (&["player", "loop", "track"], json!(null), corona_shell::commands::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::commands::tray::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["calc", "2", "+", "2"], json!("4"), corona_shell::commands::calculator::Evaluate::COMMAND, json!("2 + 2")),
+      (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::commands::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
+      (&["clipboard", "clear"], json!(3), corona_shell::commands::clipboard::ClearClipboard::COMMAND, json!(null)),
       (&["notification", "dismiss"], json!(null), corona_shell::commands::notification::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_shell::launcher::commands::Toggle::COMMAND, json!(null)),
       (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),
