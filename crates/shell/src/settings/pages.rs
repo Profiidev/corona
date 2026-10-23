@@ -874,7 +874,8 @@ fn screenshot() -> SettingPage {
             },
             |c, v| c.screenshot.directory = v.map(PathBuf::from),
             |_| {
-              crate::overlays::screenshot::save::default_directory()
+              corona_config::ScreenshotConfig::default()
+                .resolved_directory()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default()
             },

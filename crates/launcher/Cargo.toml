@@ -29,6 +29,10 @@ flume.workspace = true
 notify = "8.2.0"
 fend-core = "1.5.9"
 jiff = "0.2.37"
+ignore = "0.4.33"
+emojis = "0.9.1"
+unicode_names2 = "4.0.0"
+trash = "5.2.9"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

@@ -31,6 +31,30 @@ pub fn encode(text: &str) -> String {
   out
 }
 
+/// Percent-decoding; bad escapes stay as they are
+pub fn decode(text: &str) -> String {
+  let bytes = text.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut i = 0;
+  while i < bytes.len() {
+    let hex = (bytes[i] == b'%')
+      .then(|| std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok())
+      .flatten()
+      .and_then(|h| u8::from_str_radix(h, 16).ok());
+    match hex {
+      Some(b) => {
+        out.push(b);
+        i += 3;
+      }
+      None => {
+        out.push(bytes[i]);
+        i += 1;
+      }
+    }
+  }
+  String::from_utf8_lossy(&out).into_owned()
+}
+
 pub fn search_url(engine: &SearchEngine, query: &str) -> String {
   engine.url.replace("{query}", &encode(query))
 }
@@ -243,6 +267,13 @@ impl CommandSource for Url {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn decodes() {
+    assert_eq!(decode("a%20b%C3%A4"), "a bä");
+    assert_eq!(decode("100%"), "100%");
+    assert_eq!(decode("%zz"), "%zz");
+  }
 
   #[test]
   fn encodes() {

@@ -363,6 +363,18 @@ pub struct ScreenshotConfig {
   pub filename_pattern: String,
 }
 
+impl ScreenshotConfig {
+  /// The directory screenshots go to: the set one, else `Screenshots` in the pictures
+  pub fn resolved_directory(&self) -> Option<PathBuf> {
+    match &self.directory {
+      Some(dir) => Some(expand_home(dir)),
+      None => dirs::picture_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .map(|p| p.join("Screenshots")),
+    }
+  }
+}
+
 impl Default for ScreenshotConfig {
   fn default() -> Self {
     Self {

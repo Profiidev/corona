@@ -36,6 +36,11 @@ pub trait Command: 'static {
     None
   }
 
+  /// What Tab puts in the search field, like a directory's path while browsing
+  fn complete(&self, _cx: &App) -> Option<String> {
+    None
+  }
+
   /// Runs when the selection lands on this command, for live previews
   fn on_select(&self, _cx: &mut App) {}
 
@@ -143,6 +148,8 @@ pub enum Icon {
   App(Vec<SharedString>),
   /// Emoji or a symbol
   Glyph(SharedString),
+  /// Sample text in a font family
+  Sample(SharedString, SharedString),
   Swatch(Hsla),
   Image(Arc<std::path::Path>),
 }

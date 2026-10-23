@@ -849,6 +849,13 @@ impl Launcher {
     let Some(row) = self.page().selected_row().cloned() else {
       return;
     };
+    if let Some(text) = row.command.complete(cx) {
+      self
+        .input
+        .update(cx, |input, cx| input.set_value(text.clone(), window, cx));
+      self.page_mut().query = text;
+      return self.refresh(cx);
+    }
     if row.meta.args.is_empty() {
       return;
     }

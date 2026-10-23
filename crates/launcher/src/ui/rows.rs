@@ -612,6 +612,16 @@ pub(super) fn icon(icon: &Icon, size: f32, id: &SharedString, cx: &App) -> AnyEl
       .text_size(px(size * 0.75))
       .child(text.clone())
       .into_any_element(),
+    Icon::Sample(text, family) => div()
+      .size(px(size))
+      .flex_none()
+      .flex()
+      .items_center()
+      .justify_center()
+      .font_family(family.clone())
+      .text_size(px(size * 0.5))
+      .child(text.clone())
+      .into_any_element(),
     Icon::Swatch(color) => div()
       .size(px(size))
       .flex_none()

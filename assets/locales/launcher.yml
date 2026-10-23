@@ -1015,3 +1015,126 @@ app:
       search_title:
         en: 'Search snippets'
         de: 'Textbausteine durchsuchen'
+    emoji:
+      title:
+        en: 'Emoji'
+        de: 'Emoji'
+      search:
+        en: 'Search emoji…'
+        de: 'Emoji suchen …'
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      skin_tone:
+        en: 'Skin tone'
+        de: 'Hautfarbe'
+      tone_default:
+        en: 'Default'
+        de: 'Standard'
+      tone_light:
+        en: 'Light'
+        de: 'Hell'
+      tone_medium_light:
+        en: 'Medium light'
+        de: 'Mittelhell'
+      tone_medium:
+        en: 'Medium'
+        de: 'Mittel'
+      tone_medium_dark:
+        en: 'Medium dark'
+        de: 'Mitteldunkel'
+      tone_dark:
+        en: 'Dark'
+        de: 'Dunkel'
+      symbols:
+        en: 'Symbols'
+        de: 'Symbole'
+      search_symbols:
+        en: 'Search by name, like arrow right…'
+        de: 'Nach Namen suchen, etwa arrow right …'
+      type_name:
+        en: 'Type a character''s name'
+        de: 'Namen eines Zeichens eingeben'
+    files:
+      browse:
+        en: 'Browse %{path}'
+        de: '%{path} durchsuchen'
+      copy_file:
+        en: 'Copy file'
+        de: 'Datei kopieren'
+      copy_path:
+        en: 'Copy path'
+        de: 'Pfad kopieren'
+      location:
+        en: 'Folder'
+        de: 'Ordner'
+      modified:
+        en: 'Modified'
+        de: 'Geändert'
+      size:
+        en: 'Size'
+        de: 'Größe'
+      no_recent:
+        en: 'No recent files'
+        de: 'Keine zuletzt verwendeten Dateien'
+      open:
+        en: 'Open'
+        de: 'Öffnen'
+      open_with:
+        en: 'Open with…'
+        de: 'Öffnen mit …'
+      path_placeholder:
+        en: 'Path, Tab completes folders…'
+        de: 'Pfad, Tab ergänzt Ordner …'
+      recent:
+        en: 'Recent files'
+        de: 'Zuletzt verwendete Dateien'
+      reveal:
+        en: 'Show in folder'
+        de: 'Im Ordner zeigen'
+      search:
+        en: 'Search files…'
+        de: 'Dateien suchen …'
+      search_for:
+        en: 'Search files for "%{query}"'
+        de: 'Dateien nach „%{query}“ durchsuchen'
+      search_title:
+        en: 'Search files'
+        de: 'Dateien suchen'
+      trash:
+        en: 'Move to trash'
+        de: 'In den Papierkorb'
+      trashed:
+        en: 'Moved to trash'
+        de: 'In den Papierkorb verschoben'
+      type:
+        en: 'Type to search files'
+        de: 'Tippen, um Dateien zu suchen'
+    gallery:
+      fonts:
+        en: 'Browse fonts'
+        de: 'Schriften durchsuchen'
+      search_fonts:
+        en: 'Search fonts…'
+        de: 'Schriften suchen …'
+      copy_family:
+        en: 'Copy family name'
+        de: 'Schriftname kopieren'
+      screenshots:
+        en: 'Search screenshots'
+        de: 'Bildschirmfotos durchsuchen'
+      search_screenshots:
+        en: 'Search screenshots…'
+        de: 'Bildschirmfotos suchen …'
+      copy_image:
+        en: 'Copy image'
+        de: 'Bild kopieren'
+      no_screenshots:
+        en: 'No screenshots yet'
+        de: 'Noch keine Bildschirmfotos'
+      paste_last:
+        en: 'Paste last screenshot'
+        de: 'Letztes Bildschirmfoto einfügen'
