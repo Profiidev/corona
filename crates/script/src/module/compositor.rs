@@ -284,6 +284,7 @@ mod tests {
       fullscreen: false,
       hidden: false,
       focus_history_id: 0,
+      pid: 0,
     };
     cx.update(|_, cx| {
       active.update(cx, |active, cx| {

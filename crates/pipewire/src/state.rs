@@ -73,6 +73,8 @@ pub struct AudioNode {
   pub volumes: Vec<f32>,
   pub mute: bool,
   pub app: Vec<String>,
+  /// `application.process.id` of a stream
+  pub pid: Option<u32>,
 }
 
 fn app(props: &DictRef) -> Vec<String> {
@@ -117,6 +119,9 @@ impl AudioNode {
       mute: false,
       volumes: vec![0.0],
       app: app(props),
+      pid: props
+        .get("application.process.id")
+        .and_then(|pid| pid.parse().ok()),
     })
   }
 

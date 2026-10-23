@@ -60,6 +60,8 @@ pub struct Window {
   pub hidden: bool,
   #[serde(rename = "focusHistoryID")]
   pub focus_history_id: i32,
+  #[serde(default)]
+  pub pid: i32,
 }
 #[derive(Debug, Deserialize)]
 pub struct WindowWorkspace {
@@ -83,6 +85,7 @@ impl From<Window> for types::Window {
       fullscreen: w.fullscreen != 0,
       hidden: w.hidden,
       focus_history_id: w.focus_history_id,
+      pid: w.pid,
     }
   }
 }

@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::notification::{ClearHistory, Dnd, DoNotDisturb, Show};
+use corona_shell::commands::notification::{ClearHistory, DismissToasts, Dnd, DoNotDisturb, Show};
 
 #[derive(Subcommand)]
 pub enum NotificationCommands {
@@ -13,6 +13,8 @@ pub enum NotificationCommands {
   },
   /// Remove all entries from the notification history
   ClearHistory,
+  /// Hide the notifications on screen, the history keeps them
+  Dismiss,
 }
 
 impl NotificationCommands {
@@ -28,6 +30,11 @@ impl NotificationCommands {
       NotificationCommands::Show { summary } => {
         if let Err(e) = Show::send(summary) {
           tracing::error!("Failed to show notification: {}", e);
+        }
+      }
+      NotificationCommands::Dismiss => {
+        if let Err(e) = DismissToasts::send(()) {
+          tracing::error!("Failed to dismiss notifications: {}", e);
         }
       }
       NotificationCommands::ClearHistory => {

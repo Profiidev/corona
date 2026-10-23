@@ -110,6 +110,46 @@ impl Compositor {
     Ok(())
   }
 
+  pub fn toggle_floating(&self, address: &str) -> Result<()> {
+    self.inner.toggle_floating(address)
+  }
+
+  pub fn toggle_fullscreen(&self, address: &str) -> Result<()> {
+    self.inner.toggle_fullscreen(address)
+  }
+
+  pub fn toggle_pin(&self, address: &str) -> Result<()> {
+    self.inner.toggle_pin(address)
+  }
+
+  pub fn move_to_workspace(&self, address: &str, workspace: &str, follow: bool) -> Result<()> {
+    self.inner.move_to_workspace(address, workspace, follow)
+  }
+
+  pub fn move_to_monitor(&self, address: &str, monitor: &str) -> Result<()> {
+    self.inner.move_to_monitor(address, monitor)
+  }
+
+  pub fn place_window(&self, address: &str, rect: (i32, i32, i32, i32)) -> Result<()> {
+    self.inner.place_window(address, rect)
+  }
+
+  pub fn focus_monitor(&self, monitor: &str) -> Result<()> {
+    self.inner.focus_monitor(monitor)
+  }
+
+  pub fn toggle_special_workspace(&self, name: &str) -> Result<()> {
+    self.inner.toggle_special_workspace(name)
+  }
+
+  pub fn keyboard_layouts(&self) -> Result<Vec<String>> {
+    self.inner.keyboard_layouts()
+  }
+
+  pub fn set_keyboard_layout(&self, index: usize) -> Result<()> {
+    self.inner.set_keyboard_layout(index)
+  }
+
   pub fn cursor_position(&self) -> Result<(i32, i32)> {
     self.inner.cursor_position()
   }
@@ -177,6 +217,44 @@ pub trait CompositorImpl {
   fn set_dpms(&self, on: bool) -> Result<()>;
 
   fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()>;
+
+  fn toggle_floating(&self, _address: &str) -> Result<()> {
+    unsupported()
+  }
+  fn toggle_fullscreen(&self, _address: &str) -> Result<()> {
+    unsupported()
+  }
+  fn toggle_pin(&self, _address: &str) -> Result<()> {
+    unsupported()
+  }
+  /// `follow` moves the focus along
+  fn move_to_workspace(&self, _address: &str, _workspace: &str, _follow: bool) -> Result<()> {
+    unsupported()
+  }
+  fn move_to_monitor(&self, _address: &str, _monitor: &str) -> Result<()> {
+    unsupported()
+  }
+  /// Floats the window at `x, y` sized `w × h`, in layout pixels
+  fn place_window(&self, _address: &str, _rect: (i32, i32, i32, i32)) -> Result<()> {
+    unsupported()
+  }
+  fn focus_monitor(&self, _monitor: &str) -> Result<()> {
+    unsupported()
+  }
+  fn toggle_special_workspace(&self, _name: &str) -> Result<()> {
+    unsupported()
+  }
+  /// The main keyboard's layouts, like `["us", "de"]`
+  fn keyboard_layouts(&self) -> Result<Vec<String>> {
+    unsupported()
+  }
+  fn set_keyboard_layout(&self, _index: usize) -> Result<()> {
+    unsupported()
+  }
+}
+
+fn unsupported<T>() -> Result<T> {
+  anyhow::bail!("not supported by this compositor")
 }
 
 pub trait CompositorExt {

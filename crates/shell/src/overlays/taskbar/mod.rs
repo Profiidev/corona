@@ -501,6 +501,7 @@ pub(crate) mod tests {
       fullscreen: false,
       hidden: false,
       focus_history_id: 0,
+      pid: 0,
     }
   }
 
