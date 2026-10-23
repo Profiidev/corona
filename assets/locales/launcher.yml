@@ -85,3 +85,16 @@ app:
       fallback:
         en: Use query with
         de: Suche verwenden mit
+    dmenu:
+      title:
+        en: Choose
+        de: Auswählen
+      placeholder:
+        en: Filter…
+        de: Filtern …
+      choose:
+        en: Choose
+        de: Auswählen
+      mark:
+        en: Mark
+        de: Markieren

@@ -1364,4 +1364,38 @@ mod view_tests {
     // the root comes back as it was
     assert_eq!(query, "open list");
   }
+
+  #[gpui::test]
+  fn dmenu_answers_the_choice(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, mut choice) = crate::dmenu::view(crate::dmenu::Options {
+      lines: vec!["one".into(), "two".into(), "three".into()],
+      prompt: None,
+      placeholder: None,
+      multi: false,
+    });
+    let (_, cx) = cx.add_window_view(|window, cx| Launcher::new(Open::View(view), window, cx));
+    cx.simulate_input("tw");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(choice.try_recv().unwrap(), Some(vec!["two".to_string()]));
+  }
+
+  #[gpui::test]
+  fn dmenu_cancel_drops_the_answer(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, mut choice) = crate::dmenu::view(crate::dmenu::Options {
+      lines: vec!["one".into()],
+      prompt: None,
+      placeholder: None,
+      multi: true,
+    });
+    let (launcher, cx) =
+      cx.add_window_view(|window, cx| Launcher::new(Open::View(view), window, cx));
+    drop(launcher);
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+    // the window is gone with its pages, so the sender is dropped
+    assert!(choice.try_recv().is_err());
+  }
 }

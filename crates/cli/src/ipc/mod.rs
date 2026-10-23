@@ -19,11 +19,13 @@ use corona_shell::overlays::{
 use corona_shell::settings::PAGES;
 
 use crate::ipc::{
-  brightness::BrightnessCommands, notification::NotificationCommands, panel::PanelCommands,
-  power_profile::PowerProfileCommands, theme::ThemeCommands, volume::VolumeCommands,
+  brightness::BrightnessCommands, launcher::LauncherCommands, notification::NotificationCommands,
+  panel::PanelCommands, power_profile::PowerProfileCommands, theme::ThemeCommands,
+  volume::VolumeCommands,
 };
 
 mod brightness;
+mod launcher;
 mod notification;
 mod panel;
 mod power_profile;
@@ -32,6 +34,11 @@ mod volume;
 
 #[derive(Subcommand)]
 pub enum IpcCommands {
+  /// Open, close or toggle the launcher
+  Launcher {
+    #[command(subcommand)]
+    command: LauncherCommands,
+  },
   /// Panel commands
   Panel {
     #[command(subcommand)]
@@ -129,6 +136,7 @@ pub enum IpcCommands {
 impl IpcCommands {
   pub fn execute(self) {
     match self {
+      IpcCommands::Launcher { command } => command.execute(),
       IpcCommands::Panel { command } => command.execute(),
       IpcCommands::Screenshot { mode } => {
         if let Err(e) = Screenshot::send(mode) {
@@ -378,6 +386,10 @@ pub(crate) mod tests {
       (&["theme", "mode", "get"], json!("dark"), SetMode::COMMAND, json!("Get")),
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
+      (&["launcher", "toggle"], json!(null), corona_shell::launcher::commands::Toggle::COMMAND, json!(null)),
+      (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),
+      (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
+      (&["launcher", "open"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": null, "query": null })),
     ];
     for (args, reply, command, data) in cases {
       let cmd = ipc(args).unwrap();

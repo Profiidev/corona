@@ -15,6 +15,7 @@ mod control_center;
 pub mod i18n;
 mod icons;
 mod idle;
+pub mod launcher;
 mod lock;
 mod osds;
 pub mod overlays;
@@ -26,6 +27,7 @@ pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
+  launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
@@ -92,6 +94,7 @@ fn init_ipc(cx: &mut App) {
   corona_surface::commands::register_commands(&mut server);
   overlays::register_commands(&mut server);
   commands::register_commands(&mut server);
+  launcher::commands::register_commands(&mut server);
 
   cx.spawn(async move |cx| server.run(cx).await).detach();
 }
