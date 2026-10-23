@@ -495,6 +495,8 @@ fn records_item(
   .description(description.into())
 }
 
+type WriteRows = dyn Fn(Vec<Vec<String>>, &mut App);
+
 fn records(
   key: &str,
   labels: &[SharedString],
@@ -505,7 +507,7 @@ fn records(
 ) -> Div {
   let rows = get(cx.config());
   let width = labels.len();
-  let write: Rc<dyn Fn(Vec<Vec<String>>, &mut App)> =
+  let write: Rc<WriteRows> =
     Rc::new(move |rows, cx| save(cx, |c| set(c, rows)));
   let lines: Vec<Div> = rows
     .iter()
