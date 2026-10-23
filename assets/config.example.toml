@@ -150,6 +150,84 @@ card_height = 180.0
 # How much the screen behind darkens.
 backdrop_opacity = 0.4
 
+[launcher]
+# Close when another window takes the keyboard.
+close_on_unfocus = true
+# Runs programs in a terminal, like "kitty -e". Empty: xdg-terminal-exec, else $TERMINAL -e.
+terminal = ""
+# The preview pane where a view has one.
+preview = true
+# Results per section while typing.
+section_limit = 5
+# Keyword of the engine the web search fallback uses.
+search_engine = "g"
+# Shown in this order when nothing matches.
+fallbacks = ["web", "files", "terminal"]
+# Window classes "Close all windows" leaves open.
+close_all_exclude = []
+currency_refresh_hours = 24
+# URL or path templates, {argument} prompts in the arguments row:
+# [[launcher.quicklinks]]
+# name = "nix"
+# url = "https://search.nixos.org/packages?query={argument}"
+quicklinks = []
+# [[launcher.snippets]]
+# name = "Signature"
+# keyword = ";sig"
+# text = "Best regards,\n{clipboard}"
+snippets = []
+
+# Per command id. The settings app lists the ids.
+[launcher.commands]
+# "app:firefox" = { alias = "ff", favorite = true }
+
+[[launcher.search_engines]]
+keyword = "g"
+name = "Google"
+url = "https://www.google.com/search?q={query}"
+
+[[launcher.search_engines]]
+keyword = "ddg"
+name = "DuckDuckGo"
+url = "https://duckduckgo.com/?q={query}"
+
+[[launcher.search_engines]]
+keyword = "yt"
+name = "YouTube"
+url = "https://www.youtube.com/results?search_query={query}"
+
+[[launcher.search_engines]]
+keyword = "gh"
+name = "GitHub"
+url = "https://github.com/search?q={query}"
+
+[[launcher.search_engines]]
+keyword = "wiki"
+name = "Wikipedia"
+url = "https://en.wikipedia.org/wiki/Special:Search?search={query}"
+
+[launcher.files]
+# May start with ~/.
+roots = ["~"]
+# Names skipped anywhere below the roots.
+excludes = ["node_modules", "target", ".git", ".cache"]
+hidden = false
+# .gitignore and .ignore files hide what they list.
+respect_ignore = true
+
+[launcher.clipboard]
+enabled = true
+images = true
+image_max_mb = 10.0
+# Text is kept until deleted.
+image_retention_days = 30
+
+[launcher.translate]
+# deepl_key = "..."
+# A file holding the key wins over deepl_key.
+# deepl_key_file = "/run/secrets/deepl"
+target = "EN"
+
 [taskbar]
 enabled = true
 icon_size = 36.0

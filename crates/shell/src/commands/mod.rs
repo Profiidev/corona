@@ -1,5 +1,5 @@
-use anyhow::{Context, Result, bail};
 use corona_ipc::IpcServer;
+pub use corona_utils::level::parse_level;
 
 pub mod brightness;
 pub mod caffeine;
@@ -30,60 +30,4 @@ pub fn register_commands(server: &mut IpcServer) {
   settings::register_commands(server);
   theme::register_commands(server);
   volume::register_commands(server);
-}
-
-/// `65` and `65%` as 0.65, values up to 1 without `%` as they are
-pub fn parse_level(s: &str) -> Result<f32> {
-  let (number, percent) = match s.trim().strip_suffix('%') {
-    Some(number) => (number, true),
-    None => (s.trim(), false),
-  };
-  let value: f32 = number
-    .trim()
-    .parse()
-    .context("expected a number like 65, 65% or 0.65")?;
-  if !value.is_finite() || value < 0. {
-    bail!("expected a positive number");
-  }
-  Ok(if percent || value > 1. {
-    value / 100.
-  } else {
-    value
-  })
-}
-
-#[cfg(test)]
-mod tests {
-  use super::parse_level;
-
-  #[test]
-  fn levels() {
-    assert_eq!(parse_level("65").unwrap(), 0.65);
-    assert_eq!(parse_level("65%").unwrap(), 0.65);
-    assert_eq!(parse_level("0.65").unwrap(), 0.65);
-    assert_eq!(parse_level("0.5%").unwrap(), 0.005);
-    assert_eq!(parse_level("1").unwrap(), 1.);
-    assert!(parse_level("-5").is_err());
-    assert!(parse_level("loud").is_err());
-  }
-
-  fn near(s: &str, expected: f32) {
-    let v = parse_level(s).unwrap();
-    assert!((v - expected).abs() < 1e-6, "{s:?}: {v}");
-  }
-
-  #[test]
-  fn levels_edge_cases() {
-    near(" 65 % ", 0.65);
-    near("0", 0.);
-    near("100%", 1.);
-    near("100", 1.);
-    near("1.0", 1.);
-    // above 1 without `%` is read as a percentage
-    near("1.5", 0.015);
-    near("150%", 1.5);
-    for bad in ["", "%", "65%%", "inf", "-inf", "NaN", "-1%", "6 5"] {
-      assert!(parse_level(bad).is_err(), "{bad:?}");
-    }
-  }
 }
