@@ -374,8 +374,9 @@ pub fn complete(raw: &[u8]) -> bool {
   };
   let head = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
   if head.contains("\r\ntransfer-encoding: chunked") {
-    // the last chunk, without trailers
-    return raw.ends_with(b"\r\n0\r\n\r\n") || raw[end + 4..] == *b"0\r\n\r\n";
+    // the last chunk, without trailers; a data chunk may end in the same
+    // bytes, so walk the chunks, only then since that copies the body
+    return raw.ends_with(b"0\r\n\r\n") && dechunk(&raw[end + 4..]).is_ok();
   }
   head
     .lines()
@@ -531,6 +532,10 @@ mod tests {
     assert!(complete(plain));
     assert!(complete(chunked));
     assert!(!complete(&chunked[..chunked.len() - 5]));
+    // a data chunk that ends like the last chunk, the rest still on its way
+    assert!(!complete(
+      b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n9\r\nab\r\n0\r\n\r\n"
+    ));
     assert!(!complete(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nab"));
     // unframed bodies end with the connection
     assert!(!complete(b"HTTP/1.1 200 OK\r\n\r\nab"));

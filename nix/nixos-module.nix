@@ -129,7 +129,6 @@ in
         services.printing.enable = lib.mkDefault true;
         services.avahi.enable = lib.mkDefault true;
         services.avahi.nssmdns4 = lib.mkDefault true;
-        services.dbus.packages = [ pkgs.cups-pk-helper ];
         # scanimage for scanners without AirScan
         hardware.sane.enable = lib.mkDefault true;
       })

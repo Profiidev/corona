@@ -377,6 +377,15 @@ pub async fn find_driver(sock: &Path, model: &str) -> Result<Option<String>> {
   let Some(key) = model_key(model) else {
     return Ok(None);
   };
+  // the make too, a bare model number like `1020` is in other makes' drivers
+  let make: String = model
+    .split_whitespace()
+    .next()
+    .unwrap_or_default()
+    .chars()
+    .filter(|c| c.is_ascii_alphanumeric())
+    .collect::<String>()
+    .to_ascii_lowercase();
   let request = Message::request(
     op::CUPS_GET_PPDS,
     vec![
@@ -387,7 +396,8 @@ pub async fn find_driver(sock: &Path, model: &str) -> Result<Option<String>> {
       ),
     ],
   );
-  let response = match send(sock, &request).await {
+  // cups-driverd reads every installed driver, slow on a cold cache
+  let response = match send_within(sock, &request, Duration::from_secs(120)).await {
     Err(e) if not_found(&e) => return Ok(None),
     response => response?,
   };
@@ -397,9 +407,8 @@ pub async fn find_driver(sock: &Path, model: &str) -> Result<Option<String>> {
       .chars()
       .filter(|c| c.is_ascii_alphanumeric())
       .collect();
-    flat
-      .to_ascii_lowercase()
-      .contains(&key)
+    let flat = flat.to_ascii_lowercase();
+    (flat.contains(&key) && flat.contains(&make))
       .then(|| Some((model.len(), g.get("ppd-name")?.str()?.to_string())))?
   });
   Ok(drivers.min_by_key(|(len, _)| *len).map(|(_, ppd)| ppd))

@@ -13,8 +13,8 @@ use crate::state::{
 
 const SCANIMAGE: &str = "scanimage";
 
-async fn run(args: &[&str]) -> Result<String> {
-  let out = Command::new(SCANIMAGE)
+async fn run(program: &str, args: &[&str]) -> Result<String> {
+  let out = Command::new(program)
     .args(args)
     .output()
     .await
@@ -30,7 +30,7 @@ async fn run(args: &[&str]) -> Result<String> {
 
 /// Every scanner SANE knows, without the eSCL ones Avahi already finds.
 pub async fn scanners() -> Result<Vec<Scanner>> {
-  Ok(parse_list(&run(&["-f", "%d\t%v %m%n"]).await?))
+  Ok(parse_list(&run(SCANIMAGE, &["-f", "%d\t%v %m%n"]).await?))
 }
 
 pub fn parse_list(out: &str) -> Vec<Scanner> {
@@ -169,12 +169,12 @@ impl Options {
   }
 }
 
-async fn options(device: &str) -> Result<Options> {
-  Ok(parse_options(&run(&["-d", device, "-A"]).await?))
+async fn options(program: &str, device: &str) -> Result<Options> {
+  Ok(parse_options(&run(program, &["-d", device, "-A"]).await?))
 }
 
 pub async fn capabilities(device: &str) -> Result<ScannerCaps> {
-  Ok(options(device).await?.caps())
+  Ok(options(SCANIMAGE, device).await?.caps())
 }
 
 /// Scans every page into `settings.destination` as `scan-<stamp>-<n>.<ext>`.
@@ -182,9 +182,19 @@ pub async fn scan(
   device: &str,
   settings: &ScanSettings,
   stamp: &str,
+  on_page: impl FnMut(u32),
+) -> Result<Vec<PathBuf>> {
+  scan_with(SCANIMAGE, device, settings, stamp, on_page).await
+}
+
+async fn scan_with(
+  program: &str,
+  device: &str,
+  settings: &ScanSettings,
+  stamp: &str,
   mut on_page: impl FnMut(u32),
 ) -> Result<Vec<PathBuf>> {
-  let options = options(device).await?;
+  let options = options(program, device).await?;
   let format = match settings.format {
     Format::Pdf => "pdf",
     Format::Png => "png",
@@ -195,13 +205,16 @@ pub async fn scan(
   let dir = settings.destination.to_string_lossy().replace('%', "%%");
   let pattern = PathBuf::from(dir).join(format!("scan-{stamp}-%d.{ext}"));
   let first = settings.destination.join(format!("scan-{stamp}-1.{ext}"));
-  let mut cmd = Command::new(SCANIMAGE);
+  let mut cmd = Command::new(program);
   cmd
     .args(["-d", device, "--format", format])
-    .arg(format!("--resolution={}", settings.resolution))
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .kill_on_drop(true);
+  // some backends only have `--x-resolution` and `--y-resolution`
+  if !options.resolutions.is_empty() {
+    cmd.arg(format!("--resolution={}", settings.resolution));
+  }
   if let Some((_, mode)) = options
     .modes
     .iter()
@@ -231,12 +244,17 @@ pub async fn scan(
     on_page(files.len() as u32);
   }
   let out = child.output().await?;
+  let stderr = String::from_utf8_lossy(&out.stderr);
   // the feeder running empty after some pages ends the job, it is no failure
-  if files.is_empty() && !out.status.success() {
-    bail!(
-      "scanimage failed: {}",
-      String::from_utf8_lossy(&out.stderr).trim()
-    );
+  if !out.status.success() && (files.is_empty() || !stderr.contains("out of documents")) {
+    match files.len() {
+      0 => bail!("scanimage failed: {}", stderr.trim()),
+      n => bail!(
+        "scanimage failed after {n} pages, saved in {}: {}",
+        settings.destination.display(),
+        stderr.trim()
+      ),
+    }
   }
   // a flatbed page, or a PDF with every page in its first file, is never printed
   if files.is_empty() && first.exists() {
@@ -266,6 +284,75 @@ mod tests {
       ]
     );
     assert_eq!(list[0].sane.as_deref(), Some("xerox_mfp:tcp 192.168.1.50"));
+  }
+
+  /// A fake `scanimage` that feeds two pages and logs its arguments. The
+  /// device `jam` jams after them instead of running out of paper.
+  const FAKE: &str = r#"#!/bin/sh
+echo "$@" >> "$0.log"
+case "$*" in *" -A"*)
+  printf '    --resolution 75|150|300dpi [150]\n    --mode Gray|Color [Color]\n    --source Flatbed|ADF [Flatbed]\n'
+  exit 0;;
+esac
+for arg; do case "$arg" in --batch=*) pattern="${arg#--batch=}";; esac; done
+for n in 1 2; do f=$(printf "$pattern" $n); echo page > "$f"; echo "$f"; done
+case "$*" in
+  *"-d jam"*) echo "scanimage: sane_start: Document feeder jammed" >&2;;
+  *) echo "scanimage: sane_start: Document feeder out of documents" >&2;;
+esac
+exit 7
+"#;
+
+  #[test]
+  fn scans_the_feeder_until_it_is_empty() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("scanimage");
+    std::fs::write(&program, FAKE).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = program.to_str().unwrap();
+    let settings = ScanSettings {
+      resolution: 300,
+      color_mode: ColorMode::Grayscale,
+      source: InputSource::Adf,
+      format: Format::Png,
+      destination: dir.path().to_path_buf(),
+    };
+    let scan = |device| {
+      let mut pages = Vec::new();
+      let files = futures_lite::future::block_on(scan_with(program, device, &settings, "x", |n| {
+        pages.push(n)
+      }));
+      (files, pages)
+    };
+
+    let (files, pages) = scan("xerox_mfp:tcp 10.0.0.5");
+    assert_eq!(pages, [1, 2]);
+    let files = files.unwrap();
+    assert_eq!(
+      files,
+      [
+        dir.path().join("scan-x-1.png"),
+        dir.path().join("scan-x-2.png")
+      ]
+    );
+    assert_eq!(std::fs::read_to_string(&files[1]).unwrap(), "page\n");
+    let log = std::fs::read_to_string(dir.path().join("scanimage.log")).unwrap();
+    let call = log.lines().last().unwrap();
+    for part in [
+      "--resolution=300",
+      "--mode=Gray",
+      "--source=ADF",
+      "--batch-print",
+    ] {
+      assert!(call.contains(part), "{part} missing in {call}");
+    }
+    let pattern = format!("--batch={}", dir.path().join("scan-x-%d.png").display());
+    assert!(call.contains(&pattern), "{call}");
+
+    let error = scan("jam").0.unwrap_err().to_string();
+    assert!(error.contains("after 2 pages"), "{error}");
+    assert!(error.contains("jammed"), "{error}");
   }
 
   #[test]

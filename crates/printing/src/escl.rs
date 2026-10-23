@@ -1,6 +1,6 @@
 //! Scanning over eSCL (AirScan).
 
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use crate::avahi::{SCANS, Service};
 use crate::ipp::MAX_RESPONSE;
@@ -176,7 +176,7 @@ pub fn scan_settings(caps: &ScannerCaps, settings: &ScanSettings) -> String {
 /// Runs one scan job and saves every page it returns into
 /// `settings.destination`. Calls `on_page` with the count after each page.
 pub async fn scan(
-  client: &dyn HttpClient,
+  client: &Arc<dyn HttpClient>,
   scanner: &Scanner,
   caps: &ScannerCaps,
   settings: &ScanSettings,
@@ -210,18 +210,41 @@ pub async fn scan(
     format!("{origin}/{}", location.trim_matches('/'))
   };
 
-  let pages = pages(client, &job, settings, stamp, &mut on_page).await;
+  let mut cancel = CancelJob {
+    client: Some(client.clone()),
+    job: job.clone(),
+  };
+  let pages = pages(&**client, &job, settings, stamp, &mut on_page).await;
+  cancel.client = None;
   if pages.is_err() {
-    // scanners keep a broken job open and refuse new ones until it times out
-    let delete = Request::builder()
-      .method(Method::DELETE)
-      .uri(&job)
-      .body(AsyncBody::empty());
-    if let Ok(delete) = delete {
-      client.send(delete).await.ok();
-    }
+    delete(client.clone(), job).await;
   }
   pages
+}
+
+/// Scanners keep a broken job open and refuse new ones until it times out.
+async fn delete(client: Arc<dyn HttpClient>, job: String) {
+  let delete = Request::builder()
+    .method(Method::DELETE)
+    .uri(&job)
+    .body(AsyncBody::empty());
+  if let Ok(delete) = delete {
+    client.send(delete).await.ok();
+  }
+}
+
+/// Deletes the job when the scan is dropped before it finished.
+struct CancelJob {
+  client: Option<Arc<dyn HttpClient>>,
+  job: String,
+}
+
+impl Drop for CancelJob {
+  fn drop(&mut self) {
+    if let Some(client) = self.client.take() {
+      smol::spawn(delete(client, std::mem::take(&mut self.job))).detach();
+    }
+  }
 }
 
 async fn pages(
@@ -238,12 +261,11 @@ async fn pages(
     let (status, body) = get(client, &format!("{job}/NextDocument")).await?;
     match status {
       200 => {
+        // named like SANE's pages
         let page = files.len() + 1;
-        let file = match page {
-          1 => format!("scan-{stamp}.{ext}"),
-          n => format!("scan-{stamp}-{n}.{ext}"),
-        };
-        let path = settings.destination.join(file);
+        let path = settings
+          .destination
+          .join(format!("scan-{stamp}-{page}.{ext}"));
         smol::fs::write(&path, body)
           .await
           .with_context(|| format!("saving {}", path.display()))?;
@@ -274,9 +296,9 @@ async fn pages(
 
 #[cfg(test)]
 mod tests {
-  use std::sync::{Arc, Mutex};
+  use std::sync::Mutex;
 
-  use futures_lite::future::block_on;
+  use futures_lite::future::{block_on, poll_once};
   use gpui_kit::http_client::FakeHttpClient;
 
   use super::*;
@@ -350,6 +372,9 @@ mod tests {
     }
   }
 
+  /// as `pages` of the fake scanner: a job that stays busy
+  const BUSY: usize = usize::MAX;
+
   /// a fake eSCL scanner: capabilities, status, one job of `pages` pages
   fn fake_scanner(pages: usize) -> (Arc<dyn HttpClient>, Arc<Mutex<Vec<String>>>) {
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -374,6 +399,9 @@ mod tests {
             .status(201)
             .header("Location", "/eSCL/ScanJobs/42")
             .body(AsyncBody::empty())?,
+          "/eSCL/ScanJobs/42/NextDocument" if pages == BUSY => {
+            response.status(503).body(AsyncBody::empty())?
+          }
           "/eSCL/ScanJobs/42/NextDocument" => {
             let mut served = served.lock().unwrap();
             if *served < pages {
@@ -405,7 +433,7 @@ mod tests {
     let caps = parse_capabilities(CAPS).unwrap();
     let mut pages = Vec::new();
     let files = block_on(scan(
-      &*client,
+      &client,
       &test_scanner(),
       &caps,
       &settings(dir.path(), InputSource::Adf),
@@ -420,7 +448,7 @@ mod tests {
       .collect();
     assert_eq!(
       names,
-      ["scan-20261019-120000.jpg", "scan-20261019-120000-2.jpg"]
+      ["scan-20261019-120000-1.jpg", "scan-20261019-120000-2.jpg"]
     );
     assert_eq!(std::fs::read_to_string(&files[1]).unwrap(), "page 2");
 
@@ -449,7 +477,7 @@ mod tests {
     let (client, log) = fake_scanner(5);
     let caps = parse_capabilities(CAPS).unwrap();
     let files = block_on(scan(
-      &*client,
+      &client,
       &test_scanner(),
       &caps,
       &settings(dir.path(), InputSource::Flatbed),
@@ -476,8 +504,11 @@ mod tests {
       _ => (404, vec![], vec![]),
     });
     let scanner = scanner(&Service::new("Secure", SCANS, "127.0.0.1", port, &[]));
-    let client = crate::tls::PinnedClient::new(&scanner.name, &dir.path().join("pins"));
-    let caps = block_on(capabilities(&client, &scanner)).unwrap();
+    let client: Arc<dyn HttpClient> = Arc::new(crate::tls::PinnedClient::new(
+      &scanner.name,
+      &dir.path().join("pins"),
+    ));
+    let caps = block_on(capabilities(&*client, &scanner)).unwrap();
     assert_eq!(caps.state, "Idle");
     let files = block_on(scan(
       &client,
@@ -497,7 +528,31 @@ mod tests {
     let (client, _) = fake_scanner(0);
     let caps = parse_capabilities(CAPS).unwrap();
     let flatbed = settings(dir.path(), InputSource::Flatbed);
-    let run = |scanner: Scanner| block_on(scan(&*client, &scanner, &caps, &flatbed, "x", |_| {}));
+    let run = |scanner: Scanner| block_on(scan(&client, &scanner, &caps, &flatbed, "x", |_| {}));
     assert!(run(test_scanner()).is_err());
+  }
+
+  #[test]
+  fn dropped_scan_deletes_its_job() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, log) = fake_scanner(BUSY);
+    let caps = parse_capabilities(CAPS).unwrap();
+    let flatbed = settings(dir.path(), InputSource::Flatbed);
+    let scanner = test_scanner();
+    let scan = scan(&client, &scanner, &caps, &flatbed, "x", |_| {});
+    // waiting for the busy scanner, then dropped
+    assert!(block_on(poll_once(Box::pin(scan))).is_none());
+    let deleted = || {
+      log
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|l| l.starts_with("DELETE http://10.0.0.5:8080/eSCL/ScanJobs/42"))
+    };
+    let start = std::time::Instant::now();
+    while !deleted() && start.elapsed() < Duration::from_secs(5) {
+      std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(deleted());
   }
 }

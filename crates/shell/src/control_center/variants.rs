@@ -152,7 +152,7 @@ mod tests {
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 13);
+    assert_eq!(all.len(), 14);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 

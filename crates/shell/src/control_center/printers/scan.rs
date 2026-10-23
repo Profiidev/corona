@@ -424,20 +424,28 @@ impl PrintersPanel {
                   |this, _, _, cx| {
                     (this.saved, this.error) = (None, None);
                     let printing = cx.printing().clone();
-                    let task = match (this.scanner.clone(), this.settings.clone()) {
-                      (Some(name), Some(settings)) => Some(printing.scan(&name, settings, cx)),
+                    let name = this.scanner.clone();
+                    let task = match (&name, this.settings.clone()) {
+                      (Some(name), Some(settings)) => Some(printing.scan(name, settings, cx)),
                       _ => None,
                     };
                     async move {
-                      match task {
+                      let files = match task {
                         Some(task) => task.await,
                         None => Ok(Vec::new()),
-                      }
+                      };
+                      (name, files)
                     }
                   },
-                  |this, files: Result<Vec<PathBuf>>, cx| match files {
-                    Ok(files) => this.saved = Some(files.len()),
-                    Err(e) => this.show_error(Err(e), cx),
+                  |this, (name, files): (Option<String>, Result<Vec<PathBuf>>), cx| {
+                    // another scanner was picked meanwhile, its card is not about this scan
+                    if this.scanner != name {
+                      return;
+                    }
+                    match files {
+                      Ok(files) => this.saved = Some(files.len()),
+                      Err(e) => this.show_error(Err(e), cx),
+                    }
                   },
                 )),
             ),

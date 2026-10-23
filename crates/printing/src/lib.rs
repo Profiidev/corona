@@ -3,7 +3,10 @@
 
 use std::{
   path::{Path, PathBuf},
-  sync::Arc,
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
   time::Duration,
 };
 
@@ -49,6 +52,8 @@ pub struct Printing {
   poke: flume::Sender<()>,
   /// whether to ask SANE for scanners, never in tests
   sane: bool,
+  /// a SANE probe is running
+  probing: Arc<AtomicBool>,
 }
 
 impl Global for Printing {}
@@ -181,16 +186,24 @@ impl Printing {
   /// and the network for seconds, so only when the panel opens.
   pub fn find_sane_scanners(&self, cx: &mut App) {
     // a probe could disturb the device that is scanning
-    if !self.sane || self.scan.read(cx).is_some() {
+    if !self.sane || self.scan.read(cx).is_some() || self.probing.swap(true, Ordering::Relaxed) {
       return;
     }
-    let scanners = self.scanners.clone();
+    let (scanners, scan, probing) = (
+      self.scanners.clone(),
+      self.scan.clone(),
+      self.probing.clone(),
+    );
     cx.spawn(async move |cx| {
-      let found = sane::scanners().await.unwrap_or_else(|e| {
-        tracing::debug!("no SANE scanners: {e:?}");
-        Vec::new()
+      let found = sane::scanners().await;
+      probing.store(false, Ordering::Relaxed);
+      cx.update(|cx| match found {
+        // a scan that started meanwhile keeps its device busy, so unlisted
+        Ok(_) if scan.read(cx).is_some() => {}
+        Ok(found) => set_scanners(&scanners, cx, true, found),
+        // keep what the last probe found
+        Err(e) => tracing::debug!("no SANE scanners: {e:?}"),
       });
-      set_scanners(&scanners, cx, true, found);
     })
     .detach();
   }
@@ -314,6 +327,10 @@ impl Printing {
         cx: cx.clone(),
       };
       let result = async {
+        // a deleted folder would fail only after the paper is scanned
+        smol::fs::create_dir_all(&settings.destination)
+          .await
+          .with_context(|| format!("making {}", settings.destination.display()))?;
         let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
         let (pages, mut rx) = futures_channel::mpsc::unbounded();
         let on_page = move |n| {
@@ -324,7 +341,7 @@ impl Printing {
             Some(device) => sane::scan(device, &settings, &stamp, on_page).await,
             None => {
               let caps = escl::capabilities(&*client, &scanner).await?;
-              escl::scan(&*client, &scanner, &caps, &settings, &stamp, on_page).await
+              escl::scan(&client, &scanner, &caps, &settings, &stamp, on_page).await
             }
           }
         };
@@ -370,6 +387,7 @@ impl Printing {
       pins: Arc::from(Path::new("/nonexistent/scanner-certs")),
       poke: flume::unbounded().0,
       sane: false,
+      probing: Arc::default(),
     };
     cx.set_global(state);
   }
@@ -487,6 +505,7 @@ async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {
     pins: Arc::from(tls::pins_file()),
     poke: poke.clone(),
     sane: !cfg!(test),
+    probing: Arc::default(),
   };
 
   // subscribe before the first snapshot so no change can slip in between
@@ -793,6 +812,8 @@ mod tests {
         "Generic PostScript Printer",
       ),
       ("splix/clx3180.ppd", "Samsung CLX-3180, SpliX V2.0.1"),
+      // same model number, another make
+      ("acme/clx3180.ppd", "Acme CLX-3180"),
       (
         "splix/clx3180fn.ppd",
         "Samsung CLX-3180FN Extra Long Name, SpliX V2.0.1",
