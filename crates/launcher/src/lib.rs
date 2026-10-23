@@ -1,6 +1,9 @@
 pub mod args;
 pub mod command;
+pub mod commands;
+pub mod common;
 pub mod dmenu;
+pub mod hooks;
 pub mod matching;
 pub mod paste;
 pub mod registry;

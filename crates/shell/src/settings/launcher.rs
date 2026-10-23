@@ -507,8 +507,7 @@ fn records(
 ) -> Div {
   let rows = get(cx.config());
   let width = labels.len();
-  let write: Rc<WriteRows> =
-    Rc::new(move |rows, cx| save(cx, |c| set(c, rows)));
+  let write: Rc<WriteRows> = Rc::new(move |rows, cx| save(cx, |c| set(c, rows)));
   let lines: Vec<Div> = rows
     .iter()
     .enumerate()

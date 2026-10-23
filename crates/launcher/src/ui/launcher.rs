@@ -758,7 +758,8 @@ impl Launcher {
           return;
         };
         let args = self.inline_args(&row).unwrap_or_default();
-        let actions = row.command.actions(cx);
+        let mut actions = row.command.actions(cx);
+        actions.extend(crate::common::actions(row.id(), cx));
         (Some(row.command), args, actions)
       }
     };
@@ -919,21 +920,39 @@ impl Launcher {
     self.pop(window, cx);
   }
 
-  /// Backspace on an empty query drops the prefix chip instead of a character
+  /// Backspace on an empty query drops the prefix chip instead of a character; action
+  /// shortcuts of the selected row run without opening the panel
   fn on_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-    if e.keystroke.key != "backspace" || !self.input.read(cx).value().is_empty() {
+    if e.keystroke.key == "backspace" && self.input.read(cx).value().is_empty() {
+      if self.page_mut().scope.take().is_some() {
+        cx.stop_propagation();
+        let placeholder = self.page().placeholder();
+        self.input.update(cx, |input, cx| {
+          input.set_placeholder(placeholder, window, cx)
+        });
+        self.page_mut().query = String::new();
+        self.refresh(cx);
+      }
       return;
     }
-    if let Some(scope) = self.page_mut().scope.take() {
+    let modified = e.keystroke.modifiers.control || e.keystroke.modifiers.alt;
+    if !modified || self.panel.is_some() || self.confirm.is_some() {
+      return;
+    }
+    let keys = e.keystroke.unparse();
+    let Some(row) = self.page().selected_row().cloned() else {
+      return;
+    };
+    let mut actions = row.command.actions(cx);
+    actions.extend(crate::common::actions(row.id(), cx));
+    if let Some(action) = actions
+      .into_iter()
+      .skip(1)
+      .find(|a| a.shortcut.as_deref() == Some(keys.as_str()))
+    {
       cx.stop_propagation();
-      let prefix = scope.prefix.to_string();
-      let placeholder = self.page().placeholder();
-      self.input.update(cx, |input, cx| {
-        input.set_value(prefix, window, cx);
-        input.set_placeholder(placeholder, window, cx);
-      });
-      self.page_mut().query = String::new();
-      self.refresh(cx);
+      let args = self.inline_args(&row).unwrap_or_default();
+      self.run(Some(row.command), action, args, false, window, cx);
     }
   }
 

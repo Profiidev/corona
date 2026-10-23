@@ -12,6 +12,7 @@ categories.workspace = true
 corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
+corona_desktop.workspace = true
 corona_surface.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
@@ -23,6 +24,8 @@ serde_json.workspace = true
 tracing.workspace = true
 rust-i18n.workspace = true
 nucleo-matcher.workspace = true
+flume.workspace = true
+notify = "8.2.0"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

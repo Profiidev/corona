@@ -1981,6 +1981,7 @@ dependencies = [
 name = "corona_desktop"
 version = "0.1.2"
 dependencies = [
+ "anyhow",
  "corona-freedesktop-icons",
  "dirs 7.0.0",
  "freedesktop-desktop-entry",
@@ -2052,11 +2053,14 @@ dependencies = [
  "corona_components",
  "corona_compositor",
  "corona_config",
+ "corona_desktop",
  "corona_surface",
  "corona_utils",
  "dirs 7.0.0",
+ "flume",
  "futures",
  "gpui-kit",
+ "notify",
  "nucleo-matcher",
  "rust-i18n",
  "serde",

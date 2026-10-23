@@ -9,6 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 dirs.workspace = true
 freedesktop-desktop-entry.workspace = true
 corona-freedesktop-icons = "0.1.0"

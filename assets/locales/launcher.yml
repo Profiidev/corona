@@ -2,99 +2,211 @@ _version: 2
 app:
   launcher:
     placeholder:
-      en: Search for apps and commands…
-      de: Apps und Befehle suchen …
+      en: 'Search for apps and commands…'
+      de: 'Apps und Befehle suchen …'
     unknown_command:
       en: 'No command "%{id}"'
       de: 'Kein Befehl „%{id}“'
     retry:
-      en: Retry
-      de: Wiederholen
+      en: 'Retry'
+      de: 'Wiederholen'
     failed:
-      en: Failed
-      de: Fehlgeschlagen
+      en: 'Failed'
+      de: 'Fehlgeschlagen'
     submit:
-      en: Submit
-      de: Absenden
+      en: 'Submit'
+      de: 'Absenden'
     required:
-      en: Required
-      de: Pflichtfeld
+      en: 'Required'
+      de: 'Pflichtfeld'
     form_hint:
       en: 'Ctrl+Enter: %{action}'
       de: 'Strg+Enter: %{action}'
     form_status:
-      en: Tab moves between fields
-      de: Tab wechselt das Feld
+      en: 'Tab moves between fields'
+      de: 'Tab wechselt das Feld'
     no_results:
-      en: No results
-      de: Keine Ergebnisse
+      en: 'No results'
+      de: 'Keine Ergebnisse'
     working:
-      en: Working…
-      de: Wird ausgeführt …
+      en: 'Working…'
+      de: 'Wird ausgeführt …'
     results:
       en: '%{count} results'
       de: '%{count} Ergebnisse'
     actions:
-      en: Actions
-      de: Aktionen
+      en: 'Actions'
+      de: 'Aktionen'
     search_actions:
-      en: Search actions…
-      de: Aktionen suchen …
+      en: 'Search actions…'
+      de: 'Aktionen suchen …'
     dont_ask:
-      en: Don't ask again
-      de: Nicht mehr fragen
+      en: 'Don''t ask again'
+      de: 'Nicht mehr fragen'
     discard:
       title:
-        en: Discard changes?
-        de: Änderungen verwerfen?
+        en: 'Discard changes?'
+        de: 'Änderungen verwerfen?'
       message:
-        en: What you entered is lost.
-        de: Die Eingaben gehen verloren.
+        en: 'What you entered is lost.'
+        de: 'Die Eingaben gehen verloren.'
       button:
-        en: Discard
-        de: Verwerfen
+        en: 'Discard'
+        de: 'Verwerfen'
     hud:
       copied:
-        en: Copied to clipboard
-        de: In die Zwischenablage kopiert
+        en: 'Copied to clipboard'
+        de: 'In die Zwischenablage kopiert'
       pasted:
-        en: Pasted
-        de: Eingefügt
+        en: 'Pasted'
+        de: 'Eingefügt'
       copied_only:
-        en: Copied to clipboard, paste unavailable
-        de: Kopiert, Einfügen nicht möglich
+        en: 'Copied to clipboard, paste unavailable'
+        de: 'Kopiert, Einfügen nicht möglich'
     section:
       favorites:
-        en: Favorites
-        de: Favoriten
+        en: 'Favorites'
+        de: 'Favoriten'
       recent:
-        en: Recent
-        de: Zuletzt verwendet
+        en: 'Recent'
+        de: 'Zuletzt verwendet'
       suggestions:
-        en: Suggestions
-        de: Vorschläge
+        en: 'Suggestions'
+        de: 'Vorschläge'
       applications:
-        en: Applications
-        de: Anwendungen
+        en: 'Applications'
+        de: 'Anwendungen'
       commands:
-        en: Commands
-        de: Befehle
+        en: 'Commands'
+        de: 'Befehle'
       results:
-        en: Results
-        de: Ergebnisse
+        en: 'Results'
+        de: 'Ergebnisse'
       fallback:
-        en: Use query with
-        de: Suche verwenden mit
+        en: 'Use query with'
+        de: 'Suche verwenden mit'
     dmenu:
       title:
-        en: Choose
-        de: Auswählen
+        en: 'Choose'
+        de: 'Auswählen'
       placeholder:
-        en: Filter…
-        de: Filtern …
+        en: 'Filter…'
+        de: 'Filtern …'
       choose:
-        en: Choose
-        de: Auswählen
+        en: 'Choose'
+        de: 'Auswählen'
       mark:
-        en: Mark
-        de: Markieren
+        en: 'Mark'
+        de: 'Markieren'
+    open:
+      en: 'Open'
+      de: 'Öffnen'
+    apps:
+      browse:
+        en: 'Browse apps'
+        de: 'Apps durchsuchen'
+      copy_exec:
+        en: 'Copy command'
+        de: 'Befehl kopieren'
+      focus:
+        en: 'Switch to window'
+        de: 'Zum Fenster wechseln'
+      launch:
+        en: 'Open'
+        de: 'Öffnen'
+      new_instance:
+        en: 'Open new window'
+        de: 'Neues Fenster öffnen'
+      refresh:
+        en: 'Refresh apps'
+        de: 'Apps neu einlesen'
+      refreshed:
+        en: 'Found %{count} apps'
+        de: '%{count} Apps gefunden'
+      reveal:
+        en: 'Show desktop file'
+        de: 'Desktop-Datei zeigen'
+      running:
+        en: 'Running'
+        de: 'Läuft'
+      search:
+        en: 'Search apps…'
+        de: 'Apps suchen …'
+    common:
+      alias:
+        en: 'Set alias'
+        de: 'Alias festlegen'
+      alias_field:
+        en: 'Alias'
+        de: 'Alias'
+      configure:
+        en: 'Configure command'
+        de: 'Befehl einrichten'
+      disable:
+        en: 'Disable command'
+        de: 'Befehl deaktivieren'
+      favorite:
+        en: 'Add to favorites'
+        de: 'Zu Favoriten hinzufügen'
+      unfavorite:
+        en: 'Remove from favorites'
+        de: 'Aus Favoriten entfernen'
+      hide:
+        en: 'Hide from search'
+        de: 'In der Suche ausblenden'
+      show:
+        en: 'Show in search'
+        de: 'In der Suche zeigen'
+      save:
+        en: 'Save'
+        de: 'Speichern'
+    run:
+      background:
+        en: 'Run'
+        de: 'Ausführen'
+      terminal:
+        en: 'Run in terminal'
+        de: 'Im Terminal ausführen'
+      chip:
+        en: 'Run'
+        de: 'Ausführen'
+      command:
+        en: 'Run command'
+        de: 'Befehl ausführen'
+      command_arg:
+        en: 'command'
+        de: 'Befehl'
+      in_terminal:
+        en: 'Run "%{command}" in terminal'
+        de: '„%{command}“ im Terminal ausführen'
+      placeholder:
+        en: 'Shell command…'
+        de: 'Shell-Befehl …'
+      program:
+        en: 'program'
+        de: 'Programm'
+      terminal_program:
+        en: 'Run in terminal'
+        de: 'Im Terminal starten'
+      title:
+        en: 'Run "%{command}"'
+        de: '„%{command}“ ausführen'
+    web:
+      open:
+        en: 'Open in browser'
+        de: 'Im Browser öffnen'
+      open_url:
+        en: 'Open %{url}'
+        de: '%{url} öffnen'
+      placeholder:
+        en: 'Search %{engine}…'
+        de: '%{engine} durchsuchen …'
+      query:
+        en: 'query'
+        de: 'Suche'
+      search:
+        en: 'Search %{engine}'
+        de: '%{engine} durchsuchen'
+      search_for:
+        en: 'Search %{engine} for "%{query}"'
+        de: '„%{query}“ mit %{engine} suchen'
