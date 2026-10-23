@@ -867,3 +867,31 @@ app:
       search_title:
         en: 'Search tray'
         de: 'Tray durchsuchen'
+    calculator:
+      copy:
+        en: 'Copy result'
+        de: 'Ergebnis kopieren'
+      copy_all:
+        en: 'Copy expression = result'
+        de: 'Ausdruck = Ergebnis kopieren'
+      fetching:
+        en: 'Fetching rate…'
+        de: 'Kurs wird geladen …'
+      history:
+        en: 'Calculator history'
+        de: 'Rechnerverlauf'
+      no_history:
+        en: 'No calculations yet'
+        de: 'Noch keine Rechnungen'
+      search_history:
+        en: 'Search calculations…'
+        de: 'Rechnungen suchen …'
+      rates_age:
+        en: 'ECB rates of %{date}, fetched %{hours} h ago'
+        de: 'EZB-Kurse vom %{date}, vor %{hours} h geladen'
+      rates_updated:
+        en: 'Exchange rates updated'
+        de: 'Wechselkurse aktualisiert'
+      refresh_rates:
+        en: 'Refresh exchange rates'
+        de: 'Wechselkurse aktualisieren'

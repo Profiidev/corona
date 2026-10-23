@@ -11,6 +11,7 @@ pub const SEARCH_HEIGHT: f32 = 58.;
 pub const FOOTER_HEIGHT: f32 = 42.;
 pub const ROW_HEIGHT: f32 = 44.;
 pub const HEADER_HEIGHT: f32 = 32.;
+pub const EVALUATION_HEIGHT: f32 = 108.;
 pub const TILE: f32 = 28.;
 pub const RADIUS: f32 = 16.;
 pub const ROW_RADIUS: f32 = 10.;

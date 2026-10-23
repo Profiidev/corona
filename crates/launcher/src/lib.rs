@@ -18,8 +18,8 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub use args::{ArgSpec, ArgValue, Args};
 pub use command::{
-  Accessory, Action, Clip, Command, CommandSource, Confirm, Detail, DetailBody, Hud, Icon, Meta,
-  Outcome, Scope, Section, SimpleCommand, SourceKind, Toast, ToastKind, Tone, simple,
+  Accessory, Action, Clip, Command, CommandSource, Confirm, Detail, DetailBody, Evaluation, Hud,
+  Icon, Meta, Outcome, Scope, Section, SimpleCommand, SourceKind, Toast, ToastKind, Tone, simple,
 };
 pub use matching::{Match, Query, Tier};
 pub use view::{

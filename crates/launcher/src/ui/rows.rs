@@ -19,7 +19,7 @@ use super::{
   overlays, style,
 };
 use crate::{
-  command::{Accessory, Detail, DetailBody, Icon, Section},
+  command::{Accessory, Detail, DetailBody, Evaluation, Icon, Section},
   registry::Row,
   view::Layout,
 };
@@ -283,6 +283,7 @@ struct RowView {
   subtitle: Option<SharedString>,
   hint: Option<(SharedString, bool)>,
   accessories: Vec<Accessory>,
+  evaluation: Option<Evaluation>,
   selected: bool,
 }
 
@@ -309,6 +310,7 @@ fn row_view(this: &Launcher, row: &Row, selected: bool, cx: &App) -> RowView {
     subtitle: row.meta.subtitle.clone(),
     hint,
     accessories: row.meta.accessories.clone(),
+    evaluation: row.meta.evaluation.clone(),
     selected,
   }
 }
@@ -361,6 +363,9 @@ fn render_row(
     color: Some(theme.colors.primary),
     ..Default::default()
   };
+  if let Some(evaluation) = &row.evaluation {
+    return evaluation_tile(evaluation, row.selected, index, weak, cx);
+  }
   let ranges = char_ranges(&row.title, &row.highlights)
     .into_iter()
     .map(|r| (r, highlight))
@@ -416,6 +421,67 @@ fn render_row(
         }),
     )
     .children(row.accessories.iter().map(|a| accessory(a, cx)))
+    .into_any_element()
+}
+
+/// The calculator's tile: input left, result right, a note under them
+fn evaluation_tile(
+  evaluation: &Evaluation,
+  selected: bool,
+  index: usize,
+  weak: gpui_kit::WeakEntity<Launcher>,
+  cx: &App,
+) -> AnyElement {
+  let theme = cx.theme();
+  let half = |text: SharedString, muted: bool| {
+    div()
+      .flex_1()
+      .min_w_0()
+      .h_full()
+      .flex()
+      .items_center()
+      .justify_center()
+      .px_3()
+      .text_size(px(if muted { 22. } else { 26. }))
+      .font_weight(FontWeight::MEDIUM)
+      .when(muted, |el| el.text_color(theme.colors.muted_foreground))
+      .whitespace_nowrap()
+      .text_ellipsis()
+      .child(text)
+  };
+  div()
+    .id(("launcher-evaluation", index))
+    .mb_1()
+    .h(px(style::EVALUATION_HEIGHT))
+    .flex()
+    .flex_col()
+    .rounded(px(style::ROW_RADIUS))
+    .border_1()
+    .border_color(theme.colors.border)
+    .when(selected, |el| el.bg(style::selected(cx)))
+    .cursor_pointer()
+    .on_click(move |_, window, cx| {
+      let _ = weak.update(cx, |this, cx| this.click(index, window, cx));
+    })
+    .child(
+      div()
+        .flex_1()
+        .flex()
+        .items_center()
+        .child(half(evaluation.input.clone(), true))
+        .child(KitIcon::new(IconName::ArrowRight).with_size(px(18.)))
+        .child(half(evaluation.output.clone(), false)),
+    )
+    .when_some(evaluation.note.clone(), |el, note| {
+      el.child(
+        div()
+          .pb_2()
+          .text_center()
+          .text_size(px(12.))
+          .text_color(theme.colors.muted_foreground)
+          .child(note),
+      )
+    })
     .into_any_element()
 }
 

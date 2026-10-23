@@ -96,6 +96,11 @@ pub enum IpcCommands {
     #[command(subcommand)]
     command: TrayCommands,
   },
+  /// Evaluate math, units, currency, time zones or dates like the launcher
+  Calc {
+    #[arg(allow_hyphen_values = true, num_args = 1.., trailing_var_arg = true)]
+    expression: Vec<String>,
+  },
   /// Open the control center on a page, like audio or network
   ControlCenter {
     #[arg(add = clap_complete::ArgValueCandidates::new(|| candidates(ListPages::send(()))))]
@@ -236,6 +241,12 @@ impl IpcCommands {
         Discover::send(matches!(state, Power::On)),
         "switch Bluetooth discovery",
       ),
+      IpcCommands::Calc { expression } => {
+        match corona_shell::commands::calculator::Evaluate::send(expression.join(" ")) {
+          Ok(result) => println!("{result}"),
+          Err(e) => tracing::error!("Failed to calculate: {}", e),
+        }
+      }
       IpcCommands::ControlCenter { page } => {
         if let Err(e) = OpenPage::send(page) {
           tracing::error!("Failed to open the control center: {}", e);
@@ -524,6 +535,7 @@ pub(crate) mod tests {
       (&["player", "seek", "-10"], json!(null), corona_shell::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
       (&["player", "loop", "track"], json!(null), corona_shell::commands::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::commands::tray::Activate::COMMAND, json!([":1.2/item", 4])),
+      (&["calc", "2", "+", "2"], json!("4"), corona_shell::commands::calculator::Evaluate::COMMAND, json!("2 + 2")),
       (&["notification", "dismiss"], json!(null), corona_shell::commands::notification::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_shell::launcher::commands::Toggle::COMMAND, json!(null)),
       (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),

@@ -108,6 +108,16 @@ pub struct Meta {
   pub args: Vec<ArgSpec>,
   /// Shows its arguments as fields after selection instead of parsing them inline
   pub args_row: bool,
+  /// Drawn as the calculator tile instead of a row
+  pub evaluation: Option<Evaluation>,
+}
+
+/// Input, result and a note line, like an exchange rate's age
+#[derive(Clone, Default)]
+pub struct Evaluation {
+  pub input: SharedString,
+  pub output: SharedString,
+  pub note: Option<SharedString>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
