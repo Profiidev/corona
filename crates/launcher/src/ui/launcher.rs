@@ -3,9 +3,9 @@ use std::{collections::HashSet, rc::Rc, time::Duration};
 use anyhow::Result;
 use corona_config::ConfigProvider;
 use gpui_kit::{
-  AnyView, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-  KeyDownEvent, ListAlignment, ListState, MouseButton, MouseMoveEvent, ParentElement, Render,
-  SharedString, Styled, Subscription, Task, Window,
+  AnyView, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+  IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseMoveEvent, ParentElement,
+  Render, SharedString, Styled, Subscription, Task, Window,
   base::input::{InputEvent, InputState},
   div, px,
 };
@@ -949,7 +949,8 @@ impl Launcher {
   /// Backspace on an empty query drops the prefix chip instead of a character; action
   /// shortcuts of the selected row run without opening the panel
   fn on_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-    if e.keystroke.key == "backspace" && self.input.read(cx).value().is_empty() {
+    let in_search = self.input.read(cx).focus_handle(cx).is_focused(window);
+    if e.keystroke.key == "backspace" && in_search && self.input.read(cx).value().is_empty() {
       if self.page_mut().scope.take().is_some() {
         cx.stop_propagation();
         let placeholder = self.page().placeholder();
@@ -958,6 +959,10 @@ impl Launcher {
         });
         self.page_mut().query = String::new();
         self.refresh(cx);
+      } else if self.pages.len() > 1 && self.panel.is_none() && self.confirm.is_none() {
+        // back to the view before, like Esc
+        cx.stop_propagation();
+        self.pop(window, cx);
       }
       return;
     }
@@ -1591,6 +1596,23 @@ mod view_tests {
     // Esc closes the menu, not the launcher
     cx.simulate_keystrokes("ctrl-f escape");
     assert_eq!(launcher.read_with(cx, |l, _| l.filter_menu), None);
+    assert_eq!(cx.windows().len(), 1);
+  }
+
+  #[gpui::test]
+  fn backspace_on_an_empty_search_pops(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = open(cx);
+    cx.simulate_input("open list");
+    cx.simulate_keystrokes("enter");
+    cx.simulate_input("b");
+    // the first backspace deletes the text, the next one goes back
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(view.read_with(cx, |l, _| l.pages().len()), 2);
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(view.read_with(cx, |l, _| l.pages().len()), 1);
+    // on the root it only edits
+    cx.simulate_keystrokes("backspace");
     assert_eq!(cx.windows().len(), 1);
   }
 }
