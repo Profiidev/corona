@@ -69,6 +69,81 @@ impl CommandSource for SettingsPages {
   }
 }
 
+/// `(page, field)` of every setting with a title in the settings strings
+fn setting_fields() -> &'static Vec<(&'static str, String)> {
+  static FIELDS: std::sync::OnceLock<Vec<(&'static str, String)>> = std::sync::OnceLock::new();
+  FIELDS.get_or_init(|| {
+    const YAML: &str = include_str!("../../../../assets/locales/settings.yml");
+    let lines: Vec<&str> = YAML.lines().collect();
+    let indent = |l: &str| l.len() - l.trim_start().len();
+    let mut out = Vec::new();
+    let mut page: Option<&'static str> = None;
+    for (i, line) in lines.iter().enumerate() {
+      let key = line.trim().trim_end_matches(':');
+      match indent(line) {
+        4 => page = PAGES.iter().copied().find(|p| *p == key),
+        6 if line.trim().ends_with(':') => {
+          let titled = lines
+            .get(i + 1)
+            .is_some_and(|next| indent(next) == 8 && next.trim() == "title:");
+          if let (Some(page), true) = (page, titled) {
+            out.push((page, key.to_string()));
+          }
+        }
+        _ => {}
+      }
+    }
+    out
+  })
+}
+
+/// Individual settings, opening their page
+struct SettingFields;
+
+impl CommandSource for SettingFields {
+  fn id(&self) -> SharedString {
+    "settings:fields".into()
+  }
+
+  fn commands(&self, query: &Query, _: &App) -> Vec<Rc<dyn Command>> {
+    if query.is_empty() {
+      return Vec::new();
+    }
+    setting_fields()
+      .iter()
+      .map(|(page, field)| {
+        let key = format!("app.settings.{page}.{field}.title");
+        let title = t!(&key).to_string();
+        let key = format!("app.settings.{page}.{field}.description");
+        let description = t!(&key).to_string();
+        let page_title = settings_title(page);
+        let page = *page;
+        simple(
+          format!("setting:{page}:{field}"),
+          move |_| Meta {
+            title: title.clone().into(),
+            subtitle: Some(format!("{} › {page_title}", t!("app.launcher.tools.settings")).into()),
+            icon: Icon::Named(IconName::SlidersHorizontal),
+            keywords: vec![description.clone().into(), page_title.clone().into()],
+            section: Section::Results,
+            ..Default::default()
+          },
+          move |_| {
+            vec![Action::sync(
+              "open",
+              t!("app.launcher.open"),
+              move |_, _, cx| {
+                settings::open(Some(page), cx)?;
+                Ok(Outcome::close())
+              },
+            )]
+          },
+        )
+      })
+      .collect()
+  }
+}
+
 /// Every surface panel, plugin ones too
 struct Panels;
 
@@ -281,4 +356,24 @@ pub fn init(cx: &mut App) {
   commands.extend(control_center_pages());
   registry::register_all(commands, cx);
   registry::register_source(Rc::new(SettingsPages), cx);
+  registry::register_source(Rc::new(SettingFields), cx);
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn finds_setting_fields() {
+    let fields = super::setting_fields();
+    assert!(
+      fields
+        .iter()
+        .any(|(p, f)| *p == "window_switcher" && f == "card_height")
+    );
+    assert!(
+      fields
+        .iter()
+        .any(|(p, f)| *p == "launcher" && f == "close_on_unfocus")
+    );
+    assert!(!fields.iter().any(|(_, f)| f == "groups" || f == "title"));
+  }
 }
