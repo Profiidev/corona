@@ -1928,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "corona_clipboard"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -2066,7 +2066,7 @@ dependencies = [
 
 [[package]]
 name = "corona_launcher"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_clipboard",
@@ -2154,6 +2154,30 @@ dependencies = [
  "smol",
  "tracing",
  "zbus",
+]
+
+[[package]]
+name = "corona_osk"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.2",
+ "corona_compositor",
+ "corona_config",
+ "corona_surface",
+ "corona_utils",
+ "dirs 7.0.0",
+ "flume",
+ "gpui-kit",
+ "rust-i18n",
+ "rustix",
+ "tempfile",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-misc",
+ "wayland-server",
+ "xkbcommon",
 ]
 
 [[package]]
@@ -2351,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "corona_udisks"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "zbus",
@@ -11920,6 +11944,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-scanner",
+ "wayland-server",
 ]
 
 [[package]]
