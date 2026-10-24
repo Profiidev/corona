@@ -85,6 +85,9 @@ app:
       fallback:
         en: 'Use query with'
         de: 'Suche verwenden mit'
+      running:
+        en: 'Running'
+        de: 'Läuft'
     dmenu:
       title:
         en: 'Choose'
@@ -1138,3 +1141,173 @@ app:
       paste_last:
         en: 'Paste last screenshot'
         de: 'Letztes Bildschirmfoto einfügen'
+    ip:
+      title:
+        en: 'IP address'
+        de: 'IP-Adresse'
+      public:
+        en: 'Public'
+        de: 'Öffentlich'
+      public6:
+        en: 'Public IPv6'
+        de: 'Öffentlich IPv6'
+      unknown:
+        en: 'Unknown'
+        de: 'Unbekannt'
+      copy_local:
+        en: 'Copy local address'
+        de: 'Lokale Adresse kopieren'
+      copy_public:
+        en: 'Copy public address'
+        de: 'Öffentliche Adresse kopieren'
+    lookup:
+      translate:
+        en: 'Translate'
+        de: 'Übersetzen'
+      define:
+        en: 'Define word'
+        de: 'Wort nachschlagen'
+      text:
+        en: 'text'
+        de: 'Text'
+      target:
+        en: 'to language'
+        de: 'Zielsprache'
+      word:
+        en: 'word'
+        de: 'Wort'
+      from:
+        en: 'From'
+        de: 'Von'
+      to:
+        en: 'To'
+        de: 'Nach'
+      copy:
+        en: 'Copy translation'
+        de: 'Übersetzung kopieren'
+      no_key:
+        en: 'Set a DeepL key in the launcher settings'
+        de: 'DeepL-Schlüssel in den Starter-Einstellungen setzen'
+      not_found:
+        en: 'Not in Wiktionary'
+        de: 'Nicht im Wiktionary'
+      nothing:
+        en: 'Nothing to look up: type it, select it or copy it'
+        de: 'Nichts nachzuschlagen: eingeben, markieren oder kopieren'
+    processes:
+      title:
+        en: 'Processes'
+        de: 'Prozesse'
+      search:
+        en: 'Search processes…'
+        de: 'Prozesse suchen …'
+      sort:
+        en: 'Sort'
+        de: 'Sortierung'
+      memory:
+        en: 'Memory'
+        de: 'Speicher'
+      name:
+        en: 'Name'
+        de: 'Name'
+      kill:
+        en: 'Kill process'
+        de: 'Prozess beenden'
+      force_kill:
+        en: 'Force kill'
+        de: 'Zwangsweise beenden'
+      force_message:
+        en: '%{name} stops at once and may lose data.'
+        de: '%{name} wird sofort beendet und kann Daten verlieren.'
+      copy_pid:
+        en: 'Copy PID'
+        de: 'PID kopieren'
+      kill_port:
+        en: 'Kill by port'
+        de: 'Prozess auf Port beenden'
+      port:
+        en: 'port'
+        de: 'Port'
+      nothing_listens:
+        en: 'Nothing listens on port %{port}'
+        de: 'Nichts lauscht auf Port %{port}'
+      killed:
+        en: 'Stopped %{count} processes'
+        de: '%{count} Prozesse beendet'
+    storage:
+      empty_trash:
+        en: 'Empty trash'
+        de: 'Papierkorb leeren'
+      open_trash:
+        en: 'Open trash'
+        de: 'Papierkorb öffnen'
+      items:
+        en: '%{count} items'
+        de: '%{count} Elemente'
+      empty:
+        en: 'Empty'
+        de: 'Leeren'
+      empty_message:
+        en: '%{count} items are deleted for good.'
+        de: '%{count} Elemente werden endgültig gelöscht.'
+      emptied:
+        en: 'Deleted %{count} items'
+        de: '%{count} Elemente gelöscht'
+      eject:
+        en: 'Eject drives'
+        de: 'Laufwerke auswerfen'
+      eject_one:
+        en: 'Eject'
+        de: 'Auswerfen'
+      ejected:
+        en: 'Safe to remove'
+        de: 'Kann entfernt werden'
+      mount:
+        en: 'Mount drive'
+        de: 'Laufwerk einhängen'
+      mount_one:
+        en: 'Mount'
+        de: 'Einhängen'
+      mounted:
+        en: 'Mounted at %{path}'
+        de: 'Eingehängt unter %{path}'
+      no_drives:
+        en: 'No removable drives'
+        de: 'Keine Wechsellaufwerke'
+      search:
+        en: 'Search drives…'
+        de: 'Laufwerke suchen …'
+    timers:
+      timer:
+        en: 'Timer'
+        de: 'Timer'
+      stopwatch:
+        en: 'Stopwatch'
+        de: 'Stoppuhr'
+      duration:
+        en: 'duration, like 5m'
+        de: 'Dauer, etwa 5m'
+      label:
+        en: 'label'
+        de: 'Bezeichnung'
+      start:
+        en: 'Start'
+        de: 'Starten'
+      start_for:
+        en: 'Start a timer for %{time}'
+        de: 'Timer für %{time} starten'
+      started:
+        en: 'Timer for %{time}'
+        de: 'Timer für %{time}'
+      stopwatch_started:
+        en: 'Stopwatch started'
+        de: 'Stoppuhr gestartet'
+      stop:
+        en: 'Stop'
+        de: 'Stoppen'
+      copy:
+        en: 'Copy time'
+        de: 'Zeit kopieren'
+      finished:
+        en: 'Timer finished'
+        de: 'Timer abgelaufen'

@@ -6,6 +6,7 @@ pub mod commands;
 mod devices;
 mod display;
 mod info;
+mod ip;
 mod media;
 mod monitors;
 mod network;
@@ -46,6 +47,16 @@ pub fn init(cx: &mut App) {
     },
     cx,
   );
+  corona_launcher::hooks::set_notify(
+    |summary, body, cx| {
+      let send = corona_notifications::NotificationsExt::notifications(cx).send(summary, body);
+      cx.spawn(async move |_| {
+        let _ = send.await.log_err();
+      })
+      .detach();
+    },
+    cx,
+  );
   corona_launcher::commands::init(cx);
   session::init(cx);
   system::init(cx);
@@ -63,4 +74,5 @@ pub fn init(cx: &mut App) {
   notifications::init(cx);
   tray::init(cx);
   monitors::init(cx);
+  ip::init(cx);
 }

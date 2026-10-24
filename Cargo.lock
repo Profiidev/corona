@@ -2075,6 +2075,7 @@ dependencies = [
  "corona_config",
  "corona_desktop",
  "corona_surface",
+ "corona_udisks",
  "corona_utils",
  "dirs 7.0.0",
  "emojis",
@@ -2087,12 +2088,15 @@ dependencies = [
  "notify",
  "nucleo-matcher",
  "rust-i18n",
+ "rustix",
  "serde",
  "serde_json",
+ "sysinfo 0.39.6",
  "tempfile",
  "tracing",
  "trash",
  "unicode_names2",
+ "zbus",
 ]
 
 [[package]]
@@ -2342,6 +2346,14 @@ dependencies = [
  "image",
  "tempfile",
  "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "corona_udisks"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
  "zbus",
 ]
 

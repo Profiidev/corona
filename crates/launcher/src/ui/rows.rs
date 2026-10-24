@@ -347,6 +347,7 @@ fn row_view(this: &Launcher, row: &Row, selected: bool, cx: &App) -> RowView {
 
 fn section_label(section: Section) -> SharedString {
   match section {
+    Section::Running => t!("app.launcher.section.running"),
     Section::Favorites => t!("app.launcher.section.favorites"),
     Section::Recent => t!("app.launcher.section.recent"),
     Section::Suggestions => t!("app.launcher.section.suggestions"),

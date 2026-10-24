@@ -280,10 +280,13 @@ fn group(rows: Vec<Row>, limit: usize) -> Vec<(Section, Vec<Row>)> {
 const RECENT: usize = 6;
 const SUGGESTIONS: usize = 6;
 
-/// Favorites, recently used, then suggestions
+/// Running timers, favorites, recently used, then suggestions
 fn empty_sections(rows: Vec<Row>, cx: &App) -> Vec<(Section, Vec<Row>)> {
   let config = &cx.config().launcher;
   let favorite = |id: &str| config.command(id).is_some_and(|c| c.favorite);
+  let (running, rows): (Vec<Row>, Vec<Row>) = rows
+    .into_iter()
+    .partition(|r| r.meta.section == Section::Running);
   let (favorites, rest): (Vec<Row>, Vec<Row>) = rows.into_iter().partition(|r| favorite(&r.id()));
   let mut recent: Vec<Row> = rest.iter().filter(|r| r.frecency > 0.).cloned().collect();
   recent.sort_by(|a, b| b.frecency.total_cmp(&a.frecency));
@@ -294,6 +297,7 @@ fn empty_sections(rows: Vec<Row>, cx: &App) -> Vec<(Section, Vec<Row>)> {
     .take(SUGGESTIONS)
     .collect();
   [
+    (Section::Running, running),
     (Section::Favorites, favorites),
     (Section::Recent, recent),
     (Section::Suggestions, suggestions),

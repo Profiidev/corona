@@ -127,6 +127,8 @@ pub struct Evaluation {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Section {
+  /// Timers and the like, while they run
+  Running,
   Favorites,
   Recent,
   Suggestions,

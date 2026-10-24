@@ -9,6 +9,7 @@ pub mod calculator;
 pub mod clipboard;
 pub mod control_center;
 pub mod dpms;
+pub mod extras;
 pub mod lock_key;
 
 pub mod media;
@@ -35,6 +36,7 @@ pub fn register_commands(server: &mut IpcServer) {
   clipboard::register_commands(server);
   control_center::register_commands(server);
   dpms::register_commands(server);
+  extras::register_commands(server);
   lock_key::register_commands(server);
   media::register_commands(server);
   monitor::register_commands(server);
