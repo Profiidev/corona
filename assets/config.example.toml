@@ -238,6 +238,16 @@ previews = true
 preview_max_windows = 5
 background_opacity = 1.0
 
+[osk]
+enabled = true
+auto_show = "tablet_mode"
+tablet_source = "ipc"
+layout = "auto"
+language = "auto"
+suggestions = true
+spell_check = true
+learn_words = true
+
 [control_center]
 # strftime patterns of the dashboard's clock.
 time_format = "%H:%M"

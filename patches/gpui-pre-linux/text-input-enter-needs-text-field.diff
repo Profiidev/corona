@@ -1,0 +1,29 @@
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -2452,8 +2452,14 @@
+         let mut state = client.borrow_mut();
+         match event {
+             zwp_text_input_v3::Event::Enter { .. } => {
++                // Enabling here would tell the input method a text field has
++                // focus in every window; the focused window knows if it has one
++                state.ime_enabled = None;
++                let window = state.keyboard_focused_window.clone();
+                 drop(state);
+-                this.enable_ime();
++                if let Some(window) = window {
++                    window.update_ime_enabled();
++                }
+             }
+             zwp_text_input_v3::Event::Leave { .. } => {
+                 drop(state);
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -1124,7 +1124,7 @@
+         self.schedule_frame();
+     }
+ 
+-    fn update_ime_enabled(&self) {
++    pub fn update_ime_enabled(&self) {
+         let mut state = self.state.borrow_mut();
+         if !state.active {
+             return;

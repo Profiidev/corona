@@ -53,6 +53,21 @@ app:
       all_monitors:
         en: All monitors
         de: Alle Monitore
+      never:
+        en: Never
+        de: Nie
+      always:
+        en: Always
+        de: Immer
+      tablet_mode:
+        en: In tablet mode
+        de: Im Tablet-Modus
+      ipc:
+        en: corona ipc osk tablet
+        de: corona ipc osk tablet
+      hinge:
+        en: Hinge sensor
+        de: Scharniersensor
     appearance:
       screen_corners:
         title:
@@ -864,6 +879,83 @@ app:
         text:
           en: 'Text'
           de: 'Text'
+    osk:
+      title:
+        en: On-screen keyboard
+        de: Bildschirmtastatur
+      groups:
+        keyboard:
+          en: Keyboard
+          de: Tastatur
+        suggestions:
+          en: Suggestions
+          de: Vorschläge
+      enabled:
+        title:
+          en: See text fields
+          de: Textfelder erkennen
+        description:
+          en: 'Take the input method, so the keyboard knows when a text field has focus. Turn off for fcitx5 or IBus. Applies after a restart.'
+          de: 'Die Eingabemethode übernehmen, damit die Tastatur weiß, wann ein Textfeld den Fokus hat. Für fcitx5 oder IBus ausschalten. Gilt nach einem Neustart.'
+      auto_show:
+        title:
+          en: Show on text fields
+          de: Bei Textfeldern zeigen
+        description:
+          en: 'When a focused text field opens the keyboard. Tablet mode comes from `corona ipc osk tablet`, for example in a Hyprland switch bind.'
+          de: 'Wann ein fokussiertes Textfeld die Tastatur öffnet. Den Tablet-Modus setzt `corona ipc osk tablet`, etwa in einem Hyprland-Switch-Bind.'
+      tablet_source:
+        title:
+          en: Tablet mode from
+          de: Tablet-Modus von
+        description:
+          en: 'A Hyprland switch bind calling `corona ipc osk tablet`, or the hinge angle of a convertible: folded past 200° is tablet mode, back under 160° is not.'
+          de: 'Ein Hyprland-Switch-Bind, der `corona ipc osk tablet` aufruft, oder der Scharnierwinkel eines Convertibles: über 200° geklappt ist Tablet-Modus, wieder unter 160° nicht.'
+      layout:
+        title:
+          en: Layout
+          de: Belegung
+        description:
+          en: Automatic follows the keyboard layout of the compositor.
+          de: Automatisch folgt der Tastaturbelegung des Compositors.
+      language:
+        title:
+          en: Language
+          de: Sprache
+        description:
+          en: 'Of the suggestions and accents. Automatic is German on QWERTZ, else English.'
+          de: 'Der Vorschläge und Akzente. Automatisch ist Deutsch bei QWERTZ, sonst Englisch.'
+      suggestions:
+        title:
+          en: Complete words
+          de: Wörter vervollständigen
+        description:
+          en: Suggest how the word being typed goes on.
+          de: 'Vorschlagen, wie das Wort weitergeht.'
+      spell_check:
+        title:
+          en: Spell check
+          de: Rechtschreibprüfung
+        description:
+          en: Suggest corrections of an unknown word after it ends.
+          de: Nach einem unbekannten Wort Korrekturen vorschlagen.
+      learn_words:
+        title:
+          en: Learn words
+          de: Wörter lernen
+        description:
+          en: 'Rank the words you type higher. They stay on this machine; nothing is learned in passwords.'
+          de: 'Getippte Wörter höher einordnen. Sie bleiben auf diesem Rechner; in Passwörtern wird nichts gelernt.'
+      clear_learned:
+        title:
+          en: Learned words
+          de: Gelernte Wörter
+        description:
+          en: Forget every word the keyboard learned.
+          de: Alle Wörter vergessen, die die Tastatur gelernt hat.
+        button:
+          en: Clear
+          de: Löschen
     idle:
       title:
         en: Idle

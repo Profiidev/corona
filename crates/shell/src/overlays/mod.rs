@@ -9,6 +9,7 @@ use gpui_kit::{
 
 pub mod colorpicker;
 pub mod notification;
+pub mod osk;
 pub mod polkit;
 pub mod screen_corners;
 pub mod screenshot;
@@ -53,6 +54,7 @@ pub trait OverlayState: Global + Sized {
 
 pub fn register_commands(server: &mut IpcServer) {
   colorpicker::commands::register_commands(server);
+  osk::register_commands(server);
   screenshot::commands::register_commands(server);
   switcher::commands::register_commands(server);
 }

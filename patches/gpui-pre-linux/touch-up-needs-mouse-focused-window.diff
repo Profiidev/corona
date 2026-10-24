@@ -1,6 +1,6 @@
 --- a/crates/gpui_linux/src/linux/wayland/client.rs
 +++ b/crates/gpui_linux/src/linux/wayland/client.rs
-@@ -2947,6 +2947,9 @@
+@@ -3361,6 +3361,9 @@
                      state.touch_location = Some(position);
  
                      if let Some(window) = get_window(&mut state, &surface.id()) {
@@ -10,3 +10,21 @@
                          state.mouse_location = Some(position);
                          state.button_pressed = Some(MouseButton::Left);
  
+@@ -3372,6 +3375,9 @@
+                             first_mouse: false,
+                         });
+                         drop(state);
++                        // Hitboxes only hit in a hovered window, and only the
++                        // pointer's Enter says so
++                        window.set_hovered(true);
+                         window.handle_input(input);
+                     }
+                 } else if state.second_touch_id.is_none() && !state.is_scrolling {
+@@ -3593,6 +3599,7 @@
+                             state.touch_location = None;
+                             drop(state);
+                             window.handle_input(input);
++                            window.set_hovered(false);
+                         }
+                     }
+                 } else if state.second_touch_id == Some(id) {

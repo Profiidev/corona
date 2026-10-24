@@ -1,0 +1,9 @@
+_version: 2
+app:
+  osk:
+    ctrl:
+      en: Ctrl
+      de: Strg
+    delete:
+      en: Del
+      de: Entf

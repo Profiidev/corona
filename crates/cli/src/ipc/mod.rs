@@ -30,6 +30,7 @@ use crate::ipc::{
   launcher::LauncherCommands,
   network::NetworkCommands,
   notification::NotificationCommands,
+  osk::OskCommands,
   panel::PanelCommands,
   player::PlayerCommands,
   power_profile::PowerProfileCommands,
@@ -47,6 +48,7 @@ mod extras;
 mod launcher;
 mod network;
 mod notification;
+mod osk;
 mod panel;
 mod player;
 mod power_profile;
@@ -144,6 +146,11 @@ pub enum IpcCommands {
   Launcher {
     #[command(subcommand)]
     command: LauncherCommands,
+  },
+  /// Show, hide or toggle the on-screen keyboard, or set tablet mode
+  Osk {
+    #[command(subcommand)]
+    command: OskCommands,
   },
   /// Panel commands
   Panel {
@@ -243,6 +250,7 @@ impl IpcCommands {
   pub fn execute(self) {
     match self {
       IpcCommands::Launcher { command } => command.execute(),
+      IpcCommands::Osk { command } => command.execute(),
       IpcCommands::Window { command } => command.execute(),
       IpcCommands::Monitor { command } => command.execute(),
       IpcCommands::ShowDesktop => window::show_desktop(),
@@ -402,7 +410,11 @@ fn print_lines(lines: Vec<String>) {
 }
 
 /// Prints the state for `status`, the error for anything
-fn print_switch(result: Result<bool, impl std::fmt::Display>, switch: Switch, what: &str) {
+pub(crate) fn print_switch(
+  result: Result<bool, impl std::fmt::Display>,
+  switch: Switch,
+  what: &str,
+) {
   match result {
     Ok(on) if matches!(switch, Switch::Status) => println!("{}", if on { "on" } else { "off" }),
     Ok(_) => {}
@@ -588,6 +600,9 @@ pub(crate) mod tests {
       (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),
       (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
       (&["launcher", "open"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": null, "query": null })),
+      (&["osk", "toggle"], json!(null), corona_shell::overlays::osk::Toggle::COMMAND, json!(null)),
+      (&["osk", "show"], json!(null), corona_shell::overlays::osk::Show::COMMAND, json!(null)),
+      (&["osk", "tablet", "on"], json!(true), corona_shell::overlays::osk::Tablet::COMMAND, json!("On")),
     ];
     for (args, reply, command, data) in cases {
       let cmd = ipc(args).unwrap();

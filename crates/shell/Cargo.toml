@@ -35,6 +35,7 @@ corona_config.workspace = true
 corona_ipc.workspace = true
 corona_capture.workspace = true
 corona_launcher.workspace = true
+corona_osk.workspace = true
 corona_clipboard.workspace = true
 gpui-kit.workspace = true
 uuid.workspace = true
