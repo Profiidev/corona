@@ -547,6 +547,7 @@ fn render_cell(
       div()
         .w_full()
         .h(px(cell))
+        .overflow_hidden()
         .flex()
         .items_center()
         .justify_center()
@@ -558,15 +559,16 @@ fn render_cell(
         })
         .when(!row.selected, |el| el.hover(|s| s.bg(style::hover(cx))))
         .child(match &row.icon {
-          // pictures fill the tile, cropped to it
+          // pictures fill the tile; cover paints past the image's bounds, a box clips it
           Icon::Image(path) => div()
             .size_full()
             .p(px(4.))
             .child(
-              img(path.clone())
+              div()
                 .size_full()
                 .rounded(px(8.))
-                .object_fit(ObjectFit::Cover),
+                .overflow_hidden()
+                .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover)),
             )
             .into_any_element(),
           other => icon(other, cell * 0.6, &row.id, cx),
@@ -652,11 +654,12 @@ pub(super) fn icon(icon: &Icon, size: f32, id: &SharedString, cx: &App) -> AnyEl
       .border_color(theme.colors.border)
       .bg(*color)
       .into_any_element(),
-    Icon::Image(path) => img(path.clone())
+    Icon::Image(path) => div()
       .size(px(size))
       .flex_none()
       .rounded(px(size / 4.))
-      .object_fit(ObjectFit::Cover)
+      .overflow_hidden()
+      .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
       .into_any_element(),
   }
 }
