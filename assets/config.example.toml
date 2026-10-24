@@ -154,7 +154,7 @@ backdrop_opacity = 0.4
 # Close when the pointer moves away from it.
 close_on_unfocus = true
 # Size in pixels, the same for every view.
-width = 900.0
+width = 800.0
 height = 520.0
 # Runs programs in a terminal, like "kitty -e". Empty: xdg-terminal-exec, else $TERMINAL -e.
 terminal = ""
