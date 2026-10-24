@@ -4,8 +4,8 @@ use anyhow::Result;
 use corona_config::ConfigProvider;
 use gpui_kit::{
   AnyView, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-  KeyDownEvent, ListAlignment, ListState, MouseButton, ParentElement, Render, SharedString, Styled,
-  Subscription, Task, Window,
+  KeyDownEvent, ListAlignment, ListState, MouseButton, MouseMoveEvent, ParentElement, Render,
+  SharedString, Styled, Subscription, Task, Window,
   base::input::{InputEvent, InputState},
   div, px,
 };
@@ -189,6 +189,10 @@ pub struct Launcher {
   /// What the failure toast's Retry runs
   retry: Option<Deferred>,
   was_active: bool,
+  /// Where the pointer first showed up outside the card; moving on from there closes
+  pointer: Option<gpui_kit::Point<gpui_kit::Pixels>>,
+  /// The pointer was over the surface, leaving it for another monitor closes
+  was_hovered: bool,
   skip_confirm: HashSet<String>,
   _subscriptions: Vec<Subscription>,
 }
@@ -223,6 +227,8 @@ impl Launcher {
       busy: 0,
       retry: None,
       was_active: false,
+      pointer: None,
+      was_hovered: false,
       skip_confirm: state::load("confirm_skips"),
       _subscriptions: subscriptions,
     };
@@ -1176,6 +1182,32 @@ impl Launcher {
     cx.notify();
   }
 
+  /// Closes once the pointer moves outside the card; the first position reported, where
+  /// the pointer sat when the launcher opened, does not count
+  fn pointer_moved(
+    &mut self,
+    position: gpui_kit::Point<gpui_kit::Pixels>,
+    card: gpui_kit::Size<gpui_kit::Pixels>,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) {
+    let viewport = window.viewport_size();
+    let origin = gpui_kit::point(
+      (viewport.width - card.width) / 2.,
+      (viewport.height - card.height) / 2.,
+    );
+    let inside = gpui_kit::Bounds::new(origin, card).contains(&position);
+    if inside || !cx.config().launcher.close_on_unfocus {
+      self.pointer = None;
+      return;
+    }
+    match self.pointer {
+      Some(first) if first != position => close_in(window, cx),
+      Some(_) => {}
+      None => self.pointer = Some(position),
+    }
+  }
+
   pub(super) fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
     self.back(window, cx);
   }
@@ -1223,6 +1255,12 @@ impl Render for Launcher {
       _ => None,
     };
     let card = window_size(self.shows_preview(cx), custom);
+    let hovered = window.is_window_hovered();
+    if self.was_hovered && !hovered && cx.config().launcher.close_on_unfocus {
+      // not while drawing: closing removes the window
+      cx.defer_in(window, |_, window, cx| close_in(window, cx));
+    }
+    self.was_hovered |= hovered;
     div()
       .key_context(super::CONTEXT)
       .track_focus(&self.focus)
@@ -1256,6 +1294,9 @@ impl Render for Launcher {
           }
         }),
       )
+      .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, window, cx| {
+        this.pointer_moved(e.position, card, window, cx)
+      }))
       .child(
         div()
           .w(card.width)
@@ -1462,5 +1503,27 @@ mod view_tests {
     cx.run_until_parked();
     // the window is gone with its pages, so the sender is dropped
     assert!(choice.try_recv().is_err());
+  }
+
+  #[gpui::test]
+  fn moving_the_pointer_outside_closes(cx: &mut TestAppContext) {
+    setup(cx);
+    let (_, vcx) = open(cx);
+    let size = vcx.update(|window, _| window.viewport_size());
+    let at = |x: f32, y: f32| gpui_kit::point(gpui_kit::px(x), gpui_kit::px(y));
+    let none = gpui_kit::Modifiers::none();
+    // over the card nothing happens
+    vcx.simulate_mouse_move(
+      gpui_kit::point(size.width / 2., size.height / 2.),
+      None,
+      none,
+    );
+    // where the pointer sat when it opened does not count
+    vcx.simulate_mouse_move(at(2., 2.), None, none);
+    vcx.run_until_parked();
+    assert_eq!(vcx.windows().len(), 1);
+    vcx.simulate_mouse_move(at(3., 2.), None, none);
+    vcx.run_until_parked();
+    assert!(vcx.windows().is_empty());
   }
 }
