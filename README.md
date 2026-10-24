@@ -12,6 +12,9 @@ Add the following layerrules to your config:
 hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "corona_unlock" }, no_anim = true })
+hl.layer_rule({ match = { namespace = "corona_osk" }, no_anim = true })
+hl.layer_rule({ match = { namespace = "corona_switcher" }, no_anim = true })
+hl.layer_rule({ match = { namespace = "corona_launcher" }, no_anim = true })
 ```
 
 Bind the window switcher. It stays open while SUPER is held, Tab moves the selection, Shift reverses it and
@@ -21,6 +24,24 @@ releasing SUPER focuses the selected window:
 hl.bind("SUPER + TAB", hl.dsp.exec_cmd("corona ipc switcher"))
 hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc switcher --mode workspace"))
 ```
+
+### On-screen keyboard
+
+The keyboard shows when a text field gets focus, by default only in tablet mode. Corona does not
+read the tablet-mode switch itself; bind it in Hyprland. The switch's name is listed under
+`switches` in `hyprctl devices`:
+
+```lua
+hl.bind("switch:on:Tablet Mode Switch", hl.dsp.exec_cmd("corona ipc osk tablet on"), { locked = true })
+hl.bind("switch:off:Tablet Mode Switch", hl.dsp.exec_cmd("corona ipc osk tablet off"), { locked = true })
+```
+
+`corona ipc osk show|hide|toggle` opens it by hand. It takes the seat's input method to see
+text fields; with fcitx5 or IBus set `[osk] enabled = false`.
+
+The suggestion wordlists in `assets/wordlists` come from
+[hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) under CC-BY-SA 4.0, see
+`assets/wordlists/README.md`.
 
 ### Hotspot
 
