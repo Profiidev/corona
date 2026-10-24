@@ -1,9 +1,10 @@
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc, time::Duration};
 
-use corona_components::components::window_icon::WindowIcon;
+use corona_components::{animation::animation_duration, components::window_icon::WindowIcon};
 use gpui_kit::{
-  AnyElement, App, Context, FontWeight, HighlightStyle, InteractiveElement, IntoElement, ObjectFit,
-  ParentElement, SharedString, StatefulInteractiveElement, Styled, StyledImage, StyledText, Window,
+  Animation, AnimationExt, AnyElement, App, Context, FontWeight, HighlightStyle,
+  InteractiveElement, IntoElement, ObjectFit, ParentElement, SharedString,
+  StatefulInteractiveElement, Styled, StyledImage, StyledText, Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
@@ -173,15 +174,23 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
       }))
     })
     .when(loading, |el| {
-      el.child(
-        div()
-          .absolute()
-          .left_0()
-          .bottom_0()
-          .h(px(2.))
-          .w(relative(0.3))
-          .bg(theme.colors.primary),
-      )
+      let bar = div()
+        .absolute()
+        .bottom_0()
+        .h(px(2.))
+        .w(relative(0.3))
+        .bg(theme.colors.primary);
+      let sweep = animation_duration(Duration::from_millis(1400), cx);
+      match sweep.is_zero() {
+        // reduced motion: a resting bar
+        true => el.child(bar.left_0()),
+        // slides in from the left edge and out past the right one
+        false => el.child(bar.with_animation(
+          "launcher-loading",
+          Animation::new(sweep).repeat(),
+          |bar, delta| bar.left(relative(delta * 1.3 - 0.3)),
+        )),
+      }
     })
 }
 
