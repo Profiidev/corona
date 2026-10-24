@@ -134,6 +134,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
     install -Dm644 assets/corona-settings.desktop $out/share/applications/corona-settings.desktop
     substituteInPlace $out/share/applications/corona-settings.desktop \
       --replace-fail "Exec=corona" "Exec=$out/bin/corona"
+    install -Dm644 assets/corona-url-handler.desktop $out/share/applications/corona-url-handler.desktop
+    substituteInPlace $out/share/applications/corona-url-handler.desktop \
+      --replace-fail "Exec=corona" "Exec=$out/bin/corona"
   '';
 
   meta = with lib; {

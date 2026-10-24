@@ -426,9 +426,9 @@ mod tests {
       }
     }
     let mut files = Vec::new();
-    // the lock and login screen share these locale files
+    // the lock and login screen and the launcher share these locale files
     let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    for dir in ["shell", "auth_screen", "greeter"] {
+    for dir in ["shell", "auth_screen", "greeter", "launcher"] {
       sources(&crates.join(dir).join("src"), &mut files);
     }
 

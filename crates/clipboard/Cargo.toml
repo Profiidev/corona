@@ -1,0 +1,27 @@
+[package]
+name = "corona_clipboard"
+description = "Clipboard history and pasting for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+corona_config.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+dirs.workspace = true
+flume.workspace = true
+tracing.workspace = true
+rustix = { workspace = true, features = ["fs", "pipe"] }
+wayland-client.workspace = true
+wayland-protocols.workspace = true
+wayland-protocols-wlr.workspace = true
+wayland-protocols-misc.workspace = true
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

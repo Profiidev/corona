@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Corona Launcher Links
+Comment=Opens corona:// links in the Corona launcher
+Exec=corona launcher open-url %u
+Icon=corona-settings
+NoDisplay=true
+MimeType=x-scheme-handler/corona;

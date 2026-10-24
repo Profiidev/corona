@@ -13,6 +13,7 @@ test-support = ["dep:zbus", "dep:tempfile", "gpui-kit/test-support"]
 
 [dependencies]
 gpui-kit.workspace = true
+anyhow.workspace = true
 flume.workspace = true
 futures-lite.workspace = true
 uuid.workspace = true

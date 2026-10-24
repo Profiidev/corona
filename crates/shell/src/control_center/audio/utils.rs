@@ -116,6 +116,7 @@ mod tests {
       volumes: vec![],
       mute: false,
       app: vec![],
+      pid: None,
     }
   }
 

@@ -5,6 +5,7 @@ use gpui_kit::App;
 
 use crate::{CompositorImpl, hyprland::command::Ipc, types};
 
+mod actions;
 mod command;
 mod cursor;
 mod encoding;
@@ -84,5 +85,45 @@ impl CompositorImpl for Hyprland {
 
   fn keyboard_layout(&self) -> Result<Option<String>> {
     self.ipc.keyboard_layout()
+  }
+
+  fn toggle_floating(&self, address: &str) -> Result<()> {
+    self.ipc.toggle_floating(address)
+  }
+
+  fn toggle_fullscreen(&self, address: &str) -> Result<()> {
+    self.ipc.toggle_fullscreen(address)
+  }
+
+  fn toggle_pin(&self, address: &str) -> Result<()> {
+    self.ipc.toggle_pin(address)
+  }
+
+  fn move_to_workspace(&self, address: &str, workspace: &str, follow: bool) -> Result<()> {
+    self.ipc.move_to_workspace(address, workspace, follow)
+  }
+
+  fn move_to_monitor(&self, address: &str, monitor: &str) -> Result<()> {
+    self.ipc.move_to_monitor(address, monitor)
+  }
+
+  fn place_window(&self, address: &str, rect: (i32, i32, i32, i32)) -> Result<()> {
+    self.ipc.place_window(address, rect)
+  }
+
+  fn focus_monitor(&self, monitor: &str) -> Result<()> {
+    self.ipc.focus_monitor(monitor)
+  }
+
+  fn toggle_special_workspace(&self, name: &str) -> Result<()> {
+    self.ipc.toggle_special_workspace(name)
+  }
+
+  fn keyboard_layouts(&self) -> Result<Vec<String>> {
+    self.ipc.keyboard_layouts()
+  }
+
+  fn set_keyboard_layout(&self, index: usize) -> Result<()> {
+    self.ipc.set_keyboard_layout(index)
   }
 }

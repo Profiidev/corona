@@ -641,6 +641,223 @@ app:
         description:
           en: How much the screen behind darkens.
           de: Wie stark der Bildschirm dahinter abgedunkelt wird.
+    launcher:
+      title:
+        en: Launcher
+        de: Starter
+      groups:
+        behavior:
+          en: 'Behavior'
+          de: 'Verhalten'
+        commands:
+          en: 'Commands'
+          de: 'Befehle'
+        quicklinks:
+          en: 'Quicklinks'
+          de: 'Schnelllinks'
+        snippets:
+          en: 'Snippets'
+          de: 'Textbausteine'
+        sources:
+          en: 'Sources'
+          de: 'Quellen'
+      close_on_unfocus:
+        title:
+          en: 'Close on unfocus'
+          de: 'Bei Fokusverlust schließen'
+        description:
+          en: 'Close when the pointer moves away from it.'
+          de: 'Schließen, wenn der Mauszeiger ihn verlässt.'
+      width:
+        title:
+          en: 'Width'
+          de: 'Breite'
+        description:
+          en: 'Width in pixels, the same for every view.'
+          de: 'Breite in Pixeln, für jede Ansicht gleich.'
+      height:
+        title:
+          en: 'Height'
+          de: 'Höhe'
+        description:
+          en: 'Height in pixels, the same for every view.'
+          de: 'Höhe in Pixeln, für jede Ansicht gleich.'
+      preview:
+        title:
+          en: 'Preview pane'
+          de: 'Vorschaubereich'
+        description:
+          en: 'Show the preview where a view has one; Ctrl+P toggles it.'
+          de: 'Vorschau zeigen, wo eine Ansicht eine hat; Strg+P schaltet sie um.'
+      terminal:
+        title:
+          en: 'Terminal'
+          de: 'Terminal'
+        description:
+          en: 'Runs programs, like kitty -e. Empty: xdg-terminal-exec, else $TERMINAL.'
+          de: 'Startet Programme, etwa kitty -e. Leer: xdg-terminal-exec, sonst $TERMINAL.'
+      section_limit:
+        title:
+          en: 'Results per section'
+          de: 'Ergebnisse pro Abschnitt'
+        description:
+          en: 'While typing, on the root list.'
+          de: 'Beim Tippen in der Hauptliste.'
+      search_engine:
+        title:
+          en: 'Web search'
+          de: 'Websuche'
+        description:
+          en: 'Engine of the web search fallback.'
+          de: 'Suchmaschine der Websuche als Ausweichtreffer.'
+      fallbacks:
+        title:
+          en: 'Fallbacks'
+          de: 'Ausweichtreffer'
+        description:
+          en: 'Shown in this order when nothing matches: web, files, terminal.'
+          de: 'Erscheinen in dieser Reihenfolge, wenn nichts passt: web, files, terminal.'
+      currency_refresh:
+        title:
+          en: 'Exchange rates'
+          de: 'Wechselkurse'
+        description:
+          en: 'Hours before rates are fetched again.'
+          de: 'Stunden, bis die Kurse neu geladen werden.'
+      quicklinks:
+        title:
+          en: 'Quicklinks'
+          de: 'Schnelllinks'
+        description:
+          en: 'URL or path templates; {argument} asks in the arguments row.'
+          de: 'URL- oder Pfadvorlagen; {argument} fragt in der Argumentzeile.'
+      snippets:
+        title:
+          en: 'Snippets'
+          de: 'Textbausteine'
+        description:
+          en: 'Text pasted with placeholders like {clipboard} and {date} expanded.'
+          de: 'Eingefügter Text, Platzhalter wie {clipboard} und {date} werden ersetzt.'
+      files_roots:
+        title:
+          en: 'Search folders'
+          de: 'Suchordner'
+        description:
+          en: 'Where file search looks; may start with ~/.'
+          de: 'Wo die Dateisuche sucht; darf mit ~/ beginnen.'
+      files_excludes:
+        title:
+          en: 'Skipped names'
+          de: 'Übersprungene Namen'
+        description:
+          en: 'Files and folders with these names are left out.'
+          de: 'Dateien und Ordner mit diesen Namen werden ausgelassen.'
+      files_hidden:
+        title:
+          en: 'Hidden files'
+          de: 'Versteckte Dateien'
+        description:
+          en: 'Include dot files.'
+          de: 'Punktdateien einbeziehen.'
+      files_ignore:
+        title:
+          en: 'Respect .gitignore'
+          de: '.gitignore beachten'
+        description:
+          en: 'Hide what .gitignore and .ignore files list.'
+          de: 'Ausblenden, was in .gitignore- und .ignore-Dateien steht.'
+      clipboard:
+        title:
+          en: 'Clipboard history'
+          de: 'Zwischenablage-Verlauf'
+        description:
+          en: 'Keep what is copied.'
+          de: 'Kopiertes behalten.'
+      clipboard_images:
+        title:
+          en: 'Images'
+          de: 'Bilder'
+        description:
+          en: 'Keep copied images too.'
+          de: 'Auch kopierte Bilder behalten.'
+      clipboard_image_size:
+        title:
+          en: 'Largest image'
+          de: 'Größtes Bild'
+        description:
+          en: 'In megabytes; larger images are not kept.'
+          de: 'In Megabyte; größere Bilder werden nicht behalten.'
+      clipboard_retention:
+        title:
+          en: 'Image retention'
+          de: 'Bilder behalten'
+        description:
+          en: 'Days; text is kept until deleted.'
+          de: 'Tage; Text bleibt, bis er gelöscht wird.'
+      deepl_key:
+        title:
+          en: 'DeepL key'
+          de: 'DeepL-Schlüssel'
+        description:
+          en: 'API key for Translate.'
+          de: 'API-Schlüssel für Übersetzen.'
+      deepl_key_file:
+        title:
+          en: 'DeepL key file'
+          de: 'DeepL-Schlüsseldatei'
+        description:
+          en: 'A file holding the key, for secret managers; wins over the key.'
+          de: 'Datei mit dem Schlüssel, für Secret-Manager; hat Vorrang vor dem Schlüssel.'
+      translate_target:
+        title:
+          en: 'Translate to'
+          de: 'Übersetzen nach'
+        description:
+          en: 'Language code, like EN or DE.'
+          de: 'Sprachcode, etwa EN oder DE.'
+      close_all_exclude:
+        title:
+          en: 'Keep open'
+          de: 'Offen lassen'
+        description:
+          en: 'Window classes Close all windows leaves open.'
+          de: 'Fensterklassen, die Alle Fenster schließen offen lässt.'
+      search_engines:
+        title:
+          en: 'Search engines'
+          de: 'Suchmaschinen'
+        description:
+          en: 'Typing the keyword and a space searches with the engine; {query} is the search.'
+          de: 'Schlüsselwort und Leerzeichen suchen mit der Maschine; {query} ist die Suche.'
+      command:
+        alias:
+          en: 'Alias'
+          de: 'Alias'
+        favorite:
+          en: 'Favorite'
+          de: 'Favorit'
+        hidden:
+          en: 'Hidden'
+          de: 'Versteckt'
+        enabled:
+          en: 'Enabled'
+          de: 'Aktiv'
+      fields:
+        name:
+          en: 'Name'
+          de: 'Name'
+        url:
+          en: 'URL or path'
+          de: 'URL oder Pfad'
+        icon:
+          en: 'Icon'
+          de: 'Symbol'
+        keyword:
+          en: 'Keyword'
+          de: 'Schlüsselwort'
+        text:
+          en: 'Text'
+          de: 'Text'
     idle:
       title:
         en: Idle

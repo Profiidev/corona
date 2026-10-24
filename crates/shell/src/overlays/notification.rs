@@ -82,7 +82,7 @@ impl Popup {
 }
 
 #[derive(Default)]
-struct NotificationPopups {
+pub struct NotificationPopups {
   windows: Vec<PopupWindow>,
 }
 
@@ -189,6 +189,27 @@ impl NotificationPopups {
       .iter()
       .map(|w| w.view.clone())
       .collect()
+  }
+
+  /// Hides every toast; the notifications stay in the history
+  pub fn dismiss_all(cx: &mut App) {
+    if !cx.has_global::<Self>() {
+      return;
+    }
+    let ids: Vec<u32> = Self::views(cx)
+      .iter()
+      .flat_map(|view| {
+        view
+          .read(cx)
+          .items
+          .iter()
+          .map(|p| p.item.id)
+          .collect::<Vec<_>>()
+      })
+      .collect();
+    for id in ids {
+      Self::hide(id, cx);
+    }
   }
 
   fn sync(new: &[Item], cx: &mut App) {

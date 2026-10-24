@@ -1,0 +1,13 @@
+[package]
+name = "corona_udisks"
+description = "Removable drives through UDisks2 for the Corona shell"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+zbus.workspace = true

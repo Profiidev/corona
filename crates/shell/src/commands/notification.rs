@@ -10,7 +10,8 @@ pub fn register_commands(server: &mut IpcServer) {
   server
     .register::<DoNotDisturb>()
     .register::<Show>()
-    .register::<ClearHistory>();
+    .register::<ClearHistory>()
+    .register::<DismissToasts>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]
@@ -75,6 +76,21 @@ impl IpcCommand for ClearHistory {
 
   fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
     cx.notifications().clone().clear_all(cx);
+    Ok(())
+  }
+}
+
+/// Hides the toasts on screen, the history keeps them
+pub struct DismissToasts;
+
+impl IpcCommand for DismissToasts {
+  const COMMAND: &'static str = "notification:dismiss";
+
+  type Payload = ();
+  type Response = ();
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    crate::overlays::notification::NotificationPopups::dismiss_all(cx);
     Ok(())
   }
 }

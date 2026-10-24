@@ -34,18 +34,10 @@ fn finish(png: Vec<u8>, cx: &mut App) {
   .detach();
 }
 
-/// Where screenshots go when no directory is set
-pub(crate) fn default_directory() -> Option<std::path::PathBuf> {
-  dirs::picture_dir()
-    .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
-    .map(|p| p.join("Screenshots"))
-}
-
 fn save(png: &[u8], config: &ScreenshotConfig) -> Result<std::path::PathBuf> {
-  let dir = match &config.directory {
-    Some(dir) => corona_config::expand_home(dir),
-    None => default_directory().context("no pictures directory")?,
-  };
+  let dir = config
+    .resolved_directory()
+    .context("no pictures directory")?;
   fs::create_dir_all(&dir)?;
 
   // `strftime(..).to_string()` would panic on a bad pattern from the settings

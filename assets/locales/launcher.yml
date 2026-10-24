@@ -1,0 +1,1313 @@
+_version: 2
+app:
+  launcher:
+    placeholder:
+      en: 'Search for apps and commands…'
+      de: 'Apps und Befehle suchen …'
+    unknown_command:
+      en: 'No command "%{id}"'
+      de: 'Kein Befehl „%{id}“'
+    retry:
+      en: 'Retry'
+      de: 'Wiederholen'
+    failed:
+      en: 'Failed'
+      de: 'Fehlgeschlagen'
+    submit:
+      en: 'Submit'
+      de: 'Absenden'
+    required:
+      en: 'Required'
+      de: 'Pflichtfeld'
+    form_hint:
+      en: 'Ctrl+Enter: %{action}'
+      de: 'Strg+Enter: %{action}'
+    form_status:
+      en: 'Tab moves between fields'
+      de: 'Tab wechselt das Feld'
+    no_results:
+      en: 'No results'
+      de: 'Keine Ergebnisse'
+    working:
+      en: 'Working…'
+      de: 'Wird ausgeführt …'
+    results:
+      en: '%{count} results'
+      de: '%{count} Ergebnisse'
+    actions:
+      en: 'Actions'
+      de: 'Aktionen'
+    search_actions:
+      en: 'Search actions…'
+      de: 'Aktionen suchen …'
+    dont_ask:
+      en: "Don't ask again"
+      de: 'Nicht mehr fragen'
+    discard:
+      title:
+        en: 'Discard changes?'
+        de: 'Änderungen verwerfen?'
+      message:
+        en: 'What you entered is lost.'
+        de: 'Die Eingaben gehen verloren.'
+      button:
+        en: 'Discard'
+        de: 'Verwerfen'
+    hud:
+      copied:
+        en: 'Copied to clipboard'
+        de: 'In die Zwischenablage kopiert'
+      pasted:
+        en: 'Pasted'
+        de: 'Eingefügt'
+      copied_only:
+        en: 'Copied to clipboard, paste unavailable'
+        de: 'Kopiert, Einfügen nicht möglich'
+    section:
+      favorites:
+        en: 'Favorites'
+        de: 'Favoriten'
+      recent:
+        en: 'Recent'
+        de: 'Zuletzt verwendet'
+      suggestions:
+        en: 'Suggestions'
+        de: 'Vorschläge'
+      applications:
+        en: 'Applications'
+        de: 'Anwendungen'
+      commands:
+        en: 'Commands'
+        de: 'Befehle'
+      results:
+        en: 'Results'
+        de: 'Ergebnisse'
+      fallback:
+        en: 'Use query with'
+        de: 'Suche verwenden mit'
+      running:
+        en: 'Running'
+        de: 'Läuft'
+    dmenu:
+      title:
+        en: 'Choose'
+        de: 'Auswählen'
+      placeholder:
+        en: 'Filter…'
+        de: 'Filtern …'
+      choose:
+        en: 'Choose'
+        de: 'Auswählen'
+      mark:
+        en: 'Mark'
+        de: 'Markieren'
+    open:
+      en: 'Open'
+      de: 'Öffnen'
+    apps:
+      browse:
+        en: 'Browse apps'
+        de: 'Apps durchsuchen'
+      copy_exec:
+        en: 'Copy command'
+        de: 'Befehl kopieren'
+      focus:
+        en: 'Switch to window'
+        de: 'Zum Fenster wechseln'
+      launch:
+        en: 'Open'
+        de: 'Öffnen'
+      new_instance:
+        en: 'Open new window'
+        de: 'Neues Fenster öffnen'
+      refresh:
+        en: 'Refresh apps'
+        de: 'Apps neu einlesen'
+      refreshed:
+        en: 'Found %{count} apps'
+        de: '%{count} Apps gefunden'
+      reveal:
+        en: 'Show desktop file'
+        de: 'Desktop-Datei zeigen'
+      running:
+        en: 'Running'
+        de: 'Läuft'
+      search:
+        en: 'Search apps…'
+        de: 'Apps suchen …'
+    common:
+      alias:
+        en: 'Set alias'
+        de: 'Alias festlegen'
+      alias_field:
+        en: 'Alias'
+        de: 'Alias'
+      configure:
+        en: 'Configure command'
+        de: 'Befehl einrichten'
+      disable:
+        en: 'Disable command'
+        de: 'Befehl deaktivieren'
+      favorite:
+        en: 'Add to favorites'
+        de: 'Zu Favoriten hinzufügen'
+      unfavorite:
+        en: 'Remove from favorites'
+        de: 'Aus Favoriten entfernen'
+      hide:
+        en: 'Hide from search'
+        de: 'In der Suche ausblenden'
+      show:
+        en: 'Show in search'
+        de: 'In der Suche zeigen'
+      save:
+        en: 'Save'
+        de: 'Speichern'
+    run:
+      background:
+        en: 'Run'
+        de: 'Ausführen'
+      terminal:
+        en: 'Run in terminal'
+        de: 'Im Terminal ausführen'
+      chip:
+        en: 'Run'
+        de: 'Ausführen'
+      command:
+        en: 'Run command'
+        de: 'Befehl ausführen'
+      command_arg:
+        en: 'command'
+        de: 'Befehl'
+      in_terminal:
+        en: 'Run "%{command}" in terminal'
+        de: '„%{command}“ im Terminal ausführen'
+      placeholder:
+        en: 'Shell command…'
+        de: 'Shell-Befehl …'
+      program:
+        en: 'program'
+        de: 'Programm'
+      terminal_program:
+        en: 'Run in terminal'
+        de: 'Im Terminal starten'
+      title:
+        en: 'Run "%{command}"'
+        de: '„%{command}“ ausführen'
+    web:
+      open:
+        en: 'Open in browser'
+        de: 'Im Browser öffnen'
+      open_url:
+        en: 'Open %{url}'
+        de: '%{url} öffnen'
+      placeholder:
+        en: 'Search %{engine}…'
+        de: '%{engine} durchsuchen …'
+      query:
+        en: 'query'
+        de: 'Suche'
+      search:
+        en: 'Search %{engine}'
+        de: '%{engine} durchsuchen'
+      search_for:
+        en: 'Search %{engine} for "%{query}"'
+        de: '„%{query}“ mit %{engine} suchen'
+    on:
+      en: 'on'
+      de: 'an'
+    off:
+      en: 'off'
+      de: 'aus'
+    enable:
+      en: 'Enable %{name}'
+      de: '%{name} einschalten'
+    disable:
+      en: 'Disable %{name}'
+      de: '%{name} ausschalten'
+    state:
+      en: 'state'
+      de: 'Zustand'
+    state_is:
+      en: '%{name} is %{state}'
+      de: '%{name} ist %{state}'
+    switch:
+      en: 'Switch'
+      de: 'Umschalten'
+    unavailable:
+      en: 'Unavailable'
+      de: 'Nicht verfügbar'
+    pick:
+      en: 'Choose'
+      de: 'Auswählen'
+    audio:
+      volume:
+        en: 'Volume'
+        de: 'Lautstärke'
+      mic:
+        en: 'Microphone volume'
+        de: 'Mikrofonlautstärke'
+      muted:
+        en: 'Muted'
+        de: 'Stumm'
+      level:
+        en: 'level'
+        de: 'Pegel'
+      set:
+        en: 'Set'
+        de: 'Setzen'
+      set_to:
+        en: 'Set %{name} to %{level}'
+        de: '%{name} auf %{level} setzen'
+      toggle_mute:
+        en: 'Toggle mute of %{name}'
+        de: '%{name} stumm schalten oder freigeben'
+      up:
+        en: 'Louder'
+        de: 'Lauter'
+      down:
+        en: 'Quieter'
+        de: 'Leiser'
+      mute_mic:
+        en: 'Mute microphone'
+        de: 'Mikrofon stummschalten'
+      unmute_mic:
+        en: 'Unmute microphone'
+        de: 'Mikrofon einschalten'
+      preset:
+        en: 'Set volume to %{level}%'
+        de: 'Lautstärke auf %{level} % setzen'
+    display:
+      brightness:
+        en: 'Brightness'
+        de: 'Helligkeit'
+      brightness_of:
+        en: 'Brightness: %{monitor}'
+        de: 'Helligkeit: %{monitor}'
+      focused:
+        en: 'the focused monitor'
+        de: 'fokussierten Monitor'
+      level:
+        en: 'level'
+        de: 'Stufe'
+      monitor:
+        en: 'monitor'
+        de: 'Monitor'
+      no_display:
+        en: 'No display with adjustable brightness'
+        de: 'Kein Bildschirm mit einstellbarer Helligkeit'
+      set:
+        en: 'Set brightness'
+        de: 'Helligkeit setzen'
+      set_to:
+        en: 'Set brightness of %{monitor} to %{level}'
+        de: 'Helligkeit von %{monitor} auf %{level} setzen'
+    info:
+      system:
+        en: 'System info'
+        de: 'Systeminfo'
+      battery:
+        en: 'Battery'
+        de: 'Akku'
+      weather:
+        en: 'Weather'
+        de: 'Wetter'
+      uptime:
+        en: 'Uptime'
+        de: 'Laufzeit'
+      kernel:
+        en: 'Kernel'
+        de: 'Kernel'
+      cpu:
+        en: 'CPU'
+        de: 'CPU'
+      cpu_usage:
+        en: 'CPU usage'
+        de: 'CPU-Last'
+      gpu:
+        en: 'GPU'
+        de: 'GPU'
+      compositor:
+        en: 'Compositor'
+        de: 'Compositor'
+      memory:
+        en: 'Memory'
+        de: 'Arbeitsspeicher'
+      free:
+        en: 'free'
+        de: 'frei'
+      state:
+        en: 'State'
+        de: 'Zustand'
+      to_empty:
+        en: 'Until empty'
+        de: 'Bis leer'
+      to_full:
+        en: 'Until full'
+        de: 'Bis voll'
+      health:
+        en: 'Health'
+        de: 'Zustand der Zellen'
+      rate:
+        en: 'Power draw'
+        de: 'Leistungsaufnahme'
+      no_battery:
+        en: 'No battery'
+        de: 'Kein Akku'
+      feels_like:
+        en: 'Feels like'
+        de: 'Gefühlt'
+      humidity:
+        en: 'Humidity'
+        de: 'Luftfeuchtigkeit'
+      wind:
+        en: 'Wind'
+        de: 'Wind'
+      uv:
+        en: 'UV index'
+        de: 'UV-Index'
+      no_weather:
+        en: 'No weather yet'
+        de: 'Noch kein Wetter'
+      refresh:
+        en: 'Refresh'
+        de: 'Aktualisieren'
+    media:
+      play:
+        en: 'Play'
+        de: 'Abspielen'
+      pause:
+        en: 'Pause'
+        de: 'Pausieren'
+      next:
+        en: 'Next track'
+        de: 'Nächster Titel'
+      previous:
+        en: 'Previous track'
+        de: 'Vorheriger Titel'
+    session:
+      lock:
+        en: 'Lock'
+        de: 'Sperren'
+      suspend:
+        en: 'Suspend'
+        de: 'Bereitschaft'
+      lock_suspend:
+        en: 'Lock and suspend'
+        de: 'Sperren und Bereitschaft'
+      hibernate:
+        en: 'Suspend then hibernate'
+        de: 'Bereitschaft, dann Ruhezustand'
+      lock_hibernate:
+        en: 'Lock, suspend then hibernate'
+        de: 'Sperren, Bereitschaft, dann Ruhezustand'
+      logout:
+        en: 'Log out'
+        de: 'Abmelden'
+      reboot:
+        en: 'Reboot'
+        de: 'Neu starten'
+      shutdown:
+        en: 'Shut down'
+        de: 'Herunterfahren'
+      confirm_title:
+        en: '%{action}?'
+        de: '%{action}?'
+      confirm_message:
+        en: 'Unsaved work in open apps may be lost.'
+        de: 'Ungespeicherte Arbeit in offenen Apps kann verloren gehen.'
+    system:
+      wifi:
+        en: 'Wi-Fi'
+        de: 'WLAN'
+      bluetooth:
+        en: 'Bluetooth'
+        de: 'Bluetooth'
+      dnd:
+        en: 'Do not disturb'
+        de: 'Nicht stören'
+      airplane:
+        en: 'Airplane mode'
+        de: 'Flugmodus'
+      caffeine:
+        en: 'Stay awake'
+        de: 'Wach bleiben'
+      caffeine_on:
+        en: 'Stay awake'
+        de: 'Wach bleiben'
+      caffeine_off:
+        en: 'Stop staying awake'
+        de: 'Nicht mehr wach bleiben'
+      awake_for:
+        en: 'Staying awake for %{minutes} minutes'
+        de: 'Bleibt %{minutes} Minuten wach'
+      minutes:
+        en: 'minutes'
+        de: 'Minuten'
+      dark_mode:
+        en: 'Dark mode'
+        de: 'Dunkler Modus'
+      light_mode:
+        en: 'Light mode'
+        de: 'Heller Modus'
+      mode:
+        en: 'mode'
+        de: 'Modus'
+      name:
+        en: 'name'
+        de: 'Name'
+      theme:
+        en: 'Theme'
+        de: 'Design'
+      search_themes:
+        en: 'Search themes…'
+        de: 'Designs suchen …'
+      power_profile:
+        en: 'Power profile'
+        de: 'Energieprofil'
+      search_profiles:
+        en: 'Search profiles…'
+        de: 'Profile suchen …'
+      cycle_profile:
+        en: 'Next power profile'
+        de: 'Nächstes Energieprofil'
+      displays_off:
+        en: 'Turn displays off'
+        de: 'Bildschirme ausschalten'
+    tools:
+      screenshot:
+        en: 'Screenshot'
+        de: 'Bildschirmfoto'
+      screenshot_monitor:
+        en: 'Screenshot of the monitor'
+        de: 'Bildschirmfoto des Monitors'
+      screenshot_window:
+        en: 'Screenshot of a window'
+        de: 'Bildschirmfoto eines Fensters'
+      color_picker:
+        en: 'Color picker'
+        de: 'Farbpipette'
+      settings:
+        en: 'Settings'
+        de: 'Einstellungen'
+      page:
+        en: 'page'
+        de: 'Seite'
+      panels:
+        en: 'Panels'
+        de: 'Panels'
+      search_panels:
+        en: 'Search panels…'
+        de: 'Panels suchen …'
+      toggle_panel:
+        en: 'Toggle panel'
+        de: 'Panel umschalten'
+      control_center:
+        en: 'Control center'
+        de: 'Kontrollzentrum'
+      show_notifications:
+        en: 'Show notifications'
+        de: 'Benachrichtigungen zeigen'
+      clear_notifications:
+        en: 'Clear notification history'
+        de: 'Benachrichtigungsverlauf leeren'
+      notification_count:
+        en: '%{count} notifications'
+        de: '%{count} Benachrichtigungen'
+      cleared:
+        en: 'Notification history cleared'
+        de: 'Benachrichtigungsverlauf geleert'
+    windows:
+      switch:
+        en: 'Switch to window'
+        de: 'Zu Fenster wechseln'
+      search:
+        en: 'Search windows…'
+        de: 'Fenster suchen …'
+      focus:
+        en: 'Switch to window'
+        de: 'Zum Fenster wechseln'
+      close:
+        en: 'Close window'
+        de: 'Fenster schließen'
+      close_window:
+        en: 'Close window'
+        de: 'Fenster schließen'
+      close_focused:
+        en: 'Close the focused window'
+        de: 'Fokussiertes Fenster schließen'
+      close_pick:
+        en: 'Choose a window to close'
+        de: 'Fenster zum Schließen wählen'
+      none_focused:
+        en: 'No window is focused'
+        de: 'Kein Fenster fokussiert'
+      workspace:
+        en: 'Workspace %{id}'
+        de: 'Arbeitsfläche %{id}'
+      go:
+        en: 'Go'
+        de: 'Wechseln'
+      go_to_workspace:
+        en: 'Go to workspace'
+        de: 'Zu Arbeitsfläche wechseln'
+      number:
+        en: 'number'
+        de: 'Nummer'
+      switch_workspace:
+        en: 'Switch workspace'
+        de: 'Arbeitsfläche wechseln'
+      search_workspaces:
+        en: 'Search workspaces…'
+        de: 'Arbeitsflächen suchen …'
+      close_all:
+        en: 'Close all windows'
+        de: 'Alle Fenster schließen'
+      close_others:
+        en: 'Close all other windows'
+        de: 'Alle anderen Fenster schließen'
+      close_all_message:
+        en: 'Unsaved work may be lost.'
+        de: 'Ungespeicherte Arbeit kann verloren gehen.'
+      closed:
+        en: 'Closed %{count} windows'
+        de: '%{count} Fenster geschlossen'
+      float:
+        en: 'Toggle floating'
+        de: 'Schwebend umschalten'
+      fullscreen:
+        en: 'Toggle fullscreen'
+        de: 'Vollbild umschalten'
+      pin:
+        en: 'Pin window'
+        de: 'Fenster anheften'
+      focus_monitor:
+        en: 'Focus monitor'
+        de: 'Monitor fokussieren'
+      search_monitors:
+        en: 'Search monitors…'
+        de: 'Monitore suchen …'
+      keyboard_layout:
+        en: 'Keyboard layout'
+        de: 'Tastaturbelegung'
+      search_layouts:
+        en: 'Search layouts…'
+        de: 'Belegungen suchen …'
+      next_layout:
+        en: 'Next layout'
+        de: 'Nächste Belegung'
+      layout:
+        en: 'Window layout'
+        de: 'Fensteranordnung'
+      position:
+        en: 'position'
+        de: 'Position'
+      place:
+        en: 'Place window'
+        de: 'Fenster platzieren'
+      monitor:
+        en: 'monitor'
+        de: 'Monitor'
+      move:
+        en: 'Move'
+        de: 'Verschieben'
+      move_to_monitor:
+        en: 'Move window to monitor'
+        de: 'Fenster auf Monitor verschieben'
+      move_to_workspace:
+        en: 'Move window to workspace'
+        de: 'Fenster auf Arbeitsfläche verschieben'
+      show_desktop:
+        en: 'Show desktop'
+        de: 'Schreibtisch anzeigen'
+    bluetooth:
+      battery:
+        en: 'Battery %{level}%'
+        de: 'Akku %{level} %'
+      connect:
+        en: 'Connect %{name}'
+        de: '%{name} verbinden'
+      connected:
+        en: 'Connected'
+        de: 'Verbunden'
+      connected_to:
+        en: 'Connected to %{name}'
+        de: 'Mit %{name} verbunden'
+      disconnect:
+        en: 'Disconnect %{name}'
+        de: '%{name} trennen'
+      disconnected:
+        en: '%{name} disconnected'
+        de: '%{name} getrennt'
+      forget:
+        en: 'Forget device'
+        de: 'Gerät entfernen'
+      forget_title:
+        en: 'Forget %{name}?'
+        de: '%{name} entfernen?'
+      forget_message:
+        en: 'It has to be paired again to connect.'
+        de: 'Zum Verbinden muss es neu gekoppelt werden.'
+      forgotten:
+        en: '%{name} forgotten'
+        de: '%{name} entfernt'
+      pair:
+        en: 'Pair %{name}'
+        de: '%{name} koppeln'
+      paired:
+        en: '%{name} paired'
+        de: '%{name} gekoppelt'
+      pair_new:
+        en: 'Pair new device'
+        de: 'Neues Gerät koppeln'
+      scanning:
+        en: 'Looking for devices…'
+        de: 'Suche nach Geräten …'
+      search:
+        en: 'Search devices…'
+        de: 'Geräte suchen …'
+    devices:
+      app_volume:
+        en: 'App volume'
+        de: 'App-Lautstärke'
+      input:
+        en: 'Input: %{name}'
+        de: 'Eingang: %{name}'
+      output:
+        en: 'Output: %{name}'
+        de: 'Ausgang: %{name}'
+      make_default:
+        en: 'Use as default'
+        de: 'Als Standard verwenden'
+      mute_app:
+        en: 'Mute active app'
+        de: 'Aktive App stummschalten'
+      no_streams:
+        en: 'No app plays audio'
+        de: 'Keine App gibt Ton aus'
+      play_on:
+        en: 'Play on %{name}'
+        de: 'Auf %{name} abspielen'
+      search_apps:
+        en: 'Search apps…'
+        de: 'Apps suchen …'
+      switched:
+        en: 'Audio device switched'
+        de: 'Audiogerät gewechselt'
+      unmuted:
+        en: 'Unmuted'
+        de: 'Ton an'
+    monitors:
+      title:
+        en: 'Monitor settings'
+        de: 'Monitoreinstellungen'
+      search:
+        en: 'Search monitors…'
+        de: 'Monitore suchen …'
+      enable:
+        en: 'Enable'
+        de: 'Einschalten'
+      disable:
+        en: 'Disable'
+        de: 'Ausschalten'
+      enabled:
+        en: 'On'
+        de: 'An'
+      disabled:
+        en: 'Off'
+        de: 'Aus'
+      mirror:
+        en: 'Mirror %{source}'
+        de: '%{source} spiegeln'
+      mirrors:
+        en: 'Mirrors %{source}'
+        de: 'Spiegelt %{source}'
+      stop_mirroring:
+        en: 'Stop mirroring'
+        de: 'Spiegeln beenden'
+    network:
+      connect:
+        en: 'Connect'
+        de: 'Verbinden'
+      connect_to:
+        en: 'Connect Wi-Fi %{ssid}'
+        de: 'WLAN %{ssid} verbinden'
+      connected:
+        en: 'Connected to %{ssid}'
+        de: 'Mit %{ssid} verbunden'
+      connected_tag:
+        en: 'Connected'
+        de: 'Verbunden'
+      connecting:
+        en: 'Connecting…'
+        de: 'Verbinde …'
+      connecting_tag:
+        en: 'Connecting'
+        de: 'Verbinde'
+      saved:
+        en: 'Saved'
+        de: 'Gespeichert'
+      disconnect:
+        en: 'Disconnect Wi-Fi'
+        de: 'WLAN trennen'
+      disconnected:
+        en: 'Wi-Fi disconnected'
+        de: 'WLAN getrennt'
+      forget:
+        en: 'Forget network'
+        de: 'Netzwerk vergessen'
+      forget_title:
+        en: 'Forget %{ssid}?'
+        de: '%{ssid} vergessen?'
+      forget_message:
+        en: 'Its password is removed.'
+        de: 'Das Passwort wird gelöscht.'
+      hotspot:
+        en: 'Hotspot'
+        de: 'Hotspot'
+      join_hidden:
+        en: 'Join hidden network'
+        de: 'Verstecktem Netzwerk beitreten'
+      networks:
+        en: 'Wi-Fi networks'
+        de: 'WLAN-Netzwerke'
+      search:
+        en: 'Search networks…'
+        de: 'Netzwerke suchen …'
+      open:
+        en: 'Open'
+        de: 'Offen'
+      wpa:
+        en: 'WPA/WPA2'
+        de: 'WPA/WPA2'
+      wpa3:
+        en: 'WPA3'
+        de: 'WPA3'
+      ssid:
+        en: 'Network name'
+        de: 'Netzwerkname'
+      security:
+        en: 'Security'
+        de: 'Sicherheit'
+      password:
+        en: 'Wi-Fi password'
+        de: 'WLAN-Passwort'
+      password_for:
+        en: '%{ssid} needs a password'
+        de: '%{ssid} braucht ein Passwort'
+      wrong_password:
+        en: 'Wrong password for %{ssid}, try again'
+        de: 'Falsches Passwort für %{ssid}, nochmal versuchen'
+      portal:
+        en: 'Log in to the network'
+        de: 'Im Netzwerk anmelden'
+      rescan:
+        en: 'Rescan Wi-Fi'
+        de: 'Nach WLAN suchen'
+      scanned:
+        en: 'Scan finished'
+        de: 'Suche beendet'
+      vpn:
+        en: 'VPN %{name}'
+        de: 'VPN %{name}'
+    notifications:
+      app:
+        en: 'App'
+        de: 'App'
+      time:
+        en: 'Time'
+        de: 'Zeit'
+      dismiss:
+        en: 'Dismiss notifications'
+        de: 'Benachrichtigungen ausblenden'
+      none:
+        en: 'No notifications'
+        de: 'Keine Benachrichtigungen'
+      open:
+        en: 'Open'
+        de: 'Öffnen'
+      remove:
+        en: 'Remove'
+        de: 'Entfernen'
+      search:
+        en: 'Search notifications…'
+        de: 'Benachrichtigungen suchen …'
+      search_title:
+        en: 'Search notifications'
+        de: 'Benachrichtigungen durchsuchen'
+    player:
+      now_playing:
+        en: 'Now playing'
+        de: 'Wiedergabe'
+      nothing:
+        en: 'Nothing is playing'
+        de: 'Es läuft nichts'
+      seek:
+        en: 'Seek'
+        de: 'Springen'
+      seconds:
+        en: 'seconds, like 90 or +10'
+        de: 'Sekunden, etwa 90 oder +10'
+      shuffle:
+        en: 'Shuffle'
+        de: 'Zufallswiedergabe'
+      loop:
+        en: 'Loop'
+        de: 'Wiederholen'
+      mode:
+        en: 'mode'
+        de: 'Modus'
+    tray:
+      activate:
+        en: 'Activate'
+        de: 'Aktivieren'
+      empty:
+        en: 'Nothing in the tray'
+        de: 'Nichts im Tray'
+      search:
+        en: 'Search tray…'
+        de: 'Tray durchsuchen …'
+      search_title:
+        en: 'Search tray'
+        de: 'Tray durchsuchen'
+    calculator:
+      copy:
+        en: 'Copy result'
+        de: 'Ergebnis kopieren'
+      copy_all:
+        en: 'Copy expression = result'
+        de: 'Ausdruck = Ergebnis kopieren'
+      fetching:
+        en: 'Fetching rate…'
+        de: 'Kurs wird geladen …'
+      history:
+        en: 'Calculator history'
+        de: 'Rechnerverlauf'
+      no_history:
+        en: 'No calculations yet'
+        de: 'Noch keine Rechnungen'
+      search_history:
+        en: 'Search calculations…'
+        de: 'Rechnungen suchen …'
+      rates_age:
+        en: 'ECB rates of %{date}, fetched %{hours} h ago'
+        de: 'EZB-Kurse vom %{date}, vor %{hours} h geladen'
+      rates_updated:
+        en: 'Exchange rates updated'
+        de: 'Wechselkurse aktualisiert'
+      refresh_rates:
+        en: 'Refresh exchange rates'
+        de: 'Wechselkurse aktualisieren'
+    clipboard:
+      all:
+        en: 'All'
+        de: 'Alle'
+      text:
+        en: 'Text'
+        de: 'Text'
+      image:
+        en: 'Image'
+        de: 'Bild'
+      link:
+        en: 'Link'
+        de: 'Link'
+      color:
+        en: 'Color'
+        de: 'Farbe'
+      type:
+        en: 'Type'
+        de: 'Typ'
+      size:
+        en: 'Size'
+        de: 'Größe'
+      copied:
+        en: 'Copied'
+        de: 'Kopiert'
+      now:
+        en: 'now'
+        de: 'jetzt'
+      image_title:
+        en: 'Image, %{size} KiB'
+        de: 'Bild, %{size} KiB'
+      history:
+        en: 'Clipboard history'
+        de: 'Zwischenablage-Verlauf'
+      search:
+        en: 'Search the clipboard…'
+        de: 'Zwischenablage durchsuchen …'
+      empty:
+        en: 'Nothing copied yet'
+        de: 'Noch nichts kopiert'
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      pin:
+        en: 'Pin'
+        de: 'Anheften'
+      unpin:
+        en: 'Unpin'
+        de: 'Lösen'
+      pinned:
+        en: 'Pinned'
+        de: 'Angeheftet'
+      delete:
+        en: 'Delete entry'
+        de: 'Eintrag löschen'
+      clear:
+        en: 'Clear clipboard history'
+        de: 'Zwischenablage-Verlauf leeren'
+      clear_button:
+        en: 'Clear'
+        de: 'Leeren'
+      clear_message:
+        en: 'Pinned entries stay.'
+        de: 'Angeheftete Einträge bleiben.'
+      cleared:
+        en: 'Removed %{count} entries'
+        de: '%{count} Einträge entfernt'
+      off:
+        en: 'The clipboard history is off'
+        de: 'Der Zwischenablage-Verlauf ist aus'
+    quicklinks:
+      create:
+        en: 'Create quicklink'
+        de: 'Schnelllink anlegen'
+      edit:
+        en: 'Edit quicklink'
+        de: 'Schnelllink bearbeiten'
+      delete:
+        en: 'Delete quicklink'
+        de: 'Schnelllink löschen'
+      saved:
+        en: 'Quicklink saved'
+        de: 'Schnelllink gespeichert'
+    snippets:
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      create:
+        en: 'Create snippet'
+        de: 'Textbaustein anlegen'
+      edit:
+        en: 'Edit snippet'
+        de: 'Textbaustein bearbeiten'
+      duplicate:
+        en: 'Duplicate'
+        de: 'Duplizieren'
+      delete:
+        en: 'Delete snippet'
+        de: 'Textbaustein löschen'
+      delete_message:
+        en: '%{name} is deleted.'
+        de: '%{name} wird gelöscht.'
+      saved:
+        en: 'Snippet saved'
+        de: 'Textbaustein gespeichert'
+      none:
+        en: 'No snippets yet'
+        de: 'Noch keine Textbausteine'
+      search:
+        en: 'Search snippets…'
+        de: 'Textbausteine suchen …'
+      search_title:
+        en: 'Search snippets'
+        de: 'Textbausteine durchsuchen'
+    emoji:
+      title:
+        en: 'Emoji'
+        de: 'Emoji'
+      search:
+        en: 'Search emoji…'
+        de: 'Emoji suchen …'
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      skin_tone:
+        en: 'Skin tone'
+        de: 'Hautfarbe'
+      tone_default:
+        en: 'Default'
+        de: 'Standard'
+      tone_light:
+        en: 'Light'
+        de: 'Hell'
+      tone_medium_light:
+        en: 'Medium light'
+        de: 'Mittelhell'
+      tone_medium:
+        en: 'Medium'
+        de: 'Mittel'
+      tone_medium_dark:
+        en: 'Medium dark'
+        de: 'Mitteldunkel'
+      tone_dark:
+        en: 'Dark'
+        de: 'Dunkel'
+      symbols:
+        en: 'Symbols'
+        de: 'Symbole'
+      search_symbols:
+        en: 'Search by name, like arrow right…'
+        de: 'Nach Namen suchen, etwa arrow right …'
+      type_name:
+        en: "Type a character's name"
+        de: 'Namen eines Zeichens eingeben'
+    files:
+      browse:
+        en: 'Browse %{path}'
+        de: '%{path} durchsuchen'
+      copy_file:
+        en: 'Copy file'
+        de: 'Datei kopieren'
+      copy_path:
+        en: 'Copy path'
+        de: 'Pfad kopieren'
+      location:
+        en: 'Folder'
+        de: 'Ordner'
+      modified:
+        en: 'Modified'
+        de: 'Geändert'
+      size:
+        en: 'Size'
+        de: 'Größe'
+      no_recent:
+        en: 'No recent files'
+        de: 'Keine zuletzt verwendeten Dateien'
+      open:
+        en: 'Open'
+        de: 'Öffnen'
+      open_with:
+        en: 'Open with…'
+        de: 'Öffnen mit …'
+      path_placeholder:
+        en: 'Path, Tab completes folders…'
+        de: 'Pfad, Tab ergänzt Ordner …'
+      recent:
+        en: 'Recent files'
+        de: 'Zuletzt verwendete Dateien'
+      reveal:
+        en: 'Show in folder'
+        de: 'Im Ordner zeigen'
+      search:
+        en: 'Search files…'
+        de: 'Dateien suchen …'
+      search_for:
+        en: 'Search files for "%{query}"'
+        de: 'Dateien nach „%{query}“ durchsuchen'
+      search_title:
+        en: 'Search files'
+        de: 'Dateien suchen'
+      trash:
+        en: 'Move to trash'
+        de: 'In den Papierkorb'
+      trashed:
+        en: 'Moved to trash'
+        de: 'In den Papierkorb verschoben'
+      type:
+        en: 'Type to search files'
+        de: 'Tippen, um Dateien zu suchen'
+    gallery:
+      fonts:
+        en: 'Browse fonts'
+        de: 'Schriften durchsuchen'
+      search_fonts:
+        en: 'Search fonts…'
+        de: 'Schriften suchen …'
+      copy_family:
+        en: 'Copy family name'
+        de: 'Schriftname kopieren'
+      screenshots:
+        en: 'Search screenshots'
+        de: 'Bildschirmfotos durchsuchen'
+      search_screenshots:
+        en: 'Search screenshots…'
+        de: 'Bildschirmfotos suchen …'
+      copy_image:
+        en: 'Copy image'
+        de: 'Bild kopieren'
+      no_screenshots:
+        en: 'No screenshots yet'
+        de: 'Noch keine Bildschirmfotos'
+      paste_last:
+        en: 'Paste last screenshot'
+        de: 'Letztes Bildschirmfoto einfügen'
+    ip:
+      title:
+        en: 'IP address'
+        de: 'IP-Adresse'
+      public:
+        en: 'Public'
+        de: 'Öffentlich'
+      public6:
+        en: 'Public IPv6'
+        de: 'Öffentlich IPv6'
+      unknown:
+        en: 'Unknown'
+        de: 'Unbekannt'
+      copy_local:
+        en: 'Copy local address'
+        de: 'Lokale Adresse kopieren'
+      copy_public:
+        en: 'Copy public address'
+        de: 'Öffentliche Adresse kopieren'
+    lookup:
+      translate:
+        en: 'Translate'
+        de: 'Übersetzen'
+      define:
+        en: 'Define word'
+        de: 'Wort nachschlagen'
+      text:
+        en: 'text'
+        de: 'Text'
+      target:
+        en: 'to language'
+        de: 'Zielsprache'
+      word:
+        en: 'word'
+        de: 'Wort'
+      from:
+        en: 'From'
+        de: 'Von'
+      to:
+        en: 'To'
+        de: 'Nach'
+      copy:
+        en: 'Copy translation'
+        de: 'Übersetzung kopieren'
+      no_key:
+        en: 'Set a DeepL key in the launcher settings'
+        de: 'DeepL-Schlüssel in den Starter-Einstellungen setzen'
+      not_found:
+        en: 'Not in Wiktionary'
+        de: 'Nicht im Wiktionary'
+      nothing:
+        en: 'Nothing to look up: type it, select it or copy it'
+        de: 'Nichts nachzuschlagen: eingeben, markieren oder kopieren'
+    processes:
+      title:
+        en: 'Processes'
+        de: 'Prozesse'
+      search:
+        en: 'Search processes…'
+        de: 'Prozesse suchen …'
+      sort:
+        en: 'Sort'
+        de: 'Sortierung'
+      memory:
+        en: 'Memory'
+        de: 'Speicher'
+      name:
+        en: 'Name'
+        de: 'Name'
+      kill:
+        en: 'Kill process'
+        de: 'Prozess beenden'
+      force_kill:
+        en: 'Force kill'
+        de: 'Zwangsweise beenden'
+      force_message:
+        en: '%{name} stops at once and may lose data.'
+        de: '%{name} wird sofort beendet und kann Daten verlieren.'
+      copy_pid:
+        en: 'Copy PID'
+        de: 'PID kopieren'
+      kill_port:
+        en: 'Kill by port'
+        de: 'Prozess auf Port beenden'
+      port:
+        en: 'port'
+        de: 'Port'
+      nothing_listens:
+        en: 'Nothing listens on port %{port}'
+        de: 'Nichts lauscht auf Port %{port}'
+      killed:
+        en: 'Stopped %{count} processes'
+        de: '%{count} Prozesse beendet'
+    storage:
+      empty_trash:
+        en: 'Empty trash'
+        de: 'Papierkorb leeren'
+      open_trash:
+        en: 'Open trash'
+        de: 'Papierkorb öffnen'
+      items:
+        en: '%{count} items'
+        de: '%{count} Elemente'
+      empty:
+        en: 'Empty'
+        de: 'Leeren'
+      empty_message:
+        en: '%{count} items are deleted for good.'
+        de: '%{count} Elemente werden endgültig gelöscht.'
+      emptied:
+        en: 'Deleted %{count} items'
+        de: '%{count} Elemente gelöscht'
+      eject:
+        en: 'Eject drives'
+        de: 'Laufwerke auswerfen'
+      eject_one:
+        en: 'Eject'
+        de: 'Auswerfen'
+      ejected:
+        en: 'Safe to remove'
+        de: 'Kann entfernt werden'
+      mount:
+        en: 'Mount drive'
+        de: 'Laufwerk einhängen'
+      mount_one:
+        en: 'Mount'
+        de: 'Einhängen'
+      mounted:
+        en: 'Mounted at %{path}'
+        de: 'Eingehängt unter %{path}'
+      no_drives:
+        en: 'No removable drives'
+        de: 'Keine Wechsellaufwerke'
+      search:
+        en: 'Search drives…'
+        de: 'Laufwerke suchen …'
+    timers:
+      timer:
+        en: 'Timer'
+        de: 'Timer'
+      stopwatch:
+        en: 'Stopwatch'
+        de: 'Stoppuhr'
+      duration:
+        en: 'duration, like 5m'
+        de: 'Dauer, etwa 5m'
+      label:
+        en: 'label'
+        de: 'Bezeichnung'
+      start:
+        en: 'Start'
+        de: 'Starten'
+      start_for:
+        en: 'Start a timer for %{time}'
+        de: 'Timer für %{time} starten'
+      started:
+        en: 'Timer for %{time}'
+        de: 'Timer für %{time}'
+      stopwatch_started:
+        en: 'Stopwatch started'
+        de: 'Stoppuhr gestartet'
+      stop:
+        en: 'Stop'
+        de: 'Stoppen'
+      copy:
+        en: 'Copy time'
+        de: 'Zeit kopieren'
+      finished:
+        en: 'Timer finished'
+        de: 'Timer abgelaufen'

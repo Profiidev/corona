@@ -57,6 +57,8 @@ pub struct Window {
   pub fullscreen: bool,
   pub hidden: bool,
   pub focus_history_id: i32,
+  /// The client's process, 0 when unknown
+  pub pid: i32,
 }
 
 impl Window {
@@ -98,6 +100,7 @@ mod tests {
       fullscreen: false,
       hidden: false,
       focus_history_id,
+      pid: 0,
     }
   }
 

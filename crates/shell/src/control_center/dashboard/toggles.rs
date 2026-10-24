@@ -140,7 +140,7 @@ fn profile_active(active: Option<&str>) -> bool {
 }
 
 /// Airplane mode is on while no radio is
-fn airplane_on(wifi: bool, bluetooth: Option<bool>) -> bool {
+pub(crate) fn airplane_on(wifi: bool, bluetooth: Option<bool>) -> bool {
   !wifi && bluetooth != Some(true)
 }
 
@@ -257,6 +257,24 @@ fn profile(cx: &App) -> Toggle {
   }
 }
 
+/// Every radio off for on, back on for off
+pub(crate) fn set_airplane(on: bool, cx: &mut App) {
+  let task = cx.network_manager().set_wifi_enabled(!on);
+  spawn_logged(cx, task);
+  if cx.bluetooth().adapter(cx).is_some() {
+    let task = cx.bluetooth().set_powered(!on, cx);
+    spawn_logged(cx, task);
+  }
+}
+
+/// Whether every radio is off
+pub(crate) fn airplane_state(cx: &App) -> bool {
+  airplane_on(
+    cx.network_manager().wifi_enabled(cx),
+    cx.bluetooth().adapter(cx).map(|a| a.powered),
+  )
+}
+
 fn airplane(cx: &App) -> Toggle {
   let wifi = cx.network_manager().wifi_enabled(cx);
   let bluetooth = cx.bluetooth().adapter(cx).map(|a| a.powered);
@@ -267,14 +285,7 @@ fn airplane(cx: &App) -> Toggle {
     label: t!("app.dashboard.airplane"),
     status: on_off(on),
     active: on,
-    on_click: Some(Box::new(move |cx| {
-      let task = cx.network_manager().set_wifi_enabled(on);
-      spawn_logged(cx, task);
-      if bluetooth.is_some() {
-        let task = cx.bluetooth().set_powered(on, cx);
-        spawn_logged(cx, task);
-      }
-    })),
+    on_click: Some(Box::new(move |cx| set_airplane(!on, cx))),
     page: Some(ControlCenterType::Network),
   }
 }

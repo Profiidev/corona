@@ -2,12 +2,13 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
 use crate::{
-  config::ConfigCommands, ipc::IpcCommands, network::NetworkCommands, schema::SchemaCommands,
-  types::TypesCommand,
+  config::ConfigCommands, ipc::IpcCommands, launcher::LauncherCommands, network::NetworkCommands,
+  schema::SchemaCommands, types::TypesCommand,
 };
 
 mod config;
 mod ipc;
+mod launcher;
 mod network;
 mod schema;
 mod types;
@@ -36,6 +37,11 @@ pub enum Commands {
   },
   /// Run corona shell
   Shell,
+  /// Launcher tools: dmenu and links
+  Launcher {
+    #[command(subcommand)]
+    command: LauncherCommands,
+  },
   /// Settings commands
   Config {
     #[command(subcommand)]
@@ -72,6 +78,13 @@ mod tests {
       parse(&["shell"]).unwrap().command,
       Commands::Shell
     ));
+    assert!(matches!(
+      parse(&["launcher", "dmenu", "--multi", "-p", "Pick"])
+        .unwrap()
+        .command,
+      Commands::Launcher { .. }
+    ));
+    assert!(parse(&["launcher", "open-url"]).is_err());
     assert!(matches!(
       parse(&["config", "validate"]).unwrap().command,
       Commands::Config { .. }

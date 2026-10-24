@@ -20,6 +20,7 @@ pub use pages::PAGES;
 
 mod bar;
 mod fields;
+mod launcher;
 mod pages;
 mod plugins;
 

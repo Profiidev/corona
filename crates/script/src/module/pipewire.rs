@@ -248,6 +248,7 @@ mod tests {
       volumes,
       mute: true,
       app: vec!["firefox".into()],
+      pid: None,
     }
   }
 

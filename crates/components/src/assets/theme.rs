@@ -142,6 +142,26 @@ pub fn set_mode(dark: bool, cx: &mut App) -> Result<()> {
   corona_config::update(cx, |c| c.theme.mode = Some(mode))
 }
 
+/// Shows the named theme without keeping it, for previews; [`restore_theme`] goes back.
+pub fn preview_theme(name: &str, cx: &mut App) -> Result<()> {
+  let mut theme = cx.config().theme.clone();
+  theme.name = name.to_string();
+  theme.mode = None;
+  // a preview must not rewrite gtk.css on every step
+  theme.sync_toolkits = false;
+  apply_config(&theme, cx)?;
+  cx.refresh_windows();
+  Ok(())
+}
+
+/// The theme of the settings again, after [`preview_theme`]
+pub fn restore_theme(cx: &mut App) -> Result<()> {
+  let theme = cx.config().theme.clone();
+  apply_config(&theme, cx)?;
+  cx.refresh_windows();
+  Ok(())
+}
+
 /// Switches to the named theme, in its own mode, and keeps it in the settings.
 pub fn set_theme(name: String, cx: &mut App) -> Result<()> {
   if !ThemeRegistry::global(cx)

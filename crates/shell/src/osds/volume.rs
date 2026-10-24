@@ -87,6 +87,7 @@ mod tests {
       volumes,
       mute,
       app: Vec::new(),
+      pid: None,
     }
   }
 

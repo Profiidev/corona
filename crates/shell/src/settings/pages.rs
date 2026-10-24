@@ -20,12 +20,12 @@ use crate::i18n;
 use crate::settings::{
   bar,
   fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
-  plugins,
+  launcher, plugins,
 };
 use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
-pub const PAGES: [&str; 15] = [
+pub const PAGES: [&str; 16] = [
   "appearance",
   "bar",
   "wallpaper",
@@ -34,6 +34,7 @@ pub const PAGES: [&str; 15] = [
   "control_center",
   "taskbar",
   "window_switcher",
+  "launcher",
   "lockscreen",
   "idle",
   "screenshot",
@@ -53,6 +54,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     control_center(),
     taskbar(),
     window_switcher(),
+    launcher::page_of(cx),
     lockscreen(cx),
     idle(cx),
     screenshot(),
@@ -63,18 +65,22 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
   ]
 }
 
-fn page(title: impl Into<SharedString>, icon: IconName, groups: Vec<SettingGroup>) -> SettingPage {
+pub(super) fn page(
+  title: impl Into<SharedString>,
+  icon: IconName,
+  groups: Vec<SettingGroup>,
+) -> SettingPage {
   SettingPage::new(title)
     .icon(Icon::new(icon))
     .resettable(true)
     .groups(groups)
 }
 
-fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> SettingGroup {
+pub(super) fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> SettingGroup {
   SettingGroup::new().title(title).items(items)
 }
 
-fn item(
+pub(super) fn item(
   title: impl Into<SharedString>,
   description: impl Into<String>,
   field: SettingField<impl Clone + PartialEq + Send + Sync + 'static>,
@@ -868,7 +874,8 @@ fn screenshot() -> SettingPage {
             },
             |c, v| c.screenshot.directory = v.map(PathBuf::from),
             |_| {
-              crate::overlays::screenshot::save::default_directory()
+              corona_config::ScreenshotConfig::default()
+                .resolved_directory()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default()
             },

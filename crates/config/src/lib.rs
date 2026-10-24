@@ -8,9 +8,10 @@ use anyhow::Result;
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::{bar::BarConfig, plugins::PluginsConfig};
+use crate::{bar::BarConfig, launcher::LauncherConfig, plugins::PluginsConfig};
 
 pub mod bar;
+pub mod launcher;
 pub mod placement;
 pub mod plugins;
 mod read;
@@ -54,6 +55,7 @@ pub struct Config {
   pub lockscreen: LockscreenConfig,
   pub screenshot: ScreenshotConfig,
   pub window_switcher: WindowSwitcherConfig,
+  pub launcher: LauncherConfig,
   pub taskbar: TaskbarConfig,
   pub control_center: ControlCenterConfig,
   pub weather: WeatherConfig,
@@ -79,6 +81,7 @@ impl Default for Config {
       lockscreen: LockscreenConfig::default(),
       screenshot: ScreenshotConfig::default(),
       window_switcher: WindowSwitcherConfig::default(),
+      launcher: LauncherConfig::default(),
       taskbar: TaskbarConfig::default(),
       control_center: ControlCenterConfig::default(),
       weather: WeatherConfig::default(),
@@ -358,6 +361,18 @@ pub struct ScreenshotConfig {
   pub directory: Option<PathBuf>,
   /// strftime pattern
   pub filename_pattern: String,
+}
+
+impl ScreenshotConfig {
+  /// The directory screenshots go to: the set one, else `Screenshots` in the pictures
+  pub fn resolved_directory(&self) -> Option<PathBuf> {
+    match &self.directory {
+      Some(dir) => Some(expand_home(dir)),
+      None => dirs::picture_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .map(|p| p.join("Screenshots")),
+    }
+  }
 }
 
 impl Default for ScreenshotConfig {
