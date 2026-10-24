@@ -24,11 +24,8 @@ use crate::view::View;
 
 const NAMESPACE: &str = "corona_launcher";
 const CONTEXT: &str = "Launcher";
-pub const WIDTH: f32 = 720.;
-pub const HEIGHT: f32 = 480.;
-/// With the preview pane
-pub const WIDE: f32 = 900.;
-pub const TALL: f32 = 500.;
+pub const WIDTH: f32 = 900.;
+pub const HEIGHT: f32 = 520.;
 
 gpui_kit::actions!(
   launcher,
@@ -48,7 +45,7 @@ gpui_kit::actions!(
     Pop,
     ToggleActions,
     TogglePreview,
-    CycleFilter,
+    ToggleFilter,
     Submit,
   ]
 );
@@ -79,7 +76,7 @@ pub fn bind_keys(cx: &mut App) {
       KeyBinding::new("escape", Back, c),
       KeyBinding::new("ctrl-o", ToggleActions, c),
       KeyBinding::new("ctrl-p", TogglePreview, c),
-      KeyBinding::new("ctrl-f", CycleFilter, c),
+      KeyBinding::new("ctrl-f", ToggleFilter, c),
       KeyBinding::new("ctrl-s", Submit, c),
     ]);
   }
@@ -181,10 +178,7 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
   Ok(())
 }
 
-pub(crate) fn window_size(preview: bool, custom: Option<Size<Pixels>>) -> Size<Pixels> {
-  match (custom, preview) {
-    (Some(custom), _) => custom,
-    (None, true) => size(px(WIDE), px(TALL)),
-    (None, false) => size(px(WIDTH), px(HEIGHT)),
-  }
+/// Every view has the same card, with room for the preview pane
+pub(crate) fn window_size() -> Size<Pixels> {
+  size(px(WIDTH), px(HEIGHT))
 }

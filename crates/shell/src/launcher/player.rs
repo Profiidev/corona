@@ -17,7 +17,7 @@ use gpui_kit::{
   component::{ActiveTheme, Icon as KitIcon, Sizable},
   div, img,
   prelude::FluentBuilder,
-  px, relative, size,
+  px, relative,
 };
 use rust_i18n::t;
 
@@ -270,7 +270,6 @@ impl Render for NowPlaying {
 fn now_playing() -> View {
   View::Custom(CustomView {
     title: t!("app.launcher.player.now_playing").into(),
-    size: Some(size(px(720.), px(360.))),
     search: false,
     build: Rc::new(|_, cx| cx.new(NowPlaying::new).into()),
     on_query: None,

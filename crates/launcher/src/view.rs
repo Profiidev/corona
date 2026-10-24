@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use anyhow::Result;
-use gpui_kit::{AnyView, App, Pixels, SharedString, Size, Task, Window};
+use gpui_kit::{AnyView, App, SharedString, Task, Window};
 
 use crate::command::{Action, CommandSource, Outcome};
 
@@ -210,8 +210,6 @@ pub struct DetailView {
 /// A view that draws itself, like Now Playing; the host keeps Esc and back
 pub struct CustomView {
   pub title: SharedString,
-  /// Window size while it shows, the launcher's otherwise
-  pub size: Option<Size<Pixels>>,
   /// Keeps the search field, its text goes to the view through `on_query`
   pub search: bool,
   pub build: Build,

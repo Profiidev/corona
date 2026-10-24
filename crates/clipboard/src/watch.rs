@@ -33,13 +33,14 @@ const TEXT: [&str; 5] = [
   "TEXT",
 ];
 
-/// The type to keep from what the selection offers; password managers mark theirs
-pub fn choose(mimes: &[String]) -> Option<&str> {
+/// The types to read from what the selection offers: text, then an image. Password
+/// managers mark what nobody should keep.
+pub fn choose(mimes: &[String]) -> Vec<&str> {
   if mimes
     .iter()
-    .any(|m| m == "x-kde-passwordManagerHint" || m.starts_with("x-kde-passwordManagerHint"))
+    .any(|m| m.starts_with("x-kde-passwordManagerHint"))
   {
-    return None;
+    return Vec::new();
   }
   let text = TEXT
     .iter()
@@ -47,7 +48,17 @@ pub fn choose(mimes: &[String]) -> Option<&str> {
   let image = ["image/png", "image/jpeg", "image/webp", "image/gif"]
     .iter()
     .find_map(|t| mimes.iter().find(|m| m.as_str() == *t));
-  text.or(image).map(String::as_str)
+  text.into_iter().chain(image).map(String::as_str).collect()
+}
+
+/// Real text wins; an image when the text is empty, as apps that copy an image often
+/// offer text types too
+fn pick(read: Vec<(String, Vec<u8>)>) -> Option<Captured> {
+  let text = |bytes: &[u8]| std::str::from_utf8(bytes).is_ok_and(|t| !t.trim().is_empty());
+  read
+    .into_iter()
+    .find(|(mime, bytes)| !bytes.is_empty() && (mime.starts_with("image/") || text(bytes)))
+    .map(|(mime, bytes)| Captured { mime, bytes })
 }
 
 struct State {
@@ -58,20 +69,36 @@ struct State {
 
 impl State {
   /// Reads the selection on its own thread, a slow or stuck source must not stop the watch
-  fn read(&self, mime: &str, receive: impl FnOnce(&str, &OwnedFd)) -> Result<()> {
-    let (read, write) = pipe_with(PipeFlags::CLOEXEC)?;
-    receive(mime, &write);
+  fn read(&self, mimes: &[&str], receive: impl Fn(&str, &OwnedFd)) -> Result<()> {
+    let mut pipes = Vec::new();
+    for mime in mimes {
+      let (read, write) = pipe_with(PipeFlags::CLOEXEC)?;
+      receive(mime, &write);
+      pipes.push((mime.to_string(), read, write));
+    }
     self.conn.flush()?;
-    drop(write);
-    let (tx, mime) = (self.tx.clone(), mime.to_string());
+    let pipes: Vec<(String, OwnedFd)> = pipes
+      .into_iter()
+      .map(|(mime, read, write)| {
+        drop(write);
+        (mime, read)
+      })
+      .collect();
+    let tx = self.tx.clone();
     std::thread::spawn(move || {
-      let mut bytes = Vec::new();
-      let file = std::fs::File::from(read);
-      if file.take(MAX_BYTES + 1).read_to_end(&mut bytes).is_ok()
-        && !bytes.is_empty()
-        && (bytes.len() as u64) <= MAX_BYTES
-      {
-        let _ = tx.send(Captured { mime, bytes });
+      let read = pipes
+        .into_iter()
+        .filter_map(|(mime, fd)| {
+          let mut bytes = Vec::new();
+          std::fs::File::from(fd)
+            .take(MAX_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+          ((bytes.len() as u64) <= MAX_BYTES).then_some((mime, bytes))
+        })
+        .collect();
+      if let Some(captured) = pick(read) {
+        let _ = tx.send(captured);
       }
     });
     Ok(())
@@ -132,8 +159,9 @@ macro_rules! data_control {
           }
           $device_mod::Event::Selection { id: Some(offer) } => {
             let mimes = state.offers.remove(&offer.id()).unwrap_or_default();
-            if let Some(mime) = choose(&mimes) {
-              let read = state.read(mime, |mime, fd| offer.receive(mime.to_string(), fd.as_fd()));
+            let wanted = choose(&mimes);
+            if !wanted.is_empty() {
+              let read = state.read(&wanted, |mime, fd| offer.receive(mime.to_string(), fd.as_fd()));
               if let Err(e) = read {
                 tracing::warn!("clipboard: {e:#}");
               }
@@ -230,20 +258,44 @@ mod tests {
   }
 
   #[test]
-  fn picks_text_then_images() {
+  fn reads_text_and_images() {
     assert_eq!(
       choose(&mimes(&["text/html", "text/plain", "UTF8_STRING"])),
-      Some("text/plain")
+      ["text/plain"]
     );
+    assert_eq!(choose(&mimes(&["image/png", "text/html"])), ["image/png"]);
     assert_eq!(
-      choose(&mimes(&["image/png", "text/html"])),
+      choose(&mimes(&["text/plain", "image/png"])),
+      ["text/plain", "image/png"]
+    );
+    assert!(choose(&mimes(&["text/html"])).is_empty());
+    // password managers mark what nobody should keep
+    assert!(choose(&mimes(&["text/plain", "x-kde-passwordManagerHint"])).is_empty());
+  }
+
+  #[test]
+  fn empty_text_gives_way_to_the_image() {
+    let read = |pairs: &[(&str, &[u8])]| {
+      pick(
+        pairs
+          .iter()
+          .map(|(m, b)| (m.to_string(), b.to_vec()))
+          .collect(),
+      )
+      .map(|c| c.mime)
+    };
+    assert_eq!(
+      read(&[("text/plain", b""), ("image/png", b"png")]).as_deref(),
       Some("image/png")
     );
-    assert_eq!(choose(&mimes(&["text/html"])), None);
-    // password managers mark what nobody should keep
     assert_eq!(
-      choose(&mimes(&["text/plain", "x-kde-passwordManagerHint"])),
-      None
+      read(&[("text/plain", b"  "), ("image/png", b"png")]).as_deref(),
+      Some("image/png")
     );
+    assert_eq!(
+      read(&[("text/plain", b"hi"), ("image/png", b"png")]).as_deref(),
+      Some("text/plain")
+    );
+    assert_eq!(read(&[("text/plain", b"")]), None);
   }
 }

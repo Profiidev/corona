@@ -12,9 +12,9 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use super::{
-  Back, Complete, CompleteBack, CycleFilter, LauncherState, Open, PageDown, PageUp, Pop, Run,
-  RunKeepOpen, RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit,
-  ToggleActions, TogglePreview, form::FormPage, hud, style, window_size,
+  Back, Complete, CompleteBack, LauncherState, Open, PageDown, PageUp, Pop, Run, RunKeepOpen,
+  RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit, ToggleActions,
+  ToggleFilter, TogglePreview, form::FormPage, hud, style, window_size,
 };
 use crate::{
   args::{ArgSpec, Args},
@@ -185,6 +185,8 @@ pub struct Launcher {
   pub(super) toast: Option<Toast>,
   toast_timer: Option<Task<()>>,
   pub(super) preview: bool,
+  /// The filter dropdown is open, on this option
+  pub(super) filter_menu: Option<usize>,
   pub(super) busy: usize,
   /// What the failure toast's Retry runs
   retry: Option<Deferred>,
@@ -224,6 +226,7 @@ impl Launcher {
       toast: None,
       toast_timer: None,
       preview: cx.config().launcher.preview,
+      filter_menu: None,
       busy: 0,
       retry: None,
       was_active: false,
@@ -412,6 +415,9 @@ impl Launcher {
 
   /// Recomputes the rows of the current page, keeping the selection on the same id
   pub(super) fn refresh(&mut self, cx: &mut Context<Self>) {
+    if self.filter().is_none() {
+      self.filter_menu = None;
+    }
     let page = self.pages.last().expect("the launcher always has a page");
     let query = Query::new(page.query.clone());
     let results = match (&page.body, &page.scope) {
@@ -907,6 +913,9 @@ impl Launcher {
   }
 
   fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    if self.filter_menu.take().is_some() {
+      return cx.notify();
+    }
     if self.confirm.is_some() {
       return self.answer_confirm(false, window, cx);
     }
@@ -974,6 +983,9 @@ impl Launcher {
   }
 
   fn on_select_next(&mut self, _: &SelectNext, _: &mut Window, cx: &mut Context<Self>) {
+    if self.filter_menu.is_some() {
+      return self.move_filter(1, cx);
+    }
     if let Some(panel) = self.panel.as_mut() {
       let n = panel.visible(cx).len();
       panel.selected = (panel.selected + 1).min(n.saturating_sub(1));
@@ -987,6 +999,9 @@ impl Launcher {
   }
 
   fn on_select_prev(&mut self, _: &SelectPrev, _: &mut Window, cx: &mut Context<Self>) {
+    if self.filter_menu.is_some() {
+      return self.move_filter(-1, cx);
+    }
     if let Some(panel) = self.panel.as_mut() {
       panel.selected = panel.selected.saturating_sub(1);
       return cx.notify();
@@ -1028,6 +1043,9 @@ impl Launcher {
   }
 
   fn on_run(&mut self, _: &Run, window: &mut Window, cx: &mut Context<Self>) {
+    if let Some(at) = self.filter_menu {
+      return self.pick_filter(at, cx);
+    }
     if let Some(confirm) = &self.confirm {
       let yes = confirm.on_confirm;
       return self.answer_confirm(yes, window, cx);
@@ -1117,21 +1135,44 @@ impl Launcher {
     self.open_panel(window, cx);
   }
 
-  fn on_cycle_filter(&mut self, _: &CycleFilter, _: &mut Window, cx: &mut Context<Self>) {
-    self.cycle_filter(cx);
+  fn on_toggle_filter(&mut self, _: &ToggleFilter, _: &mut Window, cx: &mut Context<Self>) {
+    self.toggle_filter(cx);
   }
 
   /// The next option of the view's dropdown
-  pub(super) fn cycle_filter(&mut self, cx: &mut Context<Self>) {
-    let Body::List(view) = &self.page().body else {
-      return;
+  /// The current view's dropdown
+  pub(super) fn filter(&self) -> Option<&crate::view::Filter> {
+    match &self.page().body {
+      Body::List(view) => view.filter.as_ref(),
+      _ => None,
+    }
+  }
+
+  /// Opens the dropdown on the current option, or closes it
+  pub(super) fn toggle_filter(&mut self, cx: &mut Context<Self>) {
+    self.filter_menu = match (self.filter_menu, self.filter()) {
+      (None, Some(filter)) => Some(filter.selected.get()),
+      _ => None,
     };
-    let Some(filter) = &view.filter else {
-      return;
-    };
-    let n = filter.options.len().max(1);
-    filter.selected.set((filter.selected.get() + 1) % n);
+    cx.notify();
+  }
+
+  pub(super) fn pick_filter(&mut self, index: usize, cx: &mut Context<Self>) {
+    if let Some(filter) = self.filter() {
+      filter
+        .selected
+        .set(index.min(filter.options.len().saturating_sub(1)));
+    }
+    self.filter_menu = None;
     self.refresh(cx);
+  }
+
+  fn move_filter(&mut self, delta: isize, cx: &mut Context<Self>) {
+    let n = self.filter().map_or(0, |f| f.options.len()) as isize;
+    if let Some(at) = self.filter_menu.as_mut() {
+      *at = (*at as isize + delta).clamp(0, (n - 1).max(0)) as usize;
+      cx.notify();
+    }
   }
 
   fn on_toggle_preview(&mut self, _: &TogglePreview, _: &mut Window, cx: &mut Context<Self>) {
@@ -1250,11 +1291,7 @@ fn find_scope(scopes: &[Scope], text: &str) -> Option<(Scope, String)> {
 
 impl Render for Launcher {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let custom = match &self.page().body {
-      Body::Custom { view, .. } => view.size,
-      _ => None,
-    };
-    let card = window_size(self.shows_preview(cx), custom);
+    let card = window_size();
     let hovered = window.is_window_hovered();
     if self.was_hovered && !hovered && cx.config().launcher.close_on_unfocus {
       // not while drawing: closing removes the window
@@ -1281,7 +1318,7 @@ impl Render for Launcher {
       .on_action(cx.listener(Self::on_pop))
       .on_action(cx.listener(Self::on_toggle_actions))
       .on_action(cx.listener(Self::on_toggle_preview))
-      .on_action(cx.listener(Self::on_cycle_filter))
+      .on_action(cx.listener(Self::on_toggle_filter))
       .size_full()
       .flex()
       .items_center()
@@ -1525,5 +1562,35 @@ mod view_tests {
     vcx.simulate_mouse_move(at(3., 2.), None, none);
     vcx.run_until_parked();
     assert!(vcx.windows().is_empty());
+  }
+
+  #[gpui::test]
+  fn the_filter_is_a_dropdown(cx: &mut TestAppContext) {
+    setup(cx);
+    let selected = Rc::new(std::cell::Cell::new(0));
+    let filter = crate::view::Filter {
+      label: "Type".into(),
+      options: vec![
+        ("a".into(), "A".into()),
+        ("b".into(), "B".into()),
+        ("c".into(), "C".into()),
+      ],
+      selected: selected.clone(),
+    };
+    let source = crate::kit::ListSource::new("x", |_, _| Vec::new());
+    let view = ListView::new("X", "x", Rc::new(source))
+      .filter(filter)
+      .into_view();
+    let (launcher, cx) =
+      cx.add_window_view(|window, cx| Launcher::new(Open::View(view), window, cx));
+    cx.simulate_keystrokes("ctrl-f");
+    assert_eq!(launcher.read_with(cx, |l, _| l.filter_menu), Some(0));
+    cx.simulate_keystrokes("down down enter");
+    assert_eq!(selected.get(), 2);
+    assert_eq!(launcher.read_with(cx, |l, _| l.filter_menu), None);
+    // Esc closes the menu, not the launcher
+    cx.simulate_keystrokes("ctrl-f escape");
+    assert_eq!(launcher.read_with(cx, |l, _| l.filter_menu), None);
+    assert_eq!(cx.windows().len(), 1);
   }
 }

@@ -47,6 +47,7 @@ pub(super) fn frame(
     .child(div().flex_1().min_h_0().child(body(this, page, window, cx)))
     .child(footer(this, page, cx))
     .children(overlays::panel(this, cx))
+    .children(overlays::filter_menu(this, cx))
     .children(overlays::confirm(this, cx))
     .children(overlays::toast(this, cx))
     .into_any_element()
@@ -144,7 +145,7 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
             .border_color(theme.colors.border)
             .text_size(px(12.5))
             .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| this.cycle_filter(cx)))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_filter(cx)))
             .child(format!("{}: {label}", filter.label))
             .child(KitIcon::new(IconName::ChevronDown).with_size(px(12.))),
         )
@@ -261,6 +262,8 @@ fn results(this: &Launcher, page: &Page, _: &mut Window, cx: &mut Context<Launch
           .px(px(4.))
           .pb(px(6.))
           .children((start..end).map(|i| render_cell(&rows[i], i, cell, titles, weak.clone(), cx)))
+          // a short last line keeps the columns of the others
+          .children((end..start + columns).map(|_| div().flex_1().min_w_0()))
           .into_any_element()
       })
       .size_full()
@@ -530,7 +533,8 @@ fn render_cell(
   let theme = cx.theme();
   div()
     .id(("launcher-cell", index))
-    .w(px(cell))
+    .flex_1()
+    .min_w_0()
     .flex()
     .flex_col()
     .items_center()
@@ -541,7 +545,8 @@ fn render_cell(
     })
     .child(
       div()
-        .size(px(cell))
+        .w_full()
+        .h(px(cell))
         .flex()
         .items_center()
         .justify_center()

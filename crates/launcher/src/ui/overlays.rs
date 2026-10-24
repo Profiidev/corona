@@ -89,6 +89,50 @@ pub(super) fn panel(this: &Launcher, cx: &mut Context<Launcher>) -> Option<AnyEl
   )
 }
 
+/// The search bar dropdown's options, under it at the right
+pub(super) fn filter_menu(this: &Launcher, cx: &mut Context<Launcher>) -> Option<AnyElement> {
+  let at = this.filter_menu?;
+  let filter = this.filter()?;
+  let theme = cx.theme();
+  let current = filter.selected.get();
+  let rows = filter.options.iter().enumerate().map(|(i, (_, label))| {
+    div()
+      .id(("launcher-filter-option", i))
+      .h(px(32.))
+      .px(px(10.))
+      .flex()
+      .items_center()
+      .gap_2()
+      .rounded(px(7.))
+      .text_size(px(13.))
+      .when(i == at, |el| el.bg(style::selected(cx)))
+      .when(i != at, |el| el.hover(|s| s.bg(style::hover(cx))))
+      .cursor_pointer()
+      .on_click(cx.listener(move |this, _, _, cx| this.pick_filter(i, cx)))
+      .child(div().flex_1().child(label.clone()))
+      .when(i == current, |el| {
+        el.child(Icon::new(gpui_kit::assets::IconName::Check).with_size(px(14.)))
+      })
+  });
+  Some(
+    div()
+      .absolute()
+      .top(px(style::SEARCH_HEIGHT - 6.))
+      .right(px(16.))
+      .w(px(200.))
+      .p(px(4.))
+      .flex()
+      .flex_col()
+      .rounded(px(10.))
+      .border_1()
+      .border_color(theme.colors.border)
+      .bg(style::popover_fill(cx))
+      .shadow_lg()
+      .children(rows)
+      .into_any_element(),
+  )
+}
+
 pub(super) fn confirm(this: &Launcher, cx: &mut Context<Launcher>) -> Option<AnyElement> {
   let state = this.confirm.as_ref()?;
   let theme = cx.theme();
