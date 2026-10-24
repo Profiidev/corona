@@ -268,6 +268,9 @@ app:
         hide_idle:
           en: Hide when nothing records
           de: 'Ausblenden, wenn nichts aufnimmt'
+        hide_no_jobs:
+          en: Hide when nothing prints or scans
+          de: 'Ausblenden, wenn nichts druckt oder scannt'
       widget:
         control_center:
           en: Control center
@@ -284,6 +287,9 @@ app:
         bluetooth:
           en: Bluetooth
           de: Bluetooth
+        printers:
+          en: Printers
+          de: Drucker
         power:
           en: Power
           de: Energie

@@ -4,6 +4,7 @@ members = [
   "vendor/gpui-shell",
   "crates/components",
   "crates/bluez",
+  "crates/printing",
   "crates/brightness",
   "crates/compositor",
   "crates/config",
@@ -56,6 +57,7 @@ corona_shell = { path = "crates/shell" }
 corona_network_manager = { path = "crates/network_manager" }
 corona_mpris = { path = "crates/mpris" }
 corona_bluez = { path = "crates/bluez" }
+corona_printing = { path = "crates/printing" }
 corona_power = { path = "crates/power" }
 corona_brightness = { path = "crates/brightness" }
 corona_notifications = { path = "crates/notifications" }

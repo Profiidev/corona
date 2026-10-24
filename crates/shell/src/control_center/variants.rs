@@ -5,8 +5,8 @@ use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
   brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
   displays::DisplaysPanel, hotspot::HotspotPanel, media::MediaPanel, network::NetworkPanel,
-  notifications::NotificationsPanel, power::PowerPanel, sysinfo::SysinfoPanel,
-  weather::WeatherPanel,
+  notifications::NotificationsPanel, power::PowerPanel, printers::PrintersPanel,
+  sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
 use rust_i18n::t;
 
@@ -17,6 +17,7 @@ pub enum ControlCenterType {
   Network,
   Hotspot,
   Bluetooth,
+  Printers,
   Power,
   Brightness,
   Displays,
@@ -35,6 +36,7 @@ impl ControlCenterType {
       ControlCenterType::Network => "network",
       ControlCenterType::Hotspot => "hotspot",
       ControlCenterType::Bluetooth => "bluetooth",
+      ControlCenterType::Printers => "printers",
       ControlCenterType::Power => "power",
       ControlCenterType::Brightness => "brightness",
       ControlCenterType::Displays => "displays",
@@ -53,6 +55,7 @@ impl ControlCenterType {
       ControlCenterType::Network => IconName::Wifi,
       ControlCenterType::Hotspot => IconName::RadioTower,
       ControlCenterType::Bluetooth => IconName::Bluetooth,
+      ControlCenterType::Printers => IconName::Printer,
       ControlCenterType::Power => IconName::Zap,
       ControlCenterType::Brightness => IconName::Sun,
       ControlCenterType::Displays => IconName::Monitor,
@@ -71,6 +74,7 @@ impl ControlCenterType {
       ControlCenterType::Network => t!("app.control_center.network"),
       ControlCenterType::Hotspot => t!("app.control_center.hotspot"),
       ControlCenterType::Bluetooth => t!("app.control_center.bluetooth"),
+      ControlCenterType::Printers => t!("app.control_center.printers"),
       ControlCenterType::Power => t!("app.control_center.power"),
       ControlCenterType::Brightness => t!("app.control_center.brightness"),
       ControlCenterType::Displays => t!("app.control_center.displays"),
@@ -89,6 +93,7 @@ impl ControlCenterType {
       ControlCenterType::Network,
       ControlCenterType::Hotspot,
       ControlCenterType::Bluetooth,
+      ControlCenterType::Printers,
       ControlCenterType::Power,
       ControlCenterType::Brightness,
       ControlCenterType::Displays,
@@ -108,6 +113,7 @@ impl ControlCenterType {
       ControlCenterType::Network => NetworkPanel::handle(window, cx),
       ControlCenterType::Hotspot => HotspotPanel::handle(window, cx),
       ControlCenterType::Bluetooth => BluetoothPanel::handle(window, cx),
+      ControlCenterType::Printers => PrintersPanel::handle(window, cx),
       ControlCenterType::Power => PowerPanel::handle(window, cx),
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
       ControlCenterType::Displays => DisplaysPanel::handle(window, cx),
@@ -135,6 +141,7 @@ mod tests {
         | ControlCenterType::Network
         | ControlCenterType::Hotspot
         | ControlCenterType::Bluetooth
+        | ControlCenterType::Printers
         | ControlCenterType::Power
         | ControlCenterType::Brightness
         | ControlCenterType::Displays
@@ -145,7 +152,7 @@ mod tests {
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 13);
+    assert_eq!(all.len(), 14);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 
