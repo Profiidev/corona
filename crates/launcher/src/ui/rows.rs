@@ -557,7 +557,20 @@ fn render_cell(
             .border_color(style::focus_ring(cx))
         })
         .when(!row.selected, |el| el.hover(|s| s.bg(style::hover(cx))))
-        .child(icon(&row.icon, cell * 0.6, &row.id, cx)),
+        .child(match &row.icon {
+          // pictures fill the tile, cropped to it
+          Icon::Image(path) => div()
+            .size_full()
+            .p(px(4.))
+            .child(
+              img(path.clone())
+                .size_full()
+                .rounded(px(8.))
+                .object_fit(ObjectFit::Cover),
+            )
+            .into_any_element(),
+          other => icon(other, cell * 0.6, &row.id, cx),
+        }),
     )
     .when(titles, |el| {
       el.child(
