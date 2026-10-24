@@ -42,8 +42,7 @@ impl ControlCenter {
 impl Panel for ControlCenter {
   const NAME: &'static str = "control_center";
   const WIDTH: f32 = 500.0;
-  // the nav rail: 14 pages of 32 px buttons, its padding and gaps, and ours
-  const HEIGHT: f32 = 550.0;
+  const HEIGHT: f32 = 500.0;
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let selected = ControlCenterType::Dashboard;

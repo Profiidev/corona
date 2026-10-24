@@ -6,6 +6,7 @@ use gpui_kit::{
   component::{
     ActiveTheme,
     button::{Button, ButtonVariant, ButtonVariants},
+    scroll::ScrollableElement,
   },
   div,
   prelude::FluentBuilder,
@@ -48,26 +49,30 @@ impl RenderOnce for ControlCenterNav {
     div()
       .w(px(Self::WIDTH))
       .h_full()
-      .p_2()
-      .flex()
-      .flex_col()
-      .gap_1()
       .card(cx)
       .bg(theme.tokens.accent)
-      .children(ControlCenterType::iter().map(|v| {
-        Button::new(v.as_str())
-          .with_variant(if self.selected == v {
-            ButtonVariant::Primary
-          } else {
-            ButtonVariant::Ghost
-          })
-          .tooltip(v.title())
-          .cursor_pointer()
-          .icon(v.icon())
-          .when_some(on_click.clone(), |button, on_click| {
-            button.on_click(move |_, window, cx| on_click(v, window, cx))
-          })
-      }))
+      .child(
+        div()
+          .p_2()
+          .flex()
+          .flex_col()
+          .gap_1()
+          .overflow_y_scrollbar()
+          .children(ControlCenterType::iter().map(|v| {
+            Button::new(v.as_str())
+              .with_variant(if self.selected == v {
+                ButtonVariant::Primary
+              } else {
+                ButtonVariant::Ghost
+              })
+              .tooltip(v.title())
+              .cursor_pointer()
+              .icon(v.icon())
+              .when_some(on_click.clone(), |button, on_click| {
+                button.on_click(move |_, window, cx| on_click(v, window, cx))
+              })
+          })),
+      )
   }
 }
 
