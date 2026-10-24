@@ -8,10 +8,11 @@ use anyhow::Result;
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::{bar::BarConfig, launcher::LauncherConfig, plugins::PluginsConfig};
+use crate::{bar::BarConfig, launcher::LauncherConfig, osk::OskConfig, plugins::PluginsConfig};
 
 pub mod bar;
 pub mod launcher;
+pub mod osk;
 pub mod placement;
 pub mod plugins;
 mod read;
@@ -57,6 +58,7 @@ pub struct Config {
   pub window_switcher: WindowSwitcherConfig,
   pub launcher: LauncherConfig,
   pub taskbar: TaskbarConfig,
+  pub osk: OskConfig,
   pub control_center: ControlCenterConfig,
   pub weather: WeatherConfig,
   pub location: LocationConfig,
@@ -83,6 +85,7 @@ impl Default for Config {
       window_switcher: WindowSwitcherConfig::default(),
       launcher: LauncherConfig::default(),
       taskbar: TaskbarConfig::default(),
+      osk: OskConfig::default(),
       control_center: ControlCenterConfig::default(),
       weather: WeatherConfig::default(),
       location: LocationConfig::default(),
