@@ -666,8 +666,22 @@ app:
           en: 'Close on unfocus'
           de: 'Bei Fokusverlust schließen'
         description:
-          en: 'Close when another window takes the keyboard.'
-          de: 'Schließen, wenn ein anderes Fenster die Tastatur übernimmt.'
+          en: 'Close when the pointer moves away from it.'
+          de: 'Schließen, wenn der Mauszeiger ihn verlässt.'
+      width:
+        title:
+          en: 'Width'
+          de: 'Breite'
+        description:
+          en: 'Width in pixels, the same for every view.'
+          de: 'Breite in Pixeln, für jede Ansicht gleich.'
+      height:
+        title:
+          en: 'Height'
+          de: 'Höhe'
+        description:
+          en: 'Height in pixels, the same for every view.'
+          de: 'Höhe in Pixeln, für jede Ansicht gleich.'
       preview:
         title:
           en: 'Preview pane'

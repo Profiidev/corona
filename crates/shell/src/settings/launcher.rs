@@ -139,6 +139,26 @@ fn behavior(cx: &App) -> SettingGroup {
         ),
       ),
       item(
+        t!("app.settings.launcher.width.title"),
+        t!("app.settings.launcher.width.description"),
+        number(
+          "launcher.width",
+          (400., 2000., 10.),
+          |c| c.launcher.width.into(),
+          |c, v| c.launcher.width = v as f32,
+        ),
+      ),
+      item(
+        t!("app.settings.launcher.height.title"),
+        t!("app.settings.launcher.height.description"),
+        number(
+          "launcher.height",
+          (240., 1400., 10.),
+          |c| c.launcher.height.into(),
+          |c, v| c.launcher.height = v as f32,
+        ),
+      ),
+      item(
         t!("app.settings.launcher.preview.title"),
         t!("app.settings.launcher.preview.description"),
         switch(|c| c.launcher.preview, |c, v| c.launcher.preview = v),

@@ -1296,7 +1296,7 @@ fn find_scope(scopes: &[Scope], text: &str) -> Option<(Scope, String)> {
 
 impl Render for Launcher {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let card = window_size();
+    let card = window_size(cx);
     let hovered = window.is_window_hovered();
     if self.was_hovered && !hovered && cx.config().launcher.close_on_unfocus {
       // not while drawing: closing removes the window

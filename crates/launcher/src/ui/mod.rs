@@ -7,7 +7,7 @@ mod style;
 
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Global, KeyBinding, Pixels, Point, Size, Styled,
@@ -24,8 +24,9 @@ use crate::view::View;
 
 const NAMESPACE: &str = "corona_launcher";
 const CONTEXT: &str = "Launcher";
-pub const WIDTH: f32 = 900.;
-pub const HEIGHT: f32 = 520.;
+/// Smaller would cut the search bar and footer
+const MIN_WIDTH: f32 = 400.;
+const MIN_HEIGHT: f32 = 240.;
 
 gpui_kit::actions!(
   launcher,
@@ -178,7 +179,11 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
   Ok(())
 }
 
-/// Every view has the same card, with room for the preview pane
-pub(crate) fn window_size() -> Size<Pixels> {
-  size(px(WIDTH), px(HEIGHT))
+/// Every view has the same card, as large as the config says
+pub(crate) fn window_size(cx: &App) -> Size<Pixels> {
+  let launcher = &cx.config().launcher;
+  size(
+    px(launcher.width.max(MIN_WIDTH)),
+    px(launcher.height.max(MIN_HEIGHT)),
+  )
 }

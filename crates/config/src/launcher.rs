@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(default)]
 pub struct LauncherConfig {
-  /// Close when another window takes the keyboard
+  /// Close when the pointer moves away from it
   pub close_on_unfocus: bool,
+  /// Size of the launcher in pixels, the same for every view
+  pub width: f32,
+  pub height: f32,
   /// Command that runs a program in a terminal, like `kitty -e`. Empty: `xdg-terminal-exec`
   /// when installed, else `$TERMINAL -e`
   pub terminal: String,
@@ -40,6 +43,8 @@ impl Default for LauncherConfig {
   fn default() -> Self {
     Self {
       close_on_unfocus: true,
+      width: 800.,
+      height: 520.,
       terminal: String::new(),
       preview: true,
       section_limit: 5,
