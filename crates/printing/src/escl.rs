@@ -266,6 +266,12 @@ async fn pages(
         let path = settings
           .destination
           .join(format!("scan-{stamp}-{page}.{ext}"));
+        let body = match settings.format {
+          Format::Pdf if body.starts_with(&[0xFF, 0xD8]) => {
+            jpeg_to_pdf(&body, settings.resolution)?
+          }
+          _ => body,
+        };
         smol::fs::write(&path, body)
           .await
           .with_context(|| format!("saving {}", path.display()))?;
@@ -292,6 +298,87 @@ async fn pages(
     }
   }
   Ok(files)
+}
+
+/// Width, height and color components from a JPEG's frame header.
+fn jpeg_size(jpeg: &[u8]) -> Option<(u16, u16, u8)> {
+  let mut i = 2;
+  while let [0xFF, marker, hi, lo, rest @ ..] = jpeg.get(i..)? {
+    match marker {
+      // fill byte before a marker
+      0xFF => i += 1,
+      // every SOF marker but DHT, JPG and DAC
+      0xC0..=0xCF if !matches!(marker, 0xC4 | 0xC8 | 0xCC) => {
+        let [_, h1, h0, w1, w0, n, ..] = *rest else {
+          return None;
+        };
+        return Some((
+          u16::from_be_bytes([w1, w0]),
+          u16::from_be_bytes([h1, h0]),
+          n,
+        ));
+      }
+      _ => i += 2 + usize::from(u16::from_be_bytes([*hi, *lo])),
+    }
+  }
+  None
+}
+
+/// Some scanners offer PDF but send a JPEG anyway, it becomes a one page PDF.
+fn jpeg_to_pdf(jpeg: &[u8], dpi: u32) -> Result<Vec<u8>> {
+  let (width, height, components) = jpeg_size(jpeg).context("the scanner sent a broken JPEG")?;
+  let space = match components {
+    1 => "DeviceGray",
+    3 => "DeviceRGB",
+    4 => "DeviceCMYK",
+    n => bail!("the scanner sent a JPEG with {n} color components"),
+  };
+  let pt = |px: u16| f64::from(px) * 72.0 / f64::from(dpi.max(1));
+  let (w, h) = (pt(width), pt(height));
+  let stream = |dict: String, data: &[u8]| {
+    let mut obj = format!("<< {dict} /Length {} >>\nstream\n", data.len()).into_bytes();
+    obj.extend_from_slice(data);
+    obj.extend_from_slice(b"\nendstream");
+    obj
+  };
+  let objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+    format!(
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2} {h:.2}] \
+       /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"
+    )
+    .into_bytes(),
+    stream(
+      format!(
+        "/Type /XObject /Subtype /Image /Width {width} /Height {height} \
+         /ColorSpace /{space} /BitsPerComponent 8 /Filter /DCTDecode"
+      ),
+      jpeg,
+    ),
+    stream(
+      String::new(),
+      format!("q {w:.2} 0 0 {h:.2} 0 0 cm /Im0 Do Q").as_bytes(),
+    ),
+  ];
+  let mut pdf = b"%PDF-1.4\n".to_vec();
+  let mut xref = format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1);
+  for (n, obj) in objects.iter().enumerate() {
+    xref += &format!("{:010} 00000 n \n", pdf.len());
+    pdf.extend_from_slice(format!("{} 0 obj\n", n + 1).as_bytes());
+    pdf.extend_from_slice(obj);
+    pdf.extend_from_slice(b"\nendobj\n");
+  }
+  let start = pdf.len();
+  pdf.extend_from_slice(xref.as_bytes());
+  pdf.extend_from_slice(
+    format!(
+      "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n",
+      objects.len() + 1
+    )
+    .as_bytes(),
+  );
+  Ok(pdf)
 }
 
 #[cfg(test)]
@@ -416,6 +503,37 @@ mod tests {
       }
     });
     (client, log)
+  }
+
+  #[test]
+  fn wraps_a_jpeg_into_a_pdf() {
+    // SOI, an APP0 to skip, a fill byte, a 20x10 RGB baseline frame
+    let jpeg = [
+      0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00,
+      0x0A, 0x00, 0x14, 0x03,
+    ];
+    assert_eq!(jpeg_size(&jpeg), Some((20, 10, 3)));
+    assert_eq!(jpeg_size(&jpeg[..12]), None);
+    // one char per byte, so offsets stay byte offsets
+    let pdf: String = jpeg_to_pdf(&jpeg, 72)
+      .unwrap()
+      .iter()
+      .map(|&b| if b.is_ascii() { b as char } else { '?' })
+      .collect();
+    assert!(pdf.starts_with("%PDF-1.4\n"));
+    assert!(pdf.contains("/MediaBox [0 0 20.00 10.00]"), "{pdf}");
+    assert!(pdf.contains("/Width 20 /Height 10 /ColorSpace /DeviceRGB"));
+    // the xref points at each object
+    let at = |n: usize| pdf.find(&format!("\n{n} 0 obj")).unwrap() + 1;
+    assert!(pdf.contains(&format!("{:010} 00000 n \n", at(4))));
+    let start = pdf.rsplit("startxref\n").next().unwrap();
+    assert!(
+      pdf[start
+        .trim_end_matches("\n%%EOF\n")
+        .parse::<usize>()
+        .unwrap()..]
+        .starts_with("xref")
+    );
   }
 
   #[test]
