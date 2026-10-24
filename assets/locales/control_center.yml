@@ -16,6 +16,9 @@ app:
     bluetooth:
       en: Bluetooth
       de: Bluetooth
+    printers:
+      en: Printers
+      de: Drucker
     power:
       en: Power
       de: Energie
