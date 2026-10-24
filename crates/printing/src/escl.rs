@@ -256,6 +256,8 @@ async fn pages(
 ) -> Result<Vec<PathBuf>> {
   let ext = settings.format.extension();
   let mut files = Vec::new();
+  // pages a scanner sent as JPEG for a PDF, all in one file like SANE's
+  let mut jpegs = Vec::new();
   let mut busy = 0;
   loop {
     let (status, body) = get(client, &format!("{job}/NextDocument")).await?;
@@ -263,20 +265,32 @@ async fn pages(
       200 => {
         // named like SANE's pages
         let page = files.len() + 1;
-        let path = settings
-          .destination
-          .join(format!("scan-{stamp}-{page}.{ext}"));
-        let body = match settings.format {
-          Format::Pdf if body.starts_with(&[0xFF, 0xD8]) => {
-            jpeg_to_pdf(&body, settings.resolution)?
-          }
-          _ => body,
+        let path = |page| {
+          settings
+            .destination
+            .join(format!("scan-{stamp}-{page}.{ext}"))
         };
-        smol::fs::write(&path, body)
-          .await
-          .with_context(|| format!("saving {}", path.display()))?;
-        files.push(path);
-        on_page(files.len() as u32);
+        if settings.format == Format::Pdf && body.starts_with(&[0xFF, 0xD8]) {
+          jpegs.push(body);
+          // ponytail: rewrites the whole PDF per page so a jam keeps every
+          // page, append instead if huge feeder stacks get slow
+          let path = path(1);
+          let pdf = jpegs_to_pdf(&jpegs, settings.resolution)?;
+          smol::fs::write(&path, pdf)
+            .await
+            .with_context(|| format!("saving {}", path.display()))?;
+          if files.is_empty() {
+            files.push(path);
+          }
+          on_page(jpegs.len() as u32);
+        } else {
+          let path = path(page);
+          smol::fs::write(&path, body)
+            .await
+            .with_context(|| format!("saving {}", path.display()))?;
+          files.push(path);
+          on_page(files.len() as u32);
+        }
         // each page gets its own time to feed and scan
         busy = 0;
         // a flatbed has one page, asking again can error on some scanners
@@ -324,43 +338,59 @@ fn jpeg_size(jpeg: &[u8]) -> Option<(u16, u16, u8)> {
   None
 }
 
-/// Some scanners offer PDF but send a JPEG anyway, it becomes a one page PDF.
-fn jpeg_to_pdf(jpeg: &[u8], dpi: u32) -> Result<Vec<u8>> {
-  let (width, height, components) = jpeg_size(jpeg).context("the scanner sent a broken JPEG")?;
-  let space = match components {
-    1 => "DeviceGray",
-    3 => "DeviceRGB",
-    4 => "DeviceCMYK",
-    n => bail!("the scanner sent a JPEG with {n} color components"),
-  };
-  let pt = |px: u16| f64::from(px) * 72.0 / f64::from(dpi.max(1));
-  let (w, h) = (pt(width), pt(height));
+/// Some scanners offer PDF but send JPEGs anyway, they become one PDF with a
+/// page each.
+fn jpegs_to_pdf(jpegs: &[Vec<u8>], dpi: u32) -> Result<Vec<u8>> {
   let stream = |dict: String, data: &[u8]| {
     let mut obj = format!("<< {dict} /Length {} >>\nstream\n", data.len()).into_bytes();
     obj.extend_from_slice(data);
     obj.extend_from_slice(b"\nendstream");
     obj
   };
-  let objects = [
+  // the catalog, the page list, then a page, its image and its content each
+  let page = |n: usize| 3 + 3 * n;
+  let kids: Vec<_> = (0..jpegs.len())
+    .map(|n| format!("{} 0 R", page(n)))
+    .collect();
+  let mut objects = vec![
     b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
-    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
     format!(
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2} {h:.2}] \
-       /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"
+      "<< /Type /Pages /Kids [{}] /Count {} >>",
+      kids.join(" "),
+      jpegs.len()
     )
     .into_bytes(),
-    stream(
+  ];
+  for (n, jpeg) in jpegs.iter().enumerate() {
+    let (width, height, components) = jpeg_size(jpeg).context("the scanner sent a broken JPEG")?;
+    let space = match components {
+      1 => "DeviceGray",
+      3 => "DeviceRGB",
+      4 => "DeviceCMYK",
+      n => bail!("the scanner sent a JPEG with {n} color components"),
+    };
+    let pt = |px: u16| f64::from(px) * 72.0 / f64::from(dpi.max(1));
+    let (w, h) = (pt(width), pt(height));
+    let (image, content) = (page(n) + 1, page(n) + 2);
+    objects.push(
+      format!(
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2} {h:.2}] \
+         /Resources << /XObject << /Im0 {image} 0 R >> >> /Contents {content} 0 R >>"
+      )
+      .into_bytes(),
+    );
+    objects.push(stream(
       format!(
         "/Type /XObject /Subtype /Image /Width {width} /Height {height} \
          /ColorSpace /{space} /BitsPerComponent 8 /Filter /DCTDecode"
       ),
       jpeg,
-    ),
-    stream(
+    ));
+    objects.push(stream(
       String::new(),
       format!("q {w:.2} 0 0 {h:.2} 0 0 cm /Im0 Do Q").as_bytes(),
-    ),
-  ];
+    ));
+  }
   let mut pdf = b"%PDF-1.4\n".to_vec();
   let mut xref = format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1);
   for (n, obj) in objects.iter().enumerate() {
@@ -467,10 +497,16 @@ mod tests {
     let log = Arc::new(Mutex::new(Vec::new()));
     let seen = log.clone();
     let served = Arc::new(Mutex::new(0));
+    // answers a PDF job with JPEGs, as some scanners do
+    let jpegs = Arc::new(Mutex::new(false));
     let client = FakeHttpClient::create(move |mut req| {
       let url = req.uri().to_string();
       let mut body = String::new();
       block_on(req.body_mut().read_to_string(&mut body)).unwrap();
+      if body.contains("application/pdf") {
+        *jpegs.lock().unwrap() = true;
+      }
+      let jpegs = *jpegs.lock().unwrap();
       seen
         .lock()
         .unwrap()
@@ -493,7 +529,10 @@ mod tests {
             let mut served = served.lock().unwrap();
             if *served < pages {
               *served += 1;
-              response.status(200).body(format!("page {served}").into())?
+              match jpegs {
+                true => response.status(200).body(JPEG.to_vec().into())?,
+                false => response.status(200).body(format!("page {served}").into())?,
+              }
             } else {
               response.status(404).body(AsyncBody::empty())?
             }
@@ -505,35 +544,39 @@ mod tests {
     (client, log)
   }
 
+  /// SOI, an APP0 to skip, a fill byte, a 20x10 RGB baseline frame
+  const JPEG: [u8; 19] = [
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x0A,
+    0x00, 0x14, 0x03,
+  ];
+
   #[test]
-  fn wraps_a_jpeg_into_a_pdf() {
-    // SOI, an APP0 to skip, a fill byte, a 20x10 RGB baseline frame
-    let jpeg = [
-      0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00,
-      0x0A, 0x00, 0x14, 0x03,
-    ];
-    assert_eq!(jpeg_size(&jpeg), Some((20, 10, 3)));
-    assert_eq!(jpeg_size(&jpeg[..12]), None);
+  fn wraps_jpegs_into_one_pdf() {
+    assert_eq!(jpeg_size(&JPEG), Some((20, 10, 3)));
+    assert_eq!(jpeg_size(&JPEG[..12]), None);
+    let mut gray = JPEG.to_vec();
+    gray[18] = 1;
     // one char per byte, so offsets stay byte offsets
-    let pdf: String = jpeg_to_pdf(&jpeg, 72)
+    let pdf: String = jpegs_to_pdf(&[JPEG.to_vec(), gray], 72)
       .unwrap()
       .iter()
       .map(|&b| if b.is_ascii() { b as char } else { '?' })
       .collect();
     assert!(pdf.starts_with("%PDF-1.4\n"));
-    assert!(pdf.contains("/MediaBox [0 0 20.00 10.00]"), "{pdf}");
+    assert!(pdf.contains("/Kids [3 0 R 6 0 R] /Count 2"), "{pdf}");
+    assert!(pdf.contains("/MediaBox [0 0 20.00 10.00]"));
     assert!(pdf.contains("/Width 20 /Height 10 /ColorSpace /DeviceRGB"));
+    assert!(pdf.contains("/ColorSpace /DeviceGray"));
+    assert!(pdf.contains("/XObject << /Im0 7 0 R >> >> /Contents 8 0 R"));
     // the xref points at each object
-    let at = |n: usize| pdf.find(&format!("\n{n} 0 obj")).unwrap() + 1;
-    assert!(pdf.contains(&format!("{:010} 00000 n \n", at(4))));
+    let xref = &pdf[pdf.find("\nxref\n").unwrap()..];
+    for n in 1..=8 {
+      let at = pdf.find(&format!("\n{n} 0 obj")).unwrap() + 1;
+      assert!(xref.contains(&format!("{at:010} 00000 n \n")), "object {n}");
+    }
     let start = pdf.rsplit("startxref\n").next().unwrap();
-    assert!(
-      pdf[start
-        .trim_end_matches("\n%%EOF\n")
-        .parse::<usize>()
-        .unwrap()..]
-        .starts_with("xref")
-    );
+    let start: usize = start.trim_end_matches("\n%%EOF\n").parse().unwrap();
+    assert!(pdf[start..].starts_with("xref"));
   }
 
   #[test]
@@ -587,6 +630,26 @@ mod tests {
       assert!(job.contains(part), "{part} missing in {job}");
     }
     assert_eq!(log.len(), 4, "job, two pages, the final 404");
+  }
+
+  #[test]
+  fn feeder_jpegs_become_one_pdf() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, _) = fake_scanner(3);
+    let caps = parse_capabilities(CAPS).unwrap();
+    let mut pages = Vec::new();
+    let settings = ScanSettings {
+      format: Format::Pdf,
+      ..settings(dir.path(), InputSource::Adf)
+    };
+    let files = block_on(scan(&client, &test_scanner(), &caps, &settings, "x", |n| {
+      pages.push(n)
+    }))
+    .unwrap();
+    assert_eq!(pages, [1, 2, 3]);
+    assert_eq!(files, [dir.path().join("scan-x-1.pdf")]);
+    let pdf = String::from_utf8_lossy(&std::fs::read(&files[0]).unwrap()).into_owned();
+    assert!(pdf.contains("/Count 3"), "{pdf}");
   }
 
   #[test]
