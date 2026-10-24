@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::tray::{Activate, ListEntries};
 
@@ -10,8 +12,9 @@ pub enum TrayCommands {
   List,
   /// Activate an item, or click a menu entry by id
   Activate {
+    #[arg(add = ArgValueCandidates::new(complete::tray))]
     address: String,
-    #[arg(long)]
+    #[arg(long, add = ArgValueCandidates::new(complete::tray_menus))]
     menu: Option<i32>,
   },
 }

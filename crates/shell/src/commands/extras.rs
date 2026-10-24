@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcServer, Reply};
 use corona_launcher::commands::{
-  processes::{by_port, kill},
+  processes::{by_port, kill, snapshot},
   storage::{eject, empty_trash, mount, trash_count, volumes},
   timers::{self, Kind},
 };
@@ -18,6 +18,7 @@ pub fn register_commands(server: &mut IpcServer) {
     .register::<DriveAction>()
     .register::<KillProcess>()
     .register::<KillPort>()
+    .register::<ListProcesses>()
     .register::<StartTimer>()
     .register::<ListTimers>()
     .register::<StopTimer>();
@@ -133,6 +134,22 @@ impl IpcCommand for KillProcess {
 
   fn handle((pid, force): Self::Payload, _: &mut App) -> Result<Self::Response> {
     kill(pid, force)
+  }
+}
+
+/// Process ids with their names
+pub struct ListProcesses;
+
+impl IpcCommand for ListProcesses {
+  const COMMAND: &'static str = "process:list";
+
+  type Payload = ();
+  type Response = Vec<(u32, String)>;
+
+  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
+    let mut list: Vec<(u32, String)> = snapshot().into_iter().map(|p| (p.pid, p.name)).collect();
+    list.sort();
+    Ok(list)
   }
 }
 

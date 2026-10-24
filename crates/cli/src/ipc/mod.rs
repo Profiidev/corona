@@ -42,6 +42,7 @@ use crate::ipc::{
 mod audio;
 mod brightness;
 mod clipboard;
+mod complete;
 mod extras;
 mod launcher;
 mod network;
@@ -69,7 +70,10 @@ pub enum IpcCommands {
   /// Show the desktop, or the windows again
   ShowDesktop,
   /// List keyboard layouts, or switch to next, previous, an index or a name
-  KeyboardLayout { layout: Option<String> },
+  KeyboardLayout {
+    #[arg(add = clap_complete::ArgValueCandidates::new(complete::layouts))]
+    layout: Option<String>,
+  },
   /// Audio devices and app streams
   Audio {
     #[command(subcommand)]
@@ -86,6 +90,7 @@ pub enum IpcCommands {
   BluetoothDevice {
     #[arg(ignore_case = true)]
     action: BluetoothAction,
+    #[arg(add = clap_complete::ArgValueCandidates::new(complete::bluetooth))]
     device: String,
   },
   /// Look for Bluetooth devices to pair: on or off

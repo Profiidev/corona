@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::{
   network::{
@@ -15,11 +17,17 @@ pub enum NetworkCommands {
   /// List the Wi-Fi networks in range
   List,
   /// Connect to a Wi-Fi network
-  Connect { ssid: String },
+  Connect {
+    #[arg(add = ArgValueCandidates::new(complete::ssids))]
+    ssid: String,
+  },
   /// Disconnect from the Wi-Fi network
   Disconnect,
   /// Forget a saved Wi-Fi network
-  Forget { ssid: String },
+  Forget {
+    #[arg(add = ArgValueCandidates::new(complete::ssids))]
+    ssid: String,
+  },
   /// Join a network that hides its name
   JoinHidden {
     ssid: String,
@@ -33,7 +41,11 @@ pub enum NetworkCommands {
   /// List VPNs
   Vpns,
   /// A VPN by name or uuid: on, off, toggle or status
-  Vpn { name: String, switch: Switch },
+  Vpn {
+    #[arg(add = ArgValueCandidates::new(complete::vpns))]
+    name: String,
+    switch: Switch,
+  },
   /// The hotspot: on, off, toggle or status
   Hotspot { switch: Switch },
   /// Open the captive portal's login page

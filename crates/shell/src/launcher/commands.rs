@@ -12,7 +12,8 @@ pub fn register_commands(server: &mut IpcServer) {
     .register::<Open>()
     .register::<Close>()
     .register::<Toggle>()
-    .register::<Dmenu>();
+    .register::<Dmenu>()
+    .register::<ListCommands>();
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +103,28 @@ impl IpcCommand for Dmenu {
       opened?;
       choice.await.map_err(|_| anyhow!("cancelled"))
     })
+  }
+}
+
+/// Every command id with its title, for completions
+pub struct ListCommands;
+
+impl IpcCommand for ListCommands {
+  const COMMAND: &'static str = "launcher:commands";
+
+  type Payload = ();
+  type Response = Vec<(String, String)>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    let registry = cx.global::<corona_launcher::registry::Registry>();
+    let mut commands: Vec<(String, String)> = registry
+      .all(cx)
+      .iter()
+      .map(|c| (c.id().to_string(), c.meta(cx).title.to_string()))
+      .collect();
+    commands.sort();
+    commands.dedup_by(|a, b| a.0 == b.0);
+    Ok(commands)
   }
 }
 

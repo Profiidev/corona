@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::{
   audio::{Kind, ListNodes, MoveStream, MuteFocused, SetDefault, StreamVolume},
@@ -12,17 +14,30 @@ pub enum AudioCommands {
   /// List outputs, inputs or app streams
   List { kind: Kind },
   /// Make an output or input the default, by id, name or description
-  Default { kind: Kind, device: String },
+  Default {
+    kind: Kind,
+    #[arg(add = ArgValueCandidates::new(complete::devices))]
+    device: String,
+  },
   /// Set an app stream's volume, by id or app name
   Stream {
+    #[arg(add = ArgValueCandidates::new(complete::streams))]
     stream: String,
     #[arg(value_parser = level)]
     level: f32,
   },
   /// Mute or unmute an app stream
-  MuteStream { stream: String },
+  MuteStream {
+    #[arg(add = ArgValueCandidates::new(complete::streams))]
+    stream: String,
+  },
   /// Play an app stream on another output
-  Move { stream: String, output: String },
+  Move {
+    #[arg(add = ArgValueCandidates::new(complete::streams))]
+    stream: String,
+    #[arg(add = ArgValueCandidates::new(complete::outputs))]
+    output: String,
+  },
   /// Mute or unmute the focused window's audio
   MuteFocused,
 }

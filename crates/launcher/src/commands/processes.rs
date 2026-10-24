@@ -49,6 +49,11 @@ fn sample(system: &mut System) -> Vec<Process> {
     .collect()
 }
 
+/// Every process once, without CPU use (that needs two samples)
+pub fn snapshot() -> Vec<Process> {
+  sample(&mut System::new())
+}
+
 /// SIGTERM, or SIGKILL when forced
 pub fn kill(pid: u32, force: bool) -> Result<()> {
   let pid = rustix::process::Pid::from_raw(pid as i32).context("not a process id")?;

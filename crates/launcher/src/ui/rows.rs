@@ -255,6 +255,7 @@ fn results(this: &Launcher, page: &Page, _: &mut Window, cx: &mut Context<Launch
         let start = line * columns;
         let end = (start + columns).min(rows.len());
         div()
+          .w_full()
           .flex()
           .gap(px(6.))
           .px(px(4.))
@@ -407,6 +408,7 @@ fn render_row(
   };
   div()
     .id(("launcher-row", index))
+    .w_full()
     .h(px(style::ROW_HEIGHT))
     .px(px(10.))
     .flex()
@@ -482,6 +484,7 @@ fn evaluation_tile(
   };
   div()
     .id(("launcher-evaluation", index))
+    .w_full()
     .mb_1()
     .h(px(style::EVALUATION_HEIGHT))
     .flex()

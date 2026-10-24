@@ -17,7 +17,10 @@ pub fn register_commands(server: &mut IpcServer) {
     .register::<CloseAll>()
     .register::<FocusMonitor>()
     .register::<ShowDesktop>()
-    .register::<KeyboardLayout>();
+    .register::<KeyboardLayout>()
+    .register::<ListWindows>()
+    .register::<ListWorkspaces>()
+    .register::<ListMonitors>();
 }
 
 /// The window at `address`, or the focused one
@@ -379,6 +382,67 @@ impl IpcCommand for KeyboardLayout {
       layouts.insert(0, active);
     }
     Ok(layouts)
+  }
+}
+
+/// Window addresses with class and title
+pub struct ListWindows;
+
+impl IpcCommand for ListWindows {
+  const COMMAND: &'static str = "window:list";
+
+  type Payload = ();
+  type Response = Vec<(String, String)>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    Compositor::refresh_windows(cx)?;
+    Ok(
+      cx.compositor()
+        .list_windows(cx)
+        .iter()
+        .map(|w| (w.address.clone(), format!("{}: {}", w.class, w.title)))
+        .collect(),
+    )
+  }
+}
+
+/// Workspace ids with their names
+pub struct ListWorkspaces;
+
+impl IpcCommand for ListWorkspaces {
+  const COMMAND: &'static str = "workspace:list";
+
+  type Payload = ();
+  type Response = Vec<(String, String)>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    Ok(
+      cx.compositor()
+        .list_workspaces(cx)
+        .iter()
+        .map(|w| (w.id.clone(), w.name.clone()))
+        .collect(),
+    )
+  }
+}
+
+/// Monitor names
+pub struct ListMonitors;
+
+impl IpcCommand for ListMonitors {
+  const COMMAND: &'static str = "monitor:list";
+
+  type Payload = ();
+  type Response = Vec<String>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    Ok(
+      cx.compositor()
+        .list_monitors(cx)
+        .iter()
+        .map(|m| m.name.clone())
+        .collect(),
+    )
   }
 }
 

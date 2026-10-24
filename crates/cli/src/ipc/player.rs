@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::{
   player::{ListPlayers, Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle},
@@ -22,7 +24,10 @@ pub enum PlayerCommands {
     mode: LoopMode,
   },
   /// Make a player active, by name like Spotify
-  Set { player: String },
+  Set {
+    #[arg(add = ArgValueCandidates::new(complete::players))]
+    player: String,
+  },
   /// List the players
   List,
 }

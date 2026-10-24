@@ -7,7 +7,7 @@ mod style;
 
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider};
+use corona_config::APP_NAME;
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Global, KeyBinding, Pixels, Point, Size, Styled,
@@ -140,27 +140,20 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
     });
   }
 
-  let monitor = cx.compositor().active_monitor(cx).clone();
-  let display = display_id_for(&monitor.name, cx).context("no display for the focused monitor")?;
-  let scale = monitor.scale.max(0.1);
-  let height = monitor.height as f32 / scale;
-  // the window's centre on the upper third line
-  let top = (height / 3. - HEIGHT / 2.).max(24.);
-  let unfocus = cx.config().launcher.close_on_unfocus;
+  let monitor = cx.compositor().active_monitor(cx).name.clone();
+  let display = display_id_for(&monitor, cx).context("no display for the focused monitor")?;
 
+  // a full screen surface with the card centred: the keyboard stays with it wherever the
+  // pointer is, and a click beside the card is what closes it
   let options = WindowOptions {
     kind: WindowKind::LayerShell(LayerShellOptions {
-      anchor: Anchor::TOP,
-      exclusive_zone: None,
+      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+      exclusive_zone: Some(px(-1.)),
       exclusive_edge: None,
-      margin: Some((px(top), px(0.), px(0.), px(0.))),
+      margin: None,
       layer: Layer::Overlay,
       namespace: NAMESPACE.to_string(),
-      // on-demand loses the keyboard to a clicked window, which is what unfocus closes on
-      keyboard_interactivity: match unfocus {
-        true => KeyboardInteractivity::OnDemand,
-        false => KeyboardInteractivity::Exclusive,
-      },
+      keyboard_interactivity: KeyboardInteractivity::Exclusive,
     }),
     window_background: WindowBackgroundAppearance::Transparent,
     window_decorations: Some(WindowDecorations::Client),
@@ -168,7 +161,7 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
     titlebar: None,
     window_bounds: Some(WindowBounds::Windowed(Bounds {
       origin: Point::default(),
-      size: size(px(WIDTH), px(HEIGHT)),
+      size: size(px(0.), px(0.)),
     })),
     display_id: Some(display),
     ..Default::default()

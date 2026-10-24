@@ -4,7 +4,7 @@ use anyhow::Result;
 use corona_config::ConfigProvider;
 use gpui_kit::{
   AnyView, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-  KeyDownEvent, ListAlignment, ListState, ParentElement, Render, SharedString, Styled,
+  KeyDownEvent, ListAlignment, ListState, MouseButton, ParentElement, Render, SharedString, Styled,
   Subscription, Task, Window,
   base::input::{InputEvent, InputState},
   div, px,
@@ -190,8 +190,6 @@ pub struct Launcher {
   retry: Option<Deferred>,
   was_active: bool,
   skip_confirm: HashSet<String>,
-  /// The window size the last render asked for
-  size: gpui_kit::Size<gpui_kit::Pixels>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -226,7 +224,6 @@ impl Launcher {
       retry: None,
       was_active: false,
       skip_confirm: state::load("confirm_skips"),
-      size: window_size(false, None),
       _subscriptions: subscriptions,
     };
     this.reset(open, window, cx);
@@ -1225,11 +1222,7 @@ impl Render for Launcher {
       Body::Custom { view, .. } => view.size,
       _ => None,
     };
-    let size = window_size(self.shows_preview(cx), custom);
-    if size != self.size {
-      self.size = size;
-      window.resize(size);
-    }
+    let card = window_size(self.shows_preview(cx), custom);
     div()
       .key_context(super::CONTEXT)
       .track_focus(&self.focus)
@@ -1252,7 +1245,24 @@ impl Render for Launcher {
       .on_action(cx.listener(Self::on_toggle_preview))
       .on_action(cx.listener(Self::on_cycle_filter))
       .size_full()
-      .child(super::rows::frame(self, window, cx))
+      .flex()
+      .items_center()
+      .justify_center()
+      .on_mouse_down(
+        MouseButton::Left,
+        cx.listener(|_, _, window, cx| {
+          if cx.config().launcher.close_on_unfocus {
+            close_in(window, cx);
+          }
+        }),
+      )
+      .child(
+        div()
+          .w(card.width)
+          .h(card.height)
+          .occlude()
+          .child(super::rows::frame(self, window, cx)),
+      )
   }
 }
 

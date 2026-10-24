@@ -21,11 +21,11 @@ pub const SIDEBAR_WIDTH: f32 = 230.;
 pub const MAX_ARGS: usize = 3;
 
 pub fn window_fill(cx: &App) -> Hsla {
-  cx.theme().tokens.background.opacity(0.86)
+  cx.theme().tokens.background.opacity(1.)
 }
 
 pub fn popover_fill(cx: &App) -> Hsla {
-  cx.theme().tokens.background.opacity(0.96)
+  cx.theme().tokens.background.opacity(1.)
 }
 
 pub fn footer_fill() -> Hsla {

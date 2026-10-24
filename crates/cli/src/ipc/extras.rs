@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::extras::{
   Drive, DriveAction, EmptyTrash, KillPort, KillProcess, ListDrives, ListTimers, StartTimer,
@@ -33,9 +35,15 @@ pub enum DriveCommands {
   /// List removable drives
   List,
   /// Mount a drive by device or label
-  Mount { drive: String },
+  Mount {
+    #[arg(add = ArgValueCandidates::new(complete::drives))]
+    drive: String,
+  },
   /// Unmount and power off a drive by device or label
-  Eject { drive: String },
+  Eject {
+    #[arg(add = ArgValueCandidates::new(complete::drives))]
+    drive: String,
+  },
 }
 
 impl DriveCommands {
@@ -59,6 +67,7 @@ impl DriveCommands {
 pub enum ProcessCommands {
   /// Send SIGTERM, or SIGKILL with --force
   Kill {
+    #[arg(add = ArgValueCandidates::new(complete::processes))]
     pid: u32,
     #[arg(long)]
     force: bool,
@@ -120,7 +129,10 @@ pub enum TimerCommands {
   /// List running timers
   List,
   /// Stop a timer by id
-  Stop { id: u64 },
+  Stop {
+    #[arg(add = ArgValueCandidates::new(complete::timers))]
+    id: u64,
+  },
 }
 
 impl TimerCommands {

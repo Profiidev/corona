@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::monitor::{Change, Configure};
 use corona_shell::commands::window::{
@@ -14,29 +16,31 @@ pub enum WindowCommands {
   Toggle {
     what: WindowToggle,
     /// The window's address, the focused one by default
-    #[arg(long)]
+    #[arg(long, add = ArgValueCandidates::new(complete::windows))]
     address: Option<String>,
   },
   /// Move a window to a workspace
   MoveToWorkspace {
+    #[arg(add = ArgValueCandidates::new(complete::workspaces))]
     workspace: String,
     /// Go along to the workspace
     #[arg(long)]
     follow: bool,
-    #[arg(long)]
+    #[arg(long, add = ArgValueCandidates::new(complete::windows))]
     address: Option<String>,
   },
   /// Move a window to the next, previous or a named monitor
   MoveToMonitor {
+    #[arg(add = ArgValueCandidates::new(complete::monitor_targets))]
     monitor: String,
-    #[arg(long)]
+    #[arg(long, add = ArgValueCandidates::new(complete::windows))]
     address: Option<String>,
   },
   /// Float a window into a part of its monitor, or restore it
   Layout {
     #[arg(ignore_case = true)]
     layout: Layout,
-    #[arg(long)]
+    #[arg(long, add = ArgValueCandidates::new(complete::windows))]
     address: Option<String>,
   },
   /// Close every window but the excluded classes
@@ -80,13 +84,18 @@ impl WindowCommands {
 #[derive(Subcommand)]
 pub enum MonitorCommands {
   /// Focus the next, previous or a named monitor
-  Focus { monitor: String },
+  Focus {
+    #[arg(add = ArgValueCandidates::new(complete::monitor_targets))]
+    monitor: String,
+  },
   /// Enable, disable or mirror a monitor until Hyprland reloads its config
   Configure {
+    #[arg(add = ArgValueCandidates::new(complete::monitors))]
     monitor: String,
     #[arg(ignore_case = true)]
     change: Change,
     /// The monitor to show when mirroring
+    #[arg(add = ArgValueCandidates::new(complete::monitors))]
     source: Option<String>,
   },
 }

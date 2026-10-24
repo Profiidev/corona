@@ -1,4 +1,6 @@
+use crate::ipc::complete;
 use clap::Subcommand;
+use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::clipboard::{ClearClipboard, DeleteClip, ListClipboard};
 
@@ -14,7 +16,10 @@ pub enum ClipboardCommands {
     limit: usize,
   },
   /// Delete an entry by id
-  Delete { id: i64 },
+  Delete {
+    #[arg(add = ArgValueCandidates::new(complete::clips))]
+    id: i64,
+  },
   /// Delete everything but the pinned entries
   Clear,
 }
