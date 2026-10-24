@@ -5,13 +5,16 @@ use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
   Config, ConfigProvider, IdleAction, IdleBehavior, NotificationPosition, OsdPosition, ThemeMode,
   Units, Weekday,
+  osk::{AutoShow, OskLanguage, OskLayout},
 };
+use corona_osk::Osk;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Axis, SharedString, Styled, Window,
+  App, Axis, BorrowAppContext, SharedString, Styled, Window,
   assets::IconName,
   component::{
     Icon, Sizable,
+    button::Button,
     setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage},
   },
 };
@@ -25,7 +28,7 @@ use crate::settings::{
 use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
-pub const PAGES: [&str; 16] = [
+pub const PAGES: [&str; 17] = [
   "appearance",
   "bar",
   "wallpaper",
@@ -35,6 +38,7 @@ pub const PAGES: [&str; 16] = [
   "taskbar",
   "window_switcher",
   "launcher",
+  "osk",
   "lockscreen",
   "idle",
   "screenshot",
@@ -55,6 +59,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     taskbar(),
     window_switcher(),
     launcher::page_of(cx),
+    osk(),
     lockscreen(cx),
     idle(cx),
     screenshot(),
@@ -569,6 +574,100 @@ fn control_center() -> SettingPage {
         ),
       ],
     )],
+  )
+}
+
+fn osk() -> SettingPage {
+  page(
+    t!("app.settings.osk.title"),
+    IconName::Keyboard,
+    vec![
+      group(
+        t!("app.settings.osk.groups.keyboard"),
+        vec![
+          item(
+            t!("app.settings.osk.enabled.title"),
+            t!("app.settings.osk.enabled.description"),
+            switch(|c| c.osk.enabled, |c, v| c.osk.enabled = v),
+          ),
+          item(
+            t!("app.settings.osk.auto_show.title"),
+            t!("app.settings.osk.auto_show.description"),
+            choice(
+              &[
+                (AutoShow::Never, t!("app.settings.options.never")),
+                (AutoShow::Always, t!("app.settings.options.always")),
+                (AutoShow::TabletMode, t!("app.settings.options.tablet_mode")),
+              ],
+              |c| c.osk.auto_show,
+              |c, v| c.osk.auto_show = v,
+            ),
+          ),
+          item(
+            t!("app.settings.osk.layout.title"),
+            t!("app.settings.osk.layout.description"),
+            choice(
+              &[
+                (OskLayout::Auto, t!("app.settings.options.language_auto")),
+                (OskLayout::Qwerty, "QWERTY".into()),
+                (OskLayout::Qwertz, "QWERTZ".into()),
+              ],
+              |c| c.osk.layout,
+              |c, v| c.osk.layout = v,
+            ),
+          ),
+          item(
+            t!("app.settings.osk.language.title"),
+            t!("app.settings.osk.language.description"),
+            // each language under its own name
+            choice(
+              &[
+                (OskLanguage::Auto, t!("app.settings.options.language_auto")),
+                (OskLanguage::En, "English".into()),
+                (OskLanguage::De, "Deutsch".into()),
+              ],
+              |c| c.osk.language,
+              |c, v| c.osk.language = v,
+            ),
+          ),
+        ],
+      ),
+      group(
+        t!("app.settings.osk.groups.suggestions"),
+        vec![
+          item(
+            t!("app.settings.osk.suggestions.title"),
+            t!("app.settings.osk.suggestions.description"),
+            switch(|c| c.osk.suggestions, |c, v| c.osk.suggestions = v),
+          ),
+          item(
+            t!("app.settings.osk.spell_check.title"),
+            t!("app.settings.osk.spell_check.description"),
+            switch(|c| c.osk.spell_check, |c, v| c.osk.spell_check = v),
+          ),
+          item(
+            t!("app.settings.osk.learn_words.title"),
+            t!("app.settings.osk.learn_words.description"),
+            switch(|c| c.osk.learn_words, |c, v| c.osk.learn_words = v),
+          ),
+          SettingItem::new(
+            t!("app.settings.osk.clear_learned.title"),
+            SettingField::render(|_, _, _| {
+              Button::new("osk-clear-learned")
+                .label(t!("app.settings.osk.clear_learned.button"))
+                .outline()
+                .small()
+                .on_click(|_, _, cx| {
+                  if cx.has_global::<Osk>() {
+                    cx.update_global::<Osk, _>(|osk, cx| osk.clear_learned(cx));
+                  }
+                })
+            }),
+          )
+          .description(t!("app.settings.osk.clear_learned.description").to_string()),
+        ],
+      ),
+    ],
   )
 }
 
