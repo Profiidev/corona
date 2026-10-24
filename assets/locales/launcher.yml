@@ -41,7 +41,7 @@ app:
       en: 'Search actions…'
       de: 'Aktionen suchen …'
     dont_ask:
-      en: 'Don''t ask again'
+      en: "Don't ask again"
       de: 'Nicht mehr fragen'
     discard:
       title:
@@ -1059,7 +1059,7 @@ app:
         en: 'Search by name, like arrow right…'
         de: 'Nach Namen suchen, etwa arrow right …'
       type_name:
-        en: 'Type a character''s name'
+        en: "Type a character's name"
         de: 'Namen eines Zeichens eingeben'
     files:
       browse:
