@@ -27,9 +27,14 @@ hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc switcher --mode works
 
 ### On-screen keyboard
 
-The keyboard shows when a text field gets focus, by default only in tablet mode. Corona does not
-read the tablet-mode switch itself; bind it in Hyprland. The switch's name is listed under
-`switches` in `hyprctl devices`:
+The keyboard shows when a text field gets focus, by default only in tablet mode. Tablet mode comes
+from one of two places, set by `[osk] tablet_source`:
+
+- `hinge`: the hinge angle sensor of a convertible (an IIO device named `hinge`, see
+  `grep -l hinge /sys/bus/iio/devices/*/name`). Folded past 200° is tablet mode, back under 160°
+  is not. Use this when flipping the screen produces no switch event (`libinput debug-events`).
+- `ipc` (default): `corona ipc osk tablet on|off`, for example from Hyprland switch binds. The
+  switch's name is listed under `switches` in `hyprctl devices`:
 
 ```lua
 hl.bind("switch:on:Tablet Mode Switch", hl.dsp.exec_cmd("corona ipc osk tablet on"), { locked = true })

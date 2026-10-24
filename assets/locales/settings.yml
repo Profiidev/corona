@@ -62,6 +62,12 @@ app:
       tablet_mode:
         en: In tablet mode
         de: Im Tablet-Modus
+      ipc:
+        en: corona ipc osk tablet
+        de: corona ipc osk tablet
+      hinge:
+        en: Hinge sensor
+        de: Scharniersensor
     appearance:
       screen_corners:
         title:
@@ -898,6 +904,13 @@ app:
         description:
           en: 'When a focused text field opens the keyboard. Tablet mode comes from `corona ipc osk tablet`, for example in a Hyprland switch bind.'
           de: 'Wann ein fokussiertes Textfeld die Tastatur öffnet. Den Tablet-Modus setzt `corona ipc osk tablet`, etwa in einem Hyprland-Switch-Bind.'
+      tablet_source:
+        title:
+          en: Tablet mode from
+          de: Tablet-Modus von
+        description:
+          en: 'A Hyprland switch bind calling `corona ipc osk tablet`, or the hinge angle of a convertible: folded past 200° is tablet mode, back under 160° is not.'
+          de: 'Ein Hyprland-Switch-Bind, der `corona ipc osk tablet` aufruft, oder der Scharnierwinkel eines Convertibles: über 200° geklappt ist Tablet-Modus, wieder unter 160° nicht.'
       layout:
         title:
           en: Layout

@@ -5,7 +5,7 @@ use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
   Config, ConfigProvider, IdleAction, IdleBehavior, NotificationPosition, OsdPosition, ThemeMode,
   Units, Weekday,
-  osk::{AutoShow, OskLanguage, OskLayout},
+  osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
 use corona_utils::error::ErrorLogExt;
@@ -601,6 +601,18 @@ fn osk() -> SettingPage {
               ],
               |c| c.osk.auto_show,
               |c, v| c.osk.auto_show = v,
+            ),
+          ),
+          item(
+            t!("app.settings.osk.tablet_source.title"),
+            t!("app.settings.osk.tablet_source.description"),
+            choice(
+              &[
+                (TabletSource::Ipc, t!("app.settings.options.ipc")),
+                (TabletSource::Hinge, t!("app.settings.options.hinge")),
+              ],
+              |c| c.osk.tablet_source,
+              |c, v| c.osk.tablet_source = v,
             ),
           ),
           item(

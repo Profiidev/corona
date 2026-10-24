@@ -1,6 +1,7 @@
 //! The on-screen keyboard: a floating key board that types into the focused
 //! window without taking its focus, shown when a text field gets focus
 
+pub mod hinge;
 pub mod keymap;
 pub mod layouts;
 pub mod predict;
@@ -15,7 +16,7 @@ use std::{
 use corona_compositor::CompositorExt;
 use corona_config::{
   ConfigProvider, observe_section,
-  osk::{AutoShow, OskLanguage, OskLayout},
+  osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt};
 use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
@@ -33,6 +34,8 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 const HIDE_DELAY: Duration = Duration::from_millis(200);
 /// Learned words are written once typing pauses this long
 const SAVE_DELAY: Duration = Duration::from_secs(2);
+/// How often the hinge angle is read
+const HINGE_POLL: Duration = Duration::from_millis(500);
 
 pub struct Osk {
   /// On screen
@@ -54,6 +57,8 @@ pub struct Osk {
   predictor: Option<Arc<Mutex<Predictor>>>,
   loading: Option<Task<()>>,
   save_later: Option<Task<()>>,
+  /// Watches the hinge sensor while it is the tablet source
+  hinge: Option<Task<()>>,
 }
 
 impl Global for Osk {}
@@ -83,9 +88,11 @@ pub fn init(cx: &mut App) {
     predictor: None,
     loading: None,
     save_later: None,
+    hinge: None,
   };
   osk.send(Command::Keymap(osk.layout.xkb()));
   cx.set_global(osk);
+  sync(cx);
 
   let keyboard_layout = cx.compositor().keyboard_layout.clone();
   cx.observe(&keyboard_layout, |_, cx| sync(cx)).detach();
@@ -138,8 +145,51 @@ fn sync(cx: &mut App) {
         osk.load_predictor(language, cx);
       }
     }
+    match cx.config().osk.tablet_source {
+      TabletSource::Hinge if osk.hinge.is_none() => osk.hinge = Some(watch_hinge(cx)),
+      TabletSource::Hinge => {}
+      TabletSource::Ipc => osk.hinge = None,
+    }
   });
   cx.refresh_windows();
+}
+
+/// Sets tablet mode whenever the hinge crosses a threshold, so IPC holds
+/// until it moves again
+fn watch_hinge(cx: &mut App) -> Task<()> {
+  cx.spawn(async move |cx| {
+    let mut hinge = None;
+    let mut tablet = None;
+    loop {
+      let angle = cx
+        .background_spawn(async move {
+          let hinge = hinge.or_else(|| hinge::Hinge::find(hinge::IIO_DEVICES.as_ref()));
+          let angle = hinge.as_ref().and_then(hinge::Hinge::angle);
+          // a sensor that stopped answering is looked for again: its number can change
+          (angle.and(hinge), angle)
+        })
+        .await;
+      hinge = angle.0;
+      match angle.1 {
+        Some(angle) => {
+          let now = hinge::is_tablet(angle, tablet.unwrap_or(false));
+          if tablet != Some(now) {
+            tablet = Some(now);
+            cx.update(|cx| cx.update_global::<Osk, _>(|osk, cx| osk.set_tablet(now, cx)));
+          }
+        }
+        None if tablet.is_none() => {
+          tracing::warn!(
+            "no hinge sensor in {}, tablet mode stays off",
+            hinge::IIO_DEVICES
+          );
+          return;
+        }
+        None => {}
+      }
+      cx.background_executor().timer(HINGE_POLL).await;
+    }
+  })
 }
 
 fn on_event(event: Event, cx: &mut App) {
@@ -306,6 +356,7 @@ pub(crate) fn test_setup(
       predictor: None,
       loading: None,
       save_later: None,
+      hinge: None,
     };
     cx.set_global(osk);
     rx

@@ -9,6 +9,8 @@ pub struct OskConfig {
   pub enabled: bool,
   /// When a focused text field opens the keyboard
   pub auto_show: AutoShow,
+  /// What says the device is in tablet mode
+  pub tablet_source: TabletSource,
   pub layout: OskLayout,
   /// Language of the suggestions and accents
   pub language: OskLanguage,
@@ -25,6 +27,7 @@ impl Default for OskConfig {
     Self {
       enabled: true,
       auto_show: AutoShow::TabletMode,
+      tablet_source: TabletSource::Ipc,
       layout: OskLayout::Auto,
       language: OskLanguage::Auto,
       suggestions: true,
@@ -41,6 +44,16 @@ pub enum AutoShow {
   Always,
   /// Only while `corona ipc osk tablet on` holds, from a Hyprland switch bind
   TabletMode,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TabletSource {
+  /// `corona ipc osk tablet`, from a Hyprland switch bind
+  Ipc,
+  /// The hinge angle sensor of a convertible: folded past 200° is tablet
+  /// mode. `corona ipc osk tablet` still works until the hinge moves again
+  Hinge,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
