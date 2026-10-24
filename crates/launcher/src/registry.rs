@@ -280,7 +280,7 @@ fn group(rows: Vec<Row>, limit: usize) -> Vec<(Section, Vec<Row>)> {
 const RECENT: usize = 6;
 const SUGGESTIONS: usize = 6;
 
-/// Running timers, favorites, recently used, then suggestions
+/// Running timers, favorites, recently used, suggestions, then every app
 fn empty_sections(rows: Vec<Row>, cx: &App) -> Vec<(Section, Vec<Row>)> {
   let config = &cx.config().launcher;
   let favorite = |id: &str| config.command(id).is_some_and(|c| c.favorite);
@@ -291,16 +291,27 @@ fn empty_sections(rows: Vec<Row>, cx: &App) -> Vec<(Section, Vec<Row>)> {
   let mut recent: Vec<Row> = rest.iter().filter(|r| r.frecency > 0.).cloned().collect();
   recent.sort_by(|a, b| b.frecency.total_cmp(&a.frecency));
   recent.truncate(RECENT);
+  let shown: Vec<SharedString> = recent.iter().map(Row::id).collect();
+  let (apps, rest): (Vec<Row>, Vec<Row>) = rest
+    .into_iter()
+    .partition(|r| r.meta.section == Section::Applications);
   let suggestions: Vec<Row> = rest
     .into_iter()
     .filter(|r| r.frecency == 0. && r.meta.section == Section::Commands)
     .take(SUGGESTIONS)
     .collect();
+  // every app, A to Z, but those already shown as recent
+  let mut apps: Vec<Row> = apps
+    .into_iter()
+    .filter(|r| !shown.contains(&r.id()))
+    .collect();
+  apps.sort_by_key(|r| r.meta.title.to_lowercase());
   [
     (Section::Running, running),
     (Section::Favorites, favorites),
     (Section::Recent, recent),
     (Section::Suggestions, suggestions),
+    (Section::Applications, apps),
   ]
   .into_iter()
   .filter(|(_, rows)| !rows.is_empty())
@@ -393,6 +404,7 @@ mod tests {
   #[gpui::test]
   fn empty_query_sections(cx: &mut TestAppContext) {
     setup(cx);
+    cx.update(|cx| register(command("app:zed", "Zed", Section::Applications), cx));
     cx.update(|cx| {
       let mut config = cx.config().clone();
       config.launcher.commands.insert(
@@ -411,7 +423,12 @@ mod tests {
     let sections: Vec<Section> = results.sections.iter().map(|(s, _)| *s).collect();
     assert_eq!(
       sections,
-      [Section::Favorites, Section::Recent, Section::Suggestions]
+      [
+        Section::Favorites,
+        Section::Recent,
+        Section::Suggestions,
+        Section::Applications
+      ]
     );
   }
 }
