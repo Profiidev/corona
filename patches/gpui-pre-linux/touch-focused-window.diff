@@ -1,0 +1,164 @@
+wl_touch has no Enter event, so a touch has to remember the window it went down
+on itself. Sharing the pointer's `mouse_focused_window` breaks the first tap: a
+pointer Leave (Hyprland hiding the cursor on touch, or the pointer leaving any
+surface, since Leave does not check which) clears it and unhovers the window, so
+the Up's MouseUp is dropped or misses its hitbox. The pending mouse down
+lingers, and the second tap's Up clicks instead.
+
+Track the touched window in `touch_focused_window`, hover it for the Up and
+leave it hovered afterwards only if the pointer is over it.
+
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -420,6 +420,8 @@
+     enter_token: Option<()>,
+     button_pressed: Option<MouseButton>,
+     mouse_focused_window: Option<WaylandWindowStatePtr>,
++    /// the window a touch went down on, apart from the pointer's
++    touch_focused_window: Option<WaylandWindowStatePtr>,
+     keyboard_focused_window: Option<WaylandWindowStatePtr>,
+     // Touch tracking
+     active_touch_id: Option<i32>,
+@@ -1156,6 +1158,7 @@
+             horizontal_modifier: -1.0,
+             button_pressed: None,
+             mouse_focused_window: None,
++            touch_focused_window: None,
+             keyboard_focused_window: None,
+             // Touch tracking
+             active_touch_id: None,
+@@ -3328,6 +3331,14 @@
+     }
+ }
+ 
++/// whether the pointer is over `window`, which stays hovered once a touch on it ends then
++fn pointer_over(state: &WaylandClientState, window: &WaylandWindowStatePtr) -> bool {
++    state
++        .mouse_focused_window
++        .as_ref()
++        .is_some_and(|focused| focused.ptr_eq(window))
++}
++
+ impl Dispatch<wl_touch::WlTouch, ()> for WaylandClientStatePtr {
+     fn event(
+         this: &mut Self,
+@@ -3358,6 +3369,10 @@
+                     state.touch_location = Some(position);
+ 
+                     if let Some(window) = get_window(&mut state, &surface.id()) {
++                        // wl_touch has no Enter event, and the pointer's focus is no
++                        // touch's: a pointer Leave, Hyprland hiding the cursor on touch
++                        // say, would drop the MouseUp and with it the first tap's click
++                        state.touch_focused_window = Some(window.clone());
+                         state.mouse_location = Some(position);
+                         state.button_pressed = Some(MouseButton::Left);
+ 
+@@ -3369,6 +3384,9 @@
+                             first_mouse: false,
+                         });
+                         drop(state);
++                        // Hitboxes only hit in a hovered window, and only the
++                        // pointer's Enter says so
++                        window.set_hovered(true);
+                         window.handle_input(input);
+                     }
+                 } else if state.second_touch_id.is_none() && !state.is_scrolling {
+@@ -3396,7 +3414,7 @@
+                         state.pinch_zoom_threshold = 0.0;
+ 
+                         // Cancel any active mouse button press when starting scroll
+-                        if let Some(window) = state.mouse_focused_window.clone() {
++                        if let Some(window) = state.touch_focused_window.clone() {
+                             let input = PlatformInput::MouseUp(MouseUpEvent {
+                                 button: MouseButton::Left,
+                                 position: center,
+@@ -3465,7 +3483,7 @@
+ 
+                                 // Trigger zoom when threshold is reached
+                                 if state.pinch_zoom_threshold.abs() >= PINCH_ZOOM_STEP_THRESHOLD {
+-                                    if let Some(window) = state.mouse_focused_window.clone() {
++                                    if let Some(window) = state.touch_focused_window.clone() {
+                                         let zoom_in = state.pinch_zoom_threshold > 0.0;
+ 
+                                         // Send zoom as keyboard shortcut: ctrl+= (zoom in) or ctrl+- (zoom out)
+@@ -3513,7 +3531,7 @@
+                                     if scroll_delta.x.as_f32().abs() > TOUCH_SCROLL_SENSITIVITY
+                                         || scroll_delta.y.as_f32().abs() > TOUCH_SCROLL_SENSITIVITY
+                                     {
+-                                        if let Some(window) = state.mouse_focused_window.clone() {
++                                        if let Some(window) = state.touch_focused_window.clone() {
+                                             let input =
+                                                 PlatformInput::ScrollWheel(ScrollWheelEvent {
+                                                     position: current_center,
+@@ -3536,10 +3554,11 @@
+                     // Single touch mouse mode
+                     state.mouse_location = Some(position);
+ 
+-                    if let Some(window) = state.mouse_focused_window.clone() {
++                    if let Some(window) = state.touch_focused_window.clone() {
+                         let input = PlatformInput::MouseMove(MouseMoveEvent {
+                             position,
+-                            pressed_button: state.button_pressed,
++                            // a pointer Leave clears the pointer's button meanwhile
++                            pressed_button: Some(MouseButton::Left),
+                             modifiers: state.modifiers,
+                         });
+                         drop(state);
+@@ -3562,7 +3581,7 @@
+                         state.pinch_zoom_threshold = 0.0;
+ 
+                         // Send scroll end event
+-                        if let Some(window) = state.mouse_focused_window.clone() {
++                        if let Some(window) = state.touch_focused_window.clone() {
+                             let position = state.touch_location.unwrap_or_default();
+                             let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                                 position,
+@@ -3580,7 +3599,7 @@
+                         state.active_touch_id = None;
+                         state.button_pressed = None;
+ 
+-                        if let Some(window) = state.mouse_focused_window.clone() {
++                        if let Some(window) = state.touch_focused_window.take() {
+                             let input = PlatformInput::MouseUp(MouseUpEvent {
+                                 button: MouseButton::Left,
+                                 position: state.touch_location.unwrap_or_default(),
+@@ -3588,8 +3607,12 @@
+                                 click_count: 1,
+                             });
+                             state.touch_location = None;
++                            let pointer_here = pointer_over(&state, &window);
+                             drop(state);
++                            // a pointer Leave since the Down unhovered it, missing the hitbox
++                            window.set_hovered(true);
+                             window.handle_input(input);
++                            window.set_hovered(pointer_here);
+                         }
+                     }
+                 } else if state.second_touch_id == Some(id) {
+@@ -3604,7 +3627,7 @@
+                     state.pinch_zoom_threshold = 0.0;
+ 
+                     // Send scroll end event and switch back to single touch
+-                    if let Some(window) = state.mouse_focused_window.clone() {
++                    if let Some(window) = state.touch_focused_window.clone() {
+                         let position = state.touch_location.unwrap_or_default();
+                         let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                             position,
+@@ -3634,7 +3657,8 @@
+                 state.last_pinch_distance = None;
+                 state.pinch_zoom_threshold = 0.0;
+ 
+-                if let Some(window) = state.mouse_focused_window.clone() {
++                if let Some(window) = state.touch_focused_window.take() {
++                    let pointer_here = pointer_over(&state, &window);
+                     if was_scrolling {
+                         // Send scroll end event if we were scrolling
+                         let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+@@ -3654,6 +3678,7 @@
+                         });
+                         drop(state);
+                         window.handle_input(input);
++                        window.set_hovered(pointer_here);
+                     }
+                 }
+             }
