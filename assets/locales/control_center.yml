@@ -533,6 +533,16 @@ app:
     remaining:
       en: '%{duration} remaining'
       de: '%{duration} verbleibend'
+    warning:
+      low:
+        en: Battery low
+        de: Akku schwach
+      critical:
+        en: Battery almost empty
+        de: Akku fast leer
+      percent:
+        en: '%{percent}% left'
+        de: '%{percent} % übrig'
     until_full:
       en: '%{duration} until full'
       de: '%{duration} bis voll'

@@ -12,6 +12,7 @@ use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 mod battery;
 mod devices;
 mod profiles;
+pub(crate) mod warnings;
 
 pub struct PowerPanel {
   error: Option<String>,

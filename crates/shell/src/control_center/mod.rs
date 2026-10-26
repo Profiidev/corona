@@ -100,6 +100,11 @@ pub fn init_disks(cx: &mut App) {
   disks::hotplug::init(cx);
 }
 
+/// Low battery notifications, which run with the panel closed
+pub fn init_power(cx: &mut App) {
+  power::warnings::init(cx);
+}
+
 pub(crate) use disks::jobs::log as disks_log;
 
 #[cfg(test)]

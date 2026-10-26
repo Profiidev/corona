@@ -158,6 +158,17 @@ impl Notifications {
     }
   }
 
+  /// Closes a notification sent with [`Self::send_notify`], on whichever daemon shows it
+  pub fn close(&self, id: u32) -> impl Future<Output = Result<()>> + use<> {
+    let conn = self.conn.clone();
+    async move {
+      conn
+        .call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(id,))
+        .await?;
+      Ok(())
+    }
+  }
+
   /// The actions picked on notifications, by whichever daemon shows them:
   /// the notification id and the action key
   pub fn action_invoked(

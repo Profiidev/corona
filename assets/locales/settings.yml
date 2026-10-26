@@ -388,6 +388,30 @@ app:
         filter:
           en: Filter
           de: Filter
+        battery:
+          en: Battery
+          de: Akku
+      battery_warnings:
+        title:
+          en: Battery warnings
+          de: Akkuwarnungen
+        description:
+          en: Notify while the battery discharges.
+          de: Benachrichtigen, während sich der Akku entlädt.
+      battery_low:
+        title:
+          en: Low battery
+          de: Akku schwach
+        description:
+          en: Percent at which to warn.
+          de: Prozent, ab denen gewarnt wird.
+      battery_critical:
+        title:
+          en: Extremely low battery
+          de: Akku fast leer
+        description:
+          en: Percent at which to warn until charging.
+          de: Prozent, ab denen bis zum Laden gewarnt wird.
       notification_daemon:
         title:
           en: Notification daemon

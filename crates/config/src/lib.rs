@@ -252,6 +252,7 @@ pub struct NotificationConfig {
   pub background_opacity: f32,
   /// Case-insensitive regex against app name, summary and body; a match is dropped
   pub filter_regex: String,
+  pub battery: BatteryWarningConfig,
 }
 
 impl Default for NotificationConfig {
@@ -265,6 +266,28 @@ impl Default for NotificationConfig {
       critical_timeout_ms: 10000,
       background_opacity: 1.,
       filter_regex: String::new(),
+      battery: BatteryWarningConfig::default(),
+    }
+  }
+}
+
+/// Notifications while the system battery discharges
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct BatteryWarningConfig {
+  pub enabled: bool,
+  /// At or below this percentage a warning
+  pub low_percent: u8,
+  /// At or below this percentage a critical warning that stays until charging
+  pub critical_percent: u8,
+}
+
+impl Default for BatteryWarningConfig {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      low_percent: 20,
+      critical_percent: 5,
     }
   }
 }

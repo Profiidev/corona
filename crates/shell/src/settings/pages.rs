@@ -383,6 +383,39 @@ fn notifications() -> SettingPage {
         ],
       ),
       group(
+        t!("app.settings.notifications.groups.battery"),
+        vec![
+          item(
+            t!("app.settings.notifications.battery_warnings.title"),
+            t!("app.settings.notifications.battery_warnings.description"),
+            switch(
+              |c| c.notification.battery.enabled,
+              |c, v| c.notification.battery.enabled = v,
+            ),
+          ),
+          item(
+            t!("app.settings.notifications.battery_low.title"),
+            t!("app.settings.notifications.battery_low.description"),
+            number(
+              "notification.battery.low_percent",
+              (0., 100., 1.),
+              |c| c.notification.battery.low_percent.into(),
+              |c, v| c.notification.battery.low_percent = v as u8,
+            ),
+          ),
+          item(
+            t!("app.settings.notifications.battery_critical.title"),
+            t!("app.settings.notifications.battery_critical.description"),
+            number(
+              "notification.battery.critical_percent",
+              (0., 100., 1.),
+              |c| c.notification.battery.critical_percent.into(),
+              |c, v| c.notification.battery.critical_percent = v as u8,
+            ),
+          ),
+        ],
+      ),
+      group(
         t!("app.settings.notifications.groups.filter"),
         vec![
           item(

@@ -110,6 +110,12 @@ background_opacity = 1.0
 # Case-insensitive regex against app name, summary and body; matches are dropped.
 filter_regex = "" # e.g. "spotify|discord"
 
+# Warnings while the system battery discharges; the critical one stays until charging.
+[notification.battery]
+enabled = true
+low_percent = 20
+critical_percent = 5
+
 [osd]
 enabled = true
 hide_delay_ms = 1500
