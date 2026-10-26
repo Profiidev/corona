@@ -1253,15 +1253,7 @@ app:
       emptied:
         en: 'Deleted %{count} items'
         de: '%{count} Elemente gelöscht'
-      eject:
-        en: 'Eject drives'
-        de: 'Laufwerke auswerfen'
-      eject_one:
-        en: 'Eject'
-        de: 'Auswerfen'
-      ejected:
-        en: 'Safe to remove'
-        de: 'Kann entfernt werden'
+    drives:
       mount:
         en: 'Mount drive'
         de: 'Laufwerk einhängen'
@@ -1271,9 +1263,129 @@ app:
       mounted:
         en: 'Mounted at %{path}'
         de: 'Eingehängt unter %{path}'
+      unmount:
+        en: 'Unmount drive'
+        de: 'Laufwerk aushängen'
+      unmount_one:
+        en: 'Unmount'
+        de: 'Aushängen'
+      unmounted:
+        en: 'Unmounted %{name}'
+        de: '%{name} ausgehängt'
+      unlock:
+        en: 'Unlock drive'
+        de: 'Laufwerk entsperren'
+      unlock_one:
+        en: 'Unlock'
+        de: 'Entsperren'
+      passphrase:
+        en: 'Passphrase'
+        de: 'Passphrase'
+      passphrase_for:
+        en: 'Passphrase for %{name}'
+        de: 'Passphrase für %{name}'
+      lock:
+        en: 'Lock drive'
+        de: 'Laufwerk sperren'
+      lock_one:
+        en: 'Lock'
+        de: 'Sperren'
+      locked:
+        en: 'Locked %{name}'
+        de: '%{name} gesperrt'
+      eject:
+        en: 'Eject drives'
+        de: 'Laufwerke auswerfen'
+      eject_one:
+        en: 'Eject'
+        de: 'Auswerfen'
+      ejected:
+        en: 'Safe to remove'
+        de: 'Kann entfernt werden'
+      health:
+        en: 'Drive health'
+        de: 'Laufwerkszustand'
+      healthy:
+        en: 'Healthy'
+        de: 'In Ordnung'
+      failing:
+        en: 'Failing, back up your data'
+        de: 'Fehlerhaft, Daten sichern'
+      temperature:
+        en: 'Temperature'
+        de: 'Temperatur'
+      power_on:
+        en: 'Powered on'
+        de: 'Betriebszeit'
+      hours:
+        en: '%{count} h'
+        de: '%{count} h'
+      selftest:
+        en: 'Self-test'
+        de: 'Selbsttest'
+      refresh:
+        en: 'Refresh'
+        de: 'Aktualisieren'
+      bad_sectors:
+        en: 'Bad sectors'
+        de: 'Defekte Sektoren'
+      attributes_failing:
+        en: 'Failing attributes'
+        de: 'Fehlerhafte Attribute'
+      critical_warning:
+        en: 'Critical warning'
+        de: 'Kritische Warnung'
+      attributes:
+        en: 'SMART attributes'
+        de: 'SMART-Attribute'
+      attribute:
+        en: 'Attribute'
+        de: 'Attribut'
+      value:
+        en: 'Value'
+        de: 'Wert'
+      worst:
+        en: 'Worst'
+        de: 'Schlechtester'
+      threshold:
+        en: 'Threshold'
+        de: 'Schwelle'
+      raw:
+        en: 'Raw'
+        de: 'Rohwert'
+      spare:
+        en: 'Spare left'
+        de: 'Verbleibende Reserve'
+      percent_used:
+        en: 'Endurance used'
+        de: 'Verbrauchte Lebensdauer'
+      data_read:
+        en: 'Data read'
+        de: 'Gelesene Daten'
+      data_written:
+        en: 'Data written'
+        de: 'Geschriebene Daten'
+      power_cycles:
+        en: 'Power cycles'
+        de: 'Einschaltvorgänge'
+      unsafe_shutdowns:
+        en: 'Unsafe shutdowns'
+        de: 'Unsichere Abschaltungen'
+      media_errors:
+        en: 'Media errors'
+        de: 'Medienfehler'
+      error_log_entries:
+        en: 'Error log entries'
+        de: 'Fehlerprotokolleinträge'
+      serial:
+        en: 'Serial number'
+        de: 'Seriennummer'
+      size:
+        en: 'Size'
+        de: 'Größe'
       no_drives:
-        en: 'No removable drives'
-        de: 'Keine Wechsellaufwerke'
+        en: 'No drives'
+        de: 'Keine Laufwerke'
       search:
         en: 'Search drives…'
         de: 'Laufwerke suchen …'
