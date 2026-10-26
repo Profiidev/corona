@@ -2099,6 +2099,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "corona_location"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "corona-zbus-geoclue2",
+ "corona_config",
+ "corona_utils",
+ "dirs 7.0.0",
+ "flume",
+ "futures-lite",
+ "gpui-kit",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "corona_macros"
 version = "0.1.3"
 dependencies = [
@@ -2312,6 +2331,7 @@ dependencies = [
  "corona_idle",
  "corona_ipc",
  "corona_launcher",
+ "corona_location",
  "corona_mpris",
  "corona_network_manager",
  "corona_notifications",
@@ -2430,8 +2450,8 @@ name = "corona_weather"
 version = "0.1.3"
 dependencies = [
  "anyhow",
- "corona-zbus-geoclue2",
  "corona_config",
+ "corona_location",
  "corona_reqwest",
  "corona_utils",
  "dirs 7.0.0",

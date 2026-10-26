@@ -30,6 +30,7 @@ corona_auth.workspace = true
 corona_auth_screen.workspace = true
 corona_sysinfo.workspace = true
 corona_weather.workspace = true
+corona_location.workspace = true
 corona_script.workspace = true
 corona_utils.workspace = true
 corona_config.workspace = true
