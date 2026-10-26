@@ -270,10 +270,17 @@ sidebar = [
   "sysinfo",
   "weather",
   "calendar",
-  "media",
+  "media"
 ]
 # Tiles on the dashboard, in order. Also available: "power_profile".
-quick_actions = ["wifi", "bluetooth", "dnd", "dark_mode", "stay_awake", "airplane"]
+quick_actions = [
+  "wifi",
+  "bluetooth",
+  "dnd",
+  "dark_mode",
+  "stay_awake",
+  "airplane"
+]
 
 [weather]
 units = "metric" # or "imperial"
