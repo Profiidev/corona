@@ -4,7 +4,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corona_clipboard::{ClipboardExt, Entry, Kind};
 use corona_components::components::{card::CardExt, modal::modal};
-use corona_launcher::commands::clipboard::{clip, kind_label, swatch};
+use corona_launcher::{
+  command::Hud,
+  commands::clipboard::{clip, kind_label, swatch},
+};
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
@@ -102,6 +105,7 @@ fn copy(id: i64, cx: &mut App) {
   };
   if let Ok(clip) = clip(&entry).log_err() {
     corona_launcher::paste::copy(&clip, cx);
+    corona_launcher::ui::hud::show(Hud::new(t!("app.launcher.hud.copied")), cx);
     let _ = history.touch(id, cx).log_err();
   }
 }
