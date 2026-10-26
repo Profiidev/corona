@@ -25,7 +25,7 @@ use crate::control_center::{
     dialogs::Dialog,
     jobs::{DisksLog, Start, log},
     model::{DriveView, Health, PartView, drives, health},
-    ui::{dot, ok_color, section, warn_color},
+    ui::section,
   },
   variants::ControlCenterType,
 };
@@ -312,81 +312,56 @@ impl DisksPanel {
     ))
   }
 
-  fn header(&self, cx: &Context<'_, Self>) -> AnyElement {
+  /// A drive's or block's page title with a back button; the list has none
+  fn header(&self, cx: &Context<'_, Self>) -> Option<AnyElement> {
     let theme = cx.theme();
-    let udisks = cx.udisks();
-    let (title, status, color): (Option<String>, String, _) = if !udisks.running(cx) {
-      (
-        None,
-        t!("app.disks.unreachable_status").into(),
-        theme.colors.danger,
-      )
-    } else {
-      match &self.view {
-        View::List => {
-          let drives = udisks.list_drives(cx).len();
-          let jobs = log(cx).running_count(cx);
-          let mut status = t!("app.disks.drives", count = drives).to_string();
-          if jobs > 0 {
-            status = format!("{status} · {}", t!("app.disks.jobs_running", count = jobs));
-          }
-          (None, status, ok_color())
+    if !cx.udisks().running(cx) {
+      return None;
+    }
+    let (title, status, tags): (String, String, Vec<AnyElement>) = match &self.view {
+      View::List => return None,
+      View::Drive(path) => {
+        let view = self
+          .drive_views(cx)
+          .into_iter()
+          .find(|v| &v.drive.path == path)?;
+        let tag = match health(&view.drive) {
+          Health::Ok => Some((t!("app.disks.healthy"), Tone::Ok)),
+          Health::Warn => Some((t!("app.disks.warning"), Tone::Warn)),
+          Health::Err => Some((t!("app.disks.failing"), Tone::Err)),
+          Health::Unknown => None,
+        };
+        let tags = tag
+          .map(|(text, tone)| ui::tag(text, tone, cx).into_any_element())
+          .into_iter()
+          .collect();
+        (view.drive.name(), devices::drive_line(&view), tags)
+      }
+      View::Block(path) => {
+        let (_, part) = self.find_part(path, cx)?;
+        let block = &part.block;
+        let status = format!(
+          "{} · {} · {}",
+          block.device.trim_start_matches("/dev/"),
+          types::fs_name(&block.id_type),
+          types::size(block.size)
+        );
+        let (state, tone) = state_tag(&part);
+        let mut tags = Vec::new();
+        if part.is_system() {
+          tags.push(ui::tag(t!("app.disks.system"), Tone::Warn, cx).into_any_element());
         }
-        View::Drive(path) => match udisks.drive(path, cx) {
-          Some(drive) => {
-            let device = self
-              .drive_views(cx)
-              .into_iter()
-              .find(|v| &v.drive.path == path)
-              .and_then(|v| v.disk.map(|d| d.device))
-              .unwrap_or_default();
-            let (state, color) = match health(drive) {
-              Health::Ok => (t!("app.disks.healthy_lower"), ok_color()),
-              Health::Warn => (t!("app.disks.warning_lower"), warn_color()),
-              Health::Err => (t!("app.disks.failing_lower"), theme.colors.danger),
-              Health::Unknown => ("".into(), theme.colors.muted_foreground),
-            };
-            let status = match state.is_empty() {
-              true => device,
-              false => format!("{device} · {state}"),
-            };
-            (Some(drive.name()), status, color)
-          }
-          None => (None, String::new(), theme.colors.muted_foreground),
-        },
-        View::Block(path) => match self.find_part(path, cx) {
-          Some((drive, part)) => {
-            let on = part.is_on();
-            let status = match drive {
-              Some(d) => t!(
-                "app.disks.on_drive",
-                device = part.block.device.clone(),
-                drive = d.drive.name()
-              )
-              .to_string(),
-              None => part.block.device.clone(),
-            };
-            (
-              Some(part.block.name().to_string()),
-              status,
-              if on {
-                ok_color()
-              } else {
-                theme.colors.muted_foreground
-              },
-            )
-          }
-          None => (None, String::new(), theme.colors.muted_foreground),
-        },
+        tags.push(ui::tag(state, tone, cx).into_any_element());
+        (block.name().to_string(), status, tags)
       }
     };
-    div()
-      .flex()
-      .flex_shrink_0()
-      .items_center()
-      .gap_2()
-      .when(self.view != View::List && udisks.running(cx), |d| {
-        d.child(
+    Some(
+      div()
+        .flex()
+        .flex_shrink_0()
+        .items_center()
+        .gap_2()
+        .child(
           Button::new("disks-back")
             .icon(IconName::ChevronLeft)
             .small()
@@ -405,34 +380,30 @@ impl DisksPanel {
               cx.notify();
             })),
         )
-      })
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .flex_1()
-          .min_w_0()
-          .when_some(title, |d, title| {
-            d.child(
+        .child(
+          div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .child(
               div()
                 .text_sm()
                 .font_weight(gpui_kit::FontWeight::BOLD)
                 .truncate()
                 .child(title),
             )
-          })
-          .child(
-            div()
-              .flex()
-              .items_center()
-              .gap_1()
-              .text_xs()
-              .text_color(theme.colors.muted_foreground)
-              .child(dot(color))
-              .child(div().truncate().child(status)),
-          ),
-      )
-      .into_any_element()
+            .child(
+              div()
+                .text_xs()
+                .text_color(theme.colors.muted_foreground)
+                .truncate()
+                .child(status),
+            ),
+        )
+        .children(tags)
+        .into_any_element(),
+    )
   }
 
   fn tabs(&self, cx: &Context<'_, Self>) -> AnyElement {
@@ -593,7 +564,7 @@ impl Render for DisksPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .child(self.header(cx))
+      .children(self.header(cx))
       .when(running && self.view == View::List, |d| {
         d.child(self.tabs(cx))
       })

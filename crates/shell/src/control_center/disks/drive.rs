@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use corona_launcher::Tone;
 use corona_udisks::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled, Window,
@@ -20,12 +19,12 @@ use zbus::zvariant::OwnedObjectPath;
 
 use crate::control_center::disks::{
   DisksPanel, DriveTab,
-  devices::{drive_icon, drive_line, segments},
+  devices::segments,
   dialogs::{Dialog, DialogKind},
   jobs::DisksLog,
   model::{Health, free_spaces, health},
   types::{size, table_name},
-  ui::{dot, icon, kv, ok_color, partition_map, section, tag, warn_color},
+  ui::{dot, kv, ok_color, partition_map, section, warn_color},
 };
 
 /// ATA attributes whose raw value above 0 means wear: reallocated, pending, uncorrectable
@@ -54,46 +53,16 @@ impl DisksPanel {
     };
     let theme = cx.theme();
     let drive = &view.drive;
-    let (state, tone) = match health(drive) {
-      Health::Ok => (t!("app.disks.healthy"), Tone::Ok),
-      Health::Warn => (t!("app.disks.warning"), Tone::Warn),
-      Health::Err => (t!("app.disks.failing"), Tone::Err),
-      Health::Unknown => ("".into(), Tone::Off),
-    };
-    let summary = div()
-      .flex()
-      .flex_col()
-      .flex_shrink_0()
-      .gap_2()
-      .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .child(
-        div()
-          .flex()
-          .items_center()
-          .gap_2()
-          .child(icon(drive_icon(drive)))
-          .child(
-            div()
-              .flex()
-              .flex_col()
-              .flex_1()
-              .min_w_0()
-              .child(div().text_sm().truncate().child(drive.name()))
-              .child(
-                div()
-                  .text_xs()
-                  .text_color(theme.colors.muted_foreground)
-                  .truncate()
-                  .child(drive_line(&view)),
-              ),
-          )
-          .when(!state.is_empty(), |d| d.child(tag(state, tone, cx))),
-      )
-      .when(!view.parts.is_empty(), |d| {
-        d.child(partition_map(&segments(&view), cx))
-      });
+    // name, line and health are in the header, the card only maps the partitions
+    let summary = (!view.parts.is_empty()).then(|| {
+      div()
+        .flex_shrink_0()
+        .p_2()
+        .rounded_xl()
+        .bg(theme.colors.accent)
+        .child(partition_map(&segments(&view), cx))
+        .into_any_element()
+    });
     let sub_tabs = div().flex().flex_shrink_0().gap_1().children(
       [
         (
@@ -124,7 +93,8 @@ impl DisksPanel {
           }))
       }),
     );
-    let mut page = vec![summary.into_any_element(), sub_tabs.into_any_element()];
+    let mut page: Vec<AnyElement> = summary.into_iter().collect();
+    page.push(sub_tabs.into_any_element());
     match self.drive_tab {
       DriveTab::Overview => page.extend(self.overview(&view.drive, view.disk.as_ref(), cx)),
       DriveTab::Health => page.extend(self.health(drive, cx)),

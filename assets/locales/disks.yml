@@ -347,9 +347,6 @@ app:
     failing:
       en: 'Failing'
       de: 'Fehlerhaft'
-    failing_lower:
-      en: 'failing'
-      de: 'fehlerhaft'
     filesystem:
       en: 'Filesystem'
       de: 'Dateisystem'
@@ -381,9 +378,6 @@ app:
     healthy:
       en: 'Healthy'
       de: 'In Ordnung'
-    healthy_lower:
-      en: 'healthy'
-      de: 'in Ordnung'
     hotplug:
       connected:
         en: '%{name} %{size} connected'
@@ -455,9 +449,6 @@ app:
       today:
         en: 'since start'
         de: 'seit dem Start'
-    jobs_running:
-      en: '%{count} jobs running'
-      de: '%{count} Aufgaben laufen'
     label:
       en: 'Label'
       de: 'Bezeichnung'
@@ -521,9 +512,6 @@ app:
     nvme_log:
       en: 'NVMe health log'
       de: 'NVMe-Zustandsprotokoll'
-    on_drive:
-      en: '%{device} on %{drive}'
-      de: '%{device} auf %{drive}'
     open_folder:
       en: 'Open folder'
       de: 'Ordner öffnen'
@@ -771,9 +759,6 @@ app:
     unreachable_body:
       en: 'org.freedesktop.UDisks2 did not answer on the system bus. Check that udisks2.service is running.'
       de: 'org.freedesktop.UDisks2 antwortet nicht auf dem Systembus. Prüfe, ob udisks2.service läuft.'
-    unreachable_status:
-      en: 'udisksd not reachable'
-      de: 'udisksd nicht erreichbar'
     unreachable_title:
       en: 'Can’t reach the disk service'
       de: 'Der Laufwerksdienst ist nicht erreichbar'
@@ -789,9 +774,6 @@ app:
     warning:
       en: 'Warning'
       de: 'Warnung'
-    warning_lower:
-      en: 'SMART warning'
-      de: 'SMART-Warnung'
     wear:
       en: 'Used'
       de: 'Verbraucht'

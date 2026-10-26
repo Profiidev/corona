@@ -2,28 +2,53 @@
 
 use std::rc::Rc;
 
-use corona_launcher::Tone;
 use corona_udisks::UdisksExt;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
   component::{ActiveTheme, Sizable, button::Button},
   div,
-  prelude::FluentBuilder,
 };
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::control_center::disks::{
   DisksPanel,
-  devices::part_icon,
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::DisksLog,
   model::{percent, usage},
-  state_tag,
   types::{fs_name, partition_type_name, size, table_name},
-  ui::{icon, kv, section, tag, usage_bar},
+  ui::{kv, section, usage_bar},
 };
+
+/// Opens `path` in the default app for `inode/directory`, `xdg-open` when there is none
+fn open_folder(path: &std::path::Path, cx: &mut gpui_kit::App) {
+  let id = std::process::Command::new("xdg-mime")
+    .args(["query", "default", "inode/directory"])
+    .output()
+    .ok()
+    .map(|out| {
+      String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .trim_end_matches(".desktop")
+        .to_string()
+    });
+  let app = id.and_then(|id| {
+    corona_desktop::apps::apps()
+      .iter()
+      .find(|a| a.id == id)
+      .cloned()
+  });
+  let Some(app) = app else {
+    return cx.open_with_system(path);
+  };
+  let mut argv = app.exec.clone();
+  argv.push(path.display().to_string());
+  if let Err(e) = corona_desktop::apps::spawn(&app.id, &argv, None) {
+    tracing::warn!("opening {}: {e:#}", path.display());
+    cx.open_with_system(path);
+  }
+}
 
 /// The actions left on a partition the running system uses
 const SYSTEM_SAFE: [&str; 3] = ["change-passphrase", "backup", "benchmark"];
@@ -52,60 +77,29 @@ impl DisksPanel {
       .filesystem
       .as_ref()
       .and_then(|f| f.mount_points.first().cloned());
-    let (state, tone) = state_tag(&part);
-    let system_tag = part.is_system();
-
-    let usage = mount.as_deref().and_then(usage);
-    let summary = div()
-      .flex()
-      .flex_col()
-      .flex_shrink_0()
-      .gap_2()
-      .p_2()
-      .rounded_xl()
-      .bg(theme.colors.accent)
-      .child(
-        div()
-          .flex()
-          .items_center()
-          .gap_2()
-          .child(icon(part_icon(&block, on)))
-          .child(
-            div()
-              .flex()
-              .flex_col()
-              .flex_1()
-              .min_w_0()
-              .child(div().text_sm().truncate().child(block.name().to_string()))
-              .child(
-                div()
-                  .text_xs()
-                  .text_color(theme.colors.muted_foreground)
-                  .truncate()
-                  .child(format!(
-                    "{} · {} · {}",
-                    block.device.trim_start_matches("/dev/"),
-                    fs_name(&block.id_type),
-                    size(block.size)
-                  )),
+    // name, line and state are in the header, the card only shows how full it is
+    let summary =
+      mount
+        .as_deref()
+        .and_then(usage)
+        .zip(mount.clone())
+        .map(|((used, total), mount)| {
+          div()
+            .flex_shrink_0()
+            .p_2()
+            .rounded_xl()
+            .bg(theme.colors.accent)
+            .child(usage_bar(
+              percent(used, total),
+              t!(
+                "app.disks.used",
+                percent = format!("{:.0}", percent(used, total))
               ),
-          )
-          .when(system_tag, |d| {
-            d.child(tag(t!("app.disks.system"), Tone::Warn, cx))
-          })
-          .child(tag(state, tone, cx)),
-      )
-      .when_some(usage.zip(mount.clone()), |d, ((used, total), mount)| {
-        d.child(usage_bar(
-          percent(used, total),
-          t!(
-            "app.disks.used",
-            percent = format!("{:.0}", percent(used, total))
-          ),
-          mount,
-          cx,
-        ))
-      });
+              mount,
+              cx,
+            ))
+            .into_any_element()
+        });
 
     let id = block
       .path
@@ -125,8 +119,7 @@ impl DisksPanel {
           .icon(IconName::FolderOpen)
           .small()
           .cursor_pointer()
-          // the default file manager, a file:// url goes to the browser
-          .on_click(move |_, _, cx| cx.open_with_system(std::path::Path::new(&mount)))
+          .on_click(move |_, _, cx| open_folder(std::path::Path::new(&mount), cx))
           .into_any_element(),
       );
     }
@@ -197,8 +190,8 @@ impl DisksPanel {
       ));
     }
 
-    let mut page = vec![
-      summary.into_any_element(),
+    let mut page: Vec<AnyElement> = summary.into_iter().collect();
+    page.extend([
       div()
         .flex()
         .flex_shrink_0()
@@ -206,7 +199,7 @@ impl DisksPanel {
         .children(buttons)
         .into_any_element(),
       section(t!("app.disks.details"), "", None, details, cx).into_any_element(),
-    ];
+    ]);
     let caps = self.caps(&block.id_type);
     // what the running system uses only reads, backs up and changes its passphrase
     let system = part.is_system();
