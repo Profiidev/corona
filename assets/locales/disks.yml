@@ -1,0 +1,788 @@
+_version: 2
+app:
+  disks:
+    actions:
+      en: 'Actions'
+      de: 'Aktionen'
+    ata_attributes:
+      en: 'ATA attributes'
+      de: 'ATA-Attribute'
+    attached:
+      en: '%{count} attached'
+      de: '%{count} eingebunden'
+    attribute:
+      en: 'Attribute'
+      de: 'Attribut'
+    autoclear:
+      en: 'Detach automatically'
+      de: 'Automatisch lösen'
+    backup:
+      en: 'Back up image…'
+      de: 'Abbild sichern …'
+    backup_drive:
+      en: 'Back up whole drive…'
+      de: 'Ganzes Laufwerk sichern …'
+    benchmark:
+      en: 'Benchmark…'
+      de: 'Leistungstest …'
+    busy_time:
+      en: 'Controller busy time'
+      de: 'Controller-Belegtzeit'
+    change_passphrase:
+      en: 'Change passphrase…'
+      de: 'Passphrase ändern …'
+    check:
+      en: 'Check'
+      de: 'Prüfen'
+    create_partition:
+      en: 'Create partition…'
+      de: 'Partition erstellen …'
+    critical_warning:
+      en: 'Critical warning'
+      de: 'Kritische Warnung'
+    data_read:
+      en: 'Data read'
+      de: 'Gelesene Daten'
+    data_written:
+      en: 'Data written'
+      de: 'Geschriebene Daten'
+    delete:
+      en: 'Delete…'
+      de: 'Löschen …'
+    detach:
+      en: 'Detach'
+      de: 'Lösen'
+    details:
+      en: 'Details'
+      de: 'Details'
+    device:
+      en: 'Device'
+      de: 'Gerät'
+    device_section:
+      en: 'Device'
+      de: 'Gerät'
+    dialog:
+      access_time:
+        en: 'Access time'
+        de: 'Zugriffszeit'
+      apply:
+        en: 'Apply'
+        de: 'Anwenden'
+      attach:
+        en: 'Attach'
+        de: 'Einbinden'
+      autoclear:
+        en: 'Detach automatically when unused (autoclear)'
+        de: 'Automatisch lösen, wenn unbenutzt (autoclear)'
+      backup_desc:
+        en: 'Streams %{device} to an image file'
+        de: 'Schreibt %{device} in eine Abbilddatei'
+      backup_title:
+        en: 'Create disk image'
+        de: 'Laufwerksabbild erstellen'
+      benchmark_desc:
+        en: 'The read test does not change the device.'
+        de: 'Der Lesetest verändert das Gerät nicht.'
+      benchmark_title:
+        en: 'Benchmark %{name}'
+        de: 'Leistungstest %{name}'
+      change:
+        en: 'Change'
+        de: 'Ändern'
+      choose:
+        en: 'Choose…'
+        de: 'Auswählen …'
+      clean_title:
+        en: 'Filesystem is clean'
+        de: 'Dateisystem ist fehlerfrei'
+      close:
+        en: 'Close'
+        de: 'Schließen'
+      compress:
+        en: 'Compress with zstd'
+        de: 'Mit zstd komprimieren'
+      confirm_passphrase:
+        en: 'Repeat new passphrase'
+        de: 'Neue Passphrase wiederholen'
+      create:
+        en: 'Create'
+        de: 'Erstellen'
+      current_passphrase:
+        en: 'Current passphrase'
+        de: 'Aktuelle Passphrase'
+      delete_title:
+        en: 'Delete partition'
+        de: 'Partition löschen'
+      dirty_title:
+        en: 'Filesystem has errors'
+        de: 'Dateisystem hat Fehler'
+      duration:
+        en: 'Duration'
+        de: 'Dauer'
+      encrypt:
+        en: 'Encrypt with a passphrase (LUKS)'
+        de: 'Mit Passphrase verschlüsseln (LUKS)'
+      erase:
+        en: 'Erase'
+        de: 'Löschen'
+      erase_quick:
+        en: 'Don’t overwrite (quick)'
+        de: 'Nicht überschreiben (schnell)'
+      erase_zero:
+        en: 'Overwrite with zeros (slow)'
+        de: 'Mit Nullen überschreiben (langsam)'
+      erased:
+        en: 'All data on %{device} (%{size}) will be erased.'
+        de: 'Alle Daten auf %{device} (%{size}) werden gelöscht.'
+      errors_found:
+        en: 'Errors found'
+        de: 'Fehler gefunden'
+      filesystem:
+        en: 'Filesystem'
+        de: 'Dateisystem'
+      flags_title:
+        en: 'Partition flags'
+        de: 'Partitions-Flags'
+      format_as:
+        en: 'Format as'
+        de: 'Formatieren als'
+      format_desc:
+        en: 'Creates a new filesystem.'
+        de: 'Erstellt ein neues Dateisystem.'
+      format_title:
+        en: 'Format %{name}'
+        de: '%{name} formatieren'
+      free_space:
+        en: 'Free space'
+        de: 'Freier Bereich'
+      gap:
+        en: '%{size} at %{offset}'
+        de: '%{size} bei %{offset}'
+      image:
+        en: 'Image'
+        de: 'Abbild'
+      image_size:
+        en: 'Image size'
+        de: 'Abbildgröße'
+      image_too_big:
+        en: 'The image (%{image}) is larger than the target (%{target}).'
+        de: 'Das Abbild (%{image}) ist größer als das Ziel (%{target}).'
+      label_title:
+        en: 'Rename filesystem'
+        de: 'Dateisystem umbenennen'
+      loop_setup_desc:
+        en: 'Attaches an image file as a block device.'
+        de: 'Bindet eine Abbilddatei als Blockgerät ein.'
+      loop_setup_title:
+        en: 'Set up loop device'
+        de: 'Loop-Gerät einrichten'
+      max:
+        en: 'max %{size}'
+        de: 'max. %{size}'
+      min:
+        en: 'min %{size}'
+        de: 'min. %{size}'
+      min_sec:
+        en: '%{min} min %{sec} s'
+        de: '%{min} min %{sec} s'
+      name_title:
+        en: 'Partition name'
+        de: 'Partitionsname'
+      need_passphrase:
+        en: 'Enter a passphrase to encrypt with.'
+        de: 'Gib eine Passphrase für die Verschlüsselung ein.'
+      new_passphrase:
+        en: 'New passphrase'
+        de: 'Neue Passphrase'
+      new_size:
+        en: 'New size'
+        de: 'Neue Größe'
+      no_discard:
+        en: 'Don’t discard (TRIM) blocks'
+        de: 'Blöcke nicht verwerfen (TRIM)'
+      no_errors:
+        en: 'No errors found'
+        de: 'Keine Fehler gefunden'
+      no_format:
+        en: 'Don’t format'
+        de: 'Nicht formatieren'
+      no_space:
+        en: 'No free space on this drive'
+        de: 'Kein freier Platz auf diesem Laufwerk'
+      none_chosen:
+        en: 'Nothing chosen'
+        de: 'Nichts ausgewählt'
+      not_repaired:
+        en: 'Could not repair'
+        de: 'Konnte nicht repariert werden'
+      partition_too:
+        en: 'Also resize the partition'
+        de: 'Auch die Partition anpassen'
+      passphrase:
+        en: 'Passphrase'
+        de: 'Passphrase'
+      passphrases_differ:
+        en: 'The new passphrases are empty or differ.'
+        de: 'Die neuen Passphrasen sind leer oder verschieden.'
+      pick_image:
+        en: 'Choose an image file first.'
+        de: 'Wähle zuerst eine Abbilddatei.'
+      powered_off:
+        en: 'Powered off'
+        de: 'Ausgeschaltet'
+      read:
+        en: 'read'
+        de: 'Lesen'
+      read_speed:
+        en: 'Read speed'
+        de: 'Lesegeschwindigkeit'
+      removed:
+        en: '%{device} (%{size}) and all data on it will be removed.'
+        de: '%{device} (%{size}) und alle Daten darauf werden entfernt.'
+      repaired:
+        en: 'Repaired'
+        de: 'Repariert'
+      replaced:
+        en: 'The contents of %{device} (%{size}) will be replaced by the image.'
+        de: 'Der Inhalt von %{device} (%{size}) wird durch das Abbild ersetzt.'
+      resize_title:
+        en: 'Resize %{name}'
+        de: 'Größe von %{name} ändern'
+      restore_desc:
+        en: 'Writes an image over %{device}'
+        de: 'Schreibt ein Abbild auf %{device}'
+      restore_title:
+        en: 'Restore disk image'
+        de: 'Laufwerksabbild wiederherstellen'
+      result:
+        en: 'Result'
+        de: 'Ergebnis'
+      safe_desc:
+        en: '%{name} was ejected.'
+        de: '%{name} wurde ausgeworfen.'
+      safe_title:
+        en: 'Safe to remove'
+        de: 'Kann entfernt werden'
+      save_to:
+        en: 'Save to'
+        de: 'Speichern unter'
+      sec:
+        en: '%{sec} s'
+        de: '%{sec} s'
+      start_backup:
+        en: 'Start backup'
+        de: 'Sicherung starten'
+      status:
+        en: 'Status'
+        de: 'Status'
+      target:
+        en: 'Target'
+        de: 'Ziel'
+      try_again:
+        en: 'Try again'
+        de: 'Erneut versuchen'
+      type_title:
+        en: 'Partition type'
+        de: 'Partitionstyp'
+      unlock_desc:
+        en: 'Enter the passphrase for %{device}.'
+        de: 'Gib die Passphrase für %{device} ein.'
+      unlock_title:
+        en: 'Unlock %{name}'
+        de: '%{name} entsperren'
+      unsupported:
+        en: 'udisks cannot make %{fs} here, a tool is missing.'
+        de: 'udisks kann hier kein %{fs} erstellen, ein Werkzeug fehlt.'
+      write:
+        en: 'write'
+        de: 'Schreiben'
+      write_speed:
+        en: 'Write speed'
+        de: 'Schreibgeschwindigkeit'
+      write_test:
+        en: 'Include write test'
+        de: 'Schreibtest einschließen'
+      write_warning:
+        en: 'The write test rewrites data on %{device}; an interruption can lose it.'
+        de: 'Der Schreibtest überschreibt Daten auf %{device}; ein Abbruch kann sie zerstören.'
+      wrong_passphrase:
+        en: 'No key available with this passphrase.'
+        de: 'Kein Schlüssel passt zu dieser Passphrase.'
+    drive:
+      en: 'Drive'
+      de: 'Laufwerk'
+    drives:
+      en: '%{count} drives'
+      de: '%{count} Laufwerke'
+    edit_flags:
+      en: 'Flags…'
+      de: 'Flags …'
+    eject:
+      en: 'Eject'
+      de: 'Auswerfen'
+    encryption:
+      en: 'Encryption'
+      de: 'Verschlüsselung'
+    failing:
+      en: 'Failing'
+      de: 'Fehlerhaft'
+    failing_lower:
+      en: 'failing'
+      de: 'fehlerhaft'
+    filesystem:
+      en: 'Filesystem'
+      de: 'Dateisystem'
+    firmware:
+      en: 'Firmware'
+      de: 'Firmware'
+    flags:
+      bootable:
+        en: 'Bootable'
+        de: 'Bootfähig'
+      legacy_boot:
+        en: 'Legacy BIOS bootable'
+        de: 'Legacy-BIOS-bootfähig'
+      no_block_io:
+        en: 'No block IO protocol'
+        de: 'Kein Block-IO-Protokoll'
+      required:
+        en: 'Required partition'
+        de: 'Erforderliche Partition'
+    flags_key:
+      en: 'Flags'
+      de: 'Flags'
+    format:
+      en: 'Format…'
+      de: 'Formatieren …'
+    health:
+      en: 'Health'
+      de: 'Zustand'
+    healthy:
+      en: 'Healthy'
+      de: 'In Ordnung'
+    healthy_lower:
+      en: 'healthy'
+      de: 'in Ordnung'
+    hotplug:
+      connected:
+        en: '%{name} %{size} connected'
+        de: '%{name} %{size} angeschlossen'
+      open:
+        en: 'Open Disks'
+        de: 'Laufwerke öffnen'
+      unlock:
+        en: 'Unlock…'
+        de: 'Entsperren …'
+    hours:
+      en: '%{count} h'
+      de: '%{count} h'
+    identifier:
+      en: 'Identifier'
+      de: 'Kennung'
+    internal:
+      en: 'Internal'
+      de: 'Intern'
+    jobs:
+      cancel:
+        en: 'Cancel'
+        de: 'Abbrechen'
+      completed_at:
+        en: 'Completed %{time}'
+        de: 'Fertig %{time}'
+      count:
+        en: '%{count} jobs'
+        de: '%{count} Aufgaben'
+      failed:
+        en: 'Failed'
+        de: 'Fehlgeschlagen'
+      failed_at:
+        en: 'Failed %{time}'
+        de: 'Fehlgeschlagen %{time}'
+      finished_title:
+        en: 'Finished'
+        de: 'Abgeschlossen'
+      minutes_left:
+        en: '~ %{count} min left'
+        de: 'noch ~ %{count} min'
+      none_finished:
+        en: 'Nothing finished yet'
+        de: 'Noch nichts abgeschlossen'
+      none_running:
+        en: 'Nothing running'
+        de: 'Nichts läuft'
+      not_authorized:
+        en: 'not authorized'
+        de: 'nicht berechtigt'
+      retry:
+        en: 'Retry'
+        de: 'Wiederholen'
+      running:
+        en: 'Running'
+        de: 'Läuft'
+      running_title:
+        en: 'Running'
+        de: 'Laufend'
+      seconds_left:
+        en: '~ %{count} s left'
+        de: 'noch ~ %{count} s'
+      started:
+        en: 'started %{time}'
+        de: 'gestartet %{time}'
+      success:
+        en: 'Success'
+        de: 'Erfolgreich'
+      today:
+        en: 'since start'
+        de: 'seit dem Start'
+    jobs_running:
+      en: '%{count} jobs running'
+      de: '%{count} Aufgaben laufen'
+    label:
+      en: 'Label'
+      de: 'Bezeichnung'
+    last_result:
+      en: 'Last result'
+      de: 'Letztes Ergebnis'
+    lock:
+      en: 'Lock'
+      de: 'Sperren'
+    loop_setup_button:
+      en: 'Set up…'
+      de: 'Einrichten …'
+    loops:
+      en: 'Loop devices'
+      de: 'Loop-Geräte'
+    media:
+      en: 'Media'
+      de: 'Medium'
+    media_errors:
+      en: 'Media errors'
+      de: 'Medienfehler'
+    media_rotating:
+      en: 'Rotating'
+      de: 'Rotierend'
+    media_solid:
+      en: 'Solid state'
+      de: 'Halbleiter'
+    minutes:
+      en: '%{count} min'
+      de: '%{count} min'
+    model:
+      en: 'Model'
+      de: 'Modell'
+    mount:
+      en: 'Mount'
+      de: 'Einhängen'
+    mount_point:
+      en: 'Mount point'
+      de: 'Einhängepunkt'
+    name:
+      en: 'Name…'
+      de: 'Name …'
+    no:
+      en: 'No'
+      de: 'Nein'
+    no_devices:
+      en: 'No drives found'
+      de: 'Keine Laufwerke gefunden'
+    no_loops:
+      en: 'No loop devices'
+      de: 'Keine Loop-Geräte'
+    no_smart:
+      en: 'This drive reports no SMART data'
+      de: 'Dieses Laufwerk meldet keine SMART-Daten'
+    no_swap:
+      en: 'No swap spaces'
+      de: 'Kein Auslagerungsspeicher'
+    none:
+      en: 'None'
+      de: 'Keine'
+    not_mounted:
+      en: 'Not mounted'
+      de: 'Nicht eingehängt'
+    nvme_log:
+      en: 'NVMe health log'
+      de: 'NVMe-Zustandsprotokoll'
+    on_drive:
+      en: '%{device} on %{drive}'
+      de: '%{device} auf %{drive}'
+    open_folder:
+      en: 'Open folder'
+      de: 'Ordner öffnen'
+    operation:
+      ata_smart_selftest:
+        en: 'SMART self-test'
+        de: 'SMART-Selbsttest'
+      ata_smart_update:
+        en: 'SMART update'
+        de: 'SMART-Aktualisierung'
+      cleanup:
+        en: 'Clean up'
+        de: 'Aufräumen'
+      drive_eject:
+        en: 'Eject'
+        de: 'Auswerfen'
+      drive_power_off:
+        en: 'Power off'
+        de: 'Ausschalten'
+      encrypted_lock:
+        en: 'Lock'
+        de: 'Sperren'
+      encrypted_modify:
+        en: 'Change passphrase'
+        de: 'Passphrase ändern'
+      encrypted_resize:
+        en: 'Resize encryption'
+        de: 'Verschlüsselung skalieren'
+      encrypted_unlock:
+        en: 'Unlock'
+        de: 'Entsperren'
+      filesystem_check:
+        en: 'Filesystem check'
+        de: 'Dateisystemprüfung'
+      filesystem_modify:
+        en: 'Rename'
+        de: 'Umbenennen'
+      filesystem_mount:
+        en: 'Mount'
+        de: 'Einhängen'
+      filesystem_repair:
+        en: 'Filesystem repair'
+        de: 'Dateisystemreparatur'
+      filesystem_resize:
+        en: 'Resize'
+        de: 'Größe ändern'
+      filesystem_unmount:
+        en: 'Unmount'
+        de: 'Aushängen'
+      format_erase:
+        en: 'Erase'
+        de: 'Löschen'
+      format_mkfs:
+        en: 'Format'
+        de: 'Formatieren'
+      loop_modify:
+        en: 'Loop device'
+        de: 'Loop-Gerät'
+      loop_setup:
+        en: 'Set up loop device'
+        de: 'Loop-Gerät einrichten'
+      partition_create:
+        en: 'Create partition'
+        de: 'Partition erstellen'
+      partition_delete:
+        en: 'Delete partition'
+        de: 'Partition löschen'
+      partition_modify:
+        en: 'Change partition'
+        de: 'Partition ändern'
+      swapspace_modify:
+        en: 'Rename swap'
+        de: 'Auslagerung umbenennen'
+      swapspace_start:
+        en: 'Start swap'
+        de: 'Auslagerung starten'
+      swapspace_stop:
+        en: 'Stop swap'
+        de: 'Auslagerung stoppen'
+      unknown:
+        en: 'Job'
+        de: 'Aufgabe'
+    overview:
+      en: 'Overview'
+      de: 'Übersicht'
+    partition:
+      en: 'Partition'
+      de: 'Partition'
+    partition_name:
+      en: 'Partition name'
+      de: 'Partitionsname'
+    partition_table:
+      en: 'Partition table'
+      de: 'Partitionstabelle'
+    partition_type:
+      en: 'Partition type'
+      de: 'Partitionstyp'
+    passed:
+      en: 'Passed'
+      de: 'Bestanden'
+    power_off:
+      en: 'Power off'
+      de: 'Ausschalten'
+    power_on:
+      en: 'Powered on'
+      de: 'Betriebszeit'
+    raw:
+      en: 'Raw'
+      de: 'Rohwert'
+    read_only:
+      en: 'Read only'
+      de: 'Schreibgeschützt'
+    refresh:
+      en: 'Refresh'
+      de: 'Aktualisieren'
+    removable:
+      en: 'Removable'
+      de: 'Wechselmedien'
+    removable_key:
+      en: 'Removable'
+      de: 'Wechselbar'
+    rename:
+      en: 'Rename…'
+      de: 'Umbenennen …'
+    repair:
+      en: 'Repair'
+      de: 'Reparieren'
+    rescan:
+      en: 'Rescan'
+      de: 'Neu einlesen'
+    resize:
+      en: 'Resize…'
+      de: 'Größe ändern …'
+    restore:
+      en: 'Restore image…'
+      de: 'Abbild wiederherstellen …'
+    selftest:
+      en: 'Self-test'
+      de: 'Selbsttest'
+    selftest_status:
+      aborted:
+        en: 'Aborted'
+        de: 'Abgebrochen'
+      error_electrical:
+        en: 'Failed, electrical'
+        de: 'Fehlgeschlagen, elektrisch'
+      error_handling:
+        en: 'Failed, damaged'
+        de: 'Fehlgeschlagen, beschädigt'
+      error_read:
+        en: 'Failed, read error'
+        de: 'Fehlgeschlagen, Lesefehler'
+      error_servo:
+        en: 'Failed, servo'
+        de: 'Fehlgeschlagen, Servo'
+      error_unknown:
+        en: 'Failed, unknown error'
+        de: 'Fehlgeschlagen, unbekannter Fehler'
+      fatal:
+        en: 'Failed'
+        de: 'Fehlgeschlagen'
+      fatal_error:
+        en: 'Failed'
+        de: 'Fehlgeschlagen'
+      inprogress:
+        en: 'In progress'
+        de: 'Läuft'
+      interrupted:
+        en: 'Interrupted'
+        de: 'Unterbrochen'
+      success:
+        en: 'Completed without error'
+        de: 'Ohne Fehler abgeschlossen'
+    serial:
+      en: 'Serial'
+      de: 'Seriennummer'
+    size:
+      en: 'Size'
+      de: 'Größe'
+    smart:
+      en: 'SMART'
+      de: 'SMART'
+    spaces:
+      en: '%{count} spaces'
+      de: '%{count} Bereiche'
+    spare:
+      en: 'Available spare'
+      de: 'Verfügbare Reserve'
+    spare_value:
+      en: '%{spare} % (threshold %{threshold} %)'
+      de: '%{spare} % (Schwelle %{threshold} %)'
+    start:
+      en: 'Start'
+      de: 'Starten'
+    state:
+      active:
+        en: 'Active'
+        de: 'Aktiv'
+      inactive:
+        en: 'Inactive'
+        de: 'Inaktiv'
+      locked:
+        en: 'Locked'
+        de: 'Gesperrt'
+      mounted:
+        en: 'Mounted'
+        de: 'Eingehängt'
+      unlocked:
+        en: 'Unlocked'
+        de: 'Entsperrt'
+      unmounted:
+        en: 'Not mounted'
+        de: 'Nicht eingehängt'
+    status:
+      en: 'Status'
+      de: 'Status'
+    stop:
+      en: 'Stop'
+      de: 'Stoppen'
+    swap:
+      en: 'Swap'
+      de: 'Auslagerung'
+    tab:
+      devices:
+        en: 'Devices'
+        de: 'Geräte'
+      jobs:
+        en: 'Jobs'
+        de: 'Aufgaben'
+      storage:
+        en: 'Storage'
+        de: 'Speicher'
+    temperature:
+      en: 'Temperature'
+      de: 'Temperatur'
+    threshold:
+      en: 'Thr.'
+      de: 'Schw.'
+    type:
+      en: 'Type…'
+      de: 'Typ …'
+    unlock:
+      en: 'Unlock'
+      de: 'Entsperren'
+    unmount:
+      en: 'Unmount'
+      de: 'Aushängen'
+    unreachable_body:
+      en: 'org.freedesktop.UDisks2 did not answer on the system bus. Check that udisks2.service is running.'
+      de: 'org.freedesktop.UDisks2 antwortet nicht auf dem Systembus. Prüfe, ob udisks2.service läuft.'
+    unreachable_status:
+      en: 'udisksd not reachable'
+      de: 'udisksd nicht erreichbar'
+    unreachable_title:
+      en: 'Can’t reach the disk service'
+      de: 'Der Laufwerksdienst ist nicht erreichbar'
+    unsafe_shutdowns:
+      en: 'Unsafe shutdowns'
+      de: 'Unsichere Abschaltungen'
+    used:
+      en: '%{percent} % used'
+      de: '%{percent} % belegt'
+    value:
+      en: 'Value'
+      de: 'Wert'
+    warning:
+      en: 'Warning'
+      de: 'Warnung'
+    warning_lower:
+      en: 'SMART warning'
+      de: 'SMART-Warnung'
+    wear:
+      en: 'Used'
+      de: 'Verbraucht'
+    worst:
+      en: 'Worst'
+      de: 'Min.'
+    yes:
+      en: 'Yes'
+      de: 'Ja'

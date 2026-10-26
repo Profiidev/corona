@@ -13,7 +13,7 @@ use active_window::ActiveWindow;
 use clock::Clock;
 use control_center::{
   AudioButton, BatteryButton, BluetoothButton, BrightnessButton, CalendarButton,
-  ControlCenterButton, DisplaysButton, HotspotButton, MediaButton, NetworkButton,
+  ControlCenterButton, DisksButton, DisplaysButton, HotspotButton, MediaButton, NetworkButton,
   NotificationsButton, PowerButton, PrintersButton, SysinfoButton, WeatherButton,
 };
 use corona_surface::bar::BarExt;
@@ -33,6 +33,7 @@ pub fn register_widgets(cx: &mut App) {
     .register::<HotspotButton>()
     .register::<BluetoothButton>()
     .register::<PrintersButton>()
+    .register::<DisksButton>()
     .register::<PowerButton>()
     .register::<BatteryButton>()
     .register::<BrightnessButton>()

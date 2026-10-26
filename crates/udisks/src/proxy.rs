@@ -151,6 +151,7 @@ pub(crate) trait NvmeController {
 )]
 pub(crate) trait Loop {
   fn delete(&self, options: Options<'_>) -> zbus::Result<()>;
+  fn set_autoclear(&self, value: bool, options: Options<'_>) -> zbus::Result<()>;
 }
 
 #[proxy(

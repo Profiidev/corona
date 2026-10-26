@@ -27,7 +27,10 @@ use gpui_kit::{
 
 use crate::{
   settings::fields::{Choice, choice, number, save, searchable, slider, switch},
-  widgets::{control_center::printers, privacy, resource, tray},
+  widgets::{
+    control_center::{disks, printers},
+    privacy, resource, tray,
+  },
 };
 use rust_i18n::t;
 
@@ -746,6 +749,7 @@ fn options_form(widget_type: &str) -> Option<Form> {
     "tray" => Some(tray_form),
     "privacy" => Some(privacy_form),
     "printers" => Some(printers_form),
+    "disks" => Some(disks_form),
     _ => None,
   }
 }
@@ -1126,6 +1130,35 @@ fn printers_form(
             &name,
             slot,
             printers::Options {
+              hide_when_idle: *checked,
+            },
+          );
+        }),
+    ))
+    .into_any_element()
+}
+
+fn disks_form(
+  name: &str,
+  bar: &BarConfig,
+  slot: Slot,
+  _: &mut Window,
+  _: &mut App,
+) -> gpui_kit::AnyElement {
+  let current: disks::Options = options(bar, slot);
+  let name = name.to_string();
+  form()
+    .child(form_row(
+      t!("app.settings.bar.form.hide_no_disks"),
+      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
+        .checked(current.hide_when_idle)
+        .small()
+        .on_click(move |checked, _, cx| {
+          set_options(
+            cx,
+            &name,
+            slot,
+            disks::Options {
               hide_when_idle: *checked,
             },
           );

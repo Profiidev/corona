@@ -3,6 +3,7 @@ mod bluetooth;
 pub(crate) mod brightness;
 mod calendar;
 pub(crate) mod dashboard;
+mod disks;
 mod displays;
 mod hotspot;
 mod layout;
@@ -26,6 +27,7 @@ pub use crate::control_center::{
   brightness::BrightnessPanel,
   calendar::CalendarPanel,
   dashboard::DashboardPanel,
+  disks::DisksPanel,
   displays::DisplaysPanel,
   hotspot::{HotspotPanel, poll_clients},
   media::MediaPanel,
@@ -48,6 +50,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<Standalone<HotspotPanel>>()
     .register::<Standalone<BluetoothPanel>>()
     .register::<Standalone<PrintersPanel>>()
+    .register::<Standalone<DisksPanel>>()
     .register::<Standalone<PowerPanel>>()
     .register::<Standalone<BrightnessPanel>>()
     .register::<Standalone<DisplaysPanel>>()
@@ -56,6 +59,22 @@ pub fn register_panels(cx: &mut App) {
     .register::<Standalone<WeatherPanel>>()
     .register::<Standalone<CalendarPanel>>()
     .register::<Standalone<MediaPanel>>();
+}
+
+/// The disks panel's job history and drive notifications, which run with the panel closed
+pub fn init_disks(cx: &mut App) {
+  disks::jobs::init(cx);
+  disks::hotplug::init(cx);
+}
+
+pub(crate) use disks::jobs::log as disks_log;
+
+#[cfg(test)]
+pub(crate) use disks::runtime_keys as disks_runtime_keys;
+
+#[cfg(test)]
+pub(crate) fn disks_test_drive(removable: bool) -> corona_udisks::Drive {
+  disks::test_drive(removable)
 }
 
 pub trait ControlCenterPanel: Render {

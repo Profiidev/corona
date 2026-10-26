@@ -295,6 +295,32 @@ async fn unmount(conn: &Connection, block: OwnedObjectPath) -> Result<()> {
   )
 }
 
+impl Udisks {
+  /// A state without udisksd behind it, for UI tests: no listener, calls go to `conn` where
+  /// nobody answers
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn fake(
+    cx: &mut App,
+    conn: &Connection,
+    drives: Vec<Drive>,
+    blocks: Vec<Block>,
+    jobs: Vec<Job>,
+  ) {
+    let volumes = snapshot::volumes(&blocks, &drives);
+    let conn = conn.clone();
+    let state = Udisks {
+      running: cx.new(|_| true),
+      drives: cx.new(|_| drives),
+      blocks: cx.new(|_| blocks),
+      jobs: cx.new(|_| jobs),
+      job_completed: cx.new(|_| None),
+      volumes: cx.new(|_| volumes),
+      conn,
+    };
+    cx.set_global(state);
+  }
+}
+
 pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Udisks {
     running: cx.new(|_| false),

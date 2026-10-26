@@ -8,6 +8,9 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 corona_utils.workspace = true
 gpui-kit.workspace = true

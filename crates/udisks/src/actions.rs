@@ -352,6 +352,15 @@ impl Udisks {
     call!(self, LoopProxy, block; |p| p.delete(none()))
   }
 
+  /// Detaches the image on its own once nothing uses it
+  pub fn loop_set_autoclear(
+    &self,
+    block: &OwnedObjectPath,
+    autoclear: bool,
+  ) -> impl Future<Output = Result<()>> + use<> {
+    call!(self, LoopProxy, block; |p| p.set_autoclear(autoclear, none()))
+  }
+
   // Swapspace
 
   pub fn swap_start(&self, block: &OwnedObjectPath) -> impl Future<Output = Result<()>> + use<> {

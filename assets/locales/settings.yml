@@ -286,6 +286,9 @@ app:
         hide_no_jobs:
           en: Hide when nothing prints or scans
           de: 'Ausblenden, wenn nichts druckt oder scannt'
+        hide_no_disks:
+          en: Hide without removable drives or disk jobs
+          de: 'Ausblenden ohne Wechsellaufwerke oder Laufwerksaufgaben'
       widget:
         control_center:
           en: Control center
@@ -305,6 +308,9 @@ app:
         printers:
           en: Printers
           de: Drucker
+        disks:
+          en: Disks
+          de: Laufwerke
         power:
           en: Power
           de: Energie

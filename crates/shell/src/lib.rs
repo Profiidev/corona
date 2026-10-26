@@ -27,6 +27,7 @@ pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
+  control_center::init_disks(cx);
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
