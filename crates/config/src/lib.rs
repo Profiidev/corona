@@ -494,6 +494,7 @@ impl Default for ControlCenterConfig {
         "brightness",
         "displays",
         "notifications",
+        "clipboard",
         "sysinfo",
         "weather",
         "calendar",

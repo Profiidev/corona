@@ -24,6 +24,7 @@ use rust_i18n::t;
 mod notification;
 
 pub use notification::ReplyInputs;
+pub(crate) use notification::ago;
 
 const TICK: Duration = Duration::from_secs(30);
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);

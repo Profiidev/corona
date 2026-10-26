@@ -326,6 +326,9 @@ app:
         notifications:
           en: Notifications
           de: Benachrichtigungen
+        clipboard:
+          en: Clipboard
+          de: Zwischenablage
         sysinfo:
           en: System info
           de: Systeminfo

@@ -17,7 +17,8 @@ use crate::{
 
 const LIMIT: usize = 300;
 
-fn clip(entry: &Entry) -> anyhow::Result<Clip> {
+/// What pasting or copying `entry` puts on the clipboard
+pub fn clip(entry: &Entry) -> anyhow::Result<Clip> {
   Ok(match &entry.path {
     Some(path) => Clip::Image {
       bytes: Arc::new(std::fs::read(path)?),
@@ -27,7 +28,7 @@ fn clip(entry: &Entry) -> anyhow::Result<Clip> {
   })
 }
 
-fn kind_label(kind: Kind) -> SharedString {
+pub fn kind_label(kind: Kind) -> SharedString {
   match kind {
     Kind::Text => t!("app.launcher.clipboard.text"),
     Kind::Image => t!("app.launcher.clipboard.image"),
@@ -49,7 +50,7 @@ fn ago(seconds: u64) -> String {
 }
 
 /// A colour typed as `#rrggbb` as a swatch
-fn swatch(text: &str) -> Option<gpui_kit::Hsla> {
+pub fn swatch(text: &str) -> Option<gpui_kit::Hsla> {
   let hex = text.trim().strip_prefix('#')?;
   let value = u32::from_str_radix(hex, 16).ok()?;
   match hex.len() {

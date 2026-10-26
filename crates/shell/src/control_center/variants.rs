@@ -4,9 +4,9 @@ use std::borrow::Cow;
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
-  brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
-  disks::DisksPanel, displays::DisplaysPanel, hotspot::HotspotPanel, media::MediaPanel,
-  network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
+  brightness::BrightnessPanel, calendar::CalendarPanel, clipboard::ClipboardPanel,
+  dashboard::DashboardPanel, disks::DisksPanel, displays::DisplaysPanel, hotspot::HotspotPanel,
+  media::MediaPanel, network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
   printers::PrintersPanel, resolve, sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
 use rust_i18n::t;
@@ -24,6 +24,7 @@ pub enum ControlCenterType {
   Brightness,
   Displays,
   Notifications,
+  Clipboard,
   Sysinfo,
   Weather,
   Calendar,
@@ -44,6 +45,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => "brightness",
       ControlCenterType::Displays => "displays",
       ControlCenterType::Notifications => "notifications",
+      ControlCenterType::Clipboard => "clipboard",
       ControlCenterType::Sysinfo => "sysinfo",
       ControlCenterType::Weather => "weather",
       ControlCenterType::Calendar => "calendar",
@@ -64,6 +66,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => IconName::Sun,
       ControlCenterType::Displays => IconName::Monitor,
       ControlCenterType::Notifications => IconName::Bell,
+      ControlCenterType::Clipboard => IconName::ClipboardList,
       ControlCenterType::Sysinfo => IconName::Activity,
       ControlCenterType::Weather => IconName::CloudSun,
       ControlCenterType::Calendar => IconName::CalendarDays,
@@ -84,6 +87,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => t!("app.control_center.brightness"),
       ControlCenterType::Displays => t!("app.control_center.displays"),
       ControlCenterType::Notifications => t!("app.control_center.notifications"),
+      ControlCenterType::Clipboard => t!("app.control_center.clipboard"),
       ControlCenterType::Sysinfo => t!("app.control_center.sysinfo"),
       ControlCenterType::Weather => t!("app.control_center.weather"),
       ControlCenterType::Calendar => t!("app.control_center.calendar"),
@@ -121,6 +125,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness,
       ControlCenterType::Displays,
       ControlCenterType::Notifications,
+      ControlCenterType::Clipboard,
       ControlCenterType::Sysinfo,
       ControlCenterType::Weather,
       ControlCenterType::Calendar,
@@ -142,6 +147,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
       ControlCenterType::Displays => DisplaysPanel::handle(window, cx),
       ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
+      ControlCenterType::Clipboard => ClipboardPanel::handle(window, cx),
       ControlCenterType::Sysinfo => SysinfoPanel::handle(window, cx),
       ControlCenterType::Weather => WeatherPanel::handle(window, cx),
       ControlCenterType::Calendar => CalendarPanel::handle(window, cx),
@@ -171,13 +177,14 @@ mod tests {
         | ControlCenterType::Brightness
         | ControlCenterType::Displays
         | ControlCenterType::Notifications
+        | ControlCenterType::Clipboard
         | ControlCenterType::Sysinfo
         | ControlCenterType::Weather
         | ControlCenterType::Calendar
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 15);
+    assert_eq!(all.len(), 16);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 

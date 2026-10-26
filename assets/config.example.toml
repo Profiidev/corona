@@ -273,6 +273,7 @@ sidebar = [
   "brightness",
   "displays",
   "notifications",
+  "clipboard",
   "sysinfo",
   "weather",
   "calendar",

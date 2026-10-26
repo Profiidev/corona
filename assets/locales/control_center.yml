@@ -31,6 +31,9 @@ app:
     displays:
       en: Displays
       de: Bildschirme
+    clipboard:
+      en: Clipboard
+      de: Zwischenablage
     notifications:
       en: Notifications
       de: Benachrichtigungen

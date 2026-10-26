@@ -2,6 +2,7 @@ mod audio;
 mod bluetooth;
 pub(crate) mod brightness;
 mod calendar;
+mod clipboard;
 pub(crate) mod dashboard;
 mod disks;
 mod displays;
@@ -27,6 +28,7 @@ pub use crate::control_center::{
   bluetooth::BluetoothPanel,
   brightness::BrightnessPanel,
   calendar::CalendarPanel,
+  clipboard::ClipboardPanel,
   dashboard::DashboardPanel,
   disks::DisksPanel,
   displays::DisplaysPanel,
@@ -56,6 +58,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<Standalone<BrightnessPanel>>()
     .register::<Standalone<DisplaysPanel>>()
     .register::<Standalone<NotificationsPanel>>()
+    .register::<Standalone<ClipboardPanel>>()
     .register::<Standalone<SysinfoPanel>>()
     .register::<Standalone<WeatherPanel>>()
     .register::<Standalone<CalendarPanel>>()
