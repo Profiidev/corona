@@ -78,7 +78,15 @@ own prompt, in `~/.config/udiskie/config.yml`:
 
 ```yaml
 program_options:
-  password_prompt: ["corona", "ipc", "drive", "password-prompt", "--device", "{device_presentation}"]
+  password_prompt:
+    [
+      'corona',
+      'ipc',
+      'drive',
+      'password-prompt',
+      '--device',
+      '{device_presentation}'
+    ]
 ```
 
 Corona's home-manager module sets this for `services.udiskie` already.
