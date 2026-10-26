@@ -47,6 +47,7 @@ mod complete;
 mod extras;
 mod launcher;
 mod network;
+mod nightlight;
 mod notification;
 mod osk;
 mod panel;
@@ -186,6 +187,11 @@ pub enum IpcCommands {
   Brightness {
     #[command(subcommand)]
     command: BrightnessCommands,
+  },
+  /// Nightlight: on, off, toggle, status or temp <KELVIN>
+  Nightlight {
+    #[command(subcommand)]
+    command: nightlight::NightlightCommands,
   },
   /// Wi-Fi radio: on, off, toggle or status
   Wifi { switch: Switch },
@@ -331,6 +337,7 @@ impl IpcCommands {
         print_switch(StayAwake::send(request), switch, "stay awake")
       }
       IpcCommands::Brightness { command } => command.execute(),
+      IpcCommands::Nightlight { command } => command.execute(),
       IpcCommands::Volume { command } => command.execute(Device::Output),
       IpcCommands::Mic { command } => command.execute(Device::Input),
       IpcCommands::Settings { action, page } => {
@@ -434,6 +441,7 @@ pub(crate) mod tests {
   use corona_ipc::IpcCommand;
   use corona_shell::commands::{
     brightness::SetBrightness,
+    nightlight::Nightlight,
     notification::{ClearHistory, DoNotDisturb, Show},
     power_profile::{CycleProfile, SetProfile},
     theme::{SetMode, SetTheme},
@@ -517,6 +525,8 @@ pub(crate) mod tests {
     assert!(ipc(&["screenshot", "nope"]).is_err());
     assert!(ipc(&["switcher", "--modifier", "meta"]).is_err());
     assert!(ipc(&["wifi", "maybe"]).is_err());
+    assert!(ipc(&["nightlight", "temp", "warm"]).is_err());
+    assert!(ipc(&["nightlight", "dim"]).is_err());
     assert!(ipc(&["stay-awake", "--for", "-5"]).is_err());
     assert!(ipc(&["stay-awake", "--for", "soon"]).is_err());
   }
@@ -533,6 +543,9 @@ pub(crate) mod tests {
       (&["brightness", "down", "-m", "*"], json!(null), SetBrightness::COMMAND, json!(["*", { "Change": -0.05 }])),
       (&["brightness", "up"], json!(null), SetBrightness::COMMAND, json!([null, { "Change": 0.05 }])),
       (&["brightness", "set", "40", "--monitor", "DP-1"], json!(null), SetBrightness::COMMAND, json!(["DP-1", { "Set": 0.4 }])),
+      (&["nightlight", "toggle"], json!({ "on": true, "temperature": 4000 }), Nightlight::COMMAND, json!({ "switch": "Toggle", "temperature": null })),
+      (&["nightlight", "status"], json!({ "on": false, "temperature": 4000 }), Nightlight::COMMAND, json!({ "switch": "Status", "temperature": null })),
+      (&["nightlight", "temp", "3200"], json!({ "on": true, "temperature": 3200 }), Nightlight::COMMAND, json!({ "switch": null, "temperature": 3200 })),
       (&["switcher"], json!(null), Cycle::COMMAND, json!({ "mode": "Window", "modifier": "Super", "current_monitor": false })),
       (&["switcher", "--mode", "WORKSPACE", "--modifier", "ctrl", "--current-monitor"], json!(null), Cycle::COMMAND, json!({ "mode": "Workspace", "modifier": "Ctrl", "current_monitor": true })),
       (&["screenshot"], json!(null), Screenshot::COMMAND, json!("Selection")),
