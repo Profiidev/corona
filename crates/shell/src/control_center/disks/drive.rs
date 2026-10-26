@@ -329,15 +329,13 @@ impl DisksPanel {
       Health::Warn => (t!("app.disks.warning"), warn_color()),
       _ => (t!("app.disks.failing"), theme.colors.danger),
     };
+    let power_on = smart
+      .power_on_hours
+      .map(|h| t!("app.disks.hours", count = h).to_string())
+      .unwrap_or_else(|| "—".into());
     let third = match &attributes {
       Some(SmartAttributes::Nvme(log)) => (t!("app.disks.wear"), format!("{} %", log.percent_used)),
-      _ => (
-        t!("app.disks.power_on"),
-        smart
-          .power_on_hours
-          .map(|h| t!("app.disks.hours", count = h).to_string())
-          .unwrap_or_else(|| "—".into()),
-      ),
+      _ => (t!("app.disks.power_on"), power_on.clone()),
     };
     let stats = [
       (t!("app.disks.status"), status.to_string(), Some(color)),
@@ -448,6 +446,7 @@ impl DisksPanel {
               ok_color()
             }),
           ),
+          (t!("app.disks.power_on"), power_on, None),
           (
             t!("app.disks.busy_time"),
             t!("app.disks.minutes", count = log.ctrl_busy_time).to_string(),

@@ -106,6 +106,7 @@ impl DisksPanel {
         views.iter().map(|v| self.drive_card(v, cx)),
         cx,
       )
+      .gap_2()
       .into_any_element()
     })
     .collect()
