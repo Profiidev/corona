@@ -318,90 +318,118 @@ impl DisksPanel {
     if !cx.udisks().running(cx) {
       return None;
     }
-    let (title, status, tags): (String, String, Vec<AnyElement>) = match &self.view {
-      View::List => return None,
-      View::Drive(path) => {
-        let view = self
-          .drive_views(cx)
-          .into_iter()
-          .find(|v| &v.drive.path == path)?;
-        let tag = match health(&view.drive) {
-          Health::Ok => Some((t!("app.disks.healthy"), Tone::Ok)),
-          Health::Warn => Some((t!("app.disks.warning"), Tone::Warn)),
-          Health::Err => Some((t!("app.disks.failing"), Tone::Err)),
-          Health::Unknown => None,
-        };
-        let tags = tag
-          .map(|(text, tone)| ui::tag(text, tone, cx).into_any_element())
-          .into_iter()
-          .collect();
-        (view.drive.name(), devices::drive_line(&view), tags)
-      }
-      View::Block(path) => {
-        let (_, part) = self.find_part(path, cx)?;
-        let block = &part.block;
-        let status = format!(
-          "{} · {} · {}",
-          block.device.trim_start_matches("/dev/"),
-          types::fs_name(&block.id_type),
-          types::size(block.size)
-        );
-        let (state, tone) = state_tag(&part);
-        let mut tags = Vec::new();
-        if part.is_system() {
-          tags.push(ui::tag(t!("app.disks.system"), Tone::Warn, cx).into_any_element());
+    // the drive's partition map, or how full a mounted partition is, under the title
+    let (title, status, tags, bar): (String, String, Vec<AnyElement>, Option<AnyElement>) =
+      match &self.view {
+        View::List => return None,
+        View::Drive(path) => {
+          let view = self
+            .drive_views(cx)
+            .into_iter()
+            .find(|v| &v.drive.path == path)?;
+          let tag = match health(&view.drive) {
+            Health::Ok => Some((t!("app.disks.healthy"), Tone::Ok)),
+            Health::Warn => Some((t!("app.disks.warning"), Tone::Warn)),
+            Health::Err => Some((t!("app.disks.failing"), Tone::Err)),
+            Health::Unknown => None,
+          };
+          let tags = tag
+            .map(|(text, tone)| ui::tag(text, tone, cx).into_any_element())
+            .into_iter()
+            .collect();
+          let map = (!view.parts.is_empty())
+            .then(|| ui::partition_map(&devices::segments(&view), cx).into_any_element());
+          (view.drive.name(), devices::drive_line(&view), tags, map)
         }
-        tags.push(ui::tag(state, tone, cx).into_any_element());
-        (block.name().to_string(), status, tags)
-      }
-    };
+        View::Block(path) => {
+          let (_, part) = self.find_part(path, cx)?;
+          let block = &part.block;
+          let status = format!(
+            "{} · {} · {}",
+            block.device.trim_start_matches("/dev/"),
+            types::fs_name(&block.id_type),
+            types::size(block.size)
+          );
+          let (state, tone) = state_tag(&part);
+          let mut tags = Vec::new();
+          if part.is_system() {
+            tags.push(ui::tag(t!("app.disks.system"), Tone::Warn, cx).into_any_element());
+          }
+          tags.push(ui::tag(state, tone, cx).into_any_element());
+          let mount = block
+            .filesystem
+            .as_ref()
+            .and_then(|f| f.mount_points.first().cloned());
+          let bar = mount
+            .as_deref()
+            .and_then(model::usage)
+            .zip(mount.clone())
+            .map(|((used, total), mount)| {
+              let used_percent = model::percent(used, total);
+              ui::usage_bar(
+                used_percent,
+                t!("app.disks.used", percent = format!("{used_percent:.0}")),
+                mount,
+                cx,
+              )
+              .into_any_element()
+            });
+          (block.name().to_string(), status, tags, bar)
+        }
+      };
+    let top = div()
+      .flex()
+      .items_center()
+      .gap_2()
+      .child(
+        Button::new("disks-back")
+          .icon(IconName::ChevronLeft)
+          .small()
+          .ghost()
+          .cursor_pointer()
+          .on_click(cx.listener(|this, _, _, cx| {
+            this.view = match &this.view {
+              // a cleartext or partition goes back to its drive
+              View::Block(path) => match this.find_part(path, cx).and_then(|(d, _)| d) {
+                Some(drive) => View::Drive(drive.drive.path),
+                None => View::List,
+              },
+              _ => View::List,
+            };
+            this.dialog = None;
+            cx.notify();
+          })),
+      )
+      .child(
+        div()
+          .flex()
+          .flex_col()
+          .flex_1()
+          .min_w_0()
+          .child(
+            div()
+              .text_sm()
+              .font_weight(gpui_kit::FontWeight::BOLD)
+              .truncate()
+              .child(title),
+          )
+          .child(
+            div()
+              .text_xs()
+              .text_color(theme.colors.muted_foreground)
+              .truncate()
+              .child(status),
+          ),
+      )
+      .children(tags);
     Some(
       div()
         .flex()
+        .flex_col()
         .flex_shrink_0()
-        .items_center()
         .gap_2()
-        .child(
-          Button::new("disks-back")
-            .icon(IconName::ChevronLeft)
-            .small()
-            .ghost()
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-              this.view = match &this.view {
-                // a cleartext or partition goes back to its drive
-                View::Block(path) => match this.find_part(path, cx).and_then(|(d, _)| d) {
-                  Some(drive) => View::Drive(drive.drive.path),
-                  None => View::List,
-                },
-                _ => View::List,
-              };
-              this.dialog = None;
-              cx.notify();
-            })),
-        )
-        .child(
-          div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .child(
-              div()
-                .text_sm()
-                .font_weight(gpui_kit::FontWeight::BOLD)
-                .truncate()
-                .child(title),
-            )
-            .child(
-              div()
-                .text_xs()
-                .text_color(theme.colors.muted_foreground)
-                .truncate()
-                .child(status),
-            ),
-        )
-        .children(tags)
+        .child(top)
+        .children(bar)
         .into_any_element(),
     )
   }

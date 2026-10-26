@@ -19,12 +19,11 @@ use zbus::zvariant::OwnedObjectPath;
 
 use crate::control_center::disks::{
   DisksPanel, DriveTab,
-  devices::segments,
   dialogs::{Dialog, DialogKind},
   jobs::DisksLog,
   model::{Health, free_spaces, health},
   types::{size, table_name},
-  ui::{dot, kv, ok_color, partition_map, section, warn_color},
+  ui::{dot, kv, ok_color, section, warn_color},
 };
 
 /// ATA attributes whose raw value above 0 means wear: reallocated, pending, uncorrectable
@@ -51,18 +50,8 @@ impl DisksPanel {
     else {
       return Vec::new();
     };
-    let theme = cx.theme();
+    let _theme = cx.theme();
     let drive = &view.drive;
-    // name, line and health are in the header, the card only maps the partitions
-    let summary = (!view.parts.is_empty()).then(|| {
-      div()
-        .flex_shrink_0()
-        .p_2()
-        .rounded_xl()
-        .bg(theme.colors.accent)
-        .child(partition_map(&segments(&view), cx))
-        .into_any_element()
-    });
     let sub_tabs = div().flex().flex_shrink_0().gap_1().children(
       [
         (
@@ -93,8 +82,7 @@ impl DisksPanel {
           }))
       }),
     );
-    let mut page: Vec<AnyElement> = summary.into_iter().collect();
-    page.push(sub_tabs.into_any_element());
+    let mut page = vec![sub_tabs.into_any_element()];
     match self.drive_tab {
       DriveTab::Overview => page.extend(self.overview(&view.drive, view.disk.as_ref(), cx)),
       DriveTab::Health => page.extend(self.health(drive, cx)),

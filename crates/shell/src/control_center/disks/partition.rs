@@ -16,9 +16,8 @@ use crate::control_center::disks::{
   DisksPanel,
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::DisksLog,
-  model::{percent, usage},
   types::{fs_name, partition_type_name, size, table_name},
-  ui::{kv, section, usage_bar},
+  ui::{kv, section},
 };
 
 /// Opens `path` in the default app for `inode/directory`, `xdg-open` when there is none
@@ -62,7 +61,7 @@ impl DisksPanel {
     let Some((drive, part)) = self.find_part(path, cx) else {
       return Vec::new();
     };
-    let theme = cx.theme();
+    let _theme = cx.theme();
     let block = part.block.clone();
     let table_kind = drive
       .as_ref()
@@ -77,30 +76,6 @@ impl DisksPanel {
       .filesystem
       .as_ref()
       .and_then(|f| f.mount_points.first().cloned());
-    // name, line and state are in the header, the card only shows how full it is
-    let summary =
-      mount
-        .as_deref()
-        .and_then(usage)
-        .zip(mount.clone())
-        .map(|((used, total), mount)| {
-          div()
-            .flex_shrink_0()
-            .p_2()
-            .rounded_xl()
-            .bg(theme.colors.accent)
-            .child(usage_bar(
-              percent(used, total),
-              t!(
-                "app.disks.used",
-                percent = format!("{:.0}", percent(used, total))
-              ),
-              mount,
-              cx,
-            ))
-            .into_any_element()
-        });
-
     let id = block
       .path
       .as_str()
@@ -190,7 +165,7 @@ impl DisksPanel {
       ));
     }
 
-    let mut page: Vec<AnyElement> = summary.into_iter().collect();
+    let mut page: Vec<AnyElement> = Vec::new();
     page.extend([
       div()
         .flex()
