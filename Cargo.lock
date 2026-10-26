@@ -1878,12 +1878,18 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "corona_config",
+ "corona_location",
  "corona_utils",
  "flume",
  "futures-lite",
  "gpui-kit",
+ "jiff",
+ "rustix",
  "tempfile",
  "tracing",
+ "wayland-client",
+ "wayland-protocols-wlr",
+ "wayland-server",
  "zbus",
 ]
 
@@ -12021,6 +12027,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-scanner",
+ "wayland-server",
 ]
 
 [[package]]
