@@ -1,6 +1,6 @@
 [package]
 name = "corona_udisks"
-description = "Removable drives through UDisks2 for the Corona shell"
+description = "UDisks2 drives, block devices and filesystems for the Corona shell"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
@@ -8,6 +8,16 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
+corona_utils.workspace = true
+gpui-kit.workspace = true
 anyhow.workspace = true
+futures-lite.workspace = true
 zbus.workspace = true
+
+[dev-dependencies]
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }

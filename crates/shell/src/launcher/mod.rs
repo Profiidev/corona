@@ -5,6 +5,7 @@ mod bluetooth;
 pub mod commands;
 mod devices;
 mod display;
+mod drives;
 mod info;
 mod ip;
 mod media;
@@ -70,6 +71,7 @@ pub fn init(cx: &mut App) {
   devices::init(cx);
   network::init(cx);
   bluetooth::init(cx);
+  drives::init(cx);
   player::init(cx);
   notifications::init(cx);
   tray::init(cx);

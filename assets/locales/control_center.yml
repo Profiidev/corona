@@ -19,6 +19,9 @@ app:
     printers:
       en: Printers
       de: Drucker
+    disks:
+      en: Disks
+      de: Laufwerke
     power:
       en: Power
       de: Energie

@@ -19,6 +19,7 @@ corona_desktop.workspace = true
 corona_network_manager.workspace = true
 corona_mpris.workspace = true
 corona_bluez.workspace = true
+corona_udisks.workspace = true
 corona_printing.workspace = true
 corona_power.workspace = true
 corona_brightness.workspace = true
@@ -47,6 +48,8 @@ zbus.workspace = true
 futures.workspace = true
 tracing.workspace = true
 jiff = "0.2.37"
+zstd = "0.14.3"
+rustix = { workspace = true, features = ["fs"] }
 rust-i18n.workspace = true
 jiff-icu = { version = "0.2.2", default-features = false, features = [
   "std",
@@ -64,6 +67,7 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb5
 ] }
 
 [dev-dependencies]
+corona_udisks = { workspace = true, features = ["test-support"] }
 corona_auth = { workspace = true, features = ["test-support"] }
 corona_network_manager = { workspace = true, features = ["test-support"] }
 corona_printing = { workspace = true, features = ["test-support"] }

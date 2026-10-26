@@ -3,7 +3,7 @@ pub mod hud;
 mod launcher;
 mod overlays;
 mod rows;
-mod style;
+pub mod style;
 
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;

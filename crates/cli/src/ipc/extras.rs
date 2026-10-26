@@ -32,14 +32,19 @@ impl TrashCommands {
 
 #[derive(Subcommand)]
 pub enum DriveCommands {
-  /// List removable drives
+  /// List drives that are not the system's
   List,
   /// Mount a drive by device or label
   Mount {
     #[arg(add = ArgValueCandidates::new(complete::drives))]
     drive: String,
   },
-  /// Unmount and power off a drive by device or label
+  /// Unmount a drive by device or label
+  Unmount {
+    #[arg(add = ArgValueCandidates::new(complete::drives))]
+    drive: String,
+  },
+  /// Unmount, lock and power off a drive by device or label
   Eject {
     #[arg(add = ArgValueCandidates::new(complete::drives))]
     drive: String,
@@ -58,6 +63,9 @@ impl DriveCommands {
         Err(e) => tracing::error!("Failed to list drives: {}", e),
       },
       DriveCommands::Mount { drive } => done(DriveAction::send((Drive::Mount, drive)), "mount"),
+      DriveCommands::Unmount { drive } => {
+        done(DriveAction::send((Drive::Unmount, drive)), "unmount")
+      }
       DriveCommands::Eject { drive } => done(DriveAction::send((Drive::Eject, drive)), "eject"),
     }
   }

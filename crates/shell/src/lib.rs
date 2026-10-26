@@ -27,6 +27,7 @@ pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
+  control_center::init_disks(cx);
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
@@ -136,6 +137,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_bluez::init(cx, &system).await?;
   corona_printing::init(cx, &system).await?;
   corona_power::init(cx, &system).await?;
+  corona_udisks::init(cx, &system).await?;
   corona_weather::init(cx, &system);
   corona_brightness::init(cx, &system)?;
   corona_auth::init(cx, &system);
