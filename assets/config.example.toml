@@ -305,6 +305,18 @@ auto_locate = false
 enable_ddcutil = true
 poll_seconds = 5
 
+# Warmer colors at night. Manual: by hand only; solar: sunset to sunrise at the
+# [location]; schedule: from start to end (local HH:MM). Toggling by hand in a
+# timed mode lasts until the next start or end.
+[nightlight]
+mode = "manual"
+# Kelvin, 1000 to 6500
+temperature = 4000
+start = "20:00"
+end = "07:00"
+# Fades over this long around each start and end; 0 switches at once
+transition_minutes = 30
+
 [system.monitor]
 poll_seconds = 3
 

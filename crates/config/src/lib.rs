@@ -63,6 +63,7 @@ pub struct Config {
   pub weather: WeatherConfig,
   pub location: LocationConfig,
   pub brightness: BrightnessConfig,
+  pub nightlight: NightlightConfig,
   pub system: SystemConfig,
   pub idle: IdleConfig,
   pub plugins: PluginsConfig,
@@ -90,6 +91,7 @@ impl Default for Config {
       weather: WeatherConfig::default(),
       location: LocationConfig::default(),
       brightness: BrightnessConfig::default(),
+      nightlight: NightlightConfig::default(),
       system: SystemConfig::default(),
       idle: IdleConfig::default(),
       plugins: PluginsConfig::default(),
@@ -563,6 +565,43 @@ impl Default for BrightnessConfig {
     Self {
       enable_ddcutil: true,
       poll_seconds: 5,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NightlightMode {
+  /// On and off by hand only
+  #[default]
+  Manual,
+  /// From sunset to sunrise at the `[location]`
+  Solar,
+  /// From `start` to `end`
+  Schedule,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct NightlightConfig {
+  pub mode: NightlightMode,
+  /// Kelvin, 1000 to 6500
+  pub temperature: u32,
+  /// `HH:MM` local time, for the schedule mode
+  pub start: String,
+  pub end: String,
+  /// Fades in and out over this long around each start and end; 0: switch at once
+  pub transition_minutes: u32,
+}
+
+impl Default for NightlightConfig {
+  fn default() -> Self {
+    Self {
+      mode: NightlightMode::Manual,
+      temperature: 4000,
+      start: "20:00".into(),
+      end: "07:00".into(),
+      transition_minutes: 30,
     }
   }
 }
