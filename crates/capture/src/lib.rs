@@ -2,6 +2,7 @@ mod convert;
 mod gpu;
 mod hyprland;
 mod live;
+mod toplevel;
 mod view;
 mod wayland;
 

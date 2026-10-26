@@ -13,13 +13,7 @@ use gbm::{BufferObjectFlags, Format, Modifier};
 use gpui_kit::{Dmabuf, DmabufPlane};
 use gpui_wgpu::wgpu;
 
-use crate::{
-  hyprland::{
-    hyprland_toplevel_mapping_manager_v1::HyprlandToplevelMappingManagerV1,
-    hyprland_toplevel_window_mapping_handle_v1::{self, HyprlandToplevelWindowMappingHandleV1},
-  },
-  view::FrameView,
-};
+use crate::{toplevel, view::FrameView};
 use image::RgbaImage;
 use rustix::fs::{MemfdFlags, ftruncate, major, memfd_create, minor, stat};
 use wayland_client::{
@@ -62,8 +56,6 @@ struct State {
   dmabuf_device: Option<u64>,
   dmabuf_formats: Vec<(u32, Vec<u64>)>,
   toplevels: Vec<ExtForeignToplevelHandleV1>,
-  /// Toplevel index and window address, from the last mapping requests.
-  mapped: Vec<(usize, u64)>,
   session_done: bool,
   frame: Option<Result<(), String>>,
 }
@@ -82,6 +74,7 @@ enum Backing {
 }
 
 pub struct Capturer {
+  conn: Connection,
   queue: EventQueue<State>,
   qh: QueueHandle<State>,
   state: State,
@@ -92,7 +85,6 @@ pub struct Capturer {
   sources: ExtOutputImageCaptureSourceManagerV1,
   toplevel_sources: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
   _toplevel_list: Option<ExtForeignToplevelListV1>,
-  mapping: Option<HyprlandToplevelMappingManagerV1>,
 }
 
 /// Formats sampled as BGRA/BGRX words, see [`Dmabuf`].
@@ -139,7 +131,6 @@ impl Capturer {
     let sources: ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ())?;
     let toplevel_sources = globals.bind(&qh, 1..=1, ()).ok();
     let toplevel_list = globals.bind(&qh, 1..=1, ()).ok();
-    let mapping = globals.bind(&qh, 1..=1, ()).ok();
 
     for global in globals.contents().clone_list() {
       if global.interface == "wl_output" {
@@ -153,6 +144,7 @@ impl Capturer {
     queue.roundtrip(&mut state)?;
 
     Ok(Self {
+      conn,
       queue,
       qh,
       state,
@@ -163,7 +155,6 @@ impl Capturer {
       sources,
       toplevel_sources,
       _toplevel_list: toplevel_list,
-      mapping,
     })
   }
 
@@ -207,37 +198,14 @@ impl Capturer {
     frame
   }
 
-  /// A capture source for the Hyprland window at `address`.
-  pub(crate) fn window_source(&mut self, address: u64) -> Result<ExtImageCaptureSourceV1> {
+  /// A capture source for the compositor's window `id`.
+  pub(crate) fn window_source(&mut self, id: &str) -> Result<ExtImageCaptureSourceV1> {
     let sources = self
       .toplevel_sources
       .as_ref()
       .context("compositor lacks ext-foreign-toplevel-image-capture-source-v1")?;
-    let mapping = self
-      .mapping
-      .as_ref()
-      .context("compositor lacks hyprland-toplevel-mapping-v1")?;
-
-    self.state.mapped.clear();
-    let handles = self
-      .state
-      .toplevels
-      .iter()
-      .enumerate()
-      .map(|(i, toplevel)| mapping.get_window_for_toplevel(toplevel, &self.qh, i))
-      .collect::<Vec<_>>();
-    self.queue.roundtrip(&mut self.state)?;
-    for handle in handles {
-      handle.destroy();
-    }
-
-    let (index, _) = self
-      .state
-      .mapped
-      .iter()
-      .find(|(_, a)| *a == address)
-      .with_context(|| format!("no toplevel for window {address:#x}"))?;
-    Ok(sources.create_source(&self.state.toplevels[*index], &self.qh, ()))
+    let index = toplevel::mapper(&self.conn)?.find(&self.state.toplevels, id)?;
+    Ok(sources.create_source(&self.state.toplevels[index], &self.qh, ()))
   }
 
   /// Opens a session and waits for its buffer constraints.
@@ -493,10 +461,6 @@ fn modifiers(bytes: &[u8]) -> Vec<u64> {
     .collect()
 }
 
-fn window_address(hi: u32, lo: u32) -> u64 {
-  (u64::from(hi) << 32) | u64::from(lo)
-}
-
 /// Rows of little-endian BGRA/BGRX words to RGBA.
 fn to_rgba(
   data: &[u8],
@@ -607,29 +571,6 @@ delegate_noop!(State: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(State: ignore ZwpLinuxDmabufV1);
 delegate_noop!(State: ignore ExtForeignToplevelHandleV1);
 delegate_noop!(State: ExtForeignToplevelImageCaptureSourceManagerV1);
-delegate_noop!(State: HyprlandToplevelMappingManagerV1);
-
-impl Dispatch<HyprlandToplevelWindowMappingHandleV1, usize> for State {
-  fn event(
-    state: &mut Self,
-    _: &HyprlandToplevelWindowMappingHandleV1,
-    event: hyprland_toplevel_window_mapping_handle_v1::Event,
-    index: &usize,
-    _: &Connection,
-    _: &QueueHandle<Self>,
-  ) {
-    if let hyprland_toplevel_window_mapping_handle_v1::Event::WindowAddress {
-      address_hi,
-      address,
-    } = event
-    {
-      state
-        .mapped
-        .push((*index, window_address(address_hi, address)));
-    }
-  }
-}
-
 impl Dispatch<ExtForeignToplevelListV1, ()> for State {
   fn event(
     state: &mut Self,
@@ -814,13 +755,6 @@ mod tests {
   }
 
   #[test]
-  fn window_addresses() {
-    assert_eq!(window_address(0, 0), 0);
-    assert_eq!(window_address(0x55d2, 0xa4e1_b2c0), 0x55d2_a4e1_b2c0);
-    assert_eq!(window_address(u32::MAX, u32::MAX), u64::MAX);
-  }
-
-  #[test]
   fn large_dimensions_overflow_boundary() {
     let w: u32 = 40_000;
     let h: u32 = 20_000;
@@ -845,6 +779,5 @@ mod tests {
   fn state_toplevels_accumulation() {
     let state = State::default();
     assert!(state.toplevels.is_empty());
-    assert!(state.mapped.is_empty());
   }
 }
