@@ -182,7 +182,7 @@ impl Render for DashboardPanel {
       .flex_col()
       .gap_2()
       .child(cards::profile(cx))
-      .child(toggles::toggles(cx))
+      .children(toggles::toggles(cx))
       .child(self.sliders.render(cx))
       .child(
         div()

@@ -446,6 +446,11 @@ pub struct ControlCenterConfig {
   pub week_start: Weekday,
   /// Of the panels
   pub background_opacity: f32,
+  /// Pages in the sidebar, in order, after the dashboard which is always first
+  pub sidebar: Vec<String>,
+  /// Tiles on the dashboard, in order: `wifi`, `bluetooth`, `dnd`, `dark_mode`,
+  /// `stay_awake`, `airplane`, `power_profile`
+  pub quick_actions: Vec<String>,
 }
 
 impl Default for ControlCenterConfig {
@@ -455,6 +460,34 @@ impl Default for ControlCenterConfig {
       date_format: "%a, %d.%m.%Y".to_string(),
       week_start: Weekday::default(),
       background_opacity: 1.,
+      sidebar: [
+        "audio",
+        "network",
+        "hotspot",
+        "bluetooth",
+        "printers",
+        "disks",
+        "power",
+        "brightness",
+        "displays",
+        "notifications",
+        "sysinfo",
+        "weather",
+        "calendar",
+        "media",
+      ]
+      .map(String::from)
+      .to_vec(),
+      quick_actions: [
+        "wifi",
+        "bluetooth",
+        "dnd",
+        "dark_mode",
+        "stay_awake",
+        "airplane",
+      ]
+      .map(String::from)
+      .to_vec(),
     }
   }
 }

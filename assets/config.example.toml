@@ -255,6 +255,25 @@ date_format = "%a, %d.%m.%Y"
 week_start = "monday" # or "sunday"
 # Of the panels.
 background_opacity = 1.0
+# Pages in the sidebar, in order. The dashboard is always first.
+sidebar = [
+  "audio",
+  "network",
+  "hotspot",
+  "bluetooth",
+  "printers",
+  "disks",
+  "power",
+  "brightness",
+  "displays",
+  "notifications",
+  "sysinfo",
+  "weather",
+  "calendar",
+  "media",
+]
+# Tiles on the dashboard, in order. Also available: "power_profile".
+quick_actions = ["wifi", "bluetooth", "dnd", "dark_mode", "stay_awake", "airplane"]
 
 [weather]
 units = "metric" # or "imperial"

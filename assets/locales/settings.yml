@@ -582,6 +582,26 @@ app:
         description:
           en: strftime pattern.
           de: strftime-Muster.
+      sidebar:
+        title:
+          en: Sidebar
+          de: Seitenleiste
+        description:
+          en: Pages in the sidebar, after the dashboard which is always first.
+          de: Seiten in der Seitenleiste, nach der Übersicht, die immer zuerst steht.
+      quick_actions:
+        title:
+          en: Quick actions
+          de: Schnellaktionen
+        description:
+          en: Tiles on the dashboard.
+          de: Kacheln in der Übersicht.
+      add:
+        en: Add…
+        de: Hinzufügen…
+      drag_hint:
+        en: Drag an entry between others to move it.
+        de: Ziehe einen Eintrag zwischen andere, um ihn zu verschieben.
       week_starts_on:
         title:
           en: Week starts on

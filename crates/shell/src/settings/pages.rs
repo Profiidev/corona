@@ -19,11 +19,17 @@ use gpui_kit::{
   },
 };
 
+use crate::control_center::{
+  ControlCenterType,
+  dashboard::toggles::{QUICK_ACTIONS, quick_action_label},
+};
 use crate::i18n;
 use crate::settings::{
   bar,
   fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
-  launcher, plugins,
+  launcher,
+  order::{OrderList, order_item},
+  plugins,
 };
 use rust_i18n::t;
 
@@ -572,6 +578,42 @@ fn control_center() -> SettingPage {
             |c, v| c.control_center.background_opacity = v,
           ),
         ),
+        order_item([
+          OrderList {
+            key: "control_center.sidebar",
+            title: || t!("app.settings.control_center.sidebar.title"),
+            description: || t!("app.settings.control_center.sidebar.description"),
+            options: || {
+              ControlCenterType::iter()
+                .filter(|p| *p != ControlCenterType::Dashboard)
+                .map(|p| Choice {
+                  value: p.as_str().into(),
+                  label: p.title().into(),
+                })
+                .collect()
+            },
+            get: |c| c.control_center.sidebar.clone(),
+            set: |c, v| c.control_center.sidebar = v,
+          },
+          OrderList {
+            key: "control_center.quick_actions",
+            title: || t!("app.settings.control_center.quick_actions.title"),
+            description: || t!("app.settings.control_center.quick_actions.description"),
+            options: || {
+              QUICK_ACTIONS
+                .into_iter()
+                .filter_map(|id| {
+                  Some(Choice {
+                    value: id.into(),
+                    label: quick_action_label(id)?.into(),
+                  })
+                })
+                .collect()
+            },
+            get: |c| c.control_center.quick_actions.clone(),
+            set: |c, v| c.control_center.quick_actions = v,
+          },
+        ]),
       ],
     )],
   )

@@ -1,3 +1,4 @@
+use corona_config::ControlCenterConfig;
 use gpui_kit::{App, Window, assets::IconName};
 use std::borrow::Cow;
 
@@ -6,7 +7,7 @@ use crate::control_center::{
   brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
   disks::DisksPanel, displays::DisplaysPanel, hotspot::HotspotPanel, media::MediaPanel,
   network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
-  printers::PrintersPanel, sysinfo::SysinfoPanel, weather::WeatherPanel,
+  printers::PrintersPanel, resolve, sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
 use rust_i18n::t;
 
@@ -88,6 +89,23 @@ impl ControlCenterType {
       ControlCenterType::Calendar => t!("app.control_center.calendar"),
       ControlCenterType::Media => t!("app.control_center.media"),
     }
+  }
+
+  pub fn from_id(id: &str) -> Option<ControlCenterType> {
+    Self::iter().find(|p| p.as_str() == id)
+  }
+
+  /// The sidebar's pages: the dashboard, then the configured ones
+  pub fn sidebar(config: &ControlCenterConfig) -> Vec<ControlCenterType> {
+    let (pages, _) = resolve(&config.sidebar, Self::sidebar_page);
+    std::iter::once(ControlCenterType::Dashboard)
+      .chain(pages)
+      .collect()
+  }
+
+  /// A configurable sidebar page, the dashboard is always there
+  pub(crate) fn sidebar_page(id: &str) -> Option<ControlCenterType> {
+    Self::from_id(id).filter(|p| *p != ControlCenterType::Dashboard)
   }
 
   pub fn iter() -> impl Iterator<Item = ControlCenterType> {
@@ -181,5 +199,28 @@ mod tests {
     assert_eq!(unique(titles.collect()), count);
     let icons = ControlCenterType::iter().map(|p| format!("{:?}", p.icon()));
     assert_eq!(unique(icons.collect()), count);
+  }
+
+  #[test]
+  fn sidebar_follows_config() {
+    let default = ControlCenterConfig::default();
+    assert_eq!(
+      ControlCenterType::sidebar(&default),
+      ControlCenterType::iter().collect::<Vec<_>>()
+    );
+    let config = ControlCenterConfig {
+      sidebar: ["media", "dashboard", "nope", "audio", "media"]
+        .map(String::from)
+        .to_vec(),
+      ..default
+    };
+    assert_eq!(
+      ControlCenterType::sidebar(&config),
+      [
+        ControlCenterType::Dashboard,
+        ControlCenterType::Media,
+        ControlCenterType::Audio
+      ]
+    );
   }
 }
