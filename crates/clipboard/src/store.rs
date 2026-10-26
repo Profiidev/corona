@@ -196,23 +196,12 @@ impl Store {
     path: Option<&Path>,
     size: u64,
   ) -> Result<i64> {
-    let now = now();
-    let existing: Option<i64> = self
-      .db
-      .query_row("SELECT id FROM entries WHERE hash = ?1", [&hash], |r| {
-        r.get(0)
-      })
-      .optional()?;
-    if let Some(id) = existing {
-      self.db.execute(
-        "UPDATE entries SET used = ?1 WHERE id = ?2",
-        params![now, id],
-      )?;
-      return Ok(id);
-    }
-    self.db.execute(
+    // one statement, so another shell on the same database cannot slip in between
+    Ok(self.db.query_row(
       "INSERT INTO entries (kind, text, mime, hash, path, size, created, used)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+       ON CONFLICT (hash) DO UPDATE SET used = excluded.used
+       RETURNING id",
       params![
         kind.as_str(),
         text,
@@ -220,10 +209,10 @@ impl Store {
         hash,
         path.map(|p| p.to_string_lossy().to_string()),
         size as i64,
-        now
+        now()
       ],
-    )?;
-    Ok(self.db.last_insert_rowid())
+      |r| r.get(0),
+    )?)
   }
 
   fn entry(row: &rusqlite::Row) -> rusqlite::Result<Entry> {
