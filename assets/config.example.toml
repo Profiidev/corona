@@ -279,7 +279,7 @@ sidebar = [
   "calendar",
   "media"
 ]
-# Tiles on the dashboard, in order. Also available: "power_profile".
+# Tiles on the dashboard, in order. Also available: "power_profile", "nightlight".
 quick_actions = [
   "wifi",
   "bluetooth",

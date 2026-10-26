@@ -62,6 +62,7 @@ impl ControlCenterPanel for DashboardPanel {
       cx.notifications().do_not_disturb,
       cx.power().profiles,
       cx.idle().stay_awake,
+      cx.brightness().nightlight,
       cx.mpris().players,
       cx.mpris().active,
       cx.weather().weather,

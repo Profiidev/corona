@@ -474,7 +474,7 @@ pub struct ControlCenterConfig {
   /// Pages in the sidebar, in order, after the dashboard which is always first
   pub sidebar: Vec<String>,
   /// Tiles on the dashboard, in order: `wifi`, `bluetooth`, `dnd`, `dark_mode`,
-  /// `stay_awake`, `airplane`, `power_profile`
+  /// `stay_awake`, `nightlight`, `airplane`, `power_profile`
   pub quick_actions: Vec<String>,
 }
 

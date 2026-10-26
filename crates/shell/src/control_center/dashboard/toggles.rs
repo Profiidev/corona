@@ -1,10 +1,12 @@
 use corona_bluez::BluetoothExt;
+use corona_brightness::BrightnessExt;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
 use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
   ParentElement, Styled, Window,
@@ -44,12 +46,13 @@ struct Toggle {
 }
 
 /// Every tile id, in the order the settings offer them
-pub(crate) const QUICK_ACTIONS: [&str; 7] = [
+pub(crate) const QUICK_ACTIONS: [&str; 8] = [
   "wifi",
   "bluetooth",
   "dnd",
   "dark_mode",
   "stay_awake",
+  "nightlight",
   "airplane",
   "power_profile",
 ];
@@ -66,6 +69,7 @@ pub(crate) fn quick_action_label(id: &str) -> Option<Cow<'static, str>> {
     "dnd" => t!("app.dashboard.dnd"),
     "dark_mode" => t!("app.dashboard.dark_mode"),
     "stay_awake" => t!("app.dashboard.stay_awake"),
+    "nightlight" => t!("app.brightness.nightlight"),
     "airplane" => t!("app.dashboard.airplane"),
     _ => t!("app.power.profile.title"),
   })
@@ -78,6 +82,7 @@ fn quick_action(id: &str, cx: &App) -> Toggle {
     "dnd" => dnd(cx),
     "dark_mode" => dark_mode(cx),
     "stay_awake" => stay_awake(cx),
+    "nightlight" => nightlight(cx),
     "airplane" => airplane(cx),
     _ => profile(cx),
   }
@@ -338,6 +343,26 @@ fn stay_awake(cx: &App) -> Toggle {
       cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
     })),
     page: None,
+  }
+}
+
+fn nightlight(cx: &App) -> Toggle {
+  let state = *cx.brightness().nightlight(cx);
+  Toggle {
+    id: "toggle-nightlight",
+    icon: IconName::Moon,
+    label: t!("app.brightness.nightlight"),
+    status: match state.available {
+      true => on_off(state.on),
+      false => t!("app.common.unavailable").into(),
+    },
+    active: state.on,
+    on_click: state.available.then(|| -> Action {
+      Box::new(move |cx| {
+        let _ = cx.brightness().set_nightlight(!state.on, cx).log_err();
+      })
+    }),
+    page: Some(ControlCenterType::Brightness),
   }
 }
 
