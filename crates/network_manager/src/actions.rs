@@ -1,6 +1,7 @@
 use std::{collections::HashMap, io::Read, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
+use corona_utils::error::ErrorLogExt;
 use cosmic_dbus_networkmanager::{
   active_connection::ActiveConnection,
   device::{Device, wireless::WirelessDevice},
@@ -43,6 +44,9 @@ const PMF_OPTIONAL: i32 = 2;
 const PMF_REQUIRED: i32 = 3;
 /// the Corona Hotspot's user.data key for its auto-off minutes, 0 for never
 const AUTO_OFF_KEY: &str = "corona.auto-off";
+/// the Corona Hotspot's user.data key for the band asked for, 802-11-wireless.band has the one it
+/// runs on, a connection sharing the radio picks that
+const BAND_KEY: &str = "corona.band";
 
 // 802-11-wireless-security.key-mgmt values
 const KEY_MGMT_PSK: &str = "wpa-psk";
@@ -613,6 +617,31 @@ async fn client_channel(
   Ok(channel(frequency))
 }
 
+/// a 5 GHz channel `device`'s radio starts an access point on, None to leave it to NM; NM's pick,
+/// channel 36, is one many radios only serve beside a connection on it
+async fn free_5ghz_channel(
+  conn: &Connection,
+  device: OwnedObjectPath,
+) -> Result<Option<(HotspotBand, u32)>> {
+  let name = proxy::<DeviceProxy, DeviceProxy>(conn, device)
+    .await?
+    .interface()
+    .await?;
+  let Some((phy, _)) = nl80211::radio(&name) else {
+    return Ok(None);
+  };
+  let Ok(frequencies) = nl80211::ap_frequencies(phy).log_err() else {
+    return Ok(None);
+  };
+  match frequencies.into_iter().find_map(channel) {
+    Some(channel) => Ok(Some(channel)),
+    None => bail!(
+      "the wifi device starts no access point on 5 GHz here, choose 2.4 GHz or connect Wi-Fi to a \
+       5 GHz network to share its channel"
+    ),
+  }
+}
+
 /// `channel` overrides the configured band
 fn hotspot_settings(
   config: HotspotConfig,
@@ -662,7 +691,10 @@ fn hotspot_settings(
       "user".to_owned(),
       HashMap::from([(
         "data".to_owned(),
-        Value::from(HashMap::from([(AUTO_OFF_KEY.to_owned(), auto_off)])),
+        Value::from(HashMap::from([
+          (AUTO_OFF_KEY.to_owned(), auto_off),
+          (BAND_KEY.to_owned(), config.band.setting().to_owned()),
+        ])),
       )]),
     ),
   ]);
@@ -698,9 +730,13 @@ pub(crate) async fn start_hotspot(
 ) -> Result<OwnedObjectPath> {
   config.validate()?;
   // the radio serves both on one channel, the client's
-  let channel = match client {
+  let shared = match client {
     Some((client, was_connected)) => client_channel(conn, client, was_connected, executor).await?,
     None => None,
+  };
+  let channel = match shared {
+    None if config.band == HotspotBand::A => free_5ghz_channel(conn, device.clone()).await?,
+    shared => shared,
   };
   let nm = NetworkManager::new(conn).await?;
   let wpa3 = config.wpa3;
@@ -751,7 +787,7 @@ pub(crate) async fn start_hotspot(
       .update(borrowed(&settings))
       .await?;
   }
-  match channel {
+  match shared {
     // the band was the connection's, not the chosen one
     Some((_, channel)) => bail!(
       "the hotspot did not start on channel {channel}, which Wi-Fi is connected on, the wifi \
@@ -934,6 +970,12 @@ pub(crate) async fn hotspot_config(
   let profile = proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path).await?;
   let mut settings = profile.get_settings().await?;
   let auto_off = auto_off(&settings);
+  let chosen_band = settings
+    .get("user")
+    .and_then(|user| user.get("data"))
+    .and_then(|data| data.try_clone().ok())
+    .and_then(|data| HashMap::<String, String>::try_from(data).ok())
+    .and_then(|mut data| data.remove(BAND_KEY));
   // NM's default, -1, is off
   let isolate = settings
     .get(WIFI_SETTING)
@@ -962,7 +1004,8 @@ pub(crate) async fn hotspot_config(
   Ok(Some(HotspotConfig {
     ssid: String::from_utf8_lossy(&wifi.ssid.unwrap_or_default()).into_owned(),
     password,
-    band: HotspotBand::from_setting(wifi.band.as_deref()),
+    // saved before it was kept: the one it ran on
+    band: HotspotBand::from_setting(chosen_band.as_deref().or(wifi.band.as_deref())),
     wpa3,
     auto_off,
     isolate,
@@ -1181,6 +1224,14 @@ mod tests {
     let beside = hotspot_settings(hotspot("corona", None), None, Some((HotspotBand::Bg, 6)));
     assert_eq!(beside[WIFI_SETTING]["band"], string("bg"));
     assert_eq!(beside[WIFI_SETTING]["channel"], Value::from(6u32));
+    // the band asked for is kept for the form, it runs on the connection's
+    let mut chosen = hotspot("corona", None);
+    chosen.band = HotspotBand::Bg;
+    let beside = hotspot_settings(chosen, None, Some((HotspotBand::A, 36)));
+    assert_eq!(beside[WIFI_SETTING]["band"], string("a"));
+    let data =
+      HashMap::<String, String>::try_from(beside["user"]["data"].try_clone().unwrap()).unwrap();
+    assert_eq!(data[BAND_KEY], "bg");
   }
 
   #[test]
