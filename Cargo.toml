@@ -22,6 +22,7 @@ members = [
   "crates/sysinfo",
   "crates/utils",
   "crates/weather",
+  "crates/location",
   "crates/ipc",
   "crates/cli",
   "crates/capture",
@@ -64,6 +65,7 @@ corona_brightness = { path = "crates/brightness" }
 corona_notifications = { path = "crates/notifications" }
 corona_sysinfo = { path = "crates/sysinfo" }
 corona_weather = { path = "crates/weather" }
+corona_location = { path = "crates/location" }
 corona_reqwest = { path = "crates/reqwest" }
 corona_ipc = { path = "crates/ipc" }
 corona_cli = { path = "crates/cli" }
@@ -103,6 +105,12 @@ oo7 = { version = "0.6", default-features = false, features = [
 tempfile = "3.27.0"
 futures-lite = "2.6.1"
 futures = "0.3.34"
+futures-channel = "0.3.34"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+jiff = "0.2.37"
+notify = "8.2.0"
+sysinfo = "0.39.6"
+wayland-server = "0.31"
 clap = { version = "4.6.7", features = ["derive"] }
 smol = "2.0.2"
 rust-i18n = "4.2.4"

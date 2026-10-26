@@ -618,7 +618,10 @@ fn title(widget_type: &str) -> String {
 }
 
 /// The options and remove buttons of a row
-fn row_buttons(id: impl Fn(&str) -> String, has_options: bool) -> (Option<Button>, Button) {
+pub(super) fn row_buttons(
+  id: impl Fn(&str) -> String,
+  has_options: bool,
+) -> (Option<Button>, Button) {
   let options = has_options.then(|| {
     Button::new(id("options"))
       .icon(IconName::Settings2)
@@ -635,7 +638,7 @@ fn row_buttons(id: impl Fn(&str) -> String, has_options: bool) -> (Option<Button
 }
 
 /// How a widget's row looks, shared by the row and its drag preview
-fn row_body(
+pub(super) fn row_body(
   label: impl IntoElement,
   options: Option<impl IntoElement>,
   remove: Button,

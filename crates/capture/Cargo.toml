@@ -11,7 +11,7 @@ categories.workspace = true
 [dependencies]
 gpui-kit.workspace = true
 anyhow.workspace = true
-image = { version = "0.25.10", default-features = false, features = ["png"] }
+image.workspace = true
 futures.workspace = true
 gbm = { version = "0.18.0", default-features = false }
 gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }

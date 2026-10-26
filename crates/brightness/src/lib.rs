@@ -18,11 +18,17 @@ use crate::{
   outputs::Output,
 };
 
-pub use crate::state::{Display, DisplayKind, Unavailable};
+pub use crate::{
+  nightlight::Nightlight,
+  state::{Display, DisplayKind, Unavailable},
+};
 
 mod backlight;
 mod ddc;
+mod gamma;
+mod nightlight;
 mod outputs;
+mod solar;
 mod state;
 
 #[derive(Clone)]
@@ -30,9 +36,11 @@ pub struct Brightness {
   pub displays: Entity<Vec<Display>>,
   pub ddcutil_available: bool,
   pub ddcutil_enabled: bool,
+  pub nightlight: Entity<Nightlight>,
   conn: Connection,
   ddc: Option<flume::Sender<DdcCommand>>,
   events: flume::Sender<Event>,
+  nightlight_changes: flume::Sender<nightlight::Change>,
 }
 
 impl Global for Brightness {}
@@ -54,6 +62,33 @@ impl Brightness {
 
   pub fn display<'c>(&self, id: &str, cx: &'c App) -> Option<&'c Display> {
     self.list_displays(cx).iter().find(|d| d.id == id)
+  }
+
+  pub fn nightlight<'c>(&self, cx: &'c App) -> &'c Nightlight {
+    self.nightlight.read(cx)
+  }
+
+  /// In a timed mode this lasts until its next start or end
+  pub fn set_nightlight(&self, on: bool, cx: &App) -> Result<()> {
+    nightlight::send(
+      &self.nightlight,
+      &self.nightlight_changes,
+      nightlight::Change::On(on),
+      cx,
+    )
+  }
+
+  /// The night temperature until the settings change or the shell restarts, clamped to
+  /// 1000 to 6500 kelvin; returns what was set
+  pub fn set_nightlight_temperature(&self, kelvin: u32, cx: &App) -> Result<u32> {
+    let kelvin = nightlight::clamp(kelvin);
+    nightlight::send(
+      &self.nightlight,
+      &self.nightlight_changes,
+      nightlight::Change::Temperature(kelvin),
+      cx,
+    )?;
+    Ok(kelvin)
   }
 
   pub fn set_brightness(
@@ -236,13 +271,16 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     tracing::warn!("enable_ddcutil is set, but ddcutil is not on the PATH");
   }
 
+  let (nightlight, nightlight_changes) = nightlight::start(cx);
   let state = Brightness {
     displays: cx.new(|_| Vec::new()),
     ddcutil_available,
     ddcutil_enabled,
+    nightlight,
     conn: conn.clone(),
     ddc,
     events: events_tx,
+    nightlight_changes,
   };
 
   let displays = state.displays.clone();
@@ -630,9 +668,15 @@ mod global_tests {
         displays: cx.new(|_| vec![panel, monitor, broken, off, weird]),
         ddcutil_available: true,
         ddcutil_enabled: true,
+        nightlight: cx.new(|_| Nightlight {
+          available: false,
+          on: false,
+          temperature: 4000,
+        }),
         conn: conn.clone(),
         ddc,
         events: flume::unbounded().0,
+        nightlight_changes: flume::unbounded().0,
       };
       cx.set_global(state);
     });

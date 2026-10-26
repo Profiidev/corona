@@ -8,6 +8,15 @@ app:
       en: Search…
       de: Suchen …
     options:
+      nightlight_manual:
+        en: By hand
+        de: Von Hand
+      nightlight_solar:
+        en: Sunset to sunrise
+        de: Sonnenuntergang bis -aufgang
+      nightlight_schedule:
+        en: Custom hours
+        de: Eigene Zeiten
       theme_default:
         en: "Theme's own"
         de: Wie das Theme
@@ -326,6 +335,9 @@ app:
         notifications:
           en: Notifications
           de: Benachrichtigungen
+        clipboard:
+          en: Clipboard
+          de: Zwischenablage
         sysinfo:
           en: System info
           de: Systeminfo
@@ -388,6 +400,30 @@ app:
         filter:
           en: Filter
           de: Filter
+        battery:
+          en: Battery
+          de: Akku
+      battery_warnings:
+        title:
+          en: Battery warnings
+          de: Akkuwarnungen
+        description:
+          en: Notify while the battery discharges.
+          de: Benachrichtigen, während sich der Akku entlädt.
+      battery_low:
+        title:
+          en: Low battery
+          de: Akku schwach
+        description:
+          en: Percent at which to warn.
+          de: Prozent, ab denen gewarnt wird.
+      battery_critical:
+        title:
+          en: Extremely low battery
+          de: Akku fast leer
+        description:
+          en: Percent at which to warn until charging.
+          de: Prozent, ab denen bis zum Laden gewarnt wird.
       notification_daemon:
         title:
           en: Notification daemon
@@ -582,6 +618,26 @@ app:
         description:
           en: strftime pattern.
           de: strftime-Muster.
+      sidebar:
+        title:
+          en: Sidebar
+          de: Seitenleiste
+        description:
+          en: Pages in the sidebar, after the dashboard which is always first.
+          de: Seiten in der Seitenleiste, nach der Übersicht, die immer zuerst steht.
+      quick_actions:
+        title:
+          en: Quick actions
+          de: Schnellaktionen
+        description:
+          en: Tiles on the dashboard.
+          de: Kacheln in der Übersicht.
+      add:
+        en: Add…
+        de: Hinzufügen…
+      drag_hint:
+        en: Drag an entry between others to move it.
+        de: Ziehe einen Eintrag zwischen andere, um ihn zu verschieben.
       week_starts_on:
         title:
           en: Week starts on
@@ -1331,6 +1387,9 @@ app:
         profile:
           en: Profile
           de: Profil
+        nightlight:
+          en: Nightlight
+          de: Nachtlicht
         polling:
           en: Polling
           de: Abfrage
@@ -1344,6 +1403,42 @@ app:
         description:
           en: 'Path, ~/ path or http(s) URL of the dashboard picture.'
           de: 'Pfad, ~/-Pfad oder http(s)-URL des Bilds in der Übersicht.'
+      nightlight:
+        mode:
+          title:
+            en: Schedule
+            de: Zeitplan
+          description:
+            en: When the nightlight turns on and off. Switching by hand lasts until the next start or end.
+            de: Wann das Nachtlicht an- und ausgeht. Von Hand umschalten gilt bis zum nächsten Beginn oder Ende.
+        temperature:
+          title:
+            en: Temperature
+            de: Farbtemperatur
+          description:
+            en: Kelvin at night; lower is warmer.
+            de: Kelvin in der Nacht; niedriger ist wärmer.
+        start:
+          title:
+            en: Start
+            de: Beginn
+          description:
+            en: Local time as HH:MM, for the custom schedule.
+            de: Ortszeit als HH:MM, für den eigenen Zeitplan.
+        end:
+          title:
+            en: End
+            de: Ende
+          description:
+            en: Local time as HH:MM, for the custom schedule.
+            de: Ortszeit als HH:MM, für den eigenen Zeitplan.
+        transition:
+          title:
+            en: Transition
+            de: Übergang
+          description:
+            en: Minutes to fade in and out; 0 switches at once.
+            de: Minuten zum Ein- und Ausblenden; 0 schaltet sofort.
       system_monitor:
         title:
           en: System monitor

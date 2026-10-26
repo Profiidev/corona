@@ -12,7 +12,7 @@ mod workspaces;
 use active_window::ActiveWindow;
 use clock::Clock;
 use control_center::{
-  AudioButton, BatteryButton, BluetoothButton, BrightnessButton, CalendarButton,
+  AudioButton, BatteryButton, BluetoothButton, BrightnessButton, CalendarButton, ClipboardButton,
   ControlCenterButton, DisksButton, DisplaysButton, HotspotButton, MediaButton, NetworkButton,
   NotificationsButton, PowerButton, PrintersButton, SysinfoButton, WeatherButton,
 };
@@ -39,6 +39,7 @@ pub fn register_widgets(cx: &mut App) {
     .register::<BrightnessButton>()
     .register::<DisplaysButton>()
     .register::<NotificationsButton>()
+    .register::<ClipboardButton>()
     .register::<SysinfoButton>()
     .register::<WeatherButton>()
     .register::<CalendarButton>()

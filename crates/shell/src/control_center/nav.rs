@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use corona_components::components::card::CardExt;
+use corona_config::ConfigProvider;
 use gpui_kit::{
   App, IntoElement, ParentElement, RenderOnce, Styled, Window,
   component::{
@@ -58,20 +59,24 @@ impl RenderOnce for ControlCenterNav {
           .flex_col()
           .gap_1()
           .overflow_y_scrollbar()
-          .children(ControlCenterType::iter().map(|v| {
-            Button::new(v.as_str())
-              .with_variant(if self.selected == v {
-                ButtonVariant::Primary
-              } else {
-                ButtonVariant::Ghost
-              })
-              .tooltip(v.title())
-              .cursor_pointer()
-              .icon(v.icon())
-              .when_some(on_click.clone(), |button, on_click| {
-                button.on_click(move |_, window, cx| on_click(v, window, cx))
-              })
-          })),
+          .children(
+            ControlCenterType::sidebar(&cx.config().control_center)
+              .into_iter()
+              .map(|v| {
+                Button::new(v.as_str())
+                  .with_variant(if self.selected == v {
+                    ButtonVariant::Primary
+                  } else {
+                    ButtonVariant::Ghost
+                  })
+                  .tooltip(v.title())
+                  .cursor_pointer()
+                  .icon(v.icon())
+                  .when_some(on_click.clone(), |button, on_click| {
+                    button.on_click(move |_, window, cx| on_click(v, window, cx))
+                  })
+              }),
+          ),
       )
   }
 }

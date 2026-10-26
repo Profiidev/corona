@@ -18,7 +18,7 @@ use crate::{
 };
 use rust_i18n::t;
 
-fn duration(duration: Duration) -> String {
+pub(super) fn duration(duration: Duration) -> String {
   let minutes = (duration.as_secs() + 30) / 60;
   match minutes / 60 {
     0 => t!("app.power.duration.minutes", minutes = minutes).into(),

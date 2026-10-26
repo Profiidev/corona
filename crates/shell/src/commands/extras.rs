@@ -11,12 +11,15 @@ use corona_udisks::{MountOptions, UdisksExt, UnmountOptions};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
+use crate::overlays::drive_password;
+
 pub fn register_commands(server: &mut IpcServer) {
   server
     .register::<TrashCount>()
     .register::<EmptyTrash>()
     .register::<ListDrives>()
     .register::<DriveAction>()
+    .register::<DrivePasswordPrompt>()
     .register::<KillProcess>()
     .register::<KillPort>()
     .register::<ListProcesses>()
@@ -128,6 +131,27 @@ impl IpcCommand for DriveAction {
         None => Box::pin(async move { bail!("{} is on no drive", volume.device) }),
       },
     }
+  }
+}
+
+/// Asks for a drive's passphrase in a dialog, for another program unlocking it
+pub struct DrivePasswordPrompt;
+
+impl IpcCommand for DrivePasswordPrompt {
+  const COMMAND: &'static str = "drive:password-prompt";
+
+  /// The device, as shown in the dialog
+  type Payload = String;
+  /// None when cancelled
+  type Response = Option<String>;
+
+  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
+    bail!("drive:password-prompt answers asynchronously")
+  }
+
+  fn reply(device: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
+    let asked = drive_password::ask(device, cx);
+    Box::pin(async move { Ok(asked.await.ok()) })
   }
 }
 

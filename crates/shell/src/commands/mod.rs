@@ -15,6 +15,7 @@ pub mod lock_key;
 pub mod media;
 pub mod monitor;
 pub mod network;
+pub mod nightlight;
 pub mod notification;
 pub mod player;
 pub mod plugin;
@@ -41,6 +42,7 @@ pub fn register_commands(server: &mut IpcServer) {
   media::register_commands(server);
   monitor::register_commands(server);
   network::register_commands(server);
+  nightlight::register_commands(server);
   notification::register_commands(server);
   player::register_commands(server);
   plugin::register_commands(server);

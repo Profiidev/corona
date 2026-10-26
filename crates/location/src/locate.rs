@@ -5,7 +5,7 @@ use futures_lite::StreamExt;
 use geoclue2::{LocationProxy, ManagerProxy};
 use zbus::Connection;
 
-use crate::state::Location;
+use crate::Location;
 
 const DESKTOP_ID: &str = "corona";
 const CITY_ACCURACY: u32 = 4;

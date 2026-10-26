@@ -49,6 +49,7 @@ const ATTR_IFINDEX: u16 = 3;
 const ATTR_IFNAME: u16 = 4;
 const ATTR_IFTYPE: u16 = 5;
 const ATTR_MAC: u16 = 6;
+const ATTR_WIPHY_BANDS: u16 = 22;
 const ATTR_INTERFACE_COMBINATIONS: u16 = 120;
 const ATTR_SPLIT_WIPHY_DUMP: u16 = 174;
 const COMB_LIMITS: u16 = 1;
@@ -57,6 +58,12 @@ const LIMIT_MAX: u16 = 1;
 const LIMIT_TYPES: u16 = 2;
 const IFTYPE_STATION: u16 = 2;
 const IFTYPE_AP: u16 = 3;
+const BAND_5GHZ: u16 = 1;
+const BAND_ATTR_FREQS: u16 = 1;
+const FREQ_ATTR_FREQ: u16 = 1;
+const FREQ_ATTR_DISABLED: u16 = 2;
+const FREQ_ATTR_NO_IR: u16 = 3;
+const FREQ_ATTR_RADAR: u16 = 5;
 
 fn align(len: usize) -> usize {
   (len + 3) & !3
@@ -263,6 +270,55 @@ fn query_station_beside_ap_with(family: u16, phy: u32) -> Result<bool> {
   Ok(fits)
 }
 
+/// the 5 GHz frequencies in `bands` an access point starts on: enabled, without radar detection
+/// and allowed to transmit first. Intel radios forbid that on most of them, NM's pick included
+fn ap_frequencies_5ghz(bands: &[u8]) -> Vec<u32> {
+  attrs(bands)
+    .filter(|&(band, _)| band == BAND_5GHZ)
+    .flat_map(|(_, band)| attrs(band).filter(|&(kind, _)| kind == BAND_ATTR_FREQS))
+    .flat_map(|(_, freqs)| attrs(freqs))
+    .filter_map(|(_, freq)| {
+      let mut frequency = None;
+      for (kind, payload) in attrs(freq) {
+        match kind {
+          FREQ_ATTR_FREQ => frequency = u32_payload(payload),
+          FREQ_ATTR_DISABLED | FREQ_ATTR_NO_IR | FREQ_ATTR_RADAR => return None,
+          _ => {}
+        }
+      }
+      frequency
+    })
+    .collect()
+}
+
+/// the 5 GHz frequencies radio `phy` starts an access point on, by the current regulatory domain
+pub fn ap_frequencies(phy: u32) -> Result<Vec<u32>> {
+  with_nl80211(|family| {
+    let filter = [
+      attr(ATTR_WIPHY, &phy.to_ne_bytes()),
+      attr(ATTR_SPLIT_WIPHY_DUMP, &[]),
+    ]
+    .concat();
+    let mut frequencies = Vec::new();
+    request(
+      &message(family, NLM_F_DUMP, CMD_GET_WIPHY, &filter),
+      |reply| {
+        let attrs: Vec<_> = attrs(reply).collect();
+        // a kernel ignoring the filter dumps every radio
+        let ours = attrs
+          .iter()
+          .any(|&(kind, payload)| kind == ATTR_WIPHY && u32_payload(payload) == Some(phy));
+        if ours {
+          for &(_, bands) in attrs.iter().filter(|&&(kind, _)| kind == ATTR_WIPHY_BANDS) {
+            frequencies.extend(ap_frequencies_5ghz(bands));
+          }
+        }
+      },
+    )?;
+    Ok(frequencies)
+  })
+}
+
 /// radio `phy` runs an access point while its station stays connected; a radio does not change
 /// its combinations, so each is asked once; a failed query, a driver still loading say, is retried
 pub fn station_beside_ap(phy: u32) -> bool {
@@ -429,6 +485,33 @@ mod tests {
     assert!(!station_and_ap(&[]));
     // a cut off attribute ends the list instead of panicking
     assert!(!station_and_ap(&mt7922[..7]));
+  }
+
+  #[test]
+  fn ap_frequencies_skip_restricted_ones() {
+    let freq = |mhz: u32, flags: &[u16]| {
+      let mut attrs = vec![attr(FREQ_ATTR_FREQ, &mhz.to_ne_bytes())];
+      attrs.extend(flags.iter().map(|flag| attr(*flag, &[])));
+      nested(1, &attrs)
+    };
+    let band = |index: u16, freqs: &[Vec<u8>]| nested(index, &[nested(BAND_ATTR_FREQS, freqs)]);
+    // an Intel radio in Germany: 36 only beside a connection, 52 radar, 68 off, 149 free
+    let bands = [
+      band(0, &[freq(2412, &[])]),
+      band(
+        BAND_5GHZ,
+        &[
+          freq(5180, &[FREQ_ATTR_NO_IR]),
+          freq(5260, &[FREQ_ATTR_NO_IR, FREQ_ATTR_RADAR]),
+          freq(5340, &[FREQ_ATTR_DISABLED]),
+          freq(5745, &[]),
+          freq(5765, &[]),
+        ],
+      ),
+    ]
+    .concat();
+    assert_eq!(ap_frequencies_5ghz(&bands), [5745, 5765]);
+    assert!(ap_frequencies_5ghz(&bands[..bands.len() / 3]).is_empty());
   }
 
   #[test]

@@ -63,6 +63,7 @@ pub struct Config {
   pub weather: WeatherConfig,
   pub location: LocationConfig,
   pub brightness: BrightnessConfig,
+  pub nightlight: NightlightConfig,
   pub system: SystemConfig,
   pub idle: IdleConfig,
   pub plugins: PluginsConfig,
@@ -90,6 +91,7 @@ impl Default for Config {
       weather: WeatherConfig::default(),
       location: LocationConfig::default(),
       brightness: BrightnessConfig::default(),
+      nightlight: NightlightConfig::default(),
       system: SystemConfig::default(),
       idle: IdleConfig::default(),
       plugins: PluginsConfig::default(),
@@ -252,6 +254,7 @@ pub struct NotificationConfig {
   pub background_opacity: f32,
   /// Case-insensitive regex against app name, summary and body; a match is dropped
   pub filter_regex: String,
+  pub battery: BatteryWarningConfig,
 }
 
 impl Default for NotificationConfig {
@@ -265,6 +268,28 @@ impl Default for NotificationConfig {
       critical_timeout_ms: 10000,
       background_opacity: 1.,
       filter_regex: String::new(),
+      battery: BatteryWarningConfig::default(),
+    }
+  }
+}
+
+/// Notifications while the system battery discharges
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct BatteryWarningConfig {
+  pub enabled: bool,
+  /// At or below this percentage a warning
+  pub low_percent: u8,
+  /// At or below this percentage a critical warning that stays until charging
+  pub critical_percent: u8,
+}
+
+impl Default for BatteryWarningConfig {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      low_percent: 20,
+      critical_percent: 5,
     }
   }
 }
@@ -446,6 +471,11 @@ pub struct ControlCenterConfig {
   pub week_start: Weekday,
   /// Of the panels
   pub background_opacity: f32,
+  /// Pages in the sidebar, in order, after the dashboard which is always first
+  pub sidebar: Vec<String>,
+  /// Tiles on the dashboard, in order: `wifi`, `bluetooth`, `dnd`, `dark_mode`,
+  /// `stay_awake`, `nightlight`, `airplane`, `power_profile`
+  pub quick_actions: Vec<String>,
 }
 
 impl Default for ControlCenterConfig {
@@ -455,6 +485,35 @@ impl Default for ControlCenterConfig {
       date_format: "%a, %d.%m.%Y".to_string(),
       week_start: Weekday::default(),
       background_opacity: 1.,
+      sidebar: [
+        "audio",
+        "network",
+        "hotspot",
+        "bluetooth",
+        "printers",
+        "disks",
+        "power",
+        "brightness",
+        "displays",
+        "notifications",
+        "clipboard",
+        "sysinfo",
+        "weather",
+        "calendar",
+        "media",
+      ]
+      .map(String::from)
+      .to_vec(),
+      quick_actions: [
+        "wifi",
+        "bluetooth",
+        "dnd",
+        "dark_mode",
+        "stay_awake",
+        "airplane",
+      ]
+      .map(String::from)
+      .to_vec(),
     }
   }
 }
@@ -506,6 +565,43 @@ impl Default for BrightnessConfig {
     Self {
       enable_ddcutil: true,
       poll_seconds: 5,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NightlightMode {
+  /// On and off by hand only
+  #[default]
+  Manual,
+  /// From sunset to sunrise at the `[location]`
+  Solar,
+  /// From `start` to `end`
+  Schedule,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct NightlightConfig {
+  pub mode: NightlightMode,
+  /// Kelvin, 1000 to 6500
+  pub temperature: u32,
+  /// `HH:MM` local time, for the schedule mode
+  pub start: String,
+  pub end: String,
+  /// Fades in and out over this long around each start and end; 0: switch at once
+  pub transition_minutes: u32,
+}
+
+impl Default for NightlightConfig {
+  fn default() -> Self {
+    Self {
+      mode: NightlightMode::Manual,
+      temperature: 4000,
+      start: "20:00".into(),
+      end: "07:00".into(),
+      transition_minutes: 30,
     }
   }
 }

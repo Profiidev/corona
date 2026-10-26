@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use corona_bluez::BluetoothExt;
+use corona_brightness::BrightnessExt;
 use corona_components::assets::{preview_theme, restore_theme, set_mode, set_theme, theme_names};
 use corona_config::ConfigProvider;
 use corona_idle::IdleExt;
@@ -22,6 +23,7 @@ use crate::{
   commands::{
     caffeine::{Request, StayAwake},
     dpms::{Dpms, Power},
+    nightlight::{Nightlight, Request as NightlightRequest},
     notification::{Dnd, DoNotDisturb},
     power_profile::{CycleProfile, SetProfile},
     radio::{Bluetooth, Switch, Wifi},
@@ -83,6 +85,7 @@ pub fn init(cx: &mut App) {
       },
     ),
     caffeine(),
+    nightlight(),
     dark_mode(),
     pick_or_list(
       "theme",
@@ -157,7 +160,9 @@ pub fn init(cx: &mut App) {
       let notifications = cx.notifications().clone();
       let idle = cx.idle().stay_awake.clone();
       let profiles = cx.power().profiles.clone();
+      let nightlight = cx.brightness().nightlight.clone();
       vec![
+        watch(&nightlight, &notify, cx),
         watch(&network.wifi_enabled, &notify, cx),
         watch(&bluetooth.adapter, &notify, cx),
         watch(&notifications.do_not_disturb, &notify, cx),
@@ -269,6 +274,82 @@ fn caffeine() -> Rc<dyn Command> {
               "app.launcher.state_is",
               name = t!("app.launcher.system.caffeine"),
               state = on_off(on)
+            ),
+          };
+          Ok(Outcome::Close(Some(Hud::new(text))))
+        },
+      )]
+    },
+  )
+}
+
+/// `nightlight`, `nightlight off`, `nightlight 3500` for that temperature
+fn nightlight() -> Rc<dyn Command> {
+  fn request(args: &Args, current: bool) -> NightlightRequest {
+    let switch = match args.get(0) {
+      Some(ArgValue::Word(w)) if w == "on" => Switch::On,
+      Some(ArgValue::Word(w)) if w == "off" => Switch::Off,
+      // a temperature turns it on
+      Some(ArgValue::Number(_)) => Switch::On,
+      _ => switch(!current),
+    };
+    NightlightRequest {
+      switch: Some(switch),
+      temperature: match args.get(0) {
+        Some(ArgValue::Number(kelvin)) => Some(kelvin.clamp(0., u32::MAX as f64) as u32),
+        _ => None,
+      },
+    }
+  }
+  simple(
+    "nightlight",
+    |cx| {
+      let state = *cx.brightness().nightlight(cx);
+      let name = t!("app.launcher.system.nightlight");
+      Meta {
+        title: match (state.available, state.on) {
+          (false, _) => name.clone(),
+          (true, true) => t!("app.launcher.disable", name = name.clone()),
+          (true, false) => t!("app.launcher.enable", name = name.clone()),
+        }
+        .into(),
+        subtitle: Some(match state.available {
+          true => t!(
+            "app.launcher.system.nightlight_state",
+            state = on_off(state.on),
+            kelvin = state.temperature
+          )
+          .into(),
+          false => t!("app.launcher.unavailable").into(),
+        }),
+        icon: Icon::Tile(IconName::Moon, 30.),
+        keywords: vec!["night".into(), "light".into(), "warm".into(), "blue".into()],
+        accessories: state.available.then(|| tag(state.on)).into_iter().collect(),
+        args: vec![
+          ArgSpec::number(t!("app.launcher.system.kelvin"))
+            .words(["on", "off", "toggle"])
+            .optional(),
+        ],
+        ..Default::default()
+      }
+    },
+    |_| {
+      vec![Action::sync(
+        "switch",
+        t!("app.launcher.switch"),
+        |args, _, cx| {
+          let current = cx.brightness().nightlight(cx).on;
+          let status = Nightlight::handle(request(args, current), cx)?;
+          let text = match status.on {
+            true => t!(
+              "app.launcher.system.nightlight_state",
+              state = on_off(true),
+              kelvin = status.temperature
+            ),
+            false => t!(
+              "app.launcher.state_is",
+              name = t!("app.launcher.system.nightlight"),
+              state = on_off(false)
             ),
           };
           Ok(Outcome::Close(Some(Hud::new(text))))

@@ -110,6 +110,12 @@ background_opacity = 1.0
 # Case-insensitive regex against app name, summary and body; matches are dropped.
 filter_regex = "" # e.g. "spotify|discord"
 
+# Warnings while the system battery discharges; the critical one stays until charging.
+[notification.battery]
+enabled = true
+low_percent = 20
+critical_percent = 5
+
 [osd]
 enabled = true
 hide_delay_ms = 1500
@@ -255,6 +261,33 @@ date_format = "%a, %d.%m.%Y"
 week_start = "monday" # or "sunday"
 # Of the panels.
 background_opacity = 1.0
+# Pages in the sidebar, in order. The dashboard is always first.
+sidebar = [
+  "audio",
+  "network",
+  "hotspot",
+  "bluetooth",
+  "printers",
+  "disks",
+  "power",
+  "brightness",
+  "displays",
+  "notifications",
+  "clipboard",
+  "sysinfo",
+  "weather",
+  "calendar",
+  "media"
+]
+# Tiles on the dashboard, in order. Also available: "power_profile", "nightlight".
+quick_actions = [
+  "wifi",
+  "bluetooth",
+  "dnd",
+  "dark_mode",
+  "stay_awake",
+  "airplane"
+]
 
 [weather]
 units = "metric" # or "imperial"
@@ -271,6 +304,18 @@ auto_locate = false
 # External monitors through ddcutil. Read at startup.
 enable_ddcutil = true
 poll_seconds = 5
+
+# Warmer colors at night. Manual: by hand only; solar: sunset to sunrise at the
+# [location]; schedule: from start to end (local HH:MM). Toggling by hand in a
+# timed mode lasts until the next start or end.
+[nightlight]
+mode = "manual"
+# Kelvin, 1000 to 6500
+temperature = 4000
+start = "20:00"
+end = "07:00"
+# Fades over this long around each start and end; 0 switches at once
+transition_minutes = 30
 
 [system.monitor]
 poll_seconds = 3

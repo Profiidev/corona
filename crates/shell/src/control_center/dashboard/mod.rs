@@ -62,6 +62,7 @@ impl ControlCenterPanel for DashboardPanel {
       cx.notifications().do_not_disturb,
       cx.power().profiles,
       cx.idle().stay_awake,
+      cx.brightness().nightlight,
       cx.mpris().players,
       cx.mpris().active,
       cx.weather().weather,
@@ -182,7 +183,7 @@ impl Render for DashboardPanel {
       .flex_col()
       .gap_2()
       .child(cards::profile(cx))
-      .child(toggles::toggles(cx))
+      .children(toggles::toggles(cx))
       .child(self.sliders.render(cx))
       .child(
         div()

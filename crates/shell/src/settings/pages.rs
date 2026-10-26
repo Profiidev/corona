@@ -3,8 +3,8 @@ use std::{iter, path::PathBuf};
 use corona_components::assets::{set_theme, theme_font, theme_names};
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
-  Config, ConfigProvider, IdleAction, IdleBehavior, NotificationPosition, OsdPosition, ThemeMode,
-  Units, Weekday,
+  Config, ConfigProvider, IdleAction, IdleBehavior, NightlightMode, NotificationPosition,
+  OsdPosition, ThemeMode, Units, Weekday,
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
@@ -19,11 +19,17 @@ use gpui_kit::{
   },
 };
 
+use crate::control_center::{
+  ControlCenterType,
+  dashboard::toggles::{QUICK_ACTIONS, quick_action_label},
+};
 use crate::i18n;
 use crate::settings::{
   bar,
   fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
-  launcher, plugins,
+  launcher,
+  order::{OrderList, order_item},
+  plugins,
 };
 use rust_i18n::t;
 
@@ -377,6 +383,39 @@ fn notifications() -> SettingPage {
         ],
       ),
       group(
+        t!("app.settings.notifications.groups.battery"),
+        vec![
+          item(
+            t!("app.settings.notifications.battery_warnings.title"),
+            t!("app.settings.notifications.battery_warnings.description"),
+            switch(
+              |c| c.notification.battery.enabled,
+              |c, v| c.notification.battery.enabled = v,
+            ),
+          ),
+          item(
+            t!("app.settings.notifications.battery_low.title"),
+            t!("app.settings.notifications.battery_low.description"),
+            number(
+              "notification.battery.low_percent",
+              (0., 100., 1.),
+              |c| c.notification.battery.low_percent.into(),
+              |c, v| c.notification.battery.low_percent = v as u8,
+            ),
+          ),
+          item(
+            t!("app.settings.notifications.battery_critical.title"),
+            t!("app.settings.notifications.battery_critical.description"),
+            number(
+              "notification.battery.critical_percent",
+              (0., 100., 1.),
+              |c| c.notification.battery.critical_percent.into(),
+              |c, v| c.notification.battery.critical_percent = v as u8,
+            ),
+          ),
+        ],
+      ),
+      group(
         t!("app.settings.notifications.groups.filter"),
         vec![
           item(
@@ -572,6 +611,42 @@ fn control_center() -> SettingPage {
             |c, v| c.control_center.background_opacity = v,
           ),
         ),
+        order_item([
+          OrderList {
+            key: "control_center.sidebar",
+            title: || t!("app.settings.control_center.sidebar.title"),
+            description: || t!("app.settings.control_center.sidebar.description"),
+            options: || {
+              ControlCenterType::iter()
+                .filter(|p| *p != ControlCenterType::Dashboard)
+                .map(|p| Choice {
+                  value: p.as_str().into(),
+                  label: p.title().into(),
+                })
+                .collect()
+            },
+            get: |c| c.control_center.sidebar.clone(),
+            set: |c, v| c.control_center.sidebar = v,
+          },
+          OrderList {
+            key: "control_center.quick_actions",
+            title: || t!("app.settings.control_center.quick_actions.title"),
+            description: || t!("app.settings.control_center.quick_actions.description"),
+            options: || {
+              QUICK_ACTIONS
+                .into_iter()
+                .filter_map(|id| {
+                  Some(Choice {
+                    value: id.into(),
+                    label: quick_action_label(id)?.into(),
+                  })
+                })
+                .collect()
+            },
+            get: |c| c.control_center.quick_actions.clone(),
+            set: |c, v| c.control_center.quick_actions = v,
+          },
+        ]),
       ],
     )],
   )
@@ -1146,6 +1221,71 @@ fn system() -> SettingPage {
             ),
           )
           .layout(Axis::Vertical),
+        ],
+      ),
+      group(
+        t!("app.settings.system.groups.nightlight"),
+        vec![
+          item(
+            t!("app.settings.system.nightlight.mode.title"),
+            t!("app.settings.system.nightlight.mode.description"),
+            choice(
+              &[
+                (
+                  NightlightMode::Manual,
+                  t!("app.settings.options.nightlight_manual"),
+                ),
+                (
+                  NightlightMode::Solar,
+                  t!("app.settings.options.nightlight_solar"),
+                ),
+                (
+                  NightlightMode::Schedule,
+                  t!("app.settings.options.nightlight_schedule"),
+                ),
+              ],
+              |c| c.nightlight.mode,
+              |c, v| c.nightlight.mode = v,
+            ),
+          ),
+          item(
+            t!("app.settings.system.nightlight.temperature.title"),
+            t!("app.settings.system.nightlight.temperature.description"),
+            number(
+              "nightlight.temperature",
+              (1000., 6500., 100.),
+              |c| c.nightlight.temperature as f64,
+              |c, v| c.nightlight.temperature = v as u32,
+            ),
+          ),
+          item(
+            t!("app.settings.system.nightlight.start.title"),
+            t!("app.settings.system.nightlight.start.description"),
+            text(
+              "nightlight.start",
+              |c| c.nightlight.start.clone(),
+              |c, v| c.nightlight.start = v,
+            ),
+          ),
+          item(
+            t!("app.settings.system.nightlight.end.title"),
+            t!("app.settings.system.nightlight.end.description"),
+            text(
+              "nightlight.end",
+              |c| c.nightlight.end.clone(),
+              |c, v| c.nightlight.end = v,
+            ),
+          ),
+          item(
+            t!("app.settings.system.nightlight.transition.title"),
+            t!("app.settings.system.nightlight.transition.description"),
+            number(
+              "nightlight.transition_minutes",
+              (0., 180., 1.),
+              |c| c.nightlight.transition_minutes as f64,
+              |c, v| c.nightlight.transition_minutes = v as u32,
+            ),
+          ),
         ],
       ),
       group(

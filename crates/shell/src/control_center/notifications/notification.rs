@@ -157,7 +157,7 @@ impl ReplyInputs {
   }
 }
 
-fn ago(elapsed: Duration) -> String {
+pub(crate) fn ago(elapsed: Duration) -> String {
   match elapsed.as_secs() {
     0..60 => t!("app.notifications.ago.now").into(),
     s @ 60..3600 => t!("app.notifications.ago.minutes", count = s / 60).into(),

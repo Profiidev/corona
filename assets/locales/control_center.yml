@@ -31,6 +31,9 @@ app:
     displays:
       en: Displays
       de: Bildschirme
+    clipboard:
+      en: Clipboard
+      de: Zwischenablage
     notifications:
       en: Notifications
       de: Benachrichtigungen
@@ -270,6 +273,9 @@ app:
     displays:
       en: Displays
       de: Bildschirme
+    nightlight:
+      en: Nightlight
+      de: Nachtlicht
     keyboard:
       en: Keyboard
       de: Tastatur
@@ -533,6 +539,16 @@ app:
     remaining:
       en: '%{duration} remaining'
       de: '%{duration} verbleibend'
+    warning:
+      low:
+        en: Battery low
+        de: Akku schwach
+      critical:
+        en: Battery almost empty
+        de: Akku fast leer
+      percent:
+        en: '%{percent}% left'
+        de: '%{percent} % übrig'
     until_full:
       en: '%{duration} until full'
       de: '%{duration} bis voll'

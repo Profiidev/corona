@@ -1,19 +1,17 @@
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
-use anyhow::{Result, bail};
-use corona_config::{ConfigProvider, LocationConfig, observe_section};
+use anyhow::{Context, Result};
+use corona_config::{ConfigProvider, observe_section};
+use corona_location::LocationExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
-use zbus::Connection;
 
 pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass};
 pub use corona_config::Units;
 
 mod api;
-mod locate;
 mod state;
 
-const LOCATE_TIMEOUT: Duration = Duration::from_secs(10);
 const RETRY: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone)]
@@ -79,40 +77,7 @@ fn save_cache(weather: &Weather) -> Result<()> {
   save_cache_to(cache_path(), weather)
 }
 
-async fn location(
-  client: &dyn HttpClient,
-  system: &Connection,
-  config: &LocationConfig,
-  previous: Option<&Location>,
-  timeout: impl Future<Output = ()>,
-) -> Result<Location> {
-  if let (Some(latitude), Some(longitude)) = (config.latitude, config.longitude) {
-    return Ok(Location {
-      name: config
-        .city
-        .clone()
-        .unwrap_or_else(|| format!("{latitude:.2}, {longitude:.2}")),
-      latitude,
-      longitude,
-      query: None,
-    });
-  }
-  if config.auto_locate {
-    match locate::locate(system, timeout).await {
-      Ok(location) => return Ok(location),
-      Err(e) => tracing::warn!("GeoClue: {e:?}, falling back to the configured city"),
-    }
-  }
-  let Some(city) = &config.city else {
-    bail!("set city or latitude and longitude under [location]");
-  };
-  if let Some(previous) = previous.filter(|l| l.query.as_ref() == Some(city)) {
-    return Ok(previous.clone());
-  }
-  api::geocode(client, city).await
-}
-
-pub fn init(cx: &mut App, system: &Connection) {
+pub fn init(cx: &mut App) {
   let (refresh, requests) = flume::unbounded();
   let state = WeatherService {
     weather: cx.new(|_| load_cache()),
@@ -121,19 +86,23 @@ pub fn init(cx: &mut App, system: &Connection) {
   };
 
   let (weather, error) = (state.weather.clone(), state.error.clone());
-  let system = system.clone();
   let client: Arc<dyn HttpClient> = cx.http_client();
   cx.spawn(async move |cx| {
     loop {
-      let (config, place) =
-        cx.update(|cx| (cx.config().weather.clone(), cx.config().location.clone()));
-      let previous = cx.update(|cx| weather.read(cx).as_ref().map(|w| w.location.clone()));
-      let timer = cx.background_executor().timer(LOCATE_TIMEOUT);
-      let fetched = async {
-        let location = location(&*client, &system, &place, previous.as_ref(), timer).await?;
-        api::forecast(&*client, location, config.units).await
-      }
-      .await;
+      // this fetch reads the latest place and units, earlier requests are answered by it
+      requests.drain();
+      let (config, place) = cx.update(|cx| {
+        let location = cx.location();
+        let place = location
+          .current(cx)
+          .cloned()
+          .with_context(|| location.error(cx).unwrap_or("locating").to_string());
+        (cx.config().weather.clone(), place)
+      });
+      let fetched = match place {
+        Ok(place) => api::forecast(&*client, place, config.units).await,
+        Err(e) => Err(e),
+      };
 
       let wait = match fetched {
         Ok(next) => {
@@ -164,12 +133,10 @@ pub fn init(cx: &mut App, system: &Connection) {
   .detach();
 
   cx.set_global(state);
-  // fetch again right away for the new place or units
-  observe_section(
-    cx,
-    |c| &c.location,
-    |_, cx| cx.global::<WeatherService>().refresh(),
-  );
+  // fetch again right away for a new place or units
+  let place = cx.location().location.clone();
+  cx.observe(&place, |_, cx| cx.global::<WeatherService>().refresh())
+    .detach();
   observe_section(
     cx,
     |c| &c.weather,
@@ -184,11 +151,10 @@ mod tests {
     time::SystemTime,
   };
 
-  use corona_config::Config;
+  use corona_config::{Config, LocationConfig};
   use corona_utils::test_bus::TestBus;
-  use futures_lite::future::{block_on, pending, ready};
+  use futures_lite::future::{block_on, pending};
   use gpui_kit::{self as gpui, TestAppContext};
-  use zbus::{interface, object_server::SignalEmitter, zvariant::ObjectPath};
 
   use super::*;
   use crate::api::tests::fake;
@@ -217,306 +183,6 @@ mod tests {
     let dir = tempfile::tempdir().unwrap();
     unsafe { std::env::set_var("XDG_CACHE_HOME", dir.path()) };
     dir
-  }
-
-  struct Manager;
-
-  #[interface(name = "org.freedesktop.GeoClue2.Manager")]
-  impl Manager {
-    fn get_client(&self) -> ObjectPath<'static> {
-      ObjectPath::from_static_str_unchecked("/org/freedesktop/GeoClue2/Client/1")
-    }
-  }
-
-  #[derive(Default)]
-  struct Client {
-    desktop_id: String,
-    accuracy: u32,
-    /// none: never answers
-    fix: Option<&'static str>,
-  }
-
-  #[interface(name = "org.freedesktop.GeoClue2.Client")]
-  impl Client {
-    async fn start(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-      if let Some(fix) = self.fix {
-        Self::location_updated(
-          &emitter,
-          ObjectPath::from_static_str_unchecked("/"),
-          ObjectPath::from_static_str_unchecked(fix),
-        )
-        .await
-        .unwrap();
-      }
-    }
-
-    fn stop(&self) {}
-
-    #[zbus(signal)]
-    async fn location_updated(
-      emitter: &SignalEmitter<'_>,
-      old: ObjectPath<'_>,
-      new: ObjectPath<'_>,
-    ) -> zbus::Result<()>;
-
-    #[zbus(property)]
-    fn desktop_id(&self) -> String {
-      self.desktop_id.clone()
-    }
-
-    #[zbus(property)]
-    fn set_desktop_id(&mut self, value: String) {
-      self.desktop_id = value;
-    }
-
-    #[zbus(property)]
-    fn requested_accuracy_level(&self) -> u32 {
-      self.accuracy
-    }
-
-    #[zbus(property)]
-    fn set_requested_accuracy_level(&mut self, value: u32) {
-      self.accuracy = value;
-    }
-  }
-
-  struct Fix;
-
-  #[interface(name = "org.freedesktop.GeoClue2.Location")]
-  impl Fix {
-    #[zbus(property)]
-    fn latitude(&self) -> f64 {
-      48.14
-    }
-
-    #[zbus(property)]
-    fn longitude(&self) -> f64 {
-      11.58
-    }
-  }
-
-  /// a GeoClue on `bus` whose client answers with `fix`; keep the connection alive
-  async fn geoclue(bus: &TestBus, fix: Option<&'static str>) -> zbus::Connection {
-    let service = bus.conn().await;
-    let server = service.object_server();
-    server
-      .at("/org/freedesktop/GeoClue2/Manager", Manager)
-      .await
-      .unwrap();
-    server
-      .at(
-        "/org/freedesktop/GeoClue2/Client/1",
-        Client {
-          fix,
-          ..Default::default()
-        },
-      )
-      .await
-      .unwrap();
-    server
-      .at("/org/freedesktop/GeoClue2/Location/1", Fix)
-      .await
-      .unwrap();
-    service
-      .request_name("org.freedesktop.GeoClue2")
-      .await
-      .unwrap();
-    service
-  }
-
-  #[test]
-  fn coordinates_win() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, urls) = fake(|_| unreachable!());
-      let named = location(
-        &*client,
-        &conn,
-        &place(Some("Home"), Some((1.234, -5.678)), true),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(
-        named,
-        Location {
-          name: "Home".into(),
-          latitude: 1.234,
-          longitude: -5.678,
-          query: None
-        }
-      );
-      let unnamed = location(
-        &*client,
-        &conn,
-        &place(None, Some((1.234, -5.678)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(unnamed.name, "1.23, -5.68");
-      assert!(urls.lock().unwrap().is_empty());
-    });
-  }
-
-  #[test]
-  fn half_coordinates_fall_back_to_the_city() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| (200, GEOCODE_JSON.into()));
-      let mut config = place(Some("Berlin"), None, false);
-      config.latitude = Some(1.);
-      let found = location(&*client, &conn, &config, None, ready(()))
-        .await
-        .unwrap();
-      assert_eq!(found.name, "Berlin, Germany");
-    });
-  }
-
-  #[test]
-  fn nothing_configured() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| unreachable!());
-      let error = location(&*client, &conn, &place(None, None, false), None, ready(()))
-        .await
-        .unwrap_err();
-      assert_eq!(
-        error.to_string(),
-        "set city or latitude and longitude under [location]"
-      );
-    });
-  }
-
-  #[test]
-  fn the_previous_place_is_reused() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, urls) = fake(|_| (200, GEOCODE_JSON.into()));
-      let previous = Location {
-        name: "Berlin, Germany".into(),
-        latitude: 52.52,
-        longitude: 13.41,
-        query: Some("Berlin".into()),
-      };
-      let config = place(Some("Berlin"), None, false);
-      assert_eq!(
-        location(&*client, &conn, &config, Some(&previous), ready(()))
-          .await
-          .unwrap(),
-        previous
-      );
-      assert!(urls.lock().unwrap().is_empty());
-      // another city asks again
-      let config = place(Some("Munich"), None, false);
-      location(&*client, &conn, &config, Some(&previous), ready(()))
-        .await
-        .unwrap();
-      assert_eq!(urls.lock().unwrap().len(), 1);
-    });
-  }
-
-  #[test]
-  fn geoclue_locates() {
-    let bus = TestBus::new();
-    block_on(async {
-      let service = geoclue(&bus, Some("/org/freedesktop/GeoClue2/Location/1")).await;
-      let conn = bus.conn().await;
-      let (client, urls) = fake(|_| unreachable!());
-      let found = location(
-        &*client,
-        &conn,
-        &place(Some("Berlin"), None, true),
-        None,
-        pending(),
-      )
-      .await
-      .unwrap();
-      assert_eq!(
-        found,
-        Location {
-          name: String::new(),
-          latitude: 48.14,
-          longitude: 11.58,
-          query: None
-        }
-      );
-      assert!(urls.lock().unwrap().is_empty());
-
-      let client_object = service
-        .object_server()
-        .interface::<_, Client>("/org/freedesktop/GeoClue2/Client/1")
-        .await
-        .unwrap();
-      assert_eq!(client_object.get().await.desktop_id, "corona");
-    });
-  }
-
-  #[test]
-  fn geoclue_is_asked_for_city_accuracy() {
-    let bus = TestBus::new();
-    block_on(async {
-      let service = geoclue(&bus, Some("/org/freedesktop/GeoClue2/Location/1")).await;
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| unreachable!());
-      location(&*client, &conn, &place(None, None, true), None, pending())
-        .await
-        .unwrap();
-      let client_object = service
-        .object_server()
-        .interface::<_, Client>("/org/freedesktop/GeoClue2/Client/1")
-        .await
-        .unwrap();
-      assert_eq!(client_object.get().await.accuracy, 4);
-    });
-  }
-
-  #[test]
-  fn geoclue_timeout_falls_back_to_the_city() {
-    let bus = TestBus::new();
-    block_on(async {
-      let _service = geoclue(&bus, None).await;
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| (200, GEOCODE_JSON.into()));
-      let found = location(
-        &*client,
-        &conn,
-        &place(Some("Berlin"), None, true),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(found.query.as_deref(), Some("Berlin"));
-    });
-  }
-
-  #[test]
-  fn missing_geoclue_falls_back_to_the_city() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| (200, GEOCODE_JSON.into()));
-      let found = location(
-        &*client,
-        &conn,
-        &place(Some("Berlin"), None, true),
-        None,
-        pending(),
-      )
-      .await
-      .unwrap();
-      assert_eq!(found.name, "Berlin, Germany");
-      // and without a city the error says what to configure
-      let error = location(&*client, &conn, &place(None, None, true), None, pending()).await;
-      assert!(error.is_err());
-    });
   }
 
   fn sample() -> Weather {
@@ -596,7 +262,8 @@ mod tests {
     cx.update(|cx| {
       cx.set_http_client(client);
       cx.set_global(config);
-      init(cx, &conn);
+      corona_location::init(cx, &conn);
+      init(cx);
     });
     cx.run_until_parked();
     Running {
@@ -695,7 +362,8 @@ mod tests {
     cx.update(|cx| {
       cx.set_http_client(client);
       cx.set_global(berlin());
-      init(cx, &conn);
+      corona_location::init(cx, &conn);
+      init(cx);
     });
     cx.run_until_parked();
     cx.read(|cx| assert_eq!(cx.weather().current(cx), Some(&sample())));
@@ -749,59 +417,6 @@ mod tests {
     assert!(save_cache_to(None, &sample()).is_ok());
   }
 
-  #[test]
-  fn non_finite_and_extreme_coordinates() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| unreachable!());
-      let nan_loc = location(
-        &*client,
-        &conn,
-        &place(None, Some((f64::NAN, f64::INFINITY)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(nan_loc.name, "NaN, inf");
-      assert!(nan_loc.latitude.is_nan());
-      assert_eq!(nan_loc.longitude, f64::INFINITY);
-
-      let extreme = location(
-        &*client,
-        &conn,
-        &place(None, Some((999.0, -999.0)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(extreme.name, "999.00, -999.00");
-    });
-  }
-
-  #[test]
-  fn empty_string_city_with_coordinates() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let (client, _) = fake(|_| unreachable!());
-      let empty_city = location(
-        &*client,
-        &conn,
-        &place(Some(""), Some((12.34, 56.78)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(empty_city.name, "");
-      assert_eq!(empty_city.latitude, 12.34);
-      assert_eq!(empty_city.longitude, 56.78);
-    });
-  }
-
   #[gpui::test]
   fn huge_refresh_minutes_boundary(cx: &mut TestAppContext) {
     let mut config = berlin();
@@ -819,7 +434,8 @@ mod tests {
       service.refresh();
     });
     cx.run_until_parked();
-    assert!(requests(&running) >= 4);
+    // a burst is answered by one fetch
+    assert_eq!(requests(&running), 3);
   }
 
   #[gpui::test]
@@ -835,29 +451,5 @@ mod tests {
       cx.set_global(dummy_service);
     });
     cx.executor().advance_clock(Duration::from_secs(10 * 60));
-  }
-
-  #[test]
-  fn geoclue_stream_closed_errors() {
-    let bus = TestBus::new();
-    block_on(async {
-      let conn = bus.conn().await;
-      let service = geoclue(&bus, None).await;
-      drop(service);
-      let result = locate::locate(&conn, pending()).await;
-      assert!(result.is_err());
-    });
-  }
-
-  #[test]
-  fn geoclue_property_read_failure() {
-    let bus = TestBus::new();
-    block_on(async {
-      // Points to a path that does not exist on object server
-      let _service = geoclue(&bus, Some("/org/freedesktop/GeoClue2/Location/nonexistent")).await;
-      let conn = bus.conn().await;
-      let result = locate::locate(&conn, pending()).await;
-      assert!(result.is_err());
-    });
   }
 }

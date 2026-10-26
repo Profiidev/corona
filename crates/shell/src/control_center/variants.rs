@@ -1,12 +1,13 @@
+use corona_config::ControlCenterConfig;
 use gpui_kit::{App, Window, assets::IconName};
 use std::borrow::Cow;
 
 use crate::control_center::{
   ControlCenterPanel, ControlCenterPanelHandle, audio::AudioPanel, bluetooth::BluetoothPanel,
-  brightness::BrightnessPanel, calendar::CalendarPanel, dashboard::DashboardPanel,
-  disks::DisksPanel, displays::DisplaysPanel, hotspot::HotspotPanel, media::MediaPanel,
-  network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
-  printers::PrintersPanel, sysinfo::SysinfoPanel, weather::WeatherPanel,
+  brightness::BrightnessPanel, calendar::CalendarPanel, clipboard::ClipboardPanel,
+  dashboard::DashboardPanel, disks::DisksPanel, displays::DisplaysPanel, hotspot::HotspotPanel,
+  media::MediaPanel, network::NetworkPanel, notifications::NotificationsPanel, power::PowerPanel,
+  printers::PrintersPanel, resolve, sysinfo::SysinfoPanel, weather::WeatherPanel,
 };
 use rust_i18n::t;
 
@@ -23,6 +24,7 @@ pub enum ControlCenterType {
   Brightness,
   Displays,
   Notifications,
+  Clipboard,
   Sysinfo,
   Weather,
   Calendar,
@@ -43,6 +45,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => "brightness",
       ControlCenterType::Displays => "displays",
       ControlCenterType::Notifications => "notifications",
+      ControlCenterType::Clipboard => "clipboard",
       ControlCenterType::Sysinfo => "sysinfo",
       ControlCenterType::Weather => "weather",
       ControlCenterType::Calendar => "calendar",
@@ -63,6 +66,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => IconName::Sun,
       ControlCenterType::Displays => IconName::Monitor,
       ControlCenterType::Notifications => IconName::Bell,
+      ControlCenterType::Clipboard => IconName::ClipboardList,
       ControlCenterType::Sysinfo => IconName::Activity,
       ControlCenterType::Weather => IconName::CloudSun,
       ControlCenterType::Calendar => IconName::CalendarDays,
@@ -83,11 +87,29 @@ impl ControlCenterType {
       ControlCenterType::Brightness => t!("app.control_center.brightness"),
       ControlCenterType::Displays => t!("app.control_center.displays"),
       ControlCenterType::Notifications => t!("app.control_center.notifications"),
+      ControlCenterType::Clipboard => t!("app.control_center.clipboard"),
       ControlCenterType::Sysinfo => t!("app.control_center.sysinfo"),
       ControlCenterType::Weather => t!("app.control_center.weather"),
       ControlCenterType::Calendar => t!("app.control_center.calendar"),
       ControlCenterType::Media => t!("app.control_center.media"),
     }
+  }
+
+  pub fn from_id(id: &str) -> Option<ControlCenterType> {
+    Self::iter().find(|p| p.as_str() == id)
+  }
+
+  /// The sidebar's pages: the dashboard, then the configured ones
+  pub fn sidebar(config: &ControlCenterConfig) -> Vec<ControlCenterType> {
+    let (pages, _) = resolve(&config.sidebar, Self::sidebar_page);
+    std::iter::once(ControlCenterType::Dashboard)
+      .chain(pages)
+      .collect()
+  }
+
+  /// A configurable sidebar page, the dashboard is always there
+  pub(crate) fn sidebar_page(id: &str) -> Option<ControlCenterType> {
+    Self::from_id(id).filter(|p| *p != ControlCenterType::Dashboard)
   }
 
   pub fn iter() -> impl Iterator<Item = ControlCenterType> {
@@ -103,6 +125,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness,
       ControlCenterType::Displays,
       ControlCenterType::Notifications,
+      ControlCenterType::Clipboard,
       ControlCenterType::Sysinfo,
       ControlCenterType::Weather,
       ControlCenterType::Calendar,
@@ -124,6 +147,7 @@ impl ControlCenterType {
       ControlCenterType::Brightness => BrightnessPanel::handle(window, cx),
       ControlCenterType::Displays => DisplaysPanel::handle(window, cx),
       ControlCenterType::Notifications => NotificationsPanel::handle(window, cx),
+      ControlCenterType::Clipboard => ClipboardPanel::handle(window, cx),
       ControlCenterType::Sysinfo => SysinfoPanel::handle(window, cx),
       ControlCenterType::Weather => WeatherPanel::handle(window, cx),
       ControlCenterType::Calendar => CalendarPanel::handle(window, cx),
@@ -153,13 +177,14 @@ mod tests {
         | ControlCenterType::Brightness
         | ControlCenterType::Displays
         | ControlCenterType::Notifications
+        | ControlCenterType::Clipboard
         | ControlCenterType::Sysinfo
         | ControlCenterType::Weather
         | ControlCenterType::Calendar
         | ControlCenterType::Media => {}
       }
     }
-    assert_eq!(all.len(), 15);
+    assert_eq!(all.len(), 16);
     assert_eq!(all[0], ControlCenterType::Dashboard);
   }
 
@@ -181,5 +206,28 @@ mod tests {
     assert_eq!(unique(titles.collect()), count);
     let icons = ControlCenterType::iter().map(|p| format!("{:?}", p.icon()));
     assert_eq!(unique(icons.collect()), count);
+  }
+
+  #[test]
+  fn sidebar_follows_config() {
+    let default = ControlCenterConfig::default();
+    assert_eq!(
+      ControlCenterType::sidebar(&default),
+      ControlCenterType::iter().collect::<Vec<_>>()
+    );
+    let config = ControlCenterConfig {
+      sidebar: ["media", "dashboard", "nope", "audio", "media"]
+        .map(String::from)
+        .to_vec(),
+      ..default
+    };
+    assert_eq!(
+      ControlCenterType::sidebar(&config),
+      [
+        ControlCenterType::Dashboard,
+        ControlCenterType::Media,
+        ControlCenterType::Audio
+      ]
+    );
   }
 }

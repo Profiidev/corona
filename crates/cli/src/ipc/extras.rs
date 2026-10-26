@@ -3,8 +3,8 @@ use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
 use corona_shell::commands::extras::{
-  Drive, DriveAction, EmptyTrash, KillPort, KillProcess, ListDrives, ListTimers, StartTimer,
-  StopTimer, TimerRequest, TrashCount,
+  Drive, DriveAction, DrivePasswordPrompt, EmptyTrash, KillPort, KillProcess, ListDrives,
+  ListTimers, StartTimer, StopTimer, TimerRequest, TrashCount,
 };
 
 use crate::ipc::done;
@@ -49,6 +49,14 @@ pub enum DriveCommands {
     #[arg(add = ArgValueCandidates::new(complete::drives))]
     drive: String,
   },
+  /// Ask for a drive's passphrase in a dialog and print it, exits 1 when cancelled. For
+  /// udiskie's password_prompt: ["corona", "ipc", "drive", "password-prompt", "--device",
+  /// "{device_presentation}"]
+  PasswordPrompt {
+    /// The device as shown in the dialog
+    #[arg(long)]
+    device: String,
+  },
 }
 
 impl DriveCommands {
@@ -67,6 +75,14 @@ impl DriveCommands {
         done(DriveAction::send((Drive::Unmount, drive)), "unmount")
       }
       DriveCommands::Eject { drive } => done(DriveAction::send((Drive::Eject, drive)), "eject"),
+      DriveCommands::PasswordPrompt { device } => match DrivePasswordPrompt::send(device) {
+        Ok(Some(password)) => println!("{password}"),
+        Ok(None) => std::process::exit(1),
+        Err(e) => {
+          tracing::error!("Failed to ask for the passphrase: {}", e);
+          std::process::exit(1);
+        }
+      },
     }
   }
 }

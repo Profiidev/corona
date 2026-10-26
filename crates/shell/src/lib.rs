@@ -28,12 +28,14 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   control_center::init_disks(cx);
+  control_center::init_power(cx);
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
   overlays::notification::init(cx);
   overlays::osk::init(cx);
   overlays::polkit::init(cx);
+  overlays::drive_password::init(cx);
   overlays::switcher::init(cx);
   overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
@@ -138,7 +140,8 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_printing::init(cx, &system).await?;
   corona_power::init(cx, &system).await?;
   corona_udisks::init(cx, &system).await?;
-  corona_weather::init(cx, &system);
+  corona_location::init(cx, &system);
+  corona_weather::init(cx);
   corona_brightness::init(cx, &system)?;
   corona_auth::init(cx, &system);
 

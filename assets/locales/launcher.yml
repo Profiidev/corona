@@ -441,6 +441,15 @@ app:
       awake_for:
         en: 'Staying awake for %{minutes} minutes'
         de: 'Bleibt %{minutes} Minuten wach'
+      nightlight:
+        en: 'Nightlight'
+        de: 'Nachtlicht'
+      nightlight_state:
+        en: 'Nightlight is %{state}, %{kelvin} K'
+        de: 'Nachtlicht ist %{state}, %{kelvin} K'
+      kelvin:
+        en: 'Kelvin'
+        de: 'Kelvin'
       minutes:
         en: 'minutes'
         de: 'Minuten'

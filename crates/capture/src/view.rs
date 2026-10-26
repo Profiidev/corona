@@ -65,14 +65,14 @@ pub struct LiveCapture {
 }
 
 impl LiveCapture {
-  /// `address` is the Hyprland window address, e.g. `0x55d2a4e1b2c0`.
+  /// `address` is the compositor's window id, like `types::Window.address`.
   pub fn window(address: &str, max_fps: u32, cx: &mut Context<Self>) -> Self {
     // The capture thread's wakeups would trip gpui's deterministic test
     // scheduler, which only allows activity on the test's own thread.
     let frames = if cx.is_test() {
       Err(anyhow::anyhow!("no live capture under the test scheduler"))
     } else {
-      parse_address(address).and_then(|address| capture_window(address, max_fps))
+      capture_window(address.to_owned(), max_fps)
     };
     Self::from_frames(frames, cx)
   }
@@ -114,11 +114,6 @@ impl LiveCapture {
   }
 }
 
-/// A Hyprland window address, hex with or without `0x`.
-fn parse_address(address: &str) -> anyhow::Result<u64> {
-  Ok(u64::from_str_radix(address.trim_start_matches("0x"), 16)?)
-}
-
 impl Render for LiveCapture {
   fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
     div().size_full().when_some(self.frame.clone(), |d, frame| {
@@ -140,17 +135,6 @@ mod tests {
   use rustix::fs::{MemfdFlags, memfd_create};
 
   use super::*;
-
-  #[test]
-  fn addresses() {
-    assert_eq!(parse_address("0x55d2a4e1b2c0").unwrap(), 0x55d2_a4e1_b2c0);
-    assert_eq!(parse_address("55D2a4e1b2c0").unwrap(), 0x55d2_a4e1_b2c0);
-    assert_eq!(parse_address("0x0").unwrap(), 0);
-    assert_eq!(parse_address("ffffffffffffffff").unwrap(), u64::MAX);
-    for bad in ["", "0x", "0xg", "1ffffffffffffffff", " 0x1", "-1", "0X1f"] {
-      assert!(parse_address(bad).is_err(), "{bad}");
-    }
-  }
 
   fn surface(width: u32, height: u32) -> Arc<Dmabuf> {
     let fd: OwnedFd = memfd_create("corona-test", MemfdFlags::CLOEXEC).unwrap();
@@ -205,7 +189,7 @@ mod tests {
     let live = cx.new(|cx| LiveCapture::from_frames(Err(anyhow::anyhow!("no compositor")), cx));
     cx.run_until_parked();
     live.read_with(cx, |live, _| assert_eq!(live.frame_size(), None));
-    // a bad address never reaches Wayland
+    // the test scheduler never starts a capture
     let bad = cx.new(|cx| LiveCapture::window("zz", 10, cx));
     cx.run_until_parked();
     bad.read_with(cx, |live, _| assert_eq!(live.frame_size(), None));
