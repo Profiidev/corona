@@ -85,7 +85,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     makeWrapper
   ];
 
-  nativeCheckInputs = [ git ];
+  # tests run in tests.yml; the check phase only rebuilds corona for zero tests
+  doCheck = false;
 
   buildInputs = [
     fontconfig
