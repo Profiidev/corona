@@ -552,7 +552,7 @@ mod tests {
     };
     let (view, cx) = harness::view(cx, body, |_, subs, cx| module(plugin, subs, cx));
     wait_until(cx, |cx| {
-      !view.reports.borrow().is_empty() && cx.read(|cx| !cx.notifications().list(cx).is_empty())
+      view.reports.borrow().len() >= 2 && cx.read(|cx| !cx.notifications().list(cx).is_empty())
     });
     let gated = view.reports.borrow()[0].clone();
     assert_eq!(gated["center"], "undefined");
