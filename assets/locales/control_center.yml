@@ -273,6 +273,9 @@ app:
     displays:
       en: Displays
       de: Bildschirme
+    nightlight:
+      en: Nightlight
+      de: Nachtlicht
     keyboard:
       en: Keyboard
       de: Tastatur

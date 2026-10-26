@@ -26,6 +26,7 @@ use crate::control_center::{
 use rust_i18n::t;
 
 mod lights;
+mod nightlight;
 
 pub(crate) fn display_name(display: &Display) -> String {
   match (&display.name, display.kind) {
@@ -36,6 +37,8 @@ pub(crate) fn display_name(display: &Display) -> String {
 }
 
 const KEYBOARD: &str = "keyboard";
+/// The nightlight slider in `dragging`
+const NIGHTLIGHT: &str = "nightlight";
 const THROTTLE: Duration = Duration::from_millis(100);
 
 pub struct BrightnessPanel {
@@ -43,7 +46,9 @@ pub struct BrightnessPanel {
   sliders: HashMap<String, (Entity<SliderState>, Subscription)>,
   dragging: HashSet<String>,
   pending: HashMap<String, f32>,
-  _subscriptions: [Subscription; 2],
+  /// Kelvin
+  nightlight_slider: (Entity<SliderState>, Subscription),
+  _subscriptions: [Subscription; 3],
 }
 
 impl ControlCenterPanel for BrightnessPanel {
@@ -52,6 +57,7 @@ impl ControlCenterPanel for BrightnessPanel {
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let displays = cx.brightness().displays.clone();
     let keyboard = cx.power().keyboard_backlight.clone();
+    let nightlight = cx.brightness().nightlight.clone();
 
     let subscriptions = [
       cx.observe_in(&displays, window, |this, _, window, cx| {
@@ -62,16 +68,48 @@ impl ControlCenterPanel for BrightnessPanel {
         this.sync_sliders(window, cx);
         cx.notify();
       }),
+      cx.observe_in(&nightlight, window, |this, _, window, cx| {
+        this.sync_nightlight(window, cx);
+        cx.notify();
+      }),
     ];
+
+    let slider = cx.new(|_| {
+      SliderState::new()
+        .min(nightlight::MIN)
+        .max(nightlight::MAX)
+        .step(100.)
+    });
+    let subscription = cx.subscribe(&slider, |this, _, event: &SliderEvent, cx| {
+      // the gamma thread takes only the latest, so no throttle is needed
+      let kelvin = match event {
+        SliderEvent::Change(value) => {
+          this.dragging.insert(NIGHTLIGHT.into());
+          value.start()
+        }
+        SliderEvent::Release(value) => {
+          this.dragging.remove(NIGHTLIGHT);
+          value.start()
+        }
+      };
+      let result = cx
+        .brightness()
+        .set_nightlight_temperature(kelvin.round() as u32, cx)
+        .map(|_| ());
+      this.show_error(result, cx);
+      cx.notify();
+    });
 
     let mut panel = Self {
       error: None,
       sliders: HashMap::new(),
       dragging: HashSet::new(),
       pending: HashMap::new(),
+      nightlight_slider: (slider, subscription),
       _subscriptions: subscriptions,
     };
     panel.sync_sliders(window, cx);
+    panel.sync_nightlight(window, cx);
     panel
   }
 }
@@ -120,6 +158,15 @@ impl BrightnessPanel {
         slider.update(cx, |state, cx| state.set_value(light.percent(), window, cx));
       }
     }
+  }
+
+  fn sync_nightlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    if self.dragging.contains(NIGHTLIGHT) {
+      return;
+    }
+    let kelvin = cx.brightness().nightlight(cx).temperature as f32;
+    let (slider, _) = &self.nightlight_slider;
+    slider.update(cx, |state, cx| state.set_value(kelvin, window, cx));
   }
 
   fn throttle(&mut self, id: &str, percent: f32, cx: &mut Context<Self>) {
@@ -189,6 +236,9 @@ impl Render for BrightnessPanel {
       .size_full()
       .gap_2()
       .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(self.nightlight(theme, cx), |d, nightlight| {
+        d.child(nightlight)
+      })
       .when_some(
         self.lights(theme, t!("app.brightness.displays"), displays(cx), cx),
         |d, displays| d.child(displays),

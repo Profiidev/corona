@@ -8,6 +8,15 @@ app:
       en: Search…
       de: Suchen …
     options:
+      nightlight_manual:
+        en: By hand
+        de: Von Hand
+      nightlight_solar:
+        en: Sunset to sunrise
+        de: Sonnenuntergang bis -aufgang
+      nightlight_schedule:
+        en: Custom hours
+        de: Eigene Zeiten
       theme_default:
         en: "Theme's own"
         de: Wie das Theme
@@ -1378,6 +1387,9 @@ app:
         profile:
           en: Profile
           de: Profil
+        nightlight:
+          en: Nightlight
+          de: Nachtlicht
         polling:
           en: Polling
           de: Abfrage
@@ -1391,6 +1403,42 @@ app:
         description:
           en: 'Path, ~/ path or http(s) URL of the dashboard picture.'
           de: 'Pfad, ~/-Pfad oder http(s)-URL des Bilds in der Übersicht.'
+      nightlight:
+        mode:
+          title:
+            en: Schedule
+            de: Zeitplan
+          description:
+            en: When the nightlight turns on and off. Switching by hand lasts until the next start or end.
+            de: Wann das Nachtlicht an- und ausgeht. Von Hand umschalten gilt bis zum nächsten Beginn oder Ende.
+        temperature:
+          title:
+            en: Temperature
+            de: Farbtemperatur
+          description:
+            en: Kelvin at night; lower is warmer.
+            de: Kelvin in der Nacht; niedriger ist wärmer.
+        start:
+          title:
+            en: Start
+            de: Beginn
+          description:
+            en: Local time as HH:MM, for the custom schedule.
+            de: Ortszeit als HH:MM, für den eigenen Zeitplan.
+        end:
+          title:
+            en: End
+            de: Ende
+          description:
+            en: Local time as HH:MM, for the custom schedule.
+            de: Ortszeit als HH:MM, für den eigenen Zeitplan.
+        transition:
+          title:
+            en: Transition
+            de: Übergang
+          description:
+            en: Minutes to fade in and out; 0 switches at once.
+            de: Minuten zum Ein- und Ausblenden; 0 schaltet sofort.
       system_monitor:
         title:
           en: System monitor
