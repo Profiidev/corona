@@ -376,6 +376,8 @@ impl Launcher {
     let (query, placeholder) = (self.page().query.clone(), self.page().placeholder());
     self.input.update(cx, |input, cx| {
       input.set_value(query, window, cx);
+      // selected so the next backspace clears the restored query
+      input.select_all(window, cx);
       input.set_placeholder(placeholder, window, cx);
     });
     self.refresh(cx);
@@ -1511,6 +1513,12 @@ mod view_tests {
     assert_eq!(pages, 1);
     // the root comes back as it was
     assert_eq!(query, "open list");
+    // selected, so one backspace clears it
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(
+      view.read_with(cx, |l, cx| l.input.read(cx).value().to_string()),
+      ""
+    );
   }
 
   #[gpui::test]
