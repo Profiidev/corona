@@ -54,7 +54,7 @@ in
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "corona";
-  version = "0.1.3";
+  version = "0.1.4";
 
   __structuredAttrs = true;
 
