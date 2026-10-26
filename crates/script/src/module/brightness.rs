@@ -1,5 +1,6 @@
 use corona_brightness as br;
 use corona_brightness::{Brightness, BrightnessExt};
+use gpui_kit::App;
 use gpui_shell::HostModule;
 use serde::Serialize;
 use ts_rs::TS;
@@ -68,9 +69,29 @@ struct Ddcutil {
   enabled: bool,
 }
 
+#[derive(Serialize, TS)]
+struct Nightlight {
+  /// The compositor lets the shell change gamma
+  available: bool,
+  on: bool,
+  /// Kelvin at night
+  temperature: u32,
+}
+
+impl From<&br::Nightlight> for Nightlight {
+  fn from(n: &br::Nightlight) -> Self {
+    Self {
+      available: n.available,
+      on: n.on,
+      temperature: n.temperature,
+    }
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Updates {
   Displays,
+  Nightlight,
 }
 
 impl From<Updates> for super::Updates {
@@ -99,6 +120,24 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
         enabled: brightness.ddcutil_enabled,
       }
     }))
+    .func(read(
+      reads,
+      subs,
+      "nightlight",
+      Updates::Nightlight,
+      |cx| cx.brightness().nightlight.clone(),
+      |cx| Nightlight::from(cx.brightness().nightlight(cx)),
+    ))
+    .func(named!(
+      "setNightlight",
+      /// In a timed mode this lasts until its next start or end.
+      |cx: &mut App, on: bool| cx.brightness().clone().set_nightlight(on, cx)
+    ))
+    .func(named!(
+      "setNightlightTemperature",
+      /// Kelvin at night, clamped to 1000 to 6500; returns what was set.
+      |cx: &mut App, kelvin: u32| cx.brightness().clone().set_nightlight_temperature(kelvin, cx)
+    ))
     .func(named!(
       "setBrightness",
       |cx: Cx, brightness: Glob<Brightness>, id: String, value: u32| {
@@ -128,15 +167,17 @@ mod tests {
     // never the real monitors
     config.brightness.enable_ddcutil = false;
     cx.set_global(config);
+    unsafe { std::env::set_var("WAYLAND_DISPLAY", "nothing-here") };
     cx.update(|cx| br::init(cx, &conn).unwrap());
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
       m.setBrightness("nope", 5).then(report);
+      report(m.setNightlight(true));
     }
-    report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil() });"#;
+    report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil(), nightlight: m.nightlight() });"#;
     let (view, cx) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
-    wait_until(cx, |_| view.reports.borrow().len() >= 2);
+    wait_until(cx, |_| view.reports.borrow().len() >= 3);
 
     let reports = view.reports.borrow();
     assert!(
@@ -147,8 +188,18 @@ mod tests {
     assert_eq!(read["displays"], true);
     assert_eq!(read["ddcutil"]["enabled"], false);
     assert!(read["ddcutil"]["available"].is_boolean());
+    // no compositor in the tests: no gamma either
+    assert_eq!(read["nightlight"]["available"], false);
+    assert_eq!(read["nightlight"]["temperature"], 4000);
+    assert!(
+      reports.iter().any(|r| r["message"]
+        .as_str()
+        .is_some_and(|e| e.contains("nightlight is unavailable"))),
+      "{reports:?}"
+    );
     // listing renders again as displays come and go, `ddcutil` is fixed
     assert!(view.reads.contains(Updates::Displays.into()));
+    assert!(view.reads.contains(Updates::Nightlight.into()));
   }
 
   fn display(kind: br::DisplayKind, unavailable: Option<br::Unavailable>) -> serde_json::Value {

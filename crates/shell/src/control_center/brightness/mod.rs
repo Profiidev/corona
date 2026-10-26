@@ -75,9 +75,10 @@ impl ControlCenterPanel for BrightnessPanel {
     ];
 
     let slider = cx.new(|_| {
+      // max first: min clamps against the default max of 100
       SliderState::new()
-        .min(nightlight::MIN)
         .max(nightlight::MAX)
+        .min(nightlight::MIN)
         .step(100.)
     });
     let subscription = cx.subscribe(&slider, |this, _, event: &SliderEvent, cx| {
