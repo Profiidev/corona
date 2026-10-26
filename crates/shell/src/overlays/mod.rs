@@ -8,8 +8,10 @@ use gpui_kit::{
 };
 
 pub mod colorpicker;
+pub mod drive_password;
 pub mod notification;
 pub mod osk;
+mod password;
 pub mod polkit;
 pub mod screen_corners;
 pub mod screenshot;

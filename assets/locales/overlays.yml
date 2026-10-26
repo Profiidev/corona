@@ -1,5 +1,15 @@
 _version: 2
 app:
+  drive_password:
+    title:
+      en: Unlock drive
+      de: Laufwerk entsperren
+    message:
+      en: 'Passphrase for %{device}'
+      de: 'Passphrase für %{device}'
+    unlock:
+      en: Unlock
+      de: Entsperren
   polkit:
     title:
       en: Authentication required

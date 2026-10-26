@@ -70,6 +70,19 @@ On NixOS, set `programs.corona.hotspot.interface` to your wifi interface (for ex
 The module then creates `corona-ap` at boot, keeps NetworkManager's client profiles off it and
 opens these ports on it.
 
+### Drive passphrases
+
+`corona ipc drive password-prompt --device <text>` shows a passphrase dialog, prints the
+passphrase and exits 0. Cancelling prints nothing and exits 1. udiskie can use it in place of its
+own prompt, in `~/.config/udiskie/config.yml`:
+
+```yaml
+program_options:
+  password_prompt: ["corona", "ipc", "drive", "password-prompt", "--device", "{device_presentation}"]
+```
+
+Corona's home-manager module sets this for `services.udiskie` already.
+
 ### Printing
 
 The printers panel talks to CUPS. Network printers and AirScan (eSCL) scanners are found over

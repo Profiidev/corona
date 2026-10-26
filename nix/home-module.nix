@@ -109,6 +109,15 @@ in
         xdg.configFile."corona/config.toml" = {
           source = generateToml "corona.toml" cfg.settings;
         };
+
+        services.udiskie.settings.program_options.password_prompt = lib.mkDefault [
+          (lib.getExe cfg.package)
+          "ipc"
+          "drive"
+          "password-prompt"
+          "--device"
+          "{device_presentation}"
+        ];
       }
     ]
   );

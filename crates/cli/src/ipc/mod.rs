@@ -591,6 +591,7 @@ pub(crate) mod tests {
       (&["clipboard", "clear"], json!(3), corona_shell::commands::clipboard::ClearClipboard::COMMAND, json!(null)),
       (&["trash", "count"], json!(3), corona_shell::commands::extras::TrashCount::COMMAND, json!(null)),
       (&["drive", "eject", "USB"], json!(null), corona_shell::commands::extras::DriveAction::COMMAND, json!(["Eject", "USB"])),
+      (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_shell::commands::extras::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
       (&["process", "kill", "42", "--force"], json!(null), corona_shell::commands::extras::KillProcess::COMMAND, json!([42, true])),
       (&["process", "kill-port", "8080"], json!([1]), corona_shell::commands::extras::KillPort::COMMAND, json!(8080)),
       (&["timer", "start", "5m", "tea"], json!(1), corona_shell::commands::extras::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),

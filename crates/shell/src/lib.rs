@@ -34,6 +34,7 @@ pub fn init(cx: &mut App) {
   overlays::notification::init(cx);
   overlays::osk::init(cx);
   overlays::polkit::init(cx);
+  overlays::drive_password::init(cx);
   overlays::switcher::init(cx);
   overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
