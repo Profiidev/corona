@@ -48,7 +48,7 @@ serde_json.workspace = true
 zbus.workspace = true
 futures.workspace = true
 tracing.workspace = true
-jiff = "0.2.37"
+jiff.workspace = true
 zstd = "0.14.3"
 rustix = { workspace = true, features = ["fs"] }
 rust-i18n.workspace = true
