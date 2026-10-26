@@ -23,7 +23,32 @@ pub struct PartView {
   pub hue: f32,
 }
 
+/// Where users mount their own drives; anything mounted elsewhere the running system uses
+const USER_MOUNTS: [&str; 4] = ["/run/media/", "/media/", "/mnt/", "/run/user/"];
+
+/// Mounted where the system needs it, like `/`, `/boot` or `/nix`, or swap in use
+pub fn system_block(block: &Block) -> bool {
+  let mounted = block.filesystem.as_ref().is_some_and(|f| {
+    f.mount_points
+      .iter()
+      .any(|m| !USER_MOUNTS.iter().any(|u| m.starts_with(u)))
+  });
+  mounted || block.swapspace.as_ref().is_some_and(|s| s.active)
+}
+
+impl DriveView {
+  /// One of its partitions the running system uses
+  pub fn is_system(&self) -> bool {
+    self.parts.iter().any(PartView::is_system)
+  }
+}
+
 impl PartView {
+  /// The running system uses it, or what is unlocked in it: no changing it
+  pub fn is_system(&self) -> bool {
+    system_block(&self.block) || self.cleartext.as_ref().is_some_and(system_block)
+  }
+
   /// Mounted, unlocked or active, by what it is
   pub fn is_on(&self) -> bool {
     match (&self.block.encrypted, &self.block.swapspace) {
@@ -295,7 +320,7 @@ pub(crate) mod tests {
     data.id_type = "ext4".into();
     data.id_label = "STICK".into();
     data.filesystem = Some(Filesystem {
-      mount_points: vec!["/".into()],
+      mount_points: vec!["/run/media/me/STICK".into()],
       size: 1_000_000_000,
     });
     let mut secret = part("sdb2", &d, &disk, 2);
@@ -344,6 +369,40 @@ pub(crate) mod tests {
     disk.filesystem = Some(Filesystem::default());
     let views = super::drives(&[d], &[disk]);
     assert_eq!(views[0].parts[0].block.device, "/dev/sdc");
+  }
+
+  #[test]
+  fn the_running_systems_partitions() {
+    let (drives, mut blocks) = stick();
+    let views = super::drives(&drives, &blocks);
+    assert!(!views[0].is_system());
+    blocks[1].filesystem.as_mut().unwrap().mount_points = vec!["/".into()];
+    let views = super::drives(&drives, &blocks);
+    assert!(views[0].parts[0].is_system() && views[0].is_system());
+    assert!(!views[0].parts[1].is_system() && !views[0].parts[2].is_system());
+    for (mount, system) in [
+      ("/run/media/me/STICK", false),
+      ("/mnt/media", false),
+      ("/media/usb", false),
+      ("/boot", true),
+      ("/nix/store", true),
+      ("/home", true),
+    ] {
+      blocks[1].filesystem.as_mut().unwrap().mount_points = vec![mount.into()];
+      assert_eq!(system_block(&blocks[1]), system, "{mount}");
+    }
+    // swap in use, and a LUKS whose cleartext is `/home`
+    blocks[3].swapspace.as_mut().unwrap().active = true;
+    assert!(system_block(&blocks[3]));
+    let mut clear = block("dm_2d1", None);
+    clear.crypto_backing_device = Some(blocks[2].path.clone());
+    clear.filesystem = Some(Filesystem {
+      mount_points: vec!["/home".into()],
+      size: 0,
+    });
+    blocks.push(clear);
+    let views = super::drives(&drives, &blocks);
+    assert!(views[0].parts[1].is_system());
   }
 
   #[test]

@@ -7,6 +7,7 @@ use corona_udisks::{Block, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
+  base::Disableable,
   component::{
     ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
@@ -20,8 +21,9 @@ use rust_i18n::t;
 use crate::control_center::disks::{
   DisksPanel,
   dialogs::{Dialog, DialogKind, LabelTarget},
+  model::system_block,
   types::size,
-  ui::{TileContent, note, section, tag, tile},
+  ui::{icon, note, section, tag},
 };
 
 fn short(block: &Block) -> String {
@@ -99,7 +101,7 @@ impl DisksPanel {
       .items_center()
       .gap_2()
       .p_1()
-      .child(tile(85., TileContent::Icon(IconName::Layers), 28.))
+      .child(icon(IconName::Layers))
       .child(
         div()
           .flex()
@@ -156,6 +158,8 @@ impl DisksPanel {
   fn swap_row(&self, block: &Block, cx: &Context<'_, Self>) -> AnyElement {
     let theme = cx.theme();
     let active = block.swapspace.as_ref().is_some_and(|s| s.active);
+    // swap in use is the running system's: no stopping or relabeling it
+    let system = system_block(block);
     let id = short(block);
     let path = block.path.clone();
     let label_path = block.path.clone();
@@ -173,7 +177,7 @@ impl DisksPanel {
       .items_center()
       .gap_2()
       .p_1()
-      .child(tile(320., TileContent::Icon(IconName::Layers), 28.))
+      .child(icon(IconName::Layers))
       .child(
         div()
           .flex()
@@ -197,6 +201,7 @@ impl DisksPanel {
         .icon(IconName::Pencil)
         .xsmall()
         .ghost()
+        .disabled(system)
         .cursor_pointer()
         .tooltip(t!("app.disks.rename"))
         .on_click(cx.listener(move |this, _, window, cx| {
@@ -217,6 +222,8 @@ impl DisksPanel {
           false => t!("app.disks.start"),
         })
         .xsmall()
+        .disabled(system)
+        .when(system, |b| b.tooltip(t!("app.disks.system_hint")))
         .when(!active, |b| b.primary())
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| {

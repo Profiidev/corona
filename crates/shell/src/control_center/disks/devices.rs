@@ -7,6 +7,7 @@ use gpui_kit::{
   AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
   Styled, TestSupportExt, Window,
   assets::IconName,
+  base::Disableable,
   component::{
     ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
@@ -19,9 +20,9 @@ use rust_i18n::t;
 use crate::control_center::disks::{
   DisksPanel,
   dialogs::Dialog,
-  model::{DriveView, Health, PartView, health, percent, usage},
+  model::{DriveView, Health, PartView, health, percent, system_block, usage},
   types::{fs_name, size},
-  ui::{TileContent, dot, note, ok_color, partition_map, section, tile, usage_bar, warn_color},
+  ui::{dot, icon, note, ok_color, partition_map, section, usage_bar, warn_color},
 };
 
 /// `NVMe`, `USB`, `ATA · 5400 rpm`
@@ -43,19 +44,6 @@ pub(super) fn drive_icon(drive: &Drive) -> IconName {
     (true, _) => IconName::Usb,
     (_, true) => IconName::Cpu,
     _ => IconName::HardDrive,
-  }
-}
-
-pub(super) fn drive_hue(drive: &Drive) -> f32 {
-  match (
-    drive.is_removable(),
-    drive.nvme.is_some(),
-    drive.rotation_rate > 0,
-  ) {
-    (true, _, _) => 160.,
-    (_, true, _) => 265.,
-    (_, _, true) => 35.,
-    _ => 215.,
   }
 }
 
@@ -82,17 +70,14 @@ pub(super) fn segments(view: &DriveView) -> Vec<(f32, f32, bool)> {
     .collect()
 }
 
-pub(super) fn letter(block: &Block) -> String {
-  match (&block.encrypted, &block.swapspace) {
-    (Some(_), _) => "L".into(),
-    (_, Some(_)) => "S".into(),
-    _ => block
-      .name()
-      .trim_start_matches("/dev/")
-      .chars()
-      .next()
-      .map(|c| c.to_uppercase().to_string())
-      .unwrap_or_else(|| "?".into()),
+/// A partition's icon by what it is: locked or unlocked LUKS, swap, a filesystem
+pub(super) fn part_icon(block: &Block, on: bool) -> IconName {
+  match (&block.encrypted, &block.swapspace, &block.filesystem) {
+    (Some(_), _, _) if on => IconName::LockOpen,
+    (Some(_), _, _) => IconName::Lock,
+    (_, Some(_), _) => IconName::Layers,
+    (_, _, Some(_)) => IconName::Folder,
+    _ => IconName::File,
   }
 }
 
@@ -169,11 +154,7 @@ impl DisksPanel {
           .cursor_pointer()
           .hover(|s| s.bg(theme.colors.muted))
           .on_click(cx.listener(move |this, _, _, cx| this.open_drive(path.clone(), cx)))
-          .child(tile(
-            drive_hue(drive),
-            TileContent::Icon(drive_icon(drive)),
-            32.,
-          ))
+          .child(icon(drive_icon(drive)))
           .child(
             div()
               .flex()
@@ -256,11 +237,7 @@ impl DisksPanel {
           .cursor_pointer()
           .hover(|s| s.bg(theme.colors.muted))
           .on_click(cx.listener(move |this, _, _, cx| this.open_block(open.clone(), cx)))
-          .child(tile(
-            part.hue,
-            TileContent::Letter(letter(shown).into()),
-            28.,
-          ))
+          .child(icon(part_icon(shown, on)))
           .child(
             div()
               .flex()
@@ -334,16 +311,25 @@ impl DisksPanel {
     };
     let cleartext = part.cleartext.clone();
     let title = format!("{label} · {}", block.name());
+    // the running system's own: nothing to unmount, lock or stop
+    let system = match child {
+      Some(c) => system_block(c),
+      None => part.is_system(),
+    };
     let button = Button::new(gpui_kit::ElementId::Name(
       format!("disks-primary-{id}").into(),
     ))
     .label(label)
+    .disabled(system)
+    .when(system, |b| b.tooltip(t!("app.disks.system_hint")))
     .when(large, |b| b.icon(icon))
     .when(!large, |b| b.xsmall())
     .when(large, |b| b.small())
     .when(!on, |b| b.primary())
     .cursor_pointer()
     .on_click(cx.listener(move |this, _, window: &mut Window, cx| {
+      // the row under the button opens the partition page
+      cx.stop_propagation();
       let path = block.path.clone();
       let objects = vec![path.clone()];
       match (encrypted, swap, on) {
@@ -400,6 +386,15 @@ impl DisksPanel {
       }
       cx.notify();
     }));
-    Some(button.into_any_element())
+    // a disabled button lets the click through, the row under it must not get it either way
+    Some(
+      div()
+        .id(gpui_kit::ElementId::Name(
+          format!("disks-primary-wrap-{id}").into(),
+        ))
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(button)
+        .into_any_element(),
+    )
   }
 }

@@ -266,6 +266,18 @@ impl DisksPanel {
     drives(udisks.list_drives(cx), udisks.list_blocks(cx))
   }
 
+  /// A block or drive disk the running system uses: whole disks by their partitions
+  pub(super) fn block_is_system(&self, path: &OwnedObjectPath, cx: &App) -> bool {
+    if let Some(view) = self
+      .drive_views(cx)
+      .into_iter()
+      .find(|v| v.disk.as_ref().is_some_and(|d| &d.path == path))
+    {
+      return view.is_system();
+    }
+    self.find_part(path, cx).is_some_and(|(_, p)| p.is_system())
+  }
+
   /// The partition view of a block, with its drive
   pub(super) fn find_part(
     &self,

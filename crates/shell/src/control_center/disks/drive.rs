@@ -20,12 +20,12 @@ use zbus::zvariant::OwnedObjectPath;
 
 use crate::control_center::disks::{
   DisksPanel, DriveTab,
-  devices::{drive_hue, drive_icon, drive_line, segments},
+  devices::{drive_icon, drive_line, segments},
   dialogs::{Dialog, DialogKind},
   jobs::DisksLog,
   model::{Health, free_spaces, health},
   types::{size, table_name},
-  ui::{TileContent, dot, kv, ok_color, partition_map, section, tag, tile, warn_color},
+  ui::{dot, icon, kv, ok_color, partition_map, section, tag, warn_color},
 };
 
 /// ATA attributes whose raw value above 0 means wear: reallocated, pending, uncorrectable
@@ -73,11 +73,7 @@ impl DisksPanel {
           .flex()
           .items_center()
           .gap_2()
-          .child(tile(
-            drive_hue(drive),
-            TileContent::Icon(drive_icon(drive)),
-            36.,
-          ))
+          .child(icon(drive_icon(drive)))
           .child(
             div()
               .flex()
@@ -262,6 +258,10 @@ impl DisksPanel {
         cx,
       ));
     }
+    let system = self
+      .drive_views(cx)
+      .iter()
+      .any(|v| v.drive.path == drive.path && v.is_system());
     let drive_path = drive.path.clone();
     let drive_path_ok = drive.path.clone();
     let name = drive.name();
@@ -270,7 +270,7 @@ impl DisksPanel {
         "disks-eject",
         IconName::Eject,
         t!("app.disks.eject"),
-        true,
+        !system,
         false,
         move |_, _, cx| {
           let this = cx.entity().downgrade();

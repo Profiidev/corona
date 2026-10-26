@@ -28,7 +28,7 @@ use crate::control_center::disks::{
   DisksPanel,
   fd::Progress,
   model::{job_title, remaining},
-  ui::{TileContent, note, section, tag, tile, usage_bar},
+  ui::{icon, note, section, tag, usage_bar},
 };
 
 /// Finished entries kept
@@ -391,15 +391,11 @@ impl DisksPanel {
           .items_center()
           .gap_2()
           .p_1()
-          .child(tile(
-            if f.success { 150. } else { 22. },
-            TileContent::Icon(if f.success {
-              IconName::Check
-            } else {
-              IconName::TriangleAlert
-            }),
-            28.,
-          ))
+          .child(icon(if f.success {
+            IconName::Check
+          } else {
+            IconName::TriangleAlert
+          }))
           .child(
             div()
               .flex()
@@ -462,7 +458,7 @@ fn job_row(
         .flex()
         .items_center()
         .gap_2()
-        .child(tile(250., TileContent::Icon(IconName::Activity), 28.))
+        .child(icon(IconName::Activity))
         .child(
           div()
             .flex()

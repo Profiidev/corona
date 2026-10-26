@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use corona_launcher::Tone;
 use corona_udisks::UdisksExt;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
@@ -15,14 +16,17 @@ use zbus::zvariant::OwnedObjectPath;
 
 use crate::control_center::disks::{
   DisksPanel,
-  devices::letter,
+  devices::part_icon,
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::DisksLog,
   model::{percent, usage},
   state_tag,
   types::{fs_name, partition_type_name, size, table_name},
-  ui::{TileContent, kv, section, tag, tile, usage_bar},
+  ui::{icon, kv, section, tag, usage_bar},
 };
+
+/// The actions left on a partition the running system uses
+const SYSTEM_SAFE: [&str; 3] = ["change-passphrase", "backup", "benchmark"];
 
 impl DisksPanel {
   pub(super) fn block_page(
@@ -49,6 +53,7 @@ impl DisksPanel {
       .as_ref()
       .and_then(|f| f.mount_points.first().cloned());
     let (state, tone) = state_tag(&part);
+    let system_tag = part.is_system();
 
     let usage = mount.as_deref().and_then(usage);
     let summary = div()
@@ -64,11 +69,7 @@ impl DisksPanel {
           .flex()
           .items_center()
           .gap_2()
-          .child(tile(
-            part.hue,
-            TileContent::Letter(letter(&block).into()),
-            36.,
-          ))
+          .child(icon(part_icon(&block, on)))
           .child(
             div()
               .flex()
@@ -89,6 +90,9 @@ impl DisksPanel {
                   )),
               ),
           )
+          .when(system_tag, |d| {
+            d.child(tag(t!("app.disks.system"), Tone::Warn, cx))
+          })
           .child(tag(state, tone, cx)),
       )
       .when_some(usage.zip(mount.clone()), |d, ((used, total), mount)| {
@@ -121,7 +125,8 @@ impl DisksPanel {
           .icon(IconName::FolderOpen)
           .small()
           .cursor_pointer()
-          .on_click(move |_, _, cx| cx.open_url(&format!("file://{mount}")))
+          // the default file manager, a file:// url goes to the browser
+          .on_click(move |_, _, cx| cx.open_with_system(std::path::Path::new(&mount)))
           .into_any_element(),
       );
     }
@@ -203,6 +208,8 @@ impl DisksPanel {
       section(t!("app.disks.details"), "", None, details, cx).into_any_element(),
     ];
     let caps = self.caps(&block.id_type);
+    // what the running system uses only reads, backs up and changes its passphrase
+    let system = part.is_system();
     let row = |this: &Self,
                key: &'static str,
                icon,
@@ -212,6 +219,7 @@ impl DisksPanel {
                kind: DialogKind,
                cx: &Context<Self>| {
       let path = block.path.clone();
+      let enabled = enabled && (!system || SYSTEM_SAFE.contains(&key));
       this.action_row(
         format!("disks-{key}"),
         icon,
@@ -264,7 +272,7 @@ impl DisksPanel {
               self,
               "resize-fs",
               IconName::Scaling,
-              t!("app.disks.resize"),
+              t!("app.disks.resize_fs"),
               caps.resize,
               false,
               DialogKind::Resize(ResizeTarget::Filesystem),
@@ -299,7 +307,7 @@ impl DisksPanel {
               self,
               "resize-luks",
               IconName::Scaling,
-              t!("app.disks.resize"),
+              t!("app.disks.resize_luks"),
               on,
               false,
               DialogKind::Resize(ResizeTarget::Encrypted),
@@ -343,7 +351,7 @@ impl DisksPanel {
               self,
               "part-type",
               IconName::Tag,
-              t!("app.disks.type"),
+              t!("app.disks.change_type"),
               true,
               false,
               DialogKind::PartitionType,
@@ -353,7 +361,7 @@ impl DisksPanel {
               self,
               "part-name",
               IconName::Pencil,
-              t!("app.disks.name"),
+              t!("app.disks.change_name"),
               table_kind == "gpt",
               false,
               DialogKind::Label(LabelTarget::PartitionName),
@@ -373,7 +381,7 @@ impl DisksPanel {
               self,
               "resize-part",
               IconName::Scaling,
-              t!("app.disks.resize"),
+              t!("app.disks.resize_part"),
               !on,
               false,
               DialogKind::Resize(ResizeTarget::Partition),

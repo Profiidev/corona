@@ -381,3 +381,62 @@ fn a_notification_opens_the_unlock_dialog(cx: &mut TestAppContext) {
   assert_eq!(view, View::Block(luks));
   assert_eq!(dialog, Some(DialogKind::Unlock));
 }
+
+#[gpui::test]
+fn a_rows_button_does_not_open_the_row(cx: &mut TestAppContext) {
+  let o = stick_panel(cx);
+  cx.update_window(o.window, |_, window, cx| {
+    window.render_frame(cx);
+    window.click(gpui::ElementId::Name("disks-primary-sdb1".into()), cx);
+  })
+  .unwrap();
+  cx.run_until_parked();
+  assert_eq!(cx.read(|cx| o.panel.read(cx).view.clone()), View::List);
+  // the row itself still opens its page
+  cx.update_window(o.window, |_, window, cx| {
+    window.click(gpui::ElementId::Name("disks-part-sdb1".into()), cx);
+  })
+  .unwrap();
+  assert_eq!(
+    cx.read(|cx| o.panel.read(cx).view.clone()),
+    View::Block(path("/org/freedesktop/UDisks2/block_devices/sdb1"))
+  );
+}
+
+#[gpui::test]
+fn the_running_systems_partitions_stay_put(cx: &mut TestAppContext) {
+  let (drives, mut blocks) = stick();
+  blocks[1].filesystem.as_mut().unwrap().mount_points = vec!["/".into()];
+  let o = open(cx, drives, blocks, vec![]);
+  cx.update_window(o.window, |_, window, cx| {
+    window.render_frame(cx);
+    // clicking the greyed out Unmount opens nothing
+    window.click(gpui::ElementId::Name("disks-primary-sdb1".into()), cx);
+  })
+  .unwrap();
+  cx.run_until_parked();
+  assert_eq!(cx.read(|cx| o.panel.read(cx).view.clone()), View::List);
+  // the drive holding it ejects no more, its benchmark writes nothing
+  let part = path("/org/freedesktop/UDisks2/block_devices/sdb1");
+  let disk = path("/org/freedesktop/UDisks2/block_devices/sdb");
+  cx.read(|cx| {
+    let panel = o.panel.read(cx);
+    assert!(panel.block_is_system(&part, cx) && panel.block_is_system(&disk, cx));
+    let luks = path("/org/freedesktop/UDisks2/block_devices/sdb2");
+    assert!(!panel.block_is_system(&luks, cx));
+  });
+  cx.update_window(o.window, |_, window, cx| {
+    o.panel.update(cx, |p, cx| {
+      p.dialog_for(DialogKind::Benchmark, disk.clone(), window, cx)
+    });
+  })
+  .unwrap();
+  assert_eq!(
+    present(
+      cx,
+      o.window,
+      &["disks-dialog-benchmark-ok", "disks-dialog-check-write"]
+    ),
+    [true, false]
+  );
+}

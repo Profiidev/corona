@@ -5,7 +5,7 @@ use corona_launcher::{Tone, ui::style};
 use gpui_kit::{
   AnyElement, App, Div, Hsla, IntoElement, ParentElement, SharedString, Styled,
   assets::IconName,
-  component::{ActiveTheme, Icon, Sizable},
+  component::{ActiveTheme, Icon},
   div, hsla,
   prelude::FluentBuilder,
   px,
@@ -71,34 +71,9 @@ pub fn tag(text: impl Into<SharedString>, tone: Tone, cx: &App) -> Div {
     .child(text.into())
 }
 
-/// The launcher's gradient tile with an icon or a letter
-pub fn tile(hue: f32, content: TileContent, size: f32) -> Div {
-  let inner = match content {
-    TileContent::Icon(icon) => Icon::new(icon)
-      .small()
-      .text_color(gpui_kit::white())
-      .into_any_element(),
-    TileContent::Letter(letter) => div()
-      .text_sm()
-      .font_weight(gpui_kit::FontWeight::BOLD)
-      .text_color(gpui_kit::white())
-      .child(letter)
-      .into_any_element(),
-  };
-  div()
-    .flex_shrink_0()
-    .size(px(size))
-    .rounded(px(size / 4.))
-    .bg(style::tile(hue))
-    .flex()
-    .items_center()
-    .justify_center()
-    .child(inner)
-}
-
-pub enum TileContent {
-  Icon(IconName),
-  Letter(SharedString),
+/// A plain Lucide icon at a row's start
+pub fn icon(name: IconName) -> Icon {
+  Icon::new(name).flex_shrink_0()
 }
 
 /// A plain key / value line

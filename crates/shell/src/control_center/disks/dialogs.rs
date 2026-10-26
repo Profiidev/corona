@@ -45,7 +45,8 @@ use crate::control_center::disks::{
   jobs::{DisksLog, Start},
   model::{free_spaces, usage},
   types::{FORMATS, default_partition_type, flags_of, fs_name, partition_types, size},
-  ui::{TileContent, kv, ok_color, tile, warn_color},
+  ui,
+  ui::{kv, ok_color, warn_color},
 };
 
 const MIB: u64 = 1 << 20;
@@ -680,7 +681,7 @@ impl DisksPanel {
       DialogKind::PartitionType => {
         let kind = dialog.choice("type", cx);
         self.act(
-          title("app.disks.type"),
+          title("app.disks.change_type"),
           objects,
           Rc::new(move |cx| Box::pin(cx.udisks().set_partition_type(&path, &kind))),
           cx,
@@ -814,7 +815,7 @@ impl DisksPanel {
         .detach();
       }
       DialogKind::Benchmark => {
-        let write = dialog.check("write");
+        let write = dialog.check("write") && !self.block_is_system(&path, cx);
         let total = target.as_ref().map_or(0, |t| t.size);
         let open = udisks.open_for_benchmark(&path, write);
         let job = title("app.disks.benchmark");
@@ -979,6 +980,10 @@ impl DisksPanel {
       .unwrap_or_default();
     let target_size = target.as_ref().map_or(0, |b| b.size);
     let id = dialog.kind.id();
+    let system_target = dialog
+      .block
+      .as_ref()
+      .is_some_and(|b| self.block_is_system(b, cx));
     let field_label = |text: SharedString| {
       div()
         .text_xs()
@@ -1066,7 +1071,7 @@ impl DisksPanel {
         );
       };
 
-    let (icon, hue, title, description, warning, ok): (
+    let (icon, _hue, title, description, warning, ok): (
       IconName,
       f32,
       String,
@@ -1144,7 +1149,10 @@ impl DisksPanel {
       }
       DialogKind::Label(target_kind) => {
         let (title, label) = match target_kind {
-          LabelTarget::PartitionName => (t!("app.disks.dialog.name_title"), t!("app.disks.name")),
+          LabelTarget::PartitionName => (
+            t!("app.disks.dialog.name_title"),
+            t!("app.disks.partition_name"),
+          ),
           _ => (t!("app.disks.dialog.label_title"), t!("app.disks.label")),
         };
         text_field("label", label.into(), &mut fields);
@@ -1227,8 +1235,8 @@ impl DisksPanel {
               .into_any_element(),
           );
         }
-        select_field("type", t!("app.disks.type").into(), &mut fields);
-        text_field("name", t!("app.disks.name").into(), &mut fields);
+        select_field("type", t!("app.disks.partition_type").into(), &mut fields);
+        text_field("name", t!("app.disks.partition_name").into(), &mut fields);
         select_field(
           "format",
           t!("app.disks.dialog.format_as").into(),
@@ -1245,7 +1253,7 @@ impl DisksPanel {
         )
       }
       DialogKind::PartitionType => {
-        select_field("type", t!("app.disks.type").into(), &mut fields);
+        select_field("type", t!("app.disks.partition_type").into(), &mut fields);
         (
           IconName::Tag,
           215.,
@@ -1368,19 +1376,21 @@ impl DisksPanel {
         } else if let Some(running) = running {
           fields.push(kv(t!("app.disks.jobs.running"), running, None, cx));
         }
-        check_field(
-          "write",
-          t!("app.disks.dialog.write_test").into(),
-          cx,
-          &mut fields,
-        );
+        // writing back over a disk the system runs from could lose what it writes meanwhile
+        if !system_target {
+          check_field(
+            "write",
+            t!("app.disks.dialog.write_test").into(),
+            cx,
+            &mut fields,
+          );
+        }
         (
           IconName::Gauge,
           265.,
           t!("app.disks.dialog.benchmark_title", name = name.clone()).into(),
           t!("app.disks.dialog.benchmark_desc").into(),
-          dialog
-            .check("write")
+          (dialog.check("write") && !system_target)
             .then(|| t!("app.disks.dialog.write_warning", device = device.clone()).into()),
           Some(t!("app.disks.start").into()),
         )
@@ -1493,7 +1503,7 @@ impl DisksPanel {
               .flex()
               .items_center()
               .gap_2()
-              .child(tile(hue, TileContent::Icon(icon), 32.))
+              .child(ui::icon(icon))
               .child(
                 div()
                   .flex()

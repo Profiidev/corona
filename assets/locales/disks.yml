@@ -1,6 +1,27 @@
 _version: 2
 app:
   disks:
+    system:
+      en: 'System'
+      de: 'System'
+    system_hint:
+      en: 'Used by the running system'
+      de: 'Vom laufenden System verwendet'
+    change_name:
+      en: 'Change partition name'
+      de: 'Partitionsnamen ändern'
+    change_type:
+      en: 'Change partition type'
+      de: 'Partitionstyp ändern'
+    resize_fs:
+      en: 'Resize filesystem'
+      de: 'Dateisystem skalieren'
+    resize_luks:
+      en: 'Resize encrypted volume'
+      de: 'Verschlüsseltes Volume skalieren'
+    resize_part:
+      en: 'Resize partition'
+      de: 'Partition skalieren'
     actions:
       en: 'Actions'
       de: 'Aktionen'
@@ -17,26 +38,26 @@ app:
       en: 'Detach automatically'
       de: 'Automatisch lösen'
     backup:
-      en: 'Back up image…'
-      de: 'Abbild sichern …'
+      en: 'Back up to image file'
+      de: 'In Abbilddatei sichern'
     backup_drive:
-      en: 'Back up whole drive…'
-      de: 'Ganzes Laufwerk sichern …'
+      en: 'Back up whole drive'
+      de: 'Ganzes Laufwerk sichern'
     benchmark:
-      en: 'Benchmark…'
-      de: 'Leistungstest …'
+      en: 'Measure speed'
+      de: 'Geschwindigkeit messen'
     busy_time:
       en: 'Controller busy time'
       de: 'Controller-Belegtzeit'
     change_passphrase:
-      en: 'Change passphrase…'
-      de: 'Passphrase ändern …'
+      en: 'Change passphrase'
+      de: 'Passphrase ändern'
     check:
       en: 'Check'
       de: 'Prüfen'
     create_partition:
-      en: 'Create partition…'
-      de: 'Partition erstellen …'
+      en: 'Create partition'
+      de: 'Partition erstellen'
     critical_warning:
       en: 'Critical warning'
       de: 'Kritische Warnung'
@@ -47,8 +68,8 @@ app:
       en: 'Data written'
       de: 'Geschriebene Daten'
     delete:
-      en: 'Delete…'
-      de: 'Löschen …'
+      en: 'Delete partition'
+      de: 'Partition löschen'
     detach:
       en: 'Detach'
       de: 'Lösen'
@@ -90,8 +111,8 @@ app:
         en: 'Change'
         de: 'Ändern'
       choose:
-        en: 'Choose…'
-        de: 'Auswählen …'
+        en: 'Choose file'
+        de: 'Datei auswählen'
       clean_title:
         en: 'Filesystem is clean'
         de: 'Dateisystem ist fehlerfrei'
@@ -315,8 +336,8 @@ app:
       en: '%{count} drives'
       de: '%{count} Laufwerke'
     edit_flags:
-      en: 'Flags…'
-      de: 'Flags …'
+      en: 'Change partition flags'
+      de: 'Partitions-Flags ändern'
     eject:
       en: 'Eject'
       de: 'Auswerfen'
@@ -352,8 +373,8 @@ app:
       en: 'Flags'
       de: 'Flags'
     format:
-      en: 'Format…'
-      de: 'Formatieren …'
+      en: 'Format partition'
+      de: 'Partition formatieren'
     health:
       en: 'Health'
       de: 'Zustand'
@@ -371,8 +392,8 @@ app:
         en: 'Open Disks'
         de: 'Laufwerke öffnen'
       unlock:
-        en: 'Unlock…'
-        de: 'Entsperren …'
+        en: 'Unlock'
+        de: 'Entsperren'
     hours:
       en: '%{count} h'
       de: '%{count} h'
@@ -447,8 +468,8 @@ app:
       en: 'Lock'
       de: 'Sperren'
     loop_setup_button:
-      en: 'Set up…'
-      de: 'Einrichten …'
+      en: 'Attach image file'
+      de: 'Abbilddatei einbinden'
     loops:
       en: 'Loop devices'
       de: 'Loop-Geräte'
@@ -476,9 +497,6 @@ app:
     mount_point:
       en: 'Mount point'
       de: 'Einhängepunkt'
-    name:
-      en: 'Name…'
-      de: 'Name …'
     no:
       en: 'No'
       de: 'Nein'
@@ -628,8 +646,8 @@ app:
       en: 'Removable'
       de: 'Wechselbar'
     rename:
-      en: 'Rename…'
-      de: 'Umbenennen …'
+      en: 'Change label'
+      de: 'Bezeichnung ändern'
     repair:
       en: 'Repair'
       de: 'Reparieren'
@@ -637,11 +655,11 @@ app:
       en: 'Rescan'
       de: 'Neu einlesen'
     resize:
-      en: 'Resize…'
-      de: 'Größe ändern …'
+      en: 'Resize'
+      de: 'Größe ändern'
     restore:
-      en: 'Restore image…'
-      de: 'Abbild wiederherstellen …'
+      en: 'Restore from image file'
+      de: 'Aus Abbilddatei wiederherstellen'
     selftest:
       en: 'Self-test'
       de: 'Selbsttest'
@@ -744,9 +762,6 @@ app:
     threshold:
       en: 'Thr.'
       de: 'Schw.'
-    type:
-      en: 'Type…'
-      de: 'Typ …'
     unlock:
       en: 'Unlock'
       de: 'Entsperren'
