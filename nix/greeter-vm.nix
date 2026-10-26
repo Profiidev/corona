@@ -37,7 +37,6 @@ in
   boot = {
     # Silent boot: no kernel/systemd text or cursor between splash and greeter.
     consoleLogLevel = 0;
-    initrd.verbose = false;
     kernelParams = [
       "quiet"
       "splash"
@@ -48,7 +47,6 @@ in
       # qemu-vm adds console=ttyS0; Plymouth would otherwise pick the text splash.
       "plymouth.ignore-serial-consoles"
     ];
-    initrd.systemd.enable = true;
     # Early KMS. VM GPU; on real hardware use i915/xe/amdgpu/nvidia.
     initrd.kernelModules = [ "virtio_gpu" ];
 
