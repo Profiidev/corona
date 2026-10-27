@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use pipewire::{
   device::{Device, DeviceListener},
   metadata::{Metadata, MetadataListener},
-  node::{Node, NodeInfoRef, NodeListener},
+  node::{Node, NodeChangeMask, NodeInfoRef, NodeListener},
   registry::{GlobalObject, RegistryRc},
   spa::{
     param::ParamType,
@@ -170,7 +170,15 @@ fn add_capture(
   let (id, captures, events) = (obj.id, state.captures.clone(), events.clone());
   let listener = node
     .add_listener_local()
-    .info(move |info| captures.update(id, &info.state(), info.props(), &events))
+    .info(move |info| {
+      // props are only sent when they changed, otherwise the dict is empty
+      let props = info
+        .change_mask()
+        .contains(NodeChangeMask::PROPS)
+        .then(|| info.props())
+        .flatten();
+      captures.update(id, &info.state(), props, &events)
+    })
     .register();
   handles
     .0
