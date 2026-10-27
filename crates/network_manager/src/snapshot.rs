@@ -254,7 +254,7 @@ async fn read_hotspot(conn: &Connection, device: &Interface) -> Result<Option<Ho
 }
 
 /// the frequency of the access point `device` is connected to
-async fn frequency(conn: &Connection, device: &Interface) -> Result<Option<u32>> {
+pub(crate) async fn frequency(conn: &Connection, device: &Interface) -> Result<Option<u32>> {
   let access_point = WirelessDeviceProxy::builder(conn)
     .path(device.path.clone())?
     .cache_properties(CacheProperties::No)

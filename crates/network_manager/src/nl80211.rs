@@ -270,9 +270,8 @@ fn query_station_beside_ap_with(family: u16, phy: u32) -> Result<bool> {
   Ok(fits)
 }
 
-/// the 5 GHz frequencies in `bands` an access point starts on: enabled, without radar detection
-/// and allowed to transmit first. Intel radios forbid that on most of them, NM's pick included
-fn ap_frequencies_5ghz(bands: &[u8]) -> Vec<u32> {
+/// the 5 GHz frequencies in `bands` without any of the `restrictions`
+fn frequencies_5ghz(bands: &[u8], restrictions: &[u16]) -> Vec<u32> {
   attrs(bands)
     .filter(|&(band, _)| band == BAND_5GHZ)
     .flat_map(|(_, band)| attrs(band).filter(|&(kind, _)| kind == BAND_ATTR_FREQS))
@@ -282,7 +281,7 @@ fn ap_frequencies_5ghz(bands: &[u8]) -> Vec<u32> {
       for (kind, payload) in attrs(freq) {
         match kind {
           FREQ_ATTR_FREQ => frequency = u32_payload(payload),
-          FREQ_ATTR_DISABLED | FREQ_ATTR_NO_IR | FREQ_ATTR_RADAR => return None,
+          kind if restrictions.contains(&kind) => return None,
           _ => {}
         }
       }
@@ -291,8 +290,20 @@ fn ap_frequencies_5ghz(bands: &[u8]) -> Vec<u32> {
     .collect()
 }
 
-/// the 5 GHz frequencies radio `phy` starts an access point on, by the current regulatory domain
+/// the 5 GHz frequencies radio `phy` starts an access point on, by the current regulatory domain:
+/// enabled, without radar detection and allowed to transmit first. Intel radios forbid that on
+/// most of them, NM's pick included
 pub fn ap_frequencies(phy: u32) -> Result<Vec<u32>> {
+  frequencies(phy, &[FREQ_ATTR_DISABLED, FREQ_ATTR_NO_IR, FREQ_ATTR_RADAR])
+}
+
+/// the 5 GHz frequencies radio `phy` starts an access point on beside a connection on them, which
+/// lifts the ban on transmitting first but never radar detection
+pub fn ap_frequencies_beside_station(phy: u32) -> Result<Vec<u32>> {
+  frequencies(phy, &[FREQ_ATTR_DISABLED, FREQ_ATTR_RADAR])
+}
+
+fn frequencies(phy: u32, restrictions: &[u16]) -> Result<Vec<u32>> {
   with_nl80211(|family| {
     let filter = [
       attr(ATTR_WIPHY, &phy.to_ne_bytes()),
@@ -310,7 +321,7 @@ pub fn ap_frequencies(phy: u32) -> Result<Vec<u32>> {
           .any(|&(kind, payload)| kind == ATTR_WIPHY && u32_payload(payload) == Some(phy));
         if ours {
           for &(_, bands) in attrs.iter().filter(|&&(kind, _)| kind == ATTR_WIPHY_BANDS) {
-            frequencies.extend(ap_frequencies_5ghz(bands));
+            frequencies.extend(frequencies_5ghz(bands, restrictions));
           }
         }
       },
@@ -510,8 +521,14 @@ mod tests {
       ),
     ]
     .concat();
-    assert_eq!(ap_frequencies_5ghz(&bands), [5745, 5765]);
-    assert!(ap_frequencies_5ghz(&bands[..bands.len() / 3]).is_empty());
+    let ap = [FREQ_ATTR_DISABLED, FREQ_ATTR_NO_IR, FREQ_ATTR_RADAR];
+    assert_eq!(frequencies_5ghz(&bands, &ap), [5745, 5765]);
+    assert!(frequencies_5ghz(&bands[..bands.len() / 3], &ap).is_empty());
+    let beside_station = [FREQ_ATTR_DISABLED, FREQ_ATTR_RADAR];
+    assert_eq!(
+      frequencies_5ghz(&bands, &beside_station),
+      [5180, 5745, 5765]
+    );
   }
 
   #[test]
