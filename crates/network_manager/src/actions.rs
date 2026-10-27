@@ -31,8 +31,8 @@ use crate::{
     ENTERPRISE_SETTING, IDENTITY_KEY, PASSWORD_KEY, PRIVATE_KEY_PASSWORD_KEY, WIFI_SECURITY_SETTING,
   },
   nl80211,
-  snapshot::{AP_MODE, WIFI_SETTING, profile, read_access_point, saved_ssid},
-  state::{HotspotBand, HotspotClient},
+  snapshot::{AP_MODE, WIFI_SETTING, frequency, profile, read_access_point, saved_ssid},
+  state::{HotspotBand, HotspotClient, Interface},
 };
 
 /// the profile `start_hotspot` creates once and updates after
@@ -615,6 +615,31 @@ async fn client_channel(
     .frequency()
     .await?;
   Ok(channel(frequency))
+}
+
+/// fails right away when a hotspot sharing `primary`'s radio, which serves both on one channel,
+/// cannot start on the channel `primary` is connected on: NM would only give up half a minute later
+pub(crate) async fn ensure_ap_beside(conn: &Connection, primary: &Interface) -> Result<()> {
+  let Some((phy, _)) = nl80211::radio(&primary.name) else {
+    return Ok(());
+  };
+  let Some(frequency) = frequency(conn, primary).await.log_err().ok().flatten() else {
+    return Ok(());
+  };
+  // 2.4 GHz has no radar detection
+  let Some((HotspotBand::A, channel)) = channel(frequency) else {
+    return Ok(());
+  };
+  let Ok(allowed) = nl80211::ap_frequencies_beside_station(phy).log_err() else {
+    return Ok(());
+  };
+  ensure!(
+    allowed.contains(&frequency),
+    "Wi-Fi is connected on channel {channel}, where the hotspot cannot run: it needs radar \
+     detection there, and this wifi device runs the hotspot only on the channel Wi-Fi uses. \
+     Disconnect Wi-Fi or connect to a network on another channel"
+  );
+  Ok(())
 }
 
 /// a 5 GHz channel `device`'s radio starts an access point on, None to leave it to NM; NM's pick,

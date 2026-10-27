@@ -336,6 +336,15 @@ impl NetworkManager {
       config.validate()?;
       let primary = primary.context("no usable wifi device")?;
       let connected = primary.state == DeviceState::Activated;
+      let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
+      // before the password is asked for too
+      let shares_radio = match &spare {
+        Some((_, name)) => radio(name).is_some_and(|phy| radio(&primary.name) == Some(phy)),
+        None => ours || beside,
+      };
+      if connected && shares_radio {
+        actions::ensure_ap_beside(&conn, &primary).await?;
+      }
       let rules_for = |name: &str| HotspotRules::new(name, &activated);
       // set by the first root call, which lets the clients through
       let mut allowed = None;
@@ -378,7 +387,6 @@ impl NetworkManager {
             .log_err()
             .ok();
         }
-        let radio = |name: &str| nl80211::radio(name).map(|(phy, _)| phy);
         let shared =
           name != primary.name && radio(&name).is_some_and(|phy| radio(&primary.name) == Some(phy));
         let client = shared.then_some((primary.path.clone(), connected));
