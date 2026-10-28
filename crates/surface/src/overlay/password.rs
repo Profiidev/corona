@@ -22,13 +22,13 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::overlays::fullscreen_options;
+use crate::overlay::fullscreen_options;
 
 const WIDTH: f32 = 360.;
 
 /// Keeps one window open for the front of `requests`, a fresh one for each request, `key` tells
 /// them apart
-pub(super) fn follow_queue<T: 'static, K: PartialEq + 'static>(
+pub fn follow_queue<T: 'static, K: PartialEq + 'static>(
   requests: Entity<VecDeque<T>>,
   what: &'static str,
   key: impl Fn(&T) -> K + 'static,
@@ -54,7 +54,7 @@ pub(super) fn follow_queue<T: 'static, K: PartialEq + 'static>(
 }
 
 /// A transparent overlay window on the focused monitor showing `build`'s view
-pub(super) fn open_window<V: Render + 'static>(
+pub fn open_window<V: Render + 'static>(
   namespace: &str,
   cx: &mut App,
   build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static,
@@ -73,7 +73,7 @@ pub(super) fn open_window<V: Render + 'static>(
 }
 
 /// A masked input focused for typing a password
-pub(super) fn password_input(window: &mut Window, cx: &mut App) -> Entity<InputState> {
+pub fn password_input(window: &mut Window, cx: &mut App) -> Entity<InputState> {
   let input = cx.new(|cx| {
     InputState::new(window, cx)
       .masked(true)
@@ -86,7 +86,7 @@ pub(super) fn password_input(window: &mut Window, cx: &mut App) -> Entity<InputS
 type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 /// The dimmed backdrop with a card asking for a password
-pub(super) struct PasswordCard<'a> {
+pub struct PasswordCard<'a> {
   /// prefixes the buttons' ids
   pub id: &'static str,
   pub title: SharedString,

@@ -10,10 +10,8 @@ use gpui_kit::{
 };
 use tracing::{error, warn};
 
-use crate::overlays::{
-  OverlayState, fullscreen_options,
-  screenshot::{mode::Mode, overlay::Overlay},
-};
+use crate::overlays::screenshot::{mode::Mode, overlay::Overlay};
+use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_screenshot";
 

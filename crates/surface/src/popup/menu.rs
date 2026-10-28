@@ -1,5 +1,5 @@
+use crate::{bar::BarState, popup::popup_options};
 use corona_config::{ConfigProvider, placement::Placement};
-use corona_surface::{bar::BarState, popup::popup_options};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, Div, ElementId, Focusable, Global,

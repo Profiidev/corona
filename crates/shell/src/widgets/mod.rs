@@ -2,10 +2,8 @@ mod active_window;
 pub(crate) mod clock;
 pub(crate) mod control_center;
 mod player;
-pub(crate) mod popup;
 pub(crate) mod privacy;
 pub(crate) mod resource;
-mod tooltip;
 pub(crate) mod tray;
 mod workspaces;
 

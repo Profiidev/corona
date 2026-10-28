@@ -22,12 +22,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-  icons::{capture_icon, capture_label},
-  widgets::popup::{self, ROW, SEPARATOR},
-};
+use crate::icons::{capture_icon, capture_label};
 use corona_components::filter::filter_regex;
 use corona_components::time::ago_long;
+use corona_surface::popup::{self, ROW, SEPARATOR};
 use rust_i18n::t;
 
 const ICON_SIZE: f32 = 16.;

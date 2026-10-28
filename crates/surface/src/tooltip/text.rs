@@ -3,7 +3,7 @@ use gpui_kit::{
   Window, component::ActiveTheme, div, px, relative,
 };
 
-use corona_surface::tooltip::Tooltip;
+use crate::tooltip::Tooltip;
 
 const FONT_SIZE: f32 = 12.;
 const PADDING: f32 = 4.;

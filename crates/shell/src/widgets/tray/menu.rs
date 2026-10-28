@@ -1,6 +1,6 @@
 use corona_tray::{MenuItem, Toggle, TrayExt};
 
-use crate::widgets::popup::{self, ROW, SEPARATOR};
+use corona_surface::popup::{self, ROW, SEPARATOR};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement,

@@ -6,6 +6,10 @@ use gpui_kit::{
   px,
 };
 
+mod menu;
+
+pub use menu::{ROW, SEPARATOR, WIDTH, frame, open, open_at, row, separator, size};
+
 pub fn popup_options(
   parent: AnyWindowHandle,
   anchor: Bounds<Pixels>,

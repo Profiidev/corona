@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::widgets::tooltip::TextTooltip;
+use corona_surface::tooltip::TextTooltip;
 
 const ICON_SIZE: u16 = 18;
 const ICON_GAP: f32 = 2.;

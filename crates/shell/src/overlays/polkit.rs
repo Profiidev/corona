@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::overlays::password::{PasswordCard, follow_queue, open_window, password_input};
+use corona_surface::overlay::password::{PasswordCard, follow_queue, open_window, password_input};
 
 const NAMESPACE: &str = "corona_polkit";
 

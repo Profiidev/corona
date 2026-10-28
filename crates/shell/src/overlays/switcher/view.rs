@@ -13,13 +13,13 @@ use gpui_kit::{
 use tracing::error;
 
 use crate::overlays::{
-  OverlayState,
   switcher::{
     SwitcherState,
     commands::{Mode, Modifier, Options},
   },
   wallpaper,
 };
+use corona_surface::overlay::OverlayState;
 use rust_i18n::t;
 
 const FPS: u32 = 5;

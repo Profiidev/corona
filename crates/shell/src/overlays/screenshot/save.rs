@@ -13,10 +13,8 @@ use gpui_kit::{App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, Image
 use jiff::Zoned;
 use tracing::{error, info};
 
-use crate::overlays::{
-  OverlayState,
-  screenshot::state::{MonitorGeometry, ScreenshotState},
-};
+use crate::overlays::screenshot::state::{MonitorGeometry, ScreenshotState};
+use corona_surface::overlay::OverlayState;
 
 fn finish(png: Vec<u8>, cx: &mut App) {
   cx.write_to_clipboard(ClipboardItem::new_image(&GpuiImage::from_bytes(

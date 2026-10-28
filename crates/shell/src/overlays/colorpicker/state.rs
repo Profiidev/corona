@@ -8,7 +8,8 @@ use gpui_kit::{
 };
 use tracing::{error, warn};
 
-use crate::overlays::{OverlayState, colorpicker::overlay::Overlay, fullscreen_options};
+use crate::overlays::colorpicker::overlay::Overlay;
+use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_colorpicker";
 

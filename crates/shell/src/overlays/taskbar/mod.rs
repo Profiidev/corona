@@ -14,7 +14,7 @@ use corona_surface::{
   input_region::InputRegion,
   panel::{Align, PanelStyle, panel_shape},
   per_display::PerDisplay,
-  popup::popup_options,
+  popup::{self, popup_options},
 };
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, InteractiveElement,
@@ -31,10 +31,7 @@ use gpui_kit::{
 };
 use tracing::error;
 
-use crate::{
-  overlays::taskbar::{menu::TaskbarMenu, preview::Preview},
-  widgets::popup,
-};
+use crate::overlays::taskbar::{menu::TaskbarMenu, preview::Preview};
 
 const NAMESPACE: &str = "corona_taskbar";
 const PADDING: f32 = 10.;

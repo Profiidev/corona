@@ -7,7 +7,7 @@ use gpui_kit::{
 use tracing::error;
 
 use super::{Taskbar, focus_window};
-use crate::widgets::popup::{self, ROW, SEPARATOR};
+use corona_surface::popup::{self, ROW, SEPARATOR};
 use rust_i18n::t;
 
 pub fn size(windows: &[types::Window]) -> Size<Pixels> {

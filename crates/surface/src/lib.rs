@@ -1,3 +1,5 @@
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
+
 use anyhow::Result;
 use gpui_kit::App;
 
@@ -5,6 +7,7 @@ pub mod bar;
 pub mod commands;
 pub mod input_region;
 pub mod osd;
+pub mod overlay;
 pub mod panel;
 pub mod per_display;
 pub mod popup;

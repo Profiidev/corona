@@ -10,10 +10,8 @@ use gpui_kit::{
   base::Root,
 };
 
-use crate::overlays::{
-  OverlayState, fullscreen_options,
-  switcher::{commands::Options, view::Switcher},
-};
+use crate::overlays::switcher::{commands::Options, view::Switcher};
+use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_switcher";
 
