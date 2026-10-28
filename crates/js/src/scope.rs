@@ -60,7 +60,9 @@ pub fn window() -> &'static mut Window {
 
 /// The element arena of the current render
 pub fn frame() -> &'static mut Frame {
-  let p = SCOPE.get().2;
-  assert!(!p.is_null(), "element built outside render");
-  unsafe { &mut *p }
+  try_frame().expect("element built outside render")
+}
+
+pub(crate) fn try_frame() -> Option<&'static mut Frame> {
+  unsafe { SCOPE.get().2.as_mut() }
 }

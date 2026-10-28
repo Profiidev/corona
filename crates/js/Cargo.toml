@@ -18,3 +18,4 @@ specta-typescript = "=0.0.14"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
+tracing-subscriber.workspace = true

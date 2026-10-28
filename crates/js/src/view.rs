@@ -1,8 +1,12 @@
 //! A plugin view: `class X extends View { init(props, cx); render(cx) }`, rendered through
 //! the [`Frame`] arena.
 
+use std::collections::HashMap;
+
 use anyhow::{Result, anyhow};
-use gpui_kit::{AnyElement, Context, EntityId, IntoElement, Render, Task, Window, div, prelude::*};
+use gpui_kit::{
+  AnyElement, Context, EntityId, IntoElement, Render, Subscription, Task, Window, div, prelude::*,
+};
 use rquickjs::{
   AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Function, JsLifetime, Module, Object,
   Persistent, Value,
@@ -12,7 +16,13 @@ use rquickjs::{
   module::{Declarations, Exports, ModuleDef},
 };
 
-use crate::{Enter, Frame, app, el::new_el, el_d_ts, now, with};
+use crate::{
+  Enter, Frame, ModuleBuilder, Watches, app,
+  el::new_el,
+  el_d_ts,
+  module::{HostLoader, HostModules},
+  now, with,
+};
 
 /// The `cx` a view's methods and handlers get
 #[derive(Trace, JsLifetime)]
@@ -73,6 +83,9 @@ impl ModuleDef for GpuiKit {
 pub struct ScriptView {
   instance: Persistent<Object<'static>>,
   handlers: Vec<Persistent<Function<'static>>>,
+  watches: Watches,
+  /// The entities the last render read
+  observed: HashMap<EntityId, Subscription>,
   _drive: Task<()>,
   #[cfg(test)]
   pub(crate) text: String,
@@ -82,19 +95,30 @@ pub struct ScriptView {
 
 impl ScriptView {
   /// Evaluates `source`, whose default export extends `View`, and calls its `init`. The
-  /// module can import `gpui-kit` and whatever is installed on `resolver` and `loader`.
+  /// module can import `gpui-kit` and `modules`, which subscribe through `watches`.
   pub fn new(
     source: &str,
-    mut resolver: BuiltinResolver,
-    mut loader: ModuleLoader,
+    modules: Vec<ModuleBuilder>,
+    watches: Watches,
     window: &mut Window,
     cx: &mut Context<Self>,
   ) -> Result<Self> {
-    resolver.add_module(GpuiKit::NAME);
-    loader.add_module(GpuiKit::NAME, GpuiKit);
+    let modules = HostModules::new(modules);
+    let mut resolver = BuiltinResolver::default().with_module(GpuiKit::NAME);
+    for name in modules.names() {
+      resolver.add_module(name);
+    }
+    let loader = (
+      HostLoader,
+      ModuleLoader::default().with_module(GpuiKit::NAME, GpuiKit),
+    );
     let rt = AsyncRuntime::new()?;
     now(rt.set_loader(resolver, loader));
+    now(rt.set_host_promise_rejection_tracker(Some(Box::new(rejected))));
     let ctx = now(AsyncContext::full(&rt))?;
+    with(&ctx, |ctx| ctx.store_userdata(modules).map(drop))
+      .map_err(|_| anyhow!("host modules stored twice"))?;
+    watches.set_context(ctx.clone());
 
     // drives async host fns and the promise jobs they resolve, inside the scope
     let mut drive = Box::pin(rt.drive());
@@ -126,11 +150,15 @@ impl ScriptView {
         Ok(Persistent::save(&ctx, instance))
       };
       run().catch(&ctx).map_err(|e| anyhow!("{e}"))
-    })?;
+    })
+    // the modules hold the watches, which hold the context: nothing else frees them
+    .inspect_err(|_| watches.clear())?;
 
     Ok(Self {
       instance,
       handlers: Vec::new(),
+      watches,
+      observed: HashMap::new(),
       _drive: drive,
       #[cfg(test)]
       text: String::new(),
@@ -178,6 +206,10 @@ impl ScriptView {
       self.text = std::mem::take(&mut frame.text);
     }
     self.handlers = std::mem::take(&mut frame.handlers);
+    self.observed.retain(|id, _| frame.reads.contains_key(id));
+    for (id, observe) in frame.reads {
+      self.observed.entry(id).or_insert_with(|| observe(cx));
+    }
     Ok(root.into_any_element())
   }
 }
@@ -195,5 +227,18 @@ impl Render for ScriptView {
 impl Drop for ScriptView {
   fn drop(&mut self) {
     self.handlers.clear();
+    self.watches.clear();
+  }
+}
+
+/// Logs a promise rejected without a handler. ponytail: logged when it rejects, also if a
+/// handler is attached a tick later; keep and report them after the jobs ran if that is noisy
+fn rejected<'js>(_: Ctx<'js>, _promise: Value<'js>, reason: Value<'js>, handled: bool) {
+  if handled {
+    return;
+  }
+  match reason.as_exception() {
+    Some(e) => tracing::warn!("unhandled promise rejection: {e}"),
+    None => tracing::warn!("unhandled promise rejection: {reason:?}"),
   }
 }

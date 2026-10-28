@@ -1,8 +1,10 @@
 //! Builder methods: `div().flex().child(..)` on a Rust-arena [`El`], one table line each.
 
+use std::collections::HashMap;
+
 use gpui_kit::{
-  AnyElement, Div, InteractiveElement, IntoElement, ParentElement, Stateful,
-  StatefulInteractiveElement, Styled, WeakEntity, div, px, rgb,
+  AnyElement, Context, Div, EntityId, InteractiveElement, IntoElement, ParentElement, Stateful,
+  StatefulInteractiveElement, Styled, Subscription, WeakEntity, div, px, rgb,
 };
 use rquickjs::{
   Class, Ctx, Exception, FromJs, Function, JsLifetime, Persistent, Result, Value, class::Trace,
@@ -11,10 +13,14 @@ use rquickjs::{
 
 use crate::{ScriptView, frame};
 
-/// The elements one render builds, and the click handlers they hold
+/// Observes an entity the render read, see [`track`](crate::track)
+pub(crate) type Observe = Box<dyn FnOnce(&mut Context<ScriptView>) -> Subscription>;
+
+/// The elements one render builds, the click handlers they hold and the entities it read
 pub struct Frame {
   nodes: Vec<Option<Stateful<Div>>>,
   pub(crate) handlers: Vec<Persistent<Function<'static>>>,
+  pub(crate) reads: HashMap<EntityId, Observe>,
   view: WeakEntity<ScriptView>,
   #[cfg(test)]
   pub(crate) text: String,
@@ -25,6 +31,7 @@ impl Frame {
     Self {
       nodes: Vec::new(),
       handlers: Vec::new(),
+      reads: HashMap::new(),
       view,
       #[cfg(test)]
       text: String::new(),

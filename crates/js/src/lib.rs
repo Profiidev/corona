@@ -12,17 +12,23 @@ use std::{
 use rquickjs::{AsyncContext, Ctx};
 
 pub use el::{El, Frame, el_d_ts};
-pub use host::{Cx, Throws, render_module};
+pub use host::{Cx, Glob, Opt, Throws};
+pub use module::{ModuleBuilder, d_ts};
+pub use registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry};
 pub use scope::{Enter, app, frame, window};
 pub use view::{GpuiKit, ScriptView, ViewCx};
+pub use watch::{Callback, Watches, track};
 
 #[doc(hidden)]
 pub use {rquickjs, specta};
 
 mod el;
 mod host;
+mod module;
+mod registry;
 mod scope;
 mod view;
+mod watch;
 
 #[cfg(test)]
 mod tests;

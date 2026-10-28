@@ -2107,6 +2107,7 @@ dependencies = [
  "specta",
  "specta-typescript",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

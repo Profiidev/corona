@@ -23,9 +23,35 @@ declare module "gpui-kit" {
     abstract render(cx: ViewCx): El;
   }
 }
+/** A value of the shell: call it for the current one. */
+interface Signal<T> {
+  (): T;
+  /** Calls `cb` with every new value; returns the fn that stops it. */
+  subscribe(cb: (value: T) => void): () => void;
+}
 declare module "corona/test" {
+  /**  A corner of a shape. */
+  export type Point = {
+    /**  Pixels from the left. */
+    x: number,
+    y: number,
+  };
+
+  export type Shape = {
+    name: string,
+    corners: Point[],
+    scale: number | null,
+  };
   /** Adds `by` to the shared counter. Throws when it would pass 100. */
   export function add(by: number): number;
+  /** A square named `name`, `scale` times the counter wide. */
+  export function square(name: string, scale?: number | null): Shape;
   /** Resolves with `value` doubled after `ms` milliseconds. */
-  export function double_later(ms: number, value: number): Promise<number>;
+  export function doubleLater(ms: number, value: number): Promise<number>;
+  /** Rejects when `fail`. */
+  export function check(fail: boolean): Promise<number>;
+  /** Only in another variant of the module. */
+  export function hidden(): number;
+  /** The watched count. */
+  export const count: Signal<number>;
 }
