@@ -3,11 +3,9 @@ use gpui_kit::App;
 
 use crate::{
   icons::power_profile,
-  osds::{
-    on_change,
-    view::{ToggleOsd, show},
-  },
+  osds::{kinds::PowerProfileOsd, show},
 };
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
@@ -18,8 +16,7 @@ pub fn init(cx: &mut App) {
     |cx| cx.power().profiles(cx).map(|p| p.active.clone()),
     |_, active, cx| {
       let (icon, label) = power_profile(active);
-      show(
-        |k| k.power_profile,
+      show::<PowerProfileOsd>(
         ToggleOsd {
           icon,
           label: t!("app.power.profile.title"),

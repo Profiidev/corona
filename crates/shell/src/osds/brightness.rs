@@ -3,11 +3,9 @@ use gpui_kit::{App, assets::IconName};
 
 use crate::{
   control_center::brightness::display_name,
-  osds::{
-    on_change,
-    view::{LevelOsd, show},
-  },
+  osds::{kinds::BrightnessOsd, show},
 };
+use corona_surface::osd::{LevelOsd, on_change};
 
 type Level = (String, String, u32);
 
@@ -42,8 +40,7 @@ pub fn init(cx: &mut App) {
         } else {
           IconName::Sun
         };
-        show(
-          |k| k.brightness,
+        show::<BrightnessOsd>(
           LevelOsd {
             icon,
             label: name.clone().into(),

@@ -223,14 +223,26 @@ pub(crate) mod test_support {
   }
 
   impl Osd for OsdA {
-    const NAME: &'static str = "osd_a";
+    const KIND: &'static str = "osd_a";
+    fn title() -> gpui_kit::SharedString {
+      "OsdA".into()
+    }
+    fn description() -> gpui_kit::SharedString {
+      "".into()
+    }
     fn size(&self, _: &App) -> Size<Pixels> {
       size(px(100.), px(30.))
     }
   }
 
   impl Osd for OsdB {
-    const NAME: &'static str = "osd_b";
+    const KIND: &'static str = "osd_b";
+    fn title() -> gpui_kit::SharedString {
+      "OsdB".into()
+    }
+    fn description() -> gpui_kit::SharedString {
+      "".into()
+    }
     fn size(&self, _: &App) -> Size<Pixels> {
       size(px(200.), px(30.))
     }

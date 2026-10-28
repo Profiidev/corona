@@ -8,6 +8,7 @@ use corona_config::{
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
+use corona_surface::osd::OsdExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Axis, BorrowAppContext, SharedString, Styled, Window,
@@ -60,7 +61,7 @@ pub(super) fn all(cx: &App) -> Vec<SettingPage> {
     bar::page(cx),
     wallpaper(),
     notifications(),
-    osd(),
+    osd(cx),
     control_center(),
     taskbar(),
     window_switcher(),
@@ -434,7 +435,7 @@ fn notifications() -> SettingPage {
   )
 }
 
-fn osd() -> SettingPage {
+fn osd(cx: &App) -> SettingPage {
   page(
     t!("app.settings.osd.title"),
     IconName::Gauge,
@@ -495,70 +496,22 @@ fn osd() -> SettingPage {
       ),
       group(
         t!("app.settings.osd.groups.shown_for"),
-        vec![
-          item(
-            t!("app.settings.osd.volume.title"),
-            t!("app.settings.osd.volume.description"),
-            switch(|c| c.osd.kinds.volume, |c, v| c.osd.kinds.volume = v),
-          ),
-          item(
-            t!("app.settings.osd.brightness.title"),
-            t!("app.settings.osd.brightness.description"),
-            switch(
-              |c| c.osd.kinds.brightness,
-              |c, v| c.osd.kinds.brightness = v,
-            ),
-          ),
-          item(
-            t!("app.settings.osd.wi_fi.title"),
-            t!("app.settings.osd.wi_fi.description"),
-            switch(|c| c.osd.kinds.wifi, |c, v| c.osd.kinds.wifi = v),
-          ),
-          item(
-            t!("app.settings.osd.bluetooth.title"),
-            t!("app.settings.osd.bluetooth.description"),
-            switch(|c| c.osd.kinds.bluetooth, |c, v| c.osd.kinds.bluetooth = v),
-          ),
-          item(
-            t!("app.settings.osd.do_not_disturb.title"),
-            t!("app.settings.osd.do_not_disturb.description"),
-            switch(|c| c.osd.kinds.dnd, |c, v| c.osd.kinds.dnd = v),
-          ),
-          item(
-            t!("app.settings.osd.power_profile.title"),
-            t!("app.settings.osd.power_profile.description"),
-            switch(
-              |c| c.osd.kinds.power_profile,
-              |c, v| c.osd.kinds.power_profile = v,
-            ),
-          ),
-          item(
-            t!("app.settings.osd.privacy.title"),
-            t!("app.settings.osd.privacy.description"),
-            switch(|c| c.osd.kinds.privacy, |c, v| c.osd.kinds.privacy = v),
-          ),
-          item(
-            t!("app.settings.osd.keyboard_layout.title"),
-            t!("app.settings.osd.keyboard_layout.description"),
-            switch(
-              |c| c.osd.kinds.keyboard_layout,
-              |c, v| c.osd.kinds.keyboard_layout = v,
-            ),
-          ),
-          item(
-            t!("app.settings.osd.lock_keys.title"),
-            t!("app.settings.osd.lock_keys.description"),
-            switch(|c| c.osd.kinds.lock_keys, |c, v| c.osd.kinds.lock_keys = v),
-          ),
-          item(
-            t!("app.settings.osd.stay_awake.title"),
-            t!("app.settings.osd.stay_awake.description"),
-            switch(
-              |c| c.osd.kinds.stay_awake,
-              |c, v| c.osd.kinds.stay_awake = v,
-            ),
-          ),
-        ],
+        cx.osds()
+          .iter()
+          .map(|kind| {
+            let id = kind.id;
+            item(
+              (kind.title)(),
+              (kind.description)(),
+              switch(
+                move |c| c.osd.kinds.get(id).copied().unwrap_or(true),
+                move |c, v| {
+                  c.osd.kinds.insert(id.to_string(), v);
+                },
+              ),
+            )
+          })
+          .collect(),
       ),
     ],
   )

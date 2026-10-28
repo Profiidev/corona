@@ -1,10 +1,8 @@
 use corona_network_manager::NetworkManagerExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::osds::{
-  on_change,
-  view::{ToggleOsd, show},
-};
+use crate::osds::{kinds::WifiOsd, show};
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
@@ -22,11 +20,7 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::WifiOff
       };
-      show(
-        |k| k.wifi,
-        ToggleOsd::on_off(icon, t!("app.dashboard.wifi"), on),
-        cx,
-      );
+      show::<WifiOsd>(ToggleOsd::on_off(icon, t!("app.dashboard.wifi"), on), cx);
     },
   );
 }

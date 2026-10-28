@@ -6,7 +6,7 @@ use corona_config::{APP_NAME, ConfigProvider, OsdPosition};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Global, IntoElement,
-  ParentElement, Pixels, Point, Render, Size, Styled, Task, WeakEntity, Window,
+  ParentElement, Pixels, Point, Render, SharedString, Size, Styled, Task, WeakEntity, Window,
   WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   component::{ActiveTheme, Root},
   div,
@@ -17,14 +17,55 @@ use gpui_kit::{
 const NAMESPACE: &str = "corona_osd";
 const BORDER: f32 = 2.;
 
-pub trait Osd: Render {
-  const NAME: &'static str;
+mod views;
 
+pub use views::{LevelOsd, ToggleOsd, on_change};
+
+/// An on-screen display, one type per kind the settings can turn off
+pub trait Osd: Render {
+  /// The key in `osd.kinds`
+  const KIND: &'static str;
+
+  /// The settings' name for this kind
+  fn title() -> SharedString;
+  fn description() -> SharedString;
   fn size(&self, cx: &App) -> Size<Pixels>;
 }
 
+/// A registered OSD kind, for the settings to list
+pub struct OsdKind {
+  pub id: &'static str,
+  pub title: fn() -> SharedString,
+  pub description: fn() -> SharedString,
+}
+
+/// The OSD kinds, in the order they registered
+#[derive(Default)]
+pub struct OsdRegistry {
+  kinds: Vec<OsdKind>,
+}
+
+impl Global for OsdRegistry {}
+
+impl OsdRegistry {
+  pub fn register<T: Osd>(&mut self) -> &mut Self {
+    if !self.kinds.iter().any(|k| k.id == T::KIND) {
+      self.kinds.push(OsdKind {
+        id: T::KIND,
+        title: T::title,
+        description: T::description,
+      });
+    }
+    self
+  }
+
+  pub fn kinds(&self) -> &[OsdKind] {
+    &self.kinds
+  }
+}
+
 struct Shown {
-  name: &'static str,
+  kind: &'static str,
   display: Option<DisplayId>,
   size: Size<Pixels>,
   handle: AnyWindowHandle,
@@ -44,7 +85,11 @@ impl OsdState {
     cx.set_global(OsdState::default());
   }
 
+  /// Shows `osd` unless the OSD, or its kind, is turned off in the settings
   pub fn show<T: Osd>(osd: T, cx: &mut App) -> Result<()> {
+    if !cx.config().osd.shows(T::KIND) {
+      return Ok(());
+    }
     let monitor = cx.compositor().active_monitor(cx).name.clone();
     let display = display_id_for(&monitor, cx);
     let content = osd.size(cx);
@@ -83,7 +128,7 @@ impl OsdState {
       cx.update(Self::hide);
     });
     cx.global_mut::<OsdState>().shown = Some(Shown {
-      name: T::NAME,
+      kind: T::KIND,
       display,
       size,
       handle,
@@ -149,7 +194,7 @@ impl OsdState {
       .global::<OsdState>()
       .shown
       .as_ref()
-      .is_some_and(|s| s.name == T::NAME)
+      .is_some_and(|s| s.kind == T::KIND)
     {
       Self::hide(cx);
     }
@@ -194,9 +239,19 @@ impl Render for BaseOsd {
 pub trait OsdExt {
   fn show_osd<T: Osd>(&mut self, osd: T) -> Result<()>;
   fn hide_osd<T: Osd>(&mut self);
+  fn osd_mut(&mut self) -> &mut OsdRegistry;
+  fn osds(&self) -> &[OsdKind];
 }
 
 impl OsdExt for App {
+  fn osd_mut(&mut self) -> &mut OsdRegistry {
+    self.default_global::<OsdRegistry>()
+  }
+
+  fn osds(&self) -> &[OsdKind] {
+    self.try_global::<OsdRegistry>().map_or(&[], |r| r.kinds())
+  }
+
   fn show_osd<T: Osd>(&mut self, osd: T) -> Result<()> {
     OsdState::show(osd, self)
   }
@@ -222,7 +277,7 @@ mod tests {
       cx.global::<OsdState>()
         .shown
         .as_ref()
-        .map(|s| (s.name, s.handle, s.size))
+        .map(|s| (s.kind, s.handle, s.size))
     })
   }
 
@@ -251,7 +306,7 @@ mod tests {
     let before = windows(cx);
     cx.update(|cx| cx.show_osd(OsdA).unwrap());
     let (name, handle, size_a) = shown(cx).unwrap();
-    assert_eq!(name, OsdA::NAME);
+    assert_eq!(name, OsdA::KIND);
     // the popup border goes around the content
     assert_eq!(size_a, size(px(104.), px(34.)));
     assert_eq!(windows(cx), before + 1);
@@ -259,7 +314,7 @@ mod tests {
 
     cx.update(|cx| cx.show_osd(OsdB).unwrap());
     let (name, again, size_b) = shown(cx).unwrap();
-    assert_eq!(name, OsdB::NAME);
+    assert_eq!(name, OsdB::KIND);
     assert!(again == handle);
     assert_eq!(size_b, size(px(204.), px(34.)));
     assert_eq!(windows(cx), before + 1);
@@ -317,7 +372,7 @@ mod tests {
       cx.show_osd(OsdA).unwrap();
       cx.hide_osd::<OsdB>();
     });
-    assert_eq!(shown(cx).unwrap().0, OsdA::NAME);
+    assert_eq!(shown(cx).unwrap().0, OsdA::KIND);
     cx.update(|cx| cx.hide_osd::<OsdA>());
     assert!(shown(cx).is_none());
     cx.run_until_parked();

@@ -502,6 +502,13 @@ app:
         description:
           en: 'When stay awake is turned on or off, e.g. with `corona ipc stay-awake`.'
           de: 'Wenn „Wach bleiben“ ein- oder ausgeschaltet wird, z. B. mit `corona ipc stay-awake`.'
+      launcher:
+        title:
+          en: Launcher
+          de: Starter
+        description:
+          en: 'The note the launcher shows after some commands, e.g. "Copied".'
+          de: 'Der Hinweis, den der Starter nach manchen Befehlen zeigt, z. B. „Kopiert“.'
       title:
         en: OSD
         de: OSD

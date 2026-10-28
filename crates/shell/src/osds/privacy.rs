@@ -3,12 +3,10 @@ use gpui_kit::App;
 
 use crate::{
   icons::{capture_icon, capture_label},
-  osds::{
-    on_change,
-    view::{ToggleOsd, show},
-  },
+  osds::{kinds::PrivacyOsd, show},
   widgets::privacy::hidden,
 };
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 type Capture = (CaptureKind, String);
@@ -45,8 +43,7 @@ pub fn init(cx: &mut App) {
         } else {
           name.clone().into()
         };
-        show(
-          |k| k.privacy,
+        show::<PrivacyOsd>(
           ToggleOsd {
             icon: capture_icon(*kind),
             label: capture_label(*kind),

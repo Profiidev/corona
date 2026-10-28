@@ -3,11 +3,9 @@ use gpui_kit::{App, assets::IconName};
 
 use crate::{
   icons::volume_icon,
-  osds::{
-    on_change,
-    view::{LevelOsd, show},
-  },
+  osds::{kinds::VolumeOsd, show},
 };
+use corona_surface::osd::{LevelOsd, on_change};
 use rust_i18n::t;
 
 fn level(node: Option<&AudioNode>) -> Option<(u32, u32, bool)> {
@@ -30,8 +28,7 @@ pub fn init(cx: &mut App) {
     |prev, &(id, percent, muted), cx| {
       if prev.0 == id {
         let icon = volume_icon(percent as f32 / 100., muted);
-        show(
-          |k| k.volume,
+        show::<VolumeOsd>(
           LevelOsd {
             icon,
             label: t!("app.osd.volume"),
@@ -54,8 +51,7 @@ pub fn init(cx: &mut App) {
         } else {
           IconName::Mic
         };
-        show(
-          |k| k.volume,
+        show::<VolumeOsd>(
           LevelOsd {
             icon,
             label: t!("app.privacy.microphone"),

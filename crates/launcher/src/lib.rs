@@ -13,6 +13,7 @@ pub mod state;
 pub mod ui;
 pub mod view;
 
+use corona_surface::osd::OsdExt;
 use gpui_kit::App;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
@@ -30,4 +31,5 @@ pub use view::{
 pub fn init(cx: &mut App) {
   registry::init(cx);
   ui::bind_keys(cx);
+  cx.osd_mut().register::<ui::hud::HudOsd>();
 }

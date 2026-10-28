@@ -1,10 +1,8 @@
 use corona_bluez::BluetoothExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::osds::{
-  on_change,
-  view::{ToggleOsd, show},
-};
+use crate::osds::{kinds::BluetoothOsd, show};
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
@@ -19,11 +17,7 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::BluetoothOff
       };
-      show(
-        |k| k.bluetooth,
-        ToggleOsd::on_off(icon, t!("app.bluetooth.title"), on),
-        cx,
-      );
+      show::<BluetoothOsd>(ToggleOsd::on_off(icon, t!("app.bluetooth.title"), on), cx);
     },
   );
 }

@@ -4,7 +4,8 @@ use clap::ValueEnum;
 use gpui_kit::{App, assets::IconName};
 use serde::{Deserialize, Serialize};
 
-use crate::osds::view::{ToggleOsd, show};
+use crate::osds::{kinds::LockKeysOsd, show};
+use corona_surface::osd::ToggleOsd;
 use rust_i18n::t;
 
 const LEDS: &str = "/sys/class/leds";
@@ -59,7 +60,7 @@ pub fn pressed(key: LockKey, cx: &mut App) {
         LockKey::Num => (IconName::Hash, t!("app.osd.num_lock")),
         LockKey::Scroll => (IconName::ArrowDownToLine, t!("app.osd.scroll_lock")),
       };
-      show(|k| k.lock_keys, ToggleOsd::on_off(icon, label, on), cx);
+      show::<LockKeysOsd>(ToggleOsd::on_off(icon, label, on), cx);
     });
   })
   .detach();

@@ -1,11 +1,12 @@
 use corona_surface::osd::{Osd, OsdExt};
 use gpui_kit::{
-  App, Context, IntoElement, ParentElement, Pixels, Render, Size, Styled, Window,
+  App, Context, IntoElement, ParentElement, Pixels, Render, SharedString, Size, Styled, Window,
   component::{ActiveTheme, Icon, Sizable},
   div,
   prelude::FluentBuilder,
   px, size,
 };
+use rust_i18n::t;
 use tracing::warn;
 
 use crate::command::Hud;
@@ -25,7 +26,15 @@ pub fn show(hud: Hud, cx: &mut App) {
 }
 
 impl Osd for HudOsd {
-  const NAME: &'static str = "launcher_hud";
+  const KIND: &'static str = "launcher";
+
+  fn title() -> SharedString {
+    t!("app.settings.osd.launcher.title").into()
+  }
+
+  fn description() -> SharedString {
+    t!("app.settings.osd.launcher.description").into()
+  }
 
   fn size(&self, _: &App) -> Size<Pixels> {
     let extra = (self.0.icon.is_some() || self.0.swatch.is_some()) as u8 as f32 * 24.;

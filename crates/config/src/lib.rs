@@ -303,7 +303,15 @@ pub struct OsdConfig {
   /// Distance from the screen edge
   pub offset: f32,
   pub background_opacity: f32,
-  pub kinds: OsdKinds,
+  /// Kinds of OSD, by `Osd::KIND`, turned on or off; missing ones are on
+  pub kinds: BTreeMap<String, bool>,
+}
+
+impl OsdConfig {
+  /// Whether OSDs of `kind` show
+  pub fn shows(&self, kind: &str) -> bool {
+    self.enabled && self.kinds.get(kind).copied().unwrap_or(true)
+  }
 }
 
 impl Default for OsdConfig {
@@ -314,7 +322,22 @@ impl Default for OsdConfig {
       position: OsdPosition::default(),
       offset: 40.,
       background_opacity: 1.,
-      kinds: OsdKinds::default(),
+      kinds: [
+        "volume",
+        "brightness",
+        "wifi",
+        "bluetooth",
+        "dnd",
+        "power_profile",
+        "privacy",
+        "keyboard_layout",
+        "lock_keys",
+        "stay_awake",
+        "launcher",
+      ]
+      .into_iter()
+      .map(|kind| (kind.to_string(), true))
+      .collect(),
     }
   }
 }
@@ -327,38 +350,6 @@ pub enum OsdPosition {
   BottomCenter,
   CenterLeft,
   CenterRight,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(default)]
-pub struct OsdKinds {
-  pub volume: bool,
-  pub brightness: bool,
-  pub wifi: bool,
-  pub bluetooth: bool,
-  pub dnd: bool,
-  pub power_profile: bool,
-  pub privacy: bool,
-  pub keyboard_layout: bool,
-  pub lock_keys: bool,
-  pub stay_awake: bool,
-}
-
-impl Default for OsdKinds {
-  fn default() -> Self {
-    Self {
-      volume: true,
-      brightness: true,
-      wifi: true,
-      bluetooth: true,
-      dnd: true,
-      power_profile: true,
-      privacy: true,
-      keyboard_layout: true,
-      lock_keys: true,
-      stay_awake: true,
-    }
-  }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -960,8 +951,8 @@ mod tests {
     let config: Config =
       toml::from_str("[osd]\noffset = 3.0\n[osd.kinds]\nwifi = false\n").unwrap();
     assert_eq!(config.osd.offset, 3.);
-    assert!(!config.osd.kinds.wifi);
-    assert!(config.osd.kinds.volume);
+    assert!(!config.osd.shows("wifi"));
+    assert!(config.osd.shows("volume"));
     assert_eq!(config.osd.hide_delay_ms, OsdConfig::default().hide_delay_ms);
     // a file that names any bar replaces the default ones
     let config: Config = toml::from_str("[bar.side]\nposition = \"left\"\n").unwrap();

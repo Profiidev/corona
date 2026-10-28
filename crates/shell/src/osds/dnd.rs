@@ -1,10 +1,8 @@
 use corona_notifications::NotificationsExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::osds::{
-  on_change,
-  view::{ToggleOsd, show},
-};
+use crate::osds::{kinds::DndOsd, show};
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
@@ -19,11 +17,7 @@ pub fn init(cx: &mut App) {
       } else {
         IconName::Bell
       };
-      show(
-        |k| k.dnd,
-        ToggleOsd::on_off(icon, t!("app.notifications.dnd"), on),
-        cx,
-      );
+      show::<DndOsd>(ToggleOsd::on_off(icon, t!("app.notifications.dnd"), on), cx);
     },
   );
 }

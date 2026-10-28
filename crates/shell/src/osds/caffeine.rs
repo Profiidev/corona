@@ -1,10 +1,8 @@
 use corona_idle::IdleExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::osds::{
-  on_change,
-  view::{ToggleOsd, show},
-};
+use crate::osds::{kinds::StayAwakeOsd, show};
+use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 
 pub fn init(cx: &mut App) {
@@ -14,8 +12,7 @@ pub fn init(cx: &mut App) {
     cx,
     |cx| Some(cx.idle().stay_awake(cx)),
     |_, &on, cx| {
-      show(
-        |k| k.stay_awake,
+      show::<StayAwakeOsd>(
         ToggleOsd::on_off(IconName::Coffee, t!("app.osd.stay_awake"), on),
         cx,
       );
