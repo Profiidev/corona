@@ -27,7 +27,9 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::control_center::{ControlCenterPanel, notifications::ago, variants::ControlCenterType};
+use corona_components::time::ago_short;
+
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 const LIMIT: usize = 100;
 const TICK: Duration = Duration::from_secs(30);
@@ -112,7 +114,7 @@ fn copy(id: i64, cx: &mut App) {
 
 fn used(entry: &Entry) -> String {
   let used = UNIX_EPOCH + Duration::from_secs(entry.used);
-  ago(SystemTime::now().duration_since(used).unwrap_or_default())
+  ago_short(SystemTime::now().duration_since(used).unwrap_or_default())
 }
 
 fn title(entry: &Entry) -> SharedString {

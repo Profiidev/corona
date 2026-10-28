@@ -19,9 +19,7 @@ use rust_i18n::t;
 pub use pages::PAGES;
 
 mod bar;
-mod fields;
 mod launcher;
-mod order;
 mod pages;
 mod plugins;
 

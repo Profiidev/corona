@@ -12,7 +12,9 @@ use corona_notifications::{Notification, NotificationsExt, strip_markup};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{commands::notification::DismissToasts, i18n};
+use corona_components::i18n;
+
+use crate::commands::notification::DismissToasts;
 
 /// `time` in the local zone, as `pattern` formats it
 fn when(time: std::time::SystemTime, pattern: &str) -> String {

@@ -27,10 +27,8 @@ use gpui_kit::{
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
 
-use crate::{
-  control_center::{NotificationsPanel, ReplyInputs},
-  widgets::filter_regex,
-};
+use crate::control_center::{NotificationsPanel, ReplyInputs};
+use corona_components::filter::filter_regex;
 
 const NAMESPACE: &str = "corona_notification";
 const STACK_OFFSET: f32 = 12.;

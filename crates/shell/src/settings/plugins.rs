@@ -36,7 +36,9 @@ use gpui_kit::{
 use rust_i18n::t;
 use serde_json::Value;
 
-use crate::settings::fields::{Choice, choice, number, save, searchable, slider, switch, text};
+use corona_components::settings_fields::{
+  Choice, choice, number, save, searchable, slider, switch, text,
+};
 
 pub(super) fn page(cx: &App) -> SettingPage {
   let mut groups = vec![sources_group(cx), plugins_group(cx)];

@@ -12,10 +12,8 @@ use gpui_kit::{
   px,
 };
 
-use crate::{
-  control_center::sysinfo::{SysinfoPanel, card, details::rate},
-  i18n::decimal,
-};
+use crate::control_center::sysinfo::{SysinfoPanel, card, details::rate};
+use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 const MIN_GRAPH: f32 = 40.;

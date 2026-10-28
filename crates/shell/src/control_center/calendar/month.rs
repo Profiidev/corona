@@ -12,10 +12,8 @@ use gpui_kit::{
 use jiff::{ToSpan, civil::Date};
 use std::borrow::Cow;
 
-use crate::{
-  control_center::calendar::{CalendarPanel, today},
-  i18n::format_time,
-};
+use crate::control_center::calendar::{CalendarPanel, today};
+use corona_components::i18n::format_time;
 use rust_i18n::t;
 
 fn grid(first: Date, start: Weekday) -> Vec<Date> {

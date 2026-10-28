@@ -27,9 +27,9 @@ use crate::{
     variants::ControlCenterType,
     weather,
   },
-  i18n::format_time,
   overlays::wallpaper,
 };
+use corona_components::i18n::format_time;
 use rust_i18n::t;
 
 const ART: f32 = 64.;

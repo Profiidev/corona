@@ -12,10 +12,8 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::{
-  control_center::power::{PowerPanel, card},
-  i18n::decimal,
-};
+use crate::control_center::power::{PowerPanel, card};
+use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 pub(super) fn duration(duration: Duration) -> String {

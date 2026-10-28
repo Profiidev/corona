@@ -11,14 +11,12 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::{
-  control_center::weather::{
-    Tab, WeatherPanel, card,
-    current::{clock, whole},
-    describe, icon,
-  },
-  i18n::format_time,
+use crate::control_center::weather::{
+  Tab, WeatherPanel, card,
+  current::{clock, whole},
+  describe, icon,
 };
+use corona_components::i18n::format_time;
 use rust_i18n::t;
 
 impl WeatherPanel {

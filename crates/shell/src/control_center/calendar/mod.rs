@@ -13,10 +13,8 @@ use jiff::{Zoned, civil::Date};
 
 use corona_components::components::progress_ring::ring;
 
-use crate::{
-  control_center::{ControlCenterPanel, variants::ControlCenterType, weather::place_name},
-  i18n::format_time,
-};
+use crate::control_center::{ControlCenterPanel, variants::ControlCenterType, weather::place_name};
+use corona_components::i18n::format_time;
 
 mod month;
 

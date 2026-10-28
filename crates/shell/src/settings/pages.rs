@@ -23,14 +23,14 @@ use crate::control_center::{
   ControlCenterType,
   dashboard::toggles::{QUICK_ACTIONS, quick_action_label},
 };
-use crate::i18n;
-use crate::settings::{
-  bar,
-  fields::{Choice, choice, number, optional_text, searchable, slider, switch, text},
-  launcher,
+use corona_components::i18n;
+use corona_components::settings_fields::{
+  Choice, choice, number, optional_text,
   order::{OrderList, order_item},
-  plugins,
+  searchable, slider, switch, text,
 };
+
+use crate::settings::{bar, launcher, plugins};
 use rust_i18n::t;
 
 /// Page names, also what `corona ipc settings open <page>` takes, in sidebar order

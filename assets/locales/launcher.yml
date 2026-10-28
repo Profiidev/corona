@@ -932,9 +932,6 @@ app:
       copied:
         en: 'Copied'
         de: 'Kopiert'
-      now:
-        en: 'now'
-        de: 'jetzt'
       image_title:
         en: 'Image, %{size} KiB'
         de: 'Bild, %{size} KiB'

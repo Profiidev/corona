@@ -5,7 +5,9 @@ use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 pub fn register_commands(cx: &mut App) {
-  cx.ipc_mut().register::<ListEntries>().register::<Activate>();
+  cx.ipc_mut()
+    .register::<ListEntries>()
+    .register::<Activate>();
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -9,10 +9,8 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::{
-  control_center::sysinfo::{SysinfoPanel, card},
-  i18n::decimal,
-};
+use crate::control_center::sysinfo::{SysinfoPanel, card};
+use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 const DETAIL_TEXT: f32 = 10.;

@@ -10,10 +10,10 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub mod commands;
 mod control_center;
-pub mod i18n;
 mod icons;
 mod idle;
 pub mod launcher;
+mod locale_keys;
 mod lock;
 mod osds;
 pub mod overlays;
@@ -55,7 +55,7 @@ fn watch_config(cx: &mut App) {
     cx,
     |c| &c.shell.language,
     |language, cx| {
-      i18n::apply(language.as_deref());
+      corona_components::i18n::apply(language.as_deref());
       cx.refresh_windows();
     },
   );
@@ -98,7 +98,7 @@ fn init_ipc(cx: &mut App) {
 
 fn init_integrations(cx: &mut App) {
   let config_error = corona_config::load(cx).err();
-  i18n::apply(cx.config().shell.language.as_deref());
+  corona_components::i18n::apply(cx.config().shell.language.as_deref());
   corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");

@@ -15,7 +15,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::widgets::filter_regex;
+use corona_components::filter::filter_regex;
 
 mod menu;
 

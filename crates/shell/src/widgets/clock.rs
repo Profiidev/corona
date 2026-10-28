@@ -13,10 +13,8 @@ use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-  control_center::{CalendarPanel, Standalone},
-  i18n::format_time,
-};
+use crate::control_center::{CalendarPanel, Standalone};
+use corona_components::i18n::format_time;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]

@@ -1,5 +1,5 @@
-use gpui_kit::App;
 pub use corona_utils::level::parse_level;
+use gpui_kit::App;
 
 pub mod audio;
 pub mod bluetooth;

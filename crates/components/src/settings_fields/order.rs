@@ -13,14 +13,11 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::settings::{
-  bar::{row_body, row_buttons},
-  fields::{Choice, save, searchable},
-};
+use super::{Choice, row_body, row_buttons, save, searchable};
 
 /// Moves the entry at `from` in front of the one at `before`, to the end for
 /// `list.len()`
-pub(crate) fn move_entry(list: &mut Vec<String>, from: usize, before: usize) {
+pub fn move_entry(list: &mut Vec<String>, from: usize, before: usize) {
   if from >= list.len() {
     return;
   }
@@ -53,7 +50,7 @@ impl Render for DragPreview {
 /// One list of an [`order_item`]. `options` are the ids that may be added, with
 /// their labels; an id in the list that is not one of them shows as it is written
 #[derive(Clone, Copy)]
-pub(super) struct OrderList {
+pub struct OrderList {
   pub key: &'static str,
   pub title: fn() -> Cow<'static, str>,
   pub description: fn() -> Cow<'static, str>,
@@ -63,7 +60,7 @@ pub(super) struct OrderList {
 }
 
 /// The lists side by side, each with its title above
-pub(super) fn order_item<const N: usize>(lists: [OrderList; N]) -> SettingItem {
+pub fn order_item<const N: usize>(lists: [OrderList; N]) -> SettingItem {
   SettingItem::render(move |_, window, cx| {
     let mut columns = div().flex().gap_2().w_full();
     for list in lists {

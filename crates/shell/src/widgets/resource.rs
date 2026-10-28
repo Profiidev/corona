@@ -20,9 +20,9 @@ use uuid::Uuid;
 
 use crate::{
   control_center::{Standalone, SysinfoPanel, sysinfo::details::rate},
-  i18n::decimal,
   widgets::tooltip::TextTooltip,
 };
+use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 const METER_HEIGHT: f32 = 14.;

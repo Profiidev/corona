@@ -8,10 +8,8 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::{
-  control_center::weather::{WeatherPanel, card, describe, icon, place_name},
-  i18n::decimal,
-};
+use crate::control_center::weather::{WeatherPanel, card, describe, icon, place_name};
+use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 /// Rounds to a whole number, `+ 0.` turns -0 into 0 so (-0.5, 0) doesn't render as "-0"

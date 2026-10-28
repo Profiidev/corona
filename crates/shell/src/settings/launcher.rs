@@ -23,10 +23,11 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::settings::{
-  fields::{Choice, number, optional_text, save, searchable, switch, text},
-  pages::{group, item, page},
+use corona_components::settings_fields::{
+  Choice, number, optional_text, save, searchable, switch, text,
 };
+
+use crate::settings::pages::{group, item, page};
 
 pub(super) fn page_of(cx: &App) -> SettingPage {
   page(

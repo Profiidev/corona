@@ -30,16 +30,21 @@ use rust_i18n::t;
 use serde::{Serialize, de::DeserializeOwned};
 use std::{borrow::Cow, fmt::Display};
 
+pub mod order;
+mod rows;
+
+pub use rows::{row_body, row_buttons};
+
 /// Reads a setting; also called on `Config::default()` for its default
-pub(super) trait Get<T>: Fn(&Config) -> T + Clone + 'static {}
+pub trait Get<T>: Fn(&Config) -> T + Clone + 'static {}
 impl<T, F: Fn(&Config) -> T + Clone + 'static> Get<T> for F {}
 
 /// Writes a setting
-pub(super) trait Set<T>: Fn(&mut Config, T) + Clone + 'static {}
+pub trait Set<T>: Fn(&mut Config, T) + Clone + 'static {}
 impl<T, F: Fn(&mut Config, T) + Clone + 'static> Set<T> for F {}
 
 /// Changes the settings, logging what went wrong
-pub(super) fn save(cx: &mut App, edit: impl FnOnce(&mut Config)) {
+pub fn save(cx: &mut App, edit: impl FnOnce(&mut Config)) {
   let _ = corona_config::update(cx, edit).log_err();
 }
 
@@ -54,7 +59,7 @@ fn reset<T>(get: impl Get<T>, set: impl Set<T>) -> impl Fn(&mut Window, &mut App
   }
 }
 
-pub(super) fn switch(get: impl Get<bool>, set: impl Set<bool>) -> SettingField<bool> {
+pub fn switch(get: impl Get<bool>, set: impl Set<bool>) -> SettingField<bool> {
   let default = get(&Config::default());
   SettingField::switch(
     move |cx| get(cx.config()),
@@ -81,7 +86,7 @@ fn parse<T: DeserializeOwned>(v: &str) -> Option<T> {
 }
 
 /// One of a config enum's values, labelled. `None` of an optional one is ""
-pub(super) fn choice<T>(
+pub fn choice<T>(
   options: &[(T, Cow<'static, str>)],
   get: impl Get<T>,
   set: impl Set<T>,
@@ -115,7 +120,7 @@ struct Field<S, T> {
 }
 
 /// Free text, committed on enter or blur. `key` must be unique in the window.
-pub(super) fn text(
+pub fn text(
   key: impl Display,
   get: impl Get<String>,
   set: impl Set<String>,
@@ -134,7 +139,7 @@ pub(super) fn text(
 
 /// An optional setting as text, showing what applies when it is unset
 /// (`fallback`). Leaving that or nothing in the field unsets it.
-pub(super) fn optional_text(
+pub fn optional_text(
   key: impl Display,
   get: impl Get<Option<String>>,
   set: impl Set<Option<String>>,
@@ -218,7 +223,7 @@ fn text_field(
 }
 
 /// A number, committed on enter, blur or a step. `key` must be unique in the window.
-pub(super) fn number(
+pub fn number(
   key: impl Display,
   (min, max, step): (f64, f64, f64),
   get: impl Get<f64>,
@@ -294,7 +299,7 @@ fn format_number(value: f64) -> String {
 }
 
 /// A value on a slider, committed when it is let go. `key` must be unique in the window.
-pub(super) fn slider(
+pub fn slider(
   key: impl Display,
   (min, max, step): (f32, f32, f32),
   get: impl Get<f32>,
@@ -374,7 +379,7 @@ pub(super) fn slider(
 
 /// An entry of a [`searchable`] select
 #[derive(Clone)]
-pub(super) struct Choice {
+pub struct Choice {
   pub value: String,
   pub label: String,
 }
@@ -401,7 +406,7 @@ struct Searchable {
 /// A select with a search box, for long lists. It shows `selected`, or the
 /// placeholder when that is `None` (so a pick that changes nothing, like adding
 /// a widget, goes back to it). `key` must be unique in the window.
-pub(super) fn searchable(
+pub fn searchable(
   key: impl Display,
   choices: Vec<Choice>,
   selected: Option<String>,

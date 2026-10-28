@@ -24,11 +24,10 @@ use uuid::Uuid;
 
 use crate::{
   icons::{capture_icon, capture_label},
-  widgets::{
-    filter_regex,
-    popup::{self, ROW, SEPARATOR},
-  },
+  widgets::popup::{self, ROW, SEPARATOR},
 };
+use corona_components::filter::filter_regex;
+use corona_components::time::ago_long;
 use rust_i18n::t;
 
 const ICON_SIZE: f32 = 16.;
@@ -209,16 +208,6 @@ fn log_size(entries: usize) -> gpui_kit::Size<Pixels> {
   popup::size(ROW + SEPARATOR + rows * ROW)
 }
 
-fn ago(time: SystemTime, now: SystemTime) -> String {
-  let secs = now.duration_since(time).unwrap_or_default().as_secs();
-  match secs {
-    0..60 => t!("app.privacy.ago.now").into(),
-    60..3600 => t!("app.privacy.ago.minutes", count = secs / 60).into(),
-    3600..86400 => t!("app.privacy.ago.hours", count = secs / 3600).into(),
-    _ => t!("app.privacy.ago.days", count = secs / 86400).into(),
-  }
-}
-
 struct PrivacyLog {
   focus: FocusHandle,
   _subscription: Subscription,
@@ -244,7 +233,7 @@ impl PrivacyLog {
     let (active, idle) = (theme.primary, theme.muted_foreground);
     let (when, color) = match app.ended {
       None => (t!("app.privacy.recording").into(), active),
-      Some(ended) => (ago(ended, now), idle),
+      Some(ended) => (ago_long(ended, now), idle),
     };
 
     popup::row(format!("access-{index}"), cx)
@@ -331,15 +320,5 @@ mod tests {
         },
       ]
     );
-  }
-
-  #[test]
-  fn relative_time() {
-    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(100_000);
-    let before = |secs| now - Duration::from_secs(secs);
-    assert_eq!(ago(before(5), now), "just now");
-    assert_eq!(ago(before(300), now), "5 min ago");
-    assert_eq!(ago(before(7200), now), "2 h ago");
-    assert_eq!(ago(before(90_000), now), "1 d ago");
   }
 }

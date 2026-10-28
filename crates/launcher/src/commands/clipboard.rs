@@ -3,6 +3,7 @@
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use corona_clipboard::{ClipboardExt, Entry, Kind};
+use corona_components::time::ago_short;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
@@ -39,14 +40,8 @@ pub fn kind_label(kind: Kind) -> SharedString {
 }
 
 fn ago(seconds: u64) -> String {
-  let now = crate::state::now();
-  let s = now.saturating_sub(seconds);
-  match s {
-    0..60 => t!("app.launcher.clipboard.now").into(),
-    60..3600 => format!("{} min", s / 60),
-    3600..86_400 => format!("{} h", s / 3600),
-    _ => format!("{} d", s / 86_400),
-  }
+  let elapsed = crate::state::now().saturating_sub(seconds);
+  ago_short(std::time::Duration::from_secs(elapsed))
 }
 
 /// A colour typed as `#rrggbb` as a swatch
