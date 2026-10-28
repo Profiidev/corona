@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "Inflector"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
+
+[[package]]
 name = "accesskit"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,6 +1603,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1af709f1f33454bf52eadfc8c78b3b9ef9cb26fb54d16dc9cd9a7299f899fd1b"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cookie-factory"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2079,6 +2094,18 @@ dependencies = [
  "serde_json",
  "smol",
  "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "corona_js"
+version = "0.1.4"
+dependencies = [
+ "anyhow",
+ "gpui-kit",
+ "rquickjs 0.14.0",
+ "specta",
+ "specta-typescript",
  "tracing",
 ]
 
@@ -6552,7 +6579,7 @@ dependencies = [
  "llrt_exceptions",
  "llrt_timers",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -6562,7 +6589,7 @@ source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a6
 dependencies = [
  "llrt_hooking",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "tracing",
 ]
 
@@ -6575,7 +6602,7 @@ dependencies = [
  "llrt_encoding",
  "llrt_stream_web",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "ryu",
 ]
 
@@ -6604,7 +6631,7 @@ source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a6
 dependencies = [
  "llrt_build",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "tokio",
  "tracing",
 ]
@@ -6642,7 +6669,7 @@ dependencies = [
  "pbkdf2 0.13.0",
  "pkcs8",
  "rand 0.10.3",
- "rquickjs",
+ "rquickjs 0.12.9",
  "rsa",
  "sha1 0.11.0",
  "spki",
@@ -6667,7 +6694,7 @@ version = "0.9.0-beta"
 source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a63111e74f51#7b95c82a9b15e7ddfb2778eca4b5a63111e74f51"
 dependencies = [
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "tracing",
 ]
 
@@ -6677,7 +6704,7 @@ version = "0.9.0-beta"
 source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a63111e74f51#7b95c82a9b15e7ddfb2778eca4b5a63111e74f51"
 dependencies = [
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -6687,7 +6714,7 @@ source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a6
 dependencies = [
  "llrt_utils",
  "once_cell",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -6698,7 +6725,7 @@ dependencies = [
  "itoa",
  "llrt_build",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "ryu",
  "simd-json",
 ]
@@ -6710,7 +6737,7 @@ source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a6
 dependencies = [
  "llrt_utils",
  "memchr",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -6720,7 +6747,7 @@ source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a6
 dependencies = [
  "llrt_abort",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -6732,7 +6759,7 @@ dependencies = [
  "llrt_hooking",
  "llrt_utils",
  "once_cell",
- "rquickjs",
+ "rquickjs 0.12.9",
  "tokio",
 ]
 
@@ -6742,7 +6769,7 @@ version = "0.9.0-beta"
 source = "git+https://github.com/awslabs/llrt?rev=7b95c82a9b15e7ddfb2778eca4b5a63111e74f51#7b95c82a9b15e7ddfb2778eca4b5a63111e74f51"
 dependencies = [
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
  "url",
 ]
 
@@ -6755,7 +6782,7 @@ dependencies = [
  "libc",
  "llrt_build",
  "memchr",
- "rquickjs",
+ "rquickjs 0.12.9",
  "simdutf8",
  "tokio",
  "tracing",
@@ -6771,7 +6798,7 @@ dependencies = [
  "llrt_compression",
  "llrt_context",
  "llrt_utils",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -8758,7 +8785,7 @@ dependencies = [
  "llrt_path",
  "llrt_url",
  "llrt_zlib",
- "rquickjs",
+ "rquickjs 0.12.9",
 ]
 
 [[package]]
@@ -9301,6 +9328,52 @@ version = "0.12.9"
 source = "git+https://github.com/longbridge/gpui-kit?tag=v0.7.3#67265a36e260ffe03c5aaebdcd8d654dbf892eab"
 dependencies = [
  "quickjs-jit",
+]
+
+[[package]]
+name = "rquickjs"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0a22bf72f515cc4189dd7c63d016f6de92a11eee98ddf7dd64794198f6eb34e"
+dependencies = [
+ "rquickjs-core",
+ "rquickjs-macro",
+]
+
+[[package]]
+name = "rquickjs-core"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6657979a24d543e5fc66f32cef2f47ca82ce8eb55cec5f7d59a12b7b570bbf24"
+dependencies = [
+ "async-lock",
+ "hashbrown 0.17.1",
+ "relative-path",
+ "rquickjs-sys",
+]
+
+[[package]]
+name = "rquickjs-macro"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a2ea9adb03b669c933482ff740b683cd36be7cef23891657a8ccb850401d286"
+dependencies = [
+ "convert_case 0.12.0",
+ "indexmap",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "rquickjs-core",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "rquickjs-sys"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cee271d0eeba64f0915b846cb7ae02e16faf3dfdffdca91731101d9d30fe3423"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -10177,6 +10250,38 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "specta"
+version = "2.0.0-rc.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81633014710ece1c7e8ac99e1bc9ad8d4339a2ccbae89ca2aa1095d4262c86b8"
+dependencies = [
+ "paste",
+ "rustc_version",
+ "specta-macros",
+]
+
+[[package]]
+name = "specta-macros"
+version = "2.0.0-rc.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fe882a75f48f76ac091ca2c5aaad7abd4dfdedf649c08e865bb0d62b5a2cb92"
+dependencies = [
+ "Inflector",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "specta-typescript"
+version = "0.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a113bb506b00463cfb54c5819e55ec081bc7d52ef463d7726181e9073cd473a"
+dependencies = [
+ "specta",
 ]
 
 [[package]]
