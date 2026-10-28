@@ -3,7 +3,8 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::control_center::{BluetoothPanel, Standalone};
+use crate::control_center::BluetoothPanel;
+use corona_surface::control_center::Standalone;
 
 pub struct BluetoothButton {
   _subscription: Subscription,

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use corona_components::components::card::{CardExt, ErrorCard};
 use corona_compositor::{Compositor, CompositorExt, types::Monitor, types::MonitorChange};
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render,
@@ -19,7 +20,6 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 type Names = Vec<SharedString>;
@@ -34,8 +34,16 @@ pub struct DisplaysPanel {
   _subscriptions: Vec<Subscription>,
 }
 
-impl ControlCenterPanel for DisplaysPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Displays;
+impl ControlCenterPage for DisplaysPanel {
+  const ID: &'static str = "displays";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Monitor
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.displays").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let source = cx.new(|cx| SelectState::new(Names::new(), None, window, cx));

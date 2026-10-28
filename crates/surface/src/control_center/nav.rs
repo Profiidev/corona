@@ -14,19 +14,19 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::variants::ControlCenterType;
+use crate::control_center::ControlCenterExt;
 
 #[derive(IntoElement)]
 pub struct ControlCenterNav {
-  selected: ControlCenterType,
+  selected: &'static str,
   #[allow(clippy::type_complexity)]
-  on_click: Option<Rc<dyn Fn(ControlCenterType, &mut Window, &mut App) + 'static>>,
+  on_click: Option<Rc<dyn Fn(&'static str, &mut Window, &mut App) + 'static>>,
 }
 
 impl ControlCenterNav {
   pub const WIDTH: f32 = 50.0;
 
-  pub fn new(selected: ControlCenterType) -> Self {
+  pub fn new(selected: &'static str) -> Self {
     ControlCenterNav {
       selected,
       on_click: None,
@@ -35,7 +35,7 @@ impl ControlCenterNav {
 
   pub fn on_click<F>(mut self, f: F) -> Self
   where
-    F: Fn(ControlCenterType, &mut Window, &mut App) + 'static,
+    F: Fn(&'static str, &mut Window, &mut App) + 'static,
   {
     self.on_click = Some(Rc::new(f));
     self
@@ -60,20 +60,22 @@ impl RenderOnce for ControlCenterNav {
           .gap_1()
           .overflow_y_scrollbar()
           .children(
-            ControlCenterType::sidebar(&cx.config().control_center)
+            (cx.control_center())
+              .sidebar(&cx.config().control_center)
               .into_iter()
-              .map(|v| {
-                Button::new(v.as_str())
-                  .with_variant(if self.selected == v {
+              .map(|page| {
+                let id = page.id;
+                Button::new(id)
+                  .with_variant(if self.selected == id {
                     ButtonVariant::Primary
                   } else {
                     ButtonVariant::Ghost
                   })
-                  .tooltip(v.title())
+                  .tooltip((page.title)())
                   .cursor_pointer()
-                  .icon(v.icon())
+                  .icon((page.icon)())
                   .when_some(on_click.clone(), |button, on_click| {
-                    button.on_click(move |_, window, cx| on_click(v, window, cx))
+                    button.on_click(move |_, window, cx| on_click(id, window, cx))
                   })
               }),
           ),
@@ -92,13 +94,12 @@ mod tests {
 
   use super::*;
 
-  struct Host(Rc<RefCell<Vec<ControlCenterType>>>);
+  struct Host(Rc<RefCell<Vec<&'static str>>>);
 
   impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
       let clicks = self.0.clone();
-      ControlCenterNav::new(ControlCenterType::Audio)
-        .on_click(move |page, _, _| clicks.borrow_mut().push(page))
+      ControlCenterNav::new("audio").on_click(move |page, _, _| clicks.borrow_mut().push(page))
     }
   }
 
@@ -107,6 +108,7 @@ mod tests {
     cx.update(|cx| {
       gpui_kit::init(cx);
       cx.set_global(corona_config::Config::default());
+      crate::control_center::test_pages::register(cx);
     });
     let clicks = Rc::new(RefCell::new(vec![]));
     let (window, _) = cx
@@ -118,8 +120,8 @@ mod tests {
       .unwrap();
     cx.update_window(window, |_, window, cx| {
       window.render_frame(cx);
-      for page in ControlCenterType::iter() {
-        assert!(window.try_find(page.as_str()).is_some(), "{page:?}");
+      for page in ["dashboard", "audio", "weather", "media"] {
+        assert!(window.try_find(page).is_some(), "{page}");
       }
       // the test platform never reports the pointer over a window, so no hitbox is hovered
       // and clicks do not land; the keyboard activates buttons instead
@@ -136,9 +138,6 @@ mod tests {
       }
     })
     .unwrap();
-    assert_eq!(
-      *clicks.borrow(),
-      [ControlCenterType::Weather, ControlCenterType::Audio]
-    );
+    assert_eq!(*clicks.borrow(), ["weather", "audio"]);
   }
 }

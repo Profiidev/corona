@@ -1,14 +1,11 @@
 use corona_network_manager::NetworkManagerExt;
+use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  ControlCenterPanel,
-  network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt},
-  variants::ControlCenterType,
-};
+use crate::control_center::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
 
 mod hidden_network;
 mod interface;
@@ -44,8 +41,16 @@ pub struct NetworkPanel {
   _secret_request: Subscription,
 }
 
-impl ControlCenterPanel for NetworkPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Network;
+impl ControlCenterPage for NetworkPanel {
+  const ID: &'static str = "network";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Wifi
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.network").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let secret_request = cx.network_manager().secret_request.clone();

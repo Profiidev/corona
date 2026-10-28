@@ -2,7 +2,8 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::control_center::{Standalone, SysinfoPanel};
+use crate::control_center::SysinfoPanel;
+use corona_surface::control_center::Standalone;
 
 pub struct SysinfoButton;
 

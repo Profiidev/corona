@@ -1,6 +1,7 @@
 use std::{iter, time::Duration};
 
 use corona_mpris::{MprisExt, PlaybackStatus, Player};
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
@@ -16,7 +17,6 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 mod player;
@@ -67,9 +67,17 @@ pub struct MediaPanel {
   _ticker: Task<()>,
 }
 
-impl ControlCenterPanel for MediaPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Media;
+impl ControlCenterPage for MediaPanel {
+  const ID: &'static str = "media";
   const HEIGHT: f32 = 270.0;
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Music
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.media").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let mpris = cx.mpris().clone();

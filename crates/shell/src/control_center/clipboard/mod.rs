@@ -1,5 +1,6 @@
 //! The clipboard history: search, type filter, pins; a click copies an entry again
 
+use corona_surface::control_center::ControlCenterPage;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corona_clipboard::{ClipboardExt, Entry, Kind};
@@ -29,8 +30,6 @@ use rust_i18n::t;
 
 use corona_components::time::ago_short;
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
-
 const LIMIT: usize = 100;
 const TICK: Duration = Duration::from_secs(30);
 const THUMBNAIL: f32 = 32.;
@@ -50,8 +49,16 @@ pub struct ClipboardPanel {
   _ticker: Task<()>,
 }
 
-impl ControlCenterPanel for ClipboardPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Clipboard;
+impl ControlCenterPage for ClipboardPanel {
+  const ID: &'static str = "clipboard";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::ClipboardList
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.clipboard").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let query =

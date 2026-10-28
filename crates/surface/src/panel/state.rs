@@ -310,11 +310,11 @@ fn decide(same_place: bool, open: bool, toggle: bool, same_opener: bool) -> Acti
   }
 }
 
-pub trait WdigetPanelExt {
+pub trait WidgetPanelExt {
   fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()>;
 }
 
-impl<W: Widget> WdigetPanelExt for Context<'_, W> {
+impl<W: Widget> WidgetPanelExt for Context<'_, W> {
   fn toggle_panel<P: Panel>(&mut self, window: &Window) -> Result<()> {
     let widget_id = self.entity_id();
     let bar = BarState::get(window, self)
@@ -339,6 +339,10 @@ impl<W: Widget> WdigetPanelExt for Context<'_, W> {
 pub trait AppPanelExt {
   fn panel(&mut self) -> &mut PanelState;
   fn close_panel<P: Panel>(&mut self) -> Result<()>;
+  /// Opens `P` where panels open without a bar button, keeps it open if it is
+  fn open_panel<P: Panel>(&mut self) -> Result<()>;
+  /// Like [`Self::open_panel`], but closes `P` if it is open
+  fn toggle_panel_app<P: Panel>(&mut self) -> Result<()>;
 }
 
 impl AppPanelExt for App {
@@ -348,6 +352,14 @@ impl AppPanelExt for App {
 
   fn close_panel<P: Panel>(&mut self) -> Result<()> {
     PanelState::close(P::NAME, self)
+  }
+
+  fn open_panel<P: Panel>(&mut self) -> Result<()> {
+    PanelState::show(P::NAME, false, self)
+  }
+
+  fn toggle_panel_app<P: Panel>(&mut self) -> Result<()> {
+    PanelState::show(P::NAME, true, self)
   }
 }
 

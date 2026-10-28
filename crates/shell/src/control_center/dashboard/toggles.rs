@@ -23,12 +23,14 @@ use gpui_kit::{
 use std::borrow::Cow;
 
 use crate::control_center::{
-  ControlCenter,
+  BluetoothPanel, BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel,
+};
+use crate::control_center::{
   dashboard::{DashboardPanel, spawn_logged},
   resolve,
-  variants::ControlCenterType,
 };
 use crate::icons::power_profile;
+use corona_surface::control_center::{ControlCenter, ControlCenterPage};
 use rust_i18n::t;
 
 const COLUMNS: usize = 3;
@@ -42,7 +44,7 @@ struct Toggle {
   status: String,
   active: bool,
   on_click: Option<Action>,
-  page: Option<ControlCenterType>,
+  page: Option<&'static str>,
 }
 
 /// Every tile id, in the order the settings offer them
@@ -139,7 +141,7 @@ fn tile(toggle: Toggle) -> Button {
     })
     .when_some(page, |b, page| {
       b.on_mouse_down(MouseButton::Right, move |_, window: &mut Window, cx| {
-        ControlCenter::navigate(page, window, cx)
+        ControlCenter::navigate_id(page, window, cx)
       })
     })
 }
@@ -211,7 +213,7 @@ fn wifi(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(ControlCenterType::Network),
+    page: Some(NetworkPanel::ID),
   }
 }
 
@@ -238,7 +240,7 @@ fn bluetooth(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(ControlCenterType::Bluetooth),
+    page: Some(BluetoothPanel::ID),
   }
 }
 
@@ -257,7 +259,7 @@ fn dnd(cx: &App) -> Toggle {
     on_click: Some(Box::new(move |cx| {
       cx.notifications().clone().set_do_not_disturb(!enabled, cx)
     })),
-    page: Some(ControlCenterType::Notifications),
+    page: Some(NotificationsPanel::ID),
   }
 }
 
@@ -294,7 +296,7 @@ fn profile(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(ControlCenterType::Power),
+    page: Some(PowerPanel::ID),
   }
 }
 
@@ -327,7 +329,7 @@ fn airplane(cx: &App) -> Toggle {
     status: on_off(on),
     active: on,
     on_click: Some(Box::new(move |cx| set_airplane(!on, cx))),
-    page: Some(ControlCenterType::Network),
+    page: Some(NetworkPanel::ID),
   }
 }
 
@@ -362,7 +364,7 @@ fn nightlight(cx: &App) -> Toggle {
         let _ = cx.brightness().set_nightlight(!state.on, cx).log_err();
       })
     }),
-    page: Some(ControlCenterType::Brightness),
+    page: Some(BrightnessPanel::ID),
   }
 }
 

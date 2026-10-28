@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use corona_components::components::card::ErrorCard;
 use corona_printing::{PrintingExt, ScanSettings, ScannerCaps};
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -14,7 +15,6 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 mod list;
@@ -41,8 +41,16 @@ pub struct PrintersPanel {
   _subscriptions: [Subscription; 5],
 }
 
-impl ControlCenterPanel for PrintersPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Printers;
+impl ControlCenterPage for PrintersPanel {
+  const ID: &'static str = "printers";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Printer
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.printers").into()
+  }
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let printing = cx.printing().clone();

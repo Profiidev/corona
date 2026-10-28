@@ -5,7 +5,6 @@ use corona_shell::commands::bluetooth::{
   Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
 };
 use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
-use corona_shell::commands::control_center::{ListPages, OpenPage};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
@@ -21,6 +20,7 @@ use corona_shell::overlays::{
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
 use corona_shell::settings::PAGES;
+use corona_surface::commands::{ListPages, OpenPage};
 
 use crate::ipc::{
   audio::AudioCommands,

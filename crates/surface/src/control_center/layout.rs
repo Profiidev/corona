@@ -1,24 +1,27 @@
 use anyhow::Result;
-use corona_surface::panel::{AppPanelExt, Panel};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, IntoElement, ParentElement, RenderOnce, Styled, Window, assets::IconName,
   base::StyledExt, component::button::Button, div,
 };
 
-use crate::control_center::{ControlCenter, variants::ControlCenterType};
 use rust_i18n::t;
+
+use crate::{
+  control_center::{ControlCenter, ControlCenterExt},
+  panel::{AppPanelExt, Panel},
+};
 
 #[derive(IntoElement)]
 pub struct ControlCenterLayout {
-  selected: ControlCenterType,
+  selected: &'static str,
   buttons: Vec<AnyElement>,
   content: Option<AnyElement>,
   close: fn(&mut App) -> Result<()>,
 }
 
 impl ControlCenterLayout {
-  pub fn new(selected: ControlCenterType) -> Self {
+  pub fn new(selected: &'static str) -> Self {
     ControlCenterLayout {
       selected,
       buttons: Vec::new(),
@@ -44,7 +47,8 @@ impl ControlCenterLayout {
 }
 
 impl RenderOnce for ControlCenterLayout {
-  fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+  fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    let title = (cx.control_center().get(self.selected)).map(|p| (p.title)());
     div()
       .size_full()
       .min_w_0()
@@ -56,13 +60,7 @@ impl RenderOnce for ControlCenterLayout {
           .items_center()
           .p_2()
           .gap_2()
-          .child(
-            div()
-              .child(self.selected.title())
-              .font_bold()
-              .text_base()
-              .mr_auto(),
-          )
+          .child(div().children(title).font_bold().text_base().mr_auto())
           .children(self.buttons)
           .child(
             Button::new("close")
@@ -104,8 +102,8 @@ mod tests {
 
   impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-      let mut layout = ControlCenterLayout::new(ControlCenterType::Media)
-        .buttons([Button::new("extra")].into_iter());
+      let mut layout =
+        ControlCenterLayout::new("media").buttons([Button::new("extra")].into_iter());
       layout.close = |cx| {
         cx.set_global(Closed);
         Ok(())

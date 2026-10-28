@@ -5,6 +5,7 @@ use gpui_kit::App;
 
 pub mod bar;
 pub mod commands;
+pub mod control_center;
 pub mod input_region;
 pub mod osd;
 pub mod overlay;

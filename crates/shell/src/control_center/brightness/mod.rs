@@ -8,6 +8,7 @@ use anyhow::Result;
 use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
@@ -18,11 +19,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  ControlCenterPanel,
-  brightness::lights::{Light, displays, keyboard},
-  variants::ControlCenterType,
-};
+use crate::control_center::brightness::lights::{Light, displays, keyboard};
 use rust_i18n::t;
 
 mod lights;
@@ -51,8 +48,16 @@ pub struct BrightnessPanel {
   _subscriptions: [Subscription; 3],
 }
 
-impl ControlCenterPanel for BrightnessPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Brightness;
+impl ControlCenterPage for BrightnessPanel {
+  const ID: &'static str = "brightness";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Sun
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.brightness").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let displays = cx.brightness().displays.clone();

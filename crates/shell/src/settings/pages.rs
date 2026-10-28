@@ -8,7 +8,10 @@ use corona_config::{
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
-use corona_surface::osd::OsdExt;
+use corona_surface::{
+  control_center::{ControlCenterExt, DASHBOARD},
+  osd::OsdExt,
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Axis, BorrowAppContext, SharedString, Styled, Window,
@@ -20,10 +23,7 @@ use gpui_kit::{
   },
 };
 
-use crate::control_center::{
-  ControlCenterType,
-  dashboard::toggles::{QUICK_ACTIONS, quick_action_label},
-};
+use crate::control_center::dashboard::toggles::{QUICK_ACTIONS, quick_action_label};
 use corona_components::i18n;
 use corona_components::settings_fields::{
   Choice, choice, number, optional_text,
@@ -569,12 +569,12 @@ fn control_center() -> SettingPage {
             key: "control_center.sidebar",
             title: || t!("app.settings.control_center.sidebar.title"),
             description: || t!("app.settings.control_center.sidebar.description"),
-            options: || {
-              ControlCenterType::iter()
-                .filter(|p| *p != ControlCenterType::Dashboard)
+            options: |cx| {
+              (cx.control_center().pages().iter())
+                .filter(|p| p.id != DASHBOARD)
                 .map(|p| Choice {
-                  value: p.as_str().into(),
-                  label: p.title().into(),
+                  value: p.id.into(),
+                  label: (p.title)().into(),
                 })
                 .collect()
             },
@@ -585,7 +585,7 @@ fn control_center() -> SettingPage {
             key: "control_center.quick_actions",
             title: || t!("app.settings.control_center.quick_actions.title"),
             description: || t!("app.settings.control_center.quick_actions.description"),
-            options: || {
+            options: |_| {
               QUICK_ACTIONS
                 .into_iter()
                 .filter_map(|id| {

@@ -9,6 +9,7 @@ use corona_network_manager::NetworkManagerExt;
 use corona_notifications::NotificationsExt;
 use corona_pipewire::PipewireExt;
 use corona_power::PowerExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_surface::panel::AppPanelExt;
 use corona_sysinfo::SystemMonitorExt;
 use corona_utils::error::ErrorLogExt;
@@ -22,11 +23,8 @@ use gpui_kit::{
 };
 use jiff::Zoned;
 
-use crate::control_center::{
-  ControlCenter, ControlCenterPanel, Standalone,
-  dashboard::{session::SessionMenu, sliders::Sliders},
-  variants::ControlCenterType,
-};
+use crate::control_center::dashboard::{session::SessionMenu, sliders::Sliders};
+use corona_surface::control_center::{ControlCenter, Standalone};
 use rust_i18n::t;
 
 mod cards;
@@ -41,8 +39,16 @@ pub struct DashboardPanel {
   _subscriptions: Vec<Subscription>,
 }
 
-impl ControlCenterPanel for DashboardPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Dashboard;
+impl ControlCenterPage for DashboardPanel {
+  const ID: &'static str = "dashboard";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::LayoutDashboard
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.dashboard").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     macro_rules! observe {
@@ -157,8 +163,8 @@ impl ControlCenterPanel for DashboardPanel {
   }
 }
 
-fn open(page: ControlCenterType) -> impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) {
-  move |_, window, cx| ControlCenter::navigate(page, window, cx)
+fn open(page: &'static str) -> impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) {
+  move |_, window, cx| ControlCenter::navigate_id(page, window, cx)
 }
 
 impl DashboardPanel {

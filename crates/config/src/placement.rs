@@ -140,7 +140,7 @@ pub trait PlacementStyle: Styled + Sized {
 
 impl<T: Styled + Sized> PlacementStyle for T {}
 
-pub trait PlacmentBounds {
+pub trait PlacementBounds {
   /// A point `along` the bar from its start, and `across` from the screen edge
   /// the bar is anchored to, in window coordinates.
   fn point_p(&self, p: Placement, along: Pixels, across: Pixels) -> Point<Pixels>;
@@ -149,7 +149,7 @@ pub trait PlacmentBounds {
   fn extent_p(&self, p: Placement) -> (Pixels, Pixels);
 }
 
-impl PlacmentBounds for Bounds<Pixels> {
+impl PlacementBounds for Bounds<Pixels> {
   fn point_p(&self, p: Placement, along: Pixels, across: Pixels) -> Point<Pixels> {
     match p {
       Placement::Top => point(self.left() + along, self.top() + across),

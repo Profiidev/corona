@@ -6,6 +6,7 @@ use corona_components::components::card::{CardExt, ErrorCard};
 use corona_network_manager::{
   DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt,
 };
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render, Styled,
@@ -27,7 +28,6 @@ use gpui_kit::{
 };
 use qrcode::{Color, QrCode};
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 pub struct HotspotPanel {
@@ -154,8 +154,16 @@ fn qr_code(text: &str) -> Option<impl IntoElement> {
   )
 }
 
-impl ControlCenterPanel for HotspotPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Hotspot;
+impl ControlCenterPage for HotspotPanel {
+  const ID: &'static str = "hotspot";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::RadioTower
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.hotspot").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let hotspot = cx.network_manager().hotspot.clone();

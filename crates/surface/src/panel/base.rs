@@ -4,7 +4,7 @@ use corona_components::animation::{animation_duration, smooth_retarget::SmoothRe
 use corona_compositor::CompositorExt;
 use corona_config::{
   APP_NAME, ConfigProvider,
-  placement::{Placement, PlacementStyle, PlacmentBounds},
+  placement::{Placement, PlacementBounds, PlacementStyle},
 };
 use gpui_kit::{
   AnyView, AnyWindowHandle, AppContext, Background, Bounds, Canvas, Context, DisplayId,

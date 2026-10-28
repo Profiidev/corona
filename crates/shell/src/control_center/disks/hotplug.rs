@@ -7,13 +7,15 @@ use std::{
 };
 
 use corona_notifications::{Action, Notifications, Notify, Urgency};
-use corona_surface::panel::PanelState;
 use corona_udisks::{MountOptions, Udisks, UdisksExt, Volume};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
+use corona_surface::{control_center::Standalone, panel::AppPanelExt};
+
+use crate::control_center::DisksPanel;
 use crate::control_center::disks::{DisksRequest, Request, types::size};
 
 const MOUNT: &str = "mount";
@@ -48,7 +50,7 @@ fn offer(volumes: &[&Volume]) -> Offer {
 
 fn open(request: Request, cx: &mut App) {
   cx.default_global::<DisksRequest>().0 = Some(request);
-  let _ = PanelState::show("disks", false, cx).log_err();
+  let _ = cx.open_panel::<Standalone<DisksPanel>>().log_err();
 }
 
 pub fn init(cx: &mut App) {

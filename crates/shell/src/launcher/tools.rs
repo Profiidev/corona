@@ -8,13 +8,17 @@ use corona_launcher::{
   registry, simple,
 };
 use corona_notifications::NotificationsExt;
-use corona_surface::panel::PanelState;
+use corona_surface::{
+  commands::OpenPage,
+  control_center::{ControlCenterExt, ControlCenterPage},
+  panel::PanelState,
+};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use crate::{
-  commands::{control_center::OpenPage, notification::ClearHistory},
-  control_center::variants::ControlCenterType,
+  commands::notification::ClearHistory,
+  control_center::NotificationsPanel,
   overlays::{
     colorpicker::commands::ColorPicker,
     screenshot::{commands::Screenshot, mode::Mode},
@@ -183,21 +187,21 @@ impl CommandSource for Panels {
   }
 }
 
-fn control_center_pages() -> Vec<Rc<dyn Command>> {
-  ControlCenterType::iter()
+fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
+  (cx.control_center().pages().iter())
     .map(|page| {
       let title = format!(
         "{} › {}",
         t!("app.launcher.tools.control_center"),
-        page.title()
+        (page.title)()
       );
-      let icon = page.icon();
+      let (id, icon) = (page.id, (page.icon)());
       simple(
-        format!("control_center:{}", page.as_str()),
+        format!("control_center:{id}"),
         move |_| Meta {
           title: title.clone().into(),
           icon: Icon::Tile(icon, 250.),
-          keywords: vec!["control center".into(), page.as_str().into()],
+          keywords: vec!["control center".into(), id.into()],
           ..Default::default()
         },
         move |_| {
@@ -205,7 +209,7 @@ fn control_center_pages() -> Vec<Rc<dyn Command>> {
             "open",
             t!("app.launcher.open"),
             move |_, _, cx| {
-              OpenPage::handle(page.as_str().to_string(), cx)?;
+              OpenPage::handle(id.to_string(), cx)?;
               Ok(Outcome::close())
             },
           )]
@@ -318,7 +322,7 @@ pub fn init(cx: &mut App) {
       },
       |_| {
         vec![Action::sync("open", t!("app.launcher.open"), |_, _, cx| {
-          OpenPage::handle(ControlCenterType::Notifications.as_str().into(), cx)?;
+          OpenPage::handle(NotificationsPanel::ID.into(), cx)?;
           Ok(Outcome::close())
         })]
       },
@@ -353,7 +357,7 @@ pub fn init(cx: &mut App) {
       },
     ),
   ];
-  commands.extend(control_center_pages());
+  commands.extend(control_center_pages(cx));
   registry::register_all(commands, cx);
   registry::register_source(Rc::new(SettingsPages), cx);
   registry::register_source(Rc::new(SettingFields), cx);

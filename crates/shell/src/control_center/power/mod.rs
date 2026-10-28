@@ -1,13 +1,12 @@
 use anyhow::Result;
 use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
-
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 mod battery;
 mod devices;
@@ -19,8 +18,16 @@ pub struct PowerPanel {
   _subscriptions: [Subscription; 4],
 }
 
-impl ControlCenterPanel for PowerPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Power;
+impl ControlCenterPage for PowerPanel {
+  const ID: &'static str = "power";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Zap
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.power").into()
+  }
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let power = cx.power().clone();

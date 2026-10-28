@@ -23,14 +23,12 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
+use crate::control_center::{AudioPanel, BrightnessPanel};
 use crate::{
-  control_center::{
-    ControlCenter,
-    dashboard::{DashboardPanel, spawn_logged},
-    variants::ControlCenterType,
-  },
+  control_center::dashboard::{DashboardPanel, spawn_logged},
   icons::volume_icon,
 };
+use corona_surface::control_center::{ControlCenter, ControlCenterPage};
 
 pub(super) struct Sliders {
   output: Entity<SliderState>,
@@ -228,7 +226,7 @@ impl Sliders {
         ),
         &self.output,
         output.map(|(_, _, v)| v * 100.),
-        ControlCenterType::Audio,
+        AudioPanel::ID,
         cx,
       ))
       .child(row(
@@ -242,7 +240,7 @@ impl Sliders {
         ),
         &self.input,
         input.map(|(_, _, v)| v * 100.),
-        ControlCenterType::Audio,
+        AudioPanel::ID,
         cx,
       ))
       .children(brightness.map(|percent| {
@@ -252,7 +250,7 @@ impl Sliders {
             .ghost(),
           &self.brightness,
           Some(percent),
-          ControlCenterType::Brightness,
+          BrightnessPanel::ID,
           cx,
         )
       }))
@@ -263,7 +261,7 @@ fn row(
   icon: Button,
   slider: &Entity<SliderState>,
   percent: Option<f32>,
-  page: ControlCenterType,
+  page: &'static str,
   cx: &App,
 ) -> Div {
   let id = format!("dashboard-open-{}", slider.entity_id());
@@ -294,7 +292,7 @@ fn row(
         .icon(IconName::ChevronRight)
         .ghost()
         .cursor_pointer()
-        .on_click(move |_, window, cx| ControlCenter::navigate(page, window, cx)),
+        .on_click(move |_, window, cx| ControlCenter::navigate_id(page, window, cx)),
     )
 }
 

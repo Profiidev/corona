@@ -54,7 +54,7 @@ pub struct OrderList {
   pub key: &'static str,
   pub title: fn() -> Cow<'static, str>,
   pub description: fn() -> Cow<'static, str>,
-  pub options: fn() -> Vec<Choice>,
+  pub options: fn(&App) -> Vec<Choice>,
   pub get: fn(&Config) -> Vec<String>,
   pub set: fn(&mut Config, Vec<String>),
 }
@@ -92,7 +92,7 @@ fn editor(list: OrderList, window: &mut Window, cx: &mut App) -> Div {
     set,
   } = list;
   let entries = get(cx.config());
-  let choices = options();
+  let choices = options(cx);
   let theme = cx.theme();
   let (radius, accent, hover, line) = (
     theme.radius,

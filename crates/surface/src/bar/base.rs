@@ -17,7 +17,7 @@ use crate::bar::state::BarExt;
 use corona_components::components::tracked::Tracked;
 use corona_config::{
   bar::{BarConfig, WidgetConfig, WidgetEntry},
-  placement::{Placement, PlacementStyle, PlacmentBounds},
+  placement::{Placement, PlacementBounds, PlacementStyle},
 };
 
 pub struct Bar {

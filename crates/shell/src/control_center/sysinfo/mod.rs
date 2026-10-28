@@ -1,11 +1,10 @@
 use corona_components::components::card::CardExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_sysinfo::SystemMonitorExt;
 use gpui_kit::{
   App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div,
 };
-
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 
 pub(crate) mod details;
 mod graphs;
@@ -14,8 +13,16 @@ pub struct SysinfoPanel {
   _subscriptions: [Subscription; 2],
 }
 
-impl ControlCenterPanel for SysinfoPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Sysinfo;
+impl ControlCenterPage for SysinfoPanel {
+  const ID: &'static str = "sysinfo";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Activity
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.sysinfo").into()
+  }
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let monitor = cx.system_monitor().clone();

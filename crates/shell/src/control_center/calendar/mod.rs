@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use corona_components::components::card::CardExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::ticker::TickerExt;
 use corona_weather::WeatherExt;
 use gpui_kit::{
@@ -13,7 +14,7 @@ use jiff::{Zoned, civil::Date};
 
 use corona_components::components::progress_ring::ring;
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType, weather::place_name};
+use crate::control_center::weather::place_name;
 use corona_components::i18n::format_time;
 
 mod month;
@@ -27,9 +28,17 @@ pub struct CalendarPanel {
   _ticker: Task<()>,
 }
 
-impl ControlCenterPanel for CalendarPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Calendar;
+impl ControlCenterPage for CalendarPanel {
+  const ID: &'static str = "calendar";
   const HEIGHT: f32 = 430.0;
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::CalendarDays
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.calendar").into()
+  }
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let ticker = cx.ticker(TICK, |_, cx| cx.notify());

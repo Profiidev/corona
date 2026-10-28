@@ -1,4 +1,5 @@
 use corona_components::components::card::CardExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_weather::{Condition, Location, WeatherExt};
 use gpui_kit::{
   AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -8,7 +9,6 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 mod current;
@@ -25,8 +25,16 @@ pub struct WeatherPanel {
   _subscriptions: [Subscription; 2],
 }
 
-impl ControlCenterPanel for WeatherPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Weather;
+impl ControlCenterPage for WeatherPanel {
+  const ID: &'static str = "weather";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::CloudSun
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.weather").into()
+  }
 
   fn init(_window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let weather = cx.weather().clone();

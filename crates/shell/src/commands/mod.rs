@@ -7,7 +7,6 @@ pub mod brightness;
 pub mod caffeine;
 pub mod calculator;
 pub mod clipboard;
-pub mod control_center;
 pub mod dpms;
 pub mod extras;
 pub mod lock_key;
@@ -35,7 +34,6 @@ pub fn register_commands(cx: &mut App) {
   caffeine::register_commands(cx);
   calculator::register_commands(cx);
   clipboard::register_commands(cx);
-  control_center::register_commands(cx);
   dpms::register_commands(cx);
   extras::register_commands(cx);
   lock_key::register_commands(cx);

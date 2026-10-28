@@ -1,4 +1,4 @@
-use corona_config::placement::{Placement, PlacmentBounds};
+use corona_config::placement::{Placement, PlacementBounds};
 use gpui_kit::{App, Bounds, Pixels, component::ActiveTheme};
 
 use crate::panel::style::PanelStyle;

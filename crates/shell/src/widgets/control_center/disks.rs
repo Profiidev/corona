@@ -4,7 +4,8 @@ use gpui_kit::{App, Context, IntoElement, Render, Subscription, Window, assets::
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::{DisksPanel, Standalone, disks_log};
+use crate::control_center::{DisksPanel, disks_log};
+use corona_surface::control_center::Standalone;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]

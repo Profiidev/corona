@@ -1,5 +1,6 @@
 //! Drives, partitions, loop devices, swap and disk jobs through udisks
 
+use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
 use corona_launcher::Tone;
@@ -19,15 +20,11 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::{
-  ControlCenterPanel,
-  disks::{
-    dialogs::Dialog,
-    jobs::{DisksLog, Start, log},
-    model::{DriveView, Health, PartView, drives, health},
-    ui::section,
-  },
-  variants::ControlCenterType,
+use crate::control_center::disks::{
+  dialogs::Dialog,
+  jobs::{DisksLog, Start, log},
+  model::{DriveView, Health, PartView, drives, health},
+  ui::section,
 };
 
 mod devices;
@@ -97,8 +94,16 @@ pub struct DisksPanel {
   _subscriptions: Vec<Subscription>,
 }
 
-impl ControlCenterPanel for DisksPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Disks;
+impl ControlCenterPage for DisksPanel {
+  const ID: &'static str = "disks";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::HardDrive
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.disks").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let udisks = cx.udisks().clone();

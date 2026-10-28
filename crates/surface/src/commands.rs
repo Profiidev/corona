@@ -1,15 +1,53 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
-use crate::panel::PanelState;
+use crate::{control_center::ControlCenterExt, panel::PanelState};
 
 pub fn register_commands(cx: &mut App) {
   cx.ipc_mut()
     .register::<TogglePanel>()
     .register::<OpenPanel>()
     .register::<ClosePanel>()
-    .register::<ListPanels>();
+    .register::<ListPanels>()
+    .register::<OpenPage>()
+    .register::<ListPages>();
+}
+
+/// The control center pages by id, like `audio`
+fn pages(cx: &App) -> Vec<&'static str> {
+  cx.control_center().pages().iter().map(|p| p.id).collect()
+}
+
+/// Opens a control center page as its own panel
+pub struct OpenPage;
+
+impl IpcCommand for OpenPage {
+  const COMMAND: &'static str = "control_center:open";
+
+  type Payload = String;
+  type Response = ();
+
+  fn handle(page: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    let pages = pages(cx);
+    if !pages.contains(&page.as_str()) {
+      bail!("unknown page {page}, expected one of {}", pages.join(", "));
+    }
+    PanelState::show(&page, false, cx)
+  }
+}
+
+pub struct ListPages;
+
+impl IpcCommand for ListPages {
+  const COMMAND: &'static str = "control_center:list";
+
+  type Payload = ();
+  type Response = Vec<String>;
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    Ok(pages(cx).into_iter().map(String::from).collect())
+  }
 }
 
 pub struct TogglePanel;
@@ -81,6 +119,8 @@ mod tests {
     assert_eq!(OpenPanel::COMMAND, "surface:open_panel");
     assert_eq!(ClosePanel::COMMAND, "surface:close_panel");
     assert_eq!(ListPanels::COMMAND, "surface:list_panels");
+    assert_eq!(OpenPage::COMMAND, "control_center:open");
+    assert_eq!(ListPages::COMMAND, "control_center:list");
   }
 
   #[gpui_kit::test]

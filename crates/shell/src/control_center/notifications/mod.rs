@@ -1,3 +1,4 @@
+use corona_surface::control_center::ControlCenterPage;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
 
@@ -18,7 +19,6 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::{ControlCenterPanel, variants::ControlCenterType};
 use rust_i18n::t;
 
 mod notification;
@@ -42,8 +42,16 @@ pub struct NotificationsPanel {
   _ticker: Task<()>,
 }
 
-impl ControlCenterPanel for NotificationsPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Notifications;
+impl ControlCenterPage for NotificationsPanel {
+  const ID: &'static str = "notifications";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Bell
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.notifications").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let notifications = cx.notifications().clone();

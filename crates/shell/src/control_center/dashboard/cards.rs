@@ -21,15 +21,16 @@ use jiff::Zoned;
 
 use corona_config::ConfigProvider;
 
+use crate::control_center::{CalendarPanel, MediaPanel, SysinfoPanel, WeatherPanel};
 use crate::{
   control_center::{
     dashboard::{open, spawn_logged},
-    variants::ControlCenterType,
     weather,
   },
   overlays::wallpaper,
 };
 use corona_components::i18n::format_time;
+use corona_surface::control_center::ControlCenterPage;
 use rust_i18n::t;
 
 const ART: f32 = 64.;
@@ -102,7 +103,7 @@ pub(super) fn profile(cx: &App) -> Stateful<Div> {
         .child(muted(details, cx)),
     )
     .cursor_pointer()
-    .on_click(open(ControlCenterType::Sysinfo))
+    .on_click(open(SysinfoPanel::ID))
 }
 
 pub(super) fn media(cx: &App) -> Option<Stateful<Div>> {
@@ -136,7 +137,7 @@ pub(super) fn media(cx: &App) -> Option<Stateful<Div>> {
       .min_w_0()
       .items_center()
       .cursor_pointer()
-      .on_click(open(ControlCenterType::Media))
+      .on_click(open(MediaPanel::ID))
       .child(
         div()
           .size(px(ART))
@@ -225,7 +226,7 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
     .justify_center()
     .gap_0()
     .cursor_pointer()
-    .on_click(open(ControlCenterType::Calendar))
+    .on_click(open(CalendarPanel::ID))
     .child(
       div()
         .text_2xl()
@@ -247,7 +248,7 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
           .child(div().truncate().child(text))
           .on_click(|e, window, cx| {
             cx.stop_propagation();
-            open(ControlCenterType::Weather)(e, window, cx)
+            open(WeatherPanel::ID)(e, window, cx)
           }),
       )
     })

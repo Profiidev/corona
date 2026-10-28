@@ -6,7 +6,7 @@ mod variants;
 
 pub use align::Align;
 pub use base::{panel_path, panel_shape};
-pub use state::{AppPanelExt, PanelState, WdigetPanelExt};
+pub use state::{AppPanelExt, PanelState, WidgetPanelExt};
 pub use style::PanelStyle;
 pub use variants::{Panel, PanelData};
 

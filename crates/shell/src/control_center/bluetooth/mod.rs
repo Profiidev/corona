@@ -2,15 +2,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use corona_bluez::BluetoothExt;
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::control_center::{
-  ControlCenterPanel, bluetooth::prompt::PairingPrompt, variants::ControlCenterType,
-};
+use crate::control_center::bluetooth::prompt::PairingPrompt;
 
 mod devices;
 mod prompt;
@@ -24,8 +23,16 @@ pub struct BluetoothPanel {
   _subscriptions: [Subscription; 3],
 }
 
-impl ControlCenterPanel for BluetoothPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Bluetooth;
+impl ControlCenterPage for BluetoothPanel {
+  const ID: &'static str = "bluetooth";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Bluetooth
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.bluetooth").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let bluetooth = cx.bluetooth().clone();

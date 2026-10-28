@@ -18,8 +18,9 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, cell::Cell, rc::Rc, time::Duration};
 use uuid::Uuid;
 
-use crate::control_center::{Standalone, SysinfoPanel, sysinfo::details::rate};
+use crate::control_center::{SysinfoPanel, sysinfo::details::rate};
 use corona_components::i18n::decimal;
+use corona_surface::control_center::Standalone;
 use corona_surface::tooltip::TextTooltip;
 use rust_i18n::t;
 

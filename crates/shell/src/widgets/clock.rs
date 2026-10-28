@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use corona_surface::{
   bar::{BarStyle, Widget},
-  panel::WdigetPanelExt,
+  panel::WidgetPanelExt,
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -13,8 +13,9 @@ use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::{CalendarPanel, Standalone};
+use crate::control_center::CalendarPanel;
 use corona_components::i18n::format_time;
+use corona_surface::control_center::Standalone;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]

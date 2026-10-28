@@ -4,7 +4,8 @@ use gpui_kit::{Context, IntoElement, Render, Subscription, Window, assets::IconN
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::{PrintersPanel, Standalone};
+use crate::control_center::PrintersPanel;
+use corona_surface::control_center::Standalone;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]

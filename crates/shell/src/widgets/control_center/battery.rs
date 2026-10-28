@@ -12,7 +12,8 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::control_center::{PowerPanel, Standalone};
+use crate::control_center::PowerPanel;
+use corona_surface::control_center::Standalone;
 
 pub struct BatteryButton {
   _subscription: Subscription,

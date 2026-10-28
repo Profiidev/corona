@@ -1,4 +1,5 @@
 use corona_pipewire::{AudioNode, PipewireAudio, PipewireExt};
+use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -7,13 +8,9 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::{
-  ControlCenterPanel,
-  audio::{
-    state::{DEFAULT_SINK_ID, DefaultState, StreamState},
-    ui::{audio_node, audio_stream},
-  },
-  variants::ControlCenterType,
+use crate::control_center::audio::{
+  state::{DEFAULT_SINK_ID, DefaultState, StreamState},
+  ui::{audio_node, audio_stream},
 };
 use rust_i18n::t;
 
@@ -31,8 +28,16 @@ pub struct AudioPanel {
   _pipewire_subscriptions: [Subscription; 6],
 }
 
-impl ControlCenterPanel for AudioPanel {
-  const TYPE: ControlCenterType = ControlCenterType::Audio;
+impl ControlCenterPage for AudioPanel {
+  const ID: &'static str = "audio";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Volume2
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.audio").into()
+  }
 
   fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
     let pipewire = cx.pipewire();

@@ -7,7 +7,7 @@ use corona_components::{
 use corona_mpris::{MprisExt, PlaybackStatus, Player};
 use corona_surface::{
   bar::{BarStyle, Widget},
-  panel::WdigetPanelExt,
+  panel::WidgetPanelExt,
 };
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
@@ -22,7 +22,8 @@ use uuid::Uuid;
 
 use corona_components::components::progress_ring::ring;
 
-use crate::control_center::{MediaPanel, Standalone};
+use crate::control_center::MediaPanel;
+use corona_surface::control_center::Standalone;
 
 const TICK: Duration = Duration::from_secs(1);
 const RING: f32 = 20.;

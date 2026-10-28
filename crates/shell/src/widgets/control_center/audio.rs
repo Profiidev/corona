@@ -3,10 +3,8 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window};
 use uuid::Uuid;
 
-use crate::{
-  control_center::{AudioPanel, Standalone},
-  icons::volume_icon,
-};
+use crate::{control_center::AudioPanel, icons::volume_icon};
+use corona_surface::control_center::Standalone;
 
 pub struct AudioButton {
   _subscription: Subscription,

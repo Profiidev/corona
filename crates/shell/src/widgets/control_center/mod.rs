@@ -3,7 +3,7 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
-use crate::control_center::ControlCenter;
+use corona_surface::control_center::ControlCenter;
 
 mod audio;
 mod battery;

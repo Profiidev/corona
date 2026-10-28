@@ -2,7 +2,8 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::control_center::{Standalone, WeatherPanel};
+use crate::control_center::WeatherPanel;
+use corona_surface::control_center::Standalone;
 
 pub struct WeatherButton;
 

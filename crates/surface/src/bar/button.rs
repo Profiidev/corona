@@ -13,7 +13,7 @@ use gpui_kit::{
 
 use crate::{
   bar::{BarState, Widget},
-  panel::{Panel, WdigetPanelExt},
+  panel::{Panel, WidgetPanelExt},
 };
 
 const ICON_SIZE: f32 = 16.;

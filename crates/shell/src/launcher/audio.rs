@@ -10,11 +10,13 @@ use corona_launcher::{
   simple,
 };
 use corona_pipewire::{PipewireExt, volume::to_slider};
-use corona_surface::panel::PanelState;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
+use corona_surface::{control_center::Standalone, panel::AppPanelExt};
+
 use crate::commands::volume::{Action as VolumeAction, Device, Volume};
+use crate::control_center::AudioPanel;
 
 /// The default device's slider level and mute
 fn level(device: Device, cx: &App) -> Option<(f32, bool)> {
@@ -134,7 +136,7 @@ impl Command for LevelCommand {
           Some(action) => run(device, action, cx),
           // without a level the audio page shows every device
           None => {
-            PanelState::show("audio", false, cx)?;
+            cx.open_panel::<Standalone<AudioPanel>>()?;
             Ok(Outcome::close())
           }
         }

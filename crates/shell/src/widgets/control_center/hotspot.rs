@@ -6,7 +6,8 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::control_center::{HotspotPanel, Standalone, poll_clients};
+use crate::control_center::{HotspotPanel, poll_clients};
+use corona_surface::control_center::Standalone;
 
 pub struct HotspotButton {
   clients: usize,
