@@ -88,7 +88,7 @@ fn watch_approvals(cx: &mut App) {
         continue;
       };
       cx.update(|cx| {
-        if let Err(e) = crate::settings::open(Some("plugins"), cx) {
+        if let Err(e) = corona_settings::open(Some("plugins"), cx) {
           tracing::error!("opening the settings: {e:#}");
         }
         crate::settings::review_plugin(&id, cx);

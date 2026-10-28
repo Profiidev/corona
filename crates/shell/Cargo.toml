@@ -12,6 +12,7 @@ categories.workspace = true
 regex.workspace = true
 clap.workspace = true
 corona_surface.workspace = true
+corona_settings.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
 corona_pipewire.workspace = true

@@ -122,7 +122,7 @@ impl ControlCenterPage for DashboardPanel {
           // the dashboard is in the control center, or a panel of its own
           let _ = cx.close_panel::<ControlCenter>().log_err();
           let _ = cx.close_panel::<Standalone<DashboardPanel>>().log_err();
-          let _ = crate::settings::open(None, cx).log_err();
+          let _ = corona_settings::open(None, cx).log_err();
         })
         .into_any_element(),
       Popover::new("power-menu")

@@ -34,7 +34,8 @@ members = [
   "crates/launcher",
   "crates/clipboard",
   "crates/udisks",
-  "crates/osk"
+  "crates/osk",
+  "crates/settings"
 ]
 
 [workspace.package]
@@ -78,6 +79,7 @@ corona_launcher = { path = "crates/launcher" }
 corona_clipboard = { path = "crates/clipboard" }
 corona_udisks = { path = "crates/udisks" }
 corona_osk = { path = "crates/osk" }
+corona_settings = { path = "crates/settings" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
 gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
 gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }

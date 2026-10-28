@@ -1,10 +1,9 @@
 use std::{iter, path::PathBuf};
 
-use corona_components::assets::{set_theme, theme_font, theme_names};
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
   Config, ConfigProvider, IdleAction, IdleBehavior, NightlightMode, NotificationPosition,
-  OsdPosition, ThemeMode, Units, Weekday,
+  OsdPosition, Units, Weekday,
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
@@ -13,91 +12,83 @@ use corona_surface::{
   dashboard::DashboardExt,
   osd::OsdExt,
 };
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Axis, BorrowAppContext, SharedString, Styled, Window,
+  App, Axis, BorrowAppContext,
   assets::IconName,
   component::{
-    Icon, Sizable,
+    Sizable,
     button::Button,
-    setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage},
+    setting::{SettingField, SettingGroup, SettingItem, SettingPage},
   },
 };
 
-use corona_components::i18n;
 use corona_components::settings_fields::{
   Choice, choice, number, optional_text,
   order::{OrderList, order_item},
-  searchable, slider, switch, text,
+  slider, switch, text,
 };
 
-use crate::settings::{bar, launcher, plugins};
+use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+
+use crate::settings::plugins;
 use rust_i18n::t;
 
-/// Page names, also what `corona ipc settings open <page>` takes, in sidebar order
-pub const PAGES: [&str; 17] = [
-  "appearance",
-  "bar",
-  "wallpaper",
-  "notifications",
-  "osd",
-  "control_center",
-  "taskbar",
-  "window_switcher",
-  "launcher",
-  "osk",
-  "lockscreen",
-  "idle",
-  "screenshot",
-  "location",
-  "privacy",
-  "plugins",
-  "system",
-];
+/// A settings page `$page` builds
+macro_rules! settings_page {
+  ($name:ident, $id:literal, $order:literal, |$cx:ident| $page:expr) => {
+    pub struct $name;
 
-pub(super) fn all(cx: &App) -> Vec<SettingPage> {
-  vec![
-    appearance(cx),
-    bar::page(cx),
-    wallpaper(),
-    notifications(),
-    osd(cx),
-    control_center(),
-    taskbar(),
-    window_switcher(),
-    launcher::page_of(cx),
-    osk(),
-    lockscreen(cx),
-    idle(cx),
-    screenshot(),
-    location(),
-    privacy(),
-    plugins::page(cx),
-    system(),
-  ]
+    impl SettingsPage for $name {
+      const ID: &'static str = $id;
+      const ORDER: i32 = $order;
+
+      #[allow(unused_variables)]
+      fn page($cx: &App) -> SettingPage {
+        $page
+      }
+    }
+  };
 }
 
-pub(super) fn page(
-  title: impl Into<SharedString>,
-  icon: IconName,
-  groups: Vec<SettingGroup>,
-) -> SettingPage {
-  SettingPage::new(title)
-    .icon(Icon::new(icon))
-    .resettable(true)
-    .groups(groups)
-}
+// the order is the sidebar's, between the bar (10) and launcher (80) pages of
+// their own crates
+settings_page!(WallpaperSettings, "wallpaper", 20, |cx| wallpaper());
+settings_page!(NotificationSettings, "notifications", 30, |cx| {
+  notifications()
+});
+settings_page!(OsdSettings, "osd", 40, |cx| osd(cx));
+settings_page!(ControlCenterSettings, "control_center", 50, |cx| {
+  control_center()
+});
+settings_page!(TaskbarSettings, "taskbar", 60, |cx| taskbar());
+settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
+  window_switcher()
+});
+settings_page!(OskSettings, "osk", 90, |cx| osk());
+settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
+settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
+settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
+settings_page!(LocationSettings, "location", 130, |cx| location());
+settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
+settings_page!(PluginSettings, "plugins", 150, |cx| plugins::page(cx));
+settings_page!(SystemSettings, "system", 160, |cx| system());
 
-pub(super) fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> SettingGroup {
-  SettingGroup::new().title(title).items(items)
-}
-
-pub(super) fn item(
-  title: impl Into<SharedString>,
-  description: impl Into<String>,
-  field: SettingField<impl Clone + PartialEq + Send + Sync + 'static>,
-) -> SettingItem {
-  SettingItem::new(title, field).description(description.into())
+pub(super) fn register(cx: &mut App) {
+  cx.settings_mut()
+    .register::<WallpaperSettings>()
+    .register::<NotificationSettings>()
+    .register::<OsdSettings>()
+    .register::<ControlCenterSettings>()
+    .register::<TaskbarSettings>()
+    .register::<WindowSwitcherSettings>()
+    .register::<OskSettings>()
+    .register::<LockscreenSettings>()
+    .register::<IdleSettings>()
+    .register::<ScreenshotSettings>()
+    .register::<LocationSettings>()
+    .register::<PrivacySettings>()
+    .register::<PluginSettings>()
+    .register::<SystemSettings>();
 }
 
 /// `Option<String>` settings as text, empty for unset
@@ -106,171 +97,6 @@ fn some(value: String) -> Option<String> {
 }
 
 const OPACITY: (f32, f32, f32) = (0., 1., 0.05);
-
-fn appearance(cx: &App) -> SettingPage {
-  let themes: Vec<Choice> = theme_names(cx)
-    .into_iter()
-    .map(|name| Choice {
-      value: name.to_string(),
-      label: name.to_string(),
-    })
-    .collect();
-  page(
-    t!("app.settings.appearance.title"),
-    IconName::Palette,
-    vec![
-      group(
-        t!("app.settings.appearance.groups.theme"),
-        vec![
-          item(
-            t!("app.settings.appearance.theme.title"),
-            t!("app.settings.appearance.theme.description"),
-            SettingField::render(
-              move |options: &RenderOptions, window: &mut Window, cx: &mut App| {
-                let current = cx.config().theme.name.clone();
-                searchable(
-                  "theme.name",
-                  themes.clone(),
-                  Some(current),
-                  t!("app.settings.appearance.theme.title"),
-                  window,
-                  cx,
-                  |name, cx| {
-                    if let Err(e) = set_theme(name.to_string(), cx) {
-                      tracing::error!("Failed to set theme: {e:#}");
-                    }
-                  },
-                )
-                .with_size(options.size())
-                .w_64()
-              },
-            )
-            .on_reset(
-              |cx: &App| cx.config().theme.name != Config::default().theme.name,
-              |_, cx: &mut App| {
-                let _ = set_theme(Config::default().theme.name, cx).log_err();
-              },
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.language.title"),
-            t!("app.settings.appearance.language.description"),
-            choice(
-              // each language under its own name
-              &iter::once((None, t!("app.settings.options.language_auto")))
-                .chain(i18n::languages().into_iter().map(|language| {
-                  let name = t!("app.language_name", locale = &language);
-                  (Some(language), name)
-                }))
-                .collect::<Vec<_>>(),
-              |c| c.shell.language.clone(),
-              |c, v| c.shell.language = v,
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.mode.title"),
-            t!("app.settings.appearance.mode.description"),
-            choice(
-              &[
-                (None, t!("app.settings.options.theme_default")),
-                (Some(ThemeMode::Dark), t!("app.settings.options.dark")),
-                (Some(ThemeMode::Light), t!("app.settings.options.light")),
-              ],
-              |c| c.theme.mode,
-              |c, v| c.theme.mode = v,
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.font_family.title"),
-            t!("app.settings.appearance.font_family.description"),
-            optional_text(
-              "theme.font_family",
-              |c| c.theme.font_family.clone(),
-              |c, v| c.theme.font_family = v,
-              |cx| theme_font(cx).to_string(),
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.font_scale.title"),
-            t!("app.settings.appearance.font_scale.description"),
-            slider(
-              "theme.font_scale",
-              (0.5, 2., 0.05),
-              |c| c.theme.font_scale,
-              |c, v| c.theme.font_scale = v,
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.corner_radius_scale.title"),
-            t!("app.settings.appearance.corner_radius_scale.description"),
-            slider(
-              "theme.corner_radius_scale",
-              (0., 3., 0.1),
-              |c| c.theme.corner_radius_scale,
-              |c, v| c.theme.corner_radius_scale = v,
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.sync_toolkits.title"),
-            t!("app.settings.appearance.sync_toolkits.description"),
-            switch(|c| c.theme.sync_toolkits, |c, v| c.theme.sync_toolkits = v),
-          ),
-        ],
-      ),
-      group(
-        t!("app.settings.appearance.groups.surfaces"),
-        vec![
-          item(
-            t!("app.settings.appearance.shadows.title"),
-            t!("app.settings.appearance.shadows.description"),
-            switch(|c| c.theme.shadow, |c, v| c.theme.shadow = v),
-          ),
-          item(
-            t!("app.settings.appearance.popup_borders.title"),
-            t!("app.settings.appearance.popup_borders.description"),
-            switch(|c| c.theme.popup_borders, |c, v| c.theme.popup_borders = v),
-          ),
-          item(
-            t!("app.settings.appearance.card_borders.title"),
-            t!("app.settings.appearance.card_borders.description"),
-            switch(|c| c.theme.card_borders, |c, v| c.theme.card_borders = v),
-          ),
-          item(
-            t!("app.settings.appearance.screen_corners.title"),
-            t!("app.settings.appearance.screen_corners.description"),
-            switch(
-              |c| c.theme.screen_corners,
-              |c, v| c.theme.screen_corners = v,
-            ),
-          ),
-        ],
-      ),
-      group(
-        t!("app.settings.appearance.groups.animation"),
-        vec![
-          item(
-            t!("app.settings.appearance.animations.title"),
-            t!("app.settings.appearance.animations.description"),
-            switch(
-              |c| c.shell.animation.enabled,
-              |c, v| c.shell.animation.enabled = v,
-            ),
-          ),
-          item(
-            t!("app.settings.appearance.speed.title"),
-            t!("app.settings.appearance.speed.description"),
-            slider(
-              "shell.animation.speed",
-              (0.25, 4., 0.25),
-              |c| c.shell.animation.speed,
-              |c, v| c.shell.animation.speed = v,
-            ),
-          ),
-        ],
-      ),
-    ],
-  )
-}
 
 fn wallpaper() -> SettingPage {
   page(
@@ -1313,25 +1139,6 @@ fn system() -> SettingPage {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use gpui_kit::{self as gpui, TestAppContext};
-  use std::collections::HashSet;
-
-  #[test]
-  fn page_names_unique() {
-    let names: HashSet<_> = PAGES.iter().collect();
-    assert_eq!(names.len(), PAGES.len());
-    assert!(PAGES.iter().all(|p| !p.is_empty() && !p.contains(' ')));
-  }
-
-  #[gpui::test]
-  fn every_name_has_a_page(cx: &mut TestAppContext) {
-    let pages = cx.update(|cx| {
-      gpui_kit::init(cx);
-      cx.set_global(Config::default());
-      all(cx).len()
-    });
-    assert_eq!(pages, PAGES.len());
-  }
 
   #[test]
   fn monitor_choices_keep_the_configured() {

@@ -18,6 +18,7 @@ zbus.workspace = true
 rustix = { workspace = true, features = ["process"] }
 sysinfo.workspace = true
 corona_surface.workspace = true
+corona_settings.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true

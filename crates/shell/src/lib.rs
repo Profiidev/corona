@@ -117,6 +117,8 @@ fn init_integrations(cx: &mut App) {
 }
 
 fn register_variants(cx: &mut App) {
+  corona_settings::init(cx);
+  settings::init(cx);
   control_center::register_panels(cx);
   widgets::register_widgets(cx);
   plugins::init(cx);

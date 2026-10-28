@@ -39,6 +39,7 @@ mod tests {
       "shell",
       "components",
       "surface",
+      "settings",
       "auth_screen",
       "greeter",
       "launcher",

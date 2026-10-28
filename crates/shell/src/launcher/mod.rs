@@ -42,12 +42,6 @@ pub fn init(cx: &mut App) {
     },
     cx,
   );
-  corona_launcher::hooks::set_open_settings(
-    |page, cx| {
-      let _ = crate::settings::open(page, cx).log_err();
-    },
-    cx,
-  );
   corona_launcher::hooks::set_notify(
     |summary, body, cx| {
       let send = corona_notifications::NotificationsExt::notifications(cx).send(summary, body);

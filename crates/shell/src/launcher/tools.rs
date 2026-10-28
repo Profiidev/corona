@@ -23,8 +23,8 @@ use crate::{
     colorpicker::commands::ColorPicker,
     screenshot::{commands::Screenshot, mode::Mode},
   },
-  settings::{self, PAGES},
 };
+use corona_settings::SettingsExt;
 
 fn settings_title(page: &str) -> String {
   let key = format!("app.settings.{page}.title");
@@ -39,9 +39,8 @@ impl CommandSource for SettingsPages {
     "settings".into()
   }
 
-  fn commands(&self, _: &Query, _: &App) -> Vec<Rc<dyn Command>> {
-    PAGES
-      .iter()
+  fn commands(&self, _: &Query, cx: &App) -> Vec<Rc<dyn Command>> {
+    (cx.settings().ids().into_iter())
       .map(|page| {
         let title = format!(
           "{} › {}",
@@ -53,7 +52,7 @@ impl CommandSource for SettingsPages {
           move |_| Meta {
             title: title.clone().into(),
             icon: Icon::Tile(IconName::Settings, 220.),
-            keywords: vec!["settings".into(), "preferences".into(), (*page).into()],
+            keywords: vec!["settings".into(), "preferences".into(), page.into()],
             section: Section::Commands,
             ..Default::default()
           },
@@ -62,7 +61,7 @@ impl CommandSource for SettingsPages {
               "open",
               t!("app.launcher.open"),
               move |_, _, cx| {
-                settings::open(Some(page), cx)?;
+                corona_settings::open(Some(page), cx)?;
                 Ok(Outcome::close())
               },
             )]
@@ -73,10 +72,12 @@ impl CommandSource for SettingsPages {
   }
 }
 
-/// `(page, field)` of every setting with a title in the settings strings
-fn setting_fields() -> &'static Vec<(&'static str, String)> {
-  static FIELDS: std::sync::OnceLock<Vec<(&'static str, String)>> = std::sync::OnceLock::new();
-  FIELDS.get_or_init(|| {
+/// `(page, field)` of every setting with a title in the settings strings, on
+/// the `pages` there are
+fn setting_fields(pages: &[&'static str]) -> Vec<(&'static str, &'static str)> {
+  static FIELDS: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
+    std::sync::OnceLock::new();
+  let fields = FIELDS.get_or_init(|| {
     const YAML: &str = include_str!("../../../../assets/locales/settings.yml");
     let lines: Vec<&str> = YAML.lines().collect();
     let indent = |l: &str| l.len() - l.trim_start().len();
@@ -85,20 +86,23 @@ fn setting_fields() -> &'static Vec<(&'static str, String)> {
     for (i, line) in lines.iter().enumerate() {
       let key = line.trim().trim_end_matches(':');
       match indent(line) {
-        4 => page = PAGES.iter().copied().find(|p| *p == key),
+        4 => page = Some(key),
         6 if line.trim().ends_with(':') => {
           let titled = lines
             .get(i + 1)
             .is_some_and(|next| indent(next) == 8 && next.trim() == "title:");
           if let (Some(page), true) = (page, titled) {
-            out.push((page, key.to_string()));
+            out.push((page, key));
           }
         }
         _ => {}
       }
     }
     out
-  })
+  });
+  (fields.iter().copied())
+    .filter(|(page, _)| pages.contains(page))
+    .collect()
 }
 
 /// Individual settings, opening their page
@@ -109,19 +113,18 @@ impl CommandSource for SettingFields {
     "settings:fields".into()
   }
 
-  fn commands(&self, query: &Query, _: &App) -> Vec<Rc<dyn Command>> {
+  fn commands(&self, query: &Query, cx: &App) -> Vec<Rc<dyn Command>> {
     if query.is_empty() {
       return Vec::new();
     }
-    setting_fields()
-      .iter()
+    setting_fields(&cx.settings().ids())
+      .into_iter()
       .map(|(page, field)| {
         let key = format!("app.settings.{page}.{field}.title");
         let title = t!(&key).to_string();
         let key = format!("app.settings.{page}.{field}.description");
         let description = t!(&key).to_string();
         let page_title = settings_title(page);
-        let page = *page;
         simple(
           format!("setting:{page}:{field}"),
           move |_| Meta {
@@ -137,7 +140,7 @@ impl CommandSource for SettingFields {
               "open",
               t!("app.launcher.open"),
               move |_, _, cx| {
-                settings::open(Some(page), cx)?;
+                corona_settings::open(Some(page), cx)?;
                 Ok(Outcome::close())
               },
             )]
@@ -220,6 +223,7 @@ fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
 }
 
 pub fn init(cx: &mut App) {
+  let pages = cx.settings().ids();
   let mut commands: Vec<Rc<dyn Command>> = vec![
     simple(
       "screenshot",
@@ -278,12 +282,12 @@ pub fn init(cx: &mut App) {
     ),
     simple(
       "settings",
-      |_| Meta {
+      move |_| Meta {
         title: t!("app.launcher.tools.settings").into(),
         icon: Icon::Tile(IconName::Settings, 220.),
         keywords: vec!["preferences".into(), "config".into()],
         args: vec![
-          corona_launcher::ArgSpec::choice(t!("app.launcher.tools.page"), PAGES).optional(),
+          corona_launcher::ArgSpec::choice(t!("app.launcher.tools.page"), pages.clone()).optional(),
         ],
         ..Default::default()
       },
@@ -292,7 +296,7 @@ pub fn init(cx: &mut App) {
           "open",
           t!("app.launcher.open"),
           |args, _, cx| {
-            settings::open(args.text(0), cx)?;
+            corona_settings::open(args.text(0), cx)?;
             Ok(Outcome::close())
           },
         )]
@@ -367,17 +371,23 @@ pub fn init(cx: &mut App) {
 mod tests {
   #[test]
   fn finds_setting_fields() {
-    let fields = super::setting_fields();
+    let fields = super::setting_fields(&["window_switcher", "launcher"]);
     assert!(
       fields
         .iter()
-        .any(|(p, f)| *p == "window_switcher" && f == "card_height")
+        .any(|(p, f)| *p == "window_switcher" && *f == "card_height")
     );
     assert!(
       fields
         .iter()
-        .any(|(p, f)| *p == "launcher" && f == "close_on_unfocus")
+        .any(|(p, f)| *p == "launcher" && *f == "close_on_unfocus")
     );
-    assert!(!fields.iter().any(|(_, f)| f == "groups" || f == "title"));
+    assert!(!fields.iter().any(|(_, f)| *f == "groups" || *f == "title"));
+    // only the pages asked for
+    assert!(
+      fields
+        .iter()
+        .all(|(p, _)| ["window_switcher", "launcher"].contains(p))
+    );
   }
 }

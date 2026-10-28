@@ -10,6 +10,7 @@ categories.workspace = true
 
 [dependencies]
 corona_surface.workspace = true
+corona_settings.workspace = true
 corona_ipc.workspace = true
 corona_config.workspace = true
 corona_script.workspace = true

@@ -29,14 +29,11 @@ use corona_components::settings_fields::{
   Choice, choice, number, row_body, row_buttons, save, searchable, slider, switch,
 };
 
-use crate::widgets::{
-  control_center::{disks, printers},
-  privacy, resource, tray,
-};
+use crate::SettingsExt;
 use rust_i18n::t;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Section {
+pub enum Section {
   Start,
   Center,
   End,
@@ -72,7 +69,7 @@ impl Section {
 
 /// Where a widget sits: an entry of a section, or a member of a group entry
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Slot {
+pub struct Slot {
   pub section: Section,
   pub index: usize,
   pub member: Option<usize>,
@@ -80,7 +77,7 @@ pub(crate) struct Slot {
 
 /// Where a dragged widget goes
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Target {
+pub enum Target {
   /// In front of the widget at this slot
   Before(Slot),
   /// At the end of a section
@@ -101,7 +98,7 @@ fn placeholder() -> WidgetEntry {
 
 /// Moves the widget (or group) at `from` to `to`. A group left with one widget
 /// becomes that widget, an empty one goes.
-pub(crate) fn move_widget(bar: &mut BarConfig, from: Slot, to: Target) {
+pub fn move_widget(bar: &mut BarConfig, from: Slot, to: Target) {
   // swap a placeholder in, so indices of `to` stay valid while inserting
   let entries = from.section.of_mut(bar);
   let Some(entry) = entries.get_mut(from.index) else {
@@ -206,7 +203,7 @@ fn edit_bar(cx: &mut App, name: &str, edit: impl FnOnce(&mut BarConfig)) {
   });
 }
 
-pub(super) fn page(cx: &App) -> SettingPage {
+pub(crate) fn page(cx: &App) -> SettingPage {
   let names: Vec<String> = cx.config().bar.keys().cloned().collect();
   let mut groups: Vec<SettingGroup> = names.iter().map(|name| bar_group(name.clone())).collect();
   groups.push(
@@ -627,15 +624,13 @@ fn row(
   cx: &mut App,
 ) -> impl IntoElement {
   let hover = cx.theme().tokens.button_hover;
-  let label: String = match widget.widget_type.as_str() {
-    // several of these sit side by side, what they show tells them apart
-    "resource" => {
-      let options: resource::Options = options(bar, slot);
-      resource::stat_name(options.stat).into()
-    }
-    other => title(other),
+  let registered = cx.settings().widget_options_of(&widget.widget_type);
+  // several of one type may sit side by side, what they show tells them apart
+  let label: String = match registered.and_then(|o| o.label) {
+    Some(label) => label(bar, slot),
+    None => title(&widget.widget_type),
   };
-  let form = options_form(&widget.widget_type);
+  let form = registered.map(|o| o.form);
   let has_options = form.is_some();
   let id = |what: &str| {
     format!(
@@ -696,23 +691,11 @@ fn row(
     })
 }
 
-type Form = fn(&str, &BarConfig, Slot, &mut Window, &mut App) -> gpui_kit::AnyElement;
-
-/// The options form of a widget type, if it has options
-fn options_form(widget_type: &str) -> Option<Form> {
-  match widget_type {
-    "clock" => Some(clock_form),
-    "resource" => Some(resource_form),
-    "tray" => Some(tray_form),
-    "privacy" => Some(privacy_form),
-    "printers" => Some(printers_form),
-    "disks" => Some(disks_form),
-    _ => None,
-  }
-}
+/// A widget's options form: the bar's name, the bar, where the widget is
+pub type Form = fn(&str, &BarConfig, Slot, &mut Window, &mut App) -> gpui_kit::AnyElement;
 
 /// The widget's options, its defaults filled in
-fn options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
+pub fn options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
   bar: &BarConfig,
   slot: Slot,
 ) -> T {
@@ -724,7 +707,7 @@ fn options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
 
 /// The widget's options as they are now, for handlers that outlive the render
 /// they were made in
-fn current_options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
+pub fn current_options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
   cx: &App,
   name: &str,
   slot: Slot,
@@ -733,7 +716,7 @@ fn current_options<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
 }
 
 /// Writes the widget's options; ones equal to the defaults are left out
-fn set_options<T: serde::Serialize + Default>(cx: &mut App, name: &str, slot: Slot, value: T) {
+pub fn set_options<T: serde::Serialize + Default>(cx: &mut App, name: &str, slot: Slot, value: T) {
   let json = serde_json::to_value(&value).ok();
   let default = serde_json::to_value(T::default()).ok();
   edit_bar(cx, name, move |b| {
@@ -752,11 +735,11 @@ fn set_options<T: serde::Serialize + Default>(cx: &mut App, name: &str, slot: Sl
   });
 }
 
-fn form() -> Div {
+pub fn form() -> Div {
   div().flex().flex_col().gap_2().w(px(320.))
 }
 
-fn form_row(label: impl IntoElement, control: impl IntoElement) -> Div {
+pub fn form_row(label: impl IntoElement, control: impl IntoElement) -> Div {
   div()
     .flex()
     .items_center()
@@ -766,7 +749,7 @@ fn form_row(label: impl IntoElement, control: impl IntoElement) -> Div {
 }
 
 /// A text input in a widget's form, written on enter or blur
-fn form_input(
+pub fn form_input(
   key: String,
   value: String,
   window: &mut Window,
@@ -812,316 +795,11 @@ fn form_input(
   div().w_48().child(Input::new(&input).small())
 }
 
-fn form_key(name: &str, slot: Slot, field: &str) -> String {
+pub fn form_key(name: &str, slot: Slot, field: &str) -> String {
   format!(
     "form-{name}-{:?}-{}-{:?}-{field}",
     slot.section, slot.index, slot.member
   )
-}
-
-fn clock_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  window: &mut Window,
-  cx: &mut App,
-) -> gpui_kit::AnyElement {
-  let options: crate::widgets::clock::Options = options(bar, slot);
-  let name_ = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.format"),
-      form_input(
-        form_key(name, slot, "format"),
-        options.format,
-        window,
-        cx,
-        move |format, cx| {
-          set_options(cx, &name_, slot, crate::widgets::clock::Options { format });
-        },
-      ),
-    ))
-    .into_any_element()
-}
-
-fn resource_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  window: &mut Window,
-  cx: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: resource::Options = options(bar, slot);
-  let choices = resource::Stat::ALL
-    .iter()
-    .map(|stat| Choice {
-      value: serde_json::to_value(stat)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default(),
-      label: resource::stat_name(*stat).into(),
-    })
-    .collect();
-  let selected = serde_json::to_value(current.stat)
-    .ok()
-    .and_then(|v| v.as_str().map(str::to_string));
-  let stat_name = name.to_string();
-  let stat = searchable(
-    form_key(name, slot, "stat"),
-    choices,
-    selected,
-    t!("app.settings.bar.form.shows"),
-    window,
-    cx,
-    move |value, cx| {
-      let Ok(stat) = serde_json::from_value(serde_json::Value::String(value.to_string())) else {
-        return;
-      };
-      // read now: this handler outlives the render it was made in
-      let Some(bar) = cx.config().bar.get(&stat_name).cloned() else {
-        return;
-      };
-      let options: resource::Options = options(&bar, slot);
-      set_options(cx, &stat_name, slot, resource::Options { stat, ..options });
-    },
-  )
-  .small()
-  .w_48();
-
-  // the defaults of the stat shown filled in; one left as it is stays unset
-  let defaults = current.stat.thresholds();
-  let threshold = |field: &'static str,
-                   value: Option<f32>,
-                   default: Option<f32>,
-                   window: &mut Window,
-                   cx: &mut App| {
-    let name = name.to_string();
-    form_input(
-      form_key(&name, slot, field),
-      value.or(default).map(|v| v.to_string()).unwrap_or_default(),
-      window,
-      cx,
-      move |text, cx| {
-        let Some(mut options) = current_options::<resource::Options>(cx, &name, slot) else {
-          return;
-        };
-        let default = match field {
-          "warning" => options.stat.thresholds().map(|t| t.0),
-          _ => options.stat.thresholds().map(|t| t.1),
-        };
-        let value = text
-          .trim()
-          .parse::<f32>()
-          .ok()
-          .filter(|v| Some(*v) != default);
-        match field {
-          "warning" => options.warning = value,
-          _ => options.critical = value,
-        }
-        set_options(cx, &name, slot, options);
-      },
-    )
-  };
-  let warning = threshold(
-    "warning",
-    current.warning,
-    defaults.map(|t| t.0),
-    window,
-    cx,
-  );
-  let critical = threshold(
-    "critical",
-    current.critical,
-    defaults.map(|t| t.1),
-    window,
-    cx,
-  );
-  let mount_name = name.to_string();
-  let mount = form_input(
-    form_key(name, slot, "mount"),
-    current.mount.clone(),
-    window,
-    cx,
-    move |mount, cx| {
-      if let Some(options) = current_options::<resource::Options>(cx, &mount_name, slot) {
-        set_options(
-          cx,
-          &mount_name,
-          slot,
-          resource::Options { mount, ..options },
-        );
-      }
-    },
-  );
-
-  form()
-    .child(form_row(t!("app.settings.bar.form.shows"), stat))
-    .child(form_row(t!("app.settings.bar.form.warning_at"), warning))
-    .child(form_row(t!("app.settings.bar.form.critical_at"), critical))
-    .child(form_row(t!("app.settings.bar.form.mount"), mount))
-    .into_any_element()
-}
-
-fn tray_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  window: &mut Window,
-  cx: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: tray::Options = options(bar, slot);
-  let rows: Vec<_> = current
-    .blacklist
-    .iter()
-    .enumerate()
-    .map(|(i, pattern)| {
-      let (edit_name, remove_name) = (name.to_string(), name.to_string());
-      let remove_list = current.blacklist.clone();
-      div()
-        .flex()
-        .items_center()
-        .gap_1()
-        .child(form_input(
-          form_key(name, slot, &format!("blacklist-{i}")),
-          pattern.clone(),
-          window,
-          cx,
-          move |text, cx| {
-            let Some(mut options) = current_options::<tray::Options>(cx, &edit_name, slot) else {
-              return;
-            };
-            if let Some(pattern) = options.blacklist.get_mut(i) {
-              *pattern = text;
-              set_options(cx, &edit_name, slot, options);
-            }
-          },
-        ))
-        .child(
-          Button::new(form_key(name, slot, &format!("blacklist-remove-{i}")))
-            .cursor_pointer()
-            .icon(IconName::X)
-            .ghost()
-            .xsmall()
-            .on_click(move |_, _, cx| {
-              let mut blacklist = remove_list.clone();
-              blacklist.remove(i);
-              set_options(cx, &remove_name, slot, tray::Options { blacklist });
-            }),
-        )
-    })
-    .collect();
-  let add_name = name.to_string();
-  let add_list = current.blacklist.clone();
-  form()
-    .child(
-      div()
-        .text_sm()
-        .child(t!("app.settings.bar.form.hidden_items")),
-    )
-    .children(rows)
-    .child(
-      div().child(
-        Button::new(form_key(name, slot, "blacklist-add"))
-          .label(t!("app.settings.bar.form.add_pattern"))
-          .cursor_pointer()
-          .icon(IconName::Plus)
-          .xsmall()
-          .outline()
-          .on_click(move |_, _, cx| {
-            let mut blacklist = add_list.clone();
-            blacklist.push(String::new());
-            set_options(cx, &add_name, slot, tray::Options { blacklist });
-          }),
-      ),
-    )
-    .into_any_element()
-}
-
-fn privacy_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  _: &mut Window,
-  _: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: privacy::Options = options(bar, slot);
-  let name = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.hide_idle"),
-      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
-        .checked(current.hide_when_idle)
-        .small()
-        .on_click(move |checked, _, cx| {
-          set_options(
-            cx,
-            &name,
-            slot,
-            privacy::Options {
-              hide_when_idle: *checked,
-            },
-          );
-        }),
-    ))
-    .into_any_element()
-}
-
-fn printers_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  _: &mut Window,
-  _: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: printers::Options = options(bar, slot);
-  let name = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.hide_no_jobs"),
-      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
-        .checked(current.hide_when_idle)
-        .small()
-        .on_click(move |checked, _, cx| {
-          set_options(
-            cx,
-            &name,
-            slot,
-            printers::Options {
-              hide_when_idle: *checked,
-            },
-          );
-        }),
-    ))
-    .into_any_element()
-}
-
-fn disks_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  _: &mut Window,
-  _: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: disks::Options = options(bar, slot);
-  let name = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.hide_no_disks"),
-      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
-        .checked(current.hide_when_idle)
-        .small()
-        .on_click(move |checked, _, cx| {
-          set_options(
-            cx,
-            &name,
-            slot,
-            disks::Options {
-              hide_when_idle: *checked,
-            },
-          );
-        }),
-    ))
-    .into_any_element()
 }
 
 #[cfg(test)]

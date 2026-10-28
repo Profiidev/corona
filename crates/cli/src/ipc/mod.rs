@@ -1,6 +1,9 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
+use corona_settings::commands::{
+  Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
+};
 use corona_shell::commands::bluetooth::{
   Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
 };
@@ -12,14 +15,12 @@ use corona_shell::commands::parse_level;
 use corona_shell::commands::plugin::PluginCall;
 use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
-use corona_shell::commands::settings::{Action as SettingsAction, SettingsWindow};
 use corona_shell::commands::volume::Device;
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
   switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
 };
-use corona_shell::settings::PAGES;
 use corona_surface::commands::{ListPages, OpenPage};
 
 use crate::ipc::{
@@ -235,7 +236,7 @@ pub enum IpcCommands {
   Settings {
     action: SettingsAction,
     /// The page to open on
-    #[arg(add = clap_complete::ArgValueCandidates::new(|| PAGES.into_iter().map(CompletionCandidate::new).collect::<Vec<_>>()))]
+    #[arg(add = clap_complete::ArgValueCandidates::new(|| candidates(ListSettingsPages::send(()))))]
     page: Option<String>,
   },
   /// Open the window switcher, or move its selection while open

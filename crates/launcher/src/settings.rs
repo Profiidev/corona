@@ -7,7 +7,7 @@ use corona_config::{
   Config, ConfigProvider,
   launcher::{CommandConfig, Quicklink, SearchEngine, Snippet},
 };
-use corona_launcher::registry::Registry;
+use corona_settings::{SettingsPage, group, item, page};
 use gpui_kit::{
   App, AppContext, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
   Window,
@@ -27,9 +27,22 @@ use corona_components::settings_fields::{
   Choice, number, optional_text, save, searchable, switch, text,
 };
 
-use crate::settings::pages::{group, item, page};
+use crate::registry::Registry;
 
-pub(super) fn page_of(cx: &App) -> SettingPage {
+/// The launcher page: behavior, every command's alias and visibility,
+/// quicklinks, snippets and where results come from
+pub struct LauncherSettings;
+
+impl SettingsPage for LauncherSettings {
+  const ID: &'static str = "launcher";
+  const ORDER: i32 = 80;
+
+  fn page(cx: &App) -> SettingPage {
+    page_of(cx)
+  }
+}
+
+fn page_of(cx: &App) -> SettingPage {
   page(
     t!("app.settings.launcher.title"),
     IconName::Search,

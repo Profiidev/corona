@@ -9,10 +9,12 @@ pub mod matching;
 pub mod paste;
 pub mod placeholders;
 pub mod registry;
+pub mod settings;
 pub mod state;
 pub mod ui;
 pub mod view;
 
+use corona_settings::SettingsExt;
 use corona_surface::osd::OsdExt;
 use gpui_kit::App;
 
@@ -32,4 +34,5 @@ pub fn init(cx: &mut App) {
   registry::init(cx);
   ui::bind_keys(cx);
   cx.osd_mut().register::<ui::hud::HudOsd>();
+  cx.settings_mut().register::<settings::LauncherSettings>();
 }
