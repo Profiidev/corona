@@ -639,6 +639,20 @@ app:
         description:
           en: Tiles on the dashboard.
           de: Kacheln in der Übersicht.
+      sliders:
+        title:
+          en: Sliders
+          de: Regler
+        description:
+          en: Sliders on the dashboard.
+          de: Regler in der Übersicht.
+      cards:
+        title:
+          en: Cards
+          de: Karten
+        description:
+          en: Cards at the bottom of the dashboard.
+          de: Karten unten in der Übersicht.
       add:
         en: Add…
         de: Hinzufügen…

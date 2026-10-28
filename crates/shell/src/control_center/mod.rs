@@ -15,9 +15,8 @@ mod printers;
 pub(crate) mod sysinfo;
 mod weather;
 
-use corona_config::{ConfigProvider, ControlCenterConfig};
 use corona_surface::{
-  control_center::{ControlCenter, ControlCenterExt, resolve},
+  control_center::{ControlCenter, ControlCenterExt},
   panel::AppPanelExt,
 };
 use gpui_kit::App;
@@ -61,19 +60,8 @@ pub fn register_panels(cx: &mut App) {
     .register::<CalendarPanel>()
     .register::<MediaPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
-  warn_bad_actions(cx);
-}
-
-/// Logs the quick action ids that are skipped, now and whenever they change
-fn warn_bad_actions(cx: &mut App) {
-  fn warn(config: &ControlCenterConfig) {
-    let (_, actions) = resolve(&config.quick_actions, dashboard::toggles::quick_action_id);
-    if !actions.is_empty() {
-      tracing::warn!("control_center.quick_actions: skipping unknown or repeated {actions:?}");
-    }
-  }
-  warn(&cx.config().control_center);
-  corona_config::observe_section(cx, |c| &c.control_center, |config, _| warn(config));
+  dashboard::register(cx);
+  corona_surface::dashboard::warn_bad_ids(cx);
 }
 
 /// The disks panel's job history and drive notifications, which run with the panel closed

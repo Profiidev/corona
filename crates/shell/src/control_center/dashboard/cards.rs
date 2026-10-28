@@ -5,8 +5,8 @@ use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_sysinfo::SystemMonitorExt;
 use corona_weather::WeatherExt;
 use gpui_kit::{
-  App, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Stateful,
-  StatefulInteractiveElement, Styled, StyledImage,
+  App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
+  SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
   assets::IconName,
   base::StyledExt,
   component::{
@@ -30,7 +30,10 @@ use crate::{
   overlays::wallpaper,
 };
 use corona_components::i18n::format_time;
-use corona_surface::control_center::ControlCenterPage;
+use corona_surface::{
+  control_center::ControlCenterPage,
+  dashboard::{DashboardCard, DashboardExt},
+};
 use rust_i18n::t;
 
 const ART: f32 = 64.;
@@ -106,7 +109,7 @@ pub(super) fn profile(cx: &App) -> Stateful<Div> {
     .on_click(open(SysinfoPanel::ID))
 }
 
-pub(super) fn media(cx: &App) -> Option<Stateful<Div>> {
+fn media(cx: &App) -> Option<Stateful<Div>> {
   let theme = cx.theme();
   let player = cx.mpris().active_player(cx)?;
   let name = player.name.clone();
@@ -202,7 +205,7 @@ pub(super) fn media(cx: &App) -> Option<Stateful<Div>> {
   )
 }
 
-pub(super) fn clock(cx: &App) -> Stateful<Div> {
+fn clock(cx: &App) -> Stateful<Div> {
   let theme = cx.theme();
   let now = Zoned::now();
   let config = &cx.config().control_center;
@@ -252,6 +255,66 @@ pub(super) fn clock(cx: &App) -> Stateful<Div> {
           }),
       )
     })
+}
+
+/// The active player, nothing without one
+pub struct MediaCard {
+  _subscriptions: [Subscription; 2],
+}
+
+impl DashboardCard for MediaCard {
+  const ID: &'static str = "media";
+
+  fn title() -> SharedString {
+    t!("app.control_center.media").into()
+  }
+
+  fn init(_: &mut Window, cx: &mut Context<Self>) -> Self {
+    let players = cx.mpris().players.clone();
+    let active = cx.mpris().active.clone();
+    Self {
+      _subscriptions: [
+        cx.observe(&players, |_, _, cx| cx.notify()),
+        cx.observe(&active, |_, _, cx| cx.notify()),
+      ],
+    }
+  }
+}
+
+impl Render for MediaCard {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    media(cx).map_or_else(|| div().into_any_element(), |d| d.into_any_element())
+  }
+}
+
+/// The time, date and current weather
+pub struct ClockCard {
+  _subscription: Subscription,
+}
+
+impl DashboardCard for ClockCard {
+  const ID: &'static str = "clock";
+
+  fn title() -> SharedString {
+    t!("app.dashboard.cards.clock").into()
+  }
+
+  fn init(_: &mut Window, cx: &mut Context<Self>) -> Self {
+    let weather = cx.weather().weather.clone();
+    Self {
+      _subscription: cx.observe(&weather, |_, _, cx| cx.notify()),
+    }
+  }
+}
+
+impl Render for ClockCard {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    clock(cx)
+  }
+}
+
+pub(crate) fn register(cx: &mut App) {
+  cx.dashboard_mut().card::<MediaCard>().card::<ClockCard>();
 }
 
 #[cfg(test)]

@@ -290,6 +290,10 @@ quick_actions = [
   "stay_awake",
   "airplane"
 ]
+# Sliders on the dashboard, in order: "output" and "input" volume, "brightness".
+sliders = ["output", "input", "brightness"]
+# Cards at the bottom of the dashboard, in order: "media", "clock".
+cards = ["media", "clock"]
 
 [weather]
 units = "metric" # or "imperial"

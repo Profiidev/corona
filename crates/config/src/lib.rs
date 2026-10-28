@@ -464,9 +464,12 @@ pub struct ControlCenterConfig {
   pub background_opacity: f32,
   /// Pages in the sidebar, in order, after the dashboard which is always first
   pub sidebar: Vec<String>,
-  /// Tiles on the dashboard, in order: `wifi`, `bluetooth`, `dnd`, `dark_mode`,
-  /// `stay_awake`, `nightlight`, `airplane`, `power_profile`
+  /// Tiles on the dashboard, in order; the settings list the ones there are
   pub quick_actions: Vec<String>,
+  /// Sliders on the dashboard, in order
+  pub sliders: Vec<String>,
+  /// Cards at the bottom of the dashboard, in order
+  pub cards: Vec<String>,
 }
 
 impl Default for ControlCenterConfig {
@@ -505,6 +508,8 @@ impl Default for ControlCenterConfig {
       ]
       .map(String::from)
       .to_vec(),
+      sliders: ["output", "input", "brightness"].map(String::from).to_vec(),
+      cards: ["media", "clock"].map(String::from).to_vec(),
     }
   }
 }

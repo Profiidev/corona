@@ -2,18 +2,20 @@ use std::time::Duration;
 
 use corona_brightness::{BrightnessExt, Display};
 use corona_compositor::CompositorExt;
+use corona_config::ConfigProvider;
 use corona_pipewire::{
   AudioNode, PipewireExt,
   volume::{to_linear, to_slider},
 };
+use corona_surface::{
+  control_center::{ControlCenter, ControlCenterPage},
+  dashboard::{Changed, DashboardExt, DashboardRegistry, DashboardSlider, SliderEntry},
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, AppContext, Context, Div, Entity, ParentElement, Styled, Subscription, Window,
+  App, AppContext, Context, Div, Entity, ParentElement, SharedString, Styled, Subscription, Window,
   assets::IconName,
-  base::{
-    Disableable,
-    slider::{SliderEvent, SliderState},
-  },
+  base::slider::{SliderEvent, SliderState},
   component::{
     ActiveTheme,
     button::{Button, ButtonVariant, ButtonVariants},
@@ -22,24 +24,15 @@ use gpui_kit::{
   div,
   prelude::FluentBuilder,
 };
+use rust_i18n::t;
 
-use crate::control_center::{AudioPanel, BrightnessPanel};
 use crate::{
-  control_center::dashboard::{DashboardPanel, spawn_logged},
+  control_center::{
+    AudioPanel, BrightnessPanel,
+    dashboard::{DashboardPanel, spawn_logged},
+  },
   icons::volume_icon,
 };
-use corona_surface::control_center::{ControlCenter, ControlCenterPage};
-
-pub(super) struct Sliders {
-  output: Entity<SliderState>,
-  input: Entity<SliderState>,
-  brightness: Entity<SliderState>,
-  dragging: bool,
-  pending: Option<f32>,
-  _subscriptions: [Subscription; 3],
-}
-
-const THROTTLE: Duration = Duration::from_millis(100);
 
 fn sink(cx: &App) -> Option<&AudioNode> {
   cx.pipewire().default_sink(cx)
@@ -62,18 +55,6 @@ fn pick_display<'d>(displays: &'d [Display], focused: &str) -> Option<&'d Displa
     .or_else(|| usable().next())
 }
 
-/// the brightness slider's target, `None` while dragging so the drag is not overwritten
-fn brightness_value(displays: &[Display], focused: &str, dragging: bool) -> Option<f32> {
-  pick_display(displays, focused)
-    .map(Display::percent)
-    .filter(|_| !dragging)
-}
-
-/// the brightness label: the slider while dragging, else the display's level
-fn brightness_label(display: Option<f32>, slider: f32, dragging: bool) -> Option<f32> {
-  display.map(|percent| if dragging { slider } else { percent })
-}
-
 fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
   let Some(node) = node else {
     return;
@@ -86,99 +67,246 @@ fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
     .log_err();
 }
 
-fn set_brightness(percent: f32, cx: &mut App) {
-  let Some(display) = display(cx) else {
-    return;
-  };
-  let raw = (percent / 100. * display.max as f32).round() as u32;
-  let task = cx.brightness().set_brightness(&display.id, raw, cx);
-  spawn_logged(cx, task);
+fn toggle_mute(node: Option<&AudioNode>, cx: &App) {
+  if let Some(node) = node {
+    let _ = cx
+      .pipewire()
+      .audio()
+      .set_mute(node.id, !node.mute)
+      .log_err();
+  }
+}
+
+fn observe<T: 'static>(entity: &Entity<T>, changed: Changed, cx: &mut App) -> Subscription {
+  cx.observe(entity, move |_, cx| changed(cx))
+}
+
+pub struct Output;
+
+impl DashboardSlider for Output {
+  const ID: &'static str = "output";
+
+  fn title() -> SharedString {
+    t!("app.dashboard.sliders.output").into()
+  }
+
+  fn icon(cx: &App) -> IconName {
+    sink(cx).map_or(IconName::VolumeOff, |n| {
+      volume_icon(to_slider(n.volume()), n.mute)
+    })
+  }
+
+  fn value(cx: &App) -> Option<f32> {
+    sink(cx).map(|n| to_slider(n.volume()))
+  }
+
+  fn set(value: f32, cx: &mut App) {
+    set_volume(sink(cx), value, cx);
+  }
+
+  fn muted(cx: &App) -> Option<bool> {
+    Some(sink(cx).is_some_and(|n| n.mute))
+  }
+
+  fn toggle_mute(cx: &mut App) {
+    toggle_mute(sink(cx), cx);
+  }
+
+  fn page() -> Option<&'static str> {
+    Some(AudioPanel::ID)
+  }
+
+  fn observe(changed: Changed, cx: &mut App) -> Vec<Subscription> {
+    let sink = cx.pipewire().default_sink.clone();
+    vec![observe(&sink, changed, cx)]
+  }
+}
+
+pub struct Input;
+
+impl DashboardSlider for Input {
+  const ID: &'static str = "input";
+
+  fn title() -> SharedString {
+    t!("app.dashboard.sliders.input").into()
+  }
+
+  fn icon(cx: &App) -> IconName {
+    match source(cx) {
+      Some(n) if !n.mute => IconName::Mic,
+      _ => IconName::MicOff,
+    }
+  }
+
+  fn value(cx: &App) -> Option<f32> {
+    source(cx).map(|n| to_slider(n.volume()))
+  }
+
+  fn set(value: f32, cx: &mut App) {
+    set_volume(source(cx), value, cx);
+  }
+
+  fn muted(cx: &App) -> Option<bool> {
+    Some(source(cx).is_some_and(|n| n.mute))
+  }
+
+  fn toggle_mute(cx: &mut App) {
+    toggle_mute(source(cx), cx);
+  }
+
+  fn page() -> Option<&'static str> {
+    Some(AudioPanel::ID)
+  }
+
+  fn observe(changed: Changed, cx: &mut App) -> Vec<Subscription> {
+    let source = cx.pipewire().default_source.clone();
+    vec![observe(&source, changed, cx)]
+  }
+}
+
+pub struct Brightness;
+
+impl DashboardSlider for Brightness {
+  const ID: &'static str = "brightness";
+  // each step is a DDC/CI or sysfs write
+  const THROTTLE: Option<Duration> = Some(Duration::from_millis(100));
+
+  fn title() -> SharedString {
+    t!("app.dashboard.sliders.brightness").into()
+  }
+
+  fn icon(_: &App) -> IconName {
+    IconName::Sun
+  }
+
+  fn value(cx: &App) -> Option<f32> {
+    display(cx).map(|d| d.percent() / 100.)
+  }
+
+  fn set(value: f32, cx: &mut App) {
+    let Some(display) = display(cx) else {
+      return;
+    };
+    let raw = (value * display.max as f32).round() as u32;
+    let task = cx.brightness().set_brightness(&display.id, raw, cx);
+    spawn_logged(cx, task);
+  }
+
+  fn page() -> Option<&'static str> {
+    Some(BrightnessPanel::ID)
+  }
+
+  fn observe(changed: Changed, cx: &mut App) -> Vec<Subscription> {
+    let displays = cx.brightness().displays.clone();
+    let monitor = cx.compositor().active_monitor.clone();
+    vec![
+      observe(&displays, changed.clone(), cx),
+      observe(&monitor, changed, cx),
+    ]
+  }
+}
+
+pub(crate) fn register(cx: &mut App) {
+  cx.dashboard_mut()
+    .slider::<Output>()
+    .slider::<Input>()
+    .slider::<Brightness>();
+}
+
+/// A slider's state on the open dashboard
+struct Row {
+  id: &'static str,
+  state: Entity<SliderState>,
+  /// a throttled slider follows the drag, not the backend, until released
+  dragging: bool,
+  pending: Option<f32>,
+}
+
+pub(super) struct Sliders {
+  rows: Vec<Row>,
+  _subscriptions: Vec<Subscription>,
+}
+
+fn entry<'a>(cx: &'a App, id: &str) -> Option<&'a SliderEntry> {
+  cx.dashboard().sliders().iter().find(|s| s.id == id)
 }
 
 impl Sliders {
-  pub fn new(cx: &mut Context<DashboardPanel>) -> Self {
-    let volume = || SliderState::new().min(0.).max(1.).step(0.01);
-    let output = cx.new(|_| volume());
-    let input = cx.new(|_| volume());
-    let brightness = cx.new(|_| SliderState::new().min(0.).max(100.).step(1.));
-
-    let subscriptions = [
-      cx.subscribe(&output, |_, _, event: &SliderEvent, cx| {
-        if let SliderEvent::Change(value) = event {
-          set_volume(sink(cx), value.start(), cx);
-        }
-      }),
-      cx.subscribe(&input, |_, _, event: &SliderEvent, cx| {
-        if let SliderEvent::Change(value) = event {
-          set_volume(source(cx), value.start(), cx);
-        }
-      }),
-      cx.subscribe(
-        &brightness,
-        |this, _, event: &SliderEvent, cx| match event {
-          SliderEvent::Change(value) => {
-            this.sliders.dragging = true;
-            this.sliders.throttle(value.start(), cx);
-            cx.notify();
-          }
-          SliderEvent::Release(value) => {
-            this.sliders.dragging = false;
-            this.sliders.pending = None;
-            set_brightness(value.start(), cx);
-          }
-        },
-      ),
-    ];
-
+  /// A row for every registered slider, `changed` resyncs them
+  pub fn new(changed: &Changed, cx: &mut Context<DashboardPanel>) -> Self {
+    let entries: Vec<_> = (cx.dashboard().sliders().iter())
+      .map(|s| (s.id, s.observe))
+      .collect();
+    let mut rows = Vec::new();
+    let mut subscriptions = Vec::new();
+    for (index, (id, observe)) in entries.into_iter().enumerate() {
+      let state = cx.new(|_| SliderState::new().min(0.).max(1.).step(0.01));
+      subscriptions.push(
+        cx.subscribe(&state, move |this, _, event: &SliderEvent, cx| {
+          this.sliders.on_event(index, event, cx)
+        }),
+      );
+      subscriptions.extend(observe(changed.clone(), cx));
+      rows.push(Row {
+        id,
+        state,
+        dragging: false,
+        pending: None,
+      });
+    }
     Self {
-      output,
-      input,
-      brightness,
-      dragging: false,
-      pending: None,
+      rows,
       _subscriptions: subscriptions,
     }
   }
 
-  fn throttle(&mut self, percent: f32, cx: &mut Context<DashboardPanel>) {
-    if self.pending.replace(percent).is_some() {
+  fn on_event(&mut self, index: usize, event: &SliderEvent, cx: &mut Context<DashboardPanel>) {
+    let Some(entry) = entry(cx, self.rows[index].id) else {
       return;
-    }
-    cx.spawn(async move |panel, cx| {
-      cx.background_executor().timer(THROTTLE).await;
-      let _ = panel.update(cx, |panel, cx| {
-        if let Some(percent) = panel.sliders.pending.take() {
-          set_brightness(percent, cx);
+    };
+    let (set, throttle) = (entry.set, entry.throttle);
+    let Some(throttle) = throttle else {
+      if let SliderEvent::Change(value) = event {
+        set(value.start(), cx);
+      }
+      return;
+    };
+    let row = &mut self.rows[index];
+    match event {
+      SliderEvent::Change(value) => {
+        row.dragging = true;
+        if row.pending.replace(value.start()).is_none() {
+          cx.spawn(async move |panel, cx| {
+            cx.background_executor().timer(throttle).await;
+            let _ = panel.update(cx, |panel, cx| {
+              if let Some(value) = panel.sliders.rows[index].pending.take() {
+                set(value, cx);
+              }
+            });
+          })
+          .detach();
         }
-      });
-    })
-    .detach();
+        cx.notify();
+      }
+      SliderEvent::Release(value) => {
+        row.dragging = false;
+        row.pending = None;
+        set(value.start(), cx);
+      }
+    }
   }
 
+  /// Moves the sliders to the backends' values, all but ones being dragged
   pub fn sync(&mut self, window: &mut Window, cx: &mut Context<DashboardPanel>) {
-    let values = [
-      (&self.output, sink(cx).map(|n| to_slider(n.volume())), 0.005),
-      (
-        &self.input,
-        source(cx).map(|n| to_slider(n.volume())),
-        0.005,
-      ),
-      (
-        &self.brightness,
-        brightness_value(
-          cx.brightness().list_displays(cx),
-          &cx.compositor().active_monitor(cx).name,
-          self.dragging,
-        ),
-        0.5,
-      ),
-    ];
-    for (slider, value, epsilon) in values {
+    for row in &self.rows {
+      let value = entry(cx, row.id)
+        .and_then(|e| (e.value)(cx))
+        .filter(|_| !row.dragging);
       let Some(value) = value else {
         continue;
       };
-      slider.update(cx, |state, cx| {
-        if (state.value().start() - value).abs() > epsilon {
+      row.state.update(cx, |state, cx| {
+        if (state.value().start() - value).abs() > 0.005 {
           state.set_value(value, window, cx);
         }
       });
@@ -186,28 +314,24 @@ impl Sliders {
   }
 
   pub fn render(&self, cx: &mut Context<DashboardPanel>) -> Div {
-    let output = sink(cx).map(|n| (n.id, n.mute, to_slider(n.volume())));
-    let input = source(cx).map(|n| (n.id, n.mute, to_slider(n.volume())));
-    let brightness = brightness_label(
-      display(cx).map(Display::percent),
-      self.brightness.read(cx).value().start(),
-      self.dragging,
+    let (entries, _) = DashboardRegistry::pick(
+      cx.dashboard().sliders(),
+      &cx.config().control_center.sliders,
+      |s| s.id,
     );
-
-    let mute = |id: &'static str, node: Option<(u32, bool, f32)>, icon: IconName| {
-      Button::new(id)
-        .icon(icon)
-        .cursor_pointer()
-        .disabled(node.is_none())
-        .when(node.is_some_and(|(_, mute, _)| mute), |b| {
-          b.with_variant(ButtonVariant::Danger)
-        })
-        .on_click(move |_, _, cx| {
-          if let Some((id, mute, _)) = node {
-            let _ = cx.pipewire().audio().set_mute(id, !mute).log_err();
-          }
-        })
-    };
+    let rows: Vec<_> = (entries.into_iter())
+      .filter_map(|entry| {
+        let row = self.rows.iter().find(|r| r.id == entry.id)?;
+        let value = (entry.value)(cx)?;
+        // a drag shows where it is, not where the backend got to
+        let shown = if row.dragging {
+          row.state.read(cx).value().start()
+        } else {
+          value
+        };
+        Some(self.row(entry, row, shown * 100., cx))
+      })
+      .collect();
 
     div()
       .flex()
@@ -218,82 +342,50 @@ impl Sliders {
       .border_1()
       .border_color(cx.theme().border)
       .bg(cx.theme().colors.accent)
-      .child(row(
-        mute(
-          "dashboard-output-mute",
-          output,
-          output.map_or(IconName::VolumeOff, |(_, mute, v)| volume_icon(v, mute)),
-        ),
-        &self.output,
-        output.map(|(_, _, v)| v * 100.),
-        AudioPanel::ID,
-        cx,
-      ))
-      .child(row(
-        mute(
-          "dashboard-input-mute",
-          input,
-          match input {
-            Some((_, false, _)) => IconName::Mic,
-            _ => IconName::MicOff,
-          },
-        ),
-        &self.input,
-        input.map(|(_, _, v)| v * 100.),
-        AudioPanel::ID,
-        cx,
-      ))
-      .children(brightness.map(|percent| {
-        row(
-          Button::new("dashboard-brightness")
-            .icon(IconName::Sun)
-            .ghost(),
-          &self.brightness,
-          Some(percent),
-          BrightnessPanel::ID,
-          cx,
-        )
-      }))
+      .children(rows)
   }
-}
 
-fn row(
-  icon: Button,
-  slider: &Entity<SliderState>,
-  percent: Option<f32>,
-  page: &'static str,
-  cx: &App,
-) -> Div {
-  let id = format!("dashboard-open-{}", slider.entity_id());
-  div()
-    .flex()
-    .items_center()
-    .gap_1()
-    .child(icon)
-    .child(
-      div().flex_1().child(
-        Slider::new(slider)
-          .px_2()
+  fn row(&self, entry: &SliderEntry, row: &Row, percent: f32, cx: &App) -> Div {
+    let icon = Button::new(format!("dashboard-{}-icon", entry.id)).icon((entry.icon)(cx));
+    let icon = match (entry.muted)(cx) {
+      Some(muted) => {
+        let toggle = entry.toggle_mute;
+        icon
           .cursor_pointer()
-          .disabled(percent.is_none()),
-      ),
-    )
-    .child(
-      div()
-        .w_10()
-        .flex()
-        .justify_end()
-        .text_sm()
-        .text_color(cx.theme().muted_foreground)
-        .child(percent.map_or("–".into(), |p| format!("{p:.0}%"))),
-    )
-    .child(
-      Button::new(id)
-        .icon(IconName::ChevronRight)
-        .ghost()
-        .cursor_pointer()
-        .on_click(move |_, window, cx| ControlCenter::navigate_id(page, window, cx)),
-    )
+          .when(muted, |b| b.with_variant(ButtonVariant::Danger))
+          .on_click(move |_, _, cx| toggle(cx))
+      }
+      None => icon.ghost(),
+    };
+    div()
+      .flex()
+      .items_center()
+      .gap_1()
+      .child(icon)
+      .child(
+        div()
+          .flex_1()
+          .child(Slider::new(&row.state).px_2().cursor_pointer()),
+      )
+      .child(
+        div()
+          .w_10()
+          .flex()
+          .justify_end()
+          .text_sm()
+          .text_color(cx.theme().muted_foreground)
+          .child(format!("{percent:.0}%")),
+      )
+      .when_some(entry.page, |d, page| {
+        d.child(
+          Button::new(format!("dashboard-open-{}", entry.id))
+            .icon(IconName::ChevronRight)
+            .ghost()
+            .cursor_pointer()
+            .on_click(move |_, window, cx| ControlCenter::navigate_id(page, window, cx)),
+        )
+      })
+  }
 }
 
 #[cfg(test)]
@@ -312,24 +404,6 @@ mod tests {
       max: 100,
       unavailable,
     }
-  }
-
-  #[test]
-  fn brightness_label_follows_the_drag() {
-    assert_eq!(brightness_label(Some(40.), 70., true), Some(70.));
-    assert_eq!(brightness_label(Some(40.), 70., false), Some(40.));
-    assert_eq!(brightness_label(None, 70., true), None);
-  }
-
-  #[test]
-  fn brightness_value_follows_the_focused_monitor() {
-    let mut dim = display("b", Some("DP-2"), None);
-    dim.brightness = 20;
-    let displays = [display("a", Some("DP-1"), None), dim];
-    assert_eq!(brightness_value(&displays, "DP-1", false), Some(50.));
-    assert_eq!(brightness_value(&displays, "DP-2", false), Some(20.));
-    // a drag in progress keeps its own value
-    assert_eq!(brightness_value(&displays, "DP-2", true), None);
   }
 
   fn picked(displays: &[Display], focused: &str) -> Option<String> {

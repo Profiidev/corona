@@ -10,6 +10,7 @@ use corona_config::{
 use corona_osk::Osk;
 use corona_surface::{
   control_center::{ControlCenterExt, DASHBOARD},
+  dashboard::DashboardExt,
   osd::OsdExt,
 };
 use corona_utils::error::ErrorLogExt;
@@ -23,7 +24,6 @@ use gpui_kit::{
   },
 };
 
-use crate::control_center::dashboard::toggles::{QUICK_ACTIONS, quick_action_label};
 use corona_components::i18n;
 use corona_components::settings_fields::{
   Choice, choice, number, optional_text,
@@ -585,19 +585,48 @@ fn control_center() -> SettingPage {
             key: "control_center.quick_actions",
             title: || t!("app.settings.control_center.quick_actions.title"),
             description: || t!("app.settings.control_center.quick_actions.description"),
-            options: |_| {
-              QUICK_ACTIONS
-                .into_iter()
-                .filter_map(|id| {
-                  Some(Choice {
-                    value: id.into(),
-                    label: quick_action_label(id)?.into(),
-                  })
+            options: |cx| {
+              (cx.dashboard().quick_actions().iter())
+                .map(|a| Choice {
+                  value: a.id.into(),
+                  label: (a.title)().into(),
                 })
                 .collect()
             },
             get: |c| c.control_center.quick_actions.clone(),
             set: |c, v| c.control_center.quick_actions = v,
+          },
+        ]),
+        order_item([
+          OrderList {
+            key: "control_center.sliders",
+            title: || t!("app.settings.control_center.sliders.title"),
+            description: || t!("app.settings.control_center.sliders.description"),
+            options: |cx| {
+              (cx.dashboard().sliders().iter())
+                .map(|s| Choice {
+                  value: s.id.into(),
+                  label: (s.title)().into(),
+                })
+                .collect()
+            },
+            get: |c| c.control_center.sliders.clone(),
+            set: |c, v| c.control_center.sliders = v,
+          },
+          OrderList {
+            key: "control_center.cards",
+            title: || t!("app.settings.control_center.cards.title"),
+            description: || t!("app.settings.control_center.cards.description"),
+            options: |cx| {
+              (cx.dashboard().cards().iter())
+                .map(|c| Choice {
+                  value: c.id.into(),
+                  label: (c.title)().into(),
+                })
+                .collect()
+            },
+            get: |c| c.control_center.cards.clone(),
+            set: |c, v| c.control_center.cards = v,
           },
         ]),
       ],

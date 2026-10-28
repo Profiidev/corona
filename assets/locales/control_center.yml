@@ -53,6 +53,20 @@ app:
       en: No content
       de: Kein Inhalt
   dashboard:
+    sliders:
+      output:
+        en: Volume
+        de: Lautstärke
+      input:
+        en: Microphone
+        de: Mikrofon
+      brightness:
+        en: Brightness
+        de: Helligkeit
+    cards:
+      clock:
+        en: Clock
+        de: Uhr
     wifi:
       en: Wi-Fi
       de: WLAN

@@ -1,3 +1,8 @@
+use crate::control_center::dashboard::{DashboardPanel, spawn_logged};
+use crate::control_center::{
+  BluetoothPanel, BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel,
+};
+use crate::icons::power_profile;
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
 use corona_components::assets::toggle_mode;
@@ -6,10 +11,14 @@ use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
 use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
+use corona_surface::{
+  control_center::{ControlCenter, ControlCenterPage},
+  dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
-  ParentElement, Styled, Window,
+  ParentElement, SharedString, Styled, Subscription, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -20,17 +29,6 @@ use gpui_kit::{
   prelude::FluentBuilder,
   px,
 };
-use std::borrow::Cow;
-
-use crate::control_center::{
-  BluetoothPanel, BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel,
-};
-use crate::control_center::{
-  dashboard::{DashboardPanel, spawn_logged},
-  resolve,
-};
-use crate::icons::power_profile;
-use corona_surface::control_center::{ControlCenter, ControlCenterPage};
 use rust_i18n::t;
 
 const COLUMNS: usize = 3;
@@ -38,65 +36,149 @@ const COLUMNS: usize = 3;
 type Action = Box<dyn Fn(&mut App)>;
 
 struct Toggle {
-  id: &'static str,
   icon: IconName,
-  label: Cow<'static, str>,
   status: String,
   active: bool,
   on_click: Option<Action>,
-  page: Option<&'static str>,
 }
 
-/// Every tile id, in the order the settings offer them
-pub(crate) const QUICK_ACTIONS: [&str; 8] = [
+/// A quick action whose tile `$build` makes, re-rendered when the entities
+/// `$observe` names notify
+macro_rules! action {
+  (
+    $name:ident, $id:literal, $title:literal, $build:ident, $page:expr,
+    |$cx:ident| [$($entity:expr),* $(,)?]
+  ) => {
+    pub struct $name;
+
+    impl QuickAction for $name {
+      const ID: &'static str = $id;
+
+      fn title() -> SharedString {
+        t!($title).into()
+      }
+
+      fn tile(cx: &App) -> Tile {
+        let toggle = $build(cx);
+        Tile {
+          icon: toggle.icon,
+          status: toggle.status.into(),
+          active: toggle.active,
+          toggle: toggle.on_click,
+        }
+      }
+
+      fn page() -> Option<&'static str> {
+        $page
+      }
+
+      #[allow(unused_variables)]
+      fn observe(changed: Changed, $cx: &mut App) -> Vec<Subscription> {
+        vec![$({
+          let (entity, changed) = ($entity.clone(), changed.clone());
+          $cx.observe(&entity, move |_, cx| changed(cx))
+        }),*]
+      }
+    }
+  };
+}
+
+action!(
+  Wifi,
   "wifi",
+  "app.dashboard.wifi",
+  wifi,
+  Some(NetworkPanel::ID),
+  |cx| [
+    cx.network_manager().wifi_enabled,
+    cx.network_manager().wifi_networks,
+  ]
+);
+action!(
+  Bluetooth,
   "bluetooth",
+  "app.dashboard.bluetooth",
+  bluetooth,
+  Some(BluetoothPanel::ID),
+  |cx| [cx.bluetooth().adapter, cx.bluetooth().devices,]
+);
+action!(
+  Dnd,
   "dnd",
+  "app.dashboard.dnd",
+  dnd,
+  Some(NotificationsPanel::ID),
+  |cx| [cx.notifications().do_not_disturb,]
+);
+// a theme change redraws every window anyway
+action!(
+  DarkMode,
   "dark_mode",
+  "app.dashboard.dark_mode",
+  dark_mode,
+  None,
+  |cx| []
+);
+action!(
+  StayAwake,
   "stay_awake",
+  "app.dashboard.stay_awake",
+  stay_awake,
+  None,
+  |cx| [cx.idle().stay_awake,]
+);
+action!(
+  Nightlight,
   "nightlight",
+  "app.brightness.nightlight",
+  nightlight,
+  Some(BrightnessPanel::ID),
+  |cx| [cx.brightness().nightlight,]
+);
+action!(
+  Airplane,
   "airplane",
+  "app.dashboard.airplane",
+  airplane,
+  Some(NetworkPanel::ID),
+  |cx| [cx.network_manager().wifi_enabled, cx.bluetooth().adapter,]
+);
+action!(
+  PowerProfile,
   "power_profile",
-];
+  "app.power.profile.title",
+  profile,
+  Some(PowerPanel::ID),
+  |cx| [cx.power().profiles,]
+);
 
-pub(crate) fn quick_action_id(id: &str) -> Option<&'static str> {
-  QUICK_ACTIONS.into_iter().find(|a| *a == id)
-}
-
-/// A tile's name, for the settings
-pub(crate) fn quick_action_label(id: &str) -> Option<Cow<'static, str>> {
-  Some(match quick_action_id(id)? {
-    "wifi" => t!("app.dashboard.wifi"),
-    "bluetooth" => t!("app.dashboard.bluetooth"),
-    "dnd" => t!("app.dashboard.dnd"),
-    "dark_mode" => t!("app.dashboard.dark_mode"),
-    "stay_awake" => t!("app.dashboard.stay_awake"),
-    "nightlight" => t!("app.brightness.nightlight"),
-    "airplane" => t!("app.dashboard.airplane"),
-    _ => t!("app.power.profile.title"),
-  })
-}
-
-fn quick_action(id: &str, cx: &App) -> Toggle {
-  match id {
-    "wifi" => wifi(cx),
-    "bluetooth" => bluetooth(cx),
-    "dnd" => dnd(cx),
-    "dark_mode" => dark_mode(cx),
-    "stay_awake" => stay_awake(cx),
-    "nightlight" => nightlight(cx),
-    "airplane" => airplane(cx),
-    _ => profile(cx),
-  }
+/// Registers every tile, in the order the settings offer them
+pub(crate) fn register(cx: &mut App) {
+  cx.dashboard_mut()
+    .quick_action::<Wifi>()
+    .quick_action::<Bluetooth>()
+    .quick_action::<Dnd>()
+    .quick_action::<DarkMode>()
+    .quick_action::<StayAwake>()
+    .quick_action::<Nightlight>()
+    .quick_action::<Airplane>()
+    .quick_action::<PowerProfile>();
 }
 
 /// The configured tiles, None for none
 pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
-  let (ids, _) = resolve(&cx.config().control_center.quick_actions, quick_action_id);
-  if ids.is_empty() {
+  let registry = cx.dashboard();
+  let (actions, _) = DashboardRegistry::pick(
+    registry.quick_actions(),
+    &cx.config().control_center.quick_actions,
+    |a| a.id,
+  );
+  if actions.is_empty() {
     return None;
   }
-  let tiles: Vec<Toggle> = ids.into_iter().map(|id| quick_action(id, cx)).collect();
+  let tiles: Vec<_> = (actions.into_iter())
+    .map(|action| tile(action, (action.tile)(cx)))
+    .collect();
 
   let mut rows = div().flex().flex_col().gap(px(6.));
   let mut tiles = tiles.into_iter().peekable();
@@ -104,23 +186,23 @@ pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div>
     let row: Vec<_> = tiles
       .by_ref()
       .take(COLUMNS)
-      .map(|toggle| div().flex_1().min_w_0().child(tile(toggle)))
+      .map(|tile| div().flex_1().min_w_0().child(tile))
       .collect();
     rows = rows.child(div().flex().gap(px(6.)).children(row));
   }
   Some(rows)
 }
 
-fn tile(toggle: Toggle) -> Button {
-  let page = toggle.page;
-  let enabled = toggle.on_click.is_some();
+fn tile(action: &QuickActionEntry, tile: Tile) -> Button {
+  let page = action.page;
+  let enabled = tile.toggle.is_some();
 
-  Button::new(ElementId::Name(toggle.id.into()))
-    .with_variant(match toggle.active {
+  Button::new(ElementId::Name(format!("toggle-{}", action.id).into()))
+    .with_variant(match tile.active {
       true => ButtonVariant::Primary,
       false => ButtonVariant::Default,
     })
-    .icon(Icon::new(toggle.icon).small())
+    .icon(Icon::new(tile.icon).small())
     .disabled(!enabled)
     .w_full()
     .h_auto()
@@ -132,12 +214,12 @@ fn tile(toggle: Toggle) -> Button {
         .flex()
         .flex_col()
         .min_w_0()
-        .child(div().text_sm().truncate().child(toggle.label))
-        .child(div().text_xs().opacity(0.7).truncate().child(toggle.status)),
+        .child(div().text_sm().truncate().child((action.title)()))
+        .child(div().text_xs().opacity(0.7).truncate().child(tile.status)),
     )
-    .when_some(toggle.on_click, |b, on_click| {
+    .when_some(tile.toggle, |b, toggle| {
       b.cursor_pointer()
-        .on_click(move |_: &ClickEvent, _, cx| on_click(cx))
+        .on_click(move |_: &ClickEvent, _, cx| toggle(cx))
     })
     .when_some(page, |b, page| {
       b.on_mouse_down(MouseButton::Right, move |_, window: &mut Window, cx| {
@@ -198,13 +280,11 @@ fn wifi(cx: &App) -> Toggle {
     .find(|n| n.status == WifiStatus::Connected)
     .map(|n| n.ssid.clone());
   Toggle {
-    id: "toggle-wifi",
     icon: if enabled {
       IconName::Wifi
     } else {
       IconName::WifiOff
     },
-    label: t!("app.dashboard.wifi"),
     status: wifi_status(enabled, connected),
     active: enabled,
     on_click: network.wifi_supported(cx).then(|| {
@@ -213,7 +293,6 @@ fn wifi(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(NetworkPanel::ID),
   }
 }
 
@@ -226,12 +305,10 @@ fn bluetooth(cx: &App) -> Toggle {
     .filter(|d| d.connected)
     .count();
   Toggle {
-    id: "toggle-bluetooth",
     icon: match powered {
       Some(true) => IconName::Bluetooth,
       _ => IconName::BluetoothOff,
     },
-    label: t!("app.dashboard.bluetooth"),
     status: bluetooth_status(powered, connected),
     active: powered == Some(true),
     on_click: powered.map(|powered| {
@@ -240,39 +317,32 @@ fn bluetooth(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(BluetoothPanel::ID),
   }
 }
 
 fn dnd(cx: &App) -> Toggle {
   let enabled = cx.notifications().do_not_disturb(cx);
   Toggle {
-    id: "toggle-dnd",
     icon: if enabled {
       IconName::BellOff
     } else {
       IconName::Bell
     },
-    label: t!("app.dashboard.dnd"),
     status: on_off(enabled),
     active: enabled,
     on_click: Some(Box::new(move |cx| {
       cx.notifications().clone().set_do_not_disturb(!enabled, cx)
     })),
-    page: Some(NotificationsPanel::ID),
   }
 }
 
 fn dark_mode(cx: &App) -> Toggle {
   let dark = cx.theme().is_dark();
   Toggle {
-    id: "toggle-dark-mode",
     icon: if dark { IconName::Moon } else { IconName::Sun },
-    label: t!("app.dashboard.dark_mode"),
     status: on_off(dark),
     active: dark,
     on_click: Some(Box::new(toggle_mode)),
-    page: None,
   }
 }
 
@@ -282,9 +352,7 @@ fn profile(cx: &App) -> Toggle {
   // the next one, so a click cycles through them
   let next = profiles.and_then(|p| p.next().cloned());
   Toggle {
-    id: "toggle-profile",
     icon: profile_icon(active.as_deref()),
-    label: t!("app.power.profile.title"),
     status: match active.as_deref() {
       Some(name) => power_profile(name).1.into(),
       None => t!("app.common.unavailable").into(),
@@ -296,7 +364,6 @@ fn profile(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-    page: Some(PowerPanel::ID),
   }
 }
 
@@ -323,37 +390,29 @@ fn airplane(cx: &App) -> Toggle {
   let bluetooth = cx.bluetooth().adapter(cx).map(|a| a.powered);
   let on = airplane_on(wifi, bluetooth);
   Toggle {
-    id: "toggle-airplane",
     icon: IconName::Plane,
-    label: t!("app.dashboard.airplane"),
     status: on_off(on),
     active: on,
     on_click: Some(Box::new(move |cx| set_airplane(!on, cx))),
-    page: Some(NetworkPanel::ID),
   }
 }
 
 fn stay_awake(cx: &App) -> Toggle {
   let on = cx.idle().stay_awake(cx);
   Toggle {
-    id: "toggle-stay-awake",
     icon: IconName::Coffee,
-    label: t!("app.dashboard.stay_awake"),
     status: on_off(on),
     active: on,
     on_click: Some(Box::new(move |cx| {
       cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
     })),
-    page: None,
   }
 }
 
 fn nightlight(cx: &App) -> Toggle {
   let state = *cx.brightness().nightlight(cx);
   Toggle {
-    id: "toggle-nightlight",
     icon: IconName::Moon,
-    label: t!("app.brightness.nightlight"),
     status: match state.available {
       true => on_off(state.on),
       false => t!("app.common.unavailable").into(),
@@ -364,7 +423,6 @@ fn nightlight(cx: &App) -> Toggle {
         let _ = cx.brightness().set_nightlight(!state.on, cx).log_err();
       })
     }),
-    page: Some(BrightnessPanel::ID),
   }
 }
 
@@ -413,18 +471,6 @@ mod tests {
     assert_eq!(profile_icon(Some("power-saver")), IconName::Leaf);
     assert_eq!(profile_icon(Some("balanced")), IconName::Scale);
     assert_eq!(profile_icon(None), IconName::Scale);
-  }
-
-  #[test]
-  fn quick_actions_named() {
-    for id in QUICK_ACTIONS {
-      assert!(quick_action_label(id).is_some(), "{id}");
-    }
-    assert_eq!(quick_action_label("nope"), None);
-    let config = ["dnd", "x", "wifi", "dnd"].map(String::from);
-    let (ids, bad) = resolve(&config, quick_action_id);
-    assert_eq!(ids, ["dnd", "wifi"]);
-    assert_eq!(bad, ["x", "dnd"]);
   }
 
   #[test]
