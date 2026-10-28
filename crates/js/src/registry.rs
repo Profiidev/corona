@@ -1,15 +1,21 @@
 //! The `corona/*` modules integrations offer plugins, by name.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use gpui_kit::{App, Global};
 
-use crate::{ModuleBuilder, Watches};
+use crate::{Capabilities, ModuleBuilder, Watches};
 
-/// The plugin a module is built for
+/// The plugin a module is built for, and that a runtime runs
+#[derive(Clone, Debug, Default)]
 pub struct PluginRef {
   pub id: String,
   pub name: String,
+  /// Where its sources are; relative imports stay inside
+  pub dir: PathBuf,
+  /// Where its `localStorage` file is
+  pub data_dir: PathBuf,
+  pub capabilities: Capabilities,
 }
 
 /// A module plugins import as `corona/<NAME>` once their manifest grants `NAME`.

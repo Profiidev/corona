@@ -19,8 +19,9 @@ use crate::{
   Child, El, Opt, ScriptView,
   background::{JsPath, paint_path},
   events::{Pt, ScriptAction},
+  runtime::runtime,
   style::Fill,
-  view::{current_view, runtime, window_or_throw},
+  view::{current_view, window_or_throw},
 };
 
 /// Marks the toasts scripts post, for removal by id

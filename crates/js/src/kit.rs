@@ -12,14 +12,15 @@ use rquickjs::{
 };
 
 use crate::{
-  Child, ScrollHandle,
+  Access, Child, ScrollHandle,
   background::{backgrounds, path_builders},
   components::FAMILIES,
   el::{el_d_ts, frame_or_throw, new_el},
   events,
+  plugin::plugin,
+  runtime::runtime,
   style::{COLOR_TOKENS, RADIUS_TOKENS, SPACING_TOKENS, nullary_d_ts},
   theme,
-  view::runtime,
   window::ScriptWindow,
 };
 
@@ -113,7 +114,7 @@ fn image_format(bytes: &[u8]) -> Option<ImageFormat> {
   })
 }
 
-/// `image(source)`: a file path or image bytes. TODO(capabilities): check fs read grants.
+/// `image(source)`: a file path under a read grant, or image bytes.
 fn image_el<'js>(ctx: Ctx<'js>, source: Value<'js>) -> Result<Class<'js, crate::El>> {
   if let Some(path) = source.as_string() {
     let path = path.to_string()?;
@@ -123,7 +124,11 @@ fn image_el<'js>(ctx: Ctx<'js>, source: Value<'js>) -> Result<Class<'js, crate::
         "image() takes no URLs: fetch the bytes instead",
       ));
     }
-    return new_el(&ctx, img(PathBuf::from(path)));
+    let path = PathBuf::from(path);
+    if let Err(e) = plugin(&ctx)?.capabilities.open(&path, Access::Read) {
+      return Err(Exception::throw_type(&ctx, &format!("image(): {e}")));
+    }
+    return new_el(&ctx, img(path));
   }
   let bytes = TypedArray::<u8>::from_js(&ctx, source)
     .map_err(|_| Exception::throw_type(&ctx, "image() takes a path or a Uint8Array"))?;

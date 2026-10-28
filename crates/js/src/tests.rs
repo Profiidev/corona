@@ -130,6 +130,7 @@ fn modules(watches: &Watches, cx: &mut App) -> Vec<ModuleBuilder> {
   let plugin = PluginRef {
     id: "test".into(),
     name: "Test".into(),
+    ..Default::default()
   };
   let test = cx.global::<ScriptRegistry>().get(Test::NAME).unwrap();
   vec![test.build(&plugin, watches, cx)]

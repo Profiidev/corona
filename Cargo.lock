@@ -2102,12 +2102,32 @@ name = "corona_js"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "cap-std",
+ "flate2",
+ "futures",
+ "getrandom 0.3.4",
  "gpui-kit",
+ "gpui-pre-reqwest",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "libc",
+ "md-5 0.10.6",
  "rquickjs 0.14.0",
+ "serde_json",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
  "specta",
  "specta-typescript",
+ "swc_common",
+ "swc_ts_fast_strip",
+ "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -11255,6 +11275,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -11291,6 +11312,22 @@ dependencies = [
  "futures-util",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tungstenite",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

@@ -15,7 +15,8 @@ use rquickjs::{
 use crate::{
   Enter, Named,
   events::Pt,
-  view::{Runtime, ViewCx, current_view, runtime},
+  runtime::{Runtime, runtime},
+  view::{ViewCx, current_view},
   with,
 };
 

@@ -8,129 +8,31 @@
 use std::{
   cell::{Cell, RefCell},
   collections::HashMap,
-  rc::{Rc, Weak},
+  path::Path,
+  rc::Rc,
   time::Duration,
 };
 
 use anyhow::anyhow;
 use gpui_kit::{
   AnyElement, AppContext, ClipboardItem, Context, Entity, EntityId, IntoElement, KeyBinding,
-  KeyBindingContextPredicate, ListState, Render, Subscription, Task, WeakEntity, Window,
+  KeyBindingContextPredicate, Render, Subscription, WeakEntity, Window,
 };
 use rquickjs::{
-  AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Exception, FromJs, Function, IntoJs,
-  JsLifetime, Module, Object, Persistent, Promise, Result, Value,
+  CatchResultExt, Class, Ctx, Exception, FromJs, Function, IntoJs, JsLifetime, Object, Persistent,
+  Promise, Result, Value,
   class::Trace,
   function::{Args, Constructor, This},
-  loader::{BuiltinResolver, ModuleLoader},
 };
 
 use crate::{
-  Child, Enter, Frame, ModuleBuilder, Named, Opt, Watches, app,
+  Child, Enter, Frame, ModuleBuilder, Named, Opt, PluginRef, Watches, app,
   events::ScriptAction,
-  kit,
-  module::{HostLoader, HostModules},
-  now,
+  plugin::plugin,
+  runtime::{self, Main, Runtime, Slot, runtime},
   scope::{try_frame, try_window},
   with,
 };
-
-/// Handlers of one render and, for a dialog or a list, the fn that renders it
-#[derive(Default)]
-struct Slot {
-  content: Option<Persistent<Function<'static>>>,
-  handlers: Vec<Persistent<Function<'static>>>,
-  /// Belongs to the view's last render, dropped by its next
-  transient: bool,
-}
-
-/// One plugin's JS runtime and what it keeps for its views.
-pub(crate) struct Runtime {
-  slots: RefCell<HashMap<(EntityId, u64), Slot>>,
-  next_slot: Cell<u64>,
-  children: RefCell<HashMap<u32, Entity<ScriptView>>>,
-  next_child: Cell<u32>,
-  lists: RefCell<HashMap<(EntityId, String), ListState>>,
-  /// What retained states' `.on` subscribed
-  subs: RefCell<HashMap<u32, Subscription>>,
-  watches: Watches,
-  _drive: Task<()>,
-  // last: `Persistent` handles must be freed before the runtime
-  ctx: AsyncContext,
-}
-
-// `JS_FreeRuntime` aborts on live handles, see the field order
-impl Drop for Runtime {
-  fn drop(&mut self) {
-    self.slots.get_mut().clear();
-    self.subs.get_mut().clear();
-    self.watches.clear();
-  }
-}
-
-/// The context's [`Runtime`], in its userdata
-struct RuntimeRef(Weak<Runtime>);
-
-unsafe impl<'js> JsLifetime<'js> for RuntimeRef {
-  type Changed<'to> = RuntimeRef;
-}
-
-/// The runtime JS runs in
-pub(crate) fn runtime(ctx: &Ctx<'_>) -> Result<Rc<Runtime>> {
-  ctx
-    .userdata::<RuntimeRef>()
-    .and_then(|r| r.0.upgrade())
-    .ok_or_else(|| Exception::throw_internal(ctx, "the runtime is gone"))
-}
-
-impl Runtime {
-  pub(crate) fn ctx(&self) -> &AsyncContext {
-    &self.ctx
-  }
-
-  /// A new id, unique in this runtime
-  pub(crate) fn slot_id(&self) -> u64 {
-    self.next_slot.set(self.next_slot.get() + 1);
-    self.next_slot.get()
-  }
-
-  /// Keeps `sub` until [`Self::unkeep`] or the runtime is freed.
-  pub(crate) fn keep(&self, sub: Subscription) -> u32 {
-    let id = self.slot_id() as u32;
-    self.subs.borrow_mut().insert(id, sub);
-    id
-  }
-
-  pub(crate) fn unkeep(&self, id: u32) {
-    let sub = self.subs.borrow_mut().remove(&id);
-    drop(sub);
-  }
-
-  /// Keeps `content` to render a dialog, a sheet or list items of `view`; returns its key.
-  pub(crate) fn slot(&self, view: EntityId, content: Function<'_>, transient: bool) -> u64 {
-    let key = self.slot_id() << 32;
-    let content = Some(Persistent::save(&content.ctx().clone(), content));
-    let slot = Slot {
-      content,
-      handlers: Vec::new(),
-      transient,
-    };
-    self.slots.borrow_mut().insert((view, key), slot);
-    key
-  }
-
-  /// The list state named `id` of `view`, with `count` items
-  pub(crate) fn list(&self, view: EntityId, id: String, count: usize) -> ListState {
-    let mut lists = self.lists.borrow_mut();
-    let state = lists
-      .entry((view, id))
-      .or_insert_with(|| ListState::new(count, gpui_kit::ListAlignment::Top, gpui_kit::px(200.)));
-    if state.item_count() != count {
-      state.reset(count);
-    }
-    state.clone()
-  }
-}
 
 thread_local! {
   /// The views JS runs for, innermost last
@@ -175,8 +77,8 @@ pub struct ScriptView {
 
 impl ScriptView {
   /// Evaluates `source`, whose default export extends `View`, and calls its `init`. The
-  /// module can import `gpui-kit`, `gpui-base`, `gpui-component` and `modules`, which
-  /// subscribe through `watches`.
+  /// module can import `gpui-kit`, `gpui-base`, `gpui-component`, the stdlib and `modules`,
+  /// which subscribe through `watches`. It runs with no plugin's grant.
   pub fn new(
     source: &str,
     modules: Vec<ModuleBuilder>,
@@ -184,50 +86,33 @@ impl ScriptView {
     window: &mut Window,
     cx: &mut Context<Self>,
   ) -> anyhow::Result<Self> {
-    let modules = HostModules::new(modules);
-    let mut resolver = BuiltinResolver::default();
-    for name in kit::NAMES.iter().copied().chain(modules.names()) {
-      resolver.add_module(name);
-    }
-    let loader = (HostLoader, kit::loader(ModuleLoader::default()));
-    let rt = AsyncRuntime::new()?;
-    now(rt.set_loader(resolver, loader));
-    now(rt.set_host_promise_rejection_tracker(Some(Box::new(rejected))));
-    let ctx = now(AsyncContext::full(&rt))?;
-    watches.set_context(ctx.clone());
+    let plugin = Rc::new(PluginRef::default());
+    Self::start(Main::Source(source), plugin, modules, watches, window, cx)
+  }
 
-    // drives async host fns, timers and the promise jobs they resolve, inside the scope
-    let mut drive = Box::pin(rt.drive());
-    let drive = cx.spawn(async move |_, cx| {
-      std::future::poll_fn(|task| {
-        cx.update(|cx| {
-          let _enter = Enter::new(cx, None, None);
-          drive.as_mut().poll(task)
-        })
-      })
-      .await
-    });
-    let runtime = Rc::new(Runtime {
-      slots: Default::default(),
-      next_slot: Cell::new(0),
-      children: Default::default(),
-      next_child: Cell::new(0),
-      lists: Default::default(),
-      subs: Default::default(),
-      watches: watches.clone(),
-      _drive: drive,
-      ctx: ctx.clone(),
-    });
-    let setup = with(&ctx, |ctx| -> Result<()> {
-      ctx
-        .store_userdata(modules)
-        .map_err(|_| rquickjs::Error::Unknown)?;
-      ctx
-        .store_userdata(RuntimeRef(Rc::downgrade(&runtime)))
-        .map_err(|_| rquickjs::Error::Unknown)?;
-      kit::install(&ctx)
-    });
-    setup.map_err(|e| anyhow!("runtime setup: {e}"))?;
+  /// Like [`new`](Self::new) for the file `entry` of `plugin`, which may import its other
+  /// files.
+  pub fn load(
+    entry: &Path,
+    plugin: Rc<PluginRef>,
+    modules: Vec<ModuleBuilder>,
+    watches: Watches,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) -> anyhow::Result<Self> {
+    Self::start(Main::File(entry), plugin, modules, watches, window, cx)
+  }
+
+  fn start(
+    main: Main,
+    plugin: Rc<PluginRef>,
+    modules: Vec<ModuleBuilder>,
+    watches: Watches,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) -> anyhow::Result<Self> {
+    let rt = runtime::new(plugin, modules, watches, cx)?;
+    let ctx = rt.ctx().clone();
 
     let view = cx.entity().downgrade();
     let id = view.entity_id();
@@ -235,8 +120,7 @@ impl ScriptView {
     let _current = Current::new(view.clone());
     let instance = with(&ctx, |ctx| {
       let run = || {
-        let (module, done) = Module::declare(ctx.clone(), "main", source)?.eval()?;
-        done.finish::<()>()?;
+        let module = runtime::eval(&ctx, main)?;
         let class: Constructor = module.get("default")?;
         let props = Value::new_undefined(ctx.clone());
         construct(&ctx, class, props, view)
@@ -244,7 +128,7 @@ impl ScriptView {
       run().catch(&ctx).map_err(|e| anyhow!("{e}"))
     })?;
 
-    Ok(Self::from_parts(id, instance, runtime, true))
+    Ok(Self::from_parts(id, instance, rt, true))
   }
 
   fn from_parts(
@@ -277,21 +161,21 @@ impl ScriptView {
     let _current = Current::new(cx.entity().downgrade());
     let _enter = Enter::new(cx, window, frame);
     let instance = self.instance.clone();
-    with(&self.rt.ctx, |ctx| {
+    with(self.rt.ctx(), |ctx| {
       let run = || f(&ctx, instance.restore(&ctx)?);
       run().catch(&ctx).map_err(|e| anyhow!("{e}"))
     })
   }
 
   #[cfg(test)]
-  pub(crate) fn runtime(&self) -> Weak<Runtime> {
+  pub(crate) fn runtime(&self) -> std::rc::Weak<Runtime> {
     Rc::downgrade(&self.rt)
   }
 
   /// Evaluates `code` in the view's runtime, as a string
   #[cfg(test)]
   pub(crate) fn eval(&self, code: &str) -> String {
-    with(&self.rt.ctx, |ctx| {
+    with(self.rt.ctx(), |ctx| {
       ctx
         .eval::<rquickjs::Coerced<String>, _>(code)
         .catch(&ctx)
@@ -437,18 +321,6 @@ impl Drop for ScriptView {
   }
 }
 
-/// Logs a promise rejected without a handler. ponytail: logged when it rejects, also if a
-/// handler is attached a tick later; keep and report them after the jobs ran if that is noisy
-fn rejected<'js>(_: Ctx<'js>, _promise: Value<'js>, reason: Value<'js>, handled: bool) {
-  if handled {
-    return;
-  }
-  match reason.as_exception() {
-    Some(e) => tracing::warn!("unhandled promise rejection: {e}"),
-    None => tracing::warn!("unhandled promise rejection: {reason:?}"),
-  }
-}
-
 /// A retained child view from `cx.new(Class, props)`
 #[derive(Trace, JsLifetime)]
 #[rquickjs::class(rename = "Entity")]
@@ -568,12 +440,6 @@ impl<'js> FromJs<'js> for Binding {
       context: o.get("context")?,
     })
   }
-}
-
-/// Capability seam: step 3's `Capabilities` decides; until then everything is granted.
-/// TODO(capabilities): check the plugin's grant for `capability`.
-fn allow(_ctx: &Ctx<'_>, _capability: &str) -> Result<()> {
-  Ok(())
 }
 
 /// An absolute `http`/`https` URL with a host
@@ -714,12 +580,22 @@ impl ViewCx {
 
   /// The clipboard's text, if it holds text.
   pub fn read_from_clipboard(&self, ctx: Ctx<'_>) -> Result<Option<String>> {
-    allow(&ctx, "clipboard")?;
+    if !plugin(&ctx)?.capabilities.is_clipboard_readable() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "reading the clipboard is not granted; set capabilities.clipboard.read to true",
+      ));
+    }
     Ok(app().read_from_clipboard().and_then(|item| item.text()))
   }
 
   pub fn write_to_clipboard(&self, ctx: Ctx<'_>, text: String) -> Result<()> {
-    allow(&ctx, "clipboard")?;
+    if !plugin(&ctx)?.capabilities.is_clipboard_writable() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "writing the clipboard is not granted; set capabilities.clipboard.write to true",
+      ));
+    }
     app().write_to_clipboard(ClipboardItem::new_string(text));
     Ok(())
   }
