@@ -21,6 +21,10 @@ use crate::{
   now, with,
 };
 
+mod elements;
+
+pub(crate) use elements::FAMILY;
+
 #[derive(Default)]
 struct Counter(u32);
 
@@ -330,10 +334,17 @@ fn registry_finds_modules_by_name(cx: &mut TestAppContext) {
 #[gpui::test]
 fn d_ts_unchanged(cx: &mut TestAppContext) {
   let d_ts = cx.update(|cx| GpuiKit::d_ts() + &d_ts(&modules(&Watches::default(), cx)));
+  if std::env::var_os("CORONA_REGEN_DTS").is_some() {
+    std::fs::write(
+      concat!(env!("CARGO_MANIFEST_DIR"), "/src/tests.d.ts"),
+      &d_ts,
+    )
+    .unwrap();
+  }
   assert_eq!(
     d_ts,
     include_str!("tests.d.ts"),
-    "typings changed, update src/tests.d.ts"
+    "typings changed, regenerate with CORONA_REGEN_DTS=1"
   );
 }
 

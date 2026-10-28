@@ -11,24 +11,40 @@ use std::{
 
 use rquickjs::{AsyncContext, Ctx};
 
-pub use el::{El, Frame, el_d_ts};
+pub use components::constructor;
+pub use el::{
+  Child, El, Frame, Id, Named, Node, On, Payload, TsType, frame_or_throw, jsdoc, map, new_el,
+  restyle, with_node,
+};
+pub use entity::{Retained, ScrollHandle};
 pub use host::{Cx, Glob, Opt, Throws};
+pub use kit::GpuiKit;
 pub use module::{ModuleBuilder, d_ts};
 pub use registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry};
 pub use scope::{Enter, app, frame, window};
-pub use view::{GpuiKit, ScriptView, ViewCx};
+pub use style::{Abs, Color, Def, Fill, Len, LineHeight, Radius};
+pub use view::{FocusHandle, ScriptView, ViewCx, ViewHandle};
 pub use watch::{Callback, Watches, track};
+pub use window::ScriptRoot;
 
 #[doc(hidden)]
-pub use {rquickjs, specta};
+pub use {gpui_kit, rquickjs, specta};
 
+mod background;
+mod components;
 mod el;
+mod entity;
+mod events;
 mod host;
+mod kit;
 mod module;
 mod registry;
 mod scope;
+mod style;
+mod theme;
 mod view;
 mod watch;
+mod window;
 
 #[cfg(test)]
 mod tests;

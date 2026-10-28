@@ -48,6 +48,16 @@ pub fn app() -> &'static mut App {
   unsafe { &mut *p }
 }
 
+/// The app of the current call into JS, if any
+pub(crate) fn try_app() -> Option<&'static mut App> {
+  unsafe { SCOPE.get().0.as_mut() }
+}
+
+/// The window of the current init, render or event dispatch, if any
+pub(crate) fn try_window() -> Option<&'static mut Window> {
+  unsafe { SCOPE.get().1.as_mut() }
+}
+
 /// The window of the current init, render or event dispatch
 pub fn window() -> &'static mut Window {
   let p = SCOPE.get().1;

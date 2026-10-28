@@ -1,126 +1,202 @@
-//! A plugin view: `class X extends View { init(props, cx); render(cx) }`, rendered through
-//! the [`Frame`] arena.
+//! Plugin views: `class X extends View { init(props, cx); update?(props); render(cx) }`, the
+//! `cx` their methods get, and retained child views (`cx.new(Class, props)`).
+//!
+//! All views of a plugin share one [`Runtime`]. JS objects never own Rust things that hold
+//! the runtime (that would be a cycle QuickJS cannot free): child views, handlers and slot
+//! renderers live in the runtime, JS holds their keys.
 
-use std::collections::HashMap;
+use std::{
+  cell::{Cell, RefCell},
+  collections::HashMap,
+  rc::{Rc, Weak},
+  time::Duration,
+};
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use gpui_kit::{
-  AnyElement, Context, EntityId, IntoElement, Render, Subscription, Task, Window, div, prelude::*,
+  AnyElement, AppContext, ClipboardItem, Context, Entity, EntityId, IntoElement, KeyBinding,
+  KeyBindingContextPredicate, ListState, Render, Subscription, Task, WeakEntity, Window,
 };
 use rquickjs::{
-  AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Function, JsLifetime, Module, Object,
-  Persistent, Value,
+  AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Exception, FromJs, Function, IntoJs,
+  JsLifetime, Module, Object, Persistent, Promise, Result, Value,
   class::Trace,
-  function::{Constructor, Func, This},
+  function::{Args, Constructor, This},
   loader::{BuiltinResolver, ModuleLoader},
-  module::{Declarations, Exports, ModuleDef},
 };
 
 use crate::{
-  Enter, Frame, ModuleBuilder, Watches, app,
-  el::new_el,
-  el_d_ts,
+  Child, Enter, Frame, ModuleBuilder, Named, Opt, Watches, app,
+  events::ScriptAction,
+  kit,
   module::{HostLoader, HostModules},
-  now, with,
+  now,
+  scope::{try_frame, try_window},
+  with,
 };
 
-/// The `cx` a view's methods and handlers get
-#[derive(Trace, JsLifetime)]
-#[rquickjs::class]
-pub struct ViewCx {
-  #[qjs(skip_trace)]
-  view: EntityId,
-}
-
-#[rquickjs::methods]
-impl ViewCx {
-  /// Renders the view again.
-  pub fn notify(&self) {
-    app().notify(self.view);
-  }
-}
-
-/// The `gpui-kit` module: `View` and `div`
-pub struct GpuiKit;
-
-impl GpuiKit {
-  pub const NAME: &str = "gpui-kit";
-
-  pub fn d_ts() -> String {
-    let el: String = el_d_ts().lines().map(|l| format!("  {l}\n")).collect();
-    format!(
-      r#"declare module "gpui-kit" {{
-{el}  export function div(): El;
-  export interface ViewCx {{
-    /** Renders the view again. */
-    notify(): void;
-  }}
-  export abstract class View {{
-    init?(props: unknown, cx: ViewCx): void;
-    abstract render(cx: ViewCx): El;
-  }}
-}}
-"#
-    )
-  }
-}
-
-impl ModuleDef for GpuiKit {
-  fn declare<'js>(decl: &Declarations<'js>) -> rquickjs::Result<()> {
-    decl.declare("View")?.declare("div")?;
-    Ok(())
-  }
-
-  fn evaluate<'js>(ctx: &Ctx<'js>, exports: &Exports<'js>) -> rquickjs::Result<()> {
-    // an empty base class, so `extends View` works without native subclassing
-    exports.export("View", ctx.eval::<Value, _>("(class View {})")?)?;
-    exports.export("div", Func::from(new_el))?;
-    Ok(())
-  }
-}
-
-/// Runs a plugin view module in its own runtime.
-pub struct ScriptView {
-  instance: Persistent<Object<'static>>,
+/// Handlers of one render and, for a dialog or a list, the fn that renders it
+#[derive(Default)]
+struct Slot {
+  content: Option<Persistent<Function<'static>>>,
   handlers: Vec<Persistent<Function<'static>>>,
+  /// Belongs to the view's last render, dropped by its next
+  transient: bool,
+}
+
+/// One plugin's JS runtime and what it keeps for its views.
+pub(crate) struct Runtime {
+  slots: RefCell<HashMap<(EntityId, u64), Slot>>,
+  next_slot: Cell<u64>,
+  children: RefCell<HashMap<u32, Entity<ScriptView>>>,
+  next_child: Cell<u32>,
+  lists: RefCell<HashMap<(EntityId, String), ListState>>,
+  /// What retained states' `.on` subscribed
+  subs: RefCell<HashMap<u32, Subscription>>,
   watches: Watches,
-  /// The entities the last render read
-  observed: HashMap<EntityId, Subscription>,
   _drive: Task<()>,
-  #[cfg(test)]
-  pub(crate) text: String,
   // last: `Persistent` handles must be freed before the runtime
   ctx: AsyncContext,
 }
 
+// `JS_FreeRuntime` aborts on live handles, see the field order
+impl Drop for Runtime {
+  fn drop(&mut self) {
+    self.slots.get_mut().clear();
+    self.subs.get_mut().clear();
+    self.watches.clear();
+  }
+}
+
+/// The context's [`Runtime`], in its userdata
+struct RuntimeRef(Weak<Runtime>);
+
+unsafe impl<'js> JsLifetime<'js> for RuntimeRef {
+  type Changed<'to> = RuntimeRef;
+}
+
+/// The runtime JS runs in
+pub(crate) fn runtime(ctx: &Ctx<'_>) -> Result<Rc<Runtime>> {
+  ctx
+    .userdata::<RuntimeRef>()
+    .and_then(|r| r.0.upgrade())
+    .ok_or_else(|| Exception::throw_internal(ctx, "the runtime is gone"))
+}
+
+impl Runtime {
+  pub(crate) fn ctx(&self) -> &AsyncContext {
+    &self.ctx
+  }
+
+  /// A new id, unique in this runtime
+  pub(crate) fn slot_id(&self) -> u64 {
+    self.next_slot.set(self.next_slot.get() + 1);
+    self.next_slot.get()
+  }
+
+  /// Keeps `sub` until [`Self::unkeep`] or the runtime is freed.
+  pub(crate) fn keep(&self, sub: Subscription) -> u32 {
+    let id = self.slot_id() as u32;
+    self.subs.borrow_mut().insert(id, sub);
+    id
+  }
+
+  pub(crate) fn unkeep(&self, id: u32) {
+    let sub = self.subs.borrow_mut().remove(&id);
+    drop(sub);
+  }
+
+  /// Keeps `content` to render a dialog, a sheet or list items of `view`; returns its key.
+  pub(crate) fn slot(&self, view: EntityId, content: Function<'_>, transient: bool) -> u64 {
+    let key = self.slot_id() << 32;
+    let content = Some(Persistent::save(&content.ctx().clone(), content));
+    let slot = Slot {
+      content,
+      handlers: Vec::new(),
+      transient,
+    };
+    self.slots.borrow_mut().insert((view, key), slot);
+    key
+  }
+
+  /// The list state named `id` of `view`, with `count` items
+  pub(crate) fn list(&self, view: EntityId, id: String, count: usize) -> ListState {
+    let mut lists = self.lists.borrow_mut();
+    let state = lists
+      .entry((view, id))
+      .or_insert_with(|| ListState::new(count, gpui_kit::ListAlignment::Top, gpui_kit::px(200.)));
+    if state.item_count() != count {
+      state.reset(count);
+    }
+    state.clone()
+  }
+}
+
+thread_local! {
+  /// The views JS runs for, innermost last
+  static CURRENT: RefCell<Vec<WeakEntity<ScriptView>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The view whose init, render or handler is running
+pub(crate) fn current_view() -> Option<WeakEntity<ScriptView>> {
+  CURRENT.with(|c| c.borrow().last().cloned())
+}
+
+struct Current;
+
+impl Current {
+  fn new(view: WeakEntity<ScriptView>) -> Self {
+    CURRENT.with(|c| c.borrow_mut().push(view));
+    Current
+  }
+}
+
+impl Drop for Current {
+  fn drop(&mut self) {
+    CURRENT.with(|c| c.borrow_mut().pop());
+  }
+}
+
+/// A plugin view, rendered through the [`Frame`] arena.
+pub struct ScriptView {
+  instance: Persistent<Object<'static>>,
+  /// The entities the last render read
+  observed: HashMap<EntityId, Subscription>,
+  id: EntityId,
+  /// Owns the runtime's child views
+  root: bool,
+  #[cfg(test)]
+  pub(crate) text: String,
+  #[cfg(test)]
+  pub(crate) renders: u32,
+  // last: frees the instance before the runtime
+  rt: Rc<Runtime>,
+}
+
 impl ScriptView {
   /// Evaluates `source`, whose default export extends `View`, and calls its `init`. The
-  /// module can import `gpui-kit` and `modules`, which subscribe through `watches`.
+  /// module can import `gpui-kit`, `gpui-base`, `gpui-component` and `modules`, which
+  /// subscribe through `watches`.
   pub fn new(
     source: &str,
     modules: Vec<ModuleBuilder>,
     watches: Watches,
     window: &mut Window,
     cx: &mut Context<Self>,
-  ) -> Result<Self> {
+  ) -> anyhow::Result<Self> {
     let modules = HostModules::new(modules);
-    let mut resolver = BuiltinResolver::default().with_module(GpuiKit::NAME);
-    for name in modules.names() {
+    let mut resolver = BuiltinResolver::default();
+    for name in kit::NAMES.iter().copied().chain(modules.names()) {
       resolver.add_module(name);
     }
-    let loader = (
-      HostLoader,
-      ModuleLoader::default().with_module(GpuiKit::NAME, GpuiKit),
-    );
+    let loader = (HostLoader, kit::loader(ModuleLoader::default()));
     let rt = AsyncRuntime::new()?;
     now(rt.set_loader(resolver, loader));
     now(rt.set_host_promise_rejection_tracker(Some(Box::new(rejected))));
     let ctx = now(AsyncContext::full(&rt))?;
-    with(&ctx, |ctx| ctx.store_userdata(modules).map(drop))
-      .map_err(|_| anyhow!("host modules stored twice"))?;
     watches.set_context(ctx.clone());
 
-    // drives async host fns and the promise jobs they resolve, inside the scope
+    // drives async host fns, timers and the promise jobs they resolve, inside the scope
     let mut drive = Box::pin(rt.drive());
     let drive = cx.spawn(async move |_, cx| {
       std::future::poll_fn(|task| {
@@ -131,103 +207,233 @@ impl ScriptView {
       })
       .await
     });
+    let runtime = Rc::new(Runtime {
+      slots: Default::default(),
+      next_slot: Cell::new(0),
+      children: Default::default(),
+      next_child: Cell::new(0),
+      lists: Default::default(),
+      subs: Default::default(),
+      watches: watches.clone(),
+      _drive: drive,
+      ctx: ctx.clone(),
+    });
+    let setup = with(&ctx, |ctx| -> Result<()> {
+      ctx
+        .store_userdata(modules)
+        .map_err(|_| rquickjs::Error::Unknown)?;
+      ctx
+        .store_userdata(RuntimeRef(Rc::downgrade(&runtime)))
+        .map_err(|_| rquickjs::Error::Unknown)?;
+      kit::install(&ctx)
+    });
+    setup.map_err(|e| anyhow!("runtime setup: {e}"))?;
 
-    let view = cx.entity_id();
+    let view = cx.entity().downgrade();
+    let id = view.entity_id();
     let _enter = Enter::new(cx, Some(window), None);
+    let _current = Current::new(view.clone());
     let instance = with(&ctx, |ctx| {
       let run = || {
         let (module, done) = Module::declare(ctx.clone(), "main", source)?.eval()?;
         done.finish::<()>()?;
         let class: Constructor = module.get("default")?;
-        let instance: Object = class.construct(())?;
-        if let Ok(init) = instance.get::<_, Function>("init") {
-          init.call::<_, ()>((
-            This(instance.clone()),
-            Value::new_undefined(ctx.clone()),
-            ViewCx { view },
-          ))?;
-        }
-        Ok(Persistent::save(&ctx, instance))
+        let props = Value::new_undefined(ctx.clone());
+        construct(&ctx, class, props, view)
       };
       run().catch(&ctx).map_err(|e| anyhow!("{e}"))
-    })
-    // the modules hold the watches, which hold the context: nothing else frees them
-    .inspect_err(|_| watches.clear())?;
+    })?;
 
-    Ok(Self {
+    Ok(Self::from_parts(id, instance, runtime, true))
+  }
+
+  fn from_parts(
+    id: EntityId,
+    instance: Persistent<Object<'static>>,
+    rt: Rc<Runtime>,
+    root: bool,
+  ) -> Self {
+    Self {
+      id,
       instance,
-      handlers: Vec::new(),
-      watches,
       observed: HashMap::new(),
-      _drive: drive,
+      root,
       #[cfg(test)]
       text: String::new(),
-      ctx,
+      #[cfg(test)]
+      renders: 0,
+      rt,
+    }
+  }
+
+  /// Calls into JS for this view, in a scope of `window` and `cx`; logs what it throws.
+  fn call<R>(
+    &mut self,
+    window: Option<&mut Window>,
+    frame: Option<&mut Frame>,
+    cx: &mut Context<Self>,
+    f: impl for<'js> FnOnce(&Ctx<'js>, Object<'js>) -> Result<R>,
+  ) -> anyhow::Result<R> {
+    let _current = Current::new(cx.entity().downgrade());
+    let _enter = Enter::new(cx, window, frame);
+    let instance = self.instance.clone();
+    with(&self.rt.ctx, |ctx| {
+      let run = || f(&ctx, instance.restore(&ctx)?);
+      run().catch(&ctx).map_err(|e| anyhow!("{e}"))
     })
   }
 
-  /// Calls click handler `index` of the last render.
-  pub(crate) fn dispatch(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-    let Some(handler) = self.handlers.get(index).cloned() else {
-      return;
-    };
-    let view = cx.entity_id();
-    let _enter = Enter::new(cx, Some(window), None);
-    with(&self.ctx, |ctx| {
-      let call = || {
-        handler
-          .restore(&ctx)?
-          .call::<_, ()>((Value::new_undefined(ctx.clone()), ViewCx { view }))
-      };
-      if let Err(e) = call().catch(&ctx) {
-        tracing::warn!("click handler: {e}");
-      }
-    });
+  #[cfg(test)]
+  pub(crate) fn runtime(&self) -> Weak<Runtime> {
+    Rc::downgrade(&self.rt)
   }
 
-  fn render_js(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<AnyElement> {
-    let view = cx.entity_id();
-    let mut frame = Frame::new(cx.entity().downgrade());
-    let enter = Enter::new(cx, Some(window), Some(&mut frame));
-    let root = with(&self.ctx, |ctx| {
-      let run = || {
-        let instance = self.instance.clone().restore(&ctx)?;
-        let render: Function = instance.get("render")?;
-        let root: Class<crate::El> = render.call((This(instance), ViewCx { view }))?;
-        let id = root.borrow().id;
-        crate::frame().take(&ctx, id)
-      };
-      run().catch(&ctx).map_err(|e| anyhow!("{e}"))
+  /// Evaluates `code` in the view's runtime, as a string
+  #[cfg(test)]
+  pub(crate) fn eval(&self, code: &str) -> String {
+    with(&self.rt.ctx, |ctx| {
+      ctx
+        .eval::<rquickjs::Coerced<String>, _>(code)
+        .catch(&ctx)
+        .map(|s| s.0)
+        .unwrap_or_else(|e| format!("eval failed: {e}"))
+    })
+  }
+
+  /// Calls handler `index` of render `slot` with `payload` and the `cx`.
+  pub(crate) fn dispatch<P: for<'js> IntoJs<'js>>(
+    &mut self,
+    slot: u64,
+    index: usize,
+    payload: P,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+  ) {
+    let view = cx.entity().downgrade();
+    let handler = (self.rt.slots.borrow())
+      .get(&(view.entity_id(), slot))
+      .and_then(|s| s.handlers.get(index).cloned());
+    let Some(handler) = handler else {
+      return;
+    };
+    let call = self.call(Some(window), None, cx, |ctx, _| {
+      handler
+        .restore(ctx)?
+        .call::<_, ()>((payload, ViewCx { view }))
     });
-    drop(enter);
-    let root = root?;
-    #[cfg(test)]
-    {
-      self.text = std::mem::take(&mut frame.text);
+    if let Err(e) = call {
+      tracing::warn!("event handler: {e}");
     }
-    self.handlers = std::mem::take(&mut frame.handlers);
-    self.observed.retain(|id, _| frame.reads.contains_key(id));
+  }
+
+  /// Runs `f` in a new frame for `slot`, keeping the handlers it registers.
+  fn render_slot<R>(
+    &mut self,
+    slot: u64,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+    f: impl for<'js> FnOnce(&Ctx<'js>, Object<'js>, &mut Frame) -> Result<R>,
+  ) -> anyhow::Result<R> {
+    let id = cx.entity_id();
+    if slot == 0 {
+      self
+        .rt
+        .slots
+        .borrow_mut()
+        .retain(|(v, _), s| *v != id || !s.transient);
+    }
+    let mut frame = Frame::new(cx.entity().downgrade(), slot);
+    let out = self.call(Some(window), Some(&mut frame), cx, |ctx, instance| {
+      f(ctx, instance, try_frame().expect("frame set"))
+    });
+    #[cfg(test)]
+    if slot == 0 {
+      self.text = std::mem::take(&mut frame.text);
+      self.renders += 1;
+    }
+    let handlers = std::mem::take(&mut frame.handlers);
+    let transient = slot != 0 && slot & 0xffff_ffff != 0;
+    let mut slots = self.rt.slots.borrow_mut();
+    let entry = slots.entry((id, slot)).or_insert_with(|| Slot {
+      transient,
+      ..Default::default()
+    });
+    entry.handlers = handlers;
+    drop(slots);
+    if slot == 0 {
+      self.observed.retain(|id, _| frame.reads.contains_key(id));
+    }
     for (id, observe) in frame.reads {
       self.observed.entry(id).or_insert_with(|| observe(cx));
     }
-    Ok(root.into_any_element())
+    out
   }
+
+  /// Renders slot `key`'s content fn, called with `args` and the `cx`: a dialog's, or item
+  /// `index` of a list (whose handlers are kept per item).
+  pub(crate) fn render_content<R>(
+    &mut self,
+    key: u64,
+    index: Option<usize>,
+    window: &mut Window,
+    cx: &mut Context<Self>,
+    args: impl for<'js> FnOnce(&mut Args<'js>) -> Result<()>,
+    read: impl for<'js> FnOnce(&Ctx<'js>, &mut Frame, Value<'js>) -> Result<R>,
+  ) -> anyhow::Result<R> {
+    let id = cx.entity_id();
+    let content = (self.rt.slots.borrow())
+      .get(&(id, key))
+      .and_then(|s| s.content.clone())
+      .ok_or_else(|| anyhow!("the content is gone"))?;
+    let view = cx.entity().downgrade();
+    let slot = key | index.map_or(0, |i| i as u64 + 1);
+    self.render_slot(slot, window, cx, |ctx, _, frame| {
+      let mut call = Args::new_unsized(ctx.clone());
+      args(&mut call)?;
+      call.push_arg(ViewCx { view })?;
+      let value = content.restore(ctx)?.call_arg::<Value>(call)?;
+      read(ctx, frame, value)
+    })
+  }
+}
+
+/// Constructs `class` with `props`, calls its `init(props, cx)`
+fn construct<'js>(
+  ctx: &Ctx<'js>,
+  class: Constructor<'js>,
+  props: Value<'js>,
+  view: WeakEntity<ScriptView>,
+) -> Result<Persistent<Object<'static>>> {
+  let instance: Object = class.construct((props.clone(),))?;
+  if let Ok(init) = instance.get::<_, Function>("init") {
+    init.call::<_, ()>((This(instance.clone()), props, ViewCx { view }))?;
+  }
+  Ok(Persistent::save(ctx, instance))
 }
 
 impl Render for ScriptView {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let el = self
-      .render_js(window, cx)
-      .unwrap_or_else(|e| format!("render failed: {e}").into_any_element());
-    div().size_full().child(el)
+    let view = cx.entity().downgrade();
+    self
+      .render_slot(0, window, cx, |ctx, instance, frame| {
+        let render: Function = instance.get("render")?;
+        let root: Child = render.call((This(instance), ViewCx { view }))?;
+        frame.child(ctx, root)
+      })
+      .unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
   }
 }
 
-// `JS_FreeRuntime` aborts on live handles, see the field order
 impl Drop for ScriptView {
   fn drop(&mut self) {
-    self.handlers.clear();
-    self.watches.clear();
+    let id = self.id;
+    self.rt.slots.borrow_mut().retain(|(v, _), _| *v != id);
+    self.rt.lists.borrow_mut().retain(|(v, _), _| *v != id);
+    if self.root {
+      // breaks the cycle runtime -> child view -> runtime
+      let children = std::mem::take(&mut *self.rt.children.borrow_mut());
+      drop(children);
+    }
   }
 }
 
@@ -240,5 +446,365 @@ fn rejected<'js>(_: Ctx<'js>, _promise: Value<'js>, reason: Value<'js>, handled:
   match reason.as_exception() {
     Some(e) => tracing::warn!("unhandled promise rejection: {e}"),
     None => tracing::warn!("unhandled promise rejection: {reason:?}"),
+  }
+}
+
+/// A retained child view from `cx.new(Class, props)`
+#[derive(Trace, JsLifetime)]
+#[rquickjs::class(rename = "Entity")]
+pub struct ViewHandle {
+  #[qjs(skip_trace)]
+  id: u32,
+}
+
+impl Named for ViewHandle {
+  const TS: &'static str = "Entity";
+}
+
+impl ViewHandle {
+  fn entity(&self, ctx: &Ctx<'_>) -> Result<Entity<ScriptView>> {
+    let rt = runtime(ctx)?;
+    let children = rt.children.borrow();
+    children
+      .get(&self.id)
+      .cloned()
+      .ok_or_else(|| Exception::throw_type(ctx, "the view was released"))
+  }
+
+  /// The child as an element
+  pub(crate) fn element(&self, ctx: &Ctx<'_>) -> Result<AnyElement> {
+    Ok(self.entity(ctx)?.into_any_element())
+  }
+}
+
+#[rquickjs::methods]
+impl ViewHandle {
+  /// Hands the child new props: runs its `update(props)` and renders it again.
+  pub fn set_props<'js>(&self, ctx: Ctx<'js>, props: Opt<Value<'js>>) -> Result<()> {
+    let entity = self.entity(&ctx)?;
+    let props = props.0.unwrap_or_else(|| Value::new_undefined(ctx.clone()));
+    entity.update(app(), |view, cx| {
+      let _current = Current::new(cx.entity().downgrade());
+      let instance = view.instance.clone().restore(&ctx)?;
+      if let Ok(update) = instance.get::<_, Function>("update") {
+        update.call::<_, ()>((This(instance), props))?;
+      }
+      cx.notify();
+      Ok(())
+    })
+  }
+
+  /// Drops the child view; false if it was released already.
+  pub fn release(&self, ctx: Ctx<'_>) -> Result<bool> {
+    let rt = runtime(&ctx)?;
+    let removed = rt.children.borrow_mut().remove(&self.id);
+    Ok(removed.is_some())
+  }
+}
+
+/// A focus target the script keeps, from `cx.focus_handle()`
+#[derive(Trace, JsLifetime)]
+#[rquickjs::class]
+pub struct FocusHandle {
+  #[qjs(skip_trace)]
+  handle: Option<gpui_kit::FocusHandle>,
+}
+
+impl Named for FocusHandle {
+  const TS: &'static str = "FocusHandle";
+}
+
+impl FocusHandle {
+  pub(crate) fn handle(&self, ctx: &Ctx<'_>) -> Result<gpui_kit::FocusHandle> {
+    (self.handle.clone()).ok_or_else(|| Exception::throw_type(ctx, "the focus handle was released"))
+  }
+}
+
+/// The window of the current call, or a JS error
+pub(crate) fn window_or_throw(ctx: &Ctx<'_>) -> Result<&'static mut Window> {
+  try_window().ok_or_else(|| {
+    Exception::throw_type(
+      ctx,
+      "no window here: call this from render or an event handler",
+    )
+  })
+}
+
+#[rquickjs::methods]
+impl FocusHandle {
+  /// Moves the keyboard onto the element tracking this handle.
+  pub fn focus(&self, ctx: Ctx<'_>) -> Result<()> {
+    let handle = self.handle(&ctx)?;
+    handle.focus(window_or_throw(&ctx)?, app());
+    Ok(())
+  }
+
+  /// Whether the element tracking this handle has the keyboard.
+  pub fn is_focused(&self) -> bool {
+    match (&self.handle, try_window()) {
+      (Some(handle), Some(window)) => handle.is_focused(window),
+      _ => false,
+    }
+  }
+
+  pub fn release(&mut self) -> bool {
+    self.handle.take().is_some()
+  }
+}
+
+/// One entry of `cx.bind_keys`
+pub struct Binding {
+  keystroke: String,
+  action: String,
+  context: Option<String>,
+}
+
+impl<'js> FromJs<'js> for Binding {
+  fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+    let o = Object::from_js(ctx, value)?;
+    Ok(Binding {
+      keystroke: o.get("keystroke")?,
+      action: o.get("action")?,
+      context: o.get("context")?,
+    })
+  }
+}
+
+/// Capability seam: step 3's `Capabilities` decides; until then everything is granted.
+/// TODO(capabilities): check the plugin's grant for `capability`.
+fn allow(_ctx: &Ctx<'_>, _capability: &str) -> Result<()> {
+  Ok(())
+}
+
+/// An absolute `http`/`https` URL with a host
+fn web_url(url: &str) -> bool {
+  let rest = url
+    .strip_prefix("https://")
+    .or_else(|| url.strip_prefix("http://"));
+  let host = rest.and_then(|r| r.split(['/', '?', '#']).next());
+  host.is_some_and(|h| !h.is_empty()) && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+/// The `cx` a view's methods and handlers get
+#[derive(Trace, JsLifetime, Clone)]
+#[rquickjs::class(rename = "Context")]
+pub struct ViewCx {
+  #[qjs(skip_trace)]
+  view: WeakEntity<ScriptView>,
+}
+
+impl ViewCx {
+  pub(crate) fn for_view(view: WeakEntity<ScriptView>) -> Self {
+    Self { view }
+  }
+
+  /// Runs `cb(cx)` after `ms`, and every `ms` after that when `repeat`. Returns the canceller.
+  fn schedule<'js>(
+    &self,
+    ctx: &Ctx<'js>,
+    ms: f64,
+    cb: Function<'js>,
+    repeat: bool,
+  ) -> Result<Object<'js>> {
+    let stop = Rc::new(Cell::new(false));
+    let executor = app().background_executor().clone();
+    let (cx, stopped, js) = (self.clone(), stop.clone(), ctx.clone());
+    let every = Duration::from_secs_f64(ms.max(0.) / 1000.);
+    ctx.spawn(async move {
+      loop {
+        executor.timer(every).await;
+        if stopped.get() {
+          break;
+        }
+        if let Err(e) = cb.call::<_, ()>((cx.clone(),)).catch(&js) {
+          tracing::warn!("timer callback: {e}");
+        }
+        if !repeat {
+          break;
+        }
+      }
+    });
+    let handle = Object::new(ctx.clone())?;
+    handle.set(
+      "cancel",
+      Function::new(ctx.clone(), move || stop.set(true))?,
+    )?;
+    Ok(handle)
+  }
+}
+
+#[rquickjs::methods]
+impl ViewCx {
+  /// Renders the view again, or the retained child `target`. Throws while rendering.
+  pub fn notify<'js>(&self, ctx: Ctx<'js>, target: Opt<Class<'js, ViewHandle>>) -> Result<()> {
+    if try_frame().is_some() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "cx.notify() while rendering would loop",
+      ));
+    }
+    match target.0 {
+      Some(target) => app().notify(target.borrow().entity(&ctx)?.entity_id()),
+      None => app().notify(self.view.entity_id()),
+    }
+    Ok(())
+  }
+
+  /// Installs key bindings `{ keystroke, action, context? }`, all or none; returns how many.
+  pub fn bind_keys(&self, ctx: Ctx<'_>, bindings: Vec<Binding>) -> Result<u32> {
+    let bindings = bindings
+      .into_iter()
+      .map(|b| {
+        let context = (b.context.as_deref())
+          .map(KeyBindingContextPredicate::parse)
+          .transpose()
+          .map_err(|e| anyhow!("context of {}: {e}", b.keystroke))?;
+        KeyBinding::load(
+          &b.keystroke,
+          Box::new(ScriptAction(b.action.into())),
+          context.map(Rc::new),
+          false,
+          None,
+          &gpui_kit::DummyKeyboardMapper,
+        )
+        .map_err(|e| anyhow!("{}: {e}", b.keystroke))
+      })
+      .collect::<anyhow::Result<Vec<_>>>()
+      .map_err(|e| Exception::throw_type(&ctx, &e.to_string()))?;
+    let count = bindings.len() as u32;
+    app().bind_keys(bindings);
+    Ok(count)
+  }
+
+  /// Stops this event reaching the handlers further out.
+  pub fn stop_propagation(&self) {
+    app().stop_propagation();
+  }
+
+  /// Undoes a `stop_propagation()` of the same dispatch.
+  pub fn propagate(&self) {
+    app().propagate();
+  }
+
+  /// `"render"`, `"event"` (with a window) or `"task"`
+  pub fn phase(&self) -> &'static str {
+    match (try_frame(), try_window()) {
+      (Some(_), _) => "render",
+      (None, Some(_)) => "event",
+      (None, None) => "task",
+    }
+  }
+
+  /// The theme's semantic tokens.
+  pub fn theme<'js>(&self, ctx: Ctx<'js>) -> Result<Object<'js>> {
+    crate::theme::theme_object(&ctx)
+  }
+
+  /// Opens an absolute `http`/`https` URL with the system's handler.
+  pub fn open_url(&self, ctx: Ctx<'_>, url: String) -> Result<()> {
+    if !web_url(&url) {
+      return Err(Exception::throw_type(
+        &ctx,
+        &format!("not an http(s) URL: {url}"),
+      ));
+    }
+    app().open_url(&url);
+    Ok(())
+  }
+
+  /// The clipboard's text, if it holds text.
+  pub fn read_from_clipboard(&self, ctx: Ctx<'_>) -> Result<Option<String>> {
+    allow(&ctx, "clipboard")?;
+    Ok(app().read_from_clipboard().and_then(|item| item.text()))
+  }
+
+  pub fn write_to_clipboard(&self, ctx: Ctx<'_>, text: String) -> Result<()> {
+    allow(&ctx, "clipboard")?;
+    app().write_to_clipboard(ClipboardItem::new_string(text));
+    Ok(())
+  }
+
+  /// A focus target to keep on the view and hand to `track_focus`. Not in `render`.
+  pub fn focus_handle(&self, ctx: Ctx<'_>) -> Result<FocusHandle> {
+    if try_frame().is_some() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "cx.focus_handle() in render makes a new one every frame",
+      ));
+    }
+    Ok(FocusHandle {
+      handle: Some(app().focus_handle()),
+    })
+  }
+
+  /// Creates a retained child view; mount it with `.child(entity)`. Not in `render`.
+  #[qjs(rename = "new")]
+  pub fn new_view<'js>(
+    &self,
+    ctx: Ctx<'js>,
+    class: Constructor<'js>,
+    props: Opt<Value<'js>>,
+  ) -> Result<ViewHandle> {
+    if try_frame().is_some() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "cx.new() in render; create child views in init or a handler",
+      ));
+    }
+    let rt = runtime(&ctx)?;
+    let props = props.0.unwrap_or_else(|| Value::new_undefined(ctx.clone()));
+    let mut error = None;
+    let entity = app().new(|cx: &mut Context<ScriptView>| {
+      let view = cx.entity().downgrade();
+      let _current = Current::new(view.clone());
+      let instance = construct(&ctx, class, props, view).unwrap_or_else(|e| {
+        error = Some(e);
+        Persistent::save(&ctx, Object::new(ctx.clone()).expect("object"))
+      });
+      ScriptView::from_parts(cx.entity_id(), instance, rt.clone(), false)
+    });
+    if let Some(e) = error {
+      return Err(e);
+    }
+    let id = rt.next_child.get() + 1;
+    rt.next_child.set(id);
+    rt.children.borrow_mut().insert(id, entity);
+    Ok(ViewHandle { id })
+  }
+
+  /// Calls `body(cx)` and returns what it returns: the promise of an async body.
+  pub fn spawn<'js>(&self, body: Function<'js>) -> Result<Value<'js>> {
+    body.call((self.clone(),))
+  }
+
+  /// Resolves after `ms` milliseconds.
+  pub fn sleep<'js>(&self, ctx: Ctx<'js>, ms: Opt<f64>) -> Result<Promise<'js>> {
+    let timer = app()
+      .background_executor()
+      .timer(Duration::from_secs_f64(ms.0.unwrap_or(0.).max(0.) / 1000.));
+    Promise::wrap_future(&ctx, timer)
+  }
+
+  /// One-shot and repeating callbacks.
+  #[qjs(get)]
+  pub fn timer<'js>(&self, ctx: Ctx<'js>) -> Result<Object<'js>> {
+    let timer = Object::new(ctx.clone())?;
+    let cx = self.clone();
+    timer.set(
+      "after",
+      Function::new(
+        ctx.clone(),
+        move |ctx: Ctx<'js>, ms: f64, cb: Function<'js>| cx.schedule(&ctx, ms, cb, false),
+      )?,
+    )?;
+    let cx = self.clone();
+    timer.set(
+      "every",
+      Function::new(
+        ctx.clone(),
+        move |ctx: Ctx<'js>, ms: f64, cb: Function<'js>| cx.schedule(&ctx, ms, cb, true),
+      )?,
+    )?;
+    Ok(timer)
   }
 }
