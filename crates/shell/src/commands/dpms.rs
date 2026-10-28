@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_compositor::CompositorExt;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Dpms>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Dpms>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]

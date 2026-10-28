@@ -2,14 +2,14 @@ use std::time::Duration;
 
 use anyhow::{Result, ensure};
 use corona_idle::{Idle, IdleExt};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, BorrowAppContext};
 use serde::{Deserialize, Serialize};
 
 use crate::commands::radio::Switch;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<StayAwake>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<StayAwake>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

@@ -1,5 +1,4 @@
 use corona_config::APP_NAME;
-use corona_ipc::IpcServer;
 use gpui_kit::{
   AnyWindowHandle, App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance,
   WindowBounds, WindowDecorations, WindowKind, WindowOptions,
@@ -54,11 +53,11 @@ pub trait OverlayState: Global + Sized {
   }
 }
 
-pub fn register_commands(server: &mut IpcServer) {
-  colorpicker::commands::register_commands(server);
-  osk::register_commands(server);
-  screenshot::commands::register_commands(server);
-  switcher::commands::register_commands(server);
+pub fn register_commands(cx: &mut App) {
+  colorpicker::commands::register_commands(cx);
+  osk::register_commands(cx);
+  screenshot::commands::register_commands(cx);
+  switcher::commands::register_commands(cx);
 }
 
 fn fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions {

@@ -1,11 +1,11 @@
 use anyhow::{Result, bail};
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use corona_tray::{MenuItem, TrayExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<ListEntries>().register::<Activate>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<ListEntries>().register::<Activate>();
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

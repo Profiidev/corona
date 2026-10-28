@@ -1,11 +1,11 @@
 use anyhow::{Context, Result, bail};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<SetProfile>()
     .register::<CycleProfile>()
     .register::<ListProfiles>();

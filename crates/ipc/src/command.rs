@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin};
+use std::{future::Future, pin::Pin, rc::Rc};
 
 use anyhow::Result;
 use gpui_kit::App;
@@ -37,10 +37,10 @@ pub trait IpcCommandSend: IpcCommand {
 
 impl<T: IpcCommand> IpcCommandSend for T {}
 
-pub(crate) type Handler = Box<dyn Fn(Value, &mut App) -> Reply<Value>>;
+pub(crate) type Handler = Rc<dyn Fn(Value, &mut App) -> Reply<Value>>;
 
 pub(crate) fn erase<C: IpcCommand>() -> Handler {
-  Box::new(|data, cx| {
+  Rc::new(|data, cx| {
     let reply = serde_json::from_value(data).map(|payload| C::reply(payload, cx));
     Box::pin(async move { Ok(serde_json::to_value(reply?.await?)?) })
   })

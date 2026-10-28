@@ -1,14 +1,14 @@
 use anyhow::{Result, bail};
 use corona_brightness::{BrightnessExt, Display};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use crate::control_center::dashboard::sliders::display;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<SetBrightness>()
     .register::<ListMonitors>();
 }

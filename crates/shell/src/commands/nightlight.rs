@@ -1,13 +1,13 @@
 use anyhow::Result;
 use corona_brightness::BrightnessExt;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::radio::Switch;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Nightlight>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Nightlight>();
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]

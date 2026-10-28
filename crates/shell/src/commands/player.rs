@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use corona_mpris::{LoopStatus, MprisExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::radio::Switch;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<Seek>()
     .register::<Shuffle>()
     .register::<Loop>()

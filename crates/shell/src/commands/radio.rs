@@ -1,14 +1,14 @@
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_bluez::BluetoothExt;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_network_manager::NetworkManagerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Wifi>().register::<Bluetooth>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Wifi>().register::<Bluetooth>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]

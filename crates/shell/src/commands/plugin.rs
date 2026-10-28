@@ -1,11 +1,11 @@
 use anyhow::Result;
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<PluginCall>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<PluginCall>();
 }
 
 /// Calls `method` of plugin `id`'s service, its answer

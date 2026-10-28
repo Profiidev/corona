@@ -4,12 +4,12 @@ use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_compositor::{Compositor, CompositorExt, types};
 use corona_config::ConfigProvider;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<Toggle>()
     .register::<MoveToWorkspace>()
     .register::<MoveToMonitor>()

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use corona_network_manager::{
   ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
 };
@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::radio::Switch;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<ListWifi>()
     .register::<ConnectWifi>()
     .register::<DisconnectWifi>()

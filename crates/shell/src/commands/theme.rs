@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_components::assets::{set_mode, set_theme, theme_names};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, component::ActiveTheme};
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<SetMode>()
     .register::<SetTheme>()
     .register::<ListThemes>();

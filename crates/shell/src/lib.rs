@@ -90,17 +90,12 @@ fn config_failed(error: String, cx: &mut App) {
 }
 
 fn init_ipc(cx: &mut App) {
-  let Some(mut server) = corona_ipc::IpcServer::new().expect("Failed to create IPC server") else {
-    tracing::error!("Failed to create IPC server: socket already in use");
-    std::process::exit(1);
-  };
-
-  corona_surface::commands::register_commands(&mut server);
-  overlays::register_commands(&mut server);
-  commands::register_commands(&mut server);
-  launcher::commands::register_commands(&mut server);
-
-  cx.spawn(async move |cx| server.run(cx).await).detach();
+  // binds first: a second instance exits before it starts anything
+  corona_ipc::serve(cx);
+  corona_surface::commands::register_commands(cx);
+  overlays::register_commands(cx);
+  commands::register_commands(cx);
+  launcher::commands::register_commands(cx);
 }
 
 fn init_integrations(cx: &mut App) {

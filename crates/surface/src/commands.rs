@@ -1,11 +1,11 @@
 use anyhow::Result;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
 use crate::panel::PanelState;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<TogglePanel>()
     .register::<OpenPanel>()
     .register::<ClosePanel>()
@@ -66,7 +66,7 @@ impl IpcCommand for ListPanels {
 
 #[cfg(test)]
 mod tests {
-  use gpui_kit::TestAppContext;
+  use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
   use crate::{
@@ -98,15 +98,8 @@ mod tests {
     });
   }
 
-  #[test]
-  fn registers_on_a_server() {
-    let dir = tempfile::tempdir().unwrap();
-    unsafe {
-      std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-      std::env::remove_var("WAYLAND_DISPLAY");
-      std::env::remove_var("CORONA_SOCKET");
-    }
-    let mut server = IpcServer::new().unwrap().expect("socket is free");
-    register_commands(&mut server);
+  #[gpui::test]
+  fn registers_in_the_registry(cx: &mut TestAppContext) {
+    cx.update(register_commands);
   }
 }

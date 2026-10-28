@@ -1,11 +1,11 @@
 use anyhow::Result;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
 use crate::overlays::screenshot::{mode::Mode, state::ScreenshotState};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Screenshot>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Screenshot>();
 }
 
 pub struct Screenshot;

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_pipewire::{
   PipewireExt,
   volume::{to_linear, to_slider},
@@ -7,8 +7,8 @@ use corona_pipewire::{
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Volume>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Volume>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

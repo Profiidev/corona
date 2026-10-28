@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_utils::error::ErrorLogExt;
 use futures::FutureExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Media>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Media>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]

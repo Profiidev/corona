@@ -1,11 +1,11 @@
 use anyhow::Result;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
 pub use crate::osds::lock_keys::LockKey;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Pressed>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Pressed>();
 }
 
 /// A lock key was pressed; bound to the key in the compositor, since only it

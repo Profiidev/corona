@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::Permissions, os::unix::fs::PermissionsExt};
 
 use anyhow::{Result, anyhow};
-use gpui_kit::AsyncApp;
+use gpui_kit::{App, AsyncApp, Global};
 use smol::{
   io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
   net::unix::{UnixListener, UnixStream},
@@ -13,9 +13,43 @@ use crate::{
   util,
 };
 
+/// The commands the server answers, registered by every crate from its `init`
+#[derive(Default)]
+pub struct IpcRegistry {
+  handlers: HashMap<&'static str, Handler>,
+}
+
+impl Global for IpcRegistry {}
+
+impl IpcRegistry {
+  pub fn register<C: IpcCommand>(&mut self) -> &mut Self {
+    self.handlers.insert(C::COMMAND, erase::<C>());
+    self
+  }
+}
+
+pub trait IpcExt {
+  fn ipc_mut(&mut self) -> &mut IpcRegistry;
+}
+
+impl IpcExt for App {
+  fn ipc_mut(&mut self) -> &mut IpcRegistry {
+    self.default_global::<IpcRegistry>()
+  }
+}
+
+/// Binds the socket and answers commands from the [`IpcRegistry`]; exits when
+/// another instance already answers on it
+pub fn serve(cx: &mut App) {
+  let Some(server) = IpcServer::new().expect("Failed to create IPC server") else {
+    error!("Failed to create IPC server: socket already in use");
+    std::process::exit(1);
+  };
+  cx.spawn(async move |cx| server.run(cx).await).detach();
+}
+
 pub struct IpcServer {
   listener: UnixListener,
-  handlers: HashMap<&'static str, Handler>,
 }
 
 impl IpcServer {
@@ -36,15 +70,7 @@ impl IpcServer {
     };
     std::fs::set_permissions(&socket_path, Permissions::from_mode(0o600))?;
 
-    Ok(Some(Self {
-      listener,
-      handlers: HashMap::new(),
-    }))
-  }
-
-  pub fn register<C: IpcCommand>(&mut self) -> &mut Self {
-    self.handlers.insert(C::COMMAND, erase::<C>());
-    self
+    Ok(Some(Self { listener }))
   }
 
   async fn accept(&self) -> Result<(IpcPayload, UnixStream)> {
@@ -75,8 +101,11 @@ impl IpcServer {
         }
       };
 
-      let reply = (self.handlers.get(payload.command.as_str()))
-        .map(|handler| cx.update(|cx| handler(payload.data, cx)));
+      let reply = cx.update(|cx| {
+        let handler = (cx.try_global::<IpcRegistry>())
+          .and_then(|r| r.handlers.get(payload.command.as_str()).cloned());
+        handler.map(|handler| handler(payload.data, cx))
+      });
       let command = payload.command;
       // a slow answer must not hold up the next connection
       cx.spawn(async move |_| {
@@ -149,8 +178,10 @@ mod tests {
   fn serve(cx: &mut TestAppContext) -> TempDir {
     cx.executor().allow_parking();
     let dir = runtime_dir();
-    let mut server = IpcServer::new().unwrap().unwrap();
-    server.register::<Shout>().register::<Gated>();
+    let server = IpcServer::new().unwrap().unwrap();
+    cx.update(|cx| {
+      cx.ipc_mut().register::<Shout>().register::<Gated>();
+    });
     cx.spawn(async move |cx| server.run(&cx).await).detach();
     dir
   }

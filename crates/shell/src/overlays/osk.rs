@@ -1,7 +1,7 @@
 //! The on-screen keyboard, `corona_osk`, and its IPC
 
 use anyhow::Result;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_osk::{Osk, OskExt};
 use gpui_kit::{App, BorrowAppContext};
 
@@ -11,8 +11,8 @@ pub fn init(cx: &mut App) {
   corona_osk::init(cx);
 }
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<Show>()
     .register::<Hide>()
     .register::<Toggle>()

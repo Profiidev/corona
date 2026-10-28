@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
 use corona_bluez::{BluetoothExt, Device};
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<ListDevices>()
     .register::<DeviceAction>()
     .register::<Discover>();

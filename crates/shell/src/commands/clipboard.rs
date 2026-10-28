@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use corona_clipboard::{ClipboardExt, ClipboardHistory};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<ListClipboard>()
     .register::<DeleteClip>()
     .register::<ClearClipboard>();

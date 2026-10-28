@@ -1,7 +1,7 @@
 //! Trash, drives, processes and timers over IPC
 
 use anyhow::{Context, Result, bail};
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use corona_launcher::commands::{
   processes::{by_port, kill, snapshot},
   storage::{empty_trash, trash_count},
@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::overlays::drive_password;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<TrashCount>()
     .register::<EmptyTrash>()
     .register::<ListDrives>()

@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_launcher::commands::calculator::calculate;
 use gpui_kit::App;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Evaluate>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Evaluate>();
 }
 
 /// What the launcher's calculator makes of an expression

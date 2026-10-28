@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_compositor::CompositorExt;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_pipewire::{
   AudioNode, PipewireExt,
   volume::{to_linear, to_slider},
@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::volume::Action;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<ListNodes>()
     .register::<SetDefault>()
     .register::<StreamVolume>()

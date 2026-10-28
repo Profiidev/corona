@@ -1,12 +1,12 @@
 use anyhow::{Result, bail};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_surface::panel::PanelState;
 use gpui_kit::App;
 
 use crate::control_center::variants::ControlCenterType;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<OpenPage>().register::<ListPages>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<OpenPage>().register::<ListPages>();
 }
 
 /// The control center pages by name, like `audio`

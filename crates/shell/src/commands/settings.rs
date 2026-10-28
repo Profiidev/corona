@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use crate::settings;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<SettingsWindow>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<SettingsWindow>();
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]

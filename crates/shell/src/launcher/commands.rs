@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use corona_ipc::{IpcCommand, IpcServer, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use corona_launcher::{
   dmenu,
   ui::{self, Open as OpenWith},
@@ -7,8 +7,8 @@ use corona_launcher::{
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut()
     .register::<Open>()
     .register::<Close>()
     .register::<Toggle>()

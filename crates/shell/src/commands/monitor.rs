@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_compositor::{Compositor, types::MonitorChange};
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Configure>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Configure>();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]

@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcServer};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, Modifiers};
 use serde::{Deserialize, Serialize};
 
 use crate::overlays::switcher::SwitcherState;
 
-pub fn register_commands(server: &mut IpcServer) {
-  server.register::<Cycle>();
+pub fn register_commands(cx: &mut App) {
+  cx.ipc_mut().register::<Cycle>();
 }
 
 pub struct Cycle;
