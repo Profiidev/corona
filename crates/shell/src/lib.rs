@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use corona_config::{ConfigProvider, observe_section};
 use corona_notifications::NotificationsExt;
 use corona_surface::bar::BarState;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{Buses, error::ErrorLogExt};
 use gpui_kit::App;
 use rust_i18n::t;
 
@@ -125,10 +123,7 @@ fn register_variants(cx: &mut App) {
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
-  let system = zbus::connection::Builder::system()?
-    .method_timeout(Duration::from_secs(5))
-    .build()
-    .await?;
+  let Buses { system, session } = Buses::connect().await?;
 
   corona_network_manager::init(cx, &system).await?;
   corona_bluez::init(cx, &system).await?;
@@ -139,11 +134,6 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_weather::init(cx);
   corona_brightness::init(cx, &system)?;
   corona_auth::init(cx, &system);
-
-  let session = zbus::connection::Builder::session()?
-    .method_timeout(Duration::from_secs(5))
-    .build()
-    .await?;
   corona_mpris::init(cx, &session).await?;
   let serve = cx.config().notification.enabled;
   corona_notifications::init(cx, &session, serve).await?;

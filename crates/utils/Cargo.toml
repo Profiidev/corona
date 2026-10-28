@@ -9,7 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-support = ["dep:zbus", "dep:tempfile", "gpui-kit/test-support"]
+test-support = ["dep:tempfile", "gpui-kit/test-support"]
 
 [dependencies]
 gpui-kit.workspace = true
@@ -18,7 +18,7 @@ flume.workspace = true
 futures-lite.workspace = true
 uuid.workspace = true
 tracing.workspace = true
-zbus = { workspace = true, optional = true }
+zbus.workspace = true
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
