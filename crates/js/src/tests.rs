@@ -22,6 +22,7 @@ use crate::{
 };
 
 mod components_forms;
+mod components_navigation;
 mod elements;
 
 pub(crate) use elements::FAMILY;

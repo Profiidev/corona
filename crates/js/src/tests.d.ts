@@ -3559,6 +3559,150 @@ declare module "gpui-kit" {
     controls_right(): Element;
     /** `handler(action, cx)` on a step; replaces the built-in stepping. */
     on_step(handler: (event: "increment" | "decrement", cx: Context) => void): Element;
+    /** Whether a `Tab`, sidebar row, header or footer shows as selected. */
+    selected(value: boolean): Element;
+    /** Disables a tab, accordion part, step, pagination, menu or command item. */
+    disabled(value: boolean): Element;
+    /** A `Tab`'s one-based place among `size` tabs, announced as "tab 2 of 5". */
+    set_position(position: number, size: number): Element;
+    /** Whether an accordion item or a collapsible is open. */
+    open(value: boolean): Element;
+    /** An `AccordionItem`'s `AccordionHeader`, or a `Sidebar`'s header. */
+    header(el: Element | Entity | string | number | boolean): Element;
+    /** A `Sidebar`'s footer. */
+    footer(el: Element | Entity | string | number | boolean): Element;
+    /** An `AccordionItem`'s `AccordionPanel`. */
+    panel(element: Element | Entity | string | number | boolean): Element;
+    /** What revealing a collapsible shows. */
+    content(el: Element | Entity | string | number | boolean): Element;
+    /** A stable identity for a collapsible's reveal motion. */
+    motion_id(id: string | number): Element;
+    /** An `AccordionHeader`'s announced heading level, 3 by default. */
+    aria_level(level: number): Element;
+    /** Keeps a shut `AccordionPanel` in the tree, with its scroll position and focus. */
+    keep_mounted(value?: boolean): Element;
+    /**
+     * `handler(value, cx)`: an `AccordionTrigger`'s requested open state, or the index a
+     * `TabBar` or `Stepper`, or the page a `Pagination`, asks for.
+     */
+    on_change(handler: (event: any, cx: Context) => void): Element;
+    /** A resizable panel's initial size in pixels, or a component's semantic size. */
+    size(size: number | "xsmall" | "small" | "medium" | "large"): Element;
+    /** Whether a `resizable_panel()` is drawn; hidden, it keeps its place. Default `true`. */
+    visible(value?: boolean): Element;
+    /** How far a resizable panel may be dragged, in pixels. */
+    size_range(min: number, max?: number): Element;
+    /** `handler(sizes, cx)` after a drag resized the panels of a resizable group. */
+    on_resize(handler: (event: number[], cx: Context) => void): Element;
+    /** A `Resizable`'s direction: `"horizontal"` or `"vertical"`. */
+    axis(value: string): Element;
+    /** A `Resizable`'s size across its axis, in pixels. */
+    cross_size(pixels: number): Element;
+    /** When a `Scrollbar` shows: `"scrolling"`, `"hover"` or `"always"`. */
+    mode(value: string): Element;
+    /** The content size a `Scrollbar` measures its thumb against, in pixels. */
+    scroll_size(width: number, height: number): Element;
+    /** Makes a `Scrollbar` take its viewport from its own bounds. */
+    viewport_from_layout(enabled?: boolean): Element;
+    /** Which axes a `Scrollbar` or `Scroll` covers: `"vertical"`, `"horizontal"` or `"both"`. */
+    scroll_axis(axis: string): Element;
+    /** Lets a `VirtualListScrollHandle` drive a virtual list. */
+    track_scroll(handle: import("gpui-base").VirtualListScrollHandle): Element;
+    /** Which item a virtual list measures for its cross-axis size. */
+    with_item_to_measure_index(index: number): Element;
+    /** A `Tab`'s text, or a `Separator`'s. */
+    label(label: string): Element;
+    /** What a `Tab` announces. */
+    aria_label(label: string): Element;
+    /** The zero-based selected tab or current step. */
+    selected_index(index: number): Element;
+    /**
+     * A `TabBar`'s look (`"tab"`, `"outline"`, `"pill"`, `"segmented"`, `"underline"`) or a
+     * `GroupBox`'s (`"normal"`, `"fill"`, `"outline"`).
+     */
+    variant(variant: string): Element;
+    /** Whether a `TabBar` lists tabs that do not fit in a menu. */
+    menu(value: boolean): Element;
+    /** Whether an `Accordion` keeps several items open. */
+    multiple(value: boolean): Element;
+    /** Whether an `Accordion` or `Command` draws its border. */
+    bordered(value: boolean): Element;
+    /** `handler(open_indices, cx)` after an `Accordion` item was toggled. */
+    on_toggle(handler: (event: number[], cx: Context) => void): Element;
+    /** An `AccordionItem`'s title row or a `GroupBox`'s title. */
+    title(title: Element | Entity | string | number | boolean): Element;
+    /** The current one-based page. */
+    current_page(page: number): Element;
+    /** How many pages there are. */
+    total_pages(pages: number): Element;
+    /** How many page buttons show at most. */
+    visible_pages(pages: number): Element;
+    /** Shows only the previous and next buttons. */
+    compact(): Element;
+    /** Lays a `Stepper` out top to bottom. */
+    vertical(value?: boolean): Element;
+    /** Centers each step's text in a horizontal `Stepper`. */
+    text_center(value?: boolean): Element;
+    /** A `Separator`'s line color. */
+    color(color: Color): Element;
+    /** Draws a `Separator` dashed. */
+    dashed(): Element;
+    /** Adds to a `StatusBar`'s leading side. */
+    left_content(el: Element | Entity | string | number | boolean): Element;
+    /** Adds to a `StatusBar`'s trailing side. */
+    right_content(el: Element | Entity | string | number | boolean): Element;
+    /** The side a `Sidebar` or `SidebarToggleButton` sits on: `"left"` or `"right"`. */
+    side(side: string): Element;
+    /** How a `Sidebar` collapses: `"icon"`, `"offcanvas"` or `"none"`. */
+    collapsible(mode: string): Element;
+    /** Whether a `Sidebar` is collapsed, and which icon its toggle shows. */
+    collapsed(value: boolean): Element;
+    /** `handler(event, cx)` when a sidebar row or toggle is pressed. */
+    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    /** Whether a sidebar row's submenu starts open. */
+    default_open(value: boolean): Element;
+    /** Lets a press on a sidebar row open its submenu. */
+    click_to_open(value: boolean): Element;
+    /** Lets a press on a sidebar row toggle its submenu. */
+    click_to_toggle(value: boolean): Element;
+    /** A sidebar row's icon: `"home"`, `"components"`, `"settings"`, `"archive"` or `"account"`. */
+    icon(icon: string): Element;
+    /** Whether a `Command` shows its search field. */
+    searchable(value: boolean): Element;
+    /** Whether a `Command` filters its items by the query. */
+    filterable(value: boolean): Element;
+    /** A `Command`'s search placeholder. */
+    placeholder(text: string): Element;
+    /** How tall a `Command`'s results grow, in pixels. */
+    max_height(pixels: number): Element;
+    /** `handler(query, cx)` after a `Command`'s query changed. */
+    on_query(handler: (event: string, cx: Context) => void): Element;
+    /** `handler({ section, row }, cx)` after a `Command`'s highlight moved. */
+    on_select(handler: (event: { section: number; row: number }, cx: Context) => void): Element;
+    /** `handler({ section, row }, cx)` after a `Command` item was confirmed. */
+    on_confirm(handler: (event: { section: number; row: number }, cx: Context) => void): Element;
+    /** `handler(cx)` when Escape is pressed on a `Command` with an empty query. */
+    on_cancel(handler: (cx: Context) => void): Element;
+    /** Another word a `CommandItem` is found by. */
+    keyword(keyword: string): Element;
+    /** Whether a command or native menu item shows a check. */
+    checked(value: boolean): Element;
+    /** The action a command or native menu item dispatches, for `on_action`. */
+    action(action: string): Element;
+    /** The outlined look of a `DropdownButton`. */
+    outline(): Element;
+    /** Where a `DropdownButton`'s menu opens. */
+    menu_anchor(anchor: string): Element;
+    /** Adds a `DropdownButton` menu item calling `handler(cx)`. */
+    menu_item(label: string, handler: (cx: Context) => void): Element;
+    /** Adds a `DropdownMenu` item calling `handler(cx)`. */
+    item(label: string, handler: (cx: Context) => void): Element;
+    /** Scrolls both axes and paints base-layer scrollbars. */
+    overflow_scrollbar(): Element;
+    /** Scrolls horizontally and paints a base-layer scrollbar. */
+    overflow_x_scrollbar(): Element;
+    /** Scrolls vertically and paints a base-layer scrollbar. */
+    overflow_y_scrollbar(): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -3830,6 +3974,68 @@ declare module "gpui-base" {
   export const SliderThumb: { new (state: SliderState): Element; new: (state: SliderState) => Element };
   import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "gpui-component";
   export { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent };
+  type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };
+  /** A tab list; each `Tab` is told whether it is selected and reports clicks. */
+  export const Tabs: Ctor<[id: string | number]>;
+  /** One tab: `selected(..)` in, `on_click(..)` out. */
+  export const Tab: Ctor<[id: string | number]>;
+  /** An accordion: items, each with an `AccordionHeader` and an `AccordionPanel`. Draws nothing. */
+  export const Accordion: Ctor<[id: string | number]>;
+  /** One item: `open(..)`, `header(..)`, `panel(..)`. */
+  export const AccordionItem: Ctor<[]>;
+  /** The heading owning an item's trigger. */
+  export const AccordionHeader: Ctor<[trigger: Element]>;
+  /** The region an item reveals; gone while shut unless `keep_mounted()`. */
+  export const AccordionPanel: Ctor<[]>;
+  /** The button: `on_change(open => ..)` asks for the other state. */
+  export const AccordionTrigger: Ctor<[id: string | number]>;
+  /** A pagination landmark; draw the pages from `pagination_items`. */
+  export const Pagination: Ctor<[id: string | number]>;
+  /** One entry of a page layout: a page, or a gap standing for the pages `[first, last]`. */
+  export type PaginationEntry =
+    | { page: number; ellipsis?: undefined }
+    | { ellipsis: [first: number, last: number]; page?: undefined };
+  /** Which pages to draw around `current_page`, and where the gaps fall. */
+  export function pagination_items(current_page: number, total_pages: number, visible_pages?: number): PaginationEntry[];
+  /** Renders its `content` only while `open`; children always. */
+  export const Collapsible: Ctor<[]>;
+  /** A row of `resizable_panel()`s with draggable dividers; sizes persist under `id`. */
+  export function h_resizable(id: string | number): Element;
+  /** A column of `resizable_panel()`s. */
+  export function v_resizable(id: string | number): Element;
+  /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
+  export function resizable_panel(): Element;
+  type ScrollTarget = import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
+  /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
+  export const Scrollbar: {
+    new: (handle: ScrollTarget) => Element;
+    horizontal: (handle: ScrollTarget) => Element;
+    vertical: (handle: ScrollTarget) => Element;
+  };
+  /** A list of rows of the given heights that renders only the visible ones. */
+  export function v_virtual_list(
+    id: string | number,
+    item_count: number,
+    item_sizes: number | number[],
+    get_key: (index: number) => string,
+    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+  ): Element;
+  /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
+  export function h_virtual_list(
+    id: string | number,
+    item_count: number,
+    item_sizes: number | number[],
+    get_key: (index: number) => string,
+    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+  ): Element;
+  /** A virtual list's scroll position; `track_scroll(handle)` on the list. */
+  export class VirtualListScrollHandle {
+    constructor();
+    static new(): VirtualListScrollHandle;
+    /** Puts item `index` on screen. */
+    scroll_to_item(index: number, strategy?: "top" | "center"): void;
+    scroll_to_bottom(): void;
+  }
 }
 declare module "gpui-component" {
   import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
@@ -3995,6 +4201,82 @@ declare module "gpui-component" {
     release(): boolean;
   }
   export function TimeFieldState(): TimeFieldState;
+  type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };
+  /** A styled tab bar taking `Tab` children. */
+  export const TabBar: Ctor<[id: string | number]>;
+  /** @deprecated Use `TabBar`. */
+  export const Tabs: Ctor<[id: string | number]>;
+  /** One tab of a `TabBar`. */
+  export const Tab: Ctor<[]>;
+  /** An accordion taking `AccordionItem` children. */
+  export const Accordion: Ctor<[id: string | number]>;
+  /** One item: `title(..)`, `open(..)`, children as its content. */
+  export const AccordionItem: Ctor<[]>;
+  /** Renders its `content` only while `open`. */
+  export const Collapsible: Ctor<[]>;
+  /** Page buttons: `current_page`, `total_pages`, `on_change(page => ..)`. */
+  export const Pagination: Ctor<[id: string | number]>;
+  /** Steps taking `StepperItem` children. */
+  export const Stepper: Ctor<[id: string | number]>;
+  export const StepperItem: Ctor<[]>;
+  /** A trail of labels. */
+  export const Breadcrumb: Ctor<[labels: string[]]>;
+  /** A titled container. */
+  export const GroupBox: Ctor<[]>;
+  /** A bar: children in the middle, `left_content`/`right_content` at the edges. */
+  export const StatusBar: Ctor<[]>;
+  export const Toolbar: Ctor<[id: string | number]>;
+  export const Separator: Ctor<[]>;
+  export const VerticalSeparator: Ctor<[]>;
+  export const DashedSeparator: Ctor<[]>;
+  export const VerticalDashedSeparator: Ctor<[]>;
+  /** Panes with draggable dividers, horizontal unless `axis("vertical")`; takes `ResizablePanel`s. */
+  export const Resizable: Ctor<[id: string | number]>;
+  export const ResizablePanel: Ctor<[]>;
+  /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
+  export const Scroll: Ctor<[handle: ScrollbarHandle]>;
+  /** A scrollbar driving the area that tracks `handle`. */
+  export const Scrollbar: Ctor<[id: string | number, handle: ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
+  export type ScrollbarHandle = import("gpui-kit").ScrollHandle;
+  export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
+  /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */
+  export const Sidebar: Ctor<[id: string | number]>;
+  export const SidebarHeader: Ctor<[]>;
+  export const SidebarFooter: Ctor<[]>;
+  /** Rows: `SidebarMenuItem` children. */
+  export const SidebarMenu: Ctor<[]>;
+  /** A row; `SidebarMenuItem` children make its submenu. */
+  export const SidebarMenuItem: Ctor<[label: string]>;
+  export const SidebarToggleButton: Ctor<[]>;
+  /** A button opening a menu of `item(label, cx => ..)`s. */
+  export const DropdownMenu: Ctor<[id: string | number, label: string]>;
+  /** A button popping up the OS menu of its `NativeMenuItem` children. */
+  export const NativeMenuTrigger: Ctor<[id: string | number, label: string]>;
+  /** An item dispatching `action`, for `on_action`. */
+  export const NativeMenuItem: Ctor<[label: string, action: string]>;
+  export const NativeMenuSeparator: Ctor<[]>;
+  /** A command palette's query and selection; make it in `init`. */
+  export interface CommandState {
+    /** The search text. */
+    query(): string;
+    release(): boolean;
+  }
+  export const CommandState: { (): CommandState; new: () => CommandState };
+  /** A searchable command palette taking `CommandItem`, `CommandGroup` and `CommandSeparator`. */
+  export const Command: Ctor<[state: CommandState]>;
+  export const CommandItem: Ctor<[label: string]>;
+  /** A labelled section taking `CommandItem` children. */
+  export const CommandGroup: Ctor<[label: string]>;
+  export const CommandSeparator: Ctor<[]>;
+  /** An application menu of `MenuItem`s and `MenuSeparator`s, for a `MenuBar`. */
+  export const Menu: Ctor<[label: string]>;
+  /** A menu item dispatching `action`, for `on_action`. */
+  export const MenuItem: Ctor<[label: string, action: string]>;
+  export const MenuSeparator: Ctor<[]>;
+  /** Installs its `Menu` children as the application menus and draws them in the window. */
+  export const MenuBar: Ctor<[id: string]>;
+  /** A labelled button with a menu of `menu_item(label, cx => ..)`s. */
+  export const DropdownButton: Ctor<[id: string | number, label: string]>;
 }
 /** A value of the shell: call it for the current one. */
 interface Signal<T> {

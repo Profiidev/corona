@@ -243,12 +243,20 @@ fn style_table_matches_gpui() {
     include_str!("../styles.rs"),
     "gpui's style methods changed"
   );
-  // the names the other tables use are not style methods
+  // a component method of a style's name takes no argument it needs, so it still types as one
+  let el = crate::el::el_d_ts();
   for (name, _) in NULLARY {
-    assert!(
-      !crate::el::el_d_ts().contains(&format!("    {name}(")),
-      "{name} twice"
-    );
+    for line in el
+      .lines()
+      .filter(|l| l.starts_with(&format!("    {name}(")))
+    {
+      let args = &line[name.len() + 5..];
+      let first = args.split([',', ')']).next().unwrap_or_default();
+      assert!(
+        first.is_empty() || first.contains("?:"),
+        "{name} takes an argument: {line}"
+      );
+    }
   }
 }
 
