@@ -1,10 +1,9 @@
-use corona_bluez::{self as bt, BluetoothExt};
-use corona_js::{Cx, Glob, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module};
+use crate as bt;
+use crate::BluetoothExt;
+use corona_js::{Cx, Glob, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module, json};
 use gpui_kit::App;
 use serde::Serialize;
 use specta::{Type, specta};
-
-use crate::module::json;
 
 #[derive(Serialize, Type)]
 struct Adapter {
@@ -166,9 +165,9 @@ async fn forget(cx: Cx, bt: Bt, address: String) -> Throws<()> {
 }
 
 /// `corona/bluetooth`
-pub struct Bluetooth;
+pub struct BluetoothModule;
 
-impl ScriptModule for Bluetooth {
+impl ScriptModule for BluetoothModule {
   const NAME: &str = "bluetooth";
   const DOC: &str = "Bluetooth adapters and devices, and pairing them.";
 

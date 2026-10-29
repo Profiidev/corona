@@ -1,7 +1,5 @@
-use crate::control_center::dashboard::{DashboardPanel, spawn_logged};
-use crate::control_center::{
-  BluetoothPanel, BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel,
-};
+use crate::control_center::dashboard::DashboardPanel;
+use crate::control_center::{BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel};
 use crate::icons::power_profile;
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
@@ -15,7 +13,7 @@ use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
 };
-use corona_utils::error::ErrorLogExt;
+use corona_utils::error::{ErrorLogExt, spawn_logged};
 use gpui_kit::{
   App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
   ParentElement, SharedString, Styled, Subscription, Window,
@@ -95,14 +93,6 @@ action!(
   ]
 );
 action!(
-  Bluetooth,
-  "bluetooth",
-  "app.dashboard.bluetooth",
-  bluetooth,
-  Some(BluetoothPanel::ID),
-  |cx| [cx.bluetooth().adapter, cx.bluetooth().devices,]
-);
-action!(
   Dnd,
   "dnd",
   "app.dashboard.dnd",
@@ -156,7 +146,6 @@ action!(
 pub(crate) fn register(cx: &mut App) {
   cx.dashboard_mut()
     .quick_action::<Wifi>()
-    .quick_action::<Bluetooth>()
     .quick_action::<Dnd>()
     .quick_action::<DarkMode>()
     .quick_action::<StayAwake>()
@@ -243,16 +232,6 @@ fn wifi_status(enabled: bool, connected: Option<String>) -> String {
     .unwrap_or_else(|| on_off(enabled))
 }
 
-/// `powered` is None without an adapter
-fn bluetooth_status(powered: Option<bool>, connected: usize) -> String {
-  match (powered, connected) {
-    (None, _) => t!("app.common.unavailable").into(),
-    (Some(true), 1) => t!("app.dashboard.devices.one").into(),
-    (Some(true), n) if n > 1 => t!("app.dashboard.devices.other", count = n).into(),
-    (Some(on), _) => on_off(on),
-  }
-}
-
 fn profile_icon(active: Option<&str>) -> IconName {
   match active {
     Some("performance") => IconName::Gauge,
@@ -290,30 +269,6 @@ fn wifi(cx: &App) -> Toggle {
     on_click: network.wifi_supported(cx).then(|| {
       Box::new(move |cx: &mut App| {
         let task = cx.network_manager().set_wifi_enabled(!enabled);
-        spawn_logged(cx, task);
-      }) as Action
-    }),
-  }
-}
-
-fn bluetooth(cx: &App) -> Toggle {
-  let bluetooth = cx.bluetooth();
-  let powered = bluetooth.adapter(cx).map(|a| a.powered);
-  let connected = bluetooth
-    .list_devices(cx)
-    .iter()
-    .filter(|d| d.connected)
-    .count();
-  Toggle {
-    icon: match powered {
-      Some(true) => IconName::Bluetooth,
-      _ => IconName::BluetoothOff,
-    },
-    status: bluetooth_status(powered, connected),
-    active: powered == Some(true),
-    on_click: powered.map(|powered| {
-      Box::new(move |cx: &mut App| {
-        let task = cx.bluetooth().set_powered(!powered, cx);
         spawn_logged(cx, task);
       }) as Action
     }),
@@ -445,20 +400,6 @@ mod tests {
       super::wifi_status(false, Some("Home".into())),
       on_off(false)
     );
-  }
-
-  #[test]
-  fn bluetooth_status() {
-    let unavailable = super::bluetooth_status(None, 3);
-    assert_ne!(unavailable, on_off(false));
-    assert_eq!(super::bluetooth_status(None, 0), unavailable);
-    assert_eq!(super::bluetooth_status(Some(true), 0), on_off(true));
-    assert_eq!(super::bluetooth_status(Some(false), 2), on_off(false));
-    let one = super::bluetooth_status(Some(true), 1);
-    let several = super::bluetooth_status(Some(true), 3);
-    assert_ne!(one, on_off(true));
-    assert_ne!(one, several);
-    assert!(several.contains('3'), "{several}");
   }
 
   #[test]

@@ -1742,11 +1742,22 @@ name = "corona_bluez"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona-zbus-bluez",
+ "corona_components",
+ "corona_ipc",
+ "corona_js",
+ "corona_launcher",
+ "corona_surface",
  "corona_utils",
  "futures-channel",
  "futures-lite",
  "gpui-kit",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "specta",
+ "uuid",
  "zbus",
 ]
 
@@ -1797,6 +1808,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "corona_bluez",
  "corona_config",
  "corona_ipc",
  "corona_js",
@@ -2226,7 +2238,6 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "corona_auth",
- "corona_bluez",
  "corona_brightness",
  "corona_components",
  "corona_compositor",

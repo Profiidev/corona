@@ -1,4 +1,4 @@
-use corona_bluez::BluetoothExt;
+use crate::BluetoothExt;
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::{CardExt, ErrorCard};
 use gpui_kit::{
@@ -10,7 +10,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::bluetooth::BluetoothPanel;
+use crate::ui::page::BluetoothPanel;
 use rust_i18n::t;
 
 impl BluetoothPanel {

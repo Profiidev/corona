@@ -1,5 +1,9 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
+use corona_bluez::commands::Bluetooth;
+use corona_bluez::commands::{
+  Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
+};
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
 use corona_mpris::commands::media::{Action as MediaAction, Media};
@@ -7,14 +11,11 @@ use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
 };
-use corona_shell::commands::bluetooth::{
-  Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
-};
 use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
-use corona_shell::commands::radio::{Bluetooth, Wifi};
+use corona_shell::commands::radio::Wifi;
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::volume::Device;
 use corona_shell::overlays::{

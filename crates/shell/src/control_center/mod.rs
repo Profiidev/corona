@@ -1,5 +1,4 @@
 mod audio;
-mod bluetooth;
 pub(crate) mod brightness;
 mod clipboard;
 pub(crate) mod dashboard;
@@ -18,7 +17,6 @@ use gpui_kit::App;
 
 pub use crate::control_center::{
   audio::AudioPanel,
-  bluetooth::BluetoothPanel,
   brightness::BrightnessPanel,
   clipboard::ClipboardPanel,
   dashboard::DashboardPanel,
@@ -37,7 +35,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<AudioPanel>()
     .register::<NetworkPanel>()
     .register::<HotspotPanel>()
-    .register::<BluetoothPanel>()
     .register::<DisksPanel>()
     .register::<PowerPanel>()
     .register::<BrightnessPanel>()

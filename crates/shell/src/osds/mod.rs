@@ -4,7 +4,6 @@ use gpui_kit::App;
 
 use kinds::*;
 
-mod bluetooth;
 mod brightness;
 mod caffeine;
 mod dnd;
@@ -21,7 +20,6 @@ pub fn init(cx: &mut App) {
     .register::<VolumeOsd>()
     .register::<BrightnessOsd>()
     .register::<WifiOsd>()
-    .register::<BluetoothOsd>()
     .register::<DndOsd>()
     .register::<PowerProfileOsd>()
     .register::<PrivacyOsd>()
@@ -31,7 +29,6 @@ pub fn init(cx: &mut App) {
   volume::init(cx);
   brightness::init(cx);
   wifi::init(cx);
-  bluetooth::init(cx);
   power_profile::init(cx);
   dnd::init(cx);
   privacy::init(cx);

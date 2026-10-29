@@ -18,19 +18,12 @@ use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::DashboardCard,
 };
-use corona_utils::error::ErrorLogExt;
+use corona_utils::error::spawn_logged;
 use rust_i18n::t;
 
 use crate::ui::page::MediaPanel;
 
 const ART: f32 = 64.;
-
-fn spawn_logged(cx: &mut App, task: impl Future<Output = anyhow::Result<()>> + 'static) {
-  cx.spawn(async move |_| {
-    let _ = task.await.log_err();
-  })
-  .detach();
-}
 
 fn card(id: &'static str, cx: &App) -> Stateful<Div> {
   div().id(id).flex().p_2().gap_2().card(cx)

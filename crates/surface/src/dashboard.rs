@@ -10,6 +10,15 @@ use gpui_kit::{
   assets::IconName,
 };
 
+/// "On" or "Off", for a tile's status
+pub fn on_off(on: bool) -> SharedString {
+  match on {
+    true => rust_i18n::t!("app.common.on"),
+    false => rust_i18n::t!("app.common.off"),
+  }
+  .into()
+}
+
 /// Called when something a tile or slider shows changed
 pub type Changed = Rc<dyn Fn(&mut App)>;
 

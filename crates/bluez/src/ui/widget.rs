@@ -1,9 +1,9 @@
-use corona_bluez::BluetoothExt;
+use crate::BluetoothExt;
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::control_center::BluetoothPanel;
+use crate::ui::page::BluetoothPanel;
 use corona_surface::control_center::Standalone;
 
 pub struct BluetoothButton {

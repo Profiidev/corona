@@ -2,7 +2,6 @@ pub use corona_utils::level::parse_level;
 use gpui_kit::App;
 
 pub mod audio;
-pub mod bluetooth;
 pub mod brightness;
 pub mod caffeine;
 pub mod clipboard;
@@ -23,7 +22,6 @@ pub mod window;
 
 pub fn register_commands(cx: &mut App) {
   audio::register_commands(cx);
-  bluetooth::register_commands(cx);
   brightness::register_commands(cx);
   caffeine::register_commands(cx);
   clipboard::register_commands(cx);

@@ -161,13 +161,6 @@ impl DashboardPanel {
   }
 }
 
-fn spawn_logged(cx: &mut App, task: impl Future<Output = anyhow::Result<()>> + 'static) {
-  cx.spawn(async move |_| {
-    let _ = task.await.log_err();
-  })
-  .detach();
-}
-
 impl Render for DashboardPanel {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     div()

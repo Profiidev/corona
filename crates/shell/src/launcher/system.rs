@@ -26,14 +26,13 @@ use crate::{
     nightlight::{Nightlight, Request as NightlightRequest},
     notification::{Dnd, DoNotDisturb},
     power_profile::{CycleProfile, SetProfile},
-    radio::{Bluetooth, Wifi},
+    radio::Wifi,
   },
   control_center::dashboard::toggles::{airplane_state, set_airplane},
 };
 
 pub fn init(cx: &mut App) {
   network(cx);
-  bluetooth(cx);
   dnd(cx);
   Group::new("system:stay_awake", vec![caffeine()])
     .observe(|notify, cx| {
@@ -86,23 +85,6 @@ fn network(cx: &mut App) {
         watch(&network.wifi_enabled, &notify, cx),
         watch(&bluetooth.adapter, &notify, cx),
       ]
-    })
-    .register(cx);
-}
-
-fn bluetooth(cx: &mut App) {
-  let toggle = Toggle::command(
-    "bluetooth",
-    t!("app.launcher.system.bluetooth"),
-    IconName::Bluetooth,
-    230.,
-    |cx| cx.bluetooth().adapter(cx).map(|a| a.powered),
-    |on, cx| Bluetooth::handle(on.into(), cx).map(|_| ()),
-  );
-  Group::new("system:bluetooth", vec![toggle])
-    .observe(|notify, cx| {
-      let bluetooth = cx.bluetooth().clone();
-      vec![watch(&bluetooth.adapter, &notify, cx)]
     })
     .register(cx);
 }

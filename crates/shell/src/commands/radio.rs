@@ -1,12 +1,11 @@
-use anyhow::{Context, Result, bail};
-use corona_bluez::BluetoothExt;
+use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Switch};
 use corona_network_manager::NetworkManagerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 
 pub fn register_commands(cx: &mut App) {
-  cx.ipc_mut().register::<Wifi>().register::<Bluetooth>();
+  cx.ipc_mut().register::<Wifi>();
 }
 
 fn spawn(task: impl Future<Output = Result<()>> + 'static, cx: &mut App) {
@@ -36,28 +35,5 @@ impl IpcCommand for Wifi {
     };
     spawn(network.set_wifi_enabled(enabled), cx);
     Ok(enabled)
-  }
-}
-
-pub struct Bluetooth;
-
-impl IpcCommand for Bluetooth {
-  const COMMAND: &'static str = "bluetooth:switch";
-
-  type Payload = Switch;
-  /// on or off afterwards
-  type Response = bool;
-
-  fn handle(switch: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    let bluetooth = cx.bluetooth().clone();
-    let current = bluetooth
-      .adapter(cx)
-      .context("no Bluetooth adapter")?
-      .powered;
-    let Some(powered) = switch.target(current) else {
-      return Ok(current);
-    };
-    spawn(bluetooth.set_powered(powered, cx), cx);
-    Ok(powered)
   }
 }

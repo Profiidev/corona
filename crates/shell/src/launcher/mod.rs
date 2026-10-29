@@ -1,7 +1,6 @@
 //! The launcher's commands that need the shell, registered into `corona_launcher`
 
 mod audio;
-mod bluetooth;
 mod devices;
 mod display;
 mod drives;
@@ -59,7 +58,6 @@ pub fn init(cx: &mut App) {
   info::init(cx);
   devices::init(cx);
   network::init(cx);
-  bluetooth::init(cx);
   drives::init(cx);
   notifications::init(cx);
   monitors::init(cx);

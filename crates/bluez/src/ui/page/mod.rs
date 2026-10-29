@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::BluetoothExt;
 use anyhow::Result;
-use corona_bluez::BluetoothExt;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -9,7 +9,7 @@ use gpui_kit::{
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::control_center::bluetooth::prompt::PairingPrompt;
+use crate::ui::page::prompt::PairingPrompt;
 
 mod devices;
 mod prompt;

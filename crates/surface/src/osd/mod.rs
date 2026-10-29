@@ -32,6 +32,47 @@ pub trait Osd: Render {
   fn size(&self, cx: &App) -> Size<Pixels>;
 }
 
+/// An [`Osd`] kind `$name` wrapping the shared view `$view` ([`LevelOsd`] or [`ToggleOsd`]),
+/// titled by the i18n keys `$title` and `$description` of the calling crate
+#[macro_export]
+macro_rules! osd_kind {
+  ($name:ident($view:ty), $kind:literal, $title:literal, $description:literal) => {
+    pub struct $name(pub $view);
+
+    impl From<$view> for $name {
+      fn from(view: $view) -> Self {
+        Self(view)
+      }
+    }
+
+    impl $crate::osd::Osd for $name {
+      const KIND: &'static str = $kind;
+
+      fn title() -> ::gpui_kit::SharedString {
+        ::rust_i18n::t!($title).into()
+      }
+
+      fn description() -> ::gpui_kit::SharedString {
+        ::rust_i18n::t!($description).into()
+      }
+
+      fn size(&self, _: &::gpui_kit::App) -> ::gpui_kit::Size<::gpui_kit::Pixels> {
+        self.0.size()
+      }
+    }
+
+    impl ::gpui_kit::Render for $name {
+      fn render(
+        &mut self,
+        _: &mut ::gpui_kit::Window,
+        cx: &mut ::gpui_kit::Context<Self>,
+      ) -> impl ::gpui_kit::IntoElement {
+        self.0.view(cx)
+      }
+    }
+  };
+}
+
 /// A registered OSD kind, for the settings to list
 pub struct OsdKind {
   pub id: &'static str,

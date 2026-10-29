@@ -1,12 +1,14 @@
+use crate::{BluetoothExt, Device};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
-use corona_bluez::{BluetoothExt, Device};
-use corona_ipc::{IpcCommand, IpcExt, Reply};
+use corona_ipc::{IpcCommand, IpcExt, Reply, Switch};
+use corona_utils::error::spawn_logged;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
+    .register::<Bluetooth>()
     .register::<ListDevices>()
     .register::<DeviceAction>()
     .register::<Discover>();
@@ -115,5 +117,28 @@ impl IpcCommand for Discover {
       true => Box::pin(bluetooth.start_discovery(cx)),
       false => Box::pin(bluetooth.stop_discovery(cx)),
     }
+  }
+}
+
+pub struct Bluetooth;
+
+impl IpcCommand for Bluetooth {
+  const COMMAND: &'static str = "bluetooth:switch";
+
+  type Payload = Switch;
+  /// on or off afterwards
+  type Response = bool;
+
+  fn handle(switch: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    let bluetooth = cx.bluetooth().clone();
+    let current = bluetooth
+      .adapter(cx)
+      .context("no Bluetooth adapter")?
+      .powered;
+    let Some(powered) = switch.target(current) else {
+      return Ok(current);
+    };
+    spawn_logged(cx, bluetooth.set_powered(powered, cx));
+    Ok(powered)
   }
 }

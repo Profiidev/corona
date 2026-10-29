@@ -5,7 +5,6 @@
 use corona_js::{ScriptRegistry, json};
 
 pub mod auth;
-pub mod bluetooth;
 pub mod brightness;
 pub mod compositor;
 pub mod dbus;
@@ -25,7 +24,6 @@ pub mod surface;
 pub fn register(registry: &mut ScriptRegistry) {
   registry
     .register::<auth::Auth>()
-    .register::<bluetooth::Bluetooth>()
     .register::<brightness::Brightness>()
     .register::<compositor::Compositor>()
     .register::<compositor::CompositorControl>()

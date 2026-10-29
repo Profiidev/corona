@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::pin::Pin;
 
-use corona_bluez::{BluetoothExt, Device};
+use crate::{BluetoothExt, Device};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
 use gpui_kit::{
@@ -19,7 +19,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::bluetooth::BluetoothPanel;
+use crate::ui::page::BluetoothPanel;
 use rust_i18n::t;
 
 const TYPES: [(&str, IconName, &str); 11] = [

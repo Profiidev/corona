@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use bluez_zbus::{adapter1::Adapter1Proxy, device1::Device1Proxy};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
@@ -15,9 +17,15 @@ pub use crate::{
 };
 
 mod agent;
+pub mod commands;
+mod launcher;
 mod listener;
+pub mod script;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Bluetooth {
@@ -188,7 +196,17 @@ async fn device(conn: &Connection, path: OwnedObjectPath) -> zbus::Result<Device
     .await
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows BlueZ, registers its UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  cx.script_mut().register::<script::BluetoothModule>();
+  Ok(())
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Bluetooth {
     adapter: cx.new(|_| None),
     devices: cx.new(|_| Vec::new()),
@@ -532,7 +550,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     (bus, bluez)

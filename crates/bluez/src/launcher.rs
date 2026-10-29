@@ -2,18 +2,18 @@
 
 use std::rc::Rc;
 
-use corona_bluez::{BluetoothExt, Device};
+use crate::{BluetoothExt, Device};
 use corona_ipc::IpcCommand;
 use corona_launcher::{
   Accessory, Action, Command, CommandSource, Confirm, Hud, Icon, ListView, Meta, Outcome, Query,
   Section, Tone,
-  kit::{ListSource, Notify, opener, watch},
+  kit::{Group, ListSource, Notify, Toggle, opener, watch},
   registry, simple,
 };
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::bluetooth::{Action as DeviceAction, DeviceAction as Run, Discover};
+use crate::commands::{Action as DeviceAction, Bluetooth, DeviceAction as Run, Discover};
 
 fn run(action: DeviceAction, address: String, title: SharedString, done: SharedString) -> Action {
   let id = format!("{action:?}").to_lowercase();
@@ -146,7 +146,8 @@ fn discovery(on: bool, cx: &mut App) {
   .detach();
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
+  toggle(cx);
   registry::register_source(Rc::new(Paired), cx);
   registry::register(
     opener(
@@ -179,4 +180,22 @@ pub fn init(cx: &mut App) {
     ),
     cx,
   );
+}
+
+/// The adapter's power as a toggle
+fn toggle(cx: &mut App) {
+  let toggle = Toggle::command(
+    "bluetooth",
+    t!("app.launcher.system.bluetooth"),
+    IconName::Bluetooth,
+    230.,
+    |cx| cx.bluetooth().adapter(cx).map(|a| a.powered),
+    |on, cx| Bluetooth::handle(on.into(), cx).map(|_| ()),
+  );
+  Group::new("system:bluetooth", vec![toggle])
+    .observe(|notify, cx| {
+      let bluetooth = cx.bluetooth().clone();
+      vec![watch(&bluetooth.adapter, &notify, cx)]
+    })
+    .register(cx);
 }

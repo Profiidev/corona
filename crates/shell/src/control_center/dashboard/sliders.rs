@@ -12,6 +12,7 @@ use corona_surface::{
   dashboard::{Changed, DashboardExt, DashboardRegistry, DashboardSlider, SliderEntry},
 };
 use corona_utils::error::ErrorLogExt;
+use corona_utils::error::spawn_logged;
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, ParentElement, SharedString, Styled, Subscription, Window,
   assets::IconName,
@@ -27,10 +28,7 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use crate::{
-  control_center::{
-    AudioPanel, BrightnessPanel,
-    dashboard::{DashboardPanel, spawn_logged},
-  },
+  control_center::{AudioPanel, BrightnessPanel, dashboard::DashboardPanel},
   icons::volume_icon,
 };
 

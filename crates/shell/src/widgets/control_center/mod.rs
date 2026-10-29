@@ -7,7 +7,6 @@ use corona_surface::control_center::ControlCenter;
 
 mod audio;
 mod battery;
-mod bluetooth;
 mod brightness;
 mod clipboard;
 pub(crate) mod disks;
@@ -19,7 +18,6 @@ mod power;
 
 pub use audio::AudioButton;
 pub use battery::BatteryButton;
-pub use bluetooth::BluetoothButton;
 pub use brightness::BrightnessButton;
 pub use clipboard::ClipboardButton;
 pub use disks::DisksButton;
