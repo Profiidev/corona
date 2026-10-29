@@ -11,7 +11,6 @@ mod network;
 mod notifications;
 mod power;
 mod printers;
-pub(crate) mod sysinfo;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -33,7 +32,6 @@ pub use crate::control_center::{
   notifications::{NotificationsPanel, ReplyInputs},
   power::PowerPanel,
   printers::PrintersPanel,
-  sysinfo::SysinfoPanel,
 };
 
 pub fn register_panels(cx: &mut App) {
@@ -51,7 +49,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<DisplaysPanel>()
     .register::<NotificationsPanel>()
     .register::<ClipboardPanel>()
-    .register::<SysinfoPanel>()
     .register::<MediaPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);

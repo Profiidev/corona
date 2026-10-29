@@ -138,6 +138,11 @@ impl<T: Type> Type for Throws<T> {
 /// applied): for host types that derive `Serialize`/`Deserialize` and `Type`.
 pub struct Json<T>(pub T);
 
+/// `read` with its value crossing as JSON, for [`ModuleBuilder::watch`](crate::ModuleBuilder::watch)
+pub fn json<R>(read: impl Fn(&App) -> R + 'static) -> impl Fn(&App) -> Json<R> + 'static {
+  move |cx| Json(read(cx))
+}
+
 impl<'js, T: Serialize> IntoJs<'js> for Json<T> {
   fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
     let text =

@@ -1,6 +1,6 @@
+use crate::SystemMonitorExt;
 use corona_components::components::card::CardExt;
 use corona_surface::control_center::ControlCenterPage;
-use corona_sysinfo::SystemMonitorExt;
 use gpui_kit::{
   App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div,

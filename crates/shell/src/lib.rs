@@ -100,7 +100,6 @@ fn init_integrations(cx: &mut App) {
   corona_components::i18n::apply(cx.config().shell.language.as_deref());
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
-  corona_sysinfo::init(cx);
   corona_components::assets::load(cx).expect("Failed to load assets");
   corona_surface::init(cx).expect("Failed to init ui");
   // the registries the integrations register into
@@ -128,6 +127,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   let buses = Buses::connect().await?;
   let Buses { system, session } = &buses;
 
+  corona_sysinfo::init(cx, &buses);
   corona_network_manager::init(cx, system).await?;
   corona_bluez::init(cx, system).await?;
   corona_printing::init(cx, system).await?;

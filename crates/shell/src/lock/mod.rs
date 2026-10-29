@@ -17,7 +17,7 @@ fn user(cx: &App) -> User {
       .shell
       .avatar
       .as_deref()
-      .map(crate::overlays::wallpaper::source),
+      .map(corona_components::assets::image_source),
   }
 }
 

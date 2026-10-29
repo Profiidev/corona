@@ -1,12 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use corona_js::{ModuleBuilder, PluginRef, ScriptModule};
-use corona_sysinfo::{self as si, SystemMonitorExt};
+use crate as si;
+use crate::SystemMonitorExt;
+use corona_js::{ModuleBuilder, PluginRef, ScriptModule, json};
 use gpui_kit::App;
 use serde::Serialize;
 use specta::Type;
-
-use crate::module::json;
 
 fn unix_seconds(time: SystemTime) -> f64 {
   time
@@ -203,9 +202,9 @@ impl From<&si::History> for History {
 }
 
 /// `corona/sysinfo`
-pub struct Sysinfo;
+pub struct SysinfoModule;
 
-impl ScriptModule for Sysinfo {
+impl ScriptModule for SysinfoModule {
   const NAME: &str = "sysinfo";
   const DOC: &str = "System information and usage.";
 
@@ -241,7 +240,7 @@ mod tests {
     time::{Duration, Instant, UNIX_EPOCH},
   };
 
-  use corona_sysinfo as si;
+  use crate as si;
 
   use super::{History, Sample, SystemInfo};
 

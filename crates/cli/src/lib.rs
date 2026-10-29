@@ -16,7 +16,9 @@ mod types;
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
-  registry.register::<corona_weather::script::WeatherModule>();
+  registry
+    .register::<corona_sysinfo::script::SysinfoModule>()
+    .register::<corona_weather::script::WeatherModule>();
 }
 
 /// Corona Shell CLI
@@ -131,4 +133,3 @@ mod tests {
     assert_eq!(modules.all().count(), 18);
   }
 }
-

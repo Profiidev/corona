@@ -1619,7 +1619,7 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 17] = [
+  const ALL_MODULES: [&str; 16] = [
     "compositor",
     "compositor_control",
     "pipewire",
@@ -1631,7 +1631,6 @@ export default class Main extends View {
     "notifications",
     "notification_center",
     "tray",
-    "sysinfo",
     "auth",
     "secrets",
     "desktop",

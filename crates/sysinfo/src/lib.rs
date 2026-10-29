@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use corona_config::{Config, ConfigProvider, observe_section};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 use crate::sampler::Update;
@@ -8,8 +10,14 @@ use crate::sampler::Update;
 pub use crate::state::{Disk, Gpu, GpuSample, GpuVendor, History, Sample, SystemInfo};
 
 mod gpu;
+mod launcher;
 mod sampler;
+pub mod script;
+mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const HISTORY: usize = 60;
 
@@ -61,7 +69,16 @@ fn interval(config: &Config) -> Duration {
   Duration::from_secs(config.system.monitor.poll_seconds.max(1))
 }
 
-pub fn init(cx: &mut App) {
+/// Starts sampling, registers its UI, commands and script module
+pub fn init(cx: &mut App, _: &Buses) {
+  start(cx);
+  ui::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::SysinfoModule>();
+}
+
+fn start(cx: &mut App) {
   let (intervals, intervals_rx) = flume::unbounded();
   let (updates_tx, updates) = flume::unbounded();
   sampler::spawn(intervals_rx, updates_tx);
@@ -146,7 +163,7 @@ mod tests {
     config.system.monitor.poll_seconds = 1;
     cx.update(|cx| {
       cx.set_global(config);
-      init(cx);
+      super::start(cx);
     });
     cx.read(|cx| {
       assert_eq!(
@@ -172,7 +189,7 @@ mod tests {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      init(cx);
+      super::start(cx);
     });
     cx.update(|cx| {
       let mut config = cx.config().clone();
@@ -194,7 +211,7 @@ mod tests {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      init(cx);
+      super::start(cx);
     });
     for sec in 1..=5 {
       cx.update(|cx| {

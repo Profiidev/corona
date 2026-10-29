@@ -117,6 +117,7 @@ pub struct DashboardRegistry {
   quick_actions: Vec<QuickActionEntry>,
   sliders: Vec<SliderEntry>,
   cards: Vec<CardEntry>,
+  header: Option<fn(&mut Window, &mut App) -> AnyView>,
 }
 
 impl Global for DashboardRegistry {}
@@ -161,6 +162,17 @@ impl DashboardRegistry {
     self
   }
 
+  /// The card always shown first, above the tiles, not in `control_center.cards`
+  pub fn header<C: DashboardCard>(&mut self) -> &mut Self {
+    self.header = Some(|window, cx| cx.new(|cx| C::init(window, cx)).into());
+    self
+  }
+
+  /// What opens the header card, if one registered
+  pub fn header_card(&self) -> Option<fn(&mut Window, &mut App) -> AnyView> {
+    self.header
+  }
+
   pub fn quick_actions(&self) -> &[QuickActionEntry] {
     &self.quick_actions
   }
@@ -196,6 +208,7 @@ impl DashboardExt for App {
       quick_actions: Vec::new(),
       sliders: Vec::new(),
       cards: Vec::new(),
+      header: None,
     };
     self.try_global::<DashboardRegistry>().unwrap_or(&EMPTY)
   }

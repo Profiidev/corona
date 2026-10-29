@@ -2,8 +2,7 @@
 //! `capabilities.corona`, registered as [`ScriptModule`](corona_js::ScriptModule)s, and the
 //! ones every plugin has (`settings`, `surface`, `plugin`, `i18n`, `dbus` with its grant).
 
-use corona_js::{Json, ScriptRegistry};
-use gpui_kit::App;
+use corona_js::{ScriptRegistry, json};
 
 pub mod auth;
 pub mod bluetooth;
@@ -23,13 +22,7 @@ pub mod printing;
 pub mod secrets;
 pub mod settings;
 pub mod surface;
-pub mod sysinfo;
 pub mod tray;
-
-/// `read` with its value crossing as JSON, for [`ModuleBuilder::watch`](corona_js::ModuleBuilder::watch)
-fn json<R>(read: impl Fn(&App) -> R + 'static) -> impl Fn(&App) -> Json<R> + 'static {
-  move |cx| Json(read(cx))
-}
 
 /// Registers the modules plugins are granted by name.
 pub fn register(registry: &mut ScriptRegistry) {
@@ -49,7 +42,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<power::Power>()
     .register::<printing::Printing>()
     .register::<secrets::Secrets>()
-    .register::<sysinfo::Sysinfo>()
     .register::<tray::Tray>();
 }
 

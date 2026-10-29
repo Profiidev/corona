@@ -70,12 +70,7 @@ mod tests {
     let secrets = (grants["items"]["oneOf"].as_array().unwrap().iter())
       .find(|m| m["const"] == "secrets")
       .unwrap();
-    assert!(
-      secrets["description"]
-        .as_str()
-        .unwrap()
-        .contains("keyring")
-    );
+    assert!(secrets["description"].as_str().unwrap().contains("keyring"));
     let catalog = catalog_schema();
     assert_eq!(catalog["title"], "CatalogFile");
     assert!(property(&catalog, &["properties", "plugin"]).is_object());

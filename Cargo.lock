@@ -1806,6 +1806,7 @@ dependencies = [
  "corona_settings",
  "corona_shell",
  "corona_surface",
+ "corona_sysinfo",
  "corona_utils",
  "corona_weather",
  "gpui-kit",
@@ -2217,7 +2218,6 @@ dependencies = [
  "corona_printing",
  "corona_settings",
  "corona_surface",
- "corona_sysinfo",
  "corona_tray",
  "corona_utils",
  "dirs 7.0.0",
@@ -2338,14 +2338,24 @@ name = "corona_sysinfo"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "corona_components",
  "corona_config",
+ "corona_js",
+ "corona_launcher",
+ "corona_settings",
+ "corona_surface",
  "corona_utils",
  "flume",
  "gpui-kit",
  "nvml-wrapper",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "specta",
  "sysinfo 0.39.6",
  "tempfile",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

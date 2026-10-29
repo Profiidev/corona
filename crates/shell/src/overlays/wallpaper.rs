@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
+use corona_components::assets::image_source;
 use corona_config::{APP_NAME, ConfigProvider, observe_section};
 use corona_surface::per_display::PerDisplay;
 use gpui_kit::{
@@ -51,18 +50,7 @@ fn open(cx: &mut App) {
 }
 
 pub fn configured(cx: &App) -> Option<ImageSource> {
-  cx.config().wallpaper.path.as_deref().map(source)
-}
-
-pub(crate) fn source(wallpaper: &str) -> ImageSource {
-  if wallpaper.starts_with("http://") || wallpaper.starts_with("https://") {
-    return wallpaper.into();
-  }
-  let path = match (wallpaper.strip_prefix("~/"), dirs::home_dir()) {
-    (Some(rest), Some(home)) => home.join(rest),
-    _ => PathBuf::from(wallpaper),
-  };
-  path.into()
+  cx.config().wallpaper.path.as_deref().map(image_source)
 }
 
 fn create_wallpaper(
@@ -111,53 +99,5 @@ impl Render for Wallpaper {
         .size_full()
         .object_fit(ObjectFit::Cover),
     )
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use gpui_kit::Resource;
-  use std::path::Path;
-
-  fn path(source: ImageSource) -> PathBuf {
-    match source {
-      ImageSource::Resource(Resource::Path(p)) => p.to_path_buf(),
-      _ => panic!("not a path"),
-    }
-  }
-
-  #[test]
-  fn urls_pass_through() {
-    for url in ["http://x.org/a.png", "https://x.org/a.png"] {
-      match source(url) {
-        ImageSource::Resource(Resource::Uri(u)) => assert_eq!(u.as_ref(), url),
-        _ => panic!("{url} is not a uri"),
-      }
-    }
-  }
-
-  #[test]
-  fn home_is_expanded() {
-    let home = tempfile::tempdir().unwrap();
-    unsafe { std::env::set_var("HOME", home.path()) };
-    assert_eq!(
-      path(source("~/walls/a.png")),
-      home.path().join("walls/a.png")
-    );
-    // only `~/` is expanded
-    assert_eq!(path(source("~user/a.png")), Path::new("~user/a.png"));
-    assert_eq!(path(source("~")), Path::new("~"));
-  }
-
-  #[test]
-  fn plain_paths_stay() {
-    assert_eq!(
-      path(source("/usr/share/a.png")),
-      Path::new("/usr/share/a.png")
-    );
-    assert_eq!(path(source("a.png")), Path::new("a.png"));
-    // not http(s), so a path
-    assert_eq!(path(source("ftp://x/a.png")), Path::new("ftp://x/a.png"));
   }
 }

@@ -15,7 +15,7 @@ pub use el::{
   new_el, restyle, with_node,
 };
 pub use entity::{Retained, ScrollHandle};
-pub use host::{Cx, Glob, Json, Opt, Throws};
+pub use host::{Cx, Glob, Json, Opt, Throws, json};
 pub use kit::GpuiKit;
 pub use module::{Data, ModuleBuilder, d_ts};
 pub use plugin::Plugin;

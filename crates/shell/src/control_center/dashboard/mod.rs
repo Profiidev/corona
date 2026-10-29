@@ -6,7 +6,6 @@ use corona_surface::{
   dashboard::{Changed, DashboardExt},
   panel::AppPanelExt,
 };
-use corona_sysinfo::SystemMonitorExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Anchor, AnyElement, AnyView, App, AppContext, Context, Entity, Focusable, IntoElement,
@@ -27,6 +26,7 @@ pub(crate) mod sliders;
 pub(crate) mod toggles;
 
 pub struct DashboardPanel {
+  header: Option<AnyView>,
   sliders: Sliders,
   cards: Vec<(&'static str, AnyView)>,
   session: Entity<SessionMenu>,
@@ -66,12 +66,9 @@ impl ControlCenterPage for DashboardPanel {
     let actions: Vec<_> = (cx.dashboard().quick_actions().iter())
       .map(|a| a.observe)
       .collect();
-    let mut subscriptions: Vec<_> = (actions.into_iter())
+    let subscriptions: Vec<_> = (actions.into_iter())
       .flat_map(|observe| observe(changed.clone(), cx))
       .collect();
-    // the profile card
-    let info = cx.system_monitor().info.clone();
-    subscriptions.push(cx.observe(&info, |_, _, cx| cx.notify()));
 
     let clock = cx.spawn(async move |this, cx| {
       loop {
@@ -85,6 +82,7 @@ impl ControlCenterPage for DashboardPanel {
       }
     });
 
+    let header = cx.dashboard().header_card().map(|open| open(window, cx));
     let mut sliders = Sliders::new(&changed, cx);
     let cards = (cx.dashboard().cards().iter())
       .map(|c| (c.id, c.open))
@@ -104,6 +102,7 @@ impl ControlCenterPage for DashboardPanel {
     });
 
     Self {
+      header,
       sliders,
       cards,
       session,
@@ -182,7 +181,7 @@ impl Render for DashboardPanel {
       .flex()
       .flex_col()
       .gap_2()
-      .child(cards::profile(cx))
+      .children(self.header.clone())
       .children(toggles::toggles(cx))
       .child(self.sliders.render(cx))
       .child(
