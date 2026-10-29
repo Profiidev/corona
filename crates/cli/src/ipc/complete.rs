@@ -10,9 +10,9 @@ use corona_shell::commands::{
   extras::ListDrives,
   network::{ListVpns, ListWifi},
   player::ListPlayers,
-  tray::ListEntries,
   window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},
 };
+use corona_tray::commands::ListEntries;
 
 /// Values with a description shown beside them
 fn described(items: impl IntoIterator<Item = (String, String)>) -> Vec<CompletionCandidate> {

@@ -1,10 +1,10 @@
+use crate::{MenuItem, TrayExt};
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use corona_tray::{MenuItem, TrayExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<ListEntries>()
     .register::<Activate>();

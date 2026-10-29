@@ -21,7 +21,6 @@ pub mod power;
 pub mod secrets;
 pub mod settings;
 pub mod surface;
-pub mod tray;
 
 /// Registers the modules plugins are granted by name.
 pub fn register(registry: &mut ScriptRegistry) {
@@ -39,8 +38,7 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<notifications::NotificationCenter>()
     .register::<pipewire::Pipewire>()
     .register::<power::Power>()
-    .register::<secrets::Secrets>()
-    .register::<tray::Tray>();
+    .register::<secrets::Secrets>();
 }
 
 /// Runs a module in a real script view, for tests of what plugins see.

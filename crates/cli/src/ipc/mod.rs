@@ -600,7 +600,7 @@ pub(crate) mod tests {
       (&["bluetooth-discover", "on"], json!(null), Discover::COMMAND, json!(true)),
       (&["player", "seek", "-10"], json!(null), corona_shell::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
       (&["player", "loop", "track"], json!(null), corona_shell::commands::player::Loop::COMMAND, json!("Track")),
-      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::commands::tray::Activate::COMMAND, json!([":1.2/item", 4])),
+      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::commands::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
       (&["clipboard", "clear"], json!(3), corona_shell::commands::clipboard::ClearClipboard::COMMAND, json!(null)),

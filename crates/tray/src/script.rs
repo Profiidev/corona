@@ -1,10 +1,11 @@
-use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
-use corona_tray::{self as tray, TrayExt};
+use crate as tray;
+use crate::TrayExt;
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json,
+};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};
-
-use crate::module::json;
 
 #[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -161,9 +162,9 @@ async fn menu_click(cx: Cx, tray: Trays, address: String, id: i32) -> Throws<()>
 }
 
 /// `corona/tray`
-pub struct Tray;
+pub struct TrayModule;
 
-impl ScriptModule for Tray {
+impl ScriptModule for TrayModule {
   const NAME: &str = "tray";
   const DOC: &str = "System tray items.";
 

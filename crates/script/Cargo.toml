@@ -19,7 +19,6 @@ corona_power.workspace = true
 corona_idle.workspace = true
 corona_brightness.workspace = true
 corona_notifications.workspace = true
-corona_tray.workspace = true
 corona_auth.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true

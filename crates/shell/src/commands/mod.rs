@@ -20,7 +20,6 @@ pub mod power_profile;
 pub mod radio;
 pub mod session;
 pub mod theme;
-pub mod tray;
 pub mod volume;
 pub mod window;
 
@@ -43,7 +42,6 @@ pub fn register_commands(cx: &mut App) {
   radio::register_commands(cx);
   session::register_commands(cx);
   theme::register_commands(cx);
-  tray::register_commands(cx);
   volume::register_commands(cx);
   window::register_commands(cx);
 }

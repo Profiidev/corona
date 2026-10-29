@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
+use crate::{Orientation, TrayExt, TrayItem};
 use corona_surface::bar::{BarStyle, Widget};
-use corona_tray::{Orientation, TrayExt, TrayItem};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use corona_components::filter::filter_regex;
 
-mod menu;
+use crate::ui::menu;
 
 const ICON_SIZE: f32 = 16.;
 const SLOT_SIZE: f32 = 24.;

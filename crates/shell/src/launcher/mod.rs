@@ -15,7 +15,6 @@ mod player;
 mod session;
 mod system;
 mod tools;
-mod tray;
 mod windows;
 
 use corona_compositor::CompositorExt;
@@ -67,7 +66,6 @@ pub fn init(cx: &mut App) {
   drives::init(cx);
   player::init(cx);
   notifications::init(cx);
-  tray::init(cx);
   monitors::init(cx);
   ip::init(cx);
 }

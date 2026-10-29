@@ -140,7 +140,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_mpris::init(cx, session).await?;
   let serve = cx.config().notification.enabled;
   corona_notifications::init(cx, session, serve).await?;
-  corona_tray::init(cx, session).await?;
+  corona_tray::init(cx, &buses).await?;
   idle::init(cx, session);
   corona_script::init_dbus(cx, system, session);
 

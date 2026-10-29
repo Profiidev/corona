@@ -2,7 +2,6 @@ mod active_window;
 pub(crate) mod control_center;
 mod player;
 pub(crate) mod privacy;
-pub(crate) mod tray;
 mod workspaces;
 
 use active_window::ActiveWindow;
@@ -15,7 +14,6 @@ use corona_surface::bar::BarExt;
 use gpui_kit::App;
 use player::ActivePlayer;
 use privacy::Privacy;
-use tray::Tray;
 use workspaces::widget::Workspaces;
 
 pub fn register_widgets(cx: &mut App) {
@@ -37,6 +35,5 @@ pub fn register_widgets(cx: &mut App) {
     .register::<Workspaces>()
     .register::<ActiveWindow>()
     .register::<ActivePlayer>()
-    .register::<Tray>()
     .register::<Privacy>();
 }

@@ -1,6 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_surface::bar::BarExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, proxy::CacheProperties, zvariant::Value};
 
@@ -12,11 +15,18 @@ use crate::{
 
 pub use crate::state::{Category, MenuItem, Status, Toggle, TrayItem};
 
+pub mod commands;
+mod launcher;
 mod listener;
 mod proxy;
+pub mod script;
+mod settings;
 mod snapshot;
 mod state;
+pub mod ui;
 mod watcher;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Tray {
@@ -188,7 +198,18 @@ impl Tray {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Hosts the tray on the session bus, registers its widget, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.session).await?;
+  cx.bar_mut().register::<ui::widget::Tray>();
+  settings::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  cx.script_mut().register::<script::TrayModule>();
+  Ok(())
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   // the icon cache is not cleared: its files are named by their pixels, another corona may be
   // showing them, and the runtime dir goes with the session
   watcher::serve(conn, cx).await?;
@@ -414,7 +435,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     runtime
@@ -806,7 +827,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     assert!(cached.exists());

@@ -19,6 +19,7 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   registry
     .register::<corona_printing::script::PrintingModule>()
     .register::<corona_sysinfo::script::SysinfoModule>()
+    .register::<corona_tray::script::TrayModule>()
     .register::<corona_weather::script::WeatherModule>();
 }
 

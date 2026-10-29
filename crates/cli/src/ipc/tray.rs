@@ -2,7 +2,7 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::tray::{Activate, ListEntries};
+use corona_tray::commands::{Activate, ListEntries};
 
 use crate::ipc::done;
 

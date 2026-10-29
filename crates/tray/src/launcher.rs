@@ -8,13 +8,15 @@ use corona_launcher::{
   kit::{ListSource, opener, watch},
   registry, simple,
 };
-use corona_tray::TrayExt;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::tray::{Activate, entries};
+use crate::{
+  TrayExt,
+  commands::{Activate, entries},
+};
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register(
     opener(
       "tray:search",

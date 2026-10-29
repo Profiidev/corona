@@ -22,6 +22,7 @@ corona_shell.workspace = true
 corona_network_manager.workspace = true
 corona_printing.workspace = true
 corona_sysinfo.workspace = true
+corona_tray.workspace = true
 corona_weather.workspace = true
 tracing.workspace = true
 clap.workspace = true
