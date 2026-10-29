@@ -33,7 +33,7 @@ impl SchemaCommands {
     let (schema, output) = match self {
       SchemaCommands::Plugin { output } => {
         let mut modules = ScriptRegistry::default();
-        corona_script::register_modules(&mut modules);
+        crate::script_modules(&mut modules);
         (corona_script::plugin::plugin_schema(&modules), output)
       }
       SchemaCommands::Catalog { output } => (corona_script::plugin::catalog_schema(), output),

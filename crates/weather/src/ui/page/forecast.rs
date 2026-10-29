@@ -1,4 +1,4 @@
-use corona_weather::Weather;
+use crate::Weather;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   base::StyledExt,
@@ -11,7 +11,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::weather::{
+use crate::ui::page::{
   Tab, WeatherPanel, card,
   current::{clock, whole},
   describe, icon,

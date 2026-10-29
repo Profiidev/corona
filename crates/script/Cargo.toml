@@ -22,7 +22,6 @@ corona_brightness.workspace = true
 corona_notifications.workspace = true
 corona_tray.workspace = true
 corona_sysinfo.workspace = true
-corona_weather.workspace = true
 corona_auth.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true

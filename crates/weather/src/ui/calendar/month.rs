@@ -12,7 +12,7 @@ use gpui_kit::{
 use jiff::{ToSpan, civil::Date};
 use std::borrow::Cow;
 
-use crate::control_center::calendar::{CalendarPanel, today};
+use crate::ui::calendar::{CalendarPanel, today};
 use corona_components::i18n::format_time;
 use rust_i18n::t;
 

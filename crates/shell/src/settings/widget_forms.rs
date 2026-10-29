@@ -18,7 +18,6 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use crate::widgets::{
-  clock::Clock,
   control_center::{
     disks::{self, DisksButton},
     printers::{self, PrintersButton},
@@ -31,7 +30,6 @@ use crate::widgets::{
 pub(super) fn register(cx: &mut App) {
   let form = |form| WidgetOptions { form, label: None };
   cx.settings_mut()
-    .widget_options::<Clock>(form(clock_form))
     .widget_options::<Resource>(WidgetOptions {
       form: resource_form,
       // several sit side by side, what they show tells them apart
@@ -44,31 +42,6 @@ pub(super) fn register(cx: &mut App) {
     .widget_options::<Privacy>(form(privacy_form))
     .widget_options::<PrintersButton>(form(printers_form))
     .widget_options::<DisksButton>(form(disks_form));
-}
-
-fn clock_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  window: &mut Window,
-  cx: &mut App,
-) -> gpui_kit::AnyElement {
-  let options: crate::widgets::clock::Options = options(bar, slot);
-  let name_ = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.format"),
-      form_input(
-        form_key(name, slot, "format"),
-        options.format,
-        window,
-        cx,
-        move |format, cx| {
-          set_options(cx, &name_, slot, crate::widgets::clock::Options { format });
-        },
-      ),
-    ))
-    .into_any_element()
 }
 
 fn resource_form(

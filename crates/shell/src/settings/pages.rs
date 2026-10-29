@@ -3,7 +3,7 @@ use std::{iter, path::PathBuf};
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
   Config, ConfigProvider, IdleAction, IdleBehavior, NightlightMode, NotificationPosition,
-  OsdPosition, Units, Weekday,
+  OsdPosition, Weekday,
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
@@ -67,7 +67,6 @@ settings_page!(OskSettings, "osk", 90, |cx| osk());
 settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
-settings_page!(LocationSettings, "location", 130, |cx| location());
 settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
 settings_page!(SystemSettings, "system", 160, |cx| system());
 
@@ -83,7 +82,6 @@ pub(super) fn register(cx: &mut App) {
     .register::<LockscreenSettings>()
     .register::<IdleSettings>()
     .register::<ScreenshotSettings>()
-    .register::<LocationSettings>()
     .register::<PrivacySettings>()
     .register::<SystemSettings>();
 }
@@ -885,84 +883,6 @@ fn screenshot() -> SettingPage {
         .layout(Axis::Vertical),
       ],
     )],
-  )
-}
-
-fn location() -> SettingPage {
-  page(
-    t!("app.settings.location.title"),
-    IconName::CloudSun,
-    vec![
-      group(
-        t!("app.settings.location.groups.location"),
-        vec![
-          item(
-            t!("app.settings.location.city.title"),
-            t!("app.settings.location.city.description"),
-            text(
-              "location.city",
-              |c| c.location.city.clone().unwrap_or_default(),
-              |c, v| c.location.city = some(v),
-            ),
-          ),
-          item(
-            t!("app.settings.location.coordinates.title"),
-            t!("app.settings.location.coordinates.description"),
-            text(
-              "location.coordinates",
-              |c| match (c.location.latitude, c.location.longitude) {
-                (Some(lat), Some(lon)) => format!("{lat}, {lon}"),
-                _ => String::new(),
-              },
-              |c, v| {
-                let parsed = v.split_once(',').and_then(|(lat, lon)| {
-                  Some((lat.trim().parse().ok()?, lon.trim().parse().ok()?))
-                });
-                (c.location.latitude, c.location.longitude) = match parsed {
-                  Some((lat, lon)) => (Some(lat), Some(lon)),
-                  None => (None, None),
-                };
-              },
-            ),
-          ),
-          item(
-            t!("app.settings.location.locate_automatically.title"),
-            t!("app.settings.location.locate_automatically.description"),
-            switch(
-              |c| c.location.auto_locate,
-              |c, v| c.location.auto_locate = v,
-            ),
-          ),
-        ],
-      ),
-      group(
-        t!("app.settings.location.groups.weather"),
-        vec![
-          item(
-            t!("app.settings.location.units.title"),
-            t!("app.settings.location.units.description"),
-            choice(
-              &[
-                (Units::Metric, t!("app.settings.options.metric")),
-                (Units::Imperial, t!("app.settings.options.imperial")),
-              ],
-              |c| c.weather.units,
-              |c, v| c.weather.units = v,
-            ),
-          ),
-          item(
-            t!("app.settings.location.refresh_every.title"),
-            t!("app.settings.location.refresh_every.description"),
-            number(
-              "weather.refresh_minutes",
-              (5., 240., 5.),
-              |c| c.weather.refresh_minutes as f64,
-              |c, v| c.weather.refresh_minutes = v as u64,
-            ),
-          ),
-        ],
-      ),
-    ],
   )
 }
 

@@ -25,7 +25,6 @@ pub mod settings;
 pub mod surface;
 pub mod sysinfo;
 pub mod tray;
-pub mod weather;
 
 /// `read` with its value crossing as JSON, for [`ModuleBuilder::watch`](corona_js::ModuleBuilder::watch)
 fn json<R>(read: impl Fn(&App) -> R + 'static) -> impl Fn(&App) -> Json<R> + 'static {
@@ -51,8 +50,7 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<printing::Printing>()
     .register::<secrets::Secrets>()
     .register::<sysinfo::Sysinfo>()
-    .register::<tray::Tray>()
-    .register::<weather::Weather>();
+    .register::<tray::Tray>();
 }
 
 /// Runs a module in a real script view, for tests of what plugins see.

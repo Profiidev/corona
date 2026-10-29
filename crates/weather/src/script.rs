@@ -1,7 +1,8 @@
 use std::time::UNIX_EPOCH;
 
+use crate as wt;
+use crate::{WeatherExt, WeatherService};
 use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
-use corona_weather::{self as wt, WeatherExt, WeatherService};
 use gpui_kit::App;
 use serde::Serialize;
 use specta::{Type, specta};
@@ -155,9 +156,9 @@ fn refresh(weather: Glob<WeatherService>) {
 }
 
 /// `corona/weather`
-pub struct Weather;
+pub struct WeatherModule;
 
-impl ScriptModule for Weather {
+impl ScriptModule for WeatherModule {
   const NAME: &str = "weather";
   const DOC: &str = "The weather forecast where the user is.";
 
@@ -182,7 +183,7 @@ impl ScriptModule for Weather {
 mod tests {
   use std::time::{Duration, UNIX_EPOCH};
 
-  use corona_weather as wt;
+  use crate as wt;
 
   use super::Forecast;
 

@@ -13,6 +13,12 @@ mod network;
 mod schema;
 mod types;
 
+/// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
+fn script_modules(registry: &mut corona_js::ScriptRegistry) {
+  corona_script::register_modules(registry);
+  registry.register::<corona_weather::script::WeatherModule>();
+}
+
 /// Corona Shell CLI
 #[derive(Parser)]
 #[command(name = "corona")]
@@ -117,4 +123,12 @@ mod tests {
     assert!(parse(&[]).is_err());
     assert!(parse(&["nope"]).is_err());
   }
+
+  #[test]
+  fn registers_every_script_module() {
+    let mut modules = corona_js::ScriptRegistry::default();
+    script_modules(&mut modules);
+    assert_eq!(modules.all().count(), 18);
+  }
 }
+

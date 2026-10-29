@@ -1,4 +1,4 @@
-use corona_weather::{Units, Weather, compass};
+use crate::{Units, Weather, compass};
 use gpui_kit::{
   App, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -8,7 +8,7 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::control_center::weather::{WeatherPanel, card, describe, icon, place_name};
+use crate::ui::page::{WeatherPanel, card, describe, icon, place_name};
 use corona_components::i18n::decimal;
 use rust_i18n::t;
 

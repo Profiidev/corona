@@ -20,6 +20,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 corona_shell.workspace = true
 corona_network_manager.workspace = true
+corona_weather.workspace = true
 tracing.workspace = true
 clap.workspace = true
 gpui-kit.workspace = true

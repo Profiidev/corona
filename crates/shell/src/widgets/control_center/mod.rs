@@ -9,7 +9,6 @@ mod audio;
 mod battery;
 mod bluetooth;
 mod brightness;
-mod calendar;
 mod clipboard;
 pub(crate) mod disks;
 mod displays;
@@ -20,13 +19,11 @@ mod notifications;
 mod power;
 pub(crate) mod printers;
 mod sysinfo;
-mod weather;
 
 pub use audio::AudioButton;
 pub use battery::BatteryButton;
 pub use bluetooth::BluetoothButton;
 pub use brightness::BrightnessButton;
-pub use calendar::CalendarButton;
 pub use clipboard::ClipboardButton;
 pub use disks::DisksButton;
 pub use displays::DisplaysButton;
@@ -37,7 +34,6 @@ pub use notifications::NotificationsButton;
 pub use power::PowerButton;
 pub use printers::PrintersButton;
 pub use sysinfo::SysinfoButton;
-pub use weather::WeatherButton;
 
 pub struct ControlCenterButton;
 

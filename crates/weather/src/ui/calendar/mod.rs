@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use crate::WeatherExt;
 use corona_components::components::card::CardExt;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::ticker::TickerExt;
-use corona_weather::WeatherExt;
 use gpui_kit::{
   App, Context, IntoElement, ParentElement, Render, Styled, Task, Window,
   base::{StyledExt, Transition, transition},
@@ -14,7 +14,7 @@ use jiff::{Zoned, civil::Date};
 
 use corona_components::components::progress_ring::ring;
 
-use crate::control_center::weather::place_name;
+use crate::ui::page::place_name;
 use corona_components::i18n::format_time;
 
 mod month;

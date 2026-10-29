@@ -1,7 +1,6 @@
 mod audio;
 mod bluetooth;
 pub(crate) mod brightness;
-mod calendar;
 mod clipboard;
 pub(crate) mod dashboard;
 mod disks;
@@ -13,7 +12,6 @@ mod notifications;
 mod power;
 mod printers;
 pub(crate) mod sysinfo;
-mod weather;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -25,7 +23,6 @@ pub use crate::control_center::{
   audio::AudioPanel,
   bluetooth::BluetoothPanel,
   brightness::BrightnessPanel,
-  calendar::CalendarPanel,
   clipboard::ClipboardPanel,
   dashboard::DashboardPanel,
   disks::DisksPanel,
@@ -37,7 +34,6 @@ pub use crate::control_center::{
   power::PowerPanel,
   printers::PrintersPanel,
   sysinfo::SysinfoPanel,
-  weather::WeatherPanel,
 };
 
 pub fn register_panels(cx: &mut App) {
@@ -56,8 +52,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<NotificationsPanel>()
     .register::<ClipboardPanel>()
     .register::<SysinfoPanel>()
-    .register::<WeatherPanel>()
-    .register::<CalendarPanel>()
     .register::<MediaPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);

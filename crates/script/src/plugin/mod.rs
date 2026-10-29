@@ -67,14 +67,14 @@ mod tests {
       &plugin,
       &["$defs", "CapabilitiesFile", "properties", "corona"],
     );
-    let weather = (grants["items"]["oneOf"].as_array().unwrap().iter())
-      .find(|m| m["const"] == "weather")
+    let secrets = (grants["items"]["oneOf"].as_array().unwrap().iter())
+      .find(|m| m["const"] == "secrets")
       .unwrap();
     assert!(
-      weather["description"]
+      secrets["description"]
         .as_str()
         .unwrap()
-        .contains("forecast")
+        .contains("keyring")
     );
     let catalog = catalog_schema();
     assert_eq!(catalog["title"], "CatalogFile");

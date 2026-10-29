@@ -1,6 +1,6 @@
+use crate::{Condition, Location, WeatherExt};
 use corona_components::components::card::CardExt;
 use corona_surface::control_center::ControlCenterPage;
-use corona_weather::{Condition, Location, WeatherExt};
 use gpui_kit::{
   AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   assets::IconName,
@@ -70,14 +70,14 @@ pub(crate) fn describe(condition: Condition) -> String {
 }
 
 /// The location's name; the device's own position has none
-pub(crate) fn place_name(location: &Location) -> String {
+pub fn place_name(location: &Location) -> String {
   match location.name.is_empty() {
     true => t!("app.weather.current_location").into(),
     false => location.name.clone(),
   }
 }
 
-pub(super) fn icon(condition: Condition, is_day: bool) -> IconName {
+pub(crate) fn icon(condition: Condition, is_day: bool) -> IconName {
   match condition {
     Condition::Clear if is_day => IconName::Sun,
     Condition::Clear => IconName::Moon,

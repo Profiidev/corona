@@ -2,15 +2,22 @@ use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, observe_section};
+use corona_js::ScriptExt;
 use corona_location::LocationExt;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{Buses, error::ErrorLogExt};
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 
 pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass};
 pub use corona_config::Units;
 
 mod api;
+mod launcher;
+pub mod script;
+mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const RETRY: Duration = Duration::from_secs(5 * 60);
 
@@ -77,7 +84,16 @@ fn save_cache(weather: &Weather) -> Result<()> {
   save_cache_to(cache_path(), weather)
 }
 
-pub fn init(cx: &mut App) {
+/// Starts the forecast, registers its UI, commands and script module
+pub fn init(cx: &mut App, _: &Buses) {
+  start(cx);
+  ui::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::WeatherModule>();
+}
+
+fn start(cx: &mut App) {
   let (refresh, requests) = flume::unbounded();
   let state = WeatherService {
     weather: cx.new(|_| load_cache()),
@@ -263,7 +279,7 @@ mod tests {
       cx.set_http_client(client);
       cx.set_global(config);
       corona_location::init(cx, &conn);
-      init(cx);
+      super::start(cx);
     });
     cx.run_until_parked();
     Running {
@@ -363,7 +379,7 @@ mod tests {
       cx.set_http_client(client);
       cx.set_global(berlin());
       corona_location::init(cx, &conn);
-      init(cx);
+      super::start(cx);
     });
     cx.run_until_parked();
     cx.read(|cx| assert_eq!(cx.weather().current(cx), Some(&sample())));

@@ -101,12 +101,15 @@ fn init_integrations(cx: &mut App) {
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
   corona_sysinfo::init(cx);
+  corona_components::assets::load(cx).expect("Failed to load assets");
+  corona_surface::init(cx).expect("Failed to init ui");
+  // the registries the integrations register into
+  corona_settings::init(cx);
+  corona_launcher::init(cx);
   cx.foreground_executor()
     .clone()
     .block_on(init_dbus(cx))
     .expect("Failed to init dbus");
-  corona_components::assets::load(cx).expect("Failed to load assets");
-  corona_surface::init(cx).expect("Failed to init ui");
 
   if let Some(e) = config_error {
     tracing::error!("Failed to load config, using the defaults: {e:#}");
@@ -115,7 +118,6 @@ fn init_integrations(cx: &mut App) {
 }
 
 fn register_variants(cx: &mut App) {
-  corona_settings::init(cx);
   settings::init(cx);
   control_center::register_panels(cx);
   widgets::register_widgets(cx);
@@ -123,23 +125,24 @@ fn register_variants(cx: &mut App) {
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
-  let Buses { system, session } = Buses::connect().await?;
+  let buses = Buses::connect().await?;
+  let Buses { system, session } = &buses;
 
-  corona_network_manager::init(cx, &system).await?;
-  corona_bluez::init(cx, &system).await?;
-  corona_printing::init(cx, &system).await?;
-  corona_power::init(cx, &system).await?;
-  corona_udisks::init(cx, &system).await?;
-  corona_location::init(cx, &system);
-  corona_weather::init(cx);
-  corona_brightness::init(cx, &system)?;
-  corona_auth::init(cx, &system);
-  corona_mpris::init(cx, &session).await?;
+  corona_network_manager::init(cx, system).await?;
+  corona_bluez::init(cx, system).await?;
+  corona_printing::init(cx, system).await?;
+  corona_power::init(cx, system).await?;
+  corona_udisks::init(cx, system).await?;
+  corona_location::init(cx, system);
+  corona_weather::init(cx, &buses);
+  corona_brightness::init(cx, system)?;
+  corona_auth::init(cx, system);
+  corona_mpris::init(cx, session).await?;
   let serve = cx.config().notification.enabled;
-  corona_notifications::init(cx, &session, serve).await?;
-  corona_tray::init(cx, &session).await?;
-  idle::init(cx, &session);
-  corona_script::init_dbus(cx, &system, &session);
+  corona_notifications::init(cx, session, serve).await?;
+  corona_tray::init(cx, session).await?;
+  idle::init(cx, session);
+  corona_script::init_dbus(cx, system, session);
 
   Ok(())
 }

@@ -31,8 +31,8 @@ mod tests {
   fn every_page_renders(cx: &mut TestAppContext) {
     setup(cx);
     let pages = cx.update(|cx| cx.settings().ids());
-    // the launcher and corona_script register their own
-    assert_eq!(pages.len(), 15, "{pages:?}");
+    // the launcher, corona_script and the integrations register their own
+    assert_eq!(pages.len(), 14, "{pages:?}");
     for page in pages {
       cx.update(|cx| corona_settings::open(Some(page), cx))
         .unwrap();

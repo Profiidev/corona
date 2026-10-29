@@ -1,5 +1,4 @@
 mod active_window;
-pub(crate) mod clock;
 pub(crate) mod control_center;
 mod player;
 pub(crate) mod privacy;
@@ -8,11 +7,10 @@ pub(crate) mod tray;
 mod workspaces;
 
 use active_window::ActiveWindow;
-use clock::Clock;
 use control_center::{
-  AudioButton, BatteryButton, BluetoothButton, BrightnessButton, CalendarButton, ClipboardButton,
+  AudioButton, BatteryButton, BluetoothButton, BrightnessButton, ClipboardButton,
   ControlCenterButton, DisksButton, DisplaysButton, HotspotButton, MediaButton, NetworkButton,
-  NotificationsButton, PowerButton, PrintersButton, SysinfoButton, WeatherButton,
+  NotificationsButton, PowerButton, PrintersButton, SysinfoButton,
 };
 use corona_surface::bar::BarExt;
 use gpui_kit::App;
@@ -39,12 +37,9 @@ pub fn register_widgets(cx: &mut App) {
     .register::<NotificationsButton>()
     .register::<ClipboardButton>()
     .register::<SysinfoButton>()
-    .register::<WeatherButton>()
-    .register::<CalendarButton>()
     .register::<MediaButton>()
     .register::<Workspaces>()
     .register::<ActiveWindow>()
-    .register::<Clock>()
     .register::<ActivePlayer>()
     .register::<Resource>()
     .register::<Tray>()

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use corona_js::ScriptExt;
 
 /// Writes each plugin's `gpui-kit.d.ts`, as loading it does; no running shell needed
 #[derive(Args)]
@@ -14,6 +15,7 @@ impl TypesCommand {
   pub fn execute(self) {
     // headless, so it runs without a display, e.g. in CI
     gpui_kit::platform::headless().run(move |cx| {
+      crate::script_modules(cx.script_mut());
       let code = match corona_script::write_plugin_types(&self.dirs, cx) {
         Ok(written) => {
           for path in written {

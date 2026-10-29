@@ -3,7 +3,6 @@ use std::{env, time::SystemTime};
 use corona_components::components::card::CardExt;
 use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_sysinfo::SystemMonitorExt;
-use corona_weather::WeatherExt;
 use gpui_kit::{
   App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
@@ -17,19 +16,14 @@ use gpui_kit::{
   prelude::FluentBuilder,
   px,
 };
-use jiff::Zoned;
 
 use corona_config::ConfigProvider;
 
-use crate::control_center::{CalendarPanel, MediaPanel, SysinfoPanel, WeatherPanel};
+use crate::control_center::{MediaPanel, SysinfoPanel};
 use crate::{
-  control_center::{
-    dashboard::{open, spawn_logged},
-    weather,
-  },
+  control_center::dashboard::{open, spawn_logged},
   overlays::wallpaper,
 };
-use corona_components::i18n::format_time;
 use corona_surface::{
   control_center::ControlCenterPage,
   dashboard::{DashboardCard, DashboardExt},
@@ -205,58 +199,6 @@ fn media(cx: &App) -> Option<Stateful<Div>> {
   )
 }
 
-fn clock(cx: &App) -> Stateful<Div> {
-  let theme = cx.theme();
-  let now = Zoned::now();
-  let config = &cx.config().control_center;
-  let weather = cx.weather().current(cx).map(|w| {
-    let current = &w.current;
-    let condition = current.condition();
-    (
-      weather::icon(condition, current.is_day),
-      format!(
-        "{:.0}° · {}",
-        current.temperature,
-        weather::describe(condition)
-      ),
-    )
-  });
-
-  card("dashboard-clock", cx)
-    .flex_1()
-    .min_w_0()
-    .flex_col()
-    .justify_center()
-    .gap_0()
-    .cursor_pointer()
-    .on_click(open(CalendarPanel::ID))
-    .child(
-      div()
-        .text_2xl()
-        .font_bold()
-        .text_color(theme.colors.primary)
-        .child(format_time(&config.time_format, &now)),
-    )
-    .child(muted(format_time(&config.date_format, &now), cx))
-    .when_some(weather, |d, (icon, text)| {
-      d.child(
-        div()
-          .id("dashboard-weather")
-          .flex()
-          .items_center()
-          .gap_1()
-          .text_sm()
-          .text_color(theme.muted_foreground)
-          .child(Icon::new(icon).small())
-          .child(div().truncate().child(text))
-          .on_click(|e, window, cx| {
-            cx.stop_propagation();
-            open(WeatherPanel::ID)(e, window, cx)
-          }),
-      )
-    })
-}
-
 /// The active player, nothing without one
 pub struct MediaCard {
   _subscriptions: [Subscription; 2],
@@ -287,34 +229,8 @@ impl Render for MediaCard {
   }
 }
 
-/// The time, date and current weather
-pub struct ClockCard {
-  _subscription: Subscription,
-}
-
-impl DashboardCard for ClockCard {
-  const ID: &'static str = "clock";
-
-  fn title() -> SharedString {
-    t!("app.dashboard.cards.clock").into()
-  }
-
-  fn init(_: &mut Window, cx: &mut Context<Self>) -> Self {
-    let weather = cx.weather().weather.clone();
-    Self {
-      _subscription: cx.observe(&weather, |_, _, cx| cx.notify()),
-    }
-  }
-}
-
-impl Render for ClockCard {
-  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    clock(cx)
-  }
-}
-
 pub(crate) fn register(cx: &mut App) {
-  cx.dashboard_mut().card::<MediaCard>().card::<ClockCard>();
+  cx.dashboard_mut().card::<MediaCard>();
 }
 
 #[cfg(test)]

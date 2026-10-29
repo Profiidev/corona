@@ -26,7 +26,6 @@ pub fn init(cx: &mut App) {
   if let Err(e) = corona_clipboard::init(cx) {
     tracing::warn!("clipboard history is off: {e:#}");
   }
-  corona_launcher::init(cx);
   corona_launcher::paste::set_paster(
     |_, cx| {
       // the window the launcher hands the keyboard back to
