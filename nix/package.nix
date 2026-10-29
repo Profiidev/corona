@@ -2,7 +2,6 @@
   lib,
   rustPlatform,
   fetchCrate,
-  fetchFromGitHub,
   applyPatches,
   pkg-config,
   fontconfig,
@@ -36,18 +35,6 @@ let
     };
 
   gpui-pre = vendorCrate "gpui-pre" "sha256-Z+V7aBXIgjM37GLAkFBA0wS6LV0pzy+kgwd7GloMatM=";
-  # Not on crates.io; patched for ShellRuntime::load_entry. Tag matches Cargo.toml.
-  gpui-shell = applyPatches {
-    name = "gpui-shell-patched";
-    src = fetchFromGitHub {
-      owner = "longbridge";
-      repo = "gpui-kit";
-      tag = "v0.7.3";
-      hash = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
-    };
-    patches = lib.filesystem.listFilesRecursive ../patches/gpui-shell;
-    patchFlags = [ "-p1" ];
-  };
   gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-Jer7t/39KJZT1Egahxc8NuXezMbPBbwD1ZS1smrsePI=";
   gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-2hqcogWqY1Un/561++THrKPNjQ+k54ufQEw6c79YljE=";
 in
@@ -64,9 +51,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
     lockFile = ../Cargo.lock;
     outputHashes = {
       "gpui-base-0.7.3" = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
-      "llrt_abort-0.9.0-beta" = "sha256-Iu7AAEeCmfPSYPgkR3JXVUi7BYubaAhU5YDApo7LaMQ=";
-      "quickjs-jit-0.12.11" = "sha256-4izRB3HxCd9r1ZV/Na6dVmVwEPtX3vFMM1JRp9zu8Go=";
-      "quickjs-jit-stdlib-0.12.7" = "sha256-eJuDUwZvmnrlNsGD15ZwhOzz6O4wi9dtc/yUH0nIf0A=";
       "rodio-0.22.2" = "sha256-ihFMFGWPacxEpH0L4wX9P2GPY6rfZSLzMITFJ65qvvk=";
     };
   };
@@ -103,7 +87,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
     cp -r --no-preserve=mode,ownership ${gpui-pre} vendor/gpui-pre
     cp -r --no-preserve=mode,ownership ${gpui-pre-linux} vendor/gpui-pre-linux
     cp -r --no-preserve=mode,ownership ${gpui-pre-wgpu} vendor/gpui-pre-wgpu
-    cp -r --no-preserve=mode,ownership ${gpui-shell}/crates/shell vendor/gpui-shell
   '';
 
   postFixup = ''

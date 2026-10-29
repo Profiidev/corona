@@ -1,24 +1,17 @@
-use corona_brightness as br;
-use corona_brightness::{Brightness, BrightnessExt};
+use corona_brightness::{self as br, BrightnessExt};
+use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
-use gpui_shell::HostModule;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
-
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum DisplayKind {
   Backlight,
   External,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Unavailable {
   DdcutilDisabled,
@@ -28,7 +21,7 @@ enum Unavailable {
   Failed,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Display {
   id: String,
   output: Option<String>,
@@ -63,13 +56,13 @@ impl From<&br::Display> for Display {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Ddcutil {
   available: bool,
   enabled: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Nightlight {
   /// The compositor lets the shell change gamma
   available: bool,
@@ -88,63 +81,68 @@ impl From<&br::Nightlight> for Nightlight {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Displays,
-  Nightlight,
+#[specta]
+fn ddcutil(cx: Cx) -> Json<Ddcutil> {
+  let brightness = cx.brightness();
+  Json(Ddcutil {
+    available: brightness.ddcutil_available,
+    enabled: brightness.ddcutil_enabled,
+  })
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Brightness(value)
-  }
+/// In a timed mode this lasts until its next start or end.
+#[specta]
+fn set_nightlight(cx: Cx, on: bool) -> Throws<()> {
+  cx.brightness().clone().set_nightlight(on, &cx).into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/brightness")
-    .func(read(
-      reads,
-      subs,
+/// Kelvin at night, clamped to 1000 to 6500; returns what was set.
+#[specta]
+fn set_nightlight_temperature(cx: Cx, kelvin: u32) -> Throws<u32> {
+  (cx.brightness().clone())
+    .set_nightlight_temperature(kelvin, &cx)
+    .into()
+}
+
+#[specta]
+async fn set_brightness(
+  cx: Cx,
+  brightness: Glob<br::Brightness>,
+  id: String,
+  value: u32,
+) -> Throws<()> {
+  let set = brightness.set_brightness(&id, value, &cx);
+  set.await.into()
+}
+
+/// `corona/brightness`
+pub struct Brightness;
+
+impl ScriptModule for Brightness {
+  const NAME: &str = "brightness";
+  const DOC: &str = "Screen brightness.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listDisplays",
-      Updates::Displays,
+      "",
       |cx| cx.brightness().displays.clone(),
       |cx| {
         let displays = cx.brightness().list_displays(cx);
-        displays.iter().map(Display::from).collect::<Vec<_>>()
+        Json(displays.iter().map(Display::from).collect::<Vec<_>>())
       },
-    ))
-    .func(named!("ddcutil", |cx: Cx| {
-      let brightness = cx.brightness();
-      Ddcutil {
-        available: brightness.ddcutil_available,
-        enabled: brightness.ddcutil_enabled,
-      }
-    }))
-    .func(read(
-      reads,
-      subs,
+    );
+    m.watch(
       "nightlight",
-      Updates::Nightlight,
+      "",
       |cx| cx.brightness().nightlight.clone(),
-      |cx| Nightlight::from(cx.brightness().nightlight(cx)),
-    ))
-    .func(named!(
-      "setNightlight",
-      /// In a timed mode this lasts until its next start or end.
-      |cx: &mut App, on: bool| cx.brightness().clone().set_nightlight(on, cx)
-    ))
-    .func(named!(
-      "setNightlightTemperature",
-      /// Kelvin at night, clamped to 1000 to 6500; returns what was set.
-      |cx: &mut App, kelvin: u32| cx.brightness().clone().set_nightlight_temperature(kelvin, cx)
-    ))
-    .func(named!(
-      "setBrightness",
-      |cx: Cx, brightness: Glob<Brightness>, id: String, value: u32| {
-        brightness.set_brightness(&id, value, &cx)
-      }
-    ))
-    .into()
+      |cx| Json(Nightlight::from(cx.brightness().nightlight(cx))),
+    );
+    host_module!(m, {
+      sync: [ddcutil, set_nightlight, set_nightlight_temperature],
+      async: [set_brightness],
+    });
+  }
 }
 
 #[cfg(test)]
@@ -172,14 +170,14 @@ mod tests {
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
-      m.setBrightness("nope", 5).then(report);
-      report(m.setNightlight(true));
+      m.setBrightness("nope", 5).catch((e) => report({ message: e.message }));
+      report(attempt(() => m.setNightlight(true)));
     }
     report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil(), nightlight: m.nightlight() });"#;
-    let (view, cx) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
-    wait_until(cx, |_| view.reports.borrow().len() >= 3);
+    let (view, cx) = harness::module::<Brightness>(cx, body);
+    wait_until(cx, |cx| view.reports(cx).len() >= 3);
 
-    let reports = view.reports.borrow();
+    let reports = view.reports(cx);
     assert!(
       reports.contains(&json!({ "message": "no display nope" })),
       "{reports:?}"
@@ -197,9 +195,6 @@ mod tests {
         .is_some_and(|e| e.contains("nightlight is unavailable"))),
       "{reports:?}"
     );
-    // listing renders again as displays come and go, `ddcutil` is fixed
-    assert!(view.reads.contains(Updates::Displays.into()));
-    assert!(view.reads.contains(Updates::Nightlight.into()));
   }
 
   fn display(kind: br::DisplayKind, unavailable: Option<br::Unavailable>) -> serde_json::Value {

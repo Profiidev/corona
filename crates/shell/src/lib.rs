@@ -99,7 +99,6 @@ fn init_ipc(cx: &mut App) {
 fn init_integrations(cx: &mut App) {
   let config_error = corona_config::load(cx).err();
   corona_components::i18n::apply(cx.config().shell.language.as_deref());
-  corona_script::init(cx).expect("Failed to init script manager");
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_pipewire::init(cx).expect("Failed to init pipewire");
   corona_sysinfo::init(cx);

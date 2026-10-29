@@ -216,6 +216,16 @@ impl Capabilities {
     self.picked.lock().unwrap().push((path, is_dir));
   }
 
+  /// Whether the manifest grants any directory to read
+  pub fn has_read_access(&self) -> bool {
+    !self.read_roots.is_empty()
+  }
+
+  /// Whether the manifest grants any directory to write
+  pub fn has_write_access(&self) -> bool {
+    !self.write_roots.is_empty()
+  }
+
   pub fn may_pass_env(&self, name: &str) -> bool {
     self.process_env.iter().any(|n| n == name)
   }

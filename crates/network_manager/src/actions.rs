@@ -19,7 +19,7 @@ use cosmic_dbus_networkmanager::{
 use futures_lite::{StreamExt, future::or};
 use gpui_kit::BackgroundExecutor;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 use zbus::{
   Connection,
   proxy::{Builder, CacheProperties, Defaults},
@@ -77,7 +77,7 @@ pub enum HiddenSecurity {
   Wpa3,
 }
 
-#[derive(Clone, Debug, Deserialize, TS)]
+#[derive(Clone, Debug, Deserialize, Type)]
 pub struct EnterpriseConfig {
   pub ssid: String,
   /// the network does not broadcast its SSID
@@ -102,7 +102,7 @@ pub struct EnterpriseConfig {
   pub private_key_password: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EapMethod {
   Peap,
@@ -111,14 +111,14 @@ pub enum EapMethod {
   Tls,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase2 {
   Mschapv2,
   Pap,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct HotspotConfig {
   pub ssid: String,
   /// WPA2 personal, None: an open hotspot

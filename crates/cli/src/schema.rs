@@ -2,6 +2,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::Result;
 use clap::Subcommand;
+use corona_js::ScriptRegistry;
 
 /// JSON schemas for editors, of the files plugins and plugin sources ship
 #[derive(Subcommand)]
@@ -30,7 +31,11 @@ impl SchemaCommands {
 
   fn run(self) -> Result<()> {
     let (schema, output) = match self {
-      SchemaCommands::Plugin { output } => (corona_script::plugin::plugin_schema(), output),
+      SchemaCommands::Plugin { output } => {
+        let mut modules = ScriptRegistry::default();
+        corona_script::register_modules(&mut modules);
+        (corona_script::plugin::plugin_schema(&modules), output)
+      }
       SchemaCommands::Catalog { output } => (corona_script::plugin::catalog_schema(), output),
     };
     let text = serde_json::to_string_pretty(&schema)? + "\n";
@@ -63,7 +68,17 @@ mod tests {
     let read = |path: &PathBuf| -> serde_json::Value {
       serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
     };
-    assert_eq!(read(&plugin)["title"], "ManifestFile");
+    let plugin = read(&plugin);
+    assert_eq!(plugin["title"], "ManifestFile");
+    // the grants the registered modules make
+    let grants = &plugin["$defs"]["CapabilitiesFile"]["properties"]["corona"]["items"]["oneOf"];
+    assert!(
+      grants
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m["const"] == "weather")
+    );
     assert_eq!(read(&catalog)["title"], "CatalogFile");
     assert!(
       SchemaCommands::Plugin {

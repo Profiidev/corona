@@ -72,7 +72,7 @@ pub enum SettingKind {
   },
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, ts_rs::TS)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct SelectOption {
   pub value: String,

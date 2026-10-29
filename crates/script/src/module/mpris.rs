@@ -1,18 +1,14 @@
-use corona_mpris as mpris;
-use corona_mpris::{Mpris, MprisExt};
-use gpui_kit::App;
-use gpui_shell::HostModule;
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use ts_rs::TS;
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read, watch},
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
 };
-use corona_macros::named;
+use corona_mpris::{self as mpris, MprisExt};
+use gpui_kit::App;
+use serde::{Deserialize, Serialize};
+use specta::{Type, specta};
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum PlaybackStatus {
   Playing,
@@ -20,7 +16,7 @@ enum PlaybackStatus {
   Stopped,
 }
 
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum LoopStatus {
   /// Playback stops after the last track.
@@ -31,7 +27,7 @@ enum LoopStatus {
   Playlist,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Player {
   /// The bus name, the id the actions take.
   name: String,
@@ -113,81 +109,104 @@ fn seek_target(seconds: f64) -> Duration {
   Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Duration::MAX)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Players,
-  Active,
+type Mprises = Glob<mpris::Mpris>;
+
+/// Shows `name` as the active player until another one starts playing.
+#[specta]
+fn set_active_player(mut cx: Cx, name: String) {
+  cx.mpris().clone().set_active(&name, &mut cx)
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Mpris(value)
-  }
+#[specta]
+async fn play_pause(mpris: Mprises, name: String) -> Throws<()> {
+  mpris.play_pause(&name).await.into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  // `activePlayer` reads the player too, so its track and status changes re-render it as well
-  subs.push(watch(reads, Updates::Active.into(), |cx| {
-    cx.mpris().players.clone()
-  }));
+#[specta]
+async fn play(mpris: Mprises, name: String) -> Throws<()> {
+  mpris.play(&name).await.into()
+}
 
-  Module::new("corona/mpris")
-    .func(read(
-      reads,
-      subs,
+#[specta]
+async fn pause(mpris: Mprises, name: String) -> Throws<()> {
+  mpris.pause(&name).await.into()
+}
+
+#[specta]
+async fn next(mpris: Mprises, name: String) -> Throws<()> {
+  mpris.next(&name).await.into()
+}
+
+#[specta]
+async fn previous(mpris: Mprises, name: String) -> Throws<()> {
+  mpris.previous(&name).await.into()
+}
+
+/// Jumps to `seconds` into the current track.
+#[specta]
+async fn set_position(cx: Cx, mpris: Mprises, name: String, seconds: f64) -> Throws<()> {
+  let set = mpris.set_position(&name, seek_target(seconds), &cx);
+  set.await.into()
+}
+
+/// `volume` from 0 to 1.
+#[specta]
+async fn set_volume(mpris: Mprises, name: String, volume: f64) -> Throws<()> {
+  mpris.set_volume(&name, volume).await.into()
+}
+
+#[specta]
+async fn set_shuffle(mpris: Mprises, name: String, shuffle: bool) -> Throws<()> {
+  mpris.set_shuffle(&name, shuffle).await.into()
+}
+
+#[specta]
+async fn set_loop_status(mpris: Mprises, name: String, status: Json<LoopStatus>) -> Throws<()> {
+  mpris.set_loop_status(&name, status.0.into()).await.into()
+}
+
+/// `corona/mpris`
+pub struct Mpris;
+
+impl ScriptModule for Mpris {
+  const NAME: &str = "mpris";
+  const DOC: &str = "Media players.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listPlayers",
-      Updates::Players,
+      "",
       |cx| cx.mpris().players.clone(),
       |cx| {
         let players = cx.mpris().list_players(cx);
-        players.iter().map(Player::from).collect::<Vec<_>>()
+        Json(players.iter().map(Player::from).collect::<Vec<_>>())
       },
-    ))
-    .func(read(
-      reads,
-      subs,
+    );
+    m.watch(
       "activePlayer",
-      Updates::Active,
-      |cx| cx.mpris().active.clone(),
-      |cx| cx.mpris().active_player(cx).map(Player::from),
-    ))
-    .func(named!(
-      "setActivePlayer",
-      /// Shows `name` as the active player until another one starts playing.
-      |cx: &mut App, name: String| cx.mpris().clone().set_active(&name, cx)
-    ))
-    .func(named!("playPause", |mpris: Glob<Mpris>, name: String| {
-      mpris.play_pause(&name)
-    }))
-    .func(named!("play", |mpris: Glob<Mpris>, name: String| mpris.play(&name)))
-    .func(named!("pause", |mpris: Glob<Mpris>, name: String| mpris
-      .pause(&name)))
-    .func(named!("next", |mpris: Glob<Mpris>, name: String| mpris.next(&name)))
-    .func(named!("previous", |mpris: Glob<Mpris>, name: String| mpris
-      .previous(&name)))
-    .func(named!(
-      "setPosition",
-      /// Jumps to `seconds` into the current track.
-      |cx: Cx, mpris: Glob<Mpris>, name: String, seconds: f64| {
-        mpris.set_position(&name, seek_target(seconds), &cx)
-      }
-    ))
-    .func(named!(
-      "setVolume",
-      /// `volume` from 0 to 1.
-      |mpris: Glob<Mpris>, name: String, volume: f64| mpris.set_volume(&name, volume)
-    ))
-    .func(named!(
-      "setShuffle",
-      |mpris: Glob<Mpris>, name: String, shuffle: bool| mpris.set_shuffle(&name, shuffle)
-    ))
-    .func(named!(
-      "setLoopStatus",
-      |mpris: Glob<Mpris>, name: String, status: LoopStatus| {
-        mpris.set_loop_status(&name, status.into())
-      }
-    ))
-    .into()
+      "The player shown as active; null without one.",
+      // its track and status change with the players
+      |cx| cx.mpris().players.clone(),
+      |cx| {
+        track(&cx.mpris().active);
+        Json(cx.mpris().active_player(cx).map(Player::from))
+      },
+    );
+    host_module!(m, {
+      sync: [set_active_player],
+      async: [
+        play_pause,
+        play,
+        pause,
+        next,
+        previous,
+        set_position,
+        set_volume,
+        set_shuffle,
+        set_loop_status,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]

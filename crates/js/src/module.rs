@@ -1,17 +1,25 @@
 //! Native ES modules built at runtime, and the `.d.ts` that types them.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{
+  any::{Any, TypeId, type_name},
+  collections::HashMap,
+  ops::Deref,
+  rc::Rc,
+};
 
 use gpui_kit::{App, Entity};
 use rquickjs::{
-  Ctx, Error, Function, IntoJs, JsLifetime, Module, Result, Value,
+  Ctx, Error, Exception, Function, IntoJs, JsLifetime, Module, Result, Value,
+  function::{FromParam, ParamRequirement, ParamsAccessor},
   loader::{ImportAttributes, Loader},
   module::{Declarations, Exports, ModuleDef},
 };
 use specta::{
-  Type, Types,
+  Format as _, Type, Types,
   datatype::{DataType, Function as FnType},
+  function::FunctionArg,
 };
+use specta_serde::Format;
 use specta_typescript::{Typescript, primitives};
 
 use crate::{
@@ -33,6 +41,7 @@ pub struct ModuleBuilder {
   decls: Vec<String>,
   types: Types,
   watches: Watches,
+  data: Vec<(TypeId, Rc<dyn Any>)>,
 }
 
 impl ModuleBuilder {
@@ -44,7 +53,15 @@ impl ModuleBuilder {
       decls: Vec::new(),
       types: Types::default(),
       watches: watches.clone(),
+      data: Vec::new(),
     }
+  }
+
+  /// Keeps `value` for the runtime's host fns, which take it as [`Data<T>`]. Dropped with
+  /// the runtime, after its JS values: it must hold none.
+  pub fn provide<T: 'static>(&mut self, value: T) -> &mut Self {
+    self.data.push((TypeId::of::<T>(), Rc::new(value)));
+    self
   }
 
   pub fn name(&self) -> &str {
@@ -92,7 +109,12 @@ impl ModuleBuilder {
         format!("{}{optional}: {}", camel(arg), self.ts(dt))
       })
       .collect();
-    let mut result = f.result.as_ref().map_or("void".into(), |dt| self.ts(dt));
+    let mut result = match &f.result {
+      // `()`, as `Throws<()>` returns it
+      Some(DataType::Tuple(t)) if t.elements.is_empty() => "void".into(),
+      Some(dt) => self.ts(dt),
+      None => "void".into(),
+    };
     if f.asyncness {
       result = format!("Promise<{result}>");
     }
@@ -102,6 +124,15 @@ impl ModuleBuilder {
       args.join(", ")
     ));
     name
+  }
+
+  /// Types the module with `ts`, lines inside its `declare module`, instead of what its
+  /// exports declared so far and the types they use: for exports typed by more than their
+  /// Rust signatures.
+  pub fn declarations(&mut self, ts: impl Into<String>) -> &mut Self {
+    self.decls = vec![ts.into()];
+    self.types = Types::default();
+    self
   }
 
   /// Exports `name` as a `Signal<R>`: calling it returns `read(cx)`, and a view that calls it
@@ -133,12 +164,17 @@ impl ModuleBuilder {
   }
 
   fn ts(&self, dt: &DataType) -> String {
-    primitives::reference(&Typescript::default(), &self.types, dt).expect("host type")
+    let types = Format.map_types(&self.types).expect("host types");
+    let dt = Format.map_type(&types, dt).expect("host type");
+    primitives::reference(&Typescript::default(), &types, &dt).expect("host type")
   }
 
   /// `declare module "name" { .. }` with the types its exports use
   fn d_ts(&self) -> String {
-    let mut types = self.types.clone();
+    let mut types = Format
+      .map_types(&self.types)
+      .expect("host types")
+      .into_owned();
     types.iter_mut(|ndt| ndt.ty.iter_mut().for_each(floats));
     let types = primitives::export(
       &Typescript::default(),
@@ -201,8 +237,12 @@ interface Signal<T> {
   out
 }
 
-/// The host modules of a runtime by name, kept in its context for [`HostDef`].
-pub(crate) struct HostModules(HashMap<String, Vec<(String, Export)>>);
+/// The host modules of a runtime by name, kept in its context for [`HostDef`], and what
+/// they [`provide`](ModuleBuilder::provide).
+pub(crate) struct HostModules(
+  HashMap<String, Vec<(String, Export)>>,
+  HashMap<TypeId, Rc<dyn Any>>,
+);
 
 unsafe impl<'js> JsLifetime<'js> for HostModules {
   type Changed<'to> = HostModules;
@@ -210,11 +250,58 @@ unsafe impl<'js> JsLifetime<'js> for HostModules {
 
 impl HostModules {
   pub(crate) fn new(modules: Vec<ModuleBuilder>) -> Self {
-    Self(modules.into_iter().map(|m| (m.name, m.exports)).collect())
+    let data = modules.iter().flat_map(|m| m.data.clone()).collect();
+    Self(
+      modules.into_iter().map(|m| (m.name, m.exports)).collect(),
+      data,
+    )
   }
 
   pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
     self.0.keys().map(String::as_str)
+  }
+}
+
+/// What a module of the runtime [`provide`](ModuleBuilder::provide)d, injected into a host
+/// fn without taking a JS argument. The call throws when none did.
+pub struct Data<T>(Rc<T>);
+
+impl<T> Clone for Data<T> {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+impl<T> Deref for Data<T> {
+  type Target = T;
+  fn deref(&self) -> &T {
+    &self.0
+  }
+}
+
+impl<'js, T: 'static> FromParam<'js> for Data<T> {
+  fn param_requirement() -> ParamRequirement {
+    ParamRequirement::none()
+  }
+
+  fn from_param<'a>(params: &mut ParamsAccessor<'a, 'js>) -> Result<Self> {
+    let ctx = params.ctx();
+    let data = ctx
+      .userdata::<HostModules>()
+      .and_then(|m| m.1.get(&TypeId::of::<T>()).cloned());
+    match data.map(Rc::downcast::<T>) {
+      Some(Ok(data)) => Ok(Data(data)),
+      _ => Err(Exception::throw_message(
+        ctx,
+        &format!("no {} here", type_name::<T>()),
+      )),
+    }
+  }
+}
+
+impl<T> FunctionArg for Data<T> {
+  fn to_datatype(_: &mut Types) -> Option<DataType> {
+    None
   }
 }
 

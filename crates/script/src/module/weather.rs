@@ -1,17 +1,12 @@
 use std::time::UNIX_EPOCH;
 
+use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
 use corona_weather::{self as wt, WeatherExt, WeatherService};
-use gpui_shell::HostModule;
+use gpui_kit::App;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
-
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Units {
   /// °C, km/h
@@ -20,7 +15,7 @@ enum Units {
   Imperial,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Location {
   /// Empty for the device's own position.
   name: String,
@@ -33,7 +28,7 @@ fn coarse(degrees: f64) -> f64 {
   (degrees * 10.).round() / 10.
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Current {
   /// Local time, like `2026-10-08T09:00`.
   time: String,
@@ -50,7 +45,7 @@ struct Current {
   is_day: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Hour {
   /// Local time, like `2026-10-08T09:00`.
   time: String,
@@ -64,7 +59,7 @@ struct Hour {
   is_day: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Day {
   /// Like `2026-10-08`.
   date: String,
@@ -76,8 +71,9 @@ struct Day {
   sunset: String,
 }
 
-#[derive(Serialize, TS)]
-struct Weather {
+#[derive(Serialize, Type)]
+#[serde(rename = "Weather")]
+struct Forecast {
   location: Location,
   units: Units,
   /// In meters.
@@ -92,7 +88,7 @@ struct Weather {
   fetched: f64,
 }
 
-impl From<&wt::Weather> for Weather {
+impl From<&wt::Weather> for Forecast {
   fn from(w: &wt::Weather) -> Self {
     let c = &w.current;
     Self {
@@ -152,43 +148,34 @@ impl From<&wt::Weather> for Weather {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Weather,
-  Error,
+/// Fetches the forecast again now.
+#[specta]
+fn refresh(weather: Glob<WeatherService>) {
+  weather.refresh()
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Weather(value)
-  }
-}
+/// `corona/weather`
+pub struct Weather;
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/weather")
-    .func(read(
-      reads,
-      subs,
+impl ScriptModule for Weather {
+  const NAME: &str = "weather";
+  const DOC: &str = "The weather forecast where the user is.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "current",
-      Updates::Weather,
+      "The forecast; null until the first one arrives.",
       |cx| cx.weather().weather.clone(),
-      // null until the first forecast arrives
-      |cx| cx.weather().current(cx).map(Weather::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.weather().current(cx).map(Forecast::from)),
+    );
+    m.watch(
       "error",
-      Updates::Error,
+      "Why the last fetch failed; null when it did not.",
       |cx| cx.weather().error.clone(),
-      |cx| cx.weather().error(cx).map(str::to_string),
-    ))
-    .func(named!(
-      "refresh",
-      /// Fetches the forecast again now.
-      |weather: Glob<WeatherService>| weather.refresh()
-    ))
-    .into()
+      |cx| Json(cx.weather().error(cx).map(str::to_string)),
+    );
+    host_module!(m, { sync: [refresh] });
+  }
 }
 
 #[cfg(test)]
@@ -197,7 +184,7 @@ mod tests {
 
   use corona_weather as wt;
 
-  use super::Weather;
+  use super::Forecast;
 
   #[test]
   fn converts_hourly_imperial() {
@@ -213,7 +200,7 @@ mod tests {
       code: 0,
       is_day: false,
     }];
-    let json = serde_json::to_value(Weather::from(&weather)).unwrap();
+    let json = serde_json::to_value(Forecast::from(&weather)).unwrap();
     assert_eq!(json["units"], "imperial");
     // before the epoch is clamped, not negative
     assert_eq!(json["fetched"], 0.);
@@ -226,7 +213,7 @@ mod tests {
 
   #[test]
   fn converts() {
-    let json = serde_json::to_value(Weather::from(&sample())).unwrap();
+    let json = serde_json::to_value(Forecast::from(&sample())).unwrap();
     assert_eq!(json["location"]["name"], "");
     assert_eq!(json["location"]["latitude"], 47.9);
     assert_eq!(json["location"]["longitude"], 12.);

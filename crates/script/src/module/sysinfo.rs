@@ -1,14 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use corona_js::{ModuleBuilder, PluginRef, ScriptModule};
 use corona_sysinfo::{self as si, SystemMonitorExt};
-use gpui_shell::HostModule;
+use gpui_kit::App;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::Type;
 
-use crate::{
-  host_fn::Module,
-  module::{Subscribe, Subscriptions, read},
-};
+use crate::module::json;
 
 fn unix_seconds(time: SystemTime) -> f64 {
   time
@@ -16,7 +14,7 @@ fn unix_seconds(time: SystemTime) -> f64 {
     .map_or(0., |d| d.as_secs_f64())
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum GpuVendor {
   Nvidia,
@@ -25,7 +23,7 @@ enum GpuVendor {
   Other,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Gpu {
   /// PCI address, matches `GpuSample.pci`.
   pci: String,
@@ -36,7 +34,7 @@ struct Gpu {
   measurable: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct SystemInfo {
   os: String,
   kernel: String,
@@ -82,7 +80,7 @@ impl From<&si::SystemInfo> for SystemInfo {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Disk {
   device: String,
   mount_point: String,
@@ -93,7 +91,7 @@ struct Disk {
   available: u64,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct GpuSample {
   pci: String,
   /// In percent.
@@ -106,7 +104,7 @@ struct GpuSample {
   vram_total: Option<u64>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Sample {
   /// In percent, all cores.
   cpu: f32,
@@ -171,7 +169,7 @@ impl From<&si::Sample> for Sample {
 }
 
 /// Recent samples, oldest first.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct History {
   /// In percent.
   cpu: Vec<f32>,
@@ -204,47 +202,36 @@ impl From<&si::History> for History {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Info,
-  Sample,
-  History,
-}
+/// `corona/sysinfo`
+pub struct Sysinfo;
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Sysinfo(value)
-  }
-}
+impl ScriptModule for Sysinfo {
+  const NAME: &str = "sysinfo";
+  const DOC: &str = "System information and usage.";
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/sysinfo")
-    .func(read(
-      reads,
-      subs,
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "info",
-      Updates::Info,
+      "",
       |cx| cx.system_monitor().info.clone(),
-      |cx| cx.system_monitor().info(cx).map(SystemInfo::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.system_monitor().info(cx).map(SystemInfo::from)),
+    );
+    m.watch(
       "sample",
-      Updates::Sample,
+      "",
       |cx| cx.system_monitor().sample.clone(),
-      // null until the first sample
-      |cx| cx.system_monitor().sample(cx).map(Sample::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(
+        // null until the first sample
+        |cx| cx.system_monitor().sample(cx).map(Sample::from),
+      ),
+    );
+    m.watch(
       "history",
-      Updates::History,
+      "",
       |cx| cx.system_monitor().history.clone(),
-      |cx| History::from(cx.system_monitor().history(cx)),
-    ))
-    .into()
+      json(|cx| History::from(cx.system_monitor().history(cx))),
+    );
+  }
 }
 
 #[cfg(test)]

@@ -1,17 +1,12 @@
-use corona_bluez as bt;
-use corona_bluez::{Bluetooth, BluetoothExt};
+use corona_bluez::{self as bt, BluetoothExt};
+use corona_js::{Cx, Glob, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
-use gpui_shell::HostModule;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
+use crate::module::json;
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Adapter {
   name: String,
   powered: bool,
@@ -19,7 +14,7 @@ struct Adapter {
   discovering: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Device {
   address: String,
   name: String,
@@ -31,7 +26,7 @@ struct Device {
   rssi: Option<i16>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum PairingKind {
   Confirm,
@@ -41,7 +36,7 @@ enum PairingKind {
   DisplayPasskey,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct PairingRequest {
   address: Option<String>,
   name: String,
@@ -113,86 +108,106 @@ fn pairing_answer(accept: bool, code: Option<String>) -> bt::PairingAnswer {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Adapter,
-  Devices,
-  PairingRequest,
+type Bt = Glob<bt::Bluetooth>;
+
+/// Accepts or rejects the pairing request, with the code it asks for.
+#[specta]
+fn answer_pairing(mut cx: Cx, accept: bool, code: Opt<String>) {
+  let answer = pairing_answer(accept, code.0);
+  cx.bluetooth().clone().answer_pairing(&mut cx, answer)
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Bluetooth(value)
-  }
+#[specta]
+async fn set_powered(cx: Cx, bt: Bt, powered: bool) -> Throws<()> {
+  let set = bt.set_powered(powered, &cx);
+  set.await.into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/bluetooth")
-    .func(read(
-      reads,
-      subs,
+#[specta]
+async fn set_discoverable(cx: Cx, bt: Bt, discoverable: bool) -> Throws<()> {
+  let set = bt.set_discoverable(discoverable, &cx);
+  set.await.into()
+}
+
+#[specta]
+async fn start_discovery(cx: Cx, bt: Bt) -> Throws<()> {
+  let start = bt.start_discovery(&cx);
+  start.await.into()
+}
+
+#[specta]
+async fn stop_discovery(cx: Cx, bt: Bt) -> Throws<()> {
+  let stop = bt.stop_discovery(&cx);
+  stop.await.into()
+}
+
+#[specta]
+async fn connect(cx: Cx, bt: Bt, address: String) -> Throws<()> {
+  let connect = bt.connect(&address, &cx);
+  connect.await.into()
+}
+
+#[specta]
+async fn disconnect(cx: Cx, bt: Bt, address: String) -> Throws<()> {
+  let disconnect = bt.disconnect(&address, &cx);
+  disconnect.await.into()
+}
+
+#[specta]
+async fn pair(cx: Cx, bt: Bt, address: String) -> Throws<()> {
+  let pair = bt.pair(&address, &cx);
+  pair.await.into()
+}
+
+#[specta]
+async fn forget(cx: Cx, bt: Bt, address: String) -> Throws<()> {
+  let forget = bt.forget(&address, &cx);
+  forget.await.into()
+}
+
+/// `corona/bluetooth`
+pub struct Bluetooth;
+
+impl ScriptModule for Bluetooth {
+  const NAME: &str = "bluetooth";
+  const DOC: &str = "Bluetooth adapters and devices, and pairing them.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "adapter",
-      Updates::Adapter,
+      "",
       |cx| cx.bluetooth().adapter.clone(),
-      |cx| cx.bluetooth().adapter(cx).map(Adapter::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.bluetooth().adapter(cx).map(Adapter::from)),
+    );
+    m.watch(
       "listDevices",
-      Updates::Devices,
+      "",
       |cx| cx.bluetooth().devices.clone(),
-      |cx| {
+      json(|cx| {
         let devices = cx.bluetooth().list_devices(cx);
         devices.iter().map(Device::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "pairingRequest",
-      Updates::PairingRequest,
+      "",
       |cx| cx.bluetooth().pairing_request.clone(),
-      pairing_request,
-    ))
-    .func(named!(
-      "answerPairing",
-      |cx: &mut App, accept: bool, code: Option<String>| {
-        cx.bluetooth()
-          .clone()
-          .answer_pairing(cx, pairing_answer(accept, code))
-      }
-    ))
-    .func(named!(
-      "setPowered",
-      |cx: Cx, bt: Glob<Bluetooth>, powered: bool| bt.set_powered(powered, &cx)
-    ))
-    .func(named!(
-      "setDiscoverable",
-      |cx: Cx, bt: Glob<Bluetooth>, discoverable: bool| bt.set_discoverable(discoverable, &cx)
-    ))
-    .func(named!("startDiscovery", |cx: Cx, bt: Glob<Bluetooth>| bt
-      .start_discovery(&cx)))
-    .func(named!("stopDiscovery", |cx: Cx, bt: Glob<Bluetooth>| bt
-      .stop_discovery(&cx)))
-    .func(named!(
-      "connect",
-      |cx: Cx, bt: Glob<Bluetooth>, address: String| bt.connect(&address, &cx)
-    ))
-    .func(named!(
-      "disconnect",
-      |cx: Cx, bt: Glob<Bluetooth>, address: String| bt.disconnect(&address, &cx)
-    ))
-    .func(named!("pair", |cx: Cx,
-                          bt: Glob<Bluetooth>,
-                          address: String| {
-      bt.pair(&address, &cx)
-    }))
-    .func(named!(
-      "forget",
-      |cx: Cx, bt: Glob<Bluetooth>, address: String| bt.forget(&address, &cx)
-    ))
-    .into()
+      json(pairing_request),
+    );
+    host_module!(m, {
+      sync: [answer_pairing],
+      async: [
+        set_powered,
+        set_discoverable,
+        start_discovery,
+        stop_discovery,
+        connect,
+        disconnect,
+        pair,
+        forget,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]

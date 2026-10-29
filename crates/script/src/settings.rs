@@ -4,15 +4,7 @@ use corona_config::{
   Config, ConfigProvider,
   plugins::{Approval, AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
 };
-use corona_script::{
-  PluginManager, PluginStatus, ScriptManager,
-  plugin::{
-    manifest::PluginManifest,
-    registry::{self, Change},
-    settings::{DynamicOptions, Setting, SettingKind, number as json_number},
-  },
-  secrets,
-};
+use corona_settings::{SettingsExt, SettingsPage};
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
   SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
@@ -40,7 +32,50 @@ use corona_components::settings_fields::{
   Choice, choice, number, save, searchable, slider, switch, text,
 };
 
-pub(super) fn page(cx: &App) -> SettingPage {
+use crate::{
+  PluginManager, PluginStatus, ScriptManager,
+  plugin::{
+    manifest::PluginManifest,
+    registry::{self, Change},
+    settings::{DynamicOptions, Setting, SettingKind, number as json_number},
+  },
+  secrets,
+};
+
+/// The plugins page: sources, plugins, their approval and their settings
+pub struct PluginSettings;
+
+impl SettingsPage for PluginSettings {
+  const ID: &'static str = "plugins";
+  const ORDER: i32 = 150;
+
+  fn page(cx: &App) -> SettingPage {
+    page(cx)
+  }
+}
+
+/// Registers the plugins page, which lists what the sources offer as the window opens
+pub(crate) fn register(cx: &mut App) {
+  cx.settings_mut()
+    .register::<PluginSettings>()
+    .on_open(|cx| {
+      if cx.has_global::<PluginManager>() {
+        PluginManager::refresh_catalogs(cx);
+      }
+    });
+}
+
+/// Asks about plugin `id`, which waits for approval, in the settings window. False when that
+/// is not open.
+pub fn review_plugin(id: &str, cx: &mut App) -> bool {
+  corona_settings::window(cx).is_some_and(|handle| {
+    handle
+      .update(cx, |_, window, cx| review(id, window, cx))
+      .is_ok()
+  })
+}
+
+fn page(cx: &App) -> SettingPage {
   let mut groups = vec![sources_group(cx), plugins_group(cx)];
   if let Some(manager) = cx.try_global::<PluginManager>() {
     let mut running: Vec<PluginManifest> = manager
@@ -1027,10 +1062,11 @@ fn secret_field(
 
 #[cfg(test)]
 mod tests {
-  use corona_script::plugin::settings::SelectOption;
+  use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
   use serde_json::json;
 
   use super::*;
+  use crate::plugin::settings::SelectOption;
 
   fn setting(kind: SettingKind) -> Setting {
     Setting {
@@ -1069,5 +1105,102 @@ mod tests {
     assert_eq!(get(&config), json!("a"));
     // another plugin's value is not this one's
     assert_eq!(value("q", &setting)(&config), json!("a"));
+  }
+
+  #[gpui::test]
+  fn plugins_page_renders_every_control(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(Config::default());
+      corona_surface::bar::BarState::init(cx);
+      corona_settings::init(cx);
+      register(cx);
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = crate::plugin::paths::Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("README.md"), "# Hello").unwrap();
+    std::fs::write(
+      dir.join("plugin.toml"),
+      r#"
+id = "com.p"
+name = "P"
+api = 2
+version = "1"
+description = "Every setting"
+[widgets.w]
+view = "main.js"
+[[settings]]
+key = "on"
+label = "On"
+type = "toggle"
+default = true
+[[settings]]
+key = "name"
+label = "Name"
+type = "text"
+default = "x"
+[[settings]]
+key = "count"
+label = "Count"
+type = "number"
+default = 1
+[[settings]]
+key = "opacity"
+label = "Opacity"
+type = "slider"
+default = 0.5
+min = 0
+max = 1
+step = 0.1
+[[settings]]
+key = "units"
+label = "Units"
+type = "select"
+default = "a"
+options = [{ value = "a", label = "A" }]
+[[settings]]
+key = "hosts"
+label = "Hosts"
+type = "list"
+default = ["h"]
+"#,
+    )
+    .unwrap();
+    cx.update(|cx| {
+      let mut config = corona_config::Config::default();
+      config.plugins.enabled = vec!["com.p".into()];
+      config.plugins.approved.insert(
+        "com.p".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
+      config.plugins.source.clear();
+      cx.set_global(config);
+      crate::PluginManager::init(paths, cx);
+      assert!(
+        cx.global::<crate::PluginManager>()
+          .active()
+          .contains_key("com.p")
+      );
+    });
+    cx.update(|cx| corona_settings::open(Some("plugins"), cx))
+      .unwrap();
+    cx.run_until_parked();
+    let rows = cx.update(|cx| crate::PluginManager::list(cx));
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].enabled && rows[0].running);
+    let handle = cx
+      .update(|cx| corona_settings::window(cx))
+      .expect("settings open");
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+      .unwrap();
+    cx.update(corona_settings::close);
   }
 }

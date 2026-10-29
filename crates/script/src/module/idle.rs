@@ -1,66 +1,52 @@
 use std::time::Duration;
 
 use anyhow::{Result, ensure};
-use corona_idle::{Idle, IdleExt};
+use corona_idle::{self as ci, IdleExt};
+use corona_js::{Cx, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::{App, BorrowAppContext};
-use gpui_shell::HostModule;
+use specta::specta;
 
-use crate::{
-  host_fn::Module,
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  StayAwake,
-  Inhibited,
-}
-
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Idle(value)
-  }
-}
-
-fn stay_awake_for(minutes: u32, cx: &mut App) -> Result<()> {
+fn stay_awake_for_minutes(minutes: u32, cx: &mut App) -> Result<()> {
   ensure!(minutes > 0, "expected at least one minute");
   let duration = Duration::from_secs(u64::from(minutes) * 60);
-  cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(true, Some(duration), cx));
+  cx.update_global::<ci::Idle, _>(|idle, cx| idle.set_stay_awake(true, Some(duration), cx));
   Ok(())
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/idle")
-    .func(read(
-      reads,
-      subs,
+/// No idle behaviors and no sleep until turned off.
+#[specta]
+fn set_stay_awake(mut cx: Cx, on: bool) {
+  cx.update_global::<ci::Idle, _>(|idle, cx| idle.set_stay_awake(on, None, cx))
+}
+
+/// Stays awake, turned off again after `minutes`.
+#[specta]
+fn stay_awake_for(mut cx: Cx, minutes: u32) -> Throws<()> {
+  stay_awake_for_minutes(minutes, &mut cx).into()
+}
+
+/// `corona/idle`
+pub struct Idle;
+
+impl ScriptModule for Idle {
+  const NAME: &str = "idle";
+  const DOC: &str = "Staying awake, and whether idling is held back.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "stayAwake",
-      Updates::StayAwake,
+      "Whether the user asked to stay awake.",
       |cx| cx.idle().stay_awake.clone(),
       |cx| cx.idle().stay_awake(cx),
-    ))
-    .func(read(
-      reads,
-      subs,
-      // staying awake, or an app holds idling back
+    );
+    m.watch(
       "inhibited",
-      Updates::Inhibited,
+      "Staying awake, or an app holds idling back.",
       |cx| cx.idle().inhibited.clone(),
       |cx| cx.idle().inhibited(cx),
-    ))
-    .func(named!(
-      "setStayAwake",
-      /// No idle behaviors and no sleep until turned off.
-      |cx: &mut App, on: bool| cx
-        .update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(on, None, cx))
-    ))
-    .func(named!(
-      "stayAwakeFor",
-      /// Stays awake, turned off again after `minutes`.
-      |cx: &mut App, minutes: u32| stay_awake_for(minutes, cx)
-    ))
-    .into()
+    );
+    host_module!(m, { sync: [set_stay_awake, stay_awake_for] });
+  }
 }
 
 #[cfg(test)]
@@ -88,24 +74,27 @@ mod tests {
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
-      report(m.stayAwakeFor(0));
+      report(attempt(() => m.stayAwakeFor(0)));
       m.stayAwakeFor(30);
     }
     report({ stayAwake: m.stayAwake(), inhibited: m.inhibited() });"#;
-    let (view, cx) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
-    wait_until(cx, |_| view.reports.borrow().len() >= 2);
+    let (view, cx) = harness::module::<Idle>(cx, body);
+    wait_until(cx, |cx| view.reports(cx).len() >= 2);
     assert_eq!(
-      view.reports.borrow()[0],
+      view.reports(cx)[0],
       json!({ "message": "expected at least one minute" })
     );
-    assert_eq!(view.last(), json!({ "stayAwake": true, "inhibited": true }));
-    assert!(view.reads.contains(Updates::StayAwake.into()));
-    assert!(view.reads.contains(Updates::Inhibited.into()));
+    assert_eq!(
+      view.last(cx),
+      json!({ "stayAwake": true, "inhibited": true })
+    );
 
     // turned off elsewhere, the view renders again
-    cx.update(|_, cx| cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(false, None, cx)));
-    wait_until(cx, |_| {
-      view.last() == json!({ "stayAwake": false, "inhibited": false })
+    cx.update(|_, cx| {
+      cx.update_global::<ci::Idle, _>(|idle, cx| idle.set_stay_awake(false, None, cx))
+    });
+    wait_until(cx, |cx| {
+      view.last(cx) == json!({ "stayAwake": false, "inhibited": false })
     });
   }
 }

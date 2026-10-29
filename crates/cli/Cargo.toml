@@ -14,6 +14,7 @@ corona_settings.workspace = true
 corona_ipc.workspace = true
 corona_config.workspace = true
 corona_script.workspace = true
+corona_js.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 corona_shell.workspace = true

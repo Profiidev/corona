@@ -56,7 +56,7 @@ pub(crate) struct Runtime {
   pub(crate) panels: RefCell<HashMap<String, Persistent<Function<'static>>>>,
   /// What retained states' `.on` subscribed
   subs: RefCell<HashMap<u32, Subscription>>,
-  watches: Watches,
+  pub(crate) watches: Watches,
   _drive: Task<()>,
   // last: `Persistent` handles must be freed before the runtime
   ctx: AsyncContext,

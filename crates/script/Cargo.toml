@@ -10,7 +10,6 @@ categories.workspace = true
 
 [dependencies]
 corona_config.workspace = true
-corona_macros.workspace = true
 corona_compositor.workspace = true
 corona_pipewire.workspace = true
 corona_network_manager.workspace = true
@@ -26,11 +25,14 @@ corona_sysinfo.workspace = true
 corona_weather.workspace = true
 corona_auth.workspace = true
 corona_surface.workspace = true
+corona_settings.workspace = true
+corona_components.workspace = true
 corona_utils.workspace = true
 corona_ipc.workspace = true
 gpui-kit.workspace = true
-gpui-shell.workspace = true
-gpui-component-shell.workspace = true
+corona_js.workspace = true
+specta.workspace = true
+specta-typescript = "=0.0.14"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -41,7 +43,6 @@ flume.workspace = true
 futures-lite.workspace = true
 rust-i18n.workspace = true
 rust-i18n-support.workspace = true
-ts-rs = { workspace = true, features = ["serde-json-impl"] }
 uuid = { workspace = true, features = ["v4"] }
 schemars = "1.2.2"
 url = "2.5"

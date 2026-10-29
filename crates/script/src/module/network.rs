@@ -1,24 +1,19 @@
-use corona_network_manager as nm;
-use corona_network_manager::{NetworkManager, NetworkManagerExt};
+use corona_js::{Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module};
+use corona_network_manager::{self as nm, NetworkManagerExt};
 use gpui_kit::App;
-use gpui_shell::HostModule;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
+use crate::module::json;
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum InterfaceType {
   Wired,
   Wireless,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum DeviceState {
   Unmanaged,
@@ -36,13 +31,13 @@ enum DeviceState {
   Unknown,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Ip {
   address: String,
   prefix: u32,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Interface {
   name: String,
   kind: InterfaceType,
@@ -50,7 +45,7 @@ struct Interface {
   ip: Option<Ip>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Connectivity {
   None,
@@ -60,14 +55,14 @@ enum Connectivity {
   Unknown,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum ScanResult {
   Done,
   TimedOut,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum WifiStatus {
   Connected,
@@ -77,7 +72,7 @@ enum WifiStatus {
   New,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct WifiNetwork {
   ssid: String,
   strength: u8,
@@ -87,7 +82,7 @@ struct WifiNetwork {
   status: WifiStatus,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum FailReason {
   NoSecrets,
@@ -95,20 +90,20 @@ enum FailReason {
   Other,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct WifiFailure {
   ssid: Option<String>,
   reason: FailReason,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum VpnKind {
   Plugin,
   Wireguard,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum VpnState {
   Activating,
@@ -118,7 +113,7 @@ enum VpnState {
   Unknown,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Vpn {
   uuid: String,
   name: String,
@@ -127,7 +122,7 @@ struct Vpn {
 }
 
 /// The security of a hidden network, which cannot be read from an access point.
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum HiddenSecurity {
   Open,
@@ -137,7 +132,7 @@ enum HiddenSecurity {
   Wpa3,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum SecretKind {
   /// A WPA/WPA2/WPA3 personal password.
@@ -146,7 +141,7 @@ enum SecretKind {
   Enterprise,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct SecretRequest {
   /// The SSID, or the profile name of a wired 802.1X connection.
   name: String,
@@ -157,7 +152,7 @@ struct SecretRequest {
   retry: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Hotspot {
   /// Up, not still activating.
   active: bool,
@@ -166,7 +161,7 @@ struct Hotspot {
 }
 
 /// The hotspot's settings without its password, which plugins never see.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct HotspotSettings {
   ssid: String,
   /// It has a password, which `startHotspot` needs again to keep it.
@@ -306,126 +301,192 @@ impl From<HiddenSecurity> for nm::HiddenSecurity {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Interfaces,
-  PrimaryInterface,
-  Connectivity,
-  ConnectivityCheck,
-  WifiSupported,
-  WifiEnabled,
-  PrimaryWifi,
-  WifiNetworks,
-  WifiFailure,
-  SecretRequest,
-  Vpns,
-  Hotspot,
+type Nm = Glob<nm::NetworkManager>;
+
+#[specta]
+async fn check_connectivity(nm: Nm) -> Throws<Json<Connectivity>> {
+  nm.check_connectivity().await.map(|c| Json(c.into())).into()
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Network(value)
-  }
+#[specta]
+fn open_portal(cx: Cx) {
+  cx.network_manager().open_portal(&cx)
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/network")
-    .func(read(
-      reads,
-      subs,
+/// Answers the pending secret request, or cancels it with a null password. `identity` is
+/// the 802.1X username, null keeps the profile's.
+#[specta]
+fn answer_secret(mut cx: Cx, password: Option<String>, identity: Opt<String>) {
+  let identity = identity.0;
+  let secret = password.map(|password| nm::Secret { password, identity });
+  cx.network_manager().clone().answer_secret(&mut cx, secret)
+}
+
+#[specta]
+async fn connect_vpn(nm: Nm, uuid: String) -> Throws<()> {
+  nm.connect_vpn(uuid).await.into()
+}
+
+#[specta]
+async fn disconnect_vpn(nm: Nm, uuid: String) -> Throws<()> {
+  nm.disconnect_vpn(uuid).await.into()
+}
+
+#[specta]
+async fn join_hidden_wifi(
+  cx: Cx,
+  nm: Nm,
+  ssid: String,
+  security: Json<HiddenSecurity>,
+  password: Opt<String>,
+) -> Throws<()> {
+  let join = nm.join_hidden_wifi(ssid, security.0.into(), password.0, &cx);
+  join.await.into()
+}
+
+#[specta]
+async fn set_wifi_enabled(nm: Nm, enabled: bool) -> Throws<()> {
+  nm.set_wifi_enabled(enabled).await.into()
+}
+
+#[specta]
+async fn rescan(cx: Cx, nm: Nm) -> Throws<Json<ScanResult>> {
+  let scan = nm.rescan(&cx);
+  let scanned = scan.await.map(|result| match result {
+    nm::ScanResult::Done => ScanResult::Done,
+    nm::ScanResult::TimedOut => ScanResult::TimedOut,
+  });
+  scanned.map(Json).into()
+}
+
+#[specta]
+async fn connect_wifi(cx: Cx, nm: Nm, ssid: String) -> Throws<()> {
+  let connect = nm.connect_wifi(ssid, &cx);
+  connect.await.into()
+}
+
+#[specta]
+async fn connect_enterprise_wifi(cx: Cx, nm: Nm, config: Json<nm::EnterpriseConfig>) -> Throws<()> {
+  let connect = nm.connect_enterprise_wifi(config.0, &cx);
+  connect.await.into()
+}
+
+#[specta]
+async fn forget_wifi(cx: Cx, nm: Nm, ssid: String) -> Throws<()> {
+  let forget = nm.forget_wifi(ssid, &cx);
+  forget.await.into()
+}
+
+#[specta]
+async fn connect(cx: Cx, nm: Nm, name: String) -> Throws<()> {
+  let connect = nm.connect(&name, &cx);
+  connect.await.into()
+}
+
+/// Turns the wifi device into an access point; a null password makes it open.
+#[specta]
+async fn start_hotspot(cx: Cx, nm: Nm, config: Json<nm::HotspotConfig>) -> Throws<()> {
+  let start = nm.start_hotspot(config.0, &cx);
+  start.await.into()
+}
+
+#[specta]
+async fn stop_hotspot(cx: Cx, nm: Nm) -> Throws<()> {
+  let stop = nm.stop_hotspot(&cx);
+  stop.await.into()
+}
+
+/// The running hotspot's settings, else the saved ones, else null. Never its password.
+#[specta]
+async fn hotspot_config(cx: Cx, nm: Nm) -> Throws<Json<Option<HotspotSettings>>> {
+  let config = nm.hotspot_config(&cx);
+  let config = config.await.map(|config| config.map(HotspotSettings::from));
+  config.map(Json).into()
+}
+
+#[specta]
+async fn disconnect(cx: Cx, nm: Nm, name: String) -> Throws<()> {
+  let disconnect = nm.disconnect(&name, &cx);
+  disconnect.await.into()
+}
+
+/// `corona/network`
+pub struct Network;
+
+impl ScriptModule for Network {
+  const NAME: &str = "network";
+  const DOC: &str = "Network interfaces, Wi-Fi, VPNs and the hotspot.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listInterfaces",
-      Updates::Interfaces,
+      "",
       |cx| cx.network_manager().interfaces.clone(),
-      |cx| {
+      json(|cx| {
         let interfaces = cx.network_manager().list_interfaces(cx);
         interfaces.iter().map(Interface::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "primaryInterface",
-      Updates::PrimaryInterface,
+      "",
       |cx| cx.network_manager().primary_interface.clone(),
-      |cx| {
+      json(|cx| {
         cx.network_manager()
           .primary_interface(cx)
           .map(Interface::from)
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "connectivity",
-      Updates::Connectivity,
+      "",
       |cx| cx.network_manager().connectivity.clone(),
-      |cx| Connectivity::from(cx.network_manager().connectivity(cx)),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| Connectivity::from(cx.network_manager().connectivity(cx))),
+    );
+    m.watch(
       "connectivityCheckEnabled",
-      Updates::ConnectivityCheck,
+      "",
       |cx| cx.network_manager().connectivity_check.clone(),
-      |cx| cx.network_manager().connectivity_check(cx).is_some(),
-    ))
-    .func(named!("checkConnectivity", |nm: Glob<NetworkManager>| {
-      let check = nm.check_connectivity();
-      async move { check.await.map(Connectivity::from) }
-    }))
-    .func(named!("openPortal", |cx: Cx| cx
-      .network_manager()
-      .open_portal(&cx)))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.network_manager().connectivity_check(cx).is_some()),
+    );
+    m.watch(
       "wifiSupported",
-      Updates::WifiSupported,
+      "",
       |cx| cx.network_manager().wifi_supported.clone(),
-      |cx| cx.network_manager().wifi_supported(cx),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.network_manager().wifi_supported(cx)),
+    );
+    m.watch(
       "wifiEnabled",
-      Updates::WifiEnabled,
+      "",
       |cx| cx.network_manager().wifi_enabled.clone(),
-      |cx| cx.network_manager().wifi_enabled(cx),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.network_manager().wifi_enabled(cx)),
+    );
+    m.watch(
       "primaryWifi",
-      Updates::PrimaryWifi,
+      "",
       |cx| cx.network_manager().primary_wifi.clone(),
-      |cx| cx.network_manager().primary_wifi(cx).map(Interface::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.network_manager().primary_wifi(cx).map(Interface::from)),
+    );
+    m.watch(
       "listWifiNetworks",
-      Updates::WifiNetworks,
+      "",
       |cx| cx.network_manager().wifi_networks.clone(),
-      |cx| {
+      json(|cx| {
         let networks = cx.network_manager().list_wifi_networks(cx);
         networks.iter().map(WifiNetwork::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "wifiFailure",
-      Updates::WifiFailure,
+      "",
       |cx| cx.network_manager().wifi_failure.clone(),
-      |cx| cx.network_manager().wifi_failure(cx).map(WifiFailure::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.network_manager().wifi_failure(cx).map(WifiFailure::from)),
+    );
+    m.watch(
       "secretRequest",
-      Updates::SecretRequest,
+      "",
       |cx| cx.network_manager().secret_request.clone(),
-      |cx| {
+      json(|cx| {
         let request = cx.network_manager().secret_request(cx);
         request.map(|request| SecretRequest {
           name: request.name.clone(),
@@ -436,108 +497,43 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
           identity: request.identity.clone(),
           retry: request.retry,
         })
-      },
-    ))
-    .func(named!(
-      "answerSecret",
-      /// Answers the pending secret request, or cancels it with a null password.
-      /// `identity` is the 802.1X username, null keeps the profile's.
-      |cx: &mut App, password: Option<String>, identity: Option<String>| {
-        let secret = password.map(|password| nm::Secret { password, identity });
-        cx.network_manager().clone().answer_secret(cx, secret)
-      }
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "listVpns",
-      Updates::Vpns,
+      "",
       |cx| cx.network_manager().vpns.clone(),
-      |cx| {
+      json(|cx| {
         let vpns = cx.network_manager().list_vpns(cx);
         vpns.iter().map(Vpn::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(named!(
-      "connectVpn",
-      |nm: Glob<NetworkManager>, uuid: String| nm.connect_vpn(uuid)
-    ))
-    .func(named!(
-      "disconnectVpn",
-      |nm: Glob<NetworkManager>, uuid: String| nm.disconnect_vpn(uuid)
-    ))
-    .func(named!(
-      "joinHiddenWifi",
-      |cx: Cx,
-       nm: Glob<NetworkManager>,
-       ssid: String,
-       security: HiddenSecurity,
-       password: Option<String>| {
-        nm.join_hidden_wifi(ssid, security.into(), password, &cx)
-      }
-    ))
-    .func(named!(
-      "setWifiEnabled",
-      |nm: Glob<NetworkManager>, enabled: bool| nm.set_wifi_enabled(enabled)
-    ))
-    .func(named!("rescan", |cx: Cx, nm: Glob<NetworkManager>| {
-      let scan = nm.rescan(&cx);
-      async move {
-        scan.await.map(|result| match result {
-          nm::ScanResult::Done => ScanResult::Done,
-          nm::ScanResult::TimedOut => ScanResult::TimedOut,
-        })
-      }
-    }))
-    .func(named!(
-      "connectWifi",
-      |cx: Cx, nm: Glob<NetworkManager>, ssid: String| nm.connect_wifi(ssid, &cx)
-    ))
-    .func(named!(
-      "connectEnterpriseWifi",
-      |cx: Cx, nm: Glob<NetworkManager>, config: nm::EnterpriseConfig| {
-        nm.connect_enterprise_wifi(config, &cx)
-      }
-    ))
-    .func(named!(
-      "forgetWifi",
-      |cx: Cx, nm: Glob<NetworkManager>, ssid: String| nm.forget_wifi(ssid, &cx)
-    ))
-    .func(named!(
-      "connect",
-      |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.connect(&name, &cx)
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "hotspot",
-      Updates::Hotspot,
+      "",
       |cx| cx.network_manager().hotspot.clone(),
-      |cx| cx.network_manager().hotspot(cx).map(Hotspot::from),
-    ))
-    .func(named!(
-      "startHotspot",
-      /// Turns the wifi device into an access point; a null password makes it open.
-      |cx: Cx, nm: Glob<NetworkManager>, config: nm::HotspotConfig| {
-        nm.start_hotspot(config, &cx)
-      }
-    ))
-    .func(named!("stopHotspot", |cx: Cx, nm: Glob<NetworkManager>| {
-      nm.stop_hotspot(&cx)
-    }))
-    .func(named!(
-      "hotspotConfig",
-      /// The running hotspot's settings, else the saved ones, else null. Never its password.
-      |cx: Cx, nm: Glob<NetworkManager>| {
-        let config = nm.hotspot_config(&cx);
-        async move { config.await.map(|config| config.map(HotspotSettings::from)) }
-      }
-    ))
-    .func(named!(
-      "disconnect",
-      |cx: Cx, nm: Glob<NetworkManager>, name: String| nm.disconnect(&name, &cx)
-    ))
-    .into()
+      json(|cx| cx.network_manager().hotspot(cx).map(Hotspot::from)),
+    );
+    host_module!(m, {
+      sync: [open_portal, answer_secret],
+      async: [
+        check_connectivity,
+        connect_vpn,
+        disconnect_vpn,
+        join_hidden_wifi,
+        set_wifi_enabled,
+        rescan,
+        connect_wifi,
+        connect_enterprise_wifi,
+        forget_wifi,
+        connect,
+        start_hotspot,
+        stop_hotspot,
+        hotspot_config,
+        disconnect,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]

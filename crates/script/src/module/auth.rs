@@ -5,11 +5,10 @@ use std::{
 };
 
 use anyhow::{Result, bail, ensure};
-use corona_auth::Auth;
-use gpui_shell::HostModule;
-
-use crate::host_fn::{Glob, Module};
-use corona_macros::named;
+use corona_auth as ca;
+use corona_js::{Glob, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
+use gpui_kit::App;
+use specta::specta;
 
 /// Only ever the user running corona, a plugin cannot probe other accounts
 fn user() -> String {
@@ -93,21 +92,25 @@ async fn limited<F: Future<Output = Result<bool>>>(started: Result<(Attempt, F)>
   result
 }
 
-/// No password check: a plugin could ask for the password in a look-alike
+/// Waits for one scan on the fingerprint reader. `false` when the finger did not match,
+/// call again for the next try. After a few failures, attempts fail at once for a while.
+#[specta]
+async fn fingerprint(auth: Glob<ca::Auth>, plugin: Plugin) -> Throws<bool> {
+  let started = Attempt::start(&plugin.id).map(|a| (a, auth.fingerprint(user())));
+  limited(started).await.into()
+}
+
+/// `corona/auth`. No password check: a plugin could ask for the password in a look-alike
 /// prompt and confirm what it phished
-pub fn module(plugin: &str) -> HostModule {
-  let by = plugin.to_owned();
-  Module::new("corona/auth")
-    .func(named!(
-      "fingerprint",
-      /// Waits for one scan on the fingerprint reader. `false` when the finger
-      /// did not match, call again for the next try. After a few failures,
-      /// attempts fail at once for a while.
-      move |auth: Glob<Auth>| limited(
-        Attempt::start(&by).map(|a| (a, auth.fingerprint(user())))
-      )
-    ))
-    .into()
+pub struct Auth;
+
+impl ScriptModule for Auth {
+  const NAME: &str = "auth";
+  const DOC: &str = "Checking the user's fingerprint.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    host_module!(m, { async: [fingerprint] });
+  }
 }
 
 #[cfg(test)]
@@ -119,11 +122,15 @@ mod tests {
   use super::*;
   use crate::module::harness;
 
-  #[test]
-  fn the_user_is_not_the_plugins_to_pick() {
-    let module: HostModule = module("a");
-    let declared = module.declared().unwrap();
-    let line = "export function fingerprint(): Promise<boolean | Error>;";
+  #[gpui::test]
+  fn the_user_is_not_the_plugins_to_pick(cx: &mut TestAppContext) {
+    let m = cx.update(|cx| {
+      let mut m = ModuleBuilder::new("corona/auth", &Default::default());
+      Auth::module(&PluginRef::default(), &mut m, cx);
+      m
+    });
+    let declared = corona_js::d_ts([&m]);
+    let line = "  export function fingerprint(): Promise<boolean>;";
     assert!(declared.lines().any(|l| l == line), "{line} in\n{declared}");
     assert!(!declared.contains("password"), "{declared}");
   }
@@ -152,17 +159,19 @@ mod tests {
   }
 
   #[gpui::test]
-  fn a_failed_scan_is_an_error_value(cx: &mut TestAppContext) {
+  fn a_failed_scan_rejects(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     // no fprintd on this bus
     let bus = TestBus::new();
     let conn = block_on(bus.conn());
     cx.update(|cx| corona_auth::init(cx, &conn));
-    let body =
-      "if (!globalThis.started) { globalThis.started = true; m.fingerprint().then(report); }";
-    let (view, cx) = harness::view(cx, body, |_, _, _| module("scan"));
-    wait_until(cx, |_| !view.reports.borrow().is_empty());
-    let message = view.last()["message"].as_str().unwrap().to_string();
+    let body = "if (!globalThis.started) {
+      globalThis.started = true;
+      m.fingerprint().catch((e) => report({ message: e.message }));
+    }";
+    let (view, cx) = harness::module::<Auth>(cx, body);
+    wait_until(cx, |cx| !view.reports(cx).is_empty());
+    let message = view.last(cx)["message"].as_str().unwrap().to_string();
     assert!(message.contains("Fprint"), "{message}");
   }
 }

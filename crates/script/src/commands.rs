@@ -1,10 +1,12 @@
+//! The `plugin:*` IPC commands
+
 use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<PluginCall>();
 }
 
@@ -27,7 +29,7 @@ impl IpcCommand for PluginCall {
   }
 
   fn reply(call: Self, cx: &mut App) -> Reply<Value> {
-    match corona_script::call(&call.id, call.method, call.args, cx) {
+    match crate::call(&call.id, call.method, call.args, cx) {
       Ok(answer) => Box::pin(answer),
       Err(e) => Box::pin(std::future::ready(Err(e))),
     }
@@ -38,7 +40,7 @@ impl IpcCommand for PluginCall {
 mod tests {
   use std::{collections::HashMap, path::Path};
 
-  use corona_script::{
+  use crate::{
     ScriptManager,
     plugin::{
       manifest::{ManifestFile, PluginManifest},
@@ -57,7 +59,7 @@ mod tests {
       local: tmp.path().join("local"),
     };
     let file: ManifestFile =
-      serde_json::from_value(serde_json::json!({ "id": "a", "name": "A" })).unwrap();
+      serde_json::from_value(serde_json::json!({ "id": "a", "name": "A", "api": 2 })).unwrap();
     let manifest = PluginManifest::new(file, tmp.path().into(), Path::new("/data"), None);
     cx.update(|cx| {
       let mut manager = ScriptManager::new(paths);

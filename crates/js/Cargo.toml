@@ -17,8 +17,11 @@ serde_json.workspace = true
 futures.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 rquickjs = { version = "0.14", features = ["futures", "macro", "loader"] }
-specta = { version = "=2.0.0-rc.27", features = ["derive", "function"] }
+specta.workspace = true
 specta-typescript = "=0.0.14"
+# applies the serde attributes of host types to their TypeScript
+specta-serde = "=0.0.14"
+serde.workspace = true
 # sandboxed filesystem access: every op goes through a granted directory handle
 cap-std = "4.0.3"
 libc = "0.2"

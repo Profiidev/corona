@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
+use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
 };
@@ -12,7 +13,6 @@ use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
-use corona_shell::commands::plugin::PluginCall;
 use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::volume::Device;

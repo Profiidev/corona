@@ -8,7 +8,7 @@ use pipewire::spa::{
   utils::dict::DictRef,
 };
 use serde::Serialize;
-use ts_rs::TS;
+use specta::Type;
 
 use crate::{capture::CaptureState, event::AudioEvent};
 
@@ -38,9 +38,9 @@ pub struct AudioState {
   pub targets: Arc<DashMap<u32, String>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
-#[ts(rename = "NodeKind")]
+#[serde(rename = "NodeKind")]
 pub enum NodeType {
   Sink,
   Source,

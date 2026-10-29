@@ -382,7 +382,7 @@ mod tests {
   use crate::plugin::git::fixture::Remote;
 
   fn manifest(id: &str, version: &str) -> String {
-    format!("id = \"{id}\"\nname = \"N\"\nversion = \"{version}\"\n")
+    format!("id = \"{id}\"\nname = \"N\"\napi = 2\nversion = \"{version}\"\n")
   }
 
   fn row(id: &str, version: &str, path: &str) -> String {

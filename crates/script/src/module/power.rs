@@ -1,20 +1,17 @@
-use std::{cell::RefCell, rc::Rc, time::UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
-use anyhow::anyhow;
-use corona_power as pw;
-use corona_power::{Power, PowerExt};
-use gpui_kit::Subscription;
-use gpui_shell::HostModule;
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
-
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
+use corona_js::{
+  Cx, Glob, Json, Listener, ModuleBuilder, PluginRef, ScriptModule, Throws, Unsubscribe,
+  host_module,
 };
-use corona_macros::named;
+use corona_power::{self as pw, PowerExt};
+use gpui_kit::App;
+use serde::{Deserialize, Serialize};
+use specta::{Type, specta};
 
-#[derive(Serialize, TS)]
+use crate::module::json;
+
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum BatteryState {
   Unknown,
@@ -26,7 +23,7 @@ enum BatteryState {
   PendingDischarge,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum SessionAction {
   Logout,
@@ -54,7 +51,7 @@ impl From<SessionAction> for pw::SessionAction {
 }
 
 /// What this machine allows.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct SessionCapabilities {
   suspend: bool,
   hibernate: bool,
@@ -80,21 +77,21 @@ impl From<pw::SessionCapabilities> for SessionCapabilities {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Status {
   on_battery: bool,
   lid_closed: Option<bool>,
   critical_action: String,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct ChargeThreshold {
   enabled: bool,
   start: u32,
   end: u32,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Battery {
   percentage: f64,
   state: BatteryState,
@@ -108,7 +105,7 @@ struct Battery {
   charge_threshold: Option<ChargeThreshold>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum DeviceKind {
   Mouse,
@@ -126,7 +123,7 @@ enum DeviceKind {
   Other,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Device {
   model: String,
   kind: DeviceKind,
@@ -134,20 +131,20 @@ struct Device {
   state: BatteryState,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Profiles {
   active: String,
   available: Vec<String>,
   degraded: Option<String>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct SleepEvent {
   /// `true` right before suspend or hibernate, `false` after resume.
   sleeping: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct KeyboardBacklight {
   brightness: i32,
   max: i32,
@@ -208,72 +205,86 @@ impl From<&pw::Battery> for Battery {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Status,
-  Battery,
-  Devices,
-  Profiles,
-  KeyboardBacklight,
-  Sleep,
+type Pw = Glob<pw::Power>;
+
+/// Calls `cb` with each suspend and resume, as logind announces them. For services that
+/// reconnect after a resume.
+#[specta]
+fn on_sleep(mut cx: Cx, cb: Listener<Json<SleepEvent>>) -> Unsubscribe {
+  let (listener, sleep) = (cb.clone(), cx.power().sleep.clone());
+  let sub = cx.observe(&sleep, move |sleep, cx| {
+    let sleeping = sleep.read(cx).sleeping;
+    listener.call(cx, Json(SleepEvent { sleeping }));
+  });
+  cb.keep(sub)
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Power(value)
-  }
+/// `power-saver`, `balanced` or `performance`.
+#[specta]
+async fn set_profile(power: Pw, profile: String) -> Throws<()> {
+  power.set_profile(profile).await.into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  // ponytail: an event while no `nextSleepEvent` waits is lost; buffer like
-  // `nextAction` if a plugin misses one
-  let waiters = Rc::new(RefCell::new(Vec::<flume::Sender<SleepEvent>>::new()));
-  let (wake, stop) = (waiters.clone(), waiters.clone());
-  subs.push(Subscribe::Start(Box::new(move |cx| {
-    let sleep = cx.power().sleep.clone();
-    let observe = cx.observe(&sleep, move |sleep, cx| {
-      let sleeping = sleep.read(cx).sleeping;
-      for tx in wake.borrow_mut().drain(..) {
-        tx.send(SleepEvent { sleeping }).ok();
-      }
-    });
-    // gpui-shell never drops a pending call's future, so wake it with an error
-    Subscription::new(move || {
-      drop(observe);
-      stop.borrow_mut().clear();
-    })
-  })));
+#[specta]
+async fn set_keyboard_brightness(cx: Cx, power: Pw, brightness: i32) -> Throws<()> {
+  let set = power.set_keyboard_brightness(brightness, &cx);
+  set.await.into()
+}
 
-  Module::new("corona/power")
-    .func(read(
-      reads,
-      subs,
+#[specta]
+async fn session_capabilities(power: Pw) -> Throws<Json<SessionCapabilities>> {
+  let capabilities = power.session_capabilities().await;
+  capabilities.map(|c| Json(c.into())).into()
+}
+
+#[specta]
+async fn session_action(power: Pw, action: Json<SessionAction>) -> Throws<()> {
+  power.session_action(action.0.into()).await.into()
+}
+
+/// Reboots into one of `sessionCapabilities().boot_entries`.
+#[specta]
+async fn reboot_to(power: Pw, entry: String) -> Throws<()> {
+  power.reboot_to(entry).await.into()
+}
+
+#[specta]
+async fn set_charge_threshold(cx: Cx, power: Pw, enabled: bool) -> Throws<()> {
+  let set = power.set_charge_threshold(enabled, &cx);
+  set.await.into()
+}
+
+/// `corona/power`
+pub struct Power;
+
+impl ScriptModule for Power {
+  const NAME: &str = "power";
+  const DOC: &str = "Battery, power profiles and the session (suspend, reboot, …).";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "status",
-      Updates::Status,
+      "",
       |cx| cx.power().status.clone(),
-      |cx| {
+      json(|cx| {
         cx.power().status(cx).map(|s| Status {
           on_battery: s.on_battery,
           lid_closed: s.lid_closed,
           critical_action: s.critical_action.clone(),
         })
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "battery",
-      Updates::Battery,
+      "",
       |cx| cx.power().battery.clone(),
-      |cx| cx.power().battery(cx).map(Battery::from),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.power().battery(cx).map(Battery::from)),
+    );
+    m.watch(
       "listDevices",
-      Updates::Devices,
+      "",
       |cx| cx.power().devices.clone(),
-      |cx| {
+      json(|cx| {
         let devices = cx.power().list_devices(cx);
         devices
           .iter()
@@ -284,96 +295,62 @@ pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
             state: d.state.into(),
           })
           .collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "profiles",
-      Updates::Profiles,
+      "",
       |cx| cx.power().profiles.clone(),
-      |cx| {
+      json(|cx| {
         cx.power().profiles(cx).map(|p| Profiles {
           active: p.active.clone(),
           available: p.available.clone(),
           degraded: p.degraded.clone(),
         })
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "keyboardBacklight",
-      Updates::KeyboardBacklight,
+      "",
       |cx| cx.power().keyboard_backlight.clone(),
-      |cx| {
+      json(|cx| {
         cx.power()
           .keyboard_backlight(cx)
           .map(|k| KeyboardBacklight {
             brightness: k.brightness,
             max: k.max,
           })
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "sleeping",
-      Updates::Sleep,
+      "",
       |cx| cx.power().sleep.clone(),
-      |cx| cx.power().sleep(cx).sleeping,
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.power().sleep(cx).sleeping),
+    );
+    m.watch(
       "resumedAt",
-      Updates::Sleep,
+      "Unix seconds of the last resume; null before the first one or while asleep.",
       |cx| cx.power().sleep.clone(),
-      // unix seconds of the last resume, null before the first one or while asleep
-      |cx| {
+      json(|cx| {
         let sleep = cx.power().sleep(cx);
         (sleep.changed_at)
           .filter(|_| !sleep.sleeping)
           .map(|t| t.duration_since(UNIX_EPOCH).map_or(0., |d| d.as_secs_f64()))
-      },
-    ))
-    .func(named!(
-      "nextSleepEvent",
-      /// The next suspend or resume, once logind announces it. For services
-      /// that reconnect after a resume.
-      move || {
-        let (tx, rx) = flume::bounded(1);
-        waiters.borrow_mut().push(tx);
-        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
-      }
-    ))
-    .func(named!(
-      "setProfile",
-      /// `power-saver`, `balanced` or `performance`.
-      |power: Glob<Power>, profile: String| power.set_profile(profile)
-    ))
-    .func(named!(
-      "setKeyboardBrightness",
-      |cx: Cx, power: Glob<Power>, brightness: i32| power.set_keyboard_brightness(brightness, &cx)
-    ))
-    .func(named!("sessionCapabilities", |power: Glob<Power>| {
-      let capabilities = power.session_capabilities();
-      async move { capabilities.await.map(SessionCapabilities::from) }
-    }))
-    .func(named!(
-      "sessionAction",
-      |power: Glob<Power>, action: SessionAction| power.session_action(action.into())
-    ))
-    .func(named!(
-      "rebootTo",
-      /// Reboots into one of `sessionCapabilities().boot_entries`.
-      |power: Glob<Power>, entry: String| power.reboot_to(entry)
-    ))
-    .func(named!(
-      "setChargeThreshold",
-      |cx: Cx, power: Glob<Power>, enabled: bool| power.set_charge_threshold(enabled, &cx)
-    ))
-    .into()
+      }),
+    );
+    host_module!(m, {
+      sync: [on_sleep],
+      async: [
+        set_profile,
+        set_keyboard_brightness,
+        session_capabilities,
+        session_action,
+        reboot_to,
+        set_charge_threshold,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]
@@ -416,28 +393,27 @@ mod tests {
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
-      m.nextSleepEvent().then((e) => report({ event: e }));
+      m.onSleep((e) => report({ event: e }));
     }
     report([m.sleeping(), m.resumedAt()]);"#;
-    let (view, cx) = harness::view(cx, body, |reads, subs, _| super::module(reads, subs));
-    assert_eq!(view.last(), json!([false, null]));
+    let (view, cx) = harness::module::<super::Power>(cx, body);
+    assert_eq!(view.last(cx), json!([false, null]));
 
     // the watch may not be up yet, so asleep until it is
-    wait_until(cx, |_| {
+    wait_until(cx, |cx| {
       sleep(true);
-      view.last() == json!([true, null])
+      view.last(cx) == json!([true, null])
     });
     assert!(
       view
-        .reports
-        .borrow()
+        .reports(cx)
         .contains(&json!({ "event": { "sleeping": true } }))
     );
-    wait_until(cx, |_| {
+    wait_until(cx, |cx| {
       sleep(false);
-      view.last()[0] == false
+      view.last(cx)[0] == false
     });
-    assert!(view.last()[1].as_f64().unwrap() > 1e9);
+    assert!(view.last(cx)[1].as_f64().unwrap() > 1e9);
   }
 
   fn json(value: impl serde::Serialize) -> serde_json::Value {

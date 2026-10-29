@@ -1,20 +1,21 @@
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
+};
 use corona_pipewire::{
   AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
-  Pipewire, PipewireExt,
+  PipewireExt,
 };
-use gpui_shell::HostModule;
+use gpui_kit::App;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read, watch},
-};
-use corona_macros::{host_fn, named};
+use crate::module::json;
+
+type Pw = Glob<corona_pipewire::Pipewire>;
 
 // The script's view of an `AudioNode`: `volume` added, device ids left out.
-#[derive(Serialize, TS)]
-#[ts(rename = "AudioNode")]
+#[derive(Serialize, Type)]
+#[serde(rename = "AudioNode")]
 struct Node {
   id: u32,
   serial: u64,
@@ -45,7 +46,7 @@ impl From<&AudioNode> for Node {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Capture {
   id: u32,
   kind: CaptureKind,
@@ -64,7 +65,7 @@ impl From<&PwCapture> for Capture {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct CaptureAccess {
   kind: CaptureKind,
   name: Option<String>,
@@ -89,47 +90,32 @@ impl From<&PwCaptureAccess> for CaptureAccess {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Sinks,
-  Sources,
-  Streams,
-  DefaultSink,
-  DefaultSource,
-  Targets,
-  Captures,
-  CaptureLog,
-}
-
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Pipewire(value)
-  }
-}
-
 fn nodes(nodes: &[AudioNode]) -> Vec<Node> {
   nodes.iter().map(Node::from).collect()
 }
 
-#[host_fn]
-fn set_default(pipewire: Glob<Pipewire>, id: u32) -> anyhow::Result<()> {
-  pipewire.audio().set_default(id)
+#[specta]
+fn set_default(pipewire: Pw, id: u32) -> Throws<()> {
+  pipewire.audio().set_default(id).into()
 }
 
-#[host_fn]
-fn set_target(pipewire: Glob<Pipewire>, stream: u32, sink: u32) -> anyhow::Result<()> {
-  pipewire.audio().set_target(stream, sink)
+#[specta]
+fn set_target(pipewire: Pw, stream: u32, sink: u32) -> Throws<()> {
+  pipewire.audio().set_target(stream, sink).into()
 }
 
-#[host_fn]
-fn reset_target(pipewire: Glob<Pipewire>, stream: u32) -> anyhow::Result<()> {
-  pipewire.audio().reset_target(stream)
+#[specta]
+fn reset_target(pipewire: Pw, stream: u32) -> Throws<()> {
+  pipewire.audio().reset_target(stream).into()
 }
 
-#[host_fn]
-fn set_volume(pipewire: Glob<Pipewire>, id: u32, volume: f32) -> anyhow::Result<()> {
+#[specta]
+fn set_volume(pipewire: Pw, id: u32, volume: f32) -> Throws<()> {
   let channels = channels(pipewire.audio().node(id).as_ref());
-  pipewire.audio().set_volumes(id, vec![volume; channels])
+  pipewire
+    .audio()
+    .set_volumes(id, vec![volume; channels])
+    .into()
 }
 
 /// One volume per channel, at least one even for an unknown node.
@@ -137,96 +123,78 @@ fn channels(node: Option<&AudioNode>) -> usize {
   node.map_or(1, |node| node.volumes.len().max(1))
 }
 
-#[host_fn]
-fn set_mute(pipewire: Glob<Pipewire>, id: u32, mute: bool) -> anyhow::Result<()> {
-  pipewire.audio().set_mute(id, mute)
+#[specta]
+fn set_mute(pipewire: Pw, id: u32, mute: bool) -> Throws<()> {
+  pipewire.audio().set_mute(id, mute).into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/pipewire")
-    .func(read(
-      reads,
-      subs,
-      "listSinks",
-      Updates::Sinks,
-      |cx| cx.pipewire().sinks.clone(),
-      |cx| nodes(cx.pipewire().list_sinks(cx)),
-    ))
-    .func(read(
-      reads,
-      subs,
-      "listSources",
-      Updates::Sources,
-      |cx| cx.pipewire().sources.clone(),
-      |cx| nodes(cx.pipewire().list_sources(cx)),
-    ))
-    .func(read(
-      reads,
-      subs,
-      "listStreams",
-      Updates::Streams,
-      |cx| cx.pipewire().streams.clone(),
-      |cx| nodes(cx.pipewire().list_streams(cx)),
-    ))
-    .func(read(
-      reads,
-      subs,
-      "defaultSink",
-      Updates::DefaultSink,
-      |cx| cx.pipewire().default_sink.clone(),
-      |cx| cx.pipewire().default_sink(cx).map(Node::from),
-    ))
-    .func(read(
-      reads,
-      subs,
-      "defaultSource",
-      Updates::DefaultSource,
-      |cx| cx.pipewire().default_source.clone(),
-      |cx| cx.pipewire().default_source(cx).map(Node::from),
-    ))
-    .func({
-      subs.push(watch(reads, Updates::Targets.into(), |cx| {
-        cx.pipewire().targets.clone()
-      }));
-      let reads = reads.clone();
+/// The id of the sink a stream is routed through, or null to follow the default.
+#[specta]
+fn target(cx: Cx, pipewire: Pw, stream: u32) -> Json<Option<u32>> {
+  track(&cx.pipewire().targets);
+  Json(pipewire.target(stream, &cx))
+}
 
-      named!(
-        "target",
-        /// The id of the sink a stream is routed through, or null to follow the default.
-        move |cx: Cx, pipewire: Glob<Pipewire>, stream: u32| {
-          reads.record(Updates::Targets.into());
-          pipewire.target(stream, &cx)
-        }
-      )
-    })
-    .func(read(
-      reads,
-      subs,
+/// `corona/pipewire`
+pub struct Pipewire;
+
+impl ScriptModule for Pipewire {
+  const NAME: &str = "pipewire";
+  const DOC: &str = "Audio devices, streams and who records.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
+      "listSinks",
+      "",
+      |cx| cx.pipewire().sinks.clone(),
+      json(|cx| nodes(cx.pipewire().list_sinks(cx))),
+    );
+    m.watch(
+      "listSources",
+      "",
+      |cx| cx.pipewire().sources.clone(),
+      json(|cx| nodes(cx.pipewire().list_sources(cx))),
+    );
+    m.watch(
+      "listStreams",
+      "",
+      |cx| cx.pipewire().streams.clone(),
+      json(|cx| nodes(cx.pipewire().list_streams(cx))),
+    );
+    m.watch(
+      "defaultSink",
+      "",
+      |cx| cx.pipewire().default_sink.clone(),
+      json(|cx| cx.pipewire().default_sink(cx).map(Node::from)),
+    );
+    m.watch(
+      "defaultSource",
+      "",
+      |cx| cx.pipewire().default_source.clone(),
+      json(|cx| cx.pipewire().default_source(cx).map(Node::from)),
+    );
+    m.watch(
       "listCaptures",
-      Updates::Captures,
+      "",
       |cx| cx.pipewire().captures.clone(),
-      |cx| {
+      json(|cx| {
         let captures = cx.pipewire().list_captures(cx);
         captures.iter().map(Capture::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "captureLog",
-      Updates::CaptureLog,
+      "",
       |cx| cx.pipewire().capture_log.clone(),
-      |cx| {
+      json(|cx| {
         let log = cx.pipewire().capture_log(cx);
         log.iter().map(CaptureAccess::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(set_default)
-    .func(set_target)
-    .func(reset_target)
-    .func(set_volume)
-    .func(set_mute)
-    .into()
+      }),
+    );
+    host_module!(m, {
+      sync: [target, set_default, set_target, reset_target, set_volume, set_mute],
+    });
+  }
 }
 
 #[cfg(test)]

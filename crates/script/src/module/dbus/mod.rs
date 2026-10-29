@@ -3,30 +3,25 @@
 
 use std::{
   collections::HashMap,
-  mem,
   sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use anyhow::{Context as _, Result, bail, ensure};
-use corona_macros::named;
-use futures::{StreamExt as _, channel::oneshot, future::BoxFuture};
+use corona_js::{
+  Cx, Data, Glob, Json as Js, Listener, ModuleBuilder, Throws, Unsubscribe, host_module,
+};
+use futures::{StreamExt as _, future::BoxFuture};
 use futures_lite::{FutureExt as _, future};
 use gpui_kit::{Global, Subscription};
-use gpui_shell::HostModule;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value as Json;
-use ts_rs::TS;
+use specta::{Type as JsType, specta};
 use zbus::{
   Connection, MatchRule, Message, MessageStream, message::Type, names::WellKnownName,
   zvariant::Structure,
 };
 use zbus_xml::{ArgDirection, Node};
-
-use crate::{
-  host_fn::{Glob, Module},
-  module::Subscribe,
-};
 
 mod convert;
 
@@ -124,7 +119,7 @@ fn names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::E
   Ok(names)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize, JsType)]
 #[serde(rename_all = "lowercase")]
 enum Bus {
   Session,
@@ -132,9 +127,8 @@ enum Bus {
 }
 
 /// A method call.
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, JsType)]
 #[serde(rename_all = "camelCase")]
-#[ts(optional_fields)]
 struct Call {
   bus: Bus,
   dest: String,
@@ -143,15 +137,17 @@ struct Call {
   method: String,
   /// A `v` argument's type follows the JSON, `{ $type: "u", value: 3 }` sets
   /// it, also inside `av` and `a{sv}`.
+  #[specta(optional)]
   args: Option<Vec<Json>>,
   /// The types of `args`, e.g. `"sa{sv}"`. Read from the service's
   /// introspection data when left out, picking the overload that takes as
   /// many arguments.
+  #[specta(optional)]
   signature: Option<String>,
 }
 
 /// An interface on an object.
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, JsType)]
 #[serde(rename_all = "camelCase")]
 struct Object {
   bus: Bus,
@@ -161,7 +157,7 @@ struct Object {
 }
 
 /// A property of an interface.
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, JsType)]
 #[serde(rename_all = "camelCase")]
 struct Property {
   bus: Bus,
@@ -171,9 +167,8 @@ struct Property {
   name: String,
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, JsType)]
 #[serde(rename_all = "camelCase")]
-#[ts(optional_fields)]
 struct SetProperty {
   bus: Bus,
   dest: String,
@@ -183,25 +178,30 @@ struct SetProperty {
   /// A `v` value's type follows the JSON, `{ $type: "u", value: 3 }` sets it.
   value: Json,
   /// The property's type. Read from the introspection data when left out.
+  #[specta(optional)]
   signature: Option<String>,
 }
 
 /// The signals to receive. `sender` must be granted, or be
 /// `org.freedesktop.DBus` with member `NameOwnerChanged` and a granted `arg0`.
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, JsType)]
 #[serde(rename_all = "camelCase")]
-#[ts(optional_fields)]
 struct Rule {
   bus: Bus,
   sender: String,
+  #[specta(optional)]
   path: Option<String>,
+  #[specta(optional)]
   path_namespace: Option<String>,
+  #[specta(optional)]
   iface: Option<String>,
+  #[specta(optional)]
   member: Option<String>,
+  #[specta(optional)]
   arg0: Option<String>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, JsType)]
 struct Signal {
   sender: String,
   path: String,
@@ -222,7 +222,7 @@ struct Key {
 }
 
 /// A subscription's signals and the name it listens to.
-struct Listener {
+struct Signals {
   signals: flume::Receiver<zbus::Result<Message>>,
   /// Reads the bus into `signals`, until dropped.
   _pump: zbus::Task<()>,
@@ -230,21 +230,10 @@ struct Listener {
   sender: String,
 }
 
-enum Slot {
-  Idle(Box<Listener>),
-  /// A `nextSignal` holds the listener; dropping this wakes it with null.
-  Waiting {
-    _wake: oneshot::Sender<()>,
-  },
-}
-
 #[derive(Default)]
 struct State {
-  slots: HashMap<u32, Slot>,
-  /// Subscriptions made by this load, the next id.
+  /// Subscriptions made by this load
   made: u32,
-  /// The script is gone, new subscriptions are dropped.
-  closed: bool,
   signatures: HashMap<Key, Vec<Vec<String>>>,
 }
 
@@ -408,7 +397,7 @@ impl Dbus {
     )
   }
 
-  fn subscribe(&self, buses: &Buses, rule: Rule) -> Result<BoxFuture<'static, Result<u32>>> {
+  fn subscribe(&self, buses: &Buses, rule: Rule) -> Result<BoxFuture<'static, Result<Signals>>> {
     let conn = if rule.sender == DBUS && rule.member.as_deref() == Some("NameOwnerChanged") {
       let arg0 = rule
         .arg0
@@ -440,16 +429,14 @@ impl Dbus {
     }
     let match_rule = builder.build().into_owned();
 
-    let id = {
+    {
       let mut state = lock(&self.state);
       ensure!(
         state.made < MAX_SUBSCRIPTIONS,
         "at most {MAX_SUBSCRIPTIONS} subscriptions per load"
       );
       state.made += 1;
-      state.made - 1
-    };
-    let state = self.state.clone();
+    }
     Ok(
       async move {
         let stream = MessageStream::for_match_rule(match_rule, &conn, None).await?;
@@ -463,56 +450,15 @@ impl Dbus {
           }),
           "plugin signals",
         );
-        let mut state = lock(&state);
-        ensure!(!state.closed, "the plugin was unloaded");
-        let listener = Listener {
+        Ok(Signals {
           signals,
           _pump: pump,
           conn,
           sender: rule.sender,
-        };
-        state.slots.insert(id, Slot::Idle(Box::new(listener)));
-        Ok(id)
+        })
       }
       .boxed(),
     )
-  }
-
-  fn next_signal(&self, id: u32) -> Result<BoxFuture<'static, Result<Option<Signal>>>> {
-    let mut state = lock(&self.state);
-    let Some(slot) = state.slots.get_mut(&id) else {
-      return Ok(future::ready(Ok(None)).boxed());
-    };
-    ensure!(
-      matches!(slot, Slot::Idle(_)),
-      "already waiting for subscription {id}"
-    );
-    let (wake, woken) = oneshot::channel();
-    let Slot::Idle(mut listener) = mem::replace(slot, Slot::Waiting { _wake: wake }) else {
-      unreachable!("checked above")
-    };
-    let state = self.state.clone();
-    Ok(
-      async move {
-        // unsubscribing drops `wake`
-        let signal = listener
-          .next()
-          .or(async {
-            woken.await.ok();
-            Ok(None)
-          })
-          .await;
-        if let Some(slot @ Slot::Waiting { .. }) = lock(&state).slots.get_mut(&id) {
-          *slot = Slot::Idle(listener);
-        }
-        signal
-      }
-      .boxed(),
-    )
-  }
-
-  fn unsubscribe(&self, id: u32) {
-    lock(&self.state).slots.remove(&id);
   }
 
   fn name_has_owner(
@@ -540,7 +486,7 @@ impl Dbus {
   }
 }
 
-impl Listener {
+impl Signals {
   async fn next(&mut self) -> Result<Option<Signal>> {
     while let Ok(message) = self.signals.recv_async().await {
       let message = message?;
@@ -706,62 +652,104 @@ fn pick(overloads: &[Vec<String>], member: &str, arity: Option<usize>) -> Result
   }
 }
 
-pub fn module(grant: DbusGrant, subs: &mut Vec<Subscribe>) -> HostModule {
-  let dbus = Dbus::new(grant);
-  let state = dbus.state.clone();
-  // dropping the script wakes its waiters with null and drops its match rules
-  subs.push(Subscribe::Cleanup(Subscription::new(move || {
-    let mut state = lock(&state);
-    state.closed = true;
-    state.slots.clear();
-  })));
+/// Calls a method. Resolves to null without return values, the value with one, an array
+/// with more.
+#[specta]
+async fn call(buses: Glob<Buses>, dbus: Data<Dbus>, call: Js<Call>) -> Throws<Js<Json>> {
+  match dbus.call(&buses, call.0) {
+    Ok(reply) => reply.await.map(Js),
+    Err(e) => Err(e),
+  }
+  .into()
+}
 
-  let d = dbus.clone();
-  let module = Module::new("corona/dbus").func(named!(
-    "call",
-    /// Calls a method. Resolves to null without return values, the value with
-    /// one, an array with more.
-    move |buses: Glob<Buses>, call: Call| d.call(&buses, call)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!(
-    "getProperty",
-    move |buses: Glob<Buses>, property: Property| d.get_property(&buses, property)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!(
-    "getAll",
-    /// Every property of the interface, by name.
-    move |buses: Glob<Buses>, object: Object| d.get_all(&buses, object)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!(
-    "setProperty",
-    move |buses: Glob<Buses>, property: SetProperty| d.set_property(&buses, property)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!(
-    "subscribe",
-    /// Starts receiving the signals `rule` matches, resolves to the id for
-    /// `nextSignal`.
-    move |buses: Glob<Buses>, rule: Rule| d.subscribe(&buses, rule)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!(
-    "nextSignal",
-    /// The next signal of a subscription; null once it is unsubscribed.
-    move |id: u32| d.next_signal(id)
-  ));
-  let d = dbus.clone();
-  let module = module.func(named!("unsubscribe", move |id: u32| d.unsubscribe(id)));
-  let d = dbus;
-  module
-    .func(named!(
-      "nameHasOwner",
-      /// Whether a granted name is on the bus.
-      move |buses: Glob<Buses>, bus: Bus, name: String| d.name_has_owner(&buses, bus, name)
-    ))
-    .into()
+#[specta]
+async fn get_property(
+  buses: Glob<Buses>,
+  dbus: Data<Dbus>,
+  property: Js<Property>,
+) -> Throws<Js<Json>> {
+  match dbus.get_property(&buses, property.0) {
+    Ok(value) => value.await.map(Js),
+    Err(e) => Err(e),
+  }
+  .into()
+}
+
+/// Every property of the interface, by name.
+#[specta]
+async fn get_all(buses: Glob<Buses>, dbus: Data<Dbus>, object: Js<Object>) -> Throws<Js<Json>> {
+  match dbus.get_all(&buses, object.0) {
+    Ok(values) => values.await.map(Js),
+    Err(e) => Err(e),
+  }
+  .into()
+}
+
+#[specta]
+async fn set_property(
+  buses: Glob<Buses>,
+  dbus: Data<Dbus>,
+  property: Js<SetProperty>,
+) -> Throws<()> {
+  match dbus.set_property(&buses, property.0) {
+    Ok(set) => set.await,
+    Err(e) => Err(e),
+  }
+  .into()
+}
+
+/// Calls `cb` with each signal `rule` matches; resolves to the fn that stops it.
+#[specta]
+async fn subscribe(
+  cx: Cx,
+  buses: Glob<Buses>,
+  dbus: Data<Dbus>,
+  rule: Js<Rule>,
+  cb: Listener<Js<Signal>>,
+) -> Throws<Unsubscribe> {
+  let signals = match dbus.subscribe(&buses, rule.0) {
+    Ok(made) => made.await,
+    Err(e) => Err(e),
+  };
+  let mut signals = match signals {
+    Ok(signals) => signals,
+    Err(e) => return Err::<Unsubscribe, _>(e).into(),
+  };
+  let listener = cb.clone();
+  let task = cx.spawn(async move |cx| {
+    loop {
+      match signals.next().await {
+        Ok(Some(signal)) => cx.update(|cx| listener.call(cx, Js(signal))),
+        Ok(None) => break,
+        Err(e) => break tracing::warn!("plugin signal: {e:#}"),
+      }
+    }
+  });
+  Ok::<_, anyhow::Error>(cb.keep(Subscription::new(move || drop(task)))).into()
+}
+
+/// Whether a granted name is on the bus.
+#[specta]
+async fn name_has_owner(
+  buses: Glob<Buses>,
+  dbus: Data<Dbus>,
+  bus: Js<Bus>,
+  name: String,
+) -> Throws<bool> {
+  match dbus.name_has_owner(&buses, bus.0, name) {
+    Ok(owned) => owned.await,
+    Err(e) => Err(e),
+  }
+  .into()
+}
+
+/// `corona/dbus`, for a plugin with `grant`
+pub fn module(grant: DbusGrant, m: &mut ModuleBuilder) {
+  m.provide(Dbus::new(grant));
+  host_module!(m, {
+    async: [call, get_property, get_all, set_property, subscribe, name_has_owner],
+  });
 }
 
 #[cfg(test)]
@@ -769,7 +757,7 @@ mod tests {
   use std::collections::HashMap;
 
   use corona_utils::test_bus::TestBus;
-  use futures_lite::future::{block_on, poll_once};
+  use futures_lite::future::block_on;
   use serde_json::json;
   use zbus::zvariant::OwnedValue;
 
@@ -1060,13 +1048,13 @@ mod tests {
       let buses = buses(&bus).await;
       let dbus = dbus(&["io.corona.Test"]);
 
-      let id = dbus
+      let mut signals = dbus
         .subscribe(&buses, rule("io.corona.Test"))
         .unwrap()
         .await
         .unwrap();
       emit(&server, "a").await;
-      let signal = dbus.next_signal(id).unwrap().await.unwrap().unwrap();
+      let signal = signals.next().await.unwrap().unwrap();
       assert_eq!(signal.path, "/test");
       assert_eq!(signal.iface, "io.corona.Test");
       assert_eq!(signal.member, "Changed");
@@ -1076,27 +1064,8 @@ mod tests {
       let other = bus.conn().await;
       emit(&other, "spoofed").await;
       emit(&server, "b").await;
-      let signal = dbus.next_signal(id).unwrap().await.unwrap().unwrap();
+      let signal = signals.next().await.unwrap().unwrap();
       assert_eq!(signal.args, [json!("b")]);
-
-      // one waiter at a time; unsubscribing wakes it with null
-      let mut waiting = dbus.next_signal(id).unwrap();
-      assert!(poll_once(&mut waiting).await.is_none());
-      assert!(dbus.next_signal(id).is_err());
-      dbus.unsubscribe(id);
-      assert!(waiting.await.unwrap().is_none());
-      assert!(dbus.next_signal(id).unwrap().await.unwrap().is_none());
-
-      // so does unloading
-      let id = dbus
-        .subscribe(&buses, rule("io.corona.Test"))
-        .unwrap()
-        .await
-        .unwrap();
-      let mut waiting = dbus.next_signal(id).unwrap();
-      assert!(poll_once(&mut waiting).await.is_none());
-      lock(&dbus.state).slots.clear();
-      assert!(waiting.await.unwrap().is_none());
     });
   }
 
@@ -1117,7 +1086,7 @@ mod tests {
         system: conn,
       };
       let dbus = dbus(&["io.corona.Test"]);
-      let id = dbus
+      let mut signals = dbus
         .subscribe(&buses, rule("io.corona.Test"))
         .unwrap()
         .await
@@ -1131,7 +1100,7 @@ mod tests {
         .await
         .unwrap();
       assert_eq!(sum, json!(3));
-      let signal = dbus.next_signal(id).unwrap().await.unwrap().unwrap();
+      let signal = signals.next().await.unwrap().unwrap();
       assert_eq!(signal.args, [json!("burst")]);
     });
   }
@@ -1181,7 +1150,7 @@ mod tests {
           .is_err()
       );
 
-      let id = dbus
+      let mut signals = dbus
         .subscribe(&buses, owner_changed(Some("io.corona.Test")))
         .unwrap()
         .await
@@ -1194,7 +1163,7 @@ mod tests {
           .unwrap()
       );
       let server = serve(&bus).await;
-      let signal = dbus.next_signal(id).unwrap().await.unwrap().unwrap();
+      let signal = signals.next().await.unwrap().unwrap();
       assert_eq!(signal.member, "NameOwnerChanged");
       assert_eq!(signal.args[0], json!("io.corona.Test"));
       assert_eq!(

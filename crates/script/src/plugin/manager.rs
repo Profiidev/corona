@@ -763,7 +763,7 @@ mod tests {
 
   fn manifest(id: &str, version: &str) -> String {
     format!(
-      "id = \"{id}\"\nname = \"{id}\"\nversion = \"{version}\"\n[widgets.w]\nview = \"main.js\"\n"
+      "id = \"{id}\"\nname = \"{id}\"\napi = 2\nversion = \"{version}\"\n[widgets.w]\nview = \"main.js\"\n"
     )
   }
 

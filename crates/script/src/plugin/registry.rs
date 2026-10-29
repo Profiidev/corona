@@ -324,7 +324,7 @@ mod tests {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
       dir.join(PLUGIN_MANIFEST_FILENAME),
-      format!("id = \"{id}\"\nname = \"{sub}\"\n"),
+      format!("id = \"{id}\"\nname = \"{sub}\"\napi = 2\n"),
     )
     .unwrap();
   }

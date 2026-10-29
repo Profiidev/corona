@@ -30,7 +30,6 @@ use corona_components::settings_fields::{
 
 use corona_settings::{SettingsExt, SettingsPage, group, item, page};
 
-use crate::settings::plugins;
 use rust_i18n::t;
 
 /// A settings page `$page` builds
@@ -70,7 +69,6 @@ settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
 settings_page!(LocationSettings, "location", 130, |cx| location());
 settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
-settings_page!(PluginSettings, "plugins", 150, |cx| plugins::page(cx));
 settings_page!(SystemSettings, "system", 160, |cx| system());
 
 pub(super) fn register(cx: &mut App) {
@@ -87,7 +85,6 @@ pub(super) fn register(cx: &mut App) {
     .register::<ScreenshotSettings>()
     .register::<LocationSettings>()
     .register::<PrivacySettings>()
-    .register::<PluginSettings>()
     .register::<SystemSettings>();
 }
 

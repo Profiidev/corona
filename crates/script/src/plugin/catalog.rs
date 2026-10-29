@@ -277,9 +277,9 @@ version = "9"
     };
     write(
       "one",
-      "id = \"com.one\"\nname = \"One\"\nversion = \"1\"\ndescription = \"d\"",
+      "id = \"com.one\"\nname = \"One\"\napi = 2\nversion = \"1\"\ndescription = \"d\"",
     );
-    write("two", "id = \"com.two\"\nname = \"Two\"");
+    write("two", "id = \"com.two\"\nname = \"Two\"\napi = 2");
     fs::write(tmp.path().join("two/README.md"), "# Two").unwrap();
     fs::write(
       tmp.path().join(CATALOG_FILENAME),

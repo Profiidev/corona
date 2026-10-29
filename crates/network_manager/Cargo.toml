@@ -21,7 +21,7 @@ rustix = { workspace = true, features = ["net"] }
 futures-lite.workspace = true
 flume.workspace = true
 serde.workspace = true
-ts-rs.workspace = true
+specta.workspace = true
 corona-zbus-networkmanager = "0.1.0"
 corona-zbus-nm-secret-agent-manager = "0.1.0"
 

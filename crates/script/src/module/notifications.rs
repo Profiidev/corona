@@ -1,24 +1,24 @@
 use std::{collections::HashMap, io::Cursor, mem, pin::pin, time::UNIX_EPOCH};
 
-use anyhow::{anyhow, bail, ensure};
-use corona_notifications as nt;
-use corona_notifications::NotificationsExt;
+use anyhow::{bail, ensure};
+use corona_js::{
+  Cx, Glob, Json, Listener, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, Unsubscribe,
+  host_module,
+};
+use corona_notifications::{self as nt, NotificationsExt};
 use futures_lite::{StreamExt, future::try_zip, stream};
-use gpui_kit::{App, BorrowAppContext};
-use gpui_shell::HostModule;
+use gpui_kit::App;
 use image::{ImageError, ImageReader, Limits};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
-use ts_rs::TS;
+use specta::{Type, Types, datatype::DataType, specta};
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::{
   ScriptManager,
-  host_fn::{Glob, Module},
-  module::{PluginRef, Subscribe, Subscriptions, plugin::ActionEvent, read},
+  module::{json, plugin::ActionEvent},
 };
-use corona_macros::named;
 
-#[derive(Clone, Copy, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Urgency {
   Low,
@@ -26,7 +26,7 @@ enum Urgency {
   Critical,
 }
 
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, Type)]
 struct Action {
   key: String,
   label: String,
@@ -59,7 +59,7 @@ const RESERVED_HINTS: [&str; 8] = [
 const MAX_IMAGE_SIDE: u32 = 1024;
 
 /// A spec hint: whole numbers go out as `int32`, others as `double`
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 #[serde(untagged)]
 enum Hint {
   Bool(bool),
@@ -67,47 +67,53 @@ enum Hint {
   Text(String),
 }
 
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 struct Reply {
-  #[ts(optional)]
+  #[specta(optional)]
   placeholder: Option<String>,
 }
 
 /// A notification from the plugin, under its name.
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 struct NotifyOptions {
   summary: String,
-  #[ts(optional)]
+  #[specta(optional)]
   body: Option<String>,
   /// A theme icon name or a `file://` path.
-  #[ts(optional)]
+  #[specta(optional)]
   icon: Option<String>,
   /// Buttons; the one with key `default` is a click on the notification.
-  #[ts(optional)]
+  #[specta(optional)]
   actions: Option<Vec<Action>>,
-  #[ts(optional)]
+  #[specta(optional)]
   urgency: Option<Urgency>,
   /// A picture, PNG or JPEG, at most 1024 pixels a side.
-  #[ts(optional, type = "Uint8Array")]
+  #[specta(optional)]
   image: Option<Bytes>,
   /// More spec hints, like `resident` or `category`. The ones options set
   /// (`urgency`, the image ones, the reply placeholder) and `desktop-entry`
   /// are rejected.
-  #[ts(optional)]
+  #[specta(optional)]
   hints: Option<HashMap<String, Hint>>,
   /// Milliseconds on screen: -1 the default, 0 until dismissed.
-  #[ts(optional)]
+  #[specta(optional)]
   timeout: Option<i32>,
-  /// A reply field; the text arrives at `nextAction` with key `inline-reply`.
-  #[ts(optional)]
+  /// A reply field; the text arrives at `onAction` with key `inline-reply`.
+  #[specta(optional)]
   reply: Option<Reply>,
 }
 
 /// A `Uint8Array`'s bytes
 struct Bytes(Vec<u8>);
 
-// ponytail: a Uint8Array crosses the host bridge as an object of its bytes by
-// index, a bytes HostValue in gpui-shell if big pictures get slow
+impl Type for Bytes {
+  fn definition(_: &mut Types) -> DataType {
+    DataType::Reference(specta_typescript::define("Uint8Array"))
+  }
+}
+
+// ponytail: a Uint8Array crosses as JSON, an object of its bytes by index; take it as
+// an rquickjs `TypedArray` if big pictures get slow
 impl<'de> Deserialize<'de> for Bytes {
   fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
     let indexed = HashMap::<usize, u8>::deserialize(d)?;
@@ -193,7 +199,7 @@ impl NotifyOptions {
   }
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Notification {
   id: u32,
   app_name: String,
@@ -241,19 +247,6 @@ impl From<&nt::Notification> for Notification {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Notifications,
-  DoNotDisturb,
-  Active,
-}
-
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Notifications(value)
-  }
-}
-
 /// Hands the actions picked on plugin notifications to the plugin that sent
 /// them, from the first `notify` on
 fn listen(cx: &mut App) {
@@ -297,8 +290,9 @@ fn listen(cx: &mut App) {
         continue;
       };
       cx.update(|cx| {
-        if let Some(hub) = cx.global::<ScriptManager>().hubs.get(&owner) {
-          hub.push_action(event);
+        let hub = cx.global::<ScriptManager>().hubs.get(&owner).cloned();
+        if let Some(hub) = hub {
+          hub.push_action(event, cx);
         }
       });
     }
@@ -306,71 +300,84 @@ fn listen(cx: &mut App) {
   .detach();
 }
 
-pub fn module(plugin: PluginRef, subs: &mut Vec<Subscribe>, cx: &mut App) -> HostModule {
-  let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(plugin.id, cx));
-  let load = hub.load();
-  let stop = hub.clone();
-  subs.push(Subscribe::Cleanup(gpui_kit::Subscription::new(move || {
-    stop.stop_actions(load)
-  })));
-  let (id, name) = (plugin.id.to_string(), plugin.name.to_string());
-  let (dismiss_id, invoke_id) = (id.clone(), id.clone());
+/// Closes one of the plugin's notifications.
+#[specta]
+fn dismiss(mut cx: Cx, plugin: Plugin, id: u32) -> Throws<()> {
+  if !owns(&cx, &plugin.id, id) {
+    return Err::<(), _>(format!("notification {id} is not this plugin's")).into();
+  }
+  cx.notifications().clone().dismiss(id, &mut cx);
+  Ok::<_, String>(()).into()
+}
 
-  Module::new("corona/notifications")
-    .func(named!(
-      "dismiss",
-      /// Closes one of the plugin's notifications.
-      move |cx: &mut App, id: u32| {
-        ensure!(owns(cx, &dismiss_id, id), "notification {id} is not this plugin's");
-        cx.notifications().clone().dismiss(id, cx);
-        anyhow::Ok(())
-      }
-    ))
-    .func(named!(
-      "invokeAction",
-      /// Picks an action on one of the plugin's notifications.
-      move |cx: &mut App, id: u32, key: String| {
-        ensure!(owns(cx, &invoke_id, id), "notification {id} is not this plugin's");
-        cx.notifications().clone().invoke_action(id, &key, cx);
-        anyhow::Ok(())
-      }
-    ))
-    .func(named!(
-      "send",
-      /// Shows a notification from corona.
-      |notifications: Glob<nt::Notifications>, summary: String, body: String| notifications
-        .send(summary, body)
-    ))
-    .func(named!(
-      "notify",
-      /// Shows a notification under the plugin's name, its id.
-      move |cx: &mut App, options: NotifyOptions| {
-        listen(cx);
-        let owners = cx.global::<ScriptManager>().owners.clone();
-        let notify = options.into_notify(name.clone());
-        let sent = notify.map(|n| {
-          let resident = n.hints.get("resident").is_some_and(|v| **v == Value::Bool(true));
-          (cx.notifications().send_notify(n), resident)
-        });
-        let id = id.clone();
-        async move {
-          let (sent, resident) = sent?;
-          let sent = sent.await?;
-          owners.lock().unwrap().insert(sent, (id, resident));
-          anyhow::Ok(sent)
-        }
-      }
-    ))
-    .func(named!(
-      "nextAction",
-      /// The next action picked on one of the plugin's notifications, once
-      /// one is. Every view waiting gets it.
-      move || {
-        let rx = hub.next_action(load);
-        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
-      }
-    ))
+/// Picks an action on one of the plugin's notifications.
+#[specta]
+fn invoke_action(mut cx: Cx, plugin: Plugin, id: u32, key: String) -> Throws<()> {
+  if !owns(&cx, &plugin.id, id) {
+    return Err::<(), _>(format!("notification {id} is not this plugin's")).into();
+  }
+  cx.notifications().clone().invoke_action(id, &key, &mut cx);
+  Ok::<_, String>(()).into()
+}
+
+/// Shows a notification from corona.
+#[specta]
+async fn send(notifications: Glob<nt::Notifications>, summary: String, body: String) -> Throws<()> {
+  notifications.send(summary, body).await.into()
+}
+
+/// Shows a notification under the plugin's name, its id.
+#[specta]
+async fn notify(mut cx: Cx, plugin: Plugin, options: Json<NotifyOptions>) -> Throws<u32> {
+  listen(&mut cx);
+  let owners = cx.global::<ScriptManager>().owners.clone();
+  let notify = options.0.into_notify(plugin.name.clone());
+  let sent = notify.map(|n| {
+    let resident = n
+      .hints
+      .get("resident")
+      .is_some_and(|v| **v == Value::Bool(true));
+    (cx.notifications().send_notify(n), resident)
+  });
+  let sent = match sent {
+    Ok((sent, resident)) => sent.await.map(|id| (id, resident)),
+    Err(e) => Err(e),
+  };
+  sent
+    .map(|(id, resident)| {
+      owners
+        .lock()
+        .unwrap()
+        .insert(id, (plugin.id.clone(), resident));
+      id
+    })
     .into()
+}
+
+/// Calls `cb` with each action picked on one of the plugin's notifications, in every view
+/// that listens.
+#[specta]
+fn on_action(mut cx: Cx, plugin: Plugin, cb: Listener<Json<ActionEvent>>) -> Unsubscribe {
+  let (listener, hub) = (cb.clone(), ScriptManager::hub(&plugin.id, &mut cx));
+  let sub = cx.subscribe(&hub.actions, move |_, action: &ActionEvent, cx| {
+    listener.call(cx, Json(action.clone()))
+  });
+  cb.keep(sub)
+}
+
+/// `corona/notifications`
+pub struct Notifications;
+
+impl ScriptModule for Notifications {
+  const NAME: &str = "notifications";
+  const DOC: &str = "Sending notifications, and acting on the plugin's own.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    host_module!(m, {
+      sync: [dismiss, invoke_action, on_action],
+      async: [send, notify],
+    });
+  }
 }
 
 /// Whether the plugin `plugin` sent the notification `id`.
@@ -379,71 +386,88 @@ fn owns(cx: &App, plugin: &str, id: u32) -> bool {
   owners.get(&id).is_some_and(|(owner, _)| owner == plugin)
 }
 
+#[specta]
+fn set_do_not_disturb(mut cx: Cx, enabled: bool) {
+  cx.notifications()
+    .clone()
+    .set_do_not_disturb(enabled, &mut cx)
+}
+
+#[specta(rename = "dismiss")]
+fn dismiss_any(mut cx: Cx, id: u32) {
+  cx.notifications().clone().dismiss(id, &mut cx)
+}
+
+#[specta]
+fn mark_read(mut cx: Cx, id: u32) {
+  cx.notifications().clone().mark_read(id, &mut cx)
+}
+
+#[specta]
+fn mark_all_read(mut cx: Cx) {
+  cx.notifications().clone().mark_all_read(&mut cx)
+}
+
+#[specta]
+fn clear_all(mut cx: Cx) {
+  cx.notifications().clone().clear_all(&mut cx)
+}
+
+/// Tells the app, then closes the notification unless it is resident.
+#[specta(rename = "invokeAction")]
+fn invoke_any_action(mut cx: Cx, id: u32, key: String) {
+  cx.notifications().clone().invoke_action(id, &key, &mut cx)
+}
+
 /// `corona/notification_center`: every app's notifications and the global state.
-pub fn center(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/notification_center")
-    .func(read(
-      reads,
-      subs,
+pub struct NotificationCenter;
+
+impl ScriptModule for NotificationCenter {
+  const NAME: &str = "notification_center";
+  const DOC: &str = "Every app's notifications, do not disturb, and acting on them.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listNotifications",
-      Updates::Notifications,
+      "",
       |cx| cx.notifications().notifications.clone(),
-      |cx| {
+      json(|cx| {
         let list = cx.notifications().list(cx);
         list.iter().map(Notification::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "hasUnread",
-      Updates::Notifications,
+      "",
       |cx| cx.notifications().notifications.clone(),
-      |cx| cx.notifications().has_unread(cx),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.notifications().has_unread(cx)),
+    );
+    m.watch(
       "doNotDisturb",
-      Updates::DoNotDisturb,
+      "",
       |cx| cx.notifications().do_not_disturb.clone(),
-      |cx| cx.notifications().do_not_disturb(cx),
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| cx.notifications().do_not_disturb(cx)),
+    );
+    m.watch(
       "active",
-      Updates::Active,
+      "",
       |cx| cx.notifications().active.clone(),
-      // false while another notification daemon owns the bus name
-      |cx| cx.notifications().active(cx),
-    ))
-    .func(named!("setDoNotDisturb", |cx: &mut App, enabled: bool| cx
-      .notifications()
-      .clone()
-      .set_do_not_disturb(enabled, cx)))
-    .func(named!("dismiss", |cx: &mut App, id: u32| cx
-      .notifications()
-      .clone()
-      .dismiss(id, cx)))
-    .func(named!("markRead", |cx: &mut App, id: u32| cx
-      .notifications()
-      .clone()
-      .mark_read(id, cx)))
-    .func(named!("markAllRead", |cx: &mut App| cx
-      .notifications()
-      .clone()
-      .mark_all_read(cx)))
-    .func(named!("clearAll", |cx: &mut App| cx
-      .notifications()
-      .clone()
-      .clear_all(cx)))
-    .func(named!(
-      "invokeAction",
-      /// Tells the app, then closes the notification unless it is resident.
-      |cx: &mut App, id: u32, key: String| cx.notifications().clone().invoke_action(id, &key, cx)
-    ))
-    .into()
+      json(
+        // false while another notification daemon owns the bus name
+        |cx| cx.notifications().active(cx),
+      ),
+    );
+    host_module!(m, {
+      sync: [
+        set_do_not_disturb,
+        dismiss_any,
+        mark_read,
+        mark_all_read,
+        clear_all,
+        invoke_any_action,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]
@@ -525,7 +549,7 @@ mod tests {
     let body = format!(
       r#"if (!globalThis.started) {{
       globalThis.started = true;
-      report({{ center: typeof m.listNotifications, foreign: m.dismiss(999) }});
+      report({{ center: typeof m.listNotifications, foreign: attempt(() => m.dismiss(999)) }});
       m.notify({{
         summary: "hi",
         actions: [{{ key: "open", label: "Open" }}],
@@ -535,26 +559,17 @@ mod tests {
         image: new Uint8Array({:?}),
       }}).then((id) => {{
         report(id);
-        m.nextAction().then((action) => {{
-          report(action);
-          m.nextAction().then(report);
-        }});
+        m.onAction(report);
       }});
     }}"#,
       png(2, 2)
     );
     let body = body.as_str();
-    let capabilities = Default::default();
-    let plugin = PluginRef {
-      id: "a",
-      name: "Plugin A",
-      capabilities: &capabilities,
-    };
-    let (view, cx) = harness::view(cx, body, |_, subs, cx| module(plugin, subs, cx));
+    let (view, cx) = harness::module::<Notifications>(cx, body);
     wait_until(cx, |cx| {
-      view.reports.borrow().len() >= 2 && cx.read(|cx| !cx.notifications().list(cx).is_empty())
+      view.reports(cx).len() >= 2 && cx.read(|cx| !cx.notifications().list(cx).is_empty())
     });
-    let gated = view.reports.borrow()[0].clone();
+    let gated = view.reports(cx)[0].clone();
     assert_eq!(gated["center"], "undefined");
     assert!(
       gated["foreign"]["message"]
@@ -562,21 +577,24 @@ mod tests {
         .unwrap()
         .contains("not this plugin's")
     );
-    let id = view.reports.borrow()[1].as_u64().unwrap() as u32;
+    let id = view.reports(cx)[1].as_u64().unwrap() as u32;
     let n = cx.read(|cx| cx.notifications().list(cx)[0].clone());
-    assert_eq!(n.app_name, "Plugin A");
+    assert_eq!(n.app_name, "P");
     assert_eq!(n.reply_placeholder.as_deref(), Some("Say hi"));
     assert_eq!((n.resident, n.expire_timeout), (true, 0));
     assert!(matches!(n.image, Some(nt::NotificationImage::Path(_))));
 
     cx.update(|_, cx| cx.notifications().clone().invoke_action(id, "open", cx));
-    wait_until(cx, |_| view.reports.borrow().len() == 3);
-    assert_eq!(view.last(), serde_json::json!({ "id": id, "key": "open" }));
+    wait_until(cx, |cx| view.reports(cx).len() == 3);
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!({ "id": id, "key": "open" })
+    );
     // resident, so the plugin still owns it
     cx.update(|_, cx| cx.notifications().clone().reply(id, "hey", cx));
-    wait_until(cx, |_| view.reports.borrow().len() == 4);
+    wait_until(cx, |cx| view.reports(cx).len() == 4);
     assert_eq!(
-      view.last(),
+      view.last(cx),
       serde_json::json!({ "id": id, "key": "inline-reply", "text": "hey" })
     );
   }

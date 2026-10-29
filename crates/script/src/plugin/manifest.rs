@@ -5,14 +5,14 @@ use std::{
 
 use anyhow::{Context as _, Result, ensure};
 use corona_config::plugins::is_flat_name;
-use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
+use corona_js::{Capabilities, ExecuteGrant, HttpRequestGrant, ScriptModule};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
 use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  module::{CoronaModule, dbus::DbusGrant},
+  module::{dbus::DbusGrant, secrets::Secrets},
   plugin::{
     catalog::is_relative_file,
     settings::{self, Setting, SettingKind},
@@ -37,8 +37,8 @@ pub struct PluginManifest {
   /// never the plugin's
   pub host_settings: BTreeSet<String>,
   pub capabilities: Capabilities,
-  /// The corona modules it may import
-  pub modules: BTreeSet<CoronaModule>,
+  /// The corona modules it may import, by name; checked against the registry as it loads
+  pub modules: BTreeSet<String>,
   /// The bus names `corona/dbus` may reach, which it needs to be importable
   pub dbus: Option<DbusGrant>,
 }
@@ -76,6 +76,9 @@ impl PluginManifest {
   }
 }
 
+/// The plugin API corona runs: 2 is the rquickjs runtime (`corona_js`), 1 was gpui-shell's
+pub const PLUGIN_API: u32 = 2;
+
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestFile {
@@ -90,6 +93,9 @@ pub struct ManifestFile {
   pub id: String,
   /// Human-readable name, shown in menus and in the permission prompt.
   pub name: String,
+  /// The plugin API it is written for; corona loads only its own, `2`. Left out, it is `1`.
+  #[serde(default = "first_api")]
+  pub api: u32,
   /// Optional plugin semantic version, e.g. `1.2.0`.
   #[serde(default)]
   pub version: Option<String>,
@@ -125,10 +131,15 @@ impl ManifestFile {
     Ok(file)
   }
 
-  /// What one table cannot tell alone: a secret setting is read through
+  /// What one table cannot tell alone: the API it is written for, a secret setting is read through
   /// `corona/secrets`, so the plugin must be granted it, and a
   /// `${setting:<key>}` host needs a text setting `key`
   fn check(&self) -> Result<()> {
+    ensure!(
+      self.api == PLUGIN_API,
+      "written for plugin API {}, corona runs API {PLUGIN_API}",
+      self.api
+    );
     let views = self.widgets.values().map(|w| &w.view);
     let views = views.chain(self.panels.values().map(|p| &p.view));
     for script in views.chain(&self.service) {
@@ -155,7 +166,7 @@ impl ManifestFile {
     }
     if let Some(secret) = self.settings.iter().find(|s| s.is_secret()) {
       ensure!(
-        self.capabilities.corona.contains(&CoronaModule::Secrets),
+        self.capabilities.corona.contains(Secrets::NAME),
         "setting `{}` is a secret, which needs `corona = [\"secrets\"]`",
         secret.key
       );
@@ -185,6 +196,10 @@ pub struct PanelFile {
   pub width: f32,
   #[serde(default = "panel_height")]
   pub height: f32,
+}
+
+fn first_api() -> u32 {
+  1
 }
 
 fn panel_width() -> f32 {
@@ -293,7 +308,7 @@ pub struct CapabilitiesFile {
   /// Corona modules the plugin imports, e.g. `["weather"]` for
   /// `corona/weather`. Importing one not listed fails.
   #[serde(default)]
-  corona: BTreeSet<CoronaModule>,
+  corona: BTreeSet<String>,
   /// Bus names `corona/dbus` may call, read and receive signals from. The
   /// module is only there with this table.
   #[serde(default)]
@@ -316,7 +331,7 @@ impl Default for CapabilitiesFile {
 }
 
 impl CapabilitiesFile {
-  pub fn modules(&self) -> BTreeSet<CoronaModule> {
+  pub fn modules(&self) -> BTreeSet<String> {
     self.corona.clone()
   }
 
@@ -736,7 +751,7 @@ const DENIED_ENV: &[&str] = &[
 
 /// Loader and interpreter variables would run the plugin's own code in any
 /// granted command, the plugin sets their values. `PATH` passes the host's
-/// only, gpui-shell refuses one a script sets.
+/// only, the runtime refuses one a script sets.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
   let denied = |name: &&String| {
@@ -763,11 +778,10 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use gpui_shell::{Capabilities, ExecuteGrant};
+  use corona_js::{Capabilities, ExecuteGrant};
   use serde_json::{Map, json};
 
   use super::{ManifestFile, PluginManifest, expand};
-  use crate::module::CoronaModule;
 
   fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
     toml::from_str(toml)
@@ -775,7 +789,7 @@ mod tests {
 
   /// A manifest with id `a`, name `A` and `rest`.
   fn with(rest: &str) -> Result<ManifestFile, toml::de::Error> {
-    parse(&format!("id = \"a\"\nname = \"A\"\n{rest}"))
+    parse(&format!("id = \"a\"\nname = \"A\"\napi = 2\n{rest}"))
   }
 
   /// A manifest with this `[capabilities]` table body.
@@ -885,11 +899,24 @@ default = false
   fn reads_from_a_directory() {
     let tmp = tempfile::tempdir().unwrap();
     assert!(ManifestFile::read(tmp.path()).is_err());
-    std::fs::write(tmp.path().join("plugin.toml"), "id = \"a\"\nname = \"A\"").unwrap();
+    std::fs::write(
+      tmp.path().join("plugin.toml"),
+      "id = \"a\"\nname = \"A\"\napi = 2",
+    )
+    .unwrap();
     assert_eq!(ManifestFile::read(tmp.path()).unwrap().id, "a");
     std::fs::write(tmp.path().join("plugin.toml"), "id = 1").unwrap();
     let e = ManifestFile::read(tmp.path()).unwrap_err();
     assert!(format!("{e:#}").contains("plugin.toml"), "{e:#}");
+  }
+
+  #[test]
+  fn only_this_plugin_api_loads() {
+    assert!(with("").unwrap().check().is_ok());
+    // gpui-shell's plugins name none
+    let old = parse("id = \"a\"\nname = \"A\"").unwrap();
+    let error = old.check().unwrap_err().to_string();
+    assert!(error.contains("plugin API 1, corona runs API 2"), "{error}");
   }
 
   #[test]
@@ -901,7 +928,7 @@ default = false
     assert!(granted.unwrap().check().is_ok());
     // and `read` checks it
     let tmp = tempfile::tempdir().unwrap();
-    let toml = format!("id = \"a\"\nname = \"A\"\n{secret}");
+    let toml = format!("id = \"a\"\nname = \"A\"\napi = 2\n{secret}");
     std::fs::write(tmp.path().join("plugin.toml"), toml).unwrap();
     assert!(ManifestFile::read(tmp.path()).is_err());
   }
@@ -1042,7 +1069,7 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
 "#,
     );
     assert!(capabilities.may_pass_env("HOME"));
-    // the host's; gpui-shell refuses a script's own
+    // the host's; the runtime refuses a script's own
     assert!(capabilities.may_pass_env("PATH"));
     assert!(!capabilities.may_pass_env("LD_PRELOAD"));
     let unix = format!("{capabilities:?}");
@@ -1336,10 +1363,10 @@ methods = ["POST"]
     let manifest = with_capabilities(r#"corona = ["weather", "sysinfo", "weather"]"#).unwrap();
     assert_eq!(
       manifest.capabilities.modules(),
-      BTreeSet::from([CoronaModule::Sysinfo, CoronaModule::Weather])
+      BTreeSet::from(["sysinfo".into(), "weather".into()])
     );
-
-    assert!(with_capabilities(r#"corona = ["camera"]"#).is_err());
+    // unknown ones fail as the plugin loads, the registry knows them
+    assert!(with_capabilities(r#"corona = ["camera"]"#).is_ok());
   }
 
   #[test]

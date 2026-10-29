@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-  "vendor/gpui-shell",
   "crates/components",
   "crates/bluez",
   "crates/printing",
@@ -9,7 +8,6 @@ members = [
   "crates/compositor",
   "crates/config",
   "crates/desktop",
-  "crates/macros",
   "crates/mpris",
   "crates/network_manager",
   "crates/notifications",
@@ -48,7 +46,6 @@ keywords = ["hyprland", "wayland", "compositor", "shell", "desktop"]
 categories = []
 
 [workspace.dependencies]
-corona_macros = { path = "crates/macros" }
 corona_compositor = { path = "crates/compositor" }
 corona_pipewire = { path = "crates/pipewire" }
 corona_desktop = { path = "crates/desktop" }
@@ -81,13 +78,12 @@ corona_clipboard = { path = "crates/clipboard" }
 corona_udisks = { path = "crates/udisks" }
 corona_osk = { path = "crates/osk" }
 corona_settings = { path = "crates/settings" }
+corona_js = { path = "crates/js" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
-gpui-component-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
-gpui-shell = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
 anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-ts-rs = "12.0.1"
+specta = { version = "=2.0.0-rc.27", features = ["derive", "function", "serde_json"] }
 bitflags = "2.13.2"
 tracing = "0.1.44"
 dashmap = "6.2.1"
@@ -144,19 +140,12 @@ corona_components.workspace = true
 corona_reqwest.workspace = true
 corona_cli.workspace = true
 gpui-kit.workspace = true
-gpui-component-shell.workspace = true
 tracing-subscriber.workspace = true
 
 [patch.crates-io]
 gpui-pre = { path = "vendor/gpui-pre" }
 gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
 gpui-pre-wgpu = { path = "vendor/gpui-pre-wgpu" }
-# same patch as upstream gpui-kit
-rquickjs = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
-
-[patch."https://github.com/longbridge/gpui-kit"]
-# adds ShellRuntime::load_entry (exact entry path, no main.js default)
-gpui-shell = { path = "vendor/gpui-shell" }
 
 [profile.release]
 codegen-units = 1

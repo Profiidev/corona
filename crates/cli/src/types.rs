@@ -54,8 +54,9 @@ export default class Main extends View {
   fn plugin(root: &Path, id: &str, extra: &str) -> PathBuf {
     let dir = root.join(id);
     fs::create_dir_all(&dir).unwrap();
-    let manifest =
-      format!("id = \"{id}\"\nname = \"{id}\"\n\n[widgets.main]\nview = \"main.js\"\n\n{extra}");
+    let manifest = format!(
+      "id = \"{id}\"\nname = \"{id}\"\napi = 2\n\n[widgets.main]\nview = \"main.js\"\n\n{extra}"
+    );
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
     fs::write(dir.join("main.js"), VIEW).unwrap();
     dir

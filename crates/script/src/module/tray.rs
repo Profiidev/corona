@@ -1,16 +1,12 @@
-use corona_tray as tray;
-use corona_tray::{Tray, TrayExt};
-use gpui_shell::HostModule;
+use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
+use corona_tray::{self as tray, TrayExt};
+use gpui_kit::App;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::named;
+use crate::module::json;
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Status {
   /// Idle, a tray may hide it.
@@ -20,7 +16,7 @@ enum Status {
   NeedsAttention,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Toggle {
   None,
@@ -28,8 +24,8 @@ enum Toggle {
   Radio,
 }
 
-#[derive(Serialize, TS)]
-#[ts(rename = "TrayMenuItem")]
+#[derive(Serialize, Type)]
+#[serde(rename = "TrayMenuItem")]
 struct MenuItem {
   /// The id `menuClick` takes.
   id: i32,
@@ -44,8 +40,8 @@ struct MenuItem {
   children: Vec<MenuItem>,
 }
 
-#[derive(Serialize, TS)]
-#[ts(rename = "TrayItem")]
+#[derive(Serialize, Type)]
+#[serde(rename = "TrayItem")]
 struct Item {
   /// The id the actions take.
   address: String,
@@ -62,7 +58,7 @@ struct Item {
   menu: Vec<MenuItem>,
 }
 
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Orientation {
   Vertical,
@@ -119,64 +115,79 @@ impl From<&tray::TrayItem> for Item {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Items,
+type Trays = Glob<tray::Tray>;
+
+/// The primary action, usually a left click. `x`, `y` are screen coordinates.
+#[specta]
+async fn activate(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.activate(&address, x, y).await.into()
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Tray(value)
-  }
+/// Usually a middle click.
+#[specta]
+async fn secondary_activate(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.secondary_activate(&address, x, y).await.into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/tray")
-    .func(read(
-      reads,
-      subs,
+/// Asks the app to show its own menu, for items with an empty `menu`.
+#[specta]
+async fn context_menu(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.context_menu(&address, x, y).await.into()
+}
+
+#[specta]
+async fn scroll(
+  tray: Trays,
+  address: String,
+  delta: i32,
+  orientation: Json<Orientation>,
+) -> Throws<()> {
+  let scroll = tray.scroll(&address, delta, orientation.0.into());
+  scroll.await.into()
+}
+
+/// Call before showing the menu (`id` 0) or a submenu, apps filling it lazily update it then.
+#[specta]
+async fn about_to_show(cx: Cx, tray: Trays, address: String, id: i32) -> Throws<()> {
+  let shown = tray.about_to_show(&address, id, &cx);
+  shown.await.into()
+}
+
+/// Clicks the menu entry `id`.
+#[specta]
+async fn menu_click(cx: Cx, tray: Trays, address: String, id: i32) -> Throws<()> {
+  let clicked = tray.menu_click(&address, id, &cx);
+  clicked.await.into()
+}
+
+/// `corona/tray`
+pub struct Tray;
+
+impl ScriptModule for Tray {
+  const NAME: &str = "tray";
+  const DOC: &str = "System tray items.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listItems",
-      Updates::Items,
+      "",
       |cx| cx.tray().items.clone(),
-      |cx| {
+      json(|cx| {
         let items = cx.tray().list_items(cx);
         items.iter().map(Item::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(named!(
-      "activate",
-      /// The primary action, usually a left click. `x`, `y` are screen coordinates.
-      |tray: Glob<Tray>, address: String, x: i32, y: i32| tray.activate(&address, x, y)
-    ))
-    .func(named!(
-      "secondaryActivate",
-      /// Usually a middle click.
-      |tray: Glob<Tray>, address: String, x: i32, y: i32| {
-        tray.secondary_activate(&address, x, y)
-      }
-    ))
-    .func(named!(
-      "contextMenu",
-      /// Asks the app to show its own menu, for items with an empty `menu`.
-      |tray: Glob<Tray>, address: String, x: i32, y: i32| tray.context_menu(&address, x, y)
-    ))
-    .func(named!(
-      "scroll",
-      |tray: Glob<Tray>, address: String, delta: i32, orientation: Orientation| {
-        tray.scroll(&address, delta, orientation.into())
-      }
-    ))
-    .func(named!(
-      "aboutToShow",
-      /// Call before showing the menu (`id` 0) or a submenu, apps filling it lazily update it then.
-      |cx: Cx, tray: Glob<Tray>, address: String, id: i32| tray.about_to_show(&address, id, &cx)
-    ))
-    .func(named!(
-      "menuClick",
-      /// Clicks the menu entry `id`.
-      |cx: Cx, tray: Glob<Tray>, address: String, id: i32| tray.menu_click(&address, id, &cx)
-    ))
-    .into()
+      }),
+    );
+    host_module!(m, {
+      async: [
+        activate,
+        secondary_activate,
+        context_menu,
+        scroll,
+        about_to_show,
+        menu_click,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]

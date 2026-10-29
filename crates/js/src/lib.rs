@@ -1,7 +1,4 @@
 //! Plugin runtime on the official `rquickjs` (see `docs/js-runtime.md`).
-//!
-//! A separate crate because QuickJS cannot be linked twice: the patched rquickjs of
-//! `gpui-shell` exports the same C symbols, so no binary can hold both until it is gone.
 
 use std::{
   future::Future,
@@ -18,9 +15,9 @@ pub use el::{
   new_el, restyle, with_node,
 };
 pub use entity::{Retained, ScrollHandle};
-pub use host::{Cx, Glob, Opt, Throws};
+pub use host::{Cx, Glob, Json, Opt, Throws};
 pub use kit::GpuiKit;
-pub use module::{ModuleBuilder, d_ts};
+pub use module::{Data, ModuleBuilder, d_ts};
 pub use plugin::Plugin;
 pub use registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry};
 pub use reload::{POLL, reload_view, watch};
@@ -29,7 +26,7 @@ pub use service::Service;
 pub use stdlib::D_TS as STDLIB_D_TS;
 pub use style::{Abs, Color, Def, Fill, Len, LineHeight, Radius};
 pub use view::{FocusHandle, ScriptView, ViewCx, ViewHandle};
-pub use watch::{Callback, Watches, track};
+pub use watch::{Callback, Listener, Unsubscribe, Watches, track};
 pub use window::ScriptRoot;
 
 #[doc(hidden)]

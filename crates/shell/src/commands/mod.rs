@@ -17,7 +17,6 @@ pub mod network;
 pub mod nightlight;
 pub mod notification;
 pub mod player;
-pub mod plugin;
 pub mod power_profile;
 pub mod radio;
 pub mod session;
@@ -42,7 +41,6 @@ pub fn register_commands(cx: &mut App) {
   nightlight::register_commands(cx);
   notification::register_commands(cx);
   player::register_commands(cx);
-  plugin::register_commands(cx);
   power_profile::register_commands(cx);
   radio::register_commands(cx);
   session::register_commands(cx);

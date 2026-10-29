@@ -3,20 +3,18 @@
 use std::path::Path;
 
 use anyhow::{Context as _, Result, ensure};
-use corona_printing as pr;
-use corona_printing::{Printing, PrintingExt};
-use gpui_kit::App;
-use gpui_shell::{Capabilities, HostModule};
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
-
-use crate::{
-  host_fn::{Cx, Glob, Module},
-  module::{Subscribe, Subscriptions, read},
+use corona_js::{
+  Capabilities, Cx, Glob, Json, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws,
+  host_module, track,
 };
-use corona_macros::named;
+use corona_printing::{self as pr, PrintingExt};
+use gpui_kit::App;
+use serde::{Deserialize, Serialize};
+use specta::{Type, specta};
 
-#[derive(Serialize, TS)]
+use crate::module::json;
+
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum PrinterState {
   Idle,
@@ -24,7 +22,7 @@ enum PrinterState {
   Stopped,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Marker {
   name: String,
   /// percent, null when the printer cannot tell
@@ -34,7 +32,7 @@ struct Marker {
   kind: String,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Printer {
   name: String,
   info: String,
@@ -47,7 +45,7 @@ struct Printer {
   markers: Vec<Marker>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum JobState {
   Pending,
@@ -59,7 +57,7 @@ enum JobState {
   Completed,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Job {
   id: i32,
   name: String,
@@ -71,7 +69,7 @@ struct Job {
   pages_total: Option<i32>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Scanner {
   name: String,
   model: Option<String>,
@@ -79,20 +77,20 @@ struct Scanner {
   tls: bool,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct NetworkPrinter {
   name: String,
   model: Option<String>,
   address: String,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct ScanProgress {
   scanner: String,
   pages: u32,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum ColorMode {
   Color,
@@ -100,14 +98,14 @@ enum ColorMode {
   Monochrome,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Source {
   Flatbed,
   Adf,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Format {
   Pdf,
@@ -115,7 +113,7 @@ enum Format {
   Jpeg,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct ScannerCapabilities {
   sources: Vec<Source>,
   color_modes: Vec<ColorMode>,
@@ -125,7 +123,7 @@ struct ScannerCapabilities {
   state: String,
 }
 
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Type)]
 struct ScanRequest {
   /// dpi, one of `resolutions`
   resolution: u32,
@@ -253,21 +251,6 @@ impl ScanRequest {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Printers,
-  Jobs,
-  Scanners,
-  NetworkPrinters,
-  Scan,
-}
-
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Printing(value)
-  }
-}
-
 /// `path` canonical, when the plugin may read it.
 fn readable(capabilities: &Capabilities, path: &str) -> Result<std::path::PathBuf> {
   let path = Path::new(path);
@@ -281,136 +264,151 @@ fn readable(capabilities: &Capabilities, path: &str) -> Result<std::path::PathBu
   Ok(path)
 }
 
-pub fn module(
-  capabilities: Capabilities,
-  reads: &Subscriptions,
-  subs: &mut Vec<Subscribe>,
-) -> HostModule {
-  let printable = capabilities.clone();
-  Module::new("corona/printing")
-    .func(read(
-      reads,
-      subs,
+type Pr = Glob<pr::Printing>;
+
+#[specta]
+async fn cancel_job(pr: Pr, id: i32) -> Throws<()> {
+  pr.cancel_job(id).await.into()
+}
+
+#[specta]
+async fn pause_printer(pr: Pr, printer: String) -> Throws<()> {
+  pr.set_paused(&printer, true).await.into()
+}
+
+#[specta]
+async fn resume_printer(pr: Pr, printer: String) -> Throws<()> {
+  pr.set_paused(&printer, false).await.into()
+}
+
+/// Adds a queue for a printer from `listNetworkPrinters`; CUPS may ask the user for an
+/// administrator password.
+#[specta]
+async fn add_printer(cx: Cx, pr: Pr, name: String) -> Throws<()> {
+  let add = pr.add_printer(&name, &cx);
+  add.await.into()
+}
+
+/// Prints a file the plugin may read, e.g. one from `pickFiles`.
+#[specta]
+async fn print_file(pr: Pr, plugin: Plugin, printer: String, path: String) -> Throws<()> {
+  match readable(&plugin.capabilities, &path) {
+    Ok(path) => pr.print_file(&printer, path).await,
+    Err(e) => Err(e),
+  }
+  .into()
+}
+
+#[specta]
+async fn scanner_capabilities(
+  cx: Cx,
+  pr: Pr,
+  scanner: String,
+) -> Throws<Json<ScannerCapabilities>> {
+  let caps = pr.scanner_capabilities(&scanner, &cx);
+  caps.await.map(|c| Json(c.into())).into()
+}
+
+/// Scans into the user's pictures folder and returns the saved files, which the plugin
+/// may then read.
+#[specta]
+async fn scan(
+  mut cx: Cx,
+  plugin: Plugin,
+  scanner: String,
+  request: Json<ScanRequest>,
+) -> Throws<Vec<String>> {
+  let task = cx
+    .printing()
+    .clone()
+    .scan(&scanner, request.0.settings(), &mut cx);
+  let files = task.await.map(|files| {
+    (files.into_iter())
+      .map(|file| {
+        let shown = file.to_string_lossy().into_owned();
+        plugin.capabilities.grant_read(file);
+        shown
+      })
+      .collect()
+  });
+  files.into()
+}
+
+/// `corona/printing`
+pub struct Printing;
+
+impl ScriptModule for Printing {
+  const NAME: &str = "printing";
+  const DOC: &str = "Printers, print jobs and document scanners.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listPrinters",
-      Updates::Printers,
+      "",
       |cx| cx.printing().printers.clone(),
-      |cx| {
+      json(|cx| {
         let printers = cx.printing().list_printers(cx);
         printers.iter().map(Printer::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "listJobs",
-      Updates::Jobs,
+      "",
       |cx| cx.printing().jobs.clone(),
-      |cx| {
+      json(|cx| {
         let jobs = cx.printing().list_jobs(cx);
         jobs.iter().map(Job::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "listScanners",
-      Updates::Scanners,
+      "",
       |cx| cx.printing().scanners.clone(),
-      |cx| {
+      json(|cx| {
         let scanners = cx.printing().list_scanners(cx);
         scanners.iter().map(Scanner::from).collect::<Vec<_>>()
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      }),
+    );
+    m.watch(
       "listNetworkPrinters",
-      Updates::NetworkPrinters,
+      "Printers found on the network that have no queue yet.",
       |cx| cx.printing().network_printers.clone(),
-      {
-        let reads = reads.clone();
-        move |cx| {
-          // which are new also depends on the queues
-          reads.record(Updates::Printers.into());
-          let found = cx.printing().new_printers(cx);
-          found
-            .into_iter()
-            .map(|p| NetworkPrinter {
-              name: p.name.clone(),
-              model: p.model.clone(),
-              address: p.address.clone(),
-            })
-            .collect::<Vec<_>>()
-        }
-      },
-    ))
-    .func(read(
-      reads,
-      subs,
+      json(|cx| {
+        // which are new also depends on the queues
+        track(&cx.printing().printers);
+        let found = cx.printing().new_printers(cx);
+        (found.into_iter())
+          .map(|p| NetworkPrinter {
+            name: p.name.clone(),
+            model: p.model.clone(),
+            address: p.address.clone(),
+          })
+          .collect::<Vec<_>>()
+      }),
+    );
+    m.watch(
       "scanProgress",
-      Updates::Scan,
+      "The scan running; null when none is.",
       |cx| cx.printing().scan.clone(),
-      |cx| {
+      json(|cx| {
         cx.printing().scan_progress(cx).map(|p| ScanProgress {
           scanner: p.scanner.clone(),
           pages: p.pages,
         })
-      },
-    ))
-    .func(named!("cancelJob", |pr: Glob<Printing>, id: i32| pr.cancel_job(id)))
-    .func(named!(
-      "pausePrinter",
-      |pr: Glob<Printing>, printer: String| pr.set_paused(&printer, true)
-    ))
-    .func(named!(
-      "resumePrinter",
-      |pr: Glob<Printing>, printer: String| pr.set_paused(&printer, false)
-    ))
-    .func(named!(
-      "addPrinter",
-      /// Adds a queue for a printer from `listNetworkPrinters`; CUPS may ask
-      /// the user for an administrator password.
-      |cx: Cx, pr: Glob<Printing>, name: String| pr.add_printer(&name, &cx)
-    ))
-    .func(named!(
-      "printFile",
-      /// Prints a file the plugin may read, e.g. one from `pickFiles`.
-      move |pr: Glob<Printing>, printer: String, path: String| {
-        let path = readable(&printable, &path);
-        let printing = pr.clone();
-        async move { printing.print_file(&printer, path?).await }
-      }
-    ))
-    .func(named!(
-      "scannerCapabilities",
-      |cx: Cx, pr: Glob<Printing>, scanner: String| {
-        let caps = pr.scanner_capabilities(&scanner, &cx);
-        async move { caps.await.map(ScannerCapabilities::from) }
-      }
-    ))
-    .func(named!(
-      "scan",
-      /// Scans into the user's pictures folder and returns the saved files,
-      /// which the plugin may then read.
-      move |cx: &mut App, scanner: String, request: ScanRequest| {
-        let task = cx.printing().clone().scan(&scanner, request.settings(), cx);
-        let capabilities = capabilities.clone();
-        async move {
-          let files = task.await?;
-          Ok::<_, anyhow::Error>(
-            files
-              .into_iter()
-              .map(|file| {
-                let shown = file.to_string_lossy().into_owned();
-                capabilities.grant_read(file);
-                shown
-              })
-              .collect::<Vec<_>>(),
-          )
-        }
-      }
-    ))
-    .into()
+      }),
+    );
+    host_module!(m, {
+      async: [
+        cancel_job,
+        pause_printer,
+        resume_printer,
+        add_printer,
+        print_file,
+        scanner_capabilities,
+        scan,
+      ],
+    });
+  }
 }
 
 #[cfg(test)]

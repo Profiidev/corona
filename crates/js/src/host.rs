@@ -12,9 +12,10 @@ use rquickjs::{
   Ctx, Exception, FromJs, IntoJs, Result, Value,
   function::{FromParam, ParamRequirement, ParamsAccessor},
 };
+use serde::{Serialize, de::DeserializeOwned};
 use specta::{
   Type, Types,
-  datatype::{DataType, Fields, Primitive},
+  datatype::{DataType, Fields, NamedReference, NamedReferenceType, Primitive, Reference},
   function::FunctionArg,
 };
 
@@ -133,6 +134,37 @@ impl<T: Type> Type for Throws<T> {
   }
 }
 
+/// A value crossing as JSON through its serde impls, typed as `T` (serde attributes
+/// applied): for host types that derive `Serialize`/`Deserialize` and `Type`.
+pub struct Json<T>(pub T);
+
+impl<'js, T: Serialize> IntoJs<'js> for Json<T> {
+  fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+    let text =
+      serde_json::to_string(&self.0).map_err(|e| Exception::throw_internal(ctx, &e.to_string()))?;
+    ctx.json_parse(text)
+  }
+}
+
+impl<'js, T: DeserializeOwned> FromJs<'js> for Json<T> {
+  fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+    // `undefined` has no JSON
+    let text = match ctx.json_stringify(value)? {
+      Some(text) => text.to_string()?,
+      None => "null".into(),
+    };
+    serde_json::from_str(&text)
+      .map(Json)
+      .map_err(|e| Exception::throw_type(ctx, &e.to_string()))
+  }
+}
+
+impl<T: Type> Type for Json<T> {
+  fn definition(types: &mut Types) -> DataType {
+    T::definition(types)
+  }
+}
+
 /// Registers `#[specta]` fns on a [`ModuleBuilder`](crate::ModuleBuilder):
 /// `host_module!(m, { sync: [add], async: [fetch], declare: [other] })`. Their JS names are
 /// camelCase. `declare` types a fn without exporting it, for one another variant of the
@@ -160,14 +192,27 @@ macro_rules! host_module {
   }};
 }
 
-/// specta-typescript writes floats as `number | null` (serde turns NaN into null), but rquickjs
-/// passes them as numbers: makes them `i32`, also written `number`. ponytail: generic
+/// specta-typescript writes floats as `number | null` (serde turns NaN into null) and refuses
+/// 64-bit ints (they would be `bigint`), but rquickjs passes both as numbers, as JSON does
+/// for `serde_json::Value`: makes them `i32`, also written `number`. ponytail: generic
 /// arguments of references stay as they are, map them too if a generic host type takes floats
 pub(crate) fn floats(dt: &mut DataType) {
   match dt {
-    DataType::Primitive(p @ (Primitive::f16 | Primitive::f32 | Primitive::f64)) => {
-      *p = Primitive::i32
-    }
+    DataType::Primitive(
+      p @ (Primitive::f16
+      | Primitive::f32
+      | Primitive::f64
+      | Primitive::i64
+      | Primitive::u64
+      | Primitive::i128
+      | Primitive::u128
+      | Primitive::isize
+      | Primitive::usize),
+    ) => *p = Primitive::i32,
+    DataType::Reference(Reference::Named(NamedReference {
+      inner: NamedReferenceType::Inline { dt, .. },
+      ..
+    })) => floats(dt),
     DataType::Primitive(_) | DataType::Generic(_) | DataType::Reference(_) => {}
     DataType::List(list) => floats(&mut list.ty),
     DataType::Map(map) => {

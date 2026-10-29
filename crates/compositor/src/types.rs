@@ -1,9 +1,9 @@
 use corona_utils::display::display_uuid;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::Type;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct Workspace {
   pub id: String,
   pub name: String,
@@ -11,7 +11,7 @@ pub struct Workspace {
   pub monitor_id: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct Monitor {
   pub id: u32,
   pub name: String,
@@ -21,7 +21,6 @@ pub struct Monitor {
   pub x: i32,
   pub y: i32,
   #[serde(skip_serializing_if = "Option::is_none")]
-  #[ts(optional)]
   pub active_scratchpad: Option<Workspace>,
   pub active_workspace: Workspace,
   pub scale: f32,
@@ -41,7 +40,7 @@ pub enum MonitorChange {
   StopMirroring,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct Window {
   pub address: String,
   pub monitor: u32,

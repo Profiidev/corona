@@ -8,31 +8,31 @@ use std::{
   net::Ipv4Addr,
   os::unix::fs::PermissionsExt as _,
   path::{Path, PathBuf},
-  rc::Rc,
-  sync::Arc,
   time::Duration,
 };
 
 use anyhow::{Context as _, Result, anyhow, ensure};
-use corona_macros::named;
+use corona_js::{
+  Cx, Data, Json, Listener, ModuleBuilder, Opt, Plugin, PluginRef, ScriptModule, Throws,
+  Unsubscribe, host_module,
+};
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use futures_lite::{AsyncReadExt as _, AsyncWriteExt as _, future};
 use gpui_kit::{App, PathPromptOptions, Subscription};
-use gpui_shell::{Capabilities, HostModule};
 use serde::{Deserialize, Serialize};
 use smol::net::{TcpListener, TcpStream};
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{host_fn::Module, module::Subscribe};
-
-#[derive(Default, Deserialize, Serialize, TS)]
+#[derive(Default, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-#[ts(optional_fields)]
 struct PickFiles {
+  #[specta(optional)]
   multiple: Option<bool>,
   /// Pick directories instead of files.
+  #[specta(optional)]
   directory: Option<bool>,
   /// The prompt on the dialog.
+  #[specta(optional)]
   accept_label: Option<String>,
 }
 
@@ -74,15 +74,15 @@ fn uri_ok(uri: &str) -> Result<()> {
   Ok(())
 }
 
-#[derive(Default, Deserialize, Serialize, TS)]
+#[derive(Default, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-#[ts(optional_fields)]
 struct ListenRedirect {
-  /// How long `nextRedirect` waits, 5 minutes by default, 10 at most.
+  /// How long `onRedirect` waits, 5 minutes by default, 10 at most.
+  #[specta(optional)]
   timeout_ms: Option<u32>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 struct Listening {
   id: u32,
@@ -92,7 +92,7 @@ struct Listening {
 }
 
 /// The request the browser was redirected with.
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Debug, PartialEq, Serialize, Type)]
 struct Redirect {
   /// Percent-decoded, without the query.
   path: String,
@@ -198,124 +198,155 @@ async fn redirect(listener: TcpListener) -> Result<Redirect> {
   }
 }
 
-/// `capabilities` is the plugin's grant, which a picked path is added to
-pub fn module(capabilities: Capabilities, subs: &mut Vec<Subscribe>) -> HostModule {
-  // each listener holds a clone of `live`, waiting or not
-  type Listener = (TcpListener, Duration, Arc<()>);
-  let listeners = Rc::new(RefCell::new(HashMap::<u32, Listener>::new()));
-  let live = Arc::new(());
-  let next_id = Rc::new(Cell::new(0));
-  // never sent, dropped on cleanup to stop a waiting `nextRedirect`, whose
-  // future gpui-shell never drops
-  let (stop_tx, stop_rx) = flume::bounded::<()>(0);
-  let dropped = listeners.clone();
-  subs.push(Subscribe::Cleanup(Subscription::new(move || {
-    drop(stop_tx);
-    dropped.borrow_mut().clear();
-  })));
-  let taken = listeners.clone();
-  let readable = capabilities.clone();
+/// What `onRedirect` hands the plugin: the redirect, or why there is none.
+#[derive(Serialize, Type)]
+#[serde(untagged)]
+enum RedirectEvent {
+  Redirect(Redirect),
+  Failed { message: String },
+}
 
-  Module::new("corona/desktop")
-    .func(named!(
-      "pickFiles",
-      /// Asks the user for files, null when they cancel. What they pick is
-      /// readable by this plugin until it restarts, a directory with
-      /// everything in it.
-      move |cx: &mut App, options: Option<PickFiles>| {
-        let options = options.unwrap_or_default();
-        let directory = options.directory.unwrap_or(false);
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-          files: !directory,
-          directories: directory,
-          multiple: options.multiple.unwrap_or(false),
-          prompt: options.accept_label.map(Into::into),
-        });
-        let capabilities = capabilities.clone();
-        async move {
-          let paths = paths.await??;
-          anyhow::Ok(paths.map(|paths| {
-            paths
-              .into_iter()
-              .map(|path| {
-                let shown = path.to_string_lossy().into_owned();
-                capabilities.grant_read(path);
-                shown
-              })
-              .collect::<Vec<_>>()
-          }))
-        }
-      }
-    ))
-    .func(named!(
-      "openPath",
-      /// Opens a file the plugin may read in the user's default app.
-      move |cx: &mut App, path: String| -> Result<()> {
-        let path = openable(Path::new(&path))?;
-        ensure!(readable.may_read(&path), "`{}` is not readable", path.display());
-        cx.open_with_system(&path);
-        Ok(())
-      }
-    ))
-    .func(named!(
-      "openUri",
-      /// Opens a URI, e.g. `https:` or `mailto:`, in the user's default app.
-      |cx: &mut App, uri: String| -> Result<()> {
-        uri_ok(&uri)?;
-        cx.open_url(&uri);
-        Ok(())
-      }
-    ))
-    .func(named!(
-      "listenRedirect",
-      /// Listens on 127.0.0.1 for one OAuth redirect, for a login opened with
-      /// `openUri`, on a free port. Wait for it with `nextRedirect(id)`.
-      move |options: Option<ListenRedirect>| -> Result<Listening> {
-        let options = options.unwrap_or_default();
-        ensure!(
-          Arc::strong_count(&live) <= MAX_LISTENERS,
-          "at most {MAX_LISTENERS} redirect listeners at once"
-        );
-        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
-        let port = listener.local_addr()?.port();
-        let id = next_id.get() + 1;
-        next_id.set(id);
-        let timeout = options
-          .timeout_ms
-          .map_or(TIMEOUT, |ms| Duration::from_millis(ms.into()))
-          .min(MAX_TIMEOUT);
-        let listener = (TcpListener::try_from(listener)?, timeout, live.clone());
-        (listeners.borrow_mut()).insert(id, listener);
-        Ok(Listening {
-          id,
-          port,
-          redirect_uri: format!("http://127.0.0.1:{port}/"),
+/// A runtime's redirect listeners, waiting to be taken by `onRedirect`
+#[derive(Default)]
+struct Redirects {
+  listeners: RefCell<HashMap<u32, (TcpListener, Duration)>>,
+  /// Listeners made, taken or not, and still open
+  open: Cell<usize>,
+  next_id: Cell<u32>,
+}
+
+/// Asks the user for files, null when they cancel. What they pick is readable by this
+/// plugin until it restarts, a directory with everything in it.
+#[specta]
+async fn pick_files(
+  cx: Cx,
+  plugin: Plugin,
+  options: Opt<Json<PickFiles>>,
+) -> Throws<Json<Option<Vec<String>>>> {
+  let options = options.0.map(|o| o.0).unwrap_or_default();
+  let directory = options.directory.unwrap_or(false);
+  let paths = cx.prompt_for_paths(PathPromptOptions {
+    files: !directory,
+    directories: directory,
+    multiple: options.multiple.unwrap_or(false),
+    prompt: options.accept_label.map(Into::into),
+  });
+  let picked = async { anyhow::Ok(paths.await??) }.await;
+  let shown = picked.map(|paths| {
+    paths.map(|paths| {
+      (paths.into_iter())
+        .map(|path| {
+          let shown = path.to_string_lossy().into_owned();
+          plugin.capabilities.grant_read(path);
+          shown
         })
-      }
-    ))
-    .func(named!(
-      "nextRedirect",
-      /// The redirect `listenRedirect` waits for; the browser gets a page
-      /// saying the tab can be closed. The port closes after it or the
-      /// timeout.
-      move |id: u32| {
-        let listener = taken.borrow_mut().remove(&id);
-        let stop = stop_rx.clone();
-        async move {
-          let (listener, timeout, _live) = listener.context("no such listener, or it was used")?;
-          let timed_out = async {
-            smol::Timer::after(timeout).await;
-            Err(anyhow!("no redirect within {timeout:?}"))
-          };
-          let stopped = async {
-            stop.recv_async().await.ok();
-            Err(anyhow!("plugin stopped"))
-          };
-          future::or(redirect(listener), future::or(timed_out, stopped)).await
-        }
-      }
-    ))
-    .into()
+        .collect()
+    })
+  });
+  shown.map(Json).into()
+}
+
+/// Opens a file the plugin may read in the user's default app.
+#[specta]
+fn open_path(cx: Cx, plugin: Plugin, path: String) -> Throws<()> {
+  let open = || -> Result<()> {
+    let path = openable(Path::new(&path))?;
+    let readable = plugin.capabilities.may_read(&path);
+    ensure!(readable, "`{}` is not readable", path.display());
+    cx.open_with_system(&path);
+    Ok(())
+  };
+  open().into()
+}
+
+/// Opens a URI, e.g. `https:` or `mailto:`, in the user's default app.
+#[specta]
+fn open_uri(cx: Cx, uri: String) -> Throws<()> {
+  uri_ok(&uri).map(|()| cx.open_url(&uri)).into()
+}
+
+/// Listens on 127.0.0.1 for one OAuth redirect, for a login opened with `openUri`, on a
+/// free port. Take it with `onRedirect(id, cb)`.
+#[specta]
+fn listen_redirect(
+  redirects: Data<Redirects>,
+  options: Opt<Json<ListenRedirect>>,
+) -> Throws<Json<Listening>> {
+  let listen = || -> Result<Listening> {
+    let options = options.0.map(|o| o.0).unwrap_or_default();
+    ensure!(
+      redirects.open.get() < MAX_LISTENERS,
+      "at most {MAX_LISTENERS} redirect listeners at once"
+    );
+    let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+    let port = listener.local_addr()?.port();
+    let id = redirects.next_id.get() + 1;
+    redirects.next_id.set(id);
+    let timeout = options
+      .timeout_ms
+      .map_or(TIMEOUT, |ms| Duration::from_millis(ms.into()))
+      .min(MAX_TIMEOUT);
+    let listener = (TcpListener::try_from(listener)?, timeout);
+    redirects.listeners.borrow_mut().insert(id, listener);
+    redirects.open.set(redirects.open.get() + 1);
+    Ok(Listening {
+      id,
+      port,
+      redirect_uri: format!("http://127.0.0.1:{port}/"),
+    })
+  };
+  listen().map(Json).into()
+}
+
+/// Calls `cb` once with the redirect listener `id` takes, or why there is none; the
+/// browser gets a page saying the tab can be closed. The port closes after it or the
+/// timeout.
+#[specta]
+fn on_redirect(
+  cx: Cx,
+  redirects: Data<Redirects>,
+  id: u32,
+  cb: Listener<Json<RedirectEvent>>,
+) -> Throws<Unsubscribe> {
+  let taken = redirects.listeners.borrow_mut().remove(&id);
+  let Some((listener, timeout)) = taken else {
+    return Err::<Unsubscribe, _>("no such listener, or it was used").into();
+  };
+  let (listener_cb, redirects) = (cb.clone(), redirects.clone());
+  let task = cx.spawn(async move |cx| {
+    let timed_out = async {
+      smol::Timer::after(timeout).await;
+      Err(anyhow!("no redirect within {timeout:?}"))
+    };
+    let event = match future::or(redirect(listener), timed_out).await {
+      Ok(redirect) => RedirectEvent::Redirect(redirect),
+      Err(e) => RedirectEvent::Failed {
+        message: e.to_string(),
+      },
+    };
+    cx.update(|cx| listener_cb.call(cx, Json(event)));
+  });
+  let close = Subscription::new(move || {
+    drop(task);
+    redirects.open.set(redirects.open.get() - 1);
+  });
+  Ok::<_, anyhow::Error>(cb.keep(close)).into()
+}
+
+/// `corona/desktop`
+pub struct Desktop;
+
+impl ScriptModule for Desktop {
+  const NAME: &str = "desktop";
+  const DOC: &str = "The file picker and opening files and URIs in the user's apps.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.provide(Redirects::default());
+    host_module!(m, {
+      sync: [open_path, open_uri, listen_redirect, on_redirect],
+      async: [pick_files],
+    });
+  }
 }
 
 #[cfg(test)]
@@ -328,9 +359,13 @@ mod tests {
 
   #[gpui::test]
   fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
-    let body = r#"report([m.openUri("file:///etc/passwd"), m.openPath("a.txt"), m.openPath("/etc/hostname")]);"#;
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
-    let reports = view.last();
+    let body = r#"report([
+      attempt(() => m.openUri("file:///etc/passwd")),
+      attempt(() => m.openPath("a.txt")),
+      attempt(() => m.openPath("/etc/hostname")),
+    ]);"#;
+    let (view, cx) = harness::module::<Desktop>(cx, body);
+    let reports = view.last(cx);
     assert!(reports[0]["message"].as_str().unwrap().contains("openPath"));
     assert!(
       reports[1]["message"]
@@ -350,10 +385,9 @@ mod tests {
 
   #[gpui::test]
   fn opens_uris(cx: &mut TestAppContext) {
-    let (view, cx) = harness::view(cx, r#"report(m.openUri("mailto:a@b.c"));"#, |_, subs, _| {
-      module(Capabilities::new(), subs)
-    });
-    assert_eq!(view.last(), serde_json::Value::Null);
+    let body = r#"report(attempt(() => m.openUri("mailto:a@b.c")));"#;
+    let (view, cx) = harness::module::<Desktop>(cx, body);
+    assert_eq!(view.last(cx), serde_json::Value::Null);
     assert_eq!(cx.opened_url().as_deref(), Some("mailto:a@b.c"));
   }
 
@@ -367,14 +401,14 @@ mod tests {
       const l = m.listenRedirect();
       // the port is always a free one
       const t = m.listenRedirect({ timeoutMs: 1, port: 1 });
-      report({ ...l, capped: m.listenRedirect(), freePort: t.port !== 1 });
-      m.nextRedirect(l.id).then(report);
-      m.nextRedirect(l.id).then(report);
-      m.nextRedirect(t.id).then(report);
+      report({ ...l, capped: attempt(() => m.listenRedirect()), freePort: t.port !== 1 });
+      m.onRedirect(l.id, report);
+      report(attempt(() => m.onRedirect(l.id, report)));
+      m.onRedirect(t.id, report);
     }"#;
-    let (view, cx) = harness::view(cx, body, |_, subs, _| module(Capabilities::new(), subs));
-    wait_until(cx, |_| view.reports.borrow().len() == 3);
-    let listening = view.reports.borrow()[0].clone();
+    let (view, cx) = harness::module::<Desktop>(cx, body);
+    wait_until(cx, |cx| view.reports(cx).len() == 3);
+    let listening = view.reports(cx)[0].clone();
     let capped = listening["capped"]["message"].as_str().unwrap();
     assert!(capped.contains("at most"), "{capped}");
     assert_eq!(listening["freePort"], true);
@@ -383,7 +417,7 @@ mod tests {
       listening["redirectUri"],
       format!("http://127.0.0.1:{port}/")
     );
-    let errors: Vec<String> = view.reports.borrow()[1..]
+    let errors: Vec<String> = view.reports(cx)[1..]
       .iter()
       .map(|e| e["message"].as_str().unwrap().to_string())
       .collect();
@@ -399,9 +433,9 @@ mod tests {
     browser
       .write_all(b"GET /cb?code=x&state=y%20z+w&flag HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
       .unwrap();
-    wait_until(cx, |_| view.reports.borrow().len() == 4);
+    wait_until(cx, |cx| view.reports(cx).len() == 4);
     assert_eq!(
-      view.last(),
+      view.last(cx),
       serde_json::json!({
         "path": "/cb",
         "query": { "code": "x", "state": "y z w", "flag": "" },

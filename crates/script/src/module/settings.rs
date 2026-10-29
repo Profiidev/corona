@@ -1,167 +1,205 @@
-use std::{
-  cell::RefCell,
-  collections::{BTreeSet, VecDeque},
-  rc::Rc,
-};
+use std::collections::BTreeSet;
 
 use anyhow::{Result, anyhow, ensure};
-use corona_config::{Config, ConfigProvider};
-use corona_macros::named;
+use corona_config::Config;
+use corona_js::{Cx, Data, Json, Listener, ModuleBuilder, Throws, Unsubscribe, host_module, track};
 use corona_utils::error::ErrorLogExt;
-use gpui_kit::{App, Subscription};
-use gpui_shell::HostModule;
+use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, Subscription};
 use serde::Serialize;
 use serde_json::{Map, Value};
-use ts_rs::TS;
+use specta::{Type, specta};
 
 use crate::{
-  host_fn::{Cx, Module},
-  module::{
-    Subscribe,
-    plugin::{Hub, SecretChanged},
-  },
+  ScriptManager,
   plugin::settings::{DynamicOptions, SelectOption, Setting, SettingKind, resolve},
 };
 
-/// Changes kept for a script that is not waiting for one
-const CHANGE_BUFFER: usize = 16;
-
-/// A setting that changed, or a secret that was stored or removed, without
-/// its value
-#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+/// A setting that changed, or a secret that was stored or removed, without its value
+#[derive(Clone, Debug, PartialEq, Serialize, Type)]
 #[serde(untagged)]
-enum Change {
+pub enum Change {
   Setting { key: String, value: Value },
   Secret { key: String, secret: bool },
 }
 
-/// The changes for one script's `nextChange`
-#[derive(Default)]
-struct Changes {
-  kept: VecDeque<Change>,
-  waiters: Vec<flume::Sender<Change>>,
+impl Change {
+  pub fn secret(key: String) -> Self {
+    Self::Secret { key, secret: true }
+  }
 }
 
-impl Changes {
-  fn next(&mut self) -> flume::Receiver<Change> {
-    let (tx, rx) = flume::bounded(1);
-    match self.kept.pop_front() {
-      Some(change) => drop(tx.send(change)),
-      None => self.waiters.push(tx),
-    }
-    rx
+/// A plugin's settings as the user set them, its defaults for the rest, and the shell's
+/// language its translations follow. Emits each change.
+pub struct Settings {
+  id: String,
+  declared: Vec<Setting>,
+  pub values: Map<String, Value>,
+  pub language: String,
+  _config: Subscription,
+}
+
+impl EventEmitter<Change> for Settings {}
+
+impl Settings {
+  pub fn new(id: &str, declared: &[Setting], cx: &mut App) -> Entity<Self> {
+    cx.new(|cx| Self {
+      id: id.into(),
+      declared: declared.to_vec(),
+      values: resolved(id, declared, cx),
+      language: rust_i18n::locale().to_string(),
+      _config: cx.observe_global::<Config>(Self::refresh),
+    })
   }
 
-  /// To every call waiting; kept for the next one when none is
-  fn push(&mut self, change: Change) {
-    let waiters = self.waiters.drain(..);
-    let delivered = waiters.filter(|tx| tx.send(change.clone()).is_ok()).count();
-    if delivered == 0 {
-      self.kept.push_back(change);
-      if self.kept.len() > CHANGE_BUFFER {
-        self.kept.pop_front();
+  /// Follows the config and the plugin's manifest as it is rescanned
+  fn refresh(&mut self, cx: &mut Context<Self>) {
+    let manifest = cx
+      .try_global::<ScriptManager>()
+      .and_then(|m| m.plugins().get(&self.id));
+    if let Some(manifest) = manifest {
+      self.declared = manifest.settings.clone();
+    }
+    let now = resolved(&self.id, &self.declared, cx);
+    let mut changed = false;
+    for (key, value) in &now {
+      if self.values.get(key) != Some(value) {
+        changed = true;
+        let (key, value) = (key.clone(), value.clone());
+        cx.emit(Change::Setting { key, value });
       }
     }
+    self.values = now;
+    let language = rust_i18n::locale().to_string();
+    if language != self.language {
+      self.language = language;
+      changed = true;
+    }
+    if changed {
+      cx.notify();
+    }
   }
 }
 
-/// `corona/settings`: the plugin's own settings, as the user set them in the
-/// settings app or the config. Every plugin has it, for its own settings only.
-/// `hosts` are the settings its network grant reads, which it cannot `set`;
-/// `hub` tells of its secrets changing.
+fn resolved(id: &str, settings: &[Setting], cx: &App) -> Map<String, Value> {
+  let config = cx.try_global::<Config>();
+  resolve(id, settings, config.and_then(|c| c.plugin_settings.get(id)))
+}
+
+/// What a runtime of the plugin knows of its settings: `hosts` are the ones its network
+/// grant reads, which it cannot `set`
+struct Declared {
+  id: String,
+  settings: Vec<Setting>,
+  hosts: BTreeSet<String>,
+  entity: Entity<Settings>,
+}
+
+impl Declared {
+  /// The declared setting `key`
+  fn lookup(&self, key: &str) -> Result<&Setting> {
+    let setting = self.settings.iter().find(|s| s.key == key);
+    setting.ok_or_else(|| anyhow!("no setting `{key}`"))
+  }
+
+  fn values(&self, cx: &App) -> Map<String, Value> {
+    track(&self.entity);
+    self.entity.read(cx).values.clone()
+  }
+}
+
+/// The value of setting `key`, its default when unset; null when the manifest does not
+/// declare it.
+#[specta]
+fn get(cx: Cx, declared: Data<Declared>, key: String) -> Json<Value> {
+  Json(declared.values(&cx).remove(&key).unwrap_or_default())
+}
+
+/// Every declared setting by key.
+#[specta]
+fn all(cx: Cx, declared: Data<Declared>) -> Json<Map<String, Value>> {
+  Json(declared.values(&cx))
+}
+
+/// Calls `cb` with each change of a setting, or of a secret without its value.
+#[specta]
+fn on_change(mut cx: Cx, declared: Data<Declared>, cb: Listener<Json<Change>>) -> Unsubscribe {
+  let listener = cb.clone();
+  let sub = cx.subscribe(&declared.entity, move |_, change: &Change, cx| {
+    listener.call(cx, Json(change.clone()))
+  });
+  cb.keep(sub)
+}
+
+/// Changes setting `key` in the config, as the settings app would.
+#[specta]
+fn set(mut cx: Cx, declared: Data<Declared>, key: String, value: Json<Value>) -> Throws<()> {
+  let set = || -> Result<()> {
+    let value = value.0;
+    let setting = declared.lookup(&key)?;
+    // a plugin setting its own host would grant itself any host
+    ensure!(
+      !declared.hosts.contains(&key),
+      "setting `{key}` is a network grant, only the user changes it"
+    );
+    ensure!(setting.accepts(&value), "setting `{key}` cannot be {value}");
+    let id = declared.id.clone();
+    // the config observers render scripts again, so not from inside one
+    cx.defer(move |cx| {
+      corona_config::update(cx, |c| {
+        c.plugin_settings.entry(id).or_default().insert(key, value);
+      })
+      .log_err()
+      .ok();
+    });
+    Ok(())
+  };
+  set().into()
+}
+
+/// The choices the settings app offers for dynamic select `key`.
+#[specta]
+fn set_options(
+  mut cx: Cx,
+  declared: Data<Declared>,
+  key: String,
+  choices: Json<Vec<SelectOption>>,
+) -> Throws<()> {
+  let set = || -> Result<()> {
+    let setting = declared.lookup(&key)?;
+    ensure!(
+      matches!(setting.kind, SettingKind::Select { dynamic: true, .. }),
+      "setting `{key}` is not a dynamic select"
+    );
+    cx.default_global::<DynamicOptions>()
+      .0
+      .entry(declared.id.clone())
+      .or_default()
+      .insert(key, choices.0);
+    cx.refresh_windows();
+    Ok(())
+  };
+  set().into()
+}
+
+/// `corona/settings`: the plugin's own settings, as the user set them in the settings app
+/// or the config. Every plugin has it, for its own settings only. `hosts` are the settings
+/// its network grant reads; `entity` is the plugin's [`Settings`].
 pub fn module(
   id: &str,
   settings: &[Setting],
   hosts: &BTreeSet<String>,
-  hub: &Hub,
-  subs: &mut Vec<Subscribe>,
-  cx: &mut App,
-) -> HostModule {
-  let current = {
-    let (id, settings) = (id.to_string(), settings.to_vec());
-    move |cx: &App| resolved(&id, &settings, cx)
-  };
-  subs.push(watch(current.clone()));
-  let changes = Rc::<RefCell<Changes>>::default();
-  subs.push(listen(current.clone(), hub, changes.clone(), cx));
-
-  let get = current.clone();
-  let (set, options) = (lookup(id, settings), lookup(id, settings));
-  let hosts = hosts.clone();
-  let module: HostModule = Module::new("corona/settings")
-    .func(named!(
-      "get",
-      /// The value of setting `key`, its default when unset; null when the
-      /// manifest does not declare it.
-      move |cx: Cx, key: String| get(&cx).remove(&key)
-    ))
-    .func(named!(
-      "all",
-      /// Every declared setting by key.
-      move |cx: Cx| Value::Object(current(&cx))
-    ))
-    .func(named!(
-      "nextChange",
-      /// The next change of a setting, or of a secret without its value,
-      /// once one comes.
-      move || {
-        let rx = changes.borrow_mut().next();
-        async move { rx.recv_async().await.map_err(|_| anyhow!("plugin stopped")) }
-      }
-    ))
-    .func(named!(
-      "set",
-      /// Changes setting `key` in the config, as the settings app would.
-      move |cx: &mut App, key: String, value: Value| -> Result<()> {
-        let (id, setting) = set(&key)?;
-        // a plugin setting its own host would grant itself any host
-        ensure!(
-          !hosts.contains(&key),
-          "setting `{key}` is a network grant, only the user changes it"
-        );
-        ensure!(setting.accepts(&value), "setting `{key}` cannot be {value}");
-        // the config observers render scripts again, so not from inside one
-        cx.defer(move |cx| {
-          corona_config::update(cx, |c| {
-            c.plugin_settings.entry(id).or_default().insert(key, value);
-          })
-          .log_err()
-          .ok();
-        });
-        Ok(())
-      }
-    ))
-    .func(named!(
-      "setOptions",
-      /// The choices the settings app offers for dynamic select `key`.
-      move |cx: &mut App, key: String, choices: Vec<SelectOption>| -> Result<()> {
-        let (id, setting) = options(&key)?;
-        ensure!(
-          matches!(setting.kind, SettingKind::Select { dynamic: true, .. }),
-          "setting `{key}` is not a dynamic select"
-        );
-        cx.default_global::<DynamicOptions>()
-          .0
-          .entry(id)
-          .or_default()
-          .insert(key, choices);
-        cx.refresh_windows();
-        Ok(())
-      }
-    ))
-    .into();
+  entity: Entity<Settings>,
+  m: &mut ModuleBuilder,
+) {
+  m.provide(Declared {
+    id: id.into(),
+    settings: settings.to_vec(),
+    hosts: hosts.clone(),
+    entity,
+  });
+  host_module!(m, { sync: [get, all, on_change, set, set_options] });
   // typed by this plugin's manifest rather than by the Rust signatures
-  module.declarations(declarations(settings))
-}
-
-/// The plugin id and the declared setting `key`
-fn lookup(id: &str, settings: &[Setting]) -> impl Fn(&str) -> Result<(String, Setting)> + 'static {
-  let (id, settings) = (id.to_string(), settings.to_vec());
-  move |key| {
-    let setting = settings.iter().find(|s| s.key == key);
-    let setting = setting.ok_or_else(|| anyhow::anyhow!("no setting `{key}`"))?;
-    Ok((id.clone(), setting.clone()))
-  }
+  m.declarations(declarations(settings));
 }
 
 /// The TypeScript of `corona/settings` for these settings: every key with its
@@ -196,12 +234,13 @@ fn declarations(settings: &[Setting]) -> String {
   export function all(): Settings;
   /** A setting that changed, or a secret that was stored or removed, without its value. */
   export type Change = {{ [K in keyof Settings]: {{ key: K; value: Settings[K] }} }}[keyof Settings] | {{ key: string; secret: true }};
-  /** The next change, once one comes. Changes while none is awaited are kept, the last 16. */
-  export function nextChange(): Promise<Change | Error>;
+  /** Calls `cb` with each change; returns the fn that stops it. */
+  export function onChange(cb: (change: Change) => void): () => void;
   /** Changes setting `key` in the config, as the settings app would. */
-  export function set<K extends keyof Settings>(key: K, value: Settings[K]): void | Error;
+  export function set<K extends keyof Settings>(key: K, value: Settings[K]): void;
   /** The choices the settings app offers for dynamic select `key`. */
-  export function setOptions(key: {dynamic}, options: {{ value: string; label: string }}[]): void | Error;"
+  export function setOptions(key: {dynamic}, options: {{ value: string; label: string }}[]): void;
+"
   )
 }
 
@@ -264,59 +303,9 @@ fn quoted(text: &str) -> String {
   serde_json::to_string(text).unwrap_or_default()
 }
 
-fn resolved(id: &str, settings: &[Setting], cx: &App) -> Map<String, Value> {
-  resolve(id, settings, cx.config().plugin_settings.get(id))
-}
-
-/// Renders the script again when its settings change
-fn watch(current: impl Fn(&App) -> Map<String, Value> + 'static) -> Subscribe {
-  Subscribe::Refresh(Box::new(move |runtime, root, cx| {
-    let (runtime, root) = (runtime.clone(), root.clone());
-    let mut last = current(cx);
-    cx.observe_global::<Config>(move |cx| {
-      let now = current(cx);
-      if now != last {
-        last = now;
-        runtime.refresh(&root, cx).log_err().ok();
-      }
-    })
-  }))
-}
-
-/// Keeps the changes for `nextChange`, in views and services alike: only the
-/// settings that changed, and secret keys without their values
-fn listen(
-  current: impl Fn(&App) -> Map<String, Value> + 'static,
-  hub: &Hub,
-  changes: Rc<RefCell<Changes>>,
-  cx: &mut App,
-) -> Subscribe {
-  let mut last = current(cx);
-  let push = changes.clone();
-  let settings = cx.observe_global::<Config>(move |cx| {
-    let now = current(cx);
-    for (key, value) in &now {
-      if last.get(key) != Some(value) {
-        let (key, value) = (key.clone(), value.clone());
-        push.borrow_mut().push(Change::Setting { key, value });
-      }
-    }
-    last = now;
-  });
-  let push = changes.clone();
-  let secrets = cx.subscribe(&hub.secrets, move |_, SecretChanged(key), _| {
-    let key = key.clone();
-    push.borrow_mut().push(Change::Secret { key, secret: true });
-  });
-  Subscribe::Cleanup(Subscription::new(move || {
-    drop((settings, secrets));
-    // gpui-shell never drops a pending call's future, so wake it with an error
-    changes.borrow_mut().waiters.clear();
-  }))
-}
-
 #[cfg(test)]
 mod tests {
+  use corona_config::ConfigProvider;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -388,8 +377,9 @@ default = ["a"]
       "     * @default [\"a\"]",
       "  export function get<K extends keyof Settings>(key: K): Settings[K];",
       "  export function all(): Settings;",
-      "  export function set<K extends keyof Settings>(key: K, value: Settings[K]): void | Error;",
-      "  export function setOptions(key: never, options: { value: string; label: string }[]): void | Error;",
+      "  export function onChange(cb: (change: Change) => void): () => void;",
+      "  export function set<K extends keyof Settings>(key: K, value: Settings[K]): void;",
+      "  export function setOptions(key: never, options: { value: string; label: string }[]): void;",
     ] {
       assert!(ts.lines().any(|l| l == line), "missing {line:?} in\n{ts}");
     }
@@ -444,14 +434,25 @@ dynamic = true
     cx.update(|cx| corona_config::load(cx).unwrap());
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
-      report([m.set("on", false), m.set("on", 1), m.set("nope", 1), m.set("device", "phone")]);
+      report([
+        attempt(() => m.set("on", false)),
+        attempt(() => m.set("on", 1)),
+        attempt(() => m.set("nope", 1)),
+        attempt(() => m.set("device", "phone")),
+      ]);
     }"#;
     let declared = settings(DECLARED);
-    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
-      module("p", &declared, &BTreeSet::new(), &Hub::new(cx), subs, cx)
+    let (view, cx) = harness::view(cx, "corona/settings", body, move |_, m, cx| {
+      module(
+        "p",
+        &declared,
+        &BTreeSet::new(),
+        Settings::new("p", &declared, cx),
+        m,
+      )
     });
     cx.run_until_parked();
-    let report = view.last();
+    let report = view.last(cx);
     assert_eq!(report[0], Value::Null);
     assert_eq!(report[1]["message"], "setting `on` cannot be 1");
     assert_eq!(report[2]["message"], "no setting `nope`");
@@ -469,18 +470,24 @@ dynamic = true
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
       report([
-        m.setOptions("device", [{ value: "phone", label: "Phone" }]),
-        m.setOptions("on", []),
+        attempt(() => m.setOptions("device", [{ value: "phone", label: "Phone" }])),
+        attempt(() => m.setOptions("on", [])),
       ]);
     }"#;
     cx.update(|cx| cx.set_global(Config::default()));
     let declared = settings(DECLARED);
     let device = declared[1].clone();
-    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
-      module("p", &declared, &BTreeSet::new(), &Hub::new(cx), subs, cx)
+    let (view, cx) = harness::view(cx, "corona/settings", body, move |_, m, cx| {
+      module(
+        "p",
+        &declared,
+        &BTreeSet::new(),
+        Settings::new("p", &declared, cx),
+        m,
+      )
     });
     cx.run_until_parked();
-    let report = view.last();
+    let report = view.last(cx);
     assert_eq!(report[0], Value::Null);
     assert_eq!(report[1]["message"], "setting `on` is not a dynamic select");
     cx.update(|_, cx| {
@@ -495,14 +502,14 @@ dynamic = true
   #[gpui::test]
   fn host_settings_are_the_users(cx: &mut TestAppContext) {
     cx.update(|cx| cx.set_global(Config::default()));
-    let body = r#"report(m.set("on", false));"#;
+    let body = r#"report(attempt(() => m.set("on", false)));"#;
     let declared = settings(DECLARED);
     let hosts = BTreeSet::from(["on".to_string()]);
-    let (view, cx) = harness::view(cx, body, |_, subs, cx| {
-      module("p", &declared, &hosts, &Hub::new(cx), subs, cx)
+    let (view, cx) = harness::view(cx, "corona/settings", body, move |_, m, cx| {
+      module("p", &declared, &hosts, Settings::new("p", &declared, cx), m)
     });
     cx.run_until_parked();
-    let message = view.last()["message"].as_str().unwrap().to_string();
+    let message = view.last(cx)["message"].as_str().unwrap().to_string();
     assert!(message.contains("network grant"), "{message}");
     cx.update(|_, cx| assert!(cx.config().plugin_settings.is_empty()));
   }
@@ -514,41 +521,21 @@ dynamic = true
   }
 
   #[gpui::test]
-  fn the_module_accepts_its_declarations(cx: &mut TestAppContext) {
+  fn the_module_is_typed_by_its_declarations(cx: &mut TestAppContext) {
     cx.update(|cx| {
-      cx.set_global(Config::default());
-      // gpui-shell checks the declared functions against the registered ones
-      let module = module(
+      let mut m = ModuleBuilder::new("corona/settings", &Default::default());
+      module(
         "p",
         &[],
         &BTreeSet::new(),
-        &Hub::new(cx),
-        &mut Vec::new(),
-        cx,
+        Settings::new("p", &[], cx),
+        &mut m,
       );
-      let declared = module.declared().unwrap();
-      assert!(declared.contains("export function get"));
-      assert!(declared.contains("export function nextChange(): Promise<Change | Error>;"));
+      let ts = corona_js::d_ts([&m]);
+      assert!(ts.contains("export function get"), "{ts}");
+      // once, from the declarations, not again from the Rust types
+      assert_eq!(ts.matches("export type Change").count(), 1, "{ts}");
     });
-  }
-
-  #[test]
-  fn changes_go_to_every_waiter_or_are_kept() {
-    let mut changes = Changes::default();
-    let change = |key: usize| Change::Setting {
-      key: key.to_string(),
-      value: Value::Null,
-    };
-    let (a, b) = (changes.next(), changes.next());
-    changes.push(change(1));
-    assert_eq!(a.try_recv().unwrap(), change(1));
-    assert_eq!(b.try_recv().unwrap(), change(1));
-
-    for key in 0..20 {
-      changes.push(change(key));
-    }
-    assert_eq!(changes.kept.len(), CHANGE_BUFFER);
-    assert_eq!(changes.next().try_recv().unwrap(), change(4));
   }
 
   #[test]

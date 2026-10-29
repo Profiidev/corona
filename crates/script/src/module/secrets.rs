@@ -1,15 +1,12 @@
 //! `corona/secrets`: strings in the user's keyring, one namespace per plugin.
 
-use std::sync::Arc;
-
 use anyhow::{Result, ensure};
-use corona_macros::named;
-use futures_lite::{FutureExt as _, future::Boxed};
-use gpui_kit::{App, Task};
-use gpui_shell::HostModule;
-use oo7::Keyring;
+use corona_js::{Cx, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
+use specta::specta;
 
-use crate::{ScriptManager, host_fn::Module, module::PluginRef};
+use crate::ScriptManager;
+use gpui_kit::App;
+use oo7::Keyring;
 
 /// The attributes the secret `key` of plugin `id` is stored under.
 fn attributes(id: &str, key: &str) -> Result<[(&'static str, String); 3]> {
@@ -47,59 +44,52 @@ pub async fn remove(id: &str, key: &str) -> Result<()> {
   Ok(())
 }
 
-pub fn module(plugin: PluginRef) -> HostModule {
-  let id: Arc<str> = plugin.id.into();
+async fn get_secret(id: &str, key: &str) -> Result<Option<String>> {
+  let attributes = attributes(id, key)?;
+  let items = keyring().await?.search_items(&attributes).await?;
+  let Some(item) = items.first() else {
+    return Ok(None);
+  };
+  let secret = item.secret().await?;
+  Ok(Some(String::from_utf8_lossy(&secret).into_owned()))
+}
 
-  let plugin = id.clone();
-  let module = Module::new("corona/secrets").func(named!(
-    "get",
-    /// The secret stored under `key`, null when there is none.
-    move |key: String| -> Result<Boxed<Result<Option<String>>>> {
-      let attributes = attributes(&plugin, &key)?;
-      Ok(
-        async move {
-          let items = keyring().await?.search_items(&attributes).await?;
-          let Some(item) = items.first() else {
-            return Ok(None);
-          };
-          let secret = item.secret().await?;
-          Ok(Some(String::from_utf8_lossy(&secret).into_owned()))
-        }
-        .boxed(),
-      )
-    }
-  ));
-  let plugin = id.clone();
-  let module = module.func(named!(
-    "set",
-    /// Stores `value` under `key`, replacing what was there.
-    move |cx: &mut App, key: String, value: String| -> Result<Task<Result<()>>> {
-      attributes(&plugin, &key)?;
-      let plugin = plugin.clone();
-      Ok(cx.spawn(async move |cx| {
-        store(&plugin, &key, value).await?;
-        cx.update(|cx| ScriptManager::secret_changed(&plugin, &key, cx));
-        Ok(())
-      }))
-    }
-  ));
-  let plugin = id;
-  module
-    .func(named!(
-      // not `delete`, a reserved word in JS
-      "remove",
-      /// Deletes the secret under `key`.
-      move |cx: &mut App, key: String| -> Result<Task<Result<()>>> {
-        attributes(&plugin, &key)?;
-        let plugin = plugin.clone();
-        Ok(cx.spawn(async move |cx| {
-          remove(&plugin, &key).await?;
-          cx.update(|cx| ScriptManager::secret_changed(&plugin, &key, cx));
-          Ok(())
-        }))
-      }
-    ))
-    .into()
+/// The secret stored under `key`, null when there is none.
+#[specta]
+async fn get(plugin: Plugin, key: String) -> Throws<Option<String>> {
+  get_secret(&plugin.id, &key).await.into()
+}
+
+/// Stores `value` under `key`, replacing what was there.
+#[specta]
+async fn set(mut cx: Cx, plugin: Plugin, key: String, value: String) -> Throws<()> {
+  let stored = store(&plugin.id, &key, value).await;
+  if stored.is_ok() {
+    ScriptManager::secret_changed(&plugin.id, &key, &mut cx);
+  }
+  stored.into()
+}
+
+/// Deletes the secret under `key`. Not `delete`, a reserved word in JS.
+#[specta(rename = "remove")]
+async fn remove_secret(mut cx: Cx, plugin: Plugin, key: String) -> Throws<()> {
+  let removed = remove(&plugin.id, &key).await;
+  if removed.is_ok() {
+    ScriptManager::secret_changed(&plugin.id, &key, &mut cx);
+  }
+  removed.into()
+}
+
+/// `corona/secrets`
+pub struct Secrets;
+
+impl ScriptModule for Secrets {
+  const NAME: &str = "secrets";
+  const DOC: &str = "Strings in the user's keyring, e.g. tokens.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    host_module!(m, { async: [get, set, remove_secret] });
+  }
 }
 
 #[cfg(test)]
@@ -117,18 +107,18 @@ mod tests {
     assert_eq!(attributes[2], ("key", "token".into()));
   }
 
-  #[test]
-  fn declarations() {
-    let module: HostModule = module(PluginRef {
-      id: "a",
-      name: "A",
-      capabilities: &Default::default(),
+  #[gpui::test]
+  fn declarations(cx: &mut TestAppContext) {
+    let m = cx.update(|cx| {
+      let mut m = ModuleBuilder::new("corona/secrets", &Default::default());
+      Secrets::module(&PluginRef::default(), &mut m, cx);
+      m
     });
-    let declared = module.declared().unwrap();
+    let declared = corona_js::d_ts([&m]);
     for line in [
-      "export function get(key: string): Promise<string | null | Error>;",
-      "export function set(key: string, value: string): Promise<void | Error>;",
-      "export function remove(key: string): Promise<void | Error>;",
+      "  export function get(key: string): Promise<string | null>;",
+      "  export function set(key: string, value: string): Promise<void>;",
+      "  export function remove(key: string): Promise<void>;",
     ] {
       assert!(declared.lines().any(|l| l == line), "{line} in\n{declared}");
     }
@@ -138,17 +128,12 @@ mod tests {
   fn empty_keys_fail_without_the_keyring(cx: &mut TestAppContext) {
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
-      Promise.all([m.get(""), m.set("", "x"), m.remove("")]).then(report);
+      const failed = (p) => p.then(() => null, (e) => ({ message: e.message }));
+      Promise.all([failed(m.get("")), failed(m.set("", "x")), failed(m.remove(""))]).then(report);
     }"#;
-    let (view, cx) = harness::view(cx, body, |_, _, _| {
-      module(PluginRef {
-        id: "a",
-        name: "A",
-        capabilities: &Default::default(),
-      })
-    });
+    let (view, cx) = harness::module::<Secrets>(cx, body);
     cx.run_until_parked();
     let error = serde_json::json!({ "message": "the key is empty" });
-    assert_eq!(view.last(), serde_json::json!([error, error, error]));
+    assert_eq!(view.last(cx), serde_json::json!([error, error, error]));
   }
 }

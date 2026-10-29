@@ -1,128 +1,103 @@
-use corona_compositor::{Compositor, CompositorExt};
-use gpui_shell::HostModule;
+use corona_compositor::{self as cc, CompositorExt};
+use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
+use gpui_kit::App;
 use serde::Serialize;
-use ts_rs::TS;
+use specta::{Type, specta};
 
-use crate::{
-  host_fn::{Glob, Module},
-  module::{Subscribe, Subscriptions, read},
-};
-use corona_macros::host_fn;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  Workspaces,
-  ActiveWorkspace,
-  Monitors,
-  ActiveMonitor,
-  Windows,
-  ActiveWindow,
-  KeyboardLayout,
+/// Switches to workspace `workspace`, by id or name.
+#[specta]
+fn focus_workspace(compositor: Glob<cc::Compositor>, workspace: String) -> Throws<()> {
+  compositor.focus_workspace(&workspace).into()
 }
 
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Compositor(value)
-  }
+#[specta]
+fn focus_window(compositor: Glob<cc::Compositor>, address: String) -> Throws<()> {
+  compositor.focus_window(&address).into()
 }
 
-#[host_fn]
-fn focus_workspace(compositor: Glob<Compositor>, workspace: String) -> anyhow::Result<()> {
-  compositor.focus_workspace(&workspace)
-}
-
-#[host_fn]
-fn focus_window(compositor: Glob<Compositor>, address: String) -> anyhow::Result<()> {
-  compositor.focus_window(&address)
-}
-
-#[host_fn]
-fn close_window(compositor: Glob<Compositor>, address: String) -> anyhow::Result<()> {
-  compositor.close_window(&address)
+#[specta]
+fn close_window(compositor: Glob<cc::Compositor>, address: String) -> Throws<()> {
+  compositor.close_window(&address).into()
 }
 
 /// In global layout coordinates.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Position {
   x: i32,
   y: i32,
 }
 
-#[host_fn]
-fn cursor_position(compositor: Glob<Compositor>) -> anyhow::Result<Position> {
-  let (x, y) = compositor.cursor_position()?;
-  Ok(Position { x, y })
+#[specta]
+fn cursor_position(compositor: Glob<cc::Compositor>) -> Throws<Json<Position>> {
+  (compositor.cursor_position())
+    .map(|(x, y)| Json(Position { x, y }))
+    .into()
 }
 
-pub fn module(reads: &Subscriptions, subs: &mut Vec<Subscribe>) -> HostModule {
-  Module::new("corona/compositor")
-    .func(read(
-      reads,
-      subs,
+/// `corona/compositor`
+pub struct Compositor;
+
+impl ScriptModule for Compositor {
+  const NAME: &str = "compositor";
+  const DOC: &str = "Workspaces, monitors and windows, and switching workspaces.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    m.watch(
       "listWorkspaces",
-      Updates::Workspaces,
+      "",
       |cx| cx.compositor().workspaces.clone(),
-      |cx| cx.compositor().list_workspaces(cx).to_vec(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().list_workspaces(cx).to_vec()),
+    );
+    m.watch(
       "activeWorkspace",
-      Updates::ActiveWorkspace,
+      "",
       |cx| cx.compositor().active_workspace.clone(),
-      |cx| cx.compositor().active_workspace(cx).clone(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().active_workspace(cx).clone()),
+    );
+    m.watch(
       "listMonitors",
-      Updates::Monitors,
+      "",
       |cx| cx.compositor().monitors.clone(),
-      |cx| cx.compositor().list_monitors(cx).to_vec(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().list_monitors(cx).to_vec()),
+    );
+    m.watch(
       "activeMonitor",
-      Updates::ActiveMonitor,
+      "",
       |cx| cx.compositor().active_monitor.clone(),
-      |cx| cx.compositor().active_monitor(cx).clone(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().active_monitor(cx).clone()),
+    );
+    m.watch(
       "listWindows",
-      Updates::Windows,
+      "",
       |cx| cx.compositor().windows.clone(),
-      |cx| cx.compositor().list_windows(cx).to_vec(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().list_windows(cx).to_vec()),
+    );
+    m.watch(
       "activeWindow",
-      Updates::ActiveWindow,
+      "The focused window; null when none is.",
       |cx| cx.compositor().active_window.clone(),
-      |cx| cx.compositor().active_window(cx).cloned(),
-    ))
-    .func(read(
-      reads,
-      subs,
+      |cx| Json(cx.compositor().active_window(cx).cloned()),
+    );
+    m.watch(
       "keyboardLayout",
-      Updates::KeyboardLayout,
+      "The active keyboard layout's name; null when unknown.",
       |cx| cx.compositor().keyboard_layout.clone(),
-      |cx| cx.compositor().keyboard_layout(cx).map(str::to_string),
-    ))
-    .func(focus_workspace)
-    .into()
+      |cx| Json(cx.compositor().keyboard_layout(cx).map(str::to_string)),
+    );
+    host_module!(m, { sync: [focus_workspace] });
+  }
 }
 
 /// `corona/compositor_control`: acting on other apps' windows and tracking the cursor.
-pub fn control() -> HostModule {
-  Module::new("corona/compositor_control")
-    .func(focus_window)
-    .func(close_window)
-    .func(cursor_position)
-    .into()
+pub struct CompositorControl;
+
+impl ScriptModule for CompositorControl {
+  const NAME: &str = "compositor_control";
+  const DOC: &str = "Focusing and closing other apps' windows, and the cursor position.";
+
+  fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
+    host_module!(m, { sync: [focus_window, close_window, cursor_position] });
+  }
 }
 
 #[cfg(test)]
@@ -207,67 +182,63 @@ mod tests {
 
   fn install(cx: &mut TestAppContext) {
     cx.update(|cx| {
-      let compositor = Compositor::new(cx, Rc::new(Down)).unwrap();
+      let compositor = cc::Compositor::new(cx, Rc::new(Down)).unwrap();
       cx.set_global(compositor);
     });
   }
 
   #[gpui::test]
-  fn failures_are_error_values_and_bad_arguments_throw(cx: &mut TestAppContext) {
+  fn failures_and_bad_arguments_throw(cx: &mut TestAppContext) {
     install(cx);
     let body = r#"
-    let thrown = null;
-    try { m.focusWorkspace(3); } catch (e) { thrown = String(e); }
     report({
-      focusWorkspace: m.focusWorkspace("1"),
+      focusWorkspace: attempt(() => m.focusWorkspace("1")),
       // only in `corona/compositor_control`
-      control: [m.focusWindow, m.closeWindow, m.cursorPosition].every((f) => f === undefined),
-      thrown,
+      control: ["focusWindow", "closeWindow", "cursorPosition"].every((f) => !(f in m)),
+      thrown: attempt(() => m.focusWorkspace(3)),
     });"#;
-    let (view, _) = harness::view(cx, body, |reads, subs, _| module(reads, subs));
-    let last = view.last();
+    let (view, cx) = harness::module::<Compositor>(cx, body);
+    let last = view.last(cx);
     let down = json!({ "message": "compositor down" });
     assert_eq!(last["focusWorkspace"], down);
     assert_eq!(last["control"], true);
-    let thrown = last["thrown"].as_str().unwrap();
-    assert!(thrown.contains("argument 0"), "{thrown}");
+    assert!(last["thrown"]["message"].is_string(), "{last}");
+  }
 
+  #[gpui::test]
+  fn control_fails_too(cx: &mut TestAppContext) {
+    install(cx);
     let body = r#"
     report({
-      focusWindow: m.focusWindow("0xa"),
-      closeWindow: m.closeWindow("0xa"),
-      cursorPosition: m.cursorPosition(),
+      focusWindow: attempt(() => m.focusWindow("0xa")),
+      closeWindow: attempt(() => m.closeWindow("0xa")),
+      cursorPosition: attempt(() => m.cursorPosition()),
     });"#;
-    let (view, _) = harness::view(cx, body, |_, _, _| control());
-    let last = view.last();
+    let (view, cx) = harness::module::<CompositorControl>(cx, body);
+    let last = view.last(cx);
     for name in ["focusWindow", "closeWindow", "cursorPosition"] {
-      assert_eq!(last[name], down, "{name}");
+      assert_eq!(
+        last[name],
+        json!({ "message": "compositor down" }),
+        "{name}"
+      );
     }
   }
 
   #[gpui::test]
   fn renders_again_only_for_what_it_read(cx: &mut TestAppContext) {
     install(cx);
-    let (view, cx) = harness::view(cx, "report(m.activeWindow());", |reads, subs, _| {
-      module(reads, subs)
-    });
-    assert_eq!(view.last(), json!(null));
-    let read = |update| {
-      view
-        .reads
-        .contains(super::super::Updates::Compositor(update))
-    };
-    assert!(read(Updates::ActiveWindow));
-    assert!(!read(Updates::Workspaces));
+    let (view, cx) = harness::module::<Compositor>(cx, "report(m.activeWindow());");
+    assert_eq!(view.last(cx), json!(null));
 
-    let rendered = view.reports.borrow().len();
+    let rendered = view.reports(cx).len();
     let (workspaces, active) = cx.update(|_, cx| {
       let c = cx.compositor();
       (c.workspaces.clone(), c.active_window.clone())
     });
     cx.update(|_, cx| workspaces.update(cx, |_, cx| cx.notify()));
     cx.run_until_parked();
-    assert_eq!(view.reports.borrow().len(), rendered);
+    assert_eq!(view.reports(cx).len(), rendered);
 
     let window = types::Window {
       address: "0xa".into(),
@@ -293,6 +264,6 @@ mod tests {
       })
     });
     cx.run_until_parked();
-    assert_eq!(view.last()["address"], "0xa");
+    assert_eq!(view.last(cx)["address"], "0xa");
   }
 }
