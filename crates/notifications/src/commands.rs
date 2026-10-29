@@ -1,12 +1,12 @@
+use crate::NotificationsExt;
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_notifications::NotificationsExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<DoNotDisturb>()
     .register::<Show>()
@@ -90,7 +90,7 @@ impl IpcCommand for DismissToasts {
   type Response = ();
 
   fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    crate::overlays::notification::NotificationPopups::dismiss_all(cx);
+    crate::ui::overlay::NotificationPopups::dismiss_all(cx);
     Ok(())
   }
 }

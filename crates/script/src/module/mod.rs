@@ -12,7 +12,6 @@ pub mod desktop;
 pub mod i18n;
 pub mod idle;
 pub mod network;
-pub mod notifications;
 pub mod plugin;
 pub mod power;
 pub mod secrets;
@@ -29,15 +28,13 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<desktop::Desktop>()
     .register::<idle::Idle>()
     .register::<network::Network>()
-    .register::<notifications::Notifications>()
-    .register::<notifications::NotificationCenter>()
     .register::<power::Power>()
     .register::<secrets::Secrets>();
 }
 
 /// Runs a module in a real script view, for tests of what plugins see.
-#[cfg(test)]
-pub(crate) mod harness {
+#[cfg(any(test, feature = "test-support"))]
+pub mod harness {
   use std::{fs, rc::Rc};
 
   use corona_js::{
@@ -59,7 +56,7 @@ pub(crate) mod harness {
     cx.default_global::<Reports>().0.push(value.0);
   }
 
-  pub(crate) struct View {
+  pub struct View {
     _view: Entity<ScriptView>,
     _dir: tempfile::TempDir,
   }
@@ -78,7 +75,7 @@ pub(crate) mod harness {
   /// A view of plugin `p` running `body` on every render, with module `name` that
   /// `module` builds imported as `m`, `report` from `corona/test`, and `attempt(f)`, which
   /// is what `f()` returns, or `{ message }` when it throws.
-  pub(crate) fn view<'a>(
+  pub fn view<'a>(
     cx: &'a mut TestAppContext,
     name: &str,
     body: &str,
@@ -136,7 +133,7 @@ export default class Main extends View {{
   }
 
   /// [`view`] of the registered module `M`
-  pub(crate) fn module<'a, M: ScriptModule>(
+  pub fn module<'a, M: ScriptModule>(
     cx: &'a mut TestAppContext,
     body: &str,
   ) -> (View, &'a mut VisualTestContext) {

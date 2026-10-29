@@ -5,7 +5,6 @@ mod disks;
 mod displays;
 mod hotspot;
 mod network;
-mod notifications;
 mod power;
 
 use corona_surface::{
@@ -22,7 +21,6 @@ pub use crate::control_center::{
   displays::DisplaysPanel,
   hotspot::{HotspotPanel, poll_clients},
   network::NetworkPanel,
-  notifications::{NotificationsPanel, ReplyInputs},
   power::PowerPanel,
 };
 
@@ -36,7 +34,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<PowerPanel>()
     .register::<BrightnessPanel>()
     .register::<DisplaysPanel>()
-    .register::<NotificationsPanel>()
     .register::<ClipboardPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);

@@ -76,12 +76,12 @@ pub struct ScriptManager {
   paths: Paths,
   plugins: HashMap<String, PluginManifest>,
   /// What the instances of each plugin share, made as the first one loads
-  pub(crate) hubs: HashMap<String, Hub>,
+  pub hubs: HashMap<String, Hub>,
   /// The plugin that sent each notification and whether it is resident, until an action is
   /// picked on a non-resident one
-  pub(crate) owners: Arc<Mutex<HashMap<u32, (String, bool)>>>,
+  pub owners: Arc<Mutex<HashMap<u32, (String, bool)>>>,
   /// Whether notification actions are listened for, from the first `notify`
-  pub(crate) listening: bool,
+  pub listening: bool,
 }
 
 impl Global for ScriptManager {}
@@ -123,7 +123,7 @@ impl ScriptManager {
   }
 
   /// The hub of plugin `id`, shared by all its views
-  pub(crate) fn hub(id: &str, cx: &mut App) -> Hub {
+  pub fn hub(id: &str, cx: &mut App) -> Hub {
     if let Some(hub) = cx.global::<Self>().hubs.get(id) {
       return hub.clone();
     }
@@ -1619,14 +1619,12 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 11] = [
+  const ALL_MODULES: [&str; 9] = [
     "compositor",
     "compositor_control",
     "network",
     "power",
     "brightness",
-    "notifications",
-    "notification_center",
     "auth",
     "secrets",
     "desktop",

@@ -1,5 +1,5 @@
 use crate::control_center::dashboard::DashboardPanel;
-use crate::control_center::{BrightnessPanel, NetworkPanel, NotificationsPanel, PowerPanel};
+use crate::control_center::{BrightnessPanel, NetworkPanel, PowerPanel};
 use crate::icons::power_profile;
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
@@ -7,7 +7,6 @@ use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
-use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
@@ -92,14 +91,6 @@ action!(
     cx.network_manager().wifi_networks,
   ]
 );
-action!(
-  Dnd,
-  "dnd",
-  "app.dashboard.dnd",
-  dnd,
-  Some(NotificationsPanel::ID),
-  |cx| [cx.notifications().do_not_disturb,]
-);
 // a theme change redraws every window anyway
 action!(
   DarkMode,
@@ -146,7 +137,6 @@ action!(
 pub(crate) fn register(cx: &mut App) {
   cx.dashboard_mut()
     .quick_action::<Wifi>()
-    .quick_action::<Dnd>()
     .quick_action::<DarkMode>()
     .quick_action::<StayAwake>()
     .quick_action::<Nightlight>()
@@ -272,22 +262,6 @@ fn wifi(cx: &App) -> Toggle {
         spawn_logged(cx, task);
       }) as Action
     }),
-  }
-}
-
-fn dnd(cx: &App) -> Toggle {
-  let enabled = cx.notifications().do_not_disturb(cx);
-  Toggle {
-    icon: if enabled {
-      IconName::BellOff
-    } else {
-      IconName::Bell
-    },
-    status: on_off(enabled),
-    active: enabled,
-    on_click: Some(Box::new(move |cx| {
-      cx.notifications().clone().set_do_not_disturb(!enabled, cx)
-    })),
   }
 }
 

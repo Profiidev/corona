@@ -6,7 +6,6 @@ use kinds::*;
 
 mod brightness;
 mod caffeine;
-mod dnd;
 mod keyboard;
 mod kinds;
 pub(crate) mod lock_keys;
@@ -17,7 +16,6 @@ pub fn init(cx: &mut App) {
   cx.osd_mut()
     .register::<BrightnessOsd>()
     .register::<WifiOsd>()
-    .register::<DndOsd>()
     .register::<PowerProfileOsd>()
     .register::<KeyboardLayoutOsd>()
     .register::<LockKeysOsd>()
@@ -25,7 +23,6 @@ pub fn init(cx: &mut App) {
   brightness::init(cx);
   wifi::init(cx);
   power_profile::init(cx);
-  dnd::init(cx);
   keyboard::init(cx);
   caffeine::init(cx);
 }

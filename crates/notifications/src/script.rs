@@ -3,9 +3,9 @@ use std::{collections::HashMap, io::Cursor, mem, pin::pin, time::UNIX_EPOCH};
 use anyhow::{bail, ensure};
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, Unsubscribe,
-  host_module,
+  host_module, json,
 };
-use corona_notifications::{self as nt, NotificationsExt};
+use corona_script::{ActionEvent, ScriptManager};
 use futures_lite::{StreamExt, future::try_zip, stream};
 use gpui_kit::App;
 use image::{ImageError, ImageReader, Limits};
@@ -13,10 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use specta::{Type, Types, datatype::DataType, specta};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate::{
-  ScriptManager,
-  module::{json, plugin::ActionEvent},
-};
+use crate as nt;
+use crate::NotificationsExt;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -366,9 +364,9 @@ fn on_action(mut cx: Cx, plugin: Plugin, cb: Listener<Json<ActionEvent>>) -> Uns
 }
 
 /// `corona/notifications`
-pub struct Notifications;
+pub struct NotificationsModule;
 
-impl ScriptModule for Notifications {
+impl ScriptModule for NotificationsModule {
   const NAME: &str = "notifications";
   const DOC: &str = "Sending notifications, and acting on the plugin's own.";
 
@@ -420,9 +418,9 @@ fn invoke_any_action(mut cx: Cx, id: u32, key: String) {
 }
 
 /// `corona/notification_center`: every app's notifications and the global state.
-pub struct NotificationCenter;
+pub struct NotificationCenterModule;
 
-impl ScriptModule for NotificationCenter {
+impl ScriptModule for NotificationCenterModule {
   const NAME: &str = "notification_center";
   const DOC: &str = "Every app's notifications, do not disturb, and acting on them.";
 
@@ -479,7 +477,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use crate::{module::harness, plugin::paths::Paths};
+  use corona_script::{harness, plugin::paths::Paths};
 
   fn notification(urgency: nt::Urgency, time: SystemTime) -> nt::Notification {
     nt::Notification {
@@ -537,7 +535,7 @@ mod tests {
     let conn = block_on(bus.conn());
     cx.update(|cx| {
       let executor = cx.foreground_executor().clone();
-      executor.block_on(nt::init(cx, &conn, true)).unwrap()
+      executor.block_on(nt::connect(cx, &conn, true)).unwrap()
     });
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths {
@@ -565,7 +563,7 @@ mod tests {
       png(2, 2)
     );
     let body = body.as_str();
-    let (view, cx) = harness::module::<Notifications>(cx, body);
+    let (view, cx) = harness::module::<NotificationsModule>(cx, body);
     wait_until(cx, |cx| {
       view.reports(cx).len() >= 2 && cx.read(|cx| !cx.notifications().list(cx).is_empty())
     });

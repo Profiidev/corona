@@ -442,11 +442,11 @@ pub(crate) mod tests {
 
   use clap::Parser;
   use corona_ipc::IpcCommand;
+  use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
   use corona_shell::commands::{
     brightness::SetBrightness,
     nightlight::Nightlight,
-    notification::{ClearHistory, DoNotDisturb, Show},
     power_profile::{CycleProfile, SetProfile},
     theme::{SetMode, SetTheme},
   };
@@ -612,7 +612,7 @@ pub(crate) mod tests {
       (&["process", "kill-port", "8080"], json!([1]), corona_launcher::ipc::KillPort::COMMAND, json!(8080)),
       (&["timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
       (&["timer", "stop", "7"], json!(null), corona_launcher::ipc::StopTimer::COMMAND, json!(7)),
-      (&["notification", "dismiss"], json!(null), corona_shell::commands::notification::DismissToasts::COMMAND, json!(null)),
+      (&["notification", "dismiss"], json!(null), corona_notifications::commands::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_launcher::ipc::Toggle::COMMAND, json!(null)),
       (&["launcher", "close"], json!(null), corona_launcher::ipc::Close::COMMAND, json!(null)),
       (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40" })),

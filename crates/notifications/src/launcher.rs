@@ -1,20 +1,22 @@
-//! Searching the notification history and dismissing toasts
+//! Searching the notification history, dismissing toasts, do not disturb, clearing
 
 use std::rc::Rc;
 
 use corona_ipc::IpcCommand;
 use corona_launcher::{
   Accessory, Action, Command, Detail, DetailBody, Icon, ListView, Meta, Outcome, Section,
-  kit::{ListSource, opener, watch},
+  kit::{Group, ListSource, Toggle, opener, watch},
   registry, simple,
 };
-use corona_notifications::{Notification, NotificationsExt, strip_markup};
+use corona_surface::{commands::OpenPage, control_center::ControlCenterPage};
+
+use crate::{Notification, NotificationsExt, strip_markup, ui::page::NotificationsPanel};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use corona_components::i18n;
 
-use crate::commands::notification::DismissToasts;
+use crate::commands::{ClearHistory, DismissToasts, Dnd, DoNotDisturb};
 
 /// `time` in the local zone, as `pattern` formats it
 fn when(time: std::time::SystemTime, pattern: &str) -> String {
@@ -98,7 +100,9 @@ impl Command for NotificationRow {
   }
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
+  dnd(cx);
+  tools(cx);
   registry::register_all(
     [
       opener(
@@ -152,4 +156,79 @@ pub fn init(cx: &mut App) {
     ],
     cx,
   );
+}
+
+/// Do not disturb as a toggle
+fn dnd(cx: &mut App) {
+  let toggle = Toggle::command(
+    "dnd",
+    t!("app.launcher.system.dnd"),
+    IconName::BellOff,
+    280.,
+    |cx| Some(cx.notifications().do_not_disturb(cx)),
+    |on, cx| {
+      let dnd = match on {
+        true => Dnd::On,
+        false => Dnd::Off,
+      };
+      DoNotDisturb::handle(dnd, cx).map(|_| ())
+    },
+  );
+  Group::new("system:dnd", vec![toggle])
+    .observe(|notify, cx| {
+      let notifications = cx.notifications().clone();
+      vec![watch(&notifications.do_not_disturb, &notify, cx)]
+    })
+    .register(cx);
+}
+
+/// Opening the notifications page and clearing the history
+fn tools(cx: &mut App) {
+  let commands: Vec<Rc<dyn Command>> = vec![
+    simple(
+      "notification:show",
+      |_| Meta {
+        title: t!("app.launcher.tools.show_notifications").into(),
+        icon: Icon::Tile(IconName::Bell, 280.),
+        keywords: vec!["notification center".into()],
+        ..Default::default()
+      },
+      |_| {
+        vec![Action::sync("open", t!("app.launcher.open"), |_, _, cx| {
+          OpenPage::handle(NotificationsPanel::ID.into(), cx)?;
+          Ok(Outcome::close())
+        })]
+      },
+    ),
+    simple(
+      "notification:clear_history",
+      |cx| Meta {
+        title: t!("app.launcher.tools.clear_notifications").into(),
+        subtitle: Some(
+          t!(
+            "app.launcher.tools.notification_count",
+            count = cx.notifications().list(cx).len()
+          )
+          .into(),
+        ),
+        icon: Icon::Tile(IconName::BellMinus, 280.),
+        keywords: vec!["notifications".into()],
+        ..Default::default()
+      },
+      |_| {
+        vec![
+          Action::sync(
+            "clear",
+            t!("app.launcher.tools.clear_notifications"),
+            |_, _, cx| {
+              ClearHistory::handle((), cx)?;
+              Ok(Outcome::hud(t!("app.launcher.tools.cleared")))
+            },
+          )
+          .destructive(),
+        ]
+      },
+    ),
+  ];
+  registry::register_all(commands, cx);
 }

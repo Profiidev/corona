@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::{Notification, NotificationImage, NotificationsExt, Urgency};
 use corona_components::components::{card::CardExt, window_icon::WindowIcon};
-use corona_notifications::{Notification, NotificationImage, NotificationsExt, Urgency};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement,
   ParentElement, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
@@ -19,7 +19,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::notifications::NotificationsPanel;
+use crate::ui::page::NotificationsPanel;
 use corona_components::time::ago_short;
 use rust_i18n::t;
 

@@ -1,4 +1,4 @@
-//! Screenshot, color picker, settings pages, panels, control center pages, notifications
+//! Screenshot, color picker, settings pages, panels, control center pages
 
 use std::rc::Rc;
 
@@ -7,22 +7,13 @@ use corona_launcher::{
   Action, Command, CommandSource, Icon, ListView, Meta, Outcome, Query, Section, kit::opener,
   registry, simple,
 };
-use corona_notifications::NotificationsExt;
-use corona_surface::{
-  commands::OpenPage,
-  control_center::{ControlCenterExt, ControlCenterPage},
-  panel::PanelState,
-};
+use corona_surface::{commands::OpenPage, control_center::ControlCenterExt, panel::PanelState};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
-  commands::notification::ClearHistory,
-  control_center::NotificationsPanel,
-  overlays::{
-    colorpicker::commands::ColorPicker,
-    screenshot::{commands::Screenshot, mode::Mode},
-  },
+use crate::overlays::{
+  colorpicker::commands::ColorPicker,
+  screenshot::{commands::Screenshot, mode::Mode},
 };
 use corona_settings::SettingsExt;
 
@@ -224,7 +215,6 @@ fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
 
 pub fn init(cx: &mut App) {
   capture(cx);
-  notifications(cx);
   let pages = cx.settings().ids();
   let mut commands: Vec<Rc<dyn Command>> = vec![
     simple(
@@ -326,56 +316,6 @@ fn capture(cx: &mut App) {
             Ok(Outcome::close())
           },
         )]
-      },
-    ),
-  ];
-  registry::register_all(commands, cx);
-}
-
-fn notifications(cx: &mut App) {
-  let commands: Vec<Rc<dyn Command>> = vec![
-    simple(
-      "notification:show",
-      |_| Meta {
-        title: t!("app.launcher.tools.show_notifications").into(),
-        icon: Icon::Tile(IconName::Bell, 280.),
-        keywords: vec!["notification center".into()],
-        ..Default::default()
-      },
-      |_| {
-        vec![Action::sync("open", t!("app.launcher.open"), |_, _, cx| {
-          OpenPage::handle(NotificationsPanel::ID.into(), cx)?;
-          Ok(Outcome::close())
-        })]
-      },
-    ),
-    simple(
-      "notification:clear_history",
-      |cx| Meta {
-        title: t!("app.launcher.tools.clear_notifications").into(),
-        subtitle: Some(
-          t!(
-            "app.launcher.tools.notification_count",
-            count = cx.notifications().list(cx).len()
-          )
-          .into(),
-        ),
-        icon: Icon::Tile(IconName::BellMinus, 280.),
-        keywords: vec!["notifications".into()],
-        ..Default::default()
-      },
-      |_| {
-        vec![
-          Action::sync(
-            "clear",
-            t!("app.launcher.tools.clear_notifications"),
-            |_, _, cx| {
-              ClearHistory::handle((), cx)?;
-              Ok(Outcome::hud(t!("app.launcher.tools.cleared")))
-            },
-          )
-          .destructive(),
-        ]
       },
     ),
   ];

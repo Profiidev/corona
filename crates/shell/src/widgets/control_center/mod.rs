@@ -12,7 +12,6 @@ pub(crate) mod disks;
 mod displays;
 mod hotspot;
 mod network;
-mod notifications;
 mod power;
 
 pub use battery::BatteryButton;
@@ -22,7 +21,6 @@ pub use disks::DisksButton;
 pub use displays::DisplaysButton;
 pub use hotspot::HotspotButton;
 pub use network::NetworkButton;
-pub use notifications::NotificationsButton;
 pub use power::PowerButton;
 
 pub struct ControlCenterButton;

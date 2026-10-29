@@ -6,7 +6,13 @@ use corona_js::ScriptExt;
 use gpui_kit::{App, Window};
 
 pub use manager::{Entry, Script, ScriptManager, Service, call};
-pub use module::{dbus::Buses, register as register_modules, secrets};
+#[cfg(any(test, feature = "test-support"))]
+pub use module::harness;
+pub use module::{
+  dbus::Buses,
+  plugin::{ActionEvent, Hub},
+  register as register_modules, secrets,
+};
 pub use plugin::manager::{PluginManager, PluginStatus};
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");

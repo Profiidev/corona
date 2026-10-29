@@ -6,14 +6,12 @@ mod info;
 mod ip;
 mod monitors;
 mod network;
-mod notifications;
 mod session;
 mod system;
 mod tools;
 mod windows;
 
 use corona_compositor::CompositorExt;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext};
 
 pub fn init(cx: &mut App) {
@@ -34,16 +32,6 @@ pub fn init(cx: &mut App) {
     },
     cx,
   );
-  corona_launcher::hooks::set_notify(
-    |summary, body, cx| {
-      let send = corona_notifications::NotificationsExt::notifications(cx).send(summary, body);
-      cx.spawn(async move |_| {
-        let _ = send.await.log_err();
-      })
-      .detach();
-    },
-    cx,
-  );
   corona_launcher::commands::init(cx);
   corona_clipboard::launcher::init(cx);
   session::init(cx);
@@ -55,7 +43,6 @@ pub fn init(cx: &mut App) {
   info::init(cx);
   network::init(cx);
   drives::init(cx);
-  notifications::init(cx);
   monitors::init(cx);
   ip::init(cx);
 }

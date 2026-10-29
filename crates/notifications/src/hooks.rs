@@ -1,11 +1,12 @@
-//! Runs the plugins, and sends the plugin host's notifications until the notifications
-//! integration takes them over
+//! Sends the notifications of the plugin host and the launcher
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use corona_notifications::{Action, Notifications, Notify, Urgency};
+use corona_utils::error::spawn_logged;
+
+use crate::{Action, Notifications, NotificationsExt, Notify, Urgency};
 use corona_script::hooks::{self, Click, Notice};
-use futures::StreamExt;
+use futures_lite::StreamExt;
 use gpui_kit::App;
 
 /// Clicking the notification, no button
@@ -14,11 +15,17 @@ const CLICK: &str = "default";
 /// What clicking each notification sent does, by its id
 type Clicks = Rc<RefCell<HashMap<u32, Click>>>;
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   let clicks = Clicks::default();
   listen(clicks.clone(), cx);
   hooks::set_notify(move |notice, cx| send(notice, clicks.clone(), cx), cx);
-  corona_script::init(cx).expect("Failed to init plugins");
+  corona_launcher::hooks::set_notify(
+    |summary, body, cx| {
+      let send = cx.notifications().send(summary, body);
+      spawn_logged(cx, send);
+    },
+    cx,
+  );
 }
 
 fn send(notice: Notice, clicks: Clicks, cx: &mut App) {

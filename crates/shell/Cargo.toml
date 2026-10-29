@@ -54,11 +54,6 @@ zstd = "0.14.3"
 rustix = { workspace = true, features = ["fs"] }
 rust-i18n.workspace = true
 qrcode = { version = "0.14.1", default-features = false }
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
-  "playback",
-  "vorbis",
-  "pipewire"
-] }
 
 [dev-dependencies]
 corona_udisks = { workspace = true, features = ["test-support"] }

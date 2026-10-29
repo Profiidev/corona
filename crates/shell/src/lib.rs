@@ -17,7 +17,6 @@ mod locale_keys;
 mod lock;
 mod osds;
 pub mod overlays;
-mod plugins;
 pub mod settings;
 mod widgets;
 
@@ -30,7 +29,6 @@ pub fn init(cx: &mut App) {
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
-  overlays::notification::init(cx);
   overlays::osk::init(cx);
   overlays::polkit::init(cx);
   overlays::drive_password::init(cx);
@@ -119,7 +117,7 @@ fn register_variants(cx: &mut App) {
   settings::init(cx);
   control_center::register_panels(cx);
   widgets::register_widgets(cx);
-  plugins::init(cx);
+  corona_script::init(cx).expect("Failed to init plugins");
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
@@ -138,8 +136,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_brightness::init(cx, system)?;
   corona_auth::init(cx, system);
   corona_mpris::init(cx, &buses).await?;
-  let serve = cx.config().notification.enabled;
-  corona_notifications::init(cx, session, serve).await?;
+  corona_notifications::init(cx, &buses).await?;
   corona_tray::init(cx, &buses).await?;
   idle::init(cx, session);
   corona_script::init_dbus(cx, system, session);

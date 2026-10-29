@@ -14,7 +14,6 @@ use corona_launcher::{
   simple,
 };
 use corona_network_manager::NetworkManagerExt;
-use corona_notifications::NotificationsExt;
 use corona_power::PowerExt;
 use gpui_kit::{App, SharedString, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
@@ -24,7 +23,6 @@ use crate::{
     caffeine::{Request, StayAwake},
     dpms::{Dpms, Power},
     nightlight::{Nightlight, Request as NightlightRequest},
-    notification::{Dnd, DoNotDisturb},
     power_profile::{CycleProfile, SetProfile},
     radio::Wifi,
   },
@@ -33,7 +31,6 @@ use crate::{
 
 pub fn init(cx: &mut App) {
   network(cx);
-  dnd(cx);
   Group::new("system:stay_awake", vec![caffeine()])
     .observe(|notify, cx| {
       let idle = cx.idle().stay_awake.clone();
@@ -85,29 +82,6 @@ fn network(cx: &mut App) {
         watch(&network.wifi_enabled, &notify, cx),
         watch(&bluetooth.adapter, &notify, cx),
       ]
-    })
-    .register(cx);
-}
-
-fn dnd(cx: &mut App) {
-  let toggle = Toggle::command(
-    "dnd",
-    t!("app.launcher.system.dnd"),
-    IconName::BellOff,
-    280.,
-    |cx| Some(cx.notifications().do_not_disturb(cx)),
-    |on, cx| {
-      let dnd = match on {
-        true => Dnd::On,
-        false => Dnd::Off,
-      };
-      DoNotDisturb::handle(dnd, cx).map(|_| ())
-    },
-  );
-  Group::new("system:dnd", vec![toggle])
-    .observe(|notify, cx| {
-      let notifications = cx.notifications().clone();
-      vec![watch(&notifications.do_not_disturb, &notify, cx)]
     })
     .register(cx);
 }

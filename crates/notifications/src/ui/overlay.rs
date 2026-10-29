@@ -7,13 +7,13 @@ use std::{
   time::{Duration, Instant},
 };
 
+use crate::{Filter, NotificationsExt, Urgency, strip_markup};
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
 use corona_config::{
   APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition, observe_section,
 };
-use corona_notifications::{Filter, NotificationsExt, Urgency, strip_markup};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
@@ -27,7 +27,7 @@ use gpui_kit::{
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
 
-use crate::control_center::{NotificationsPanel, ReplyInputs};
+use crate::ui::page::{NotificationsPanel, ReplyInputs};
 use corona_components::filter::filter_regex;
 
 const NAMESPACE: &str = "corona_notification";
@@ -36,7 +36,7 @@ const SLIDE_SPEED: Duration = Duration::from_millis(250);
 /// the timeout of a popup that stays until clicked
 const NEVER: Duration = Duration::MAX;
 
-type Item = corona_notifications::Notification;
+type Item = crate::Notification;
 
 struct Popups {
   items: Vec<Popup>,
@@ -104,7 +104,7 @@ fn filter(config: &NotificationConfig) -> Filter {
   }))
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   cx.set_global(NotificationPopups::default());
   cx.set_global(filter(&cx.config().notification));
   observe_section(

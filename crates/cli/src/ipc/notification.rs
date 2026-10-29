@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::notification::{ClearHistory, DismissToasts, Dnd, DoNotDisturb, Show};
+use corona_notifications::commands::{ClearHistory, DismissToasts, Dnd, DoNotDisturb, Show};
 
 #[derive(Subcommand)]
 pub enum NotificationCommands {

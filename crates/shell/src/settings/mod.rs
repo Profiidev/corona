@@ -27,7 +27,8 @@ mod tests {
       // the integrations' pages, rendered here too
       cx.settings_mut()
         .register::<corona_weather::settings::LocationSettings>()
-        .register::<corona_pipewire::settings::PrivacySettings>();
+        .register::<corona_pipewire::settings::PrivacySettings>()
+        .register::<corona_notifications::settings::NotificationSettings>();
     });
   }
 

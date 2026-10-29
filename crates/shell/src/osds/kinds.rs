@@ -18,12 +18,6 @@ osd_kind!(
   "app.settings.osd.wi_fi.description"
 );
 osd_kind!(
-  DndOsd(ToggleOsd),
-  "dnd",
-  "app.settings.osd.do_not_disturb.title",
-  "app.settings.osd.do_not_disturb.description"
-);
-osd_kind!(
   PowerProfileOsd(ToggleOsd),
   "power_profile",
   "app.settings.osd.power_profile.title",

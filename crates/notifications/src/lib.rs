@@ -1,7 +1,9 @@
 use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
 use anyhow::{Context, Result};
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{
@@ -16,8 +18,16 @@ use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
 pub use crate::state::{Action, Notification, NotificationImage, Urgency, strip_markup};
 
+pub mod commands;
+mod hooks;
+mod launcher;
+pub mod script;
 mod server;
+pub mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Notifications {
@@ -312,7 +322,23 @@ async fn object_server_listening(conn: &Connection) -> Result<()> {
 
 /// `serve`: be the notification daemon. Without it the state stays empty, for
 /// when another daemon is wanted.
-pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
+/// Serves or follows the notifications on the session bus, as `notification.enabled` says,
+/// registers their UI, commands, script modules and the plugin host's and launcher's hooks
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  let serve = cx.config().notification.enabled;
+  connect(cx, &buses.session, serve).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  hooks::init(cx);
+  cx.script_mut()
+    .register::<script::NotificationsModule>()
+    .register::<script::NotificationCenterModule>();
+  Ok(())
+}
+
+pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let (events_tx, events) = flume::unbounded();
   let dbus = DBusProxy::new(conn).await?;
   let mut acquired = dbus.receive_name_acquired().await?;
@@ -435,7 +461,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn, serve))
+        .block_on(connect(cx, &conn, serve))
         .unwrap()
     });
     Running {
@@ -793,7 +819,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn, true))
+        .block_on(connect(cx, &conn, true))
         .unwrap()
     });
     cx.read(|cx| assert!(!cx.notifications().active(cx)));
