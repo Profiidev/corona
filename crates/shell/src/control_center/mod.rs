@@ -1,5 +1,4 @@
 pub(crate) mod brightness;
-mod clipboard;
 pub(crate) mod dashboard;
 mod disks;
 mod displays;
@@ -15,7 +14,6 @@ use gpui_kit::App;
 
 pub use crate::control_center::{
   brightness::BrightnessPanel,
-  clipboard::ClipboardPanel,
   dashboard::DashboardPanel,
   disks::DisksPanel,
   displays::DisplaysPanel,
@@ -33,8 +31,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<DisksPanel>()
     .register::<PowerPanel>()
     .register::<BrightnessPanel>()
-    .register::<DisplaysPanel>()
-    .register::<ClipboardPanel>();
+    .register::<DisplaysPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);
   corona_surface::dashboard::warn_bad_ids(cx);

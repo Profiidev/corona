@@ -1,8 +1,8 @@
 use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
+use corona_clipboard::commands::{ClearClipboard, DeleteClip, ListClipboard};
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::clipboard::{ClearClipboard, DeleteClip, ListClipboard};
 
 use crate::ipc::done;
 

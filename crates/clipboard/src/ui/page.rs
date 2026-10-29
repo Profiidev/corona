@@ -3,8 +3,8 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use corona_clipboard::launcher::{clip, kind_label, swatch};
-use corona_clipboard::{ClipboardExt, Entry, Kind};
+use crate::launcher::{clip, kind_label, swatch};
+use crate::{ClipboardExt, Entry, Kind};
 use corona_components::components::{card::CardExt, modal::modal};
 use corona_launcher::command::Hud;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
@@ -357,7 +357,7 @@ impl Render for ClipboardPanel {
 
 #[cfg(test)]
 mod tests {
-  use corona_clipboard::{ClipboardHistory, Store};
+  use crate::{ClipboardHistory, Store};
   use gpui_kit::{self as gpui, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;

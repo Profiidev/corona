@@ -243,7 +243,7 @@ fn history_view() -> corona_launcher::View {
   .into_view()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   snippets::init(cx);
   registry::register_all(
     [

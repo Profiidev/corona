@@ -9,6 +9,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+corona_compositor.workspace = true
+corona_surface.workspace = true
+corona_ipc.workspace = true
+corona_utils.workspace = true
+serde.workspace = true
+uuid.workspace = true
 corona_config.workspace = true
 corona_components.workspace = true
 corona_launcher.workspace = true

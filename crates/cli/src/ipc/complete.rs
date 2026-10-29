@@ -2,12 +2,12 @@
 
 use clap_complete::CompletionCandidate;
 use corona_bluez::commands::ListDevices;
+use corona_clipboard::commands::ListClipboard;
 use corona_ipc::IpcCommandSend;
 use corona_launcher::ipc::{ListCommands, ListProcesses, ListTimers};
 use corona_mpris::commands::player::ListPlayers;
 use corona_pipewire::commands::audio::{Kind, ListNodes};
 use corona_shell::commands::{
-  clipboard::ListClipboard,
   extras::ListDrives,
   network::{ListVpns, ListWifi},
   window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},

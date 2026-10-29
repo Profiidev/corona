@@ -1,15 +1,19 @@
 //! Clipboard history: a watcher on the data control protocol fills a SQLite store, the
 //! launcher reads it; pasting presses Ctrl+V on a virtual keyboard
 
+pub mod commands;
 pub mod launcher;
 pub mod paste;
 pub mod store;
+pub mod ui;
 pub mod watch;
 
 use std::rc::Rc;
 
 use anyhow::Result;
+use corona_compositor::CompositorExt;
 use corona_config::ConfigProvider;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 pub use store::{Entry, Kind, Store};
@@ -37,7 +41,33 @@ impl ClipboardExt for App {
 }
 
 /// Opens the history and starts watching the clipboard
-pub fn init(cx: &mut App) -> Result<()> {
+/// Opens the history and watches the clipboard, sets the launcher's paster, and registers
+/// the clipboard's UI and commands
+pub fn init(cx: &mut App, _: &Buses) {
+  if let Err(e) = start(cx) {
+    tracing::warn!("clipboard history is off: {e:#}");
+  }
+  corona_launcher::paste::set_paster(
+    |_, cx| {
+      // the window the launcher hands the keyboard back to
+      let terminal = cx
+        .compositor()
+        .active_window(cx)
+        .is_some_and(|w| paste::is_terminal(&w.class));
+      cx.background_spawn(async move {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        paste::paste(terminal)
+      })
+    },
+    cx,
+  );
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+}
+
+/// Opens the history and starts watching the clipboard
+fn start(cx: &mut App) -> Result<()> {
   let store = Store::open(&Store::default_dir()?)?;
   let days = cx.config().launcher.clipboard.image_retention_days;
   if let Err(e) = store.prune_images(days) {

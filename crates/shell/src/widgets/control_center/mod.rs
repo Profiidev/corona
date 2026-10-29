@@ -7,7 +7,6 @@ use corona_surface::control_center::ControlCenter;
 
 mod battery;
 mod brightness;
-mod clipboard;
 pub(crate) mod disks;
 mod displays;
 mod hotspot;
@@ -16,7 +15,6 @@ mod power;
 
 pub use battery::BatteryButton;
 pub use brightness::BrightnessButton;
-pub use clipboard::ClipboardButton;
 pub use disks::DisksButton;
 pub use displays::DisplaysButton;
 pub use hotspot::HotspotButton;

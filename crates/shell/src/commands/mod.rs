@@ -3,7 +3,6 @@ use gpui_kit::App;
 
 pub mod brightness;
 pub mod caffeine;
-pub mod clipboard;
 pub mod dpms;
 pub mod extras;
 pub mod lock_key;
@@ -20,7 +19,6 @@ pub mod window;
 pub fn register_commands(cx: &mut App) {
   brightness::register_commands(cx);
   caffeine::register_commands(cx);
-  clipboard::register_commands(cx);
   dpms::register_commands(cx);
   extras::register_commands(cx);
   lock_key::register_commands(cx);
