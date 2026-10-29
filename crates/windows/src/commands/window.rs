@@ -8,7 +8,7 @@ use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<Toggle>()
     .register::<MoveToWorkspace>()

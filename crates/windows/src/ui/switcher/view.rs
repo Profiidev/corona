@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use corona_capture::LiveCapture;
+use corona_components::assets::image_source;
 use corona_components::components::window_icon::WindowIcon;
 use corona_compositor::{CompositorExt, types};
 use corona_config::ConfigProvider;
@@ -12,12 +13,9 @@ use gpui_kit::{
 };
 use tracing::error;
 
-use crate::overlays::{
-  switcher::{
-    SwitcherState,
-    commands::{Mode, Modifier, Options},
-  },
-  wallpaper,
+use crate::{
+  commands::switcher::{Mode, Modifier, Options},
+  ui::switcher::SwitcherState,
 };
 use corona_surface::overlay::OverlayState;
 use rust_i18n::t;
@@ -345,16 +343,19 @@ impl Switcher {
             true => theme.colors.primary,
             false => gpui_kit::transparent_black(),
           })
-          .when_some(wallpaper::configured(cx), |d, source| {
-            d.child(
-              img(source)
-                .absolute()
-                .inset_0()
-                .size_full()
-                .rounded(theme.radius)
-                .object_fit(ObjectFit::Cover),
-            )
-          })
+          .when_some(
+            cx.config().wallpaper.path.as_deref().map(image_source),
+            |d, source| {
+              d.child(
+                img(source)
+                  .absolute()
+                  .inset_0()
+                  .size_full()
+                  .rounded(theme.radius)
+                  .object_fit(ObjectFit::Cover),
+              )
+            },
+          )
           .when(!window_mode, |d| {
             let id = workspace.id.clone();
             d.cursor_pointer()
@@ -465,10 +466,8 @@ impl Render for Switcher {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    overlays::taskbar::tests::window,
-    test_support::{FakeCompositor, setup, workspace},
-  };
+  use crate::ui::taskbar::tests::window;
+  use corona_surface::testing::{FakeCompositor, setup, workspace};
   use gpui_kit::{
     self as gpui, AnyWindowHandle, TestAppContext, WindowHandle, WindowOptions, base::Root,
     test::TestWindowExt,

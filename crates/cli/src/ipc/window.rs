@@ -2,8 +2,8 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::monitor::{Change, Configure};
-use corona_shell::commands::window::{
+use corona_windows::commands::monitor::{Change, Configure};
+use corona_windows::commands::window::{
   CloseAll, FocusMonitor, KeyboardLayout, Layout, MoveRequest, MoveToMonitor, MoveToWorkspace,
   Place, ShowDesktop, Toggle, WindowToggle,
 };

@@ -1,4 +1,3 @@
-pub mod commands;
 mod view;
 
 use anyhow::{Context as _, Result};
@@ -10,7 +9,7 @@ use gpui_kit::{
   base::Root,
 };
 
-use crate::overlays::switcher::{commands::Options, view::Switcher};
+use crate::{commands::switcher::Options, ui::switcher::view::Switcher};
 use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_switcher";
@@ -33,7 +32,7 @@ impl OverlayState for SwitcherState {
 }
 
 impl SwitcherState {
-  fn cycle(options: Options, cx: &mut App) -> Result<()> {
+  pub(crate) fn cycle(options: Options, cx: &mut App) -> Result<()> {
     if let Some(state) = Self::get(cx)
       && let (Some(view), Some(handle)) = (state.view.upgrade(), state.overlays.first().copied())
     {
@@ -76,10 +75,8 @@ impl SwitcherState {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    overlays::{switcher::commands::Mode, taskbar::tests::window},
-    test_support::{FakeCompositor, setup, workspace},
-  };
+  use crate::{commands::switcher::Mode, ui::taskbar::tests::window};
+  use corona_surface::testing::{FakeCompositor, setup, workspace};
   use gpui_kit::{self as gpui, TestAppContext};
 
   #[gpui::test]

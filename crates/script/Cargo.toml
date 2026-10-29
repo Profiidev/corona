@@ -14,7 +14,6 @@ test-support = ["dep:tempfile", "gpui-kit/test-support"]
 [dependencies]
 tempfile = { workspace = true, optional = true }
 corona_config.workspace = true
-corona_compositor.workspace = true
 corona_idle.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true
@@ -46,6 +45,7 @@ smol.workspace = true
 image = { workspace = true, features = ["jpeg"] }
 
 [dev-dependencies]
+corona_compositor.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }

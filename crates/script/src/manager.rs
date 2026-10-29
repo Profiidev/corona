@@ -453,6 +453,8 @@ export default class Main extends View {
     cx.set_global(plugins.manager());
     cx.update(|cx| {
       crate::register_modules(cx.script_mut());
+      cx.script_mut()
+        .register::<crate::test_support::TestCompositor>();
       if !cx.has_global::<Config>() {
         cx.set_global(Config::default());
       }
@@ -677,61 +679,6 @@ export default class Main extends View {
     assert!(fake.calls.borrow().len() > rendered);
     assert_eq!(fake.calls.borrow().last().unwrap(), "rendered 1");
     drop(script);
-  }
-
-  /// Calls every compositor function, then reports the results through `focusWorkspace`.
-  const COMPOSITOR_CALLS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import * as c from "corona/compositor";
-import * as control from "corona/compositor_control";
-
-export default class Main extends View {
-  render(_cx) {
-    const results = {
-      workspaces: c.listWorkspaces().map((w) => w.name),
-      activeWorkspace: c.activeWorkspace().name,
-      monitors: c.listMonitors().length,
-      activeMonitor: c.activeMonitor().name,
-      windows: c.listWindows().length,
-      activeWindow: c.activeWindow(),
-      keyboardLayout: c.keyboardLayout(),
-      focusWindow: control.focusWindow("0xa"),
-      closeWindow: control.closeWindow("0xb"),
-      cursor: control.cursorPosition(),
-    };
-    c.focusWorkspace(JSON.stringify(results));
-    return v_flex().child("plugin");
-  }
-}
-"#;
-
-  #[gpui::test]
-  fn calls_every_compositor_function(cx: &mut TestAppContext) {
-    let fake = setup(cx);
-    let plugins = Plugins::new();
-    let extra = r#"capabilities = { corona = ["compositor", "compositor_control"] }"#;
-    plugins.add(
-      "a",
-      &manifest("a", extra),
-      &[("main.js", COMPOSITOR_CALLS_VIEW)],
-    );
-    let (_, script) = load(cx, &plugins, "a");
-    let _script = script.unwrap();
-
-    let calls = fake.calls.borrow();
-    let results: serde_json::Value = serde_json::from_str(calls.last().unwrap()).unwrap();
-    assert_eq!(results["workspaces"], serde_json::json!(["1", "2"]));
-    assert_eq!(results["activeWorkspace"], "1");
-    assert_eq!(results["monitors"], 0);
-    assert_eq!(results["activeMonitor"], "DP-1");
-    assert_eq!(results["windows"], 0);
-    assert!(results["activeWindow"].is_null());
-    assert!(results["keyboardLayout"].is_null());
-    // `undefined` is left out of the JSON
-    assert!(results.get("focusWindow").is_none());
-    assert!(results.get("closeWindow").is_none());
-    assert_eq!(results["cursor"], serde_json::json!({ "x": 3, "y": 4 }));
   }
 
   #[gpui::test]
@@ -1619,13 +1566,7 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 5] = [
-    "compositor",
-    "compositor_control",
-    "secrets",
-    "desktop",
-    "idle",
-  ];
+  const ALL_MODULES: [&str; 3] = ["secrets", "desktop", "idle"];
 
   fn dts(plugins: &Plugins, id: &str) -> String {
     fs::read_to_string(plugins.paths.local.join(id).join("gpui-kit.d.ts")).unwrap()

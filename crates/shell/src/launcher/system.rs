@@ -14,10 +14,7 @@ use corona_launcher::{
 use gpui_kit::{App, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
 
-use crate::commands::{
-  caffeine::{Request, StayAwake},
-  dpms::{Dpms, Power},
-};
+use crate::commands::caffeine::{Request, StayAwake};
 
 pub fn init(cx: &mut App) {
   Group::new("system:stay_awake", vec![caffeine()])
@@ -27,7 +24,6 @@ pub fn init(cx: &mut App) {
     })
     .register(cx);
   Group::new("system", vec![dark_mode(), theme()]).register(cx);
-  dpms(cx);
 }
 
 fn theme() -> Rc<dyn Command> {
@@ -40,29 +36,6 @@ fn theme() -> Rc<dyn Command> {
     |name, cx| set_theme(name.to_string(), cx),
     themes,
   )
-}
-
-fn dpms(cx: &mut App) {
-  let off = simple(
-    "dpms:off",
-    |_| Meta {
-      title: t!("app.launcher.system.displays_off").into(),
-      icon: Icon::Tile(IconName::MonitorOff, 250.),
-      keywords: vec!["dpms".into(), "screen".into(), "monitor".into()],
-      ..Default::default()
-    },
-    |_| {
-      vec![Action::sync(
-        "off",
-        t!("app.launcher.system.displays_off"),
-        |_, _, cx| {
-          Dpms::handle(Power::Off, cx)?;
-          Ok(Outcome::close())
-        },
-      )]
-    },
-  );
-  Group::new("system:dpms", vec![off]).register(cx);
 }
 
 /// `caffeine`, `caffeine off`, `caffeine 30` for half an hour

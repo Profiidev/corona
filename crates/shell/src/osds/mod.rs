@@ -5,16 +5,10 @@ use gpui_kit::App;
 use kinds::*;
 
 mod caffeine;
-mod keyboard;
 mod kinds;
-pub(crate) mod lock_keys;
 
 pub fn init(cx: &mut App) {
-  cx.osd_mut()
-    .register::<KeyboardLayoutOsd>()
-    .register::<LockKeysOsd>()
-    .register::<StayAwakeOsd>();
-  keyboard::init(cx);
+  cx.osd_mut().register::<StayAwakeOsd>();
   caffeine::init(cx);
 }
 

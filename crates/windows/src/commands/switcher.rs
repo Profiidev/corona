@@ -4,9 +4,9 @@ use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, Modifiers};
 use serde::{Deserialize, Serialize};
 
-use crate::overlays::switcher::SwitcherState;
+use crate::ui::switcher::SwitcherState;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Cycle>();
 }
 
@@ -46,7 +46,7 @@ pub enum Modifier {
 }
 
 impl Modifier {
-  pub(super) fn held(self, modifiers: &Modifiers) -> bool {
+  pub(crate) fn held(self, modifiers: &Modifiers) -> bool {
     match self {
       Modifier::Super => modifiers.platform,
       Modifier::Alt => modifiers.alt,

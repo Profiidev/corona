@@ -161,6 +161,35 @@ pub(crate) mod test_support {
     }
   }
 
+  /// `corona/compositor` as the manager's tests use it, the module itself is corona_windows':
+  /// the workspaces, and focusing one, which views report through
+  pub struct TestCompositor;
+
+  /// Switches to workspace `workspace`
+  #[specta::specta]
+  fn focus_workspace(
+    compositor: corona_js::Glob<Compositor>,
+    workspace: String,
+  ) -> corona_js::Throws<()> {
+    compositor.focus_workspace(&workspace).into()
+  }
+
+  impl corona_js::ScriptModule for TestCompositor {
+    const NAME: &str = "compositor";
+    const DOC: &str = "Workspaces, and switching them.";
+
+    fn module(_: &corona_js::PluginRef, m: &mut corona_js::ModuleBuilder, _: &mut gpui_kit::App) {
+      use corona_compositor::CompositorExt;
+      m.watch(
+        "listWorkspaces",
+        "",
+        |cx| cx.compositor().workspaces.clone(),
+        |cx| corona_js::Json(cx.compositor().list_workspaces(cx).to_vec()),
+      );
+      corona_js::host_module!(m, { sync: [focus_workspace] });
+    }
+  }
+
   /// gpui-kit, the default config and a compositor that records what it is told to focus,
   /// which views report through
   pub fn setup(cx: &mut TestAppContext) -> Rc<Fake> {

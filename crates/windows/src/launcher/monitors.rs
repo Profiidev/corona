@@ -83,7 +83,7 @@ fn row(monitor: &Monitor, others: Vec<String>) -> Rc<dyn corona_launcher::Comman
   )
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register(
     opener(
       "monitor:settings",

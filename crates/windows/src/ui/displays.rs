@@ -493,7 +493,7 @@ mod tests {
   fn renders_and_changes_monitors(cx: &mut gpui_kit::TestAppContext) {
     use gpui_kit::test::TestWindowExt;
 
-    use crate::test_support::{FakeCompositor, setup};
+    use corona_surface::testing::{FakeCompositor, setup};
 
     let fake = setup(
       FakeCompositor {

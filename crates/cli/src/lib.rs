@@ -17,6 +17,8 @@ mod types;
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
   registry
+    .register::<corona_windows::script::CompositorModule>()
+    .register::<corona_windows::script::CompositorControlModule>()
     .register::<corona_auth::script::AuthModule>()
     .register::<corona_network_manager::script::NetworkModule>()
     .register::<corona_brightness::script::BrightnessModule>()

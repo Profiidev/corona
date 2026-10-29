@@ -34,7 +34,8 @@ members = [
   "crates/udisks",
   "crates/osk",
   "crates/settings",
-  "crates/js"
+  "crates/js",
+  "crates/windows"
 ]
 
 [workspace.package]
@@ -78,6 +79,7 @@ corona_clipboard = { path = "crates/clipboard" }
 corona_udisks = { path = "crates/udisks" }
 corona_osk = { path = "crates/osk" }
 corona_settings = { path = "crates/settings" }
+corona_windows = { path = "crates/windows" }
 corona_js = { path = "crates/js" }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", tag = "v0.7.3" }
 anyhow = "1.0.104"

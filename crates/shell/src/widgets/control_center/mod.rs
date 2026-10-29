@@ -5,10 +5,6 @@ use uuid::Uuid;
 
 use corona_surface::control_center::ControlCenter;
 
-mod displays;
-
-pub use displays::DisplaysButton;
-
 pub struct ControlCenterButton;
 
 impl Widget for ControlCenterButton {

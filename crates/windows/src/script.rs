@@ -35,9 +35,9 @@ fn cursor_position(compositor: Glob<cc::Compositor>) -> Throws<Json<Position>> {
 }
 
 /// `corona/compositor`
-pub struct Compositor;
+pub struct CompositorModule;
 
-impl ScriptModule for Compositor {
+impl ScriptModule for CompositorModule {
   const NAME: &str = "compositor";
   const DOC: &str = "Workspaces, monitors and windows, and switching workspaces.";
 
@@ -89,9 +89,9 @@ impl ScriptModule for Compositor {
 }
 
 /// `corona/compositor_control`: acting on other apps' windows and tracking the cursor.
-pub struct CompositorControl;
+pub struct CompositorControlModule;
 
-impl ScriptModule for CompositorControl {
+impl ScriptModule for CompositorControlModule {
   const NAME: &str = "compositor_control";
   const DOC: &str = "Focusing and closing other apps' windows, and the cursor position.";
 
@@ -110,7 +110,8 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use crate::module::harness;
+  use corona_script::harness;
+  use corona_surface::testing::{FakeCompositor, setup};
 
   /// Has one workspace and no windows, fails everything it is told to do.
   struct Down;
@@ -188,6 +189,61 @@ mod tests {
   }
 
   #[gpui::test]
+  fn calls_every_compositor_function(cx: &mut TestAppContext) {
+    let fake = setup(
+      FakeCompositor {
+        workspaces: vec![
+          corona_surface::testing::workspace("1", "DP-1"),
+          corona_surface::testing::workspace("2", "DP-1"),
+        ],
+        ..Default::default()
+      },
+      cx,
+    );
+    let body = r#"
+    report({
+      workspaces: m.listWorkspaces().map((w) => w.name),
+      activeWorkspace: m.activeWorkspace().name,
+      monitors: m.listMonitors().length,
+      activeMonitor: m.activeMonitor().name,
+      windows: m.listWindows().length,
+      activeWindow: m.activeWindow(),
+      keyboardLayout: m.keyboardLayout(),
+      focusWorkspace: m.focusWorkspace("2"),
+    });"#;
+    let (view, cx) = harness::module::<CompositorModule>(cx, body);
+    let last = view.last(cx);
+    assert_eq!(last["workspaces"], json!(["1", "2"]));
+    assert_eq!(last["activeWorkspace"], "1");
+    assert_eq!(last["monitors"], 0);
+    assert_eq!(last["activeMonitor"], "DP-1");
+    assert_eq!(last["windows"], 0);
+    assert!(last["activeWindow"].is_null());
+    assert!(last["keyboardLayout"].is_null());
+    assert!(fake.calls.borrow().contains(&"workspace 2".to_string()));
+  }
+
+  #[gpui::test]
+  fn calls_every_control_function(cx: &mut TestAppContext) {
+    let fake = setup(FakeCompositor::default(), cx);
+    let body = r#"
+    report({
+      focusWindow: m.focusWindow("0xa"),
+      closeWindow: m.closeWindow("0xb"),
+      cursor: m.cursorPosition(),
+    });"#;
+    let (view, cx) = harness::module::<CompositorControlModule>(cx, body);
+    let last = view.last(cx);
+    // `undefined` is left out of the JSON
+    assert!(last.get("focusWindow").is_none());
+    assert!(last.get("closeWindow").is_none());
+    assert_eq!(last["cursor"], json!({ "x": 0, "y": 0 }));
+    let calls = fake.calls.borrow();
+    assert!(calls.contains(&"window 0xa".to_string()), "{calls:?}");
+    assert!(calls.contains(&"close 0xb".to_string()), "{calls:?}");
+  }
+
+  #[gpui::test]
   fn failures_and_bad_arguments_throw(cx: &mut TestAppContext) {
     install(cx);
     let body = r#"
@@ -197,7 +253,7 @@ mod tests {
       control: ["focusWindow", "closeWindow", "cursorPosition"].every((f) => !(f in m)),
       thrown: attempt(() => m.focusWorkspace(3)),
     });"#;
-    let (view, cx) = harness::module::<Compositor>(cx, body);
+    let (view, cx) = harness::module::<CompositorModule>(cx, body);
     let last = view.last(cx);
     let down = json!({ "message": "compositor down" });
     assert_eq!(last["focusWorkspace"], down);
@@ -214,7 +270,7 @@ mod tests {
       closeWindow: attempt(() => m.closeWindow("0xa")),
       cursorPosition: attempt(() => m.cursorPosition()),
     });"#;
-    let (view, cx) = harness::module::<CompositorControl>(cx, body);
+    let (view, cx) = harness::module::<CompositorControlModule>(cx, body);
     let last = view.last(cx);
     for name in ["focusWindow", "closeWindow", "cursorPosition"] {
       assert_eq!(
@@ -228,7 +284,7 @@ mod tests {
   #[gpui::test]
   fn renders_again_only_for_what_it_read(cx: &mut TestAppContext) {
     install(cx);
-    let (view, cx) = harness::module::<Compositor>(cx, "report(m.activeWindow());");
+    let (view, cx) = harness::module::<CompositorModule>(cx, "report(m.activeWindow());");
     assert_eq!(view.last(cx), json!(null));
 
     let rendered = view.reports(cx).len();

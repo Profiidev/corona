@@ -19,11 +19,11 @@ use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
 };
 use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
-use corona_shell::commands::dpms::{Dpms, Power};
-use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
-use corona_shell::overlays::switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options};
 use corona_surface::commands::{ListPages, OpenPage};
+use corona_windows::commands::dpms::{Dpms, Power};
+use corona_windows::commands::lock_key::{LockKey, Pressed};
+use corona_windows::commands::switcher::{Cycle, Mode as SwitcherMode, Modifier, Options};
 
 use crate::ipc::{
   audio::AudioCommands,
@@ -579,14 +579,14 @@ pub(crate) mod tests {
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
       (&["control-center", "audio"], json!(null), OpenPage::COMMAND, json!("audio")),
-      (&["window", "toggle", "floating"], json!(null), corona_shell::commands::window::Toggle::COMMAND, json!(["Floating", null])),
-      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_shell::commands::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
-      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_shell::commands::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
-      (&["window", "close-all", "--keep-focused"], json!(2), corona_shell::commands::window::CloseAll::COMMAND, json!(true)),
-      (&["monitor", "focus", "next"], json!(null), corona_shell::commands::window::FocusMonitor::COMMAND, json!("next")),
-      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_shell::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
-      (&["show-desktop"], json!(null), corona_shell::commands::window::ShowDesktop::COMMAND, json!(null)),
-      (&["keyboard-layout", "next"], json!(["de", "us"]), corona_shell::commands::window::KeyboardLayout::COMMAND, json!("next")),
+      (&["window", "toggle", "floating"], json!(null), corona_windows::commands::window::Toggle::COMMAND, json!(["Floating", null])),
+      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_windows::commands::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
+      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_windows::commands::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
+      (&["window", "close-all", "--keep-focused"], json!(2), corona_windows::commands::window::CloseAll::COMMAND, json!(true)),
+      (&["monitor", "focus", "next"], json!(null), corona_windows::commands::window::FocusMonitor::COMMAND, json!("next")),
+      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_windows::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
+      (&["show-desktop"], json!(null), corona_windows::commands::window::ShowDesktop::COMMAND, json!(null)),
+      (&["keyboard-layout", "next"], json!(["de", "us"]), corona_windows::commands::window::KeyboardLayout::COMMAND, json!("next")),
       (&["audio", "default", "outputs", "Speakers"], json!(null), corona_pipewire::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
       (&["audio", "stream", "firefox", "40"], json!(null), corona_pipewire::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
       (&["audio", "move", "firefox", "Headphones"], json!(null), corona_pipewire::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),

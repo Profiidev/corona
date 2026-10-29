@@ -149,7 +149,7 @@ fn workspaces_view() -> corona_launcher::View {
   .into_view()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register_all(
     [
       opener(
@@ -224,7 +224,7 @@ pub fn init(cx: &mut App) {
 }
 
 /// The focused window's toggles, layouts, moves; close all; show desktop; monitors; layouts
-pub fn init_actions(cx: &mut App) {
+pub(crate) fn register_actions(cx: &mut App) {
   use crate::commands::window::{
     CloseAll, FocusMonitor, KeyboardLayout, Layout, MoveRequest, MoveToMonitor, MoveToWorkspace,
     Place, ShowDesktop, Toggle, WindowToggle,

@@ -1,5 +1,4 @@
 pub(crate) mod dashboard;
-mod displays;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -7,13 +6,11 @@ use corona_surface::{
 };
 use gpui_kit::App;
 
-pub use crate::control_center::{dashboard::DashboardPanel, displays::DisplaysPanel};
+pub use crate::control_center::dashboard::DashboardPanel;
 
 pub fn register_panels(cx: &mut App) {
   cx.panel().register::<ControlCenter>();
-  cx.control_center_mut()
-    .register::<DashboardPanel>()
-    .register::<DisplaysPanel>();
+  cx.control_center_mut().register::<DashboardPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);
   corona_surface::dashboard::warn_bad_ids(cx);

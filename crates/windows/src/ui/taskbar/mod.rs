@@ -31,7 +31,7 @@ use gpui_kit::{
 };
 use tracing::error;
 
-use crate::overlays::taskbar::{menu::TaskbarMenu, preview::Preview};
+use crate::ui::taskbar::{menu::TaskbarMenu, preview::Preview};
 
 const NAMESPACE: &str = "corona_taskbar";
 const PADDING: f32 = 10.;
@@ -541,7 +541,7 @@ pub(crate) mod tests {
     assert!(menu::size(&[]).height > px(0.));
   }
 
-  use crate::test_support::{FakeCompositor, setup};
+  use corona_surface::testing::{FakeCompositor, setup};
   use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
 
   fn open_taskbar(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Taskbar>) {

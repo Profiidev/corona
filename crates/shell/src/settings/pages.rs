@@ -44,10 +44,6 @@ settings_page!(OsdSettings, "osd", 40, |cx| osd(cx));
 settings_page!(ControlCenterSettings, "control_center", 50, |cx| {
   control_center()
 });
-settings_page!(TaskbarSettings, "taskbar", 60, |cx| taskbar());
-settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
-  window_switcher()
-});
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 settings_page!(SystemSettings, "system", 160, |cx| system(cx));
 
@@ -56,8 +52,6 @@ pub(super) fn register(cx: &mut App) {
     .register::<WallpaperSettings>()
     .register::<OsdSettings>()
     .register::<ControlCenterSettings>()
-    .register::<TaskbarSettings>()
-    .register::<WindowSwitcherSettings>()
     .register::<IdleSettings>()
     .register::<SystemSettings>();
 }
@@ -280,98 +274,6 @@ fn control_center() -> SettingPage {
             set: |c, v| c.control_center.cards = v,
           },
         ]),
-      ],
-    )],
-  )
-}
-
-fn taskbar() -> SettingPage {
-  page(
-    t!("app.settings.taskbar.title"),
-    IconName::PanelBottom,
-    vec![group(
-      t!("app.settings.taskbar.groups.taskbar"),
-      vec![
-        item(
-          t!("app.settings.taskbar.taskbar.title"),
-          t!("app.settings.taskbar.taskbar.description"),
-          switch(|c| c.taskbar.enabled, |c, v| c.taskbar.enabled = v),
-        ),
-        item(
-          t!("app.settings.taskbar.icon_size.title"),
-          t!("app.settings.taskbar.icon_size.description"),
-          number(
-            "taskbar.icon_size",
-            (16., 96., 2.),
-            |c| c.taskbar.icon_size.into(),
-            |c, v| c.taskbar.icon_size = v as f32,
-          ),
-        ),
-        item(
-          t!("app.settings.taskbar.window_previews.title"),
-          t!("app.settings.taskbar.window_previews.description"),
-          switch(|c| c.taskbar.previews, |c, v| c.taskbar.previews = v),
-        ),
-        item(
-          t!("app.settings.taskbar.previews_at_most.title"),
-          t!("app.settings.taskbar.previews_at_most.description"),
-          number(
-            "taskbar.preview_max_windows",
-            (1., 20., 1.),
-            |c| c.taskbar.preview_max_windows as f64,
-            |c, v| c.taskbar.preview_max_windows = v as usize,
-          ),
-        ),
-        item(
-          t!("app.settings.taskbar.background_opacity.title"),
-          t!("app.settings.taskbar.background_opacity.description"),
-          slider(
-            "taskbar.background_opacity",
-            OPACITY,
-            |c| c.taskbar.background_opacity,
-            |c, v| c.taskbar.background_opacity = v,
-          ),
-        ),
-      ],
-    )],
-  )
-}
-
-fn window_switcher() -> SettingPage {
-  page(
-    t!("app.settings.window_switcher.title"),
-    IconName::AppWindow,
-    vec![group(
-      t!("app.settings.window_switcher.groups.window_switcher"),
-      vec![
-        item(
-          t!("app.settings.window_switcher.focused_monitor_only.title"),
-          t!("app.settings.window_switcher.focused_monitor_only.description"),
-          switch(
-            |c| c.window_switcher.current_monitor_only,
-            |c, v| c.window_switcher.current_monitor_only = v,
-          ),
-        ),
-        item(
-          t!("app.settings.window_switcher.card_height.title"),
-          t!("app.settings.window_switcher.card_height.description"),
-          number(
-            "window_switcher.card_height",
-            (80., 480., 10.),
-            |c| c.window_switcher.card_height.into(),
-            |c, v| c.window_switcher.card_height = v as f32,
-          ),
-        ),
-        item(
-          t!("app.settings.window_switcher.backdrop.title"),
-          t!("app.settings.window_switcher.backdrop.description"),
-          slider(
-            "window_switcher.backdrop_opacity",
-            OPACITY,
-            |c| c.window_switcher.backdrop_opacity,
-            |c, v| c.window_switcher.backdrop_opacity = v,
-          ),
-        ),
       ],
     )],
   )

@@ -24,10 +24,7 @@ pub fn init(cx: &mut App) {
   register_variants(cx);
   launcher::init(cx);
   osds::init(cx);
-  overlays::switcher::init(cx);
-  overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
-  overlays::screen_corners::init(cx);
 
   BarState::spawn_bars(cx);
   watch_config(cx);
@@ -81,7 +78,6 @@ fn init_ipc(cx: &mut App) {
   // binds first: a second instance exits before it starts anything
   corona_ipc::serve(cx);
   corona_surface::commands::register_commands(cx);
-  overlays::register_commands(cx);
   commands::register_commands(cx);
 }
 
@@ -122,6 +118,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
   corona_osk::init(cx, &buses);
+  corona_windows::init(cx, &buses);
   corona_sysinfo::init(cx, &buses);
   corona_bluez::init(cx, &buses).await?;
   corona_network_manager::init(cx, &buses).await?;
