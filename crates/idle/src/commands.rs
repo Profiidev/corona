@@ -1,14 +1,14 @@
 use std::time::Duration;
 
+use crate::{Idle, IdleExt};
 use anyhow::{Result, ensure};
-use corona_idle::{Idle, IdleExt};
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, BorrowAppContext};
 use serde::{Deserialize, Serialize};
 
 use corona_ipc::Switch;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<StayAwake>();
 }
 
@@ -61,7 +61,7 @@ mod tests {
     cx.executor().allow_parking();
     let bus = TestBus::new();
     let session = futures::executor::block_on(bus.conn());
-    cx.update(|cx| corona_idle::init(cx, &session, |_, _, _| {}));
+    cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
     let send = |switch, minutes, cx: &mut TestAppContext| {
       cx.update(|cx| StayAwake::handle(Request { switch, minutes }, cx))
     };

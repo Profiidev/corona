@@ -9,6 +9,7 @@ use corona_capture::{
   commands::{ColorPicker, Screenshot},
   ui::screenshot::mode::Mode,
 };
+use corona_idle::commands::{Request as StayAwakeRequest, StayAwake};
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
 use corona_mpris::commands::media::{Action as MediaAction, Media};
@@ -18,7 +19,6 @@ use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
 };
-use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::parse_level;
 use corona_surface::commands::{ListPages, OpenPage};
 use corona_windows::commands::dpms::{Dpms, Power};

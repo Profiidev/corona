@@ -10,10 +10,8 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub mod commands;
 mod control_center;
-mod idle;
 mod launcher;
 mod locale_keys;
-mod osds;
 pub mod overlays;
 pub mod settings;
 mod widgets;
@@ -23,7 +21,6 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   launcher::init(cx);
-  osds::init(cx);
   overlays::wallpaper::init(cx);
 
   BarState::spawn_bars(cx);
@@ -131,7 +128,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_auth::init(cx, &buses);
   corona_mpris::init(cx, &buses).await?;
   corona_tray::init(cx, &buses).await?;
-  idle::init(cx, session);
+  corona_idle::init(cx, &buses);
   corona_script::init_dbus(cx, system, session);
 
   Ok(())

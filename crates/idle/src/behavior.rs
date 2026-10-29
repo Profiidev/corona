@@ -3,9 +3,9 @@
 
 use std::{process::Command, time::Duration};
 
+use crate::{Idle, IdleExt};
 use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
-use corona_idle::{Idle, IdleExt};
 use corona_ipc::IpcCommand;
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
@@ -13,8 +13,8 @@ use gpui_kit::{App, BorrowAppContext};
 
 use corona_auth::commands::{Action, Session};
 
-pub fn init(cx: &mut App, session: &zbus::Connection) {
-  corona_idle::init(cx, session, changed);
+pub(crate) fn init(cx: &mut App, session: &zbus::Connection) {
+  crate::start(cx, session, changed);
   watch(cx);
   observe_section(cx, |c| &c.idle, |_, cx| watch(cx));
   // logind's own idle action and sleep wait too
@@ -88,7 +88,7 @@ mod tests {
   use corona_config::{Config, IdleAction, IdleBehavior, IdleConfig};
   use gpui_kit::{self as gpui, TestAppContext};
 
-  use crate::test_support::{FakeCompositor, setup};
+  use corona_surface::testing::{FakeCompositor, setup};
 
   #[test]
   fn timeouts() {

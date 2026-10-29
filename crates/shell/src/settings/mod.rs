@@ -31,7 +31,8 @@ mod tests {
         .register::<corona_osk::settings::OskSettings>()
         .register::<corona_auth::settings::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()
-        .register::<corona_windows::settings::WindowSwitcherSettings>();
+        .register::<corona_windows::settings::WindowSwitcherSettings>()
+        .register::<corona_idle::settings::IdleSettings>();
     });
   }
 

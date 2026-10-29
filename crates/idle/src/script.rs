@@ -1,7 +1,8 @@
 use std::time::Duration;
 
+use crate as ci;
+use crate::IdleExt;
 use anyhow::{Result, ensure};
-use corona_idle::{self as ci, IdleExt};
 use corona_js::{Cx, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::{App, BorrowAppContext};
 use specta::specta;
@@ -26,9 +27,9 @@ fn stay_awake_for(mut cx: Cx, minutes: u32) -> Throws<()> {
 }
 
 /// `corona/idle`
-pub struct Idle;
+pub struct IdleModule;
 
-impl ScriptModule for Idle {
+impl ScriptModule for IdleModule {
   const NAME: &str = "idle";
   const DOC: &str = "Staying awake, and whether idling is held back.";
 
@@ -57,7 +58,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use crate::module::harness;
+  use corona_script::harness;
 
   #[gpui::test]
   fn stays_awake(cx: &mut TestAppContext) {
@@ -70,7 +71,7 @@ mod tests {
     cx.executor().allow_parking();
     let bus = TestBus::new();
     let session = block_on(bus.conn());
-    cx.update(|cx| corona_idle::init(cx, &session, |_, _, _| {}));
+    cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
@@ -78,7 +79,7 @@ mod tests {
       m.stayAwakeFor(30);
     }
     report({ stayAwake: m.stayAwake(), inhibited: m.inhibited() });"#;
-    let (view, cx) = harness::module::<Idle>(cx, body);
+    let (view, cx) = harness::module::<IdleModule>(cx, body);
     wait_until(cx, |cx| view.reports(cx).len() >= 2);
     assert_eq!(
       view.reports(cx)[0],

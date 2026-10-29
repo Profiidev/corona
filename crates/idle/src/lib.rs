@@ -14,7 +14,26 @@ use wayland_protocols::ext::idle_notify::v1::client::{
   ext_idle_notifier_v1::ExtIdleNotifierV1,
 };
 
+mod behavior;
+pub mod commands;
+mod launcher;
 mod screensaver;
+pub mod script;
+pub mod settings;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
+
+/// Watches input and runs the `[idle]` behaviors, serves the D-Bus idle inhibits, and
+/// registers stay awake's OSD, tile, commands, the idle settings page and the script module
+pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
+  behavior::init(cx, &buses.session);
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  corona_js::ScriptExt::script_mut(cx).register::<script::IdleModule>();
+}
 
 /// How often the watcher looks for new timeouts while the compositor is quiet
 #[cfg(not(test))]
@@ -42,7 +61,7 @@ impl Global for Idle {}
 /// Starts watching, `on_change(name, idle)` runs when the time named `name`
 /// passes without input (`true`) and when input follows (`false`).
 /// `session` serves the D-Bus idle inhibits.
-pub fn init(
+pub(crate) fn start(
   cx: &mut App,
   session: &zbus::Connection,
   on_change: impl Fn(&str, bool, &mut App) + 'static,
@@ -459,7 +478,7 @@ mod tests {
     let events = Events::default();
     let seen = events.clone();
     cx.update(|cx| {
-      init(cx, &session, move |name, idle, _| {
+      super::start(cx, &session, move |name, idle, _| {
         seen.borrow_mut().push((name.into(), idle))
       })
     });

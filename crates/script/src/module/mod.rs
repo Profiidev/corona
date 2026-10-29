@@ -7,7 +7,6 @@ use corona_js::ScriptRegistry;
 pub mod dbus;
 pub mod desktop;
 pub mod i18n;
-pub mod idle;
 pub mod plugin;
 pub mod secrets;
 pub mod settings;
@@ -17,7 +16,6 @@ pub mod surface;
 pub fn register(registry: &mut ScriptRegistry) {
   registry
     .register::<desktop::Desktop>()
-    .register::<idle::Idle>()
     .register::<secrets::Secrets>();
 }
 

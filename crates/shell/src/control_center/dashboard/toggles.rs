@@ -1,14 +1,13 @@
 use crate::control_center::dashboard::DashboardPanel;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
-use corona_idle::{Idle, IdleExt};
 use corona_surface::{
   control_center::ControlCenter,
   dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
 };
 use gpui_kit::{
-  App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
-  ParentElement, SharedString, Styled, Subscription, Window,
+  App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, SharedString,
+  Styled, Subscription, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -82,19 +81,9 @@ action!(
   None,
   |cx| []
 );
-action!(
-  StayAwake,
-  "stay_awake",
-  "app.dashboard.stay_awake",
-  stay_awake,
-  None,
-  |cx| [cx.idle().stay_awake,]
-);
 /// Registers every tile, in the order the settings offer them
 pub(crate) fn register(cx: &mut App) {
-  cx.dashboard_mut()
-    .quick_action::<DarkMode>()
-    .quick_action::<StayAwake>();
+  cx.dashboard_mut().quick_action::<DarkMode>();
 }
 
 /// The configured tiles, None for none
@@ -175,18 +164,6 @@ fn dark_mode(cx: &App) -> Toggle {
     status: on_off(dark),
     active: dark,
     on_click: Some(Box::new(toggle_mode)),
-  }
-}
-
-fn stay_awake(cx: &App) -> Toggle {
-  let on = cx.idle().stay_awake(cx);
-  Toggle {
-    icon: IconName::Coffee,
-    status: on_off(on),
-    active: on,
-    on_click: Some(Box::new(move |cx| {
-      cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
-    })),
   }
 }
 
