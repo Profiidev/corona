@@ -1,4 +1,3 @@
-pub(crate) mod brightness;
 pub(crate) mod dashboard;
 mod disks;
 mod displays;
@@ -12,7 +11,6 @@ use corona_surface::{
 use gpui_kit::App;
 
 pub use crate::control_center::{
-  brightness::BrightnessPanel,
   dashboard::DashboardPanel,
   disks::DisksPanel,
   displays::DisplaysPanel,
@@ -27,7 +25,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<NetworkPanel>()
     .register::<HotspotPanel>()
     .register::<DisksPanel>()
-    .register::<BrightnessPanel>()
     .register::<DisplaysPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);

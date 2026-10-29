@@ -5,13 +5,11 @@ use uuid::Uuid;
 
 use corona_surface::control_center::ControlCenter;
 
-mod brightness;
 pub(crate) mod disks;
 mod displays;
 mod hotspot;
 mod network;
 
-pub use brightness::BrightnessButton;
 pub use disks::DisksButton;
 pub use displays::DisplaysButton;
 pub use hotspot::HotspotButton;

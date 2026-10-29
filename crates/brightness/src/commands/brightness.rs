@@ -1,13 +1,13 @@
+use crate::{BrightnessExt, Display};
 use anyhow::{Result, bail};
-use corona_brightness::{BrightnessExt, Display};
 use corona_ipc::{IpcCommand, IpcExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::control_center::dashboard::sliders::display;
+use crate::ui::slider::display;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<SetBrightness>()
     .register::<ListMonitors>();
@@ -96,7 +96,7 @@ impl IpcCommand for ListMonitors {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use corona_brightness::{DisplayKind, Unavailable};
+  use crate::{DisplayKind, Unavailable};
 
   fn display(id: &str, output: Option<&str>, brightness: u32, max: u32) -> Display {
     Display {

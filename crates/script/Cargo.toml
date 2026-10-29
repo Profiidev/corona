@@ -17,7 +17,6 @@ corona_config.workspace = true
 corona_compositor.workspace = true
 corona_network_manager.workspace = true
 corona_idle.workspace = true
-corona_brightness.workspace = true
 corona_auth.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true

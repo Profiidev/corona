@@ -1,4 +1,5 @@
-use corona_brightness::{self as br, BrightnessExt};
+use crate as br;
+use crate::BrightnessExt;
 use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
 use serde::Serialize;
@@ -116,9 +117,9 @@ async fn set_brightness(
 }
 
 /// `corona/brightness`
-pub struct Brightness;
+pub struct BrightnessModule;
 
-impl ScriptModule for Brightness {
+impl ScriptModule for BrightnessModule {
   const NAME: &str = "brightness";
   const DOC: &str = "Screen brightness.";
 
@@ -154,7 +155,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use crate::module::harness;
+  use corona_script::harness;
 
   #[gpui::test]
   fn reads_and_failures(cx: &mut TestAppContext) {
@@ -166,7 +167,7 @@ mod tests {
     config.brightness.enable_ddcutil = false;
     cx.set_global(config);
     unsafe { std::env::set_var("WAYLAND_DISPLAY", "nothing-here") };
-    cx.update(|cx| br::init(cx, &conn).unwrap());
+    cx.update(|cx| br::connect(cx, &conn).unwrap());
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;
@@ -174,7 +175,7 @@ mod tests {
       report(attempt(() => m.setNightlight(true)));
     }
     report({ displays: Array.isArray(m.listDisplays()), ddcutil: m.ddcutil(), nightlight: m.nightlight() });"#;
-    let (view, cx) = harness::module::<Brightness>(cx, body);
+    let (view, cx) = harness::module::<BrightnessModule>(cx, body);
     wait_until(cx, |cx| view.reports(cx).len() >= 3);
 
     let reports = view.reports(cx);

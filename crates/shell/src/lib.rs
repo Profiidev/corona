@@ -136,7 +136,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_udisks::init(cx, system).await?;
   corona_location::init(cx, system);
   corona_weather::init(cx, &buses);
-  corona_brightness::init(cx, system)?;
+  corona_brightness::init(cx, &buses)?;
   corona_auth::init(cx, system);
   corona_mpris::init(cx, &buses).await?;
   corona_tray::init(cx, &buses).await?;

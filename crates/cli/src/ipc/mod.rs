@@ -441,15 +441,12 @@ pub(crate) mod tests {
   };
 
   use clap::Parser;
+  use corona_brightness::commands::{brightness::SetBrightness, nightlight::Nightlight};
   use corona_ipc::IpcCommand;
   use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
   use corona_power::commands::{CycleProfile, SetProfile};
-  use corona_shell::commands::{
-    brightness::SetBrightness,
-    nightlight::Nightlight,
-    theme::{SetMode, SetTheme},
-  };
+  use corona_shell::commands::theme::{SetMode, SetTheme};
   use corona_surface::commands::{ClosePanel, OpenPanel, TogglePanel};
   use serde_json::{Value, json};
 

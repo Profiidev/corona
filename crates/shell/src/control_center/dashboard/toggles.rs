@@ -1,7 +1,6 @@
+use crate::control_center::NetworkPanel;
 use crate::control_center::dashboard::DashboardPanel;
-use crate::control_center::{BrightnessPanel, NetworkPanel};
 use corona_bluez::BluetoothExt;
-use corona_brightness::BrightnessExt;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 use corona_idle::{Idle, IdleExt};
@@ -10,7 +9,7 @@ use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
 };
-use corona_utils::error::{ErrorLogExt, spawn_logged};
+use corona_utils::error::spawn_logged;
 use gpui_kit::{
   App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
   ParentElement, SharedString, Styled, Subscription, Window,
@@ -107,14 +106,6 @@ action!(
   |cx| [cx.idle().stay_awake,]
 );
 action!(
-  Nightlight,
-  "nightlight",
-  "app.brightness.nightlight",
-  nightlight,
-  Some(BrightnessPanel::ID),
-  |cx| [cx.brightness().nightlight,]
-);
-action!(
   Airplane,
   "airplane",
   "app.dashboard.airplane",
@@ -128,7 +119,6 @@ pub(crate) fn register(cx: &mut App) {
     .quick_action::<Wifi>()
     .quick_action::<DarkMode>()
     .quick_action::<StayAwake>()
-    .quick_action::<Nightlight>()
     .quick_action::<Airplane>();
 }
 
@@ -289,23 +279,6 @@ fn stay_awake(cx: &App) -> Toggle {
     on_click: Some(Box::new(move |cx| {
       cx.update_global::<Idle, _>(|idle, cx| idle.set_stay_awake(!on, None, cx))
     })),
-  }
-}
-
-fn nightlight(cx: &App) -> Toggle {
-  let state = *cx.brightness().nightlight(cx);
-  Toggle {
-    icon: IconName::Moon,
-    status: match state.available {
-      true => on_off(state.on),
-      false => t!("app.common.unavailable").into(),
-    },
-    active: state.on,
-    on_click: state.available.then(|| -> Action {
-      Box::new(move |cx| {
-        let _ = cx.brightness().set_nightlight(!state.on, cx).log_err();
-      })
-    }),
   }
 }
 

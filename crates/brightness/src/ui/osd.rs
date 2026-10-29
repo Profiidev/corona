@@ -1,11 +1,20 @@
-use corona_brightness::BrightnessExt;
+use crate::BrightnessExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::{
-  control_center::brightness::display_name,
-  osds::{kinds::BrightnessOsd, show},
+use corona_surface::{
+  osd::{LevelOsd, OsdExt, on_change},
+  osd_kind,
 };
-use corona_surface::osd::{LevelOsd, on_change};
+use corona_utils::error::ErrorLogExt;
+
+use crate::ui::page::display_name;
+
+osd_kind!(
+  BrightnessOsd(LevelOsd),
+  "brightness",
+  "app.settings.osd.brightness.title",
+  "app.settings.osd.brightness.description"
+);
 
 type Level = (String, String, u32);
 
@@ -18,7 +27,9 @@ fn changed<'a>(prev: &[Level], next: &'a [Level]) -> Option<&'a Level> {
   })
 }
 
-pub fn init(cx: &mut App) {
+/// Shows a display's brightness changing
+pub(crate) fn init(cx: &mut App) {
+  cx.osd_mut().register::<BrightnessOsd>();
   let displays = cx.brightness().displays.clone();
   on_change(
     &displays,
@@ -40,15 +51,13 @@ pub fn init(cx: &mut App) {
         } else {
           IconName::Sun
         };
-        show::<BrightnessOsd>(
-          LevelOsd {
-            icon,
-            label: name.clone().into(),
-            percent: *percent as f32,
-            muted: false,
-          },
-          cx,
-        );
+        let osd = LevelOsd {
+          icon,
+          label: name.clone().into(),
+          percent: *percent as f32,
+          muted: false,
+        };
+        let _ = cx.show_osd(BrightnessOsd(osd)).log_err();
       }
     },
   );

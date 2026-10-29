@@ -1,10 +1,11 @@
 //! The resource widget's options form
 
-use corona_components::settings_fields::{Choice, searchable};
+use corona_components::settings_fields::{Choice, number, searchable};
 use corona_config::{ConfigProvider, bar::BarConfig};
 use corona_settings::{
   SettingsExt, Slot, WidgetOptions,
   bar::{current_options, form, form_input, form_key, form_row, options, set_options},
+  item,
 };
 use gpui_kit::{App, IntoElement, ParentElement, Styled, Window, component::Sizable};
 use rust_i18n::t;
@@ -12,14 +13,27 @@ use rust_i18n::t;
 use crate::ui::resource::{self, Resource};
 
 pub(crate) fn register(cx: &mut App) {
-  cx.settings_mut().widget_options::<Resource>(WidgetOptions {
-    form: resource_form,
-    // several sit side by side, what they show tells them apart
-    label: Some(|bar, slot| {
-      let options: resource::Options = options(bar, slot);
-      resource::stat_name(options.stat).into()
-    }),
-  });
+  cx.settings_mut()
+    .group_items("system", "polling", 0, |_| {
+      vec![item(
+        t!("app.settings.system.system_monitor.title"),
+        t!("app.settings.system.system_monitor.description"),
+        number(
+          "system.monitor.poll_seconds",
+          (1., 60., 1.),
+          |c| c.system.monitor.poll_seconds as f64,
+          |c, v| c.system.monitor.poll_seconds = v as u64,
+        ),
+      )]
+    })
+    .widget_options::<Resource>(WidgetOptions {
+      form: resource_form,
+      // several sit side by side, what they show tells them apart
+      label: Some(|bar, slot| {
+        let options: resource::Options = options(bar, slot);
+        resource::stat_name(options.stat).into()
+      }),
+    });
 }
 
 fn resource_form(

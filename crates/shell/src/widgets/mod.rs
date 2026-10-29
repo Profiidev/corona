@@ -4,7 +4,7 @@ mod workspaces;
 
 use active_window::ActiveWindow;
 use control_center::{
-  BrightnessButton, ControlCenterButton, DisksButton, DisplaysButton, HotspotButton, NetworkButton,
+  ControlCenterButton, DisksButton, DisplaysButton, HotspotButton, NetworkButton,
 };
 use corona_surface::bar::BarExt;
 use gpui_kit::App;
@@ -16,7 +16,6 @@ pub fn register_widgets(cx: &mut App) {
     .register::<NetworkButton>()
     .register::<HotspotButton>()
     .register::<DisksButton>()
-    .register::<BrightnessButton>()
     .register::<DisplaysButton>()
     .register::<Workspaces>()
     .register::<ActiveWindow>();

@@ -10,6 +10,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use corona_config::{BrightnessConfig, ConfigProvider, observe_section};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::Connection;
 
@@ -24,12 +26,19 @@ pub use crate::{
 };
 
 mod backlight;
+pub mod commands;
 mod ddc;
 mod gamma;
+mod launcher;
 mod nightlight;
 mod outputs;
+pub mod script;
+mod settings;
 mod solar;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Brightness {
@@ -216,7 +225,19 @@ fn merge(
     .collect()
 }
 
-pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows the backlights and monitors, registers the brightness UI, commands and script
+/// module
+pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system)?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::BrightnessModule>();
+  Ok(())
+}
+
+pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let ddcutil_available = ddc::available();
   let ddcutil_enabled = cx.config().brightness.enable_ddcutil;
   let (events_tx, events) = flume::unbounded();
@@ -847,7 +868,7 @@ mod global_tests {
     config.brightness.poll_seconds = 1;
     cx.update(|cx| {
       cx.set_global(config);
-      init(cx, &conn).unwrap();
+      connect(cx, &conn).unwrap();
     });
     bus
   }

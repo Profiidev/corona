@@ -1,12 +1,12 @@
+use crate::BrightnessExt;
 use anyhow::Result;
-use corona_brightness::BrightnessExt;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use corona_ipc::Switch;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Nightlight>();
 }
 

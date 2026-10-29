@@ -2,7 +2,7 @@ use std::iter;
 
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
-  Config, ConfigProvider, IdleAction, IdleBehavior, NightlightMode, OsdPosition, Weekday,
+  Config, ConfigProvider, IdleAction, IdleBehavior, OsdPosition, Weekday,
   osk::{AutoShow, OskLanguage, OskLayout, TabletSource},
 };
 use corona_osk::Osk;
@@ -27,7 +27,7 @@ use corona_components::settings_fields::{
   slider, switch, text,
 };
 
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, SettingsPage, group, item, page, shared_group};
 
 use rust_i18n::t;
 
@@ -62,7 +62,7 @@ settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
 settings_page!(OskSettings, "osk", 90, |cx| osk());
 settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
-settings_page!(SystemSettings, "system", 160, |cx| system());
+settings_page!(SystemSettings, "system", 160, |cx| system(cx));
 
 pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
@@ -693,128 +693,39 @@ fn monitor_choices(connected: &[Monitor], configured: Option<&String>) -> Vec<St
   names
 }
 
-fn system() -> SettingPage {
+fn system(cx: &App) -> SettingPage {
+  // the other groups are the integrations': night light and polling from brightness and
+  // sysinfo
+  let shared = [
+    ("nightlight", t!("app.settings.system.groups.nightlight")),
+    ("polling", t!("app.settings.system.groups.polling")),
+    (
+      "applies_after_a_restart",
+      t!("app.settings.system.groups.applies_after_a_restart"),
+    ),
+  ]
+  .into_iter()
+  .filter_map(|(id, title)| shared_group(title, SystemSettings::ID, id, cx));
   page(
     t!("app.settings.system.title"),
     IconName::Cpu,
-    vec![
-      group(
-        t!("app.settings.system.groups.profile"),
-        vec![
-          item(
-            t!("app.settings.system.avatar.title"),
-            t!("app.settings.system.avatar.description"),
-            text(
-              "shell.avatar",
-              |c| c.shell.avatar.clone().unwrap_or_default(),
-              |c, v| c.shell.avatar = some(v),
-            ),
-          )
-          .layout(Axis::Vertical),
-        ],
-      ),
-      group(
-        t!("app.settings.system.groups.nightlight"),
-        vec![
-          item(
-            t!("app.settings.system.nightlight.mode.title"),
-            t!("app.settings.system.nightlight.mode.description"),
-            choice(
-              &[
-                (
-                  NightlightMode::Manual,
-                  t!("app.settings.options.nightlight_manual"),
-                ),
-                (
-                  NightlightMode::Solar,
-                  t!("app.settings.options.nightlight_solar"),
-                ),
-                (
-                  NightlightMode::Schedule,
-                  t!("app.settings.options.nightlight_schedule"),
-                ),
-              ],
-              |c| c.nightlight.mode,
-              |c, v| c.nightlight.mode = v,
-            ),
+    iter::once(group(
+      t!("app.settings.system.groups.profile"),
+      vec![
+        item(
+          t!("app.settings.system.avatar.title"),
+          t!("app.settings.system.avatar.description"),
+          text(
+            "shell.avatar",
+            |c| c.shell.avatar.clone().unwrap_or_default(),
+            |c, v| c.shell.avatar = some(v),
           ),
-          item(
-            t!("app.settings.system.nightlight.temperature.title"),
-            t!("app.settings.system.nightlight.temperature.description"),
-            number(
-              "nightlight.temperature",
-              (1000., 6500., 100.),
-              |c| c.nightlight.temperature as f64,
-              |c, v| c.nightlight.temperature = v as u32,
-            ),
-          ),
-          item(
-            t!("app.settings.system.nightlight.start.title"),
-            t!("app.settings.system.nightlight.start.description"),
-            text(
-              "nightlight.start",
-              |c| c.nightlight.start.clone(),
-              |c, v| c.nightlight.start = v,
-            ),
-          ),
-          item(
-            t!("app.settings.system.nightlight.end.title"),
-            t!("app.settings.system.nightlight.end.description"),
-            text(
-              "nightlight.end",
-              |c| c.nightlight.end.clone(),
-              |c, v| c.nightlight.end = v,
-            ),
-          ),
-          item(
-            t!("app.settings.system.nightlight.transition.title"),
-            t!("app.settings.system.nightlight.transition.description"),
-            number(
-              "nightlight.transition_minutes",
-              (0., 180., 1.),
-              |c| c.nightlight.transition_minutes as f64,
-              |c, v| c.nightlight.transition_minutes = v as u32,
-            ),
-          ),
-        ],
-      ),
-      group(
-        t!("app.settings.system.groups.polling"),
-        vec![
-          item(
-            t!("app.settings.system.system_monitor.title"),
-            t!("app.settings.system.system_monitor.description"),
-            number(
-              "system.monitor.poll_seconds",
-              (1., 60., 1.),
-              |c| c.system.monitor.poll_seconds as f64,
-              |c, v| c.system.monitor.poll_seconds = v as u64,
-            ),
-          ),
-          item(
-            t!("app.settings.system.brightness.title"),
-            t!("app.settings.system.brightness.description"),
-            number(
-              "brightness.poll_seconds",
-              (1., 60., 1.),
-              |c| c.brightness.poll_seconds as f64,
-              |c, v| c.brightness.poll_seconds = v as u64,
-            ),
-          ),
-        ],
-      ),
-      group(
-        t!("app.settings.system.groups.applies_after_a_restart"),
-        vec![item(
-          t!("app.settings.system.ddcutil.title"),
-          t!("app.settings.system.ddcutil.description"),
-          switch(
-            |c| c.brightness.enable_ddcutil,
-            |c, v| c.brightness.enable_ddcutil = v,
-          ),
-        )],
-      ),
-    ],
+        )
+        .layout(Axis::Vertical),
+      ],
+    ))
+    .chain(shared)
+    .collect(),
   )
 }
 

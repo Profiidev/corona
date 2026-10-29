@@ -4,8 +4,8 @@ use std::{
   time::Duration,
 };
 
+use crate::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
-use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use corona_components::components::card::{CardExt, ErrorCard};
 use corona_power::PowerExt;
 use corona_surface::control_center::ControlCenterPage;
@@ -19,13 +19,13 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::brightness::lights::{Light, displays, keyboard};
+use crate::ui::page::lights::{Light, displays, keyboard};
 use rust_i18n::t;
 
 mod lights;
 mod nightlight;
 
-pub(crate) fn display_name(display: &Display) -> String {
+pub fn display_name(display: &Display) -> String {
   match (&display.name, display.kind) {
     (Some(name), _) => name.clone(),
     (None, DisplayKind::Backlight) => t!("app.brightness.builtin_display").into(),

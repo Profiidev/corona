@@ -36,7 +36,6 @@ pub struct DashboardPanel {
 /// The tiles, sliders and cards the shell has
 pub(crate) fn register(cx: &mut App) {
   toggles::register(cx);
-  sliders::register(cx);
 }
 
 impl ControlCenterPage for DashboardPanel {

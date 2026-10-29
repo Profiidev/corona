@@ -1,7 +1,9 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
+use corona_brightness::commands::brightness::{
+  Action as BrightnessAction, ListMonitors, SetBrightness,
+};
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::brightness::{Action as BrightnessAction, ListMonitors, SetBrightness};
 
 use crate::ipc::{STEP, candidates, level};
 

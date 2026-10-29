@@ -56,10 +56,19 @@ pub struct WidgetOptions {
   pub label: Option<fn(&BarConfig, Slot) -> String>,
 }
 
+/// Items a crate adds to a group of another crate's page
+struct GroupItems {
+  page: &'static str,
+  group: &'static str,
+  order: i32,
+  items: fn(&App) -> Vec<SettingItem>,
+}
+
 /// The settings pages, in sidebar order, and the bar widgets' option forms
 #[derive(Default)]
 pub struct SettingsRegistry {
   pages: Vec<PageEntry>,
+  group_items: Vec<GroupItems>,
   widget_options: BTreeMap<&'static str, WidgetOptions>,
   on_open: Option<fn(&mut App)>,
 }
@@ -76,6 +85,28 @@ impl SettingsRegistry {
         id: P::ID,
         order: P::ORDER,
         page: P::page,
+      },
+    );
+    self
+  }
+
+  /// Adds `items` to the group `group` of page `page`, which another crate builds with
+  /// [`shared_group`]; the lowest `order` comes first
+  pub fn group_items(
+    &mut self,
+    page: &'static str,
+    group: &'static str,
+    order: i32,
+    items: fn(&App) -> Vec<SettingItem>,
+  ) -> &mut Self {
+    let at = self.group_items.partition_point(|g| g.order <= order);
+    self.group_items.insert(
+      at,
+      GroupItems {
+        page,
+        group,
+        order,
+        items,
       },
     );
     self
@@ -121,6 +152,7 @@ impl SettingsExt for App {
   fn settings(&self) -> &SettingsRegistry {
     static EMPTY: SettingsRegistry = SettingsRegistry {
       pages: Vec::new(),
+      group_items: Vec::new(),
       widget_options: BTreeMap::new(),
       on_open: None,
     };
@@ -180,6 +212,20 @@ pub fn page(
 
 pub fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> SettingGroup {
   SettingGroup::new().title(title).items(items)
+}
+
+/// The group `group` of page `page` with the items crates added to it, none without any
+pub fn shared_group(
+  title: impl Into<SharedString>,
+  page: &str,
+  group: &str,
+  cx: &App,
+) -> Option<SettingGroup> {
+  let items: Vec<_> = (cx.settings().group_items.iter())
+    .filter(|g| g.page == page && g.group == group)
+    .flat_map(|g| (g.items)(cx))
+    .collect();
+  (!items.is_empty()).then(|| self::group(title, items))
 }
 
 pub fn item(
@@ -287,6 +333,27 @@ pub fn toggle(page: Option<&str>, cx: &mut App) -> Result<()> {
 mod tests {
   use super::*;
   use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
+
+  #[gpui::test]
+  fn shared_groups_follow_their_order(cx: &mut TestAppContext) {
+    thread_local!(static CALLS: std::cell::RefCell<Vec<i32>> = Default::default());
+    fn items<const N: i32>(_: &App) -> Vec<SettingItem> {
+      CALLS.with(|c| c.borrow_mut().push(N));
+      vec![SettingItem::new(
+        "x",
+        SettingField::render(|_, _, _| gpui_kit::div()),
+      )]
+    }
+    cx.update(|cx| {
+      cx.settings_mut()
+        .group_items("system", "polling", 10, items::<10>)
+        .group_items("system", "polling", 0, items::<0>)
+        .group_items("system", "other", 5, items::<5>);
+      assert!(shared_group("Polling", "system", "polling", cx).is_some());
+      assert!(shared_group("None", "system", "none", cx).is_none());
+    });
+    assert_eq!(CALLS.with(|c| c.take()), [0, 10]);
+  }
 
   struct Late;
 

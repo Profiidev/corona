@@ -4,7 +4,6 @@ use gpui_kit::App;
 
 use kinds::*;
 
-mod brightness;
 mod caffeine;
 mod keyboard;
 mod kinds;
@@ -13,12 +12,10 @@ mod wifi;
 
 pub fn init(cx: &mut App) {
   cx.osd_mut()
-    .register::<BrightnessOsd>()
     .register::<WifiOsd>()
     .register::<KeyboardLayoutOsd>()
     .register::<LockKeysOsd>()
     .register::<StayAwakeOsd>();
-  brightness::init(cx);
   wifi::init(cx);
   keyboard::init(cx);
   caffeine::init(cx);

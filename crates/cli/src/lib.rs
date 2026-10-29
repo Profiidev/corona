@@ -17,6 +17,7 @@ mod types;
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
   registry
+    .register::<corona_brightness::script::BrightnessModule>()
     .register::<corona_power::script::PowerModule>()
     .register::<corona_notifications::script::NotificationsModule>()
     .register::<corona_notifications::script::NotificationCenterModule>()

@@ -1,16 +1,7 @@
 //! One OSD type per kind the settings can turn off, each showing a shared view
 
-use corona_surface::{
-  osd::{LevelOsd, ToggleOsd},
-  osd_kind,
-};
+use corona_surface::{osd::ToggleOsd, osd_kind};
 
-osd_kind!(
-  BrightnessOsd(LevelOsd),
-  "brightness",
-  "app.settings.osd.brightness.title",
-  "app.settings.osd.brightness.description"
-);
 osd_kind!(
   WifiOsd(ToggleOsd),
   "wifi",
