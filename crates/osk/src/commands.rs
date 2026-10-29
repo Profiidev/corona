@@ -1,17 +1,13 @@
-//! The on-screen keyboard, `corona_osk`, and its IPC
+//! The on-screen keyboard's IPC commands
 
+use crate::{Osk, OskExt};
 use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_osk::{Osk, OskExt};
 use gpui_kit::{App, BorrowAppContext};
 
 use corona_ipc::Switch;
 
-pub fn init(cx: &mut App) {
-  corona_osk::init(cx);
-}
-
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<Show>()
     .register::<Hide>()

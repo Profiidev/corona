@@ -1,10 +1,12 @@
 //! The on-screen keyboard: a floating key board that types into the focused
 //! window without taking its focus, shown when a text field gets focus
 
+pub mod commands;
 pub mod hinge;
 pub mod keymap;
 pub mod layouts;
 pub mod predict;
+pub mod settings;
 pub mod ui;
 pub mod wayland;
 
@@ -63,8 +65,15 @@ pub struct Osk {
 
 impl Global for Osk {}
 
+/// Starts the keyboard, registers its IPC commands and settings page
+pub fn init(cx: &mut App, _: &corona_utils::Buses) {
+  start(cx);
+  commands::register(cx);
+  settings::register(cx);
+}
+
 /// Connects to the compositor and follows its keyboard layout and the settings
-pub fn init(cx: &mut App) {
+fn start(cx: &mut App) {
   let enabled = cx.config().osk.enabled;
   let (events, events_rx) = flume::unbounded();
   let commands = wayland::spawn(enabled, events).log_err().ok();

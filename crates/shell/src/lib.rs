@@ -26,7 +26,6 @@ pub fn init(cx: &mut App) {
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
-  overlays::osk::init(cx);
   overlays::polkit::init(cx);
   overlays::switcher::init(cx);
   overlays::taskbar::init(cx);
@@ -125,6 +124,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_pipewire::init(cx, &buses)?;
   corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
+  corona_osk::init(cx, &buses);
   corona_sysinfo::init(cx, &buses);
   corona_bluez::init(cx, &buses).await?;
   corona_network_manager::init(cx, &buses).await?;
