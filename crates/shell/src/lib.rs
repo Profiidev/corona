@@ -12,7 +12,7 @@ pub mod commands;
 mod control_center;
 mod icons;
 mod idle;
-pub mod launcher;
+mod launcher;
 mod locale_keys;
 mod lock;
 mod osds;
@@ -93,7 +93,6 @@ fn init_ipc(cx: &mut App) {
   corona_surface::commands::register_commands(cx);
   overlays::register_commands(cx);
   commands::register_commands(cx);
-  launcher::commands::register_commands(cx);
 }
 
 fn init_integrations(cx: &mut App) {

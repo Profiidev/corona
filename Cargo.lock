@@ -1800,6 +1800,7 @@ dependencies = [
  "corona_config",
  "corona_ipc",
  "corona_js",
+ "corona_launcher",
  "corona_network_manager",
  "corona_script",
  "corona_settings",
@@ -1817,11 +1818,15 @@ name = "corona_clipboard"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "corona_components",
  "corona_config",
+ "corona_launcher",
  "dirs 7.0.0",
  "flume",
  "gpui-kit",
+ "jiff",
  "rusqlite",
+ "rust-i18n",
  "rustix",
  "tempfile",
  "tracing",
@@ -1951,6 +1956,7 @@ name = "corona_ipc"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_utils",
  "gpui-kit",
  "rustix",
@@ -2002,11 +2008,11 @@ name = "corona_launcher"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_clipboard",
  "corona_components",
  "corona_compositor",
  "corona_config",
  "corona_desktop",
+ "corona_ipc",
  "corona_settings",
  "corona_surface",
  "corona_utils",

@@ -223,8 +223,56 @@ fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
 }
 
 pub fn init(cx: &mut App) {
+  capture(cx);
+  notifications(cx);
   let pages = cx.settings().ids();
   let mut commands: Vec<Rc<dyn Command>> = vec![
+    simple(
+      "settings",
+      move |_| Meta {
+        title: t!("app.launcher.tools.settings").into(),
+        icon: Icon::Tile(IconName::Settings, 220.),
+        keywords: vec!["preferences".into(), "config".into()],
+        args: vec![
+          corona_launcher::ArgSpec::choice(t!("app.launcher.tools.page"), pages.clone()).optional(),
+        ],
+        ..Default::default()
+      },
+      |_| {
+        vec![Action::sync(
+          "open",
+          t!("app.launcher.open"),
+          |args, _, cx| {
+            corona_settings::open(args.text(0), cx)?;
+            Ok(Outcome::close())
+          },
+        )]
+      },
+    ),
+    opener(
+      "panels",
+      t!("app.launcher.tools.panels"),
+      Icon::Tile(IconName::PanelTop, 250.),
+      &["surface", "widget"],
+      |_| {
+        ListView::new(
+          t!("app.launcher.tools.panels"),
+          t!("app.launcher.tools.search_panels"),
+          Rc::new(Panels),
+        )
+        .into_view()
+      },
+    ),
+  ];
+  commands.extend(control_center_pages(cx));
+  registry::register_all(commands, cx);
+  registry::register_source(Rc::new(SettingsPages), cx);
+  registry::register_source(Rc::new(SettingFields), cx);
+}
+
+/// Screenshot and color picker
+fn capture(cx: &mut App) {
+  let commands: Vec<Rc<dyn Command>> = vec![
     simple(
       "screenshot",
       |_| Meta {
@@ -280,42 +328,12 @@ pub fn init(cx: &mut App) {
         )]
       },
     ),
-    simple(
-      "settings",
-      move |_| Meta {
-        title: t!("app.launcher.tools.settings").into(),
-        icon: Icon::Tile(IconName::Settings, 220.),
-        keywords: vec!["preferences".into(), "config".into()],
-        args: vec![
-          corona_launcher::ArgSpec::choice(t!("app.launcher.tools.page"), pages.clone()).optional(),
-        ],
-        ..Default::default()
-      },
-      |_| {
-        vec![Action::sync(
-          "open",
-          t!("app.launcher.open"),
-          |args, _, cx| {
-            corona_settings::open(args.text(0), cx)?;
-            Ok(Outcome::close())
-          },
-        )]
-      },
-    ),
-    opener(
-      "panels",
-      t!("app.launcher.tools.panels"),
-      Icon::Tile(IconName::PanelTop, 250.),
-      &["surface", "widget"],
-      |_| {
-        ListView::new(
-          t!("app.launcher.tools.panels"),
-          t!("app.launcher.tools.search_panels"),
-          Rc::new(Panels),
-        )
-        .into_view()
-      },
-    ),
+  ];
+  registry::register_all(commands, cx);
+}
+
+fn notifications(cx: &mut App) {
+  let commands: Vec<Rc<dyn Command>> = vec![
     simple(
       "notification:show",
       |_| Meta {
@@ -361,10 +379,7 @@ pub fn init(cx: &mut App) {
       },
     ),
   ];
-  commands.extend(control_center_pages(cx));
   registry::register_all(commands, cx);
-  registry::register_source(Rc::new(SettingsPages), cx);
-  registry::register_source(Rc::new(SettingFields), cx);
 }
 
 #[cfg(test)]

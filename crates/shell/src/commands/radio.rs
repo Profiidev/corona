@@ -1,38 +1,12 @@
 use anyhow::{Context, Result, bail};
-use clap::ValueEnum;
 use corona_bluez::BluetoothExt;
-use corona_ipc::{IpcCommand, IpcExt};
+use corona_ipc::{IpcCommand, IpcExt, Switch};
 use corona_network_manager::NetworkManagerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
-use serde::{Deserialize, Serialize};
 
 pub fn register_commands(cx: &mut App) {
   cx.ipc_mut().register::<Wifi>().register::<Bluetooth>();
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, ValueEnum)]
-pub enum Switch {
-  /// Turn it on
-  On,
-  /// Turn it off
-  Off,
-  /// Toggle it
-  Toggle,
-  /// Print on or off
-  Status,
-}
-
-impl Switch {
-  /// The state to switch to from `current`, none for [`Switch::Status`]
-  pub(crate) fn target(self, current: bool) -> Option<bool> {
-    match self {
-      Switch::On => Some(true),
-      Switch::Off => Some(false),
-      Switch::Toggle => Some(!current),
-      Switch::Status => None,
-    }
-  }
 }
 
 fn spawn(task: impl Future<Output = Result<()>> + 'static, cx: &mut App) {
@@ -85,20 +59,5 @@ impl IpcCommand for Bluetooth {
     };
     spawn(bluetooth.set_powered(powered, cx), cx);
     Ok(powered)
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn switch_target() {
-    for current in [false, true] {
-      assert_eq!(Switch::On.target(current), Some(true));
-      assert_eq!(Switch::Off.target(current), Some(false));
-      assert_eq!(Switch::Toggle.target(current), Some(!current));
-      assert_eq!(Switch::Status.target(current), None);
-    }
   }
 }

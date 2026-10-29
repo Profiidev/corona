@@ -23,6 +23,17 @@ pub fn ago_long(time: SystemTime, now: SystemTime) -> String {
   }
 }
 
+/// A length of time as days, hours and minutes: "4m", "2h 5m", "1d 0h 3m"
+pub fn span(d: Duration) -> String {
+  let minutes = d.as_secs() / 60;
+  let (days, hours, minutes) = (minutes / 1440, minutes / 60 % 24, minutes % 60);
+  match (days, hours) {
+    (0, 0) => format!("{minutes}m"),
+    (0, _) => format!("{hours}h {minutes}m"),
+    _ => format!("{days}d {hours}h {minutes}m"),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

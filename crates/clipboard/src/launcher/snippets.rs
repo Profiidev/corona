@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use corona_clipboard::ClipboardExt;
+use crate::ClipboardExt;
 use corona_config::{
   ConfigProvider,
   launcher::{Quicklink, Snippet},
@@ -11,7 +11,7 @@ use gpui_kit::{App, SharedString, Task, assets::IconName};
 use jiff::Zoned;
 use rust_i18n::t;
 
-use crate::{
+use corona_launcher::{
   args::{ArgSpec, Args},
   command::{Action, Clip, Command, CommandSource, Confirm, Icon, Meta, Outcome},
   commands::calculator::calculate,
@@ -371,9 +371,9 @@ impl Command for ManagedSnippet {
     SnippetCommand(self.0.clone()).meta(cx)
   }
 
-  fn detail(&self, _: &App) -> Option<crate::Detail> {
-    Some(crate::Detail {
-      body: crate::DetailBody::Code(self.0.text.clone().into()),
+  fn detail(&self, _: &App) -> Option<corona_launcher::Detail> {
+    Some(corona_launcher::Detail {
+      body: corona_launcher::DetailBody::Code(self.0.text.clone().into()),
       metadata: self
         .0
         .keyword

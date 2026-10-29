@@ -2,18 +2,16 @@
 
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
-use corona_shell::{
-  commands::{
-    audio::{Kind, ListNodes},
-    bluetooth::ListDevices,
-    clipboard::ListClipboard,
-    extras::{ListDrives, ListProcesses, ListTimers},
-    network::{ListVpns, ListWifi},
-    player::ListPlayers,
-    tray::ListEntries,
-    window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},
-  },
-  launcher::commands::ListCommands,
+use corona_launcher::ipc::{ListCommands, ListProcesses, ListTimers};
+use corona_shell::commands::{
+  audio::{Kind, ListNodes},
+  bluetooth::ListDevices,
+  clipboard::ListClipboard,
+  extras::ListDrives,
+  network::{ListVpns, ListWifi},
+  player::ListPlayers,
+  tray::ListEntries,
+  window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},
 };
 
 /// Values with a description shown beside them

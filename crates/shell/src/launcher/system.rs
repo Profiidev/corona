@@ -7,10 +7,10 @@ use corona_brightness::BrightnessExt;
 use corona_components::assets::{preview_theme, restore_theme, set_mode, set_theme, theme_names};
 use corona_config::ConfigProvider;
 use corona_idle::IdleExt;
-use corona_ipc::IpcCommand;
+use corona_ipc::{IpcCommand, Switch};
 use corona_launcher::{
   Action, ArgSpec, ArgValue, Args, Command, Hud, Icon, Meta, Outcome,
-  kit::{Choices, Group, Toggle, on_off, tag, watch},
+  kit::{Choices, Group, Toggle, on_off, pick_or_list, tag, watch},
   simple,
 };
 use corona_network_manager::NetworkManagerExt;
@@ -26,19 +26,34 @@ use crate::{
     nightlight::{Nightlight, Request as NightlightRequest},
     notification::{Dnd, DoNotDisturb},
     power_profile::{CycleProfile, SetProfile},
-    radio::{Bluetooth, Switch, Wifi},
+    radio::{Bluetooth, Wifi},
   },
   control_center::dashboard::toggles::{airplane_state, set_airplane},
 };
 
-fn switch(on: bool) -> Switch {
-  match on {
-    true => Switch::On,
-    false => Switch::Off,
-  }
+pub fn init(cx: &mut App) {
+  network(cx);
+  bluetooth(cx);
+  dnd(cx);
+  Group::new("system:stay_awake", vec![caffeine()])
+    .observe(|notify, cx| {
+      let idle = cx.idle().stay_awake.clone();
+      vec![watch(&idle, &notify, cx)]
+    })
+    .register(cx);
+  Group::new("system:nightlight", vec![nightlight()])
+    .observe(|notify, cx| {
+      let nightlight = cx.brightness().nightlight.clone();
+      vec![watch(&nightlight, &notify, cx)]
+    })
+    .register(cx);
+  Group::new("system", vec![dark_mode(), theme()]).register(cx);
+  power_profile(cx);
+  dpms(cx);
 }
 
-pub fn init(cx: &mut App) {
+/// Wi-Fi and airplane mode
+fn network(cx: &mut App) {
   let commands: Vec<Rc<dyn Command>> = vec![
     Toggle::command(
       "wifi",
@@ -49,29 +64,7 @@ pub fn init(cx: &mut App) {
         let network = cx.network_manager();
         network.wifi_supported(cx).then(|| network.wifi_enabled(cx))
       },
-      |on, cx| Wifi::handle(switch(on), cx).map(|_| ()),
-    ),
-    Toggle::command(
-      "bluetooth",
-      t!("app.launcher.system.bluetooth"),
-      IconName::Bluetooth,
-      230.,
-      |cx| cx.bluetooth().adapter(cx).map(|a| a.powered),
-      |on, cx| Bluetooth::handle(switch(on), cx).map(|_| ()),
-    ),
-    Toggle::command(
-      "dnd",
-      t!("app.launcher.system.dnd"),
-      IconName::BellOff,
-      280.,
-      |cx| Some(cx.notifications().do_not_disturb(cx)),
-      |on, cx| {
-        let dnd = match on {
-          true => Dnd::On,
-          false => Dnd::Off,
-        };
-        DoNotDisturb::handle(dnd, cx).map(|_| ())
-      },
+      |on, cx| Wifi::handle(on.into(), cx).map(|_| ()),
     ),
     Toggle::command(
       "airplane",
@@ -84,18 +77,73 @@ pub fn init(cx: &mut App) {
         Ok(())
       },
     ),
-    caffeine(),
-    nightlight(),
-    dark_mode(),
-    pick_or_list(
-      "theme",
-      t!("app.launcher.system.theme").into(),
-      Icon::Tile(IconName::Palette, 300.),
-      &["colors", "appearance"],
-      theme_names,
-      |name, cx| set_theme(name.to_string(), cx),
-      themes,
-    ),
+  ];
+  Group::new("system:network", commands)
+    .observe(|notify, cx| {
+      let network = cx.network_manager().clone();
+      let bluetooth = cx.bluetooth().clone();
+      vec![
+        watch(&network.wifi_enabled, &notify, cx),
+        watch(&bluetooth.adapter, &notify, cx),
+      ]
+    })
+    .register(cx);
+}
+
+fn bluetooth(cx: &mut App) {
+  let toggle = Toggle::command(
+    "bluetooth",
+    t!("app.launcher.system.bluetooth"),
+    IconName::Bluetooth,
+    230.,
+    |cx| cx.bluetooth().adapter(cx).map(|a| a.powered),
+    |on, cx| Bluetooth::handle(on.into(), cx).map(|_| ()),
+  );
+  Group::new("system:bluetooth", vec![toggle])
+    .observe(|notify, cx| {
+      let bluetooth = cx.bluetooth().clone();
+      vec![watch(&bluetooth.adapter, &notify, cx)]
+    })
+    .register(cx);
+}
+
+fn dnd(cx: &mut App) {
+  let toggle = Toggle::command(
+    "dnd",
+    t!("app.launcher.system.dnd"),
+    IconName::BellOff,
+    280.,
+    |cx| Some(cx.notifications().do_not_disturb(cx)),
+    |on, cx| {
+      let dnd = match on {
+        true => Dnd::On,
+        false => Dnd::Off,
+      };
+      DoNotDisturb::handle(dnd, cx).map(|_| ())
+    },
+  );
+  Group::new("system:dnd", vec![toggle])
+    .observe(|notify, cx| {
+      let notifications = cx.notifications().clone();
+      vec![watch(&notifications.do_not_disturb, &notify, cx)]
+    })
+    .register(cx);
+}
+
+fn theme() -> Rc<dyn Command> {
+  pick_or_list(
+    "theme",
+    t!("app.launcher.system.theme").into(),
+    Icon::Tile(IconName::Palette, 300.),
+    &["colors", "appearance"],
+    theme_names,
+    |name, cx| set_theme(name.to_string(), cx),
+    themes,
+  )
+}
+
+fn power_profile(cx: &mut App) {
+  let commands = vec![
     pick_or_list(
       "power_profile",
       t!("app.launcher.system.power_profile").into(),
@@ -133,79 +181,36 @@ pub fn init(cx: &mut App) {
         )]
       },
     ),
-    simple(
-      "dpms:off",
-      |_| Meta {
-        title: t!("app.launcher.system.displays_off").into(),
-        icon: Icon::Tile(IconName::MonitorOff, 250.),
-        keywords: vec!["dpms".into(), "screen".into(), "monitor".into()],
-        ..Default::default()
-      },
-      |_| {
-        vec![Action::sync(
-          "off",
-          t!("app.launcher.system.displays_off"),
-          |_, _, cx| {
-            Dpms::handle(Power::Off, cx)?;
-            Ok(Outcome::close())
-          },
-        )]
-      },
-    ),
   ];
-  Group::new("system", commands)
+  Group::new("system:power_profile", commands)
     .observe(|notify, cx| {
-      let network = cx.network_manager().clone();
-      let bluetooth = cx.bluetooth().clone();
-      let notifications = cx.notifications().clone();
-      let idle = cx.idle().stay_awake.clone();
       let profiles = cx.power().profiles.clone();
-      let nightlight = cx.brightness().nightlight.clone();
-      vec![
-        watch(&nightlight, &notify, cx),
-        watch(&network.wifi_enabled, &notify, cx),
-        watch(&bluetooth.adapter, &notify, cx),
-        watch(&notifications.do_not_disturb, &notify, cx),
-        watch(&idle, &notify, cx),
-        watch(&profiles, &notify, cx),
-      ]
+      vec![watch(&profiles, &notify, cx)]
     })
     .register(cx);
 }
 
-/// A list to pick from, or with the name typed after it (`theme nord`) the pick itself
-fn pick_or_list(
-  id: &'static str,
-  title: SharedString,
-  icon: Icon,
-  keywords: &'static [&'static str],
-  names: fn(&App) -> Vec<String>,
-  apply: fn(&str, &mut App) -> anyhow::Result<()>,
-  list: fn() -> corona_launcher::View,
-) -> Rc<dyn Command> {
-  let label = title.clone();
-  simple(
-    id,
-    move |cx| Meta {
-      title: title.clone(),
-      icon: icon.clone(),
-      keywords: keywords.iter().map(|k| SharedString::from(*k)).collect(),
-      args: vec![ArgSpec::choice(t!("app.launcher.system.name"), names(cx)).optional()],
+fn dpms(cx: &mut App) {
+  let off = simple(
+    "dpms:off",
+    |_| Meta {
+      title: t!("app.launcher.system.displays_off").into(),
+      icon: Icon::Tile(IconName::MonitorOff, 250.),
+      keywords: vec!["dpms".into(), "screen".into(), "monitor".into()],
       ..Default::default()
     },
-    move |_| {
-      let label = label.clone();
-      vec![Action::sync("open", label, move |args, _, cx| {
-        match args.text(0) {
-          Some(name) => {
-            apply(name, cx)?;
-            Ok(Outcome::Close(Some(Hud::new(name.to_string()))))
-          }
-          None => Ok(Outcome::Push(list())),
-        }
-      })]
+    |_| {
+      vec![Action::sync(
+        "off",
+        t!("app.launcher.system.displays_off"),
+        |_, _, cx| {
+          Dpms::handle(Power::Off, cx)?;
+          Ok(Outcome::close())
+        },
+      )]
     },
-  )
+  );
+  Group::new("system:dpms", vec![off]).register(cx);
 }
 
 /// `caffeine`, `caffeine off`, `caffeine 30` for half an hour
@@ -225,7 +230,7 @@ fn caffeine() -> Rc<dyn Command> {
         minutes: None,
       },
       _ => Request {
-        switch: switch(!current),
+        switch: (!current).into(),
         minutes: None,
       },
     }
@@ -291,7 +296,7 @@ fn nightlight() -> Rc<dyn Command> {
       Some(ArgValue::Word(w)) if w == "off" => Switch::Off,
       // a temperature turns it on
       Some(ArgValue::Number(_)) => Switch::On,
-      _ => switch(!current),
+      _ => (!current).into(),
     };
     NightlightRequest {
       switch: Some(switch),

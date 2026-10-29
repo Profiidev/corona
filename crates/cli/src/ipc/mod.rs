@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
+use corona_ipc::Switch;
 use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
@@ -13,7 +14,7 @@ use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
-use corona_shell::commands::radio::{Bluetooth, Switch, Wifi};
+use corona_shell::commands::radio::{Bluetooth, Wifi};
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::commands::volume::Device;
 use corona_shell::overlays::{
@@ -296,7 +297,7 @@ impl IpcCommands {
         "switch Bluetooth discovery",
       ),
       IpcCommands::Calc { expression } => {
-        match corona_shell::commands::calculator::Evaluate::send(expression.join(" ")) {
+        match corona_launcher::ipc::Evaluate::send(expression.join(" ")) {
           Ok(result) => println!("{result}"),
           Err(e) => tracing::error!("Failed to calculate: {}", e),
         }
@@ -600,21 +601,21 @@ pub(crate) mod tests {
       (&["player", "seek", "-10"], json!(null), corona_shell::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
       (&["player", "loop", "track"], json!(null), corona_shell::commands::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::commands::tray::Activate::COMMAND, json!([":1.2/item", 4])),
-      (&["calc", "2", "+", "2"], json!("4"), corona_shell::commands::calculator::Evaluate::COMMAND, json!("2 + 2")),
+      (&["calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::commands::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
       (&["clipboard", "clear"], json!(3), corona_shell::commands::clipboard::ClearClipboard::COMMAND, json!(null)),
-      (&["trash", "count"], json!(3), corona_shell::commands::extras::TrashCount::COMMAND, json!(null)),
+      (&["trash", "count"], json!(3), corona_launcher::ipc::TrashCount::COMMAND, json!(null)),
       (&["drive", "eject", "USB"], json!(null), corona_shell::commands::extras::DriveAction::COMMAND, json!(["Eject", "USB"])),
       (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_shell::commands::extras::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
-      (&["process", "kill", "42", "--force"], json!(null), corona_shell::commands::extras::KillProcess::COMMAND, json!([42, true])),
-      (&["process", "kill-port", "8080"], json!([1]), corona_shell::commands::extras::KillPort::COMMAND, json!(8080)),
-      (&["timer", "start", "5m", "tea"], json!(1), corona_shell::commands::extras::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
-      (&["timer", "stop", "7"], json!(null), corona_shell::commands::extras::StopTimer::COMMAND, json!(7)),
+      (&["process", "kill", "42", "--force"], json!(null), corona_launcher::ipc::KillProcess::COMMAND, json!([42, true])),
+      (&["process", "kill-port", "8080"], json!([1]), corona_launcher::ipc::KillPort::COMMAND, json!(8080)),
+      (&["timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
+      (&["timer", "stop", "7"], json!(null), corona_launcher::ipc::StopTimer::COMMAND, json!(7)),
       (&["notification", "dismiss"], json!(null), corona_shell::commands::notification::DismissToasts::COMMAND, json!(null)),
-      (&["launcher", "toggle"], json!(null), corona_shell::launcher::commands::Toggle::COMMAND, json!(null)),
-      (&["launcher", "close"], json!(null), corona_shell::launcher::commands::Close::COMMAND, json!(null)),
-      (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
-      (&["launcher", "open"], json!(null), corona_shell::launcher::commands::Open::COMMAND, json!({ "command": null, "query": null })),
+      (&["launcher", "toggle"], json!(null), corona_launcher::ipc::Toggle::COMMAND, json!(null)),
+      (&["launcher", "close"], json!(null), corona_launcher::ipc::Close::COMMAND, json!(null)),
+      (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
+      (&["launcher", "open"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": null, "query": null })),
       (&["osk", "toggle"], json!(null), corona_shell::overlays::osk::Toggle::COMMAND, json!(null)),
       (&["osk", "show"], json!(null), corona_shell::overlays::osk::Show::COMMAND, json!(null)),
       (&["osk", "tablet", "on"], json!(true), corona_shell::overlays::osk::Tablet::COMMAND, json!("On")),

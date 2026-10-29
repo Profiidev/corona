@@ -3,7 +3,7 @@ use clap_complete::ArgValueCandidates;
 
 use crate::ipc::complete;
 use corona_ipc::IpcCommandSend;
-use corona_shell::launcher::commands::{Close, Open, OpenRequest, Toggle};
+use corona_launcher::ipc::{Close, Open, OpenRequest, Toggle};
 
 #[derive(Subcommand)]
 pub enum LauncherCommands {

@@ -4,6 +4,7 @@ pub mod commands;
 pub mod common;
 pub mod dmenu;
 pub mod hooks;
+pub mod ipc;
 pub mod kit;
 pub mod matching;
 pub mod paste;
@@ -32,6 +33,7 @@ pub use view::{
 
 pub fn init(cx: &mut App) {
   registry::init(cx);
+  ipc::register(cx);
   ui::bind_keys(cx);
   cx.osd_mut().register::<ui::hud::HudOsd>();
   cx.settings_mut().register::<settings::LauncherSettings>();

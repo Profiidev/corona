@@ -1,13 +1,10 @@
 use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
-use corona_ipc::IpcCommandSend;
-use corona_shell::commands::{
-  network::{
-    ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns,
-    ListWifi, Portal, Rescan, Security, SwitchVpn,
-  },
-  radio::Switch,
+use corona_ipc::{IpcCommandSend, Switch};
+use corona_shell::commands::network::{
+  ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns, ListWifi,
+  Portal, Rescan, Security, SwitchVpn,
 };
 
 use crate::ipc::{done, print_switch};

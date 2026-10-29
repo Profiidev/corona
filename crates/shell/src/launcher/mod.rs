@@ -2,7 +2,6 @@
 
 mod audio;
 mod bluetooth;
-pub mod commands;
 mod devices;
 mod display;
 mod drives;
@@ -53,6 +52,7 @@ pub fn init(cx: &mut App) {
     cx,
   );
   corona_launcher::commands::init(cx);
+  corona_clipboard::launcher::init(cx);
   session::init(cx);
   system::init(cx);
   audio::init(cx);

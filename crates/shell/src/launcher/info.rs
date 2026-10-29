@@ -1,8 +1,15 @@
 //! System info, battery and weather as detail views
 
-use std::time::{Duration, SystemTime};
+use std::{
+  rc::Rc,
+  time::{Duration, SystemTime},
+};
 
-use corona_launcher::{Action, DetailView, Icon, Meta, Outcome, View, registry, simple};
+use corona_components::time::span;
+
+use corona_launcher::{
+  Action, Command, DetailView, Icon, Meta, Outcome, View, kit::opener, registry, simple,
+};
 use corona_power::PowerExt;
 use corona_sysinfo::SystemMonitorExt;
 use corona_weather::{Condition, WeatherExt, compass};
@@ -18,16 +25,6 @@ fn bytes(n: u64) -> String {
     unit += 1;
   }
   format!("{value:.1} {}", UNITS[unit])
-}
-
-fn duration(d: Duration) -> String {
-  let minutes = d.as_secs() / 60;
-  let (days, hours, minutes) = (minutes / 1440, minutes / 60 % 24, minutes % 60);
-  match (days, hours) {
-    (0, 0) => format!("{minutes}m"),
-    (0, _) => format!("{hours}h {minutes}m"),
-    _ => format!("{days}d {hours}h {minutes}m"),
-  }
 }
 
 type Rows = Vec<(SharedString, SharedString)>;
@@ -48,7 +45,7 @@ fn sysinfo(cx: &App) -> View {
     let uptime = SystemTime::now()
       .duration_since(info.booted)
       .unwrap_or_default();
-    rows.push(row(t!("app.launcher.info.uptime"), duration(uptime)));
+    rows.push(row(t!("app.launcher.info.uptime"), span(uptime)));
     rows.push(row(t!("app.launcher.info.kernel"), info.kernel.clone()));
     rows.push(row(
       t!("app.launcher.info.cpu"),
@@ -98,10 +95,10 @@ fn battery(cx: &App) -> View {
     Some(b) => {
       rows.push(row(t!("app.launcher.info.state"), format!("{:?}", b.state)));
       if let Some(t) = b.time_to_empty.filter(|t| !t.is_zero()) {
-        rows.push(row(t!("app.launcher.info.to_empty"), duration(t)));
+        rows.push(row(t!("app.launcher.info.to_empty"), span(t)));
       }
       if let Some(t) = b.time_to_full.filter(|t| !t.is_zero()) {
-        rows.push(row(t!("app.launcher.info.to_full"), duration(t)));
+        rows.push(row(t!("app.launcher.info.to_full"), span(t)));
       }
       rows.push(row(
         t!("app.launcher.info.health"),
@@ -188,77 +185,63 @@ fn weather(cx: &App) -> View {
 }
 
 pub fn init(cx: &mut App) {
-  let detail = |id: &'static str,
-                title: SharedString,
-                icon: IconName,
-                hue: f32,
-                keywords: &'static [&'static str],
-                view: fn(&App) -> View| {
-    simple(
-      id,
-      move |_| Meta {
-        title: title.clone(),
-        icon: Icon::Tile(icon, hue),
-        keywords: keywords.iter().map(|k| SharedString::from(*k)).collect(),
-        ..Default::default()
-      },
-      move |_| {
-        vec![Action::spawn(
-          "open",
-          t!("app.launcher.open"),
-          move |_, cx| {
-            // take a sample first when nothing samples yet
-            let monitor = cx.system_monitor().clone();
-            let idle = id == "sysinfo" && monitor.interval(cx).is_none();
-            if idle {
-              monitor.set_interval(Some(Duration::from_millis(500)), cx);
-            }
-            let cx = cx.to_async();
-            async move {
-              if idle {
-                cx.background_executor()
-                  .timer(Duration::from_millis(700))
-                  .await;
-              }
-              cx.update(|cx| {
-                if idle {
-                  monitor.set_interval(None, cx);
-                }
-                Ok(Outcome::Push(view(cx)))
-              })
-            }
-          },
-        )]
-      },
-    )
-  };
-  registry::register_all(
-    [
-      detail(
-        "sysinfo",
-        t!("app.launcher.info.system").into(),
-        IconName::Cpu,
-        120.,
-        &["system", "uptime", "kernel", "memory", "disk"],
-        sysinfo,
-      ),
-      detail(
-        "battery",
-        t!("app.launcher.info.battery").into(),
-        IconName::BatteryFull,
-        100.,
-        &["power", "charge"],
-        battery,
-      ),
-      detail(
-        "weather",
-        t!("app.launcher.info.weather").into(),
-        IconName::CloudSun,
-        195.,
-        &["forecast", "temperature"],
-        weather,
-      ),
-    ],
+  registry::register(sysinfo_command(), cx);
+  registry::register(
+    opener(
+      "battery",
+      t!("app.launcher.info.battery"),
+      Icon::Tile(IconName::BatteryFull, 100.),
+      &["power", "charge"],
+      battery,
+    ),
     cx,
   );
+  registry::register(
+    opener(
+      "weather",
+      t!("app.launcher.info.weather"),
+      Icon::Tile(IconName::CloudSun, 195.),
+      &["forecast", "temperature"],
+      weather,
+    ),
+    cx,
+  );
+}
+
+fn sysinfo_command() -> Rc<dyn Command> {
+  simple(
+    "sysinfo",
+    |_| Meta {
+      title: t!("app.launcher.info.system").into(),
+      icon: Icon::Tile(IconName::Cpu, 120.),
+      keywords: ["system", "uptime", "kernel", "memory", "disk"]
+        .map(SharedString::from)
+        .into(),
+      ..Default::default()
+    },
+    |_| {
+      vec![Action::spawn("open", t!("app.launcher.open"), |_, cx| {
+        // take a sample first when nothing samples yet
+        let monitor = cx.system_monitor().clone();
+        let idle = monitor.interval(cx).is_none();
+        if idle {
+          monitor.set_interval(Some(Duration::from_millis(500)), cx);
+        }
+        let cx = cx.to_async();
+        async move {
+          if idle {
+            cx.background_executor()
+              .timer(Duration::from_millis(700))
+              .await;
+          }
+          cx.update(|cx| {
+            if idle {
+              monitor.set_interval(None, cx);
+            }
+            Ok(Outcome::Push(sysinfo(cx)))
+          })
+        }
+      })]
+    },
+  )
 }

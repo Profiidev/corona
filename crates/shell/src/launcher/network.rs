@@ -3,6 +3,7 @@
 use std::{rc::Rc, time::Duration};
 
 use corona_ipc::IpcCommand;
+use corona_ipc::Switch;
 use corona_launcher::{
   Accessory, Action, Command, CommandSource, Confirm, Field, FieldKind, FormView, Hud, Icon,
   ListView, Meta, Outcome, Query, Section, Tone, View,
@@ -16,12 +17,9 @@ use corona_network_manager::{
 use gpui_kit::{App, Global, SharedString, Subscription, Task, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::{
-  network::{
-    ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
-    Security, SwitchVpn,
-  },
-  radio::Switch,
+use crate::commands::network::{
+  ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
+  Security, SwitchVpn,
 };
 
 /// Shows NetworkManager's next password request in the launcher, for a connect started there

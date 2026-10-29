@@ -5,7 +5,7 @@ use corona_ipc::{IpcCommand, IpcExt};
 use corona_osk::{Osk, OskExt};
 use gpui_kit::{App, BorrowAppContext};
 
-use crate::commands::radio::Switch;
+use corona_ipc::Switch;
 
 pub fn init(cx: &mut App) {
   corona_osk::init(cx);

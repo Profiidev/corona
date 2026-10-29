@@ -13,7 +13,7 @@ corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
 corona_desktop.workspace = true
-corona_clipboard.workspace = true
+corona_ipc.workspace = true
 zbus.workspace = true
 rustix = { workspace = true, features = ["process"] }
 sysinfo.workspace = true

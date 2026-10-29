@@ -3,7 +3,7 @@ use std::io::{BufRead, IsTerminal};
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
-use corona_shell::launcher::commands::{Dmenu, DmenuRequest, Open, OpenRequest};
+use corona_launcher::ipc::{Dmenu, DmenuRequest, Open, OpenRequest};
 
 #[derive(Subcommand)]
 pub enum LauncherCommands {

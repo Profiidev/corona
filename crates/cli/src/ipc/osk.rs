@@ -1,10 +1,7 @@
 use clap::Subcommand;
 
-use corona_ipc::IpcCommandSend;
-use corona_shell::{
-  commands::radio::Switch,
-  overlays::osk::{Hide, Show, Tablet, Toggle},
-};
+use corona_ipc::{IpcCommandSend, Switch};
+use corona_shell::overlays::osk::{Hide, Show, Tablet, Toggle};
 
 use super::print_switch;
 

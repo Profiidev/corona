@@ -33,21 +33,10 @@ mod tests {
       }
     }
     let mut files = Vec::new();
-    // the lock and login screen, the launcher, the keyboard and the plugins share these
-    // locale files
+    // every crate shares these locale files
     let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    for dir in [
-      "shell",
-      "components",
-      "surface",
-      "settings",
-      "auth_screen",
-      "greeter",
-      "launcher",
-      "osk",
-      "script",
-    ] {
-      sources(&crates.join(dir).join("src"), &mut files);
+    for dir in std::fs::read_dir(crates).unwrap().flatten() {
+      sources(&dir.path().join("src"), &mut files);
     }
 
     let call = regex::Regex::new(r#""(app\.[a-z0-9_.]+)""#).unwrap();

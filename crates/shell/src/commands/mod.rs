@@ -5,7 +5,6 @@ pub mod audio;
 pub mod bluetooth;
 pub mod brightness;
 pub mod caffeine;
-pub mod calculator;
 pub mod clipboard;
 pub mod dpms;
 pub mod extras;
@@ -30,7 +29,6 @@ pub fn register_commands(cx: &mut App) {
   bluetooth::register_commands(cx);
   brightness::register_commands(cx);
   caffeine::register_commands(cx);
-  calculator::register_commands(cx);
   clipboard::register_commands(cx);
   dpms::register_commands(cx);
   extras::register_commands(cx);

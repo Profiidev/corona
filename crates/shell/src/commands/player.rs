@@ -9,7 +9,7 @@ use corona_mpris::{LoopStatus, MprisExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::commands::radio::Switch;
+use corona_ipc::Switch;
 
 pub fn register_commands(cx: &mut App) {
   cx.ipc_mut()

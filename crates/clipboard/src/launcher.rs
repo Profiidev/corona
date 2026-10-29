@@ -1,13 +1,15 @@
 //! Clipboard history: newest first, preview pane, type filter, pins
 
+pub mod snippets;
+
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
-use corona_clipboard::{ClipboardExt, Entry, Kind};
+use crate::{ClipboardExt, Entry, Kind};
 use corona_components::time::ago_short;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
+use corona_launcher::{
   command::{
     Accessory, Action, Clip, Command, Confirm, Detail, DetailBody, Hud, Icon, Meta, Outcome, Tone,
   },
@@ -40,7 +42,7 @@ pub fn kind_label(kind: Kind) -> SharedString {
 }
 
 fn ago(seconds: u64) -> String {
-  let elapsed = crate::state::now().saturating_sub(seconds);
+  let elapsed = corona_launcher::state::now().saturating_sub(seconds);
   ago_short(std::time::Duration::from_secs(elapsed))
 }
 
@@ -192,7 +194,7 @@ impl Command for EntryRow {
   }
 }
 
-fn history_view() -> crate::View {
+fn history_view() -> corona_launcher::View {
   let selected = Rc::new(Cell::new(0));
   let filter = Filter {
     label: t!("app.launcher.clipboard.type").into(),
@@ -242,9 +244,10 @@ fn history_view() -> crate::View {
 }
 
 pub fn init(cx: &mut App) {
+  snippets::init(cx);
   registry::register_all(
     [
-      crate::kit::opener(
+      corona_launcher::kit::opener(
         "clipboard:history",
         t!("app.launcher.clipboard.history"),
         Icon::Tile(IconName::ClipboardList, 45.),

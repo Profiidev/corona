@@ -1,9 +1,6 @@
 use clap::Subcommand;
-use corona_ipc::IpcCommandSend;
-use corona_shell::commands::{
-  nightlight::{Nightlight, Request},
-  radio::Switch,
-};
+use corona_ipc::{IpcCommandSend, Switch};
+use corona_shell::commands::nightlight::{Nightlight, Request};
 
 #[derive(Subcommand)]
 pub enum NightlightCommands {

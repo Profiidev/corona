@@ -12,6 +12,7 @@ categories.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true
 corona_ipc.workspace = true
+corona_launcher.workspace = true
 corona_config.workspace = true
 corona_script.workspace = true
 corona_js.workspace = true

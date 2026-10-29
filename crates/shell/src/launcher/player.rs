@@ -3,6 +3,7 @@
 use std::{rc::Rc, time::Duration};
 
 use corona_ipc::IpcCommand;
+use corona_ipc::Switch;
 use corona_launcher::{
   Action, ArgSpec, CustomView, Icon, Meta, Outcome, View,
   kit::{switch_arg, switch_target},
@@ -21,10 +22,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::commands::{
-  player::{Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle},
-  radio::Switch,
-};
+use crate::commands::player::{Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle};
 
 fn time(d: Duration) -> String {
   let s = d.as_secs();

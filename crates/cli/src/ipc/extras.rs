@@ -2,10 +2,10 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::extras::{
-  Drive, DriveAction, DrivePasswordPrompt, EmptyTrash, KillPort, KillProcess, ListDrives,
-  ListTimers, StartTimer, StopTimer, TimerRequest, TrashCount,
+use corona_launcher::ipc::{
+  EmptyTrash, KillPort, KillProcess, ListTimers, StartTimer, StopTimer, TimerRequest, TrashCount,
 };
+use corona_shell::commands::extras::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
 
 use crate::ipc::done;
 

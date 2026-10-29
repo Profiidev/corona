@@ -1,12 +1,7 @@
-//! Trash, drives, processes and timers over IPC
+//! Drives over IPC
 
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use corona_launcher::commands::{
-  processes::{by_port, kill, snapshot},
-  storage::{empty_trash, trash_count},
-  timers::{self, Kind},
-};
 use corona_udisks::{MountOptions, UdisksExt, UnmountOptions};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
@@ -15,44 +10,9 @@ use crate::overlays::drive_password;
 
 pub fn register_commands(cx: &mut App) {
   cx.ipc_mut()
-    .register::<TrashCount>()
-    .register::<EmptyTrash>()
     .register::<ListDrives>()
     .register::<DriveAction>()
-    .register::<DrivePasswordPrompt>()
-    .register::<KillProcess>()
-    .register::<KillPort>()
-    .register::<ListProcesses>()
-    .register::<StartTimer>()
-    .register::<ListTimers>()
-    .register::<StopTimer>();
-}
-
-pub struct TrashCount;
-
-impl IpcCommand for TrashCount {
-  const COMMAND: &'static str = "trash:count";
-
-  type Payload = ();
-  type Response = usize;
-
-  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    trash_count()
-  }
-}
-
-pub struct EmptyTrash;
-
-impl IpcCommand for EmptyTrash {
-  const COMMAND: &'static str = "trash:empty";
-
-  type Payload = ();
-  /// How many items went
-  type Response = usize;
-
-  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    empty_trash()
-  }
+    .register::<DrivePasswordPrompt>();
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -152,114 +112,5 @@ impl IpcCommand for DrivePasswordPrompt {
   fn reply(device: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
     let asked = drive_password::ask(device, cx);
     Box::pin(async move { Ok(asked.await.ok()) })
-  }
-}
-
-pub struct KillProcess;
-
-impl IpcCommand for KillProcess {
-  const COMMAND: &'static str = "process:kill";
-
-  /// The pid and whether to force
-  type Payload = (u32, bool);
-  type Response = ();
-
-  fn handle((pid, force): Self::Payload, _: &mut App) -> Result<Self::Response> {
-    kill(pid, force)
-  }
-}
-
-/// Process ids with their names
-pub struct ListProcesses;
-
-impl IpcCommand for ListProcesses {
-  const COMMAND: &'static str = "process:list";
-
-  type Payload = ();
-  type Response = Vec<(u32, String)>;
-
-  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let mut list: Vec<(u32, String)> = snapshot().into_iter().map(|p| (p.pid, p.name)).collect();
-    list.sort();
-    Ok(list)
-  }
-}
-
-pub struct KillPort;
-
-impl IpcCommand for KillPort {
-  const COMMAND: &'static str = "process:kill_port";
-
-  type Payload = u16;
-  /// The pids that got the signal
-  type Response = Vec<u32>;
-
-  fn handle(port: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let pids = by_port(port)?;
-    for pid in &pids {
-      kill(*pid, false)?;
-    }
-    Ok(pids)
-  }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TimerRequest {
-  /// None starts a stopwatch
-  pub seconds: Option<u64>,
-  pub label: Option<String>,
-}
-
-pub struct StartTimer;
-
-impl IpcCommand for StartTimer {
-  const COMMAND: &'static str = "timer:start";
-
-  type Payload = TimerRequest;
-  /// The new timer's id
-  type Response = u64;
-
-  fn handle(request: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    let now = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)?
-      .as_millis() as u64;
-    let kind = match request.seconds {
-      Some(0) => bail!("expected at least a second"),
-      Some(s) => Kind::Timer {
-        end: now + s * 1000,
-        total: s * 1000,
-      },
-      None => Kind::Stopwatch { start: now },
-    };
-    Ok(timers::start(kind, request.label, cx).id)
-  }
-}
-
-pub struct ListTimers;
-
-impl IpcCommand for ListTimers {
-  const COMMAND: &'static str = "timer:list";
-
-  type Payload = ();
-  type Response = Vec<timers::Timer>;
-
-  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    Ok(timers::list(cx))
-  }
-}
-
-pub struct StopTimer;
-
-impl IpcCommand for StopTimer {
-  const COMMAND: &'static str = "timer:stop";
-
-  type Payload = u64;
-  type Response = ();
-
-  fn handle(id: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    if !timers::remove(id, cx) {
-      bail!("no timer {id}");
-    }
-    Ok(())
   }
 }

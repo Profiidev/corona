@@ -1,6 +1,7 @@
 //! Clipboard history: a watcher on the data control protocol fills a SQLite store, the
 //! launcher reads it; pasting presses Ctrl+V on a virtual keyboard
 
+pub mod launcher;
 pub mod paste;
 pub mod store;
 pub mod watch;
@@ -12,6 +13,8 @@ use corona_config::ConfigProvider;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 pub use store::{Entry, Kind, Store};
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct ClipboardHistory {

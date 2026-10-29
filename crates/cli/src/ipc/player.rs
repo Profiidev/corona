@@ -1,10 +1,9 @@
 use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
-use corona_ipc::IpcCommandSend;
-use corona_shell::commands::{
-  player::{ListPlayers, Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle},
-  radio::Switch,
+use corona_ipc::{IpcCommandSend, Switch};
+use corona_shell::commands::player::{
+  ListPlayers, Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle,
 };
 
 use crate::ipc::{done, print_lines, print_switch};

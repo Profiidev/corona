@@ -3,12 +3,10 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use corona_clipboard::launcher::{clip, kind_label, swatch};
 use corona_clipboard::{ClipboardExt, Entry, Kind};
 use corona_components::components::{card::CardExt, modal::modal};
-use corona_launcher::{
-  command::Hud,
-  commands::clipboard::{clip, kind_label, swatch},
-};
+use corona_launcher::command::Hud;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
