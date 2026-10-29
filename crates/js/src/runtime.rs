@@ -52,6 +52,8 @@ pub(crate) struct Runtime {
   pub(crate) lists: RefCell<HashMap<(EntityId, String), ListState>>,
   /// Native component states a view keeps by id: a `Select`'s, a `DataTable`'s, ..
   keyed: RefCell<HashMap<(EntityId, String), Box<dyn Any>>>,
+  /// The view classes `DockArea.register_panel` rebuilds panels from, by panel name
+  pub(crate) panels: RefCell<HashMap<String, Persistent<Function<'static>>>>,
   /// What retained states' `.on` subscribed
   subs: RefCell<HashMap<u32, Subscription>>,
   watches: Watches,
@@ -65,6 +67,7 @@ impl Drop for Runtime {
   fn drop(&mut self) {
     self.slots.get_mut().clear();
     self.keyed.get_mut().clear();
+    self.panels.get_mut().clear();
     self.subs.get_mut().clear();
     self.watches.clear();
   }
@@ -142,6 +145,11 @@ impl Runtime {
     t
   }
 
+  /// Replaces what `view` keeps under `id`.
+  pub(crate) fn set_keyed<T: 'static>(&self, view: EntityId, id: String, value: T) {
+    self.keyed.borrow_mut().insert((view, id), Box::new(value));
+  }
+
   /// The list state named `id` of `view`, with `count` items
   pub(crate) fn list(&self, view: EntityId, id: String, count: usize) -> ListState {
     let mut lists = self.lists.borrow_mut();
@@ -182,6 +190,7 @@ pub(crate) fn new(
     next_child: Cell::new(0),
     lists: Default::default(),
     keyed: Default::default(),
+    panels: Default::default(),
     subs: Default::default(),
     watches,
     _drive: drive(&rt, cx),

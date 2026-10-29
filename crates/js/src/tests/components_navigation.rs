@@ -148,3 +148,63 @@ fn events_carry_their_payloads(cx: &mut TestAppContext) {
   }
   assert_eq!(eval(&view, cx, "log.join()"), "toggle,body,tab:1,side:1");
 }
+
+const ROWS: &str = r##"
+import { View, div } from "gpui-kit";
+import { v_flex, v_virtual_list, Scrollbar } from "gpui-base";
+import { MenuBar, Menu, MenuItem, NativeMenuTrigger } from "gpui-component";
+
+globalThis.log = [];
+
+export default class Main extends View {
+  init(_props, _cx) {
+    this.bar = true;
+    this.rows = ["a", "b", "c"];
+  }
+
+  render(_cx) {
+    return v_flex().w(300).h(400).children([
+      v_virtual_list("rows", 3, 20, (i) => `row-${this.rows[i]}`, (range) =>
+        this.rows.slice(range.start, range.end).map((r) => div().w(300).h(20).child(r)))
+        .h(60)
+        .on_item_click((key, cx) => {
+          log.push(`click:${key}`);
+          this.bar = false;
+          cx.notify();
+        })
+        .on_item_secondary_click((key, e) => log.push(`menu:${key}:${e.button}`)),
+      Scrollbar.vertical("rows"),
+      div().id("area").h(40).overflow_y_scroll().child(div().h(200)),
+      Scrollbar.new("area"),
+      NativeMenuTrigger.new("nm", "Menu").on_effect_error(() => {}),
+    ]).when(this.bar, (el) => el.child(MenuBar.new("bar").child(Menu.new("File").child(MenuItem.new("Quit", "quit")))));
+  }
+}
+"##;
+
+#[gpui::test]
+fn virtual_rows_report_keys_and_menus_come_back(cx: &mut TestAppContext) {
+  let menus = |cx: &mut gpui::VisualTestContext| {
+    cx.update(|_, cx| {
+      let menus = cx.get_menus().unwrap_or_default();
+      menus.iter().map(|m| m.name.to_string()).collect::<Vec<_>>()
+    })
+  };
+  cx.update(|cx| cx.set_menus([gpui::Menu::new("Host")]));
+  let (view, cx) = rooted(cx, ROWS);
+  assert_eq!(menus(cx), ["File"], "{}", eval(&view, cx, "log.join()"));
+  cx.simulate_mouse_down(
+    point(px(10.), px(30.)),
+    gpui::MouseButton::Right,
+    Modifiers::none(),
+  );
+  cx.run_until_parked();
+  cx.simulate_click(point(px(10.), px(50.)), Modifiers::none());
+  cx.run_until_parked();
+  assert_eq!(
+    eval(&view, cx, "log.join()"),
+    "menu:row-b:right,click:row-c"
+  );
+  // the bar is gone, and with it its menus
+  assert_eq!(menus(cx), ["Host"]);
+}

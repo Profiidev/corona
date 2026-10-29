@@ -6,7 +6,7 @@
 //! are in both. Containers that take one kind of child (`TabBar`, `Stepper`, `Sidebar`,
 //! `Menu`, ..) adopt it through their own `child`.
 
-use std::{any::Any, marker::PhantomData, mem, rc::Rc};
+use std::{any::Any, cell::RefCell, marker::PhantomData, mem, rc::Rc};
 
 use gpui_kit::{
   AnyElement, App, AppContext, Axis, ClickEvent, Div, IntoElement, Overflow, ParentElement,
@@ -200,7 +200,85 @@ crate::node!(b::Pagination, "Pagination", style, interactive, parent);
 crate::node!(b::Collapsible, "Collapsible", style, parent);
 crate::node!(b::ResizablePanel, "ResizablePanel", style, parent);
 crate::node!(b::Scrollbar, "Scrollbar");
-crate::node!(b::VirtualList, "VirtualList", style);
+/// A virtual list, with the row handlers `on_item_click` set after it was made
+struct VList {
+  list: b::VirtualList,
+  /// The scroll registry name a `Scrollbar` finds it by
+  name: Option<String>,
+  hooks: Rc<RefCell<RowHooks>>,
+}
+
+/// What a virtual list's rows report to, as view slots
+#[derive(Default)]
+struct RowHooks {
+  click: Option<u64>,
+  secondary: Option<u64>,
+}
+
+impl Node for VList {
+  fn kind(&self) -> &'static str {
+    "VirtualList"
+  }
+  fn style(&mut self) -> Option<&mut StyleRefinement> {
+    Some(Styled::style(&mut self.list))
+  }
+  fn into_element(self: Box<Self>) -> AnyElement {
+    self.list.into_any_element()
+  }
+  fn into_any(self: Box<Self>) -> Box<dyn Any> {
+    self
+  }
+}
+
+/// A row key and the press, what `on_item_secondary_click` gets as `(key, event)`
+struct KeyPress(String, crate::events::MouseButtonEvent);
+
+impl<'js> IntoJs<'js> for KeyPress {
+  fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+    vec![self.0.into_js(ctx)?, self.1.into_js(ctx)?].into_js(ctx)
+  }
+}
+
+/// The scroll handle a `Scrollbar` names `name` by: a scroll area's or a virtual list's
+fn named_scroll(ctx: &Ctx<'_>, name: &str) -> Result<AnyScroll> {
+  let view = frame_or_throw(ctx)?.view.entity_id();
+  Ok(runtime(ctx)?.keyed(view, format!("scroll:{name}"), || {
+    AnyScroll::Plain(gpui_kit::ScrollHandle::new())
+  }))
+}
+
+/// Points scroll registry name `name` at `handle`
+fn name_scroll(ctx: &Ctx<'_>, name: &str, handle: AnyScroll) -> Result<()> {
+  let view = frame_or_throw(ctx)?.view.entity_id();
+  runtime(ctx)?.set_keyed(view, format!("scroll:{name}"), handle);
+  Ok(())
+}
+
+/// The id name of an element, if it has one
+fn name_of(n: &mut Box<dyn Node>) -> Option<String> {
+  match n.interactivity()?.element_id.as_ref()? {
+    gpui_kit::ElementId::Name(name) => Some(name.to_string()),
+    _ => None,
+  }
+}
+
+/// A `div` named by `id(..)` that scrolls: the handle its name stands for in the registry
+fn link_scroll(c: &Ctx<'_>, n: &mut Box<dyn Node>) -> Result<()> {
+  let Some(name) = name_of(n) else {
+    return Ok(());
+  };
+  let overflow = n.style().map(|s| s.overflow.clone()).unwrap_or_default();
+  let scrolls = [overflow.x, overflow.y].contains(&Some(Overflow::Scroll));
+  if !scrolls {
+    return Ok(());
+  }
+  if let AnyScroll::Plain(handle) = named_scroll(c, &name)? {
+    crate::el::interact(c, n, |i| {
+      gpui_kit::StatefulInteractiveElement::track_scroll(i, &handle)
+    })?;
+  }
+  Ok(())
+}
 crate::node!(Scrollable<Div>, "Scrollable", style, interactive, parent);
 crate::node!(c::tab::TabBar, "TabBar", style);
 crate::node!(c::tab::Tab, "Tab", style, interactive, parent);
@@ -442,15 +520,66 @@ impl gpui_kit::RenderOnce for MenuBar {
     let mut hasher = std::hash::DefaultHasher::new();
     self.menus.hash(&mut hasher);
     let revision = hasher.finish();
-    let seen = window.use_keyed_state(format!("menu-bar-rev:{}", self.id), cx, |_, _| 0u64);
-    if *seen.read(cx) != revision {
-      seen.update(cx, |seen, _| *seen = revision);
+    // made when the bar first draws, released when it no longer does: it puts back the menus
+    // that were there before
+    let guard = window.use_keyed_state(format!("menu-bar-guard:{}", self.id), cx, |_, cx| {
+      let previous = cx.get_menus().unwrap_or_default();
+      cx.on_release(|guard: &mut MenuGuard, cx| {
+        let previous = std::mem::take(&mut guard.previous);
+        cx.set_menus(previous.iter().map(restore_menu));
+        b::GlobalState::global_mut(cx).set_app_menus(previous);
+      })
+      .detach();
+      MenuGuard {
+        previous,
+        revision: 0,
+      }
+    });
+    if guard.read(cx).revision != revision {
+      guard.update(cx, |g, _| g.revision = revision);
       let owned = self.menus.iter().map(|m| m.build().owned()).collect();
       cx.set_menus(self.menus.iter().map(AppMenu::build));
       b::GlobalState::global_mut(cx).set_app_menus(owned);
       bar.update(cx, |bar, cx| bar.reload(cx));
     }
     div().child(bar)
+  }
+}
+
+/// The application menus a `MenuBar` replaced, and the revision of its own
+struct MenuGuard {
+  previous: Vec<gpui_kit::OwnedMenu>,
+  revision: u64,
+}
+
+/// A menu `get_menus` answered, as `set_menus` takes it
+fn restore_menu(menu: &gpui_kit::OwnedMenu) -> gpui_kit::Menu {
+  use gpui_kit::{MenuItem, OwnedMenuItem};
+  let items = menu.items.iter().map(|item| match item {
+    OwnedMenuItem::Separator => MenuItem::Separator,
+    OwnedMenuItem::Submenu(menu) => MenuItem::Submenu(restore_menu(menu)),
+    OwnedMenuItem::SystemMenu(m) => MenuItem::SystemMenu(gpui_kit::OsMenu {
+      name: m.name.clone(),
+      menu_type: m.menu_type,
+    }),
+    OwnedMenuItem::Action {
+      name,
+      action,
+      os_action,
+      checked,
+      disabled,
+    } => MenuItem::Action {
+      name: name.clone().into(),
+      action: action.boxed_clone(),
+      os_action: *os_action,
+      checked: *checked,
+      disabled: *disabled,
+    },
+  });
+  gpui_kit::Menu {
+    name: menu.name.clone(),
+    items: items.collect(),
+    disabled: menu.disabled,
   }
 }
 
@@ -813,6 +942,7 @@ impl CommandStateHandle {
 }
 
 /// A `ScrollHandle` or `VirtualListScrollHandle`, what a scrollbar follows
+#[derive(Clone)]
 enum AnyScroll {
   Plain(gpui_kit::ScrollHandle),
   List(b::VirtualListScrollHandle),
@@ -820,6 +950,10 @@ enum AnyScroll {
 
 impl<'js> FromJs<'js> for AnyScroll {
   fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+    if value.is_string() || value.is_number() {
+      let name = rquickjs::Coerced::<String>::from_js(ctx, value)?.0;
+      return named_scroll(ctx, &name);
+    }
     if let Ok(h) = Class::<ScrollHandle>::from_js(ctx, value.clone()) {
       return Ok(Self::Plain(h.borrow().handle.clone()));
     }
@@ -1031,15 +1165,19 @@ mod methods {
     };
     /// Lets a `VirtualListScrollHandle` drive a virtual list.
     fn track_scroll(handle: super::Later<'js, Class<'js, VirtualListScrollHandle>>) |c, n| {
-      if !is::<b::VirtualList>(&**n) {
+      if !is::<VList>(&**n) {
         return Err(not_on(c, &**n));
       }
       let handle = handle.get()?.borrow().handle.clone();
-      on!(c, n, b::VirtualList => |l| l.track_scroll(&handle))
+      let name = (&**n as &dyn Any).downcast_ref::<VList>().and_then(|l| l.name.clone());
+      if let Some(name) = name {
+        name_scroll(c, &name, AnyScroll::List(handle.clone()))?;
+      }
+      on!(c, n, VList => |l| VList { list: l.list.track_scroll(&handle), ..l })
     };
     /// Which item a virtual list measures for its cross-axis size.
     fn with_item_to_measure_index(index: u32) |c, n| on!(c, n,
-      b::VirtualList => |l| l.with_item_to_measure_index(index as usize),
+      VList => |l| VList { list: l.list.with_item_to_measure_index(index as usize), ..l },
     );
     /// A `Tab`'s text, or a `Separator`'s.
     fn label(label: String) |c, n| on!(c, n,
@@ -1050,6 +1188,32 @@ mod methods {
     fn aria_label(label: String) |c, n| on!(c, n,
       c::tab::Tab => |t| t.aria_label(label),
     );
+    /// `handler(key, cx)` when a row of a virtual list is clicked, `key` what `get_key` gave.
+    fn on_item_click(handler: On<'js, Text>) |c, n| {
+      if !is::<VList>(&**n) {
+        return Err(not_on(c, &**n));
+      }
+      let view = frame_or_throw(c)?.view.entity_id();
+      let key = runtime(c)?.slot(view, handler.0, true);
+      on!(c, n, VList => |l| {
+        l.hooks.borrow_mut().click = Some(key);
+        l
+      })
+    };
+    /// `handler(key, event, cx)` on a secondary press over a row of a virtual list.
+    fn on_item_secondary_click(handler: Function<'js>) |c, n| {
+      if !is::<VList>(&**n) {
+        return Err(not_on(c, &**n));
+      }
+      let spread: Function = c.eval("(f) => (p, cx) => f(p[0], p[1], cx)")?;
+      let handler: Function = spread.call((handler,))?;
+      let view = frame_or_throw(c)?.view.entity_id();
+      let key = runtime(c)?.slot(view, handler, true);
+      on!(c, n, VList => |l| {
+        l.hooks.borrow_mut().secondary = Some(key);
+        l
+      })
+    };
     /// The zero-based selected tab or current step.
     fn selected_index(index: u32) |c, n| on!(c, n,
       c::tab::TabBar => |t| t.selected_index(index as usize),
@@ -1286,6 +1450,12 @@ mod methods {
         d
       })
     };
+    /// `handler(message, cx)` when the native menu cannot be shown. Showing one cannot fail
+    /// on this platform layer, so it is kept and never called.
+    fn on_effect_error(handler: On<'js, Text>) |c, n| {
+      let _ = handler;
+      on!(c, n, NativeTrigger => |t| t)
+    };
     /// Adds a `DropdownMenu` item calling `handler(cx)`.
     fn item(label: String, handler: OnCx<'js>) |c, n| {
       if !is::<Dropdown>(&**n) {
@@ -1454,6 +1624,38 @@ mod scrollbars {
 
   crate::el_methods! {
     kinds: &["div"];
+    /// A stable name for this element; a scrolling one is what a `Scrollbar` of that name
+    /// drives.
+    fn id(id: Id) |c, n| {
+      crate::el::interact(c, n, |mut i| {
+        i.0.element_id = Some(id.into_inner());
+        i
+      })?;
+      link_scroll(c, n)
+    };
+    /// Scrolls both axes for overflowing children.
+    fn overflow_scroll() |c, n| {
+      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_scroll)?;
+      link_scroll(c, n)
+    };
+    /// Scrolls horizontally for overflowing children.
+    fn overflow_x_scroll() |c, n| {
+      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_x_scroll)?;
+      link_scroll(c, n)
+    };
+    /// Scrolls vertically for overflowing children.
+    fn overflow_y_scroll() |c, n| {
+      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_y_scroll)?;
+      link_scroll(c, n)
+    };
+    /// Lets a `ScrollHandle` drive this element; a `Scrollbar` of its name drives it too.
+    fn track_scroll(handle: Class<'js, ScrollHandle>) |c, n| {
+      let handle = handle.borrow().handle.clone();
+      if let Some(name) = name_of(n) {
+        name_scroll(c, &name, AnyScroll::Plain(handle.clone()))?;
+      }
+      crate::el::interact(c, n, |i| gpui_kit::StatefulInteractiveElement::track_scroll(i, &handle))
+    };
     /// Scrolls both axes and paints base-layer scrollbars.
     fn overflow_scrollbar() |c, n| scrollable(c, n, |d| d.overflow_scrollbar());
     /// Scrolls horizontally and paints a base-layer scrollbar.
@@ -1546,6 +1748,7 @@ fn virtual_list<'js>(
   id: Id,
   count: u32,
   sizes: Value<'js>,
+  get_key: Function<'js>,
   render: Function<'js>,
 ) -> Result<Class<'js, El>> {
   let sizes: Vec<f32> = match sizes.as_number() {
@@ -1561,31 +1764,100 @@ fn virtual_list<'js>(
   let sizes = Rc::new(sizes.into_iter().map(|s| size(px(s), px(s))).collect());
   let view = (frame_or_throw(ctx)?.view.upgrade())
     .ok_or_else(|| Exception::throw_type(ctx, "the view is gone"))?;
-  let key = runtime(ctx)?.slot(view.entity_id(), render, true);
+  let rt = runtime(ctx)?;
+  let key = rt.slot(view.entity_id(), render, true);
+  let key_fn = rt.slot(view.entity_id(), get_key, true);
+  let hooks = Rc::new(RefCell::new(RowHooks::default()));
+  let row_hooks = hooks.clone();
   let rows = move |view: &mut ScriptView,
                    range: std::ops::Range<usize>,
                    window: &mut Window,
                    cx: &mut gpui_kit::Context<ScriptView>| {
+    let start = range.start;
     let args = |a: &mut Args<'_>| {
       let r = Object::new(a.ctx().clone())?;
       r.set("start", range.start)?;
       r.set("end", range.end)?;
       a.push_arg(r)
     };
+    let id = cx.entity_id();
+    let (click, secondary) = {
+      let hooks = row_hooks.borrow();
+      (hooks.click, hooks.secondary)
+    };
     view
       .render_content(key, None, window, cx, args, |ctx, frame, value| {
         let items: Vec<Child> = Vec::from_js(ctx, value)?;
-        items.into_iter().map(|c| frame.child(ctx, c)).collect()
+        let rt = runtime(ctx)?;
+        let slot_fn = |key: u64| -> Result<Option<Function>> {
+          let f = rt
+            .slots
+            .borrow()
+            .get(&(id, key))
+            .and_then(|s| s.content.clone());
+          f.map(|f| f.restore(ctx)).transpose()
+        };
+        let get_key = slot_fn(key_fn)?;
+        let (click, secondary) = (
+          click.map(slot_fn).transpose()?.flatten(),
+          secondary.map(slot_fn).transpose()?.flatten(),
+        );
+        let mut out = Vec::with_capacity(items.len());
+        for (i, item) in items.into_iter().enumerate() {
+          let el = frame.child(ctx, item)?;
+          if click.is_none() && secondary.is_none() {
+            out.push(el);
+            continue;
+          }
+          let row_key: String = match &get_key {
+            Some(f) => f.call::<_, rquickjs::Coerced<String>>((start + i,))?.0,
+            None => (start + i).to_string(),
+          };
+          let mut row = gpui_kit::InteractiveElement::id(
+            div(),
+            gpui_kit::ElementId::Name(row_key.clone().into()),
+          )
+          .child(el);
+          if let Some(f) = &click {
+            let key = row_key.clone();
+            row = row.on_click(frame.listener(f.clone(), move |_: &ClickEvent| Text(key.clone())));
+          }
+          if let Some(f) = &secondary {
+            let key = row_key.clone();
+            let l = frame.listener(f.clone(), move |e: &gpui_kit::MouseDownEvent| {
+              KeyPress(key.clone(), e.into())
+            });
+            row = gpui_kit::InteractiveElement::on_mouse_down(row, gpui_kit::MouseButton::Right, l);
+          }
+          out.push(row.into_any_element());
+        }
+        Ok(out)
       })
       .unwrap_or_else(|e| {
         tracing::warn!("virtual list render failed: {e}");
         Vec::new()
       })
   };
-  new_el(
-    ctx,
-    b::virtual_list(view, id.into_inner(), axis, sizes, rows),
-  )
+  let name = match id.into_inner() {
+    gpui_kit::ElementId::Name(name) => Some(name.to_string()),
+    other => {
+      let list = b::virtual_list(view, other, axis, sizes, rows);
+      return new_el(
+        ctx,
+        VList {
+          list,
+          name: None,
+          hooks,
+        },
+      );
+    }
+  };
+  let name_str = name.clone().unwrap_or_default();
+  // a `Scrollbar` named after the list drives it
+  let handle = b::VirtualListScrollHandle::new();
+  name_scroll(ctx, &name_str, AnyScroll::List(handle.clone()))?;
+  let list = b::virtual_list(view, name_str, axis, sizes, rows).track_scroll(&handle);
+  new_el(ctx, VList { list, name, hooks })
 }
 
 fn resizable<'js>(ctx: &Ctx<'js>, group: b::ResizablePanelGroup) -> Result<Class<'js, El>> {
@@ -1699,9 +1971,9 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
          id: Id,
          count: u32,
          sizes: Value<'js>,
-         _key: Function<'js>,
+         key: Function<'js>,
          render: Function<'js>| {
-          virtual_list(&ctx, Axis::Vertical, id, count, sizes, render)
+          virtual_list(&ctx, Axis::Vertical, id, count, sizes, key, render)
         },
       )?,
     ),
@@ -1713,9 +1985,9 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
          id: Id,
          count: u32,
          sizes: Value<'js>,
-         _key: Function<'js>,
+         key: Function<'js>,
          render: Function<'js>| {
-          virtual_list(&ctx, Axis::Horizontal, id, count, sizes, render)
+          virtual_list(&ctx, Axis::Horizontal, id, count, sizes, key, render)
         },
       )?,
     ),
@@ -2103,7 +2375,8 @@ const BASE_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A): El
   export function v_resizable(id: string | number): Element;
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
   export function resizable_panel(): Element;
-  type ScrollTarget = import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
+  /** A scroll area's or virtual list's name, or its handle. */
+  type ScrollTarget = string | number | import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
     new: (handle: ScrollTarget) => Element;
@@ -2171,7 +2444,7 @@ const COMPONENT_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A
   /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
   export const Scroll: Ctor<[handle: ScrollbarHandle]>;
   /** A scrollbar driving the area that tracks `handle`. */
-  export const Scrollbar: Ctor<[id: string | number, handle: ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
+  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
   export type ScrollbarHandle = import("gpui-kit").ScrollHandle;
   export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
   /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */

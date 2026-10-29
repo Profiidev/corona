@@ -97,12 +97,23 @@ impl From<&gpui_kit::ClickEvent> for ClickEvent {
   }
 }
 
-#[derive(IntoJs)]
+#[derive(IntoJs, Clone)]
 pub struct MouseButtonEvent {
   button: String,
   click_count: u32,
   position: Pt,
   modifiers: Mods,
+}
+
+impl From<&gpui_kit::MouseDownEvent> for MouseButtonEvent {
+  fn from(e: &gpui_kit::MouseDownEvent) -> Self {
+    Self {
+      button: button_name(e.button),
+      click_count: e.click_count as u32,
+      position: e.position.into(),
+      modifiers: e.modifiers.into(),
+    }
+  }
 }
 
 #[derive(IntoJs)]

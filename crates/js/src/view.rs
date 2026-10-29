@@ -167,6 +167,11 @@ impl ScriptView {
     })
   }
 
+  /// The JS object of the view
+  pub(crate) fn instance(&self) -> &Persistent<Object<'static>> {
+    &self.instance
+  }
+
   #[cfg(test)]
   pub(crate) fn runtime(&self) -> std::rc::Weak<Runtime> {
     Rc::downgrade(&self.rt)
@@ -282,7 +287,7 @@ impl ScriptView {
 }
 
 /// Constructs `class` with `props`, calls its `init(props, cx)`
-fn construct<'js>(
+pub(crate) fn construct<'js>(
   ctx: &Ctx<'js>,
   class: Constructor<'js>,
   props: Value<'js>,
@@ -334,13 +339,17 @@ impl Named for ViewHandle {
 }
 
 impl ViewHandle {
-  fn entity(&self, ctx: &Ctx<'_>) -> Result<Entity<ScriptView>> {
+  pub(crate) fn entity(&self, ctx: &Ctx<'_>) -> Result<Entity<ScriptView>> {
     let rt = runtime(ctx)?;
     let children = rt.children.borrow();
     children
       .get(&self.id)
       .cloned()
       .ok_or_else(|| Exception::throw_type(ctx, "the view was released"))
+  }
+
+  pub(crate) fn id(&self) -> u32 {
+    self.id
   }
 
   /// The child as an element
@@ -372,6 +381,32 @@ impl ViewHandle {
     let removed = rt.children.borrow_mut().remove(&self.id);
     Ok(removed.is_some())
   }
+}
+
+/// A retained child view of `class`, owned by the runtime: `cx.new(Class, props)`
+pub(crate) fn new_child<'js>(
+  ctx: &Ctx<'js>,
+  class: Constructor<'js>,
+  props: Value<'js>,
+) -> Result<(ViewHandle, Entity<ScriptView>)> {
+  let rt = runtime(ctx)?;
+  let mut error = None;
+  let entity = app().new(|cx: &mut Context<ScriptView>| {
+    let view = cx.entity().downgrade();
+    let _current = Current::new(view.clone());
+    let instance = construct(ctx, class, props, view).unwrap_or_else(|e| {
+      error = Some(e);
+      Persistent::save(ctx, Object::new(ctx.clone()).expect("object"))
+    });
+    ScriptView::from_parts(cx.entity_id(), instance, rt.clone(), false)
+  });
+  if let Some(e) = error {
+    return Err(e);
+  }
+  let id = rt.next_child.get() + 1;
+  rt.next_child.set(id);
+  rt.children.borrow_mut().insert(id, entity.clone());
+  Ok((ViewHandle { id }, entity))
 }
 
 /// A focus target the script keeps, from `cx.focus_handle()`
@@ -627,25 +662,8 @@ impl ViewCx {
         "cx.new() in render; create child views in init or a handler",
       ));
     }
-    let rt = runtime(&ctx)?;
     let props = props.0.unwrap_or_else(|| Value::new_undefined(ctx.clone()));
-    let mut error = None;
-    let entity = app().new(|cx: &mut Context<ScriptView>| {
-      let view = cx.entity().downgrade();
-      let _current = Current::new(view.clone());
-      let instance = construct(&ctx, class, props, view).unwrap_or_else(|e| {
-        error = Some(e);
-        Persistent::save(&ctx, Object::new(ctx.clone()).expect("object"))
-      });
-      ScriptView::from_parts(cx.entity_id(), instance, rt.clone(), false)
-    });
-    if let Some(e) = error {
-      return Err(e);
-    }
-    let id = rt.next_child.get() + 1;
-    rt.next_child.set(id);
-    rt.children.borrow_mut().insert(id, entity);
-    Ok(ViewHandle { id })
+    Ok(new_child(&ctx, class, props)?.0)
   }
 
   /// Calls `body(cx)` and returns what it returns: the promise of an async body.

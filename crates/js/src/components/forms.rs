@@ -35,6 +35,10 @@ use gpui_kit::{
   div, px, relative,
 };
 use rquickjs::{Class, Coerced, Ctx, Exception, FromJs, Function, IntoJs, Object, Result, Value};
+use std::{cell::Cell, rc::Rc};
+
+use gpui_kit::component::input::InputContentType;
+use serde_json::{Value as Json, json};
 
 use super::{Family, SizeArg, ctor, declare, is, listen, on_entity, take};
 use crate::{
@@ -49,7 +53,6 @@ crate::node!(Switch, "Switch", style);
 crate::node!(Radio, "Radio", style, interactive, parent);
 crate::node!(RadioGroup, "RadioGroup", style);
 crate::node!(Toggle, "Toggle", style, parent);
-crate::node!(Label, "Label", style);
 crate::node!(Kbd, "Kbd", style);
 crate::node!(Clipboard, "Clipboard");
 crate::node!(Rating, "Rating", style);
@@ -98,6 +101,8 @@ pub struct Stated<T, S: 'static> {
   kind: &'static str,
   el: T,
   state: Entity<S>,
+  /// A `Combobox`'s searchability, which its state takes only when made
+  searchable: Option<Rc<Cell<bool>>>,
 }
 
 type TextIn = Stated<Input, InputState>;
@@ -124,6 +129,48 @@ impl<T: IntoElement + Styled + 'static, S: 'static> Node for Stated<T, S> {
   fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
     self
   }
+}
+
+/// A `Label` in a frame that takes the generic events; `disabled` drops them
+pub struct LabelEl {
+  label: Label,
+  frame: gpui_kit::Div,
+  disabled: bool,
+}
+
+impl LabelEl {
+  fn with(mut self, f: impl FnOnce(Label) -> Label) -> Self {
+    self.label = f(self.label);
+    self
+  }
+}
+
+impl Node for LabelEl {
+  fn kind(&self) -> &'static str {
+    "Label"
+  }
+  fn style(&mut self) -> Option<&mut StyleRefinement> {
+    Some(Styled::style(&mut self.label))
+  }
+  fn interactivity(&mut self) -> Option<&mut gpui_kit::Interactivity> {
+    Some(gpui_kit::InteractiveElement::interactivity(&mut self.frame))
+  }
+  fn into_element(self: Box<Self>) -> AnyElement {
+    match self.disabled {
+      true => div().opacity(0.5).child(self.label).into_any_element(),
+      false => self.frame.child(self.label).into_any_element(),
+    }
+  }
+  fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+    self
+  }
+}
+
+/// The state of a `Stated` widget of type `T`, if the node is one
+fn text_state<T: 'static, S: Clone>(n: &dyn Node, f: impl FnOnce(&T) -> &S) -> Option<S> {
+  (n as &dyn std::any::Any)
+    .downcast_ref::<T>()
+    .map(|t| f(t).clone())
 }
 
 /// Every kind this family makes
@@ -162,6 +209,53 @@ const KINDS: &[&str] = &[
 ];
 
 choice! {
+  ContentType("content type"): InputContentType {
+    "name" => InputContentType::Name,
+    "name_prefix" => InputContentType::NamePrefix,
+    "given_name" => InputContentType::GivenName,
+    "middle_name" => InputContentType::MiddleName,
+    "family_name" => InputContentType::FamilyName,
+    "name_suffix" => InputContentType::NameSuffix,
+    "nickname" => InputContentType::Nickname,
+    "job_title" => InputContentType::JobTitle,
+    "organization_name" => InputContentType::OrganizationName,
+    "location" => InputContentType::Location,
+    "full_street_address" => InputContentType::FullStreetAddress,
+    "street_address_line1" => InputContentType::StreetAddressLine1,
+    "street_address_line2" => InputContentType::StreetAddressLine2,
+    "address_city" => InputContentType::AddressCity,
+    "address_state" => InputContentType::AddressState,
+    "address_city_and_state" => InputContentType::AddressCityAndState,
+    "sublocality" => InputContentType::Sublocality,
+    "country_name" => InputContentType::CountryName,
+    "postal_code" => InputContentType::PostalCode,
+    "telephone_number" => InputContentType::TelephoneNumber,
+    "email_address" => InputContentType::EmailAddress,
+    "url" => InputContentType::Url,
+    "credit_card_number" => InputContentType::CreditCardNumber,
+    "credit_card_name" => InputContentType::CreditCardName,
+    "credit_card_given_name" => InputContentType::CreditCardGivenName,
+    "credit_card_middle_name" => InputContentType::CreditCardMiddleName,
+    "credit_card_family_name" => InputContentType::CreditCardFamilyName,
+    "credit_card_security_code" => InputContentType::CreditCardSecurityCode,
+    "credit_card_expiration" => InputContentType::CreditCardExpiration,
+    "credit_card_expiration_month" => InputContentType::CreditCardExpirationMonth,
+    "credit_card_expiration_year" => InputContentType::CreditCardExpirationYear,
+    "credit_card_type" => InputContentType::CreditCardType,
+    "username" => InputContentType::Username,
+    "password" => InputContentType::Password,
+    "new_password" => InputContentType::NewPassword,
+    "one_time_code" => InputContentType::OneTimeCode,
+    "shipment_tracking_number" => InputContentType::ShipmentTrackingNumber,
+    "flight_number" => InputContentType::FlightNumber,
+    "date_time" => InputContentType::DateTime,
+    "birthdate" => InputContentType::Birthdate,
+    "birthdate_day" => InputContentType::BirthdateDay,
+    "birthdate_month" => InputContentType::BirthdateMonth,
+    "birthdate_year" => InputContentType::BirthdateYear,
+    "cellular_eid" => InputContentType::CellularEid,
+    "cellular_imei" => InputContentType::CellularImei,
+  }
   AxisArg("axis"): Axis { "horizontal" => Axis::Horizontal, "vertical" => Axis::Vertical }
   Align("align"): &'static str { "start" => "start", "center" => "center", "end" => "end" }
   AddonAlign("align"): InputGroupAddonAlignment {
@@ -420,6 +514,7 @@ mod methods {
     /// Blocks interaction and draws the control disabled.
     fn disabled(value: bool) |c, n| pick!(c, n,
       Button => |b: Button| b.disabled(value),
+      LabelEl => |b: LabelEl| LabelEl { disabled: value, ..b },
       Link => |b: Link| b.disabled(value),
       Checkbox => |b: Checkbox| b.disabled(value),
       Switch => |b: Switch| b.disabled(value),
@@ -496,7 +591,7 @@ mod methods {
     fn primary() |c, n| pick!(c, n, Button => |b: Button| b.primary());
     /// The secondary look of a `Button`, or the muted secondary text of a `Label`.
     fn secondary(text: Opt<String>) |c, n| match text.0 {
-      Some(text) => pick!(c, n, Label => |b: Label| b.secondary(text)),
+      Some(text) => pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.secondary(text))),
       None => pick!(c, n, Button => |b: Button| b.secondary()),
     };
     /// The destructive action look.
@@ -545,9 +640,18 @@ mod methods {
       pick!(c, n, base::Radio => |b: base::Radio| b.set_position(p, s))
     };
     /// Draws a `Label`'s text as a password.
-    fn masked(value: bool) |c, n| pick!(c, n, Label => |b: Label| b.masked(value));
+    fn masked(value: bool) |c, n| {
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let window = window_or_throw(c)?;
+        st.update(app(), |s, cx| s.set_masked(value, window, cx));
+        return Ok(());
+      }
+      pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.masked(value)))
+    };
     /// Highlights the matches of `text` in a `Label`.
-    fn highlights(text: String) |c, n| pick!(c, n, Label => |b: Label| b.highlights(text));
+    fn highlights(text: String) |c, n| {
+      pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.highlights(text)))
+    };
     /// Whether a keycap or text area draws its frame.
     fn appearance(value: bool) |c, n| pick!(c, n,
       Kbd => |b: Kbd| b.appearance(value),
@@ -555,6 +659,22 @@ mod methods {
     );
     /// What a `Clipboard` copies, or the stars of a `Rating`.
     fn value(value: Scalar<'js>) |c, n| {
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let text = String::from_js(c, value.0)?;
+        if st.read(app()).value() != text.as_str() {
+          let window = window_or_throw(c)?;
+          st.update(app(), |s, cx| s.set_value(text, window, cx));
+        }
+        return Ok(());
+      }
+      if let Some(st) = text_state::<TextArea, _>(&**n, |t| &t.state) {
+        let text = String::from_js(c, value.0)?;
+        if st.read(app()).value() != text.as_str() {
+          let window = window_or_throw(c)?;
+          st.update(app(), |s, cx| s.set_value(text, window, cx));
+        }
+        return Ok(());
+      }
       if is::<Clipboard>(&**n) {
         let text = Coerced::<String>::from_js(c, value.0)?.0;
         return map(c, n, |b: Clipboard| b.value(text));
@@ -575,15 +695,36 @@ mod methods {
       InputGroup => |b: InputGroup| b.readonly(value),
     );
     /// The prompt shown while empty.
-    fn placeholder(text: String) |c, n| pick!(c, n,
+    fn placeholder(text: String) |c, n| {
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let window = window_or_throw(c)?;
+        st.update(app(), |s, cx| s.set_placeholder(text, window, cx));
+        return Ok(());
+      }
+      if let Some(st) = text_state::<TextArea, _>(&**n, |t| &t.state) {
+        let window = window_or_throw(c)?;
+        st.update(app(), |s, cx| s.set_placeholder(text, window, cx));
+        return Ok(());
+      }
+      pick!(c, n,
       NumberInput => |b: NumberInput| b.placeholder(text),
       DatePicker => |b: DatePicker| b.placeholder(text),
       Select<Items> => |b: Select<Items>| b.placeholder(text),
       Combo => |b: Combo| b.with(|b| b.placeholder(text)),
-    );
+    )};
     /// The prompt of a `Combobox`'s search field.
     fn search_placeholder(text: String) |c, n| {
       pick!(c, n, Combo => |b: Combo| b.with(|b| b.search_placeholder(text)))
+    };
+    /// Shows a search field above a `Combobox`'s items; takes effect from the next frame.
+    fn searchable(value: bool) |c, n| {
+      let cell = (&**n as &dyn std::any::Any).downcast_ref::<Combo>().and_then(|b| b.searchable.clone());
+      let cell = cell.ok_or_else(|| miss(c, n.kind()))?;
+      if cell.replace(value) != value {
+        let view = frame_or_throw(c)?.view.entity_id();
+        app().defer(move |cx| cx.notify(view));
+      }
+      Ok(())
     };
     /// The width of a `Select`'s or `Combobox`'s menu, in pixels.
     fn menu_width(width: f32) |c, n| pick!(c, n,
@@ -682,6 +823,98 @@ mod methods {
       Radio => |b: Radio| b.tab_stop(value),
       base::Radio => |b: base::Radio| b.tab_stop(value),
     );
+    /// Renders each inline token: `render(token, cx)` answers its element, `null` for the
+    /// default chip.
+    fn token(render: Function<'js>) |c, n| {
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let r = token_renderer(c, st, render)?;
+        return map(c, n, |b: TextIn| b.with(|b| b.token(r)));
+      }
+      match text_state::<TextArea, _>(&**n, |t| &t.state) {
+        Some(st) => {
+          let r = token_renderer(c, st, render)?;
+          map(c, n, |b: TextArea| b.with(|b| b.token(r)))
+        }
+        None => Err(miss(c, n.kind())),
+      }
+    };
+    /// `listener(event, cx)` after a click on a token that nothing consumed.
+    fn on_token_click(listener: On<'js, TokenClick>) |c, n| {
+      let l = listen(listener.0, |p: &JsonOut| p.clone());
+      let click = move |text: String| {
+        move |e: &gpui_kit::component::input::InlineTokenClickEvent, w: &mut Window, cx: &mut App| {
+          let m = e.click().modifiers();
+          let t = e.token();
+          let payload = json!({
+            "range": range_json(&text, e.range()),
+            "token": { "id": t.id().as_ref(), "text": t.text().as_ref(), "label": t.label().as_ref() },
+            "bounds": bounds_json(e.bounds()),
+            "modifiers": { "shift": m.shift, "alt": m.alt, "control": m.control, "platform": m.platform },
+          });
+          l(&JsonOut(payload), w, cx)
+        }
+      };
+      // the range needs the text as it is when clicked
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let text = st.read(app()).value().to_string();
+        return map(c, n, |b: TextIn| b.with(|b| b.on_token_click(click(text))));
+      }
+      match text_state::<TextArea, _>(&**n, |t| &t.state) {
+        Some(st) => {
+          let text = st.read(app()).value().to_string();
+          map(c, n, |b: TextArea| b.with(|b| b.on_token_click(click(text))))
+        }
+        None => Err(miss(c, n.kind())),
+      }
+    };
+    /// `listener(event, cx)` when the pointer enters or leaves a token.
+    fn on_token_hover(listener: On<'js, TokenHover>) |c, n| {
+      let l = listen(listener.0, |p: &JsonOut| p.clone());
+      let hover = move |text: String| {
+        move |e: &gpui_kit::component::input::InlineTokenHoverEvent, w: &mut Window, cx: &mut App| {
+          let t = e.token();
+          let payload = json!({
+            "range": range_json(&text, e.range()),
+            "token": { "id": t.id().as_ref(), "text": t.text().as_ref(), "label": t.label().as_ref() },
+            "hovered": e.is_hovered(),
+            "bounds": bounds_json(e.bounds()),
+          });
+          l(&JsonOut(payload), w, cx)
+        }
+      };
+      if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
+        let text = st.read(app()).value().to_string();
+        return map(c, n, |b: TextIn| b.with(|b| b.on_token_hover(hover(text))));
+      }
+      match text_state::<TextArea, _>(&**n, |t| &t.state) {
+        Some(st) => {
+          let text = st.read(app()).value().to_string();
+          map(c, n, |b: TextArea| b.with(|b| b.on_token_hover(hover(text))))
+        }
+        None => Err(miss(c, n.kind())),
+      }
+    };
+    /// The kind of text an `Input` holds, for autofill and keyboards.
+    fn content_type(kind: ContentType) |c, n| {
+      pick!(c, n, TextIn => |b: TextIn| b.with(|b| b.content_type(kind.0)))
+    };
+    /// A developer-assigned accessibility identifier.
+    fn accessibility_id(id: String) |c, n| pick!(c, n,
+      TextIn => |b: TextIn| b.with(|b| b.accessibility_id(id)),
+      TextArea => |b: TextArea| b.with(|b| b.accessibility_id(id)),
+    );
+    /// The number of rows a `Textarea` shows, on its state.
+    fn rows(rows: u32) |c, n| {
+      let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
+      st.update(app(), |s, cx| s.set_rows(rows as usize, cx));
+      Ok(())
+    };
+    /// Grows a `Textarea` between two row counts, on its state.
+    fn auto_grow(min_rows: u32, max_rows: u32) |c, n| {
+      let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
+      st.update(app(), |s, cx| s.set_auto_grow(min_rows as usize, max_rows as usize, cx));
+      Ok(())
+    };
     /// `handler(event, cx)` on activation.
     fn on_click(handler: On<'js, ClickEvent>) |c, n| {
       let h = handler.0;
@@ -889,6 +1122,164 @@ fn install(proto: &Object<'_>) -> Result<()> {
   children::install(proto)
 }
 
+// Inline tokens: ranges cross to JS as UTF-16 offsets, as `slice()` takes them
+
+use gpui_kit::component::input::{InlineToken, InlineTokenSpan, InputContent};
+
+/// UTF-16 offset of byte `byte` of `text`
+fn to_u16(text: &str, byte: usize) -> u32 {
+  text[..byte.min(text.len())].encode_utf16().count() as u32
+}
+
+/// Byte of UTF-16 offset `u` of `text`
+fn to_byte(text: &str, u: u32) -> usize {
+  let mut n = 0;
+  for (i, ch) in text.char_indices() {
+    if n >= u as usize {
+      return i;
+    }
+    n += ch.len_utf16();
+  }
+  text.len()
+}
+
+fn range_json(text: &str, r: std::ops::Range<usize>) -> Json {
+  json!({ "start": to_u16(text, r.start), "end": to_u16(text, r.end) })
+}
+
+fn span_json(text: &str, span: &InlineTokenSpan) -> Json {
+  let t = span.token();
+  json!({
+    "range": range_json(text, span.range()),
+    "token": { "id": t.id().as_ref(), "text": t.text().as_ref(), "label": t.label().as_ref() },
+  })
+}
+
+fn content_json(c: &InputContent) -> Json {
+  let spans: Vec<Json> = c.tokens().iter().map(|s| span_json(c.text(), s)).collect();
+  json!({ "text": c.text().as_ref(), "tokens": spans })
+}
+
+fn bounds_json(b: gpui_kit::Bounds<gpui_kit::Pixels>) -> Json {
+  json!({
+    "x": f32::from(b.origin.x),
+    "y": f32::from(b.origin.y),
+    "width": f32::from(b.size.width),
+    "height": f32::from(b.size.height),
+  })
+}
+
+/// A JSON document handed to JS as a value
+#[derive(Clone)]
+pub struct JsonOut(Json);
+
+impl<'js> IntoJs<'js> for JsonOut {
+  fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+    ctx.json_parse(self.0.to_string())
+  }
+}
+
+macro_rules! json_payloads {
+  ($($ty:ident => $ts:literal),*) => {$(
+    pub struct $ty;
+    impl Payload for $ty {
+      const TS: &'static str = $ts;
+    }
+  )*};
+}
+
+json_payloads! {
+  TokenClick => "import(\"gpui-component\").InlineTokenClickEvent",
+  TokenHover => "import(\"gpui-component\").InlineTokenHoverEvent"
+}
+
+fn token_error(ctx: &Ctx<'_>, e: impl std::fmt::Display) -> rquickjs::Error {
+  Exception::throw_type(ctx, &format!("inline token: {e}"))
+}
+
+fn parse_token(o: &Object<'_>) -> Result<InlineToken> {
+  let (id, text): (String, String) = (o.get("id")?, o.get("text")?);
+  let label: Option<String> = o.get("label")?;
+  let token = InlineToken::new(id, text);
+  Ok(match label {
+    Some(label) => token.with_label(label),
+    None => token,
+  })
+}
+
+fn parse_range(text: &str, o: &Object<'_>) -> Result<std::ops::Range<usize>> {
+  let (start, end): (u32, u32) = (o.get("start")?, o.get("end")?);
+  Ok(to_byte(text, start)..to_byte(text, end))
+}
+
+/// Plain text, or `{ text, tokens }` as `content()` answers it
+fn parse_content<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Result<InputContent> {
+  if let Some(text) = value.as_string() {
+    return Ok(InputContent::new(text.to_string()?));
+  }
+  let o = Object::from_js(ctx, value)?;
+  let text: String = o.get("text")?;
+  let spans: Option<Vec<Object>> = o.get("tokens")?;
+  let mut content = InputContent::new(text.clone());
+  for span in spans.unwrap_or_default() {
+    let range = parse_range(&text, &span.get("range")?)?;
+    let token = parse_token(&span.get("token")?)?;
+    content = content
+      .with_token(range, token)
+      .map_err(|e| token_error(ctx, e))?;
+  }
+  Ok(content)
+}
+
+/// A token renderer `(token, cx) => Element | null`, a view slot called from layout
+fn token_renderer<'js, M: gpui_kit::component::input::InputModeKind + 'static>(
+  ctx: &Ctx<'js>,
+  state: Entity<base::input::InputBaseState<M>>,
+  render: Function<'js>,
+) -> Result<
+  impl Fn(&gpui_kit::component::input::InlineTokenContext, &mut Window, &mut App) -> AnyElement
+  + 'static,
+> {
+  let view = frame_or_throw(ctx)?.view.clone();
+  let key = runtime(ctx)?.slot(view.entity_id(), render, true);
+  Ok(
+    move |t: &gpui_kit::component::input::InlineTokenContext, window: &mut Window, cx: &mut App| {
+      let text = state.read(cx).value().to_string();
+      let tk = t.token();
+      let json = json!({
+        "range": range_json(&text, t.range()),
+        "token": { "id": tk.id().as_ref(), "text": tk.text().as_ref(), "label": tk.label().as_ref() },
+        "selected": t.is_selected(),
+        "disabled": t.is_disabled(),
+        "readonly": t.is_readonly(),
+        "line_height": f32::from(t.line_height()),
+        "available_width": f32::from(t.available_width()),
+      })
+      .to_string();
+      let Some(view) = view.upgrade() else {
+        return tk.label().clone().into_any_element();
+      };
+      let drawn = view.update(cx, |view, cx| {
+        let args = move |a: &mut rquickjs::function::Args<'_>| {
+          let payload = a.ctx().json_parse(json)?;
+          a.push_arg(payload)
+        };
+        view.render_content(key, None, window, cx, args, |ctx, frame, value| {
+          match value.is_null() || value.is_undefined() {
+            true => Ok(None),
+            false => frame.child(ctx, Child::from_js(ctx, value)?).map(Some),
+          }
+        })
+      });
+      match drawn {
+        Ok(Some(el)) => el,
+        Ok(None) => tk.label().clone().into_any_element(),
+        Err(e) => format!("token failed: {e}").into_any_element(),
+      }
+    },
+  )
+}
+
 // Retained states
 
 /// Updates a state with the window of the current call
@@ -958,13 +1349,62 @@ fn input_state<'js>(
 
 #[rquickjs::methods]
 impl JsInputState {
+  /// The text with its tokens, ranges in UTF-16 offsets.
+  pub fn content<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let content = self.state.entity(&ctx)?.read(app()).content();
+    JsonOut(content_json(&content)).into_js(&ctx)
+  }
+
+  pub fn tokens<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let state = self.state.entity(&ctx)?.read(app());
+    let text = state.value();
+    let spans = state.tokens().iter().map(|s| span_json(&text, s)).collect();
+    JsonOut(Json::Array(spans)).into_js(&ctx)
+  }
+
+  /// Replaces the selection with an atomic token.
+  pub fn replace_with_token<'js>(&self, ctx: Ctx<'js>, token: Object<'js>) -> Result<()> {
+    let token = parse_token(&token)?;
+    let mut out = Ok(());
+    update(&ctx, &self.state, |s, w, cx| {
+      out = s.replace_with_token(token, w, cx)
+    })?;
+    out.map_err(|e| token_error(&ctx, e))
+  }
+
+  /// Replaces a UTF-16 range with an atomic token.
+  pub fn replace_range_with_token<'js>(
+    &self,
+    ctx: Ctx<'js>,
+    range: Object<'js>,
+    token: Object<'js>,
+  ) -> Result<()> {
+    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let range = parse_range(&text, &range)?;
+    let token = parse_token(&token)?;
+    let mut out = Ok(());
+    update(&ctx, &self.state, |s, w, cx| {
+      out = s.replace_range_with_token(range, token, w, cx)
+    })?;
+    out.map_err(|e| token_error(&ctx, e))
+  }
+
+  /// Selects a UTF-16 range.
+  pub fn set_selected_range<'js>(&self, ctx: Ctx<'js>, range: Object<'js>) -> Result<()> {
+    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let range = parse_range(&text, &range)?;
+    update(&ctx, &self.state, |s, _, cx| {
+      s.set_selected_range(range, cx)
+    })
+  }
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
     Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
   }
 
   /// Replaces the text; emits no `change`.
-  pub fn set_value(&self, ctx: Ctx<'_>, value: String) -> Result<()> {
-    update(&ctx, &self.state, |s, w, cx| s.set_value(value, w, cx))
+  pub fn set_value<'js>(&self, ctx: Ctx<'js>, value: Value<'js>) -> Result<()> {
+    let content = parse_content(&ctx, value)?;
+    update(&ctx, &self.state, |s, w, cx| s.set_value(content, w, cx))
   }
 
   /// Replaces the selection with `text`, as typing it would.
@@ -1037,12 +1477,61 @@ fn textarea_state<'js>(
 
 #[rquickjs::methods]
 impl JsTextareaState {
+  /// The text with its tokens, ranges in UTF-16 offsets.
+  pub fn content<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let content = self.state.entity(&ctx)?.read(app()).content();
+    JsonOut(content_json(&content)).into_js(&ctx)
+  }
+
+  pub fn tokens<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let state = self.state.entity(&ctx)?.read(app());
+    let text = state.value();
+    let spans = state.tokens().iter().map(|s| span_json(&text, s)).collect();
+    JsonOut(Json::Array(spans)).into_js(&ctx)
+  }
+
+  /// Replaces the selection with an atomic token.
+  pub fn replace_with_token<'js>(&self, ctx: Ctx<'js>, token: Object<'js>) -> Result<()> {
+    let token = parse_token(&token)?;
+    let mut out = Ok(());
+    update(&ctx, &self.state, |s, w, cx| {
+      out = s.replace_with_token(token, w, cx)
+    })?;
+    out.map_err(|e| token_error(&ctx, e))
+  }
+
+  /// Replaces a UTF-16 range with an atomic token.
+  pub fn replace_range_with_token<'js>(
+    &self,
+    ctx: Ctx<'js>,
+    range: Object<'js>,
+    token: Object<'js>,
+  ) -> Result<()> {
+    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let range = parse_range(&text, &range)?;
+    let token = parse_token(&token)?;
+    let mut out = Ok(());
+    update(&ctx, &self.state, |s, w, cx| {
+      out = s.replace_range_with_token(range, token, w, cx)
+    })?;
+    out.map_err(|e| token_error(&ctx, e))
+  }
+
+  /// Selects a UTF-16 range.
+  pub fn set_selected_range<'js>(&self, ctx: Ctx<'js>, range: Object<'js>) -> Result<()> {
+    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let range = parse_range(&text, &range)?;
+    update(&ctx, &self.state, |s, _, cx| {
+      s.set_selected_range(range, cx)
+    })
+  }
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
     Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
   }
 
-  pub fn set_value(&self, ctx: Ctx<'_>, value: String) -> Result<()> {
-    update(&ctx, &self.state, |s, w, cx| s.set_value(value, w, cx))
+  pub fn set_value<'js>(&self, ctx: Ctx<'js>, value: Value<'js>) -> Result<()> {
+    let content = parse_content(&ctx, value)?;
+    update(&ctx, &self.state, |s, w, cx| s.set_value(content, w, cx))
   }
 
   pub fn replace(&self, ctx: Ctx<'_>, text: String) -> Result<()> {
@@ -1473,10 +1962,15 @@ fn combobox<'js>(
   let rt = runtime(&ctx)?;
   let items = items(&ctx, rows, None)?;
   let window = window_or_throw(&ctx)?;
-  let state: Entity<ComboboxState<Items>> = rt.keyed(view, format!("Combobox:{id}"), || {
+  // a state is searchable or not from the start: one per setting, the last render's wins
+  let searchable = rt.keyed(view, format!("Combobox-searchable:{id}"), || {
+    Rc::new(Cell::new(true))
+  });
+  let on = searchable.get();
+  let state: Entity<ComboboxState<Items>> = rt.keyed(view, format!("Combobox:{id}:{on}"), || {
     app().new(|cx| {
       let state = ComboboxState::new(SearchableVec::new(Vec::new()), Vec::new(), window, cx);
-      state.searchable(true)
+      state.searchable(on)
     })
   });
   state.update(app(), |s, cx| {
@@ -1510,18 +2004,29 @@ fn combobox<'js>(
       kind: "Combobox",
       el,
       state,
+      searchable: Some(searchable),
     },
   )
 }
 
 fn text_in(state: &Entity<InputState>) -> TextIn {
   let (kind, el, state) = ("Input", Input::new(state), state.clone());
-  Stated { kind, el, state }
+  Stated {
+    kind,
+    el,
+    state,
+    searchable: None,
+  }
 }
 
 fn text_area(state: &Entity<TextareaState>) -> TextArea {
   let (kind, el, state) = ("Textarea", Textarea::new(state), state.clone());
-  Stated { kind, el, state }
+  Stated {
+    kind,
+    el,
+    state,
+    searchable: None,
+  }
 }
 
 /// `Kbd(keystroke)`
@@ -1580,7 +2085,14 @@ fn exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
   );
   out.extend([
     ctor(ctx, "Label", |ctx: Ctx<'js>, text: String| {
-      new_el(&ctx, Label::new(text))
+      new_el(
+        &ctx,
+        LabelEl {
+          label: Label::new(text),
+          frame: div(),
+          disabled: false,
+        },
+      )
     })?,
     ctor(ctx, "Kbd", kbd)?,
     ctor(ctx, "Field", |ctx: Ctx<'js>| new_el(&ctx, Field::new()))?,
@@ -1951,15 +2463,39 @@ fn base_d_ts() -> String {
 }
 
 /// The retained states, written out: they are rquickjs classes, not table rows
-const STATES_D_TS: &str = r#"  /** A row of a `Select` or `Combobox`. */
+const STATES_D_TS: &str = r#"  /** Half-open UTF-16 string offsets, as `slice()` takes them. */
+  export interface InputRange { start: number; end: number }
+  export interface InlineToken { id: string; text: string; label?: string }
+  export interface InlineTokenSpan { range: InputRange; token: InlineToken }
+  export interface InputContent { text: string; tokens: InlineTokenSpan[] }
+  export interface InlineTokenContext extends InlineTokenSpan {
+    selected: boolean; disabled: boolean; readonly: boolean;
+    line_height: number; available_width: number;
+  }
+  export interface InlineTokenClickEvent extends InlineTokenSpan {
+    bounds: { x: number; y: number; width: number; height: number };
+    modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
+  }
+  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+    hovered: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+  }
+  /** A row of a `Select` or `Combobox`. */
   export interface SelectRow { id: string; label: string; disabled?: boolean; }
   /** What a text state's `on` handlers get; `submit` carries the keys held with Enter. */
   export interface TextEvent { secondary?: boolean; shift?: boolean; }
   /** Retained text of an `Input` or `NumberInput`. Make it in `init` or a handler. */
   export interface InputState {
     value(): string;
-    /** Replaces the text; emits no `change`. */
-    set_value(value: string): void;
+    /** Replaces the text, or the text and its tokens; emits no `change`. */
+    set_value(value: string | InputContent): void;
+    /** The text with its tokens, ranges in UTF-16 offsets as `slice()` takes them. */
+    content(): InputContent;
+    tokens(): InlineTokenSpan[];
+    /** Replaces the selection with an atomic token. */
+    replace_with_token(token: InlineToken): void;
+    replace_range_with_token(range: InputRange, token: InlineToken): void;
+    set_selected_range(range: InputRange): void;
     /** Replaces the selection with `text`, as typing it would. */
     replace(text: string): void;
     set_placeholder(text: string): void;
@@ -1980,7 +2516,15 @@ const STATES_D_TS: &str = r#"  /** A row of a `Select` or `Combobox`. */
   /** Retained text of a `Textarea`. */
   export interface TextareaState {
     value(): string;
-    set_value(value: string): void;
+    set_value(value: string | InputContent): void;
+    /** The text with its tokens, ranges in UTF-16 offsets as `slice()` takes them. */
+    content(): InputContent;
+    tokens(): InlineTokenSpan[];
+    /** Replaces the selection with an atomic token. */
+    replace_with_token(token: InlineToken): void;
+    replace_range_with_token(range: InputRange, token: InlineToken): void;
+    set_selected_range(range: InputRange): void;
+
     replace(text: string): void;
     set_placeholder(text: string): void;
     set_rows(rows: number): void;

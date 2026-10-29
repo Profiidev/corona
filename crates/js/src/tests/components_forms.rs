@@ -175,3 +175,83 @@ fn events_carry_their_payloads(cx: &mut TestAppContext) {
     "click:1,check:true,switch:true,pressed:true,pressed:false,text:h,text:hi"
   );
 }
+
+const TOKENS: &str = r##"
+import { View, div } from "gpui-kit";
+import { v_flex } from "gpui-base";
+import { Input, InputState, Textarea, TextareaState, InputGroup, InputGroupInput, InputGroupTextarea, Label, Combobox } from "gpui-component";
+
+globalThis.log = [];
+globalThis.renders = 0;
+
+export default class Main extends View {
+  init(_props, _cx) {
+    this.state = InputState("");
+    this.state.set_value({
+      text: "😀 @ada",
+      tokens: [{ range: { start: 3, end: 7 }, token: { id: "u1", text: "@ada", label: "Ada" } }],
+    });
+    log.push(`content:${JSON.stringify(this.state.content())}`);
+    this.state.set_selected_range({ start: 0, end: 2 });
+    this.state.replace_with_token({ id: "u2", text: "yo" });
+    log.push(`tokens:${this.state.tokens().map((t) => `${t.token.id}@${t.range.start}-${t.range.end}`).join(",")}`);
+    // a range overlapping a token takes the whole token
+    this.state.replace_range_with_token({ start: 0, end: 1 }, { id: "x", text: "zz" });
+    log.push(`text:${this.state.value()}`);
+    try {
+      this.state.replace_with_token({ id: "", text: "zz" });
+    } catch (e) {
+      log.push(`refused:${e.message.startsWith("inline token:")}`);
+    }
+    this.group = InputState("old");
+    this.area = TextareaState("a\nb");
+    this.clicks = 0;
+  }
+
+  render(_cx) {
+    renders++;
+    return v_flex().w(300).children([
+      Label.new("Click").h(20).w(300).on_click((_e, cx) => {
+        this.clicks++;
+        log.push(`label:${this.clicks}:${this.group.value()}:${this.area.value()}`);
+        cx.notify();
+      }),
+      Label.new("Off").h(20).w(300).disabled(true).on_click(() => log.push("disabled clicked")),
+      Input.new(this.state).h(30).content_type("email_address").accessibility_id("mail")
+        .token((t) => {
+          log.push(`render:${t.token.label}:${t.range.start}-${t.range.end}:${t.selected}`);
+          return div().child(t.token.label);
+        })
+        .on_token_click(() => {})
+        .on_token_hover(() => {}),
+      InputGroup.new("g").input(InputGroupInput.new(this.group).value("new").placeholder("type").masked(true)),
+      InputGroup.new("g2").input(InputGroupTextarea.new(this.area).rows(3).auto_grow(2, 5).value("c").accessibility_id("t")),
+      Combobox.new("c", () => [{ id: "a", label: "A" }], () => {}, () => {}).searchable(false),
+    ]);
+  }
+}
+"##;
+
+#[gpui::test]
+fn inline_tokens_and_text_state_methods(cx: &mut TestAppContext) {
+  let (view, cx) = rooted(cx, TOKENS);
+  for y in [10., 30.] {
+    cx.simulate_click(point(px(10.), px(y)), Modifiers::none());
+    cx.run_until_parked();
+  }
+  let log = eval(&view, cx, "log.join('|')");
+  assert!(
+    log.starts_with(
+      "content:{\"text\":\"😀 @ada\",\"tokens\":[{\"range\":{\"start\":3,\"end\":7},\"token\":{\"id\":\"u1\",\"text\":\"@ada\",\"label\":\"Ada\"}}]}\
+       |tokens:u2@0-2,u1@3-7|text:zz @ada|refused:true"
+    ),
+    "{log}"
+  );
+  assert!(log.contains("render:Ada:3-7:false"), "{log}");
+  assert!(
+    log.contains("label:1:new:c") && !log.contains("disabled clicked"),
+    "{log}"
+  );
+  // the combobox's searchability takes one more frame
+  assert_eq!(eval(&view, cx, "renders >= 2"), "true");
+}

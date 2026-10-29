@@ -3490,6 +3490,8 @@ declare module "gpui-kit" {
     placeholder(text: string): Element;
     /** The prompt of a `Combobox`'s search field. */
     search_placeholder(text: string): Element;
+    /** Shows a search field above a `Combobox`'s items; takes effect from the next frame. */
+    searchable(value: boolean): Element;
     /** The width of a `Select`'s or `Combobox`'s menu, in pixels. */
     menu_width(width: number): Element;
     /** Splits an `OtpInput`'s cells into this many groups. */
@@ -3529,6 +3531,23 @@ declare module "gpui-kit" {
     accessibility_label(label: string): Element;
     /** Whether Tab lands on a `Radio`. */
     tab_stop(value: boolean): Element;
+    /**
+     * Renders each inline token: `render(token, cx)` answers its element, `null` for the
+     * default chip.
+     */
+    token(render: (...args: any[]) => unknown): Element;
+    /** `listener(event, cx)` after a click on a token that nothing consumed. */
+    on_token_click(listener: (event: import("gpui-component").InlineTokenClickEvent, cx: Context) => void): Element;
+    /** `listener(event, cx)` when the pointer enters or leaves a token. */
+    on_token_hover(listener: (event: import("gpui-component").InlineTokenHoverEvent, cx: Context) => void): Element;
+    /** The kind of text an `Input` holds, for autofill and keyboards. */
+    content_type(kind: "name" | "name_prefix" | "given_name" | "middle_name" | "family_name" | "name_suffix" | "nickname" | "job_title" | "organization_name" | "location" | "full_street_address" | "street_address_line1" | "street_address_line2" | "address_city" | "address_state" | "address_city_and_state" | "sublocality" | "country_name" | "postal_code" | "telephone_number" | "email_address" | "url" | "credit_card_number" | "credit_card_name" | "credit_card_given_name" | "credit_card_middle_name" | "credit_card_family_name" | "credit_card_security_code" | "credit_card_expiration" | "credit_card_expiration_month" | "credit_card_expiration_year" | "credit_card_type" | "username" | "password" | "new_password" | "one_time_code" | "shipment_tracking_number" | "flight_number" | "date_time" | "birthdate" | "birthdate_day" | "birthdate_month" | "birthdate_year" | "cellular_eid" | "cellular_imei"): Element;
+    /** A developer-assigned accessibility identifier. */
+    accessibility_id(id: string): Element;
+    /** The number of rows a `Textarea` shows, on its state. */
+    rows(rows: number): Element;
+    /** Grows a `Textarea` between two row counts, on its state. */
+    auto_grow(min_rows: number, max_rows: number): Element;
     /** `handler(event, cx)` on activation. */
     on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
     /** Whether a `gpui-base` `Select`, `Combobox` or `DatePicker` is showing its list. */
@@ -3614,6 +3633,10 @@ declare module "gpui-kit" {
     label(label: string): Element;
     /** What a `Tab` announces. */
     aria_label(label: string): Element;
+    /** `handler(key, cx)` when a row of a virtual list is clicked, `key` what `get_key` gave. */
+    on_item_click(handler: (event: string, cx: Context) => void): Element;
+    /** `handler(key, event, cx)` on a secondary press over a row of a virtual list. */
+    on_item_secondary_click(handler: (...args: any[]) => unknown): Element;
     /** The zero-based selected tab or current step. */
     selected_index(index: number): Element;
     /**
@@ -3695,8 +3718,26 @@ declare module "gpui-kit" {
     menu_anchor(anchor: string): Element;
     /** Adds a `DropdownButton` menu item calling `handler(cx)`. */
     menu_item(label: string, handler: (cx: Context) => void): Element;
+    /**
+     * `handler(message, cx)` when the native menu cannot be shown. Showing one cannot fail
+     * on this platform layer, so it is kept and never called.
+     */
+    on_effect_error(handler: (event: string, cx: Context) => void): Element;
     /** Adds a `DropdownMenu` item calling `handler(cx)`. */
     item(label: string, handler: (cx: Context) => void): Element;
+    /**
+     * A stable name for this element; a scrolling one is what a `Scrollbar` of that name
+     * drives.
+     */
+    id(id: string | number): Element;
+    /** Scrolls both axes for overflowing children. */
+    overflow_scroll(): Element;
+    /** Scrolls horizontally for overflowing children. */
+    overflow_x_scroll(): Element;
+    /** Scrolls vertically for overflowing children. */
+    overflow_y_scroll(): Element;
+    /** Lets a `ScrollHandle` drive this element; a `Scrollbar` of its name drives it too. */
+    track_scroll(handle: ScrollHandle): Element;
     /** Scrolls both axes and paints base-layer scrollbars. */
     overflow_scrollbar(): Element;
     /** Scrolls horizontally and paints a base-layer scrollbar. */
@@ -3970,6 +4011,28 @@ declare module "gpui-kit" {
     anchor(anchor: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center"): Element;
     /** The frame budget in milliseconds the HUD grades against. */
     frame_budget(ms: number): Element;
+    /** The tab bar above a group's displayed panel. */
+    tab_bar(handler: (group: import("gpui-base").DockGroup, cx: Context) => Element): Element;
+    /** What a group with no displayed panel shows. */
+    empty_group(handler: (group: import("gpui-base").DockGroup, cx: Context) => Element | null): Element;
+    /** The hint where a dragged panel would land. */
+    drop_indicator(handler: (drop: import("gpui-base").DockDrop, cx: Context) => Element | null): Element;
+    /** One dock's chrome around its content; put `dock_content()` where its panels go. */
+    dock(handler: (dock: import("gpui-base").DockRegion, cx: Context) => Element | null): Element;
+    /** Displays tab `index` of `group` on a click. */
+    select_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    /** Closes `panel` (an id) of `group` on a click, if the group allows it. */
+    close_panel(group: import("gpui-base").DockGroup, panel: number): Element;
+    /** Zooms `group` in, or back out, on a click. */
+    toggle_zoom(group: import("gpui-base").DockGroup): Element;
+    /** Makes this element the drag source of tab `index` of `group`. */
+    drag_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    /** Accepts a dragged panel into `group`, at slot `index` or appended. */
+    drop_tab(group: import("gpui-base").DockGroup, index?: number): Element;
+    /** Opens or closes `dock` on a click. */
+    toggle_dock(dock: import("gpui-base").DockRegion): Element;
+    /** Drags `dock`'s edge. */
+    resize_dock(dock: import("gpui-base").DockRegion): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4272,7 +4335,8 @@ declare module "gpui-base" {
   export function v_resizable(id: string | number): Element;
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
   export function resizable_panel(): Element;
-  type ScrollTarget = import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
+  /** A scroll area's or virtual list's name, or its handle. */
+  type ScrollTarget = string | number | import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
     new: (handle: ScrollTarget) => Element;
@@ -4360,6 +4424,102 @@ declare module "gpui-base" {
     html(id: string, html: string): Element;
     markdown(id: string, markdown: string): Element;
   };
+  /** Where a region sits relative to the center of a dock area. */
+  export type DockPlacement = "center" | "left" | "right" | "bottom";
+  /** One panel, as `panels()` reports it. */
+  export interface DockPanel {
+    readonly id: number;
+    /** Namespaced: `shell:<plugin>/<name>`. */
+    readonly name: string;
+    readonly placement: DockPlacement;
+    readonly node: number;
+    readonly index: number;
+    readonly active: boolean;
+    readonly visible: boolean;
+    readonly closable: boolean;
+    readonly zoomable: boolean;
+  }
+  /** One tab of a group, as a chrome handler gets it. */
+  export interface DockTab {
+    readonly index: number;
+    readonly name: string;
+    readonly id: number;
+    readonly active: boolean;
+    readonly visible: boolean;
+    readonly closable: boolean;
+    readonly zoomable: boolean;
+  }
+  /** A tab group, as `tab_bar` and `empty_group` get it. */
+  export interface DockGroup {
+    readonly area: number;
+    readonly node: number;
+    readonly active_index: number;
+    readonly zoomed: boolean;
+    readonly collapsed: boolean;
+    readonly locked: boolean;
+    readonly draggable: boolean;
+    readonly droppable: boolean;
+    readonly closable: boolean;
+    readonly tabs: readonly DockTab[];
+  }
+  /** One dock, as the `dock` handler gets it. */
+  export interface DockRegion {
+    readonly area: number;
+    readonly placement: DockPlacement;
+    readonly size: number;
+    readonly open: boolean;
+    readonly collapsible: boolean;
+  }
+  export interface DockRect { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+  /** Where a dragged panel would land; `placement` null merges into the group's tabs. */
+  export interface DockDrop {
+    readonly placement: "left" | "right" | "top" | "bottom" | null;
+    readonly bounds: DockRect;
+    readonly from: DockRect;
+    readonly to: DockRect;
+  }
+  export interface DockPanelOptions {
+    /** What a saved layout files it under, and `register_panel` rebuilds it by. */
+    name: string;
+    placement?: DockPlacement;
+    size?: number;
+    closable?: boolean;
+    zoomable?: boolean;
+    visible?: boolean;
+  }
+  /** A dockable layout the user rearranges. Make it in `init` or a handler. */
+  export interface DockArea {
+    /** Docks `view`, a view from `cx.new(Class)`. */
+    add_panel(view: import("gpui-kit").Entity, options: DockPanelOptions): void;
+    remove_panel(id: number): boolean;
+    panels(): DockPanel[];
+    /** The layout as plain data, with each panel's `serialize()`. */
+    dump(): any;
+    /** Restores a `dump()`, rebuilding registered panels and calling their `deserialize(data)`. */
+    load(state: any): void;
+    has_dock(placement: DockPlacement): boolean;
+    is_dock_open(placement: DockPlacement): boolean;
+    toggle_dock(placement: DockPlacement): void;
+    remove_dock(placement: DockPlacement): void;
+    dock_size(placement: DockPlacement): number | null;
+    set_dock_size(placement: DockPlacement, size: number): void;
+    set_dock_collapsible(placement: DockPlacement, collapsible: boolean): void;
+    is_locked(): boolean;
+    set_locked(locked: boolean): void;
+    is_zoomed(): boolean;
+    zoom_out(): void;
+    on(event: "layout_changed", handler: (cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const DockArea: {
+    new: (id: string, options?: { version?: number }) => DockArea;
+    /** Rebuilds `name`'s panel from `Class` when a saved layout names it; answers the qualified name. */
+    register_panel: (name: string, Class: import("gpui-kit").ViewClass) => string;
+  };
+  /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
+  export function dock_area(area: DockArea): Element;
+  /** Where a dock's panels go inside its chrome handler. */
+  export const dock_content: { new (): Element; new: () => Element };
 }
 declare module "gpui-component" {
   import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
@@ -4428,6 +4588,23 @@ declare module "gpui-component" {
   export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void) => Element };
   /** A single-select searchable combobox over the rows `rows()` returns. */
   export const Combobox: { new (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void) => Element };
+  /** Half-open UTF-16 string offsets, as `slice()` takes them. */
+  export interface InputRange { start: number; end: number }
+  export interface InlineToken { id: string; text: string; label?: string }
+  export interface InlineTokenSpan { range: InputRange; token: InlineToken }
+  export interface InputContent { text: string; tokens: InlineTokenSpan[] }
+  export interface InlineTokenContext extends InlineTokenSpan {
+    selected: boolean; disabled: boolean; readonly: boolean;
+    line_height: number; available_width: number;
+  }
+  export interface InlineTokenClickEvent extends InlineTokenSpan {
+    bounds: { x: number; y: number; width: number; height: number };
+    modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
+  }
+  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+    hovered: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+  }
   /** A row of a `Select` or `Combobox`. */
   export interface SelectRow { id: string; label: string; disabled?: boolean; }
   /** What a text state's `on` handlers get; `submit` carries the keys held with Enter. */
@@ -4435,8 +4612,15 @@ declare module "gpui-component" {
   /** Retained text of an `Input` or `NumberInput`. Make it in `init` or a handler. */
   export interface InputState {
     value(): string;
-    /** Replaces the text; emits no `change`. */
-    set_value(value: string): void;
+    /** Replaces the text, or the text and its tokens; emits no `change`. */
+    set_value(value: string | InputContent): void;
+    /** The text with its tokens, ranges in UTF-16 offsets as `slice()` takes them. */
+    content(): InputContent;
+    tokens(): InlineTokenSpan[];
+    /** Replaces the selection with an atomic token. */
+    replace_with_token(token: InlineToken): void;
+    replace_range_with_token(range: InputRange, token: InlineToken): void;
+    set_selected_range(range: InputRange): void;
     /** Replaces the selection with `text`, as typing it would. */
     replace(text: string): void;
     set_placeholder(text: string): void;
@@ -4457,7 +4641,15 @@ declare module "gpui-component" {
   /** Retained text of a `Textarea`. */
   export interface TextareaState {
     value(): string;
-    set_value(value: string): void;
+    set_value(value: string | InputContent): void;
+    /** The text with its tokens, ranges in UTF-16 offsets as `slice()` takes them. */
+    content(): InputContent;
+    tokens(): InlineTokenSpan[];
+    /** Replaces the selection with an atomic token. */
+    replace_with_token(token: InlineToken): void;
+    replace_range_with_token(range: InputRange, token: InlineToken): void;
+    set_selected_range(range: InputRange): void;
+
     replace(text: string): void;
     set_placeholder(text: string): void;
     set_rows(rows: number): void;
@@ -4560,7 +4752,7 @@ declare module "gpui-component" {
   /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
   export const Scroll: Ctor<[handle: ScrollbarHandle]>;
   /** A scrollbar driving the area that tracks `handle`. */
-  export const Scrollbar: Ctor<[id: string | number, handle: ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
+  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
   export type ScrollbarHandle = import("gpui-kit").ScrollHandle;
   export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
   /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */

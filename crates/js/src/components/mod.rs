@@ -137,6 +137,7 @@ pub(crate) struct Family {
 }
 
 mod data;
+mod dock;
 pub(crate) mod forms;
 pub(crate) mod misc;
 mod navigation;
@@ -157,6 +158,7 @@ pub(crate) const FAMILIES: &[Family] = &[
   misc::FAMILY,
   misc::BASE,
   misc::FPS,
+  dock::FAMILY,
 ];
 
 /// A JS constructor for `make`: `new Name(..)` and `Name.new(..)` both return what it does.
