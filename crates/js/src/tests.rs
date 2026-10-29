@@ -23,6 +23,7 @@ use crate::{
 
 mod components_data;
 mod components_forms;
+mod components_misc;
 mod components_navigation;
 mod components_overlays;
 mod elements;

@@ -375,10 +375,12 @@ impl ScriptRoot {
 }
 
 impl Render for ScriptRoot {
-  fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let view = self.view.clone();
+    let hud = crate::components::misc::fps_hud(window, cx);
     div()
       .when_some(self.background, |root, bg| root.bg(bg))
+      .when_some(hud, |root, hud| root.relative().child(hud))
       .map(|root| match self.fill {
         true => root
           .size_full()

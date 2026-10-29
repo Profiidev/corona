@@ -3881,6 +3881,95 @@ declare module "gpui-kit" {
     column_resizable(value: boolean): Element;
     /** Whether a `DataTable`'s columns move. */
     column_movable(value: boolean): Element;
+    /** The semantic size of an `Attachment` or `Settings`. */
+    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    /** The attachment's lifecycle status. */
+    status(status: "pending" | "uploading" | "processing" | "failed" | "complete"): Element;
+    /** The attachment's layout axis. */
+    axis(axis: "horizontal" | "vertical"): Element;
+    /** The sender edge a `Message` or `Bubble` sits on. */
+    alignment(alignment: "start" | "end"): Element;
+    /** The treatment of a `Bubble` or `Marker`. */
+    variant(variant: "filled" | "secondary" | "muted" | "tinted" | "outline" | "ghost" | "destructive" | "plain" | "separator" | "border"): Element;
+    /** Whether the marker shows its loading treatment. */
+    loading(loading: boolean): Element;
+    /** The marker's loading treatment. */
+    loading_style(loading_style: "spinner" | "shimmer"): Element;
+    /** A stable identity for a `ShimmerText`'s animation. */
+    id(id: string | number): Element;
+    /** How long one shimmer sweep takes. */
+    duration_ms(duration_ms: number): Element;
+    /** The highlight's half-width, relative to the text. */
+    spread(spread: number): Element;
+    /** Sweeps right to left. */
+    reverse(reverse: boolean): Element;
+    /** Sweeps once instead of looping. */
+    once(once: boolean): Element;
+    /** Shows the transcript's scrollbar. */
+    scrollbar(scrollbar: boolean): Element;
+    /** Shows the jump-to-latest button. */
+    jump_button(jump_button: boolean): Element;
+    /** The jump-to-latest button's label. */
+    jump_button_label(label: string): Element;
+    /** Disables an `Editor`, a `SettingItem`'s field, a questionnaire choice or question. */
+    disabled(disabled: boolean): Element;
+    /** Draws the editor's own background and border. */
+    appearance(appearance: boolean): Element;
+    bordered(bordered: boolean): Element;
+    readonly(readonly: boolean): Element;
+    /** What a screen reader announces. */
+    aria_label(label: string): Element;
+    /** Shows line numbers. */
+    line_number(value: boolean): Element;
+    syntax_highlight(value: boolean): Element;
+    /** Shows a header above each file. */
+    header_visible(value: boolean): Element;
+    /** Tints changed lines. */
+    change_background(value: boolean): Element;
+    /** Wraps long lines. */
+    soft_wrap(value: boolean): Element;
+    /** How the start of each hunk is marked. */
+    hunk_separator(separator: "metadata" | "line_info" | "simple"): Element;
+    /** How changed lines are marked beside the code. */
+    change_indicator(indicator: "signs" | "bars" | "none"): Element;
+    /** The text under a setting's or question's title. */
+    description(text: string): Element;
+    /** The axis a setting's label and field are laid out along. */
+    layout(axis: "horizontal" | "vertical"): Element;
+    /** Search keywords matching the setting. */
+    keywords(keywords: string[]): Element;
+    /** The setting group's title. */
+    title(text: string): Element;
+    /** Renders a `SettingItem`'s field, or what follows a `SettingPage`'s title, lazily. */
+    content(render: (...args: any[]) => unknown): Element;
+    /** Opens the page's groups. */
+    default_open(default_open: boolean): Element;
+    /** Shows the reset control. */
+    resettable(resettable: boolean): Element;
+    /** The sidebar's width in pixels. */
+    sidebar_width(pixels: number): Element;
+    /** How far the sidebar can be resized, in pixels. */
+    sidebar_size_range(minimum: number, maximum: number): Element;
+    /** The page shown first. */
+    default_selected_page(index: number): Element;
+    /** Selects the choice at first. */
+    default_selected(value: boolean): Element;
+    /** Requires an answer; hides Skip. */
+    required(value: boolean): Element;
+    /** Accepts several choices. */
+    multiple(value: boolean): Element;
+    /** Gives each choice of the active question a letter or number shortcut. */
+    shortcuts(mode: "letters" | "numbers"): Element;
+    /** `handler(url, cx)` on a link click, instead of opening it. */
+    on_link_click(handler: (event: string, cx: Context) => void): Element;
+    /** Whether the text can be selected; on when left out. */
+    selectable(value?: boolean): Element;
+    /** Whether the view scrolls its content; on when left out. */
+    scrollable(value?: boolean): Element;
+    /** Where in its `relative()` parent the HUD sits. */
+    anchor(anchor: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center"): Element;
+    /** The frame budget in milliseconds the HUD grades against. */
+    frame_budget(ms: number): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4266,6 +4355,11 @@ declare module "gpui-base" {
     on(event: "change", handler: (date: CalendarDate, cx: Context) => void): boolean;
     release(): boolean;
   }
+  /** Rich HTML or Markdown text. */
+  export const TextView: {
+    html(id: string, html: string): Element;
+    markdown(id: string, markdown: string): Element;
+  };
 }
 declare module "gpui-component" {
   import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
@@ -4644,6 +4738,102 @@ declare module "gpui-component" {
   export const TableCell: { new (): Element; new: () => Element };
   /** A caption under a `Table`. */
   export const TableCaption: { new (): Element; new: () => Element };
+  export type ComponentSize = "xsmall" | "small" | "medium" | "large";
+  /** A file or image attachment; its children fill its content. */
+  export const Attachment: { new (id: string): Element; new: (id: string) => Element };
+  /** A message bubble; its children are its content. */
+  export const Bubble: { new (): Element; new: () => Element };
+  /** A compact conversation status marker. */
+  export const Marker: { new (id: string): Element; new: (id: string) => Element };
+  /** A message row; its children fill its content. */
+  export const Message: { new (): Element; new: () => Element };
+  /** Animated loading text. */
+  export const ShimmerText: { new (text: string): Element; new: (text: string) => Element };
+  /** Retained virtual-list and tail-following state for a message transcript. */
+  export interface MessageScrollerState {
+    item_count(): number;
+    /** Replaces every row with `count` new ones. */
+    reset(count: number): void;
+    /** Adds `count` rows at the end, following them when at the tail. */
+    append(count: number): boolean;
+    scroll_to_end(): void;
+    is_following_tail(): boolean;
+    release(): boolean;
+  }
+  export const MessageScrollerState: {
+    (item_count: number): MessageScrollerState;
+    new (item_count: number): MessageScrollerState;
+    new: (item_count: number) => MessageScrollerState;
+  };
+  /** A virtualized message transcript; `render_item(index)` renders a row. */
+  export const MessageScroller: {
+    new (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null): Element;
+    new: (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null) => Element;
+  };
+  /** Retained source-editor state. Made in `init` or a handler: it needs the window. */
+  export interface EditorState {
+    value(): string;
+    /** Replaces the text, without a `change` event. */
+    set_value(text: string): void;
+    /** `"change"` and `"enter"` pass the text, `"focus"` and `"blur"` nothing; false for another name. */
+    on(event: "change" | "enter" | "focus" | "blur", handler: (value: string | undefined, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const EditorState: {
+    (initial_value: string, language?: "rust" | "json"): EditorState;
+    new (initial_value: string, language?: "rust" | "json"): EditorState;
+    new: (initial_value: string, language?: "rust" | "json") => EditorState;
+  };
+  /** A source editor; takes no children. */
+  export const Editor: { new (state: EditorState): Element; new: (state: EditorState) => Element };
+  /** Retained readonly patch state, from unified or Git diff text. */
+  export interface DiffState {
+    /** Shows another patch. */
+    set_patch(patch: string): void;
+    release(): boolean;
+  }
+  export const DiffState: {
+    (patch: string, mode?: "unified" | "split"): DiffState;
+    new (patch: string, mode?: "unified" | "split"): DiffState;
+    new: (patch: string, mode?: "unified" | "split") => DiffState;
+  };
+  /** A readonly patch viewer; takes no children. */
+  export const Diff: { new (state: DiffState): Element; new: (state: DiffState) => Element };
+  /** Plain text in a styleable wrapper. */
+  export const Text: { new (value: string): Element; new: (value: string) => Element };
+  /** A settings surface; takes `SettingPage` children. */
+  export const Settings: { new (id: string): Element; new: (id: string) => Element };
+  /** A settings page; takes `SettingGroup` children. */
+  export const SettingPage: { new (title: string): Element; new: (title: string) => Element };
+  /** A settings group; takes `SettingItem` children. */
+  export const SettingGroup: { new (): Element; new: () => Element };
+  /** One setting; `content(() => field)` renders its field. */
+  export const SettingItem: { new (title: string): Element; new: (title: string) => Element };
+  /** A questionnaire keyed by `id`; takes `QuestionnaireItem` children, rebuilt when they change. */
+  export const Questionnaire: { new (id: string): Element; new: (id: string) => Element };
+  /** One question; takes `QuestionnaireChoice` children. */
+  export const QuestionnaireItem: { new (name: string, label: string): Element; new: (name: string, label: string) => Element };
+  /** A free-form answer of a question, typed into `state`. */
+  export const QuestionnaireInput: { new (state: InputState, label: string): Element; new: (state: InputState, label: string) => Element };
+  /** One answer of a question. */
+  export const QuestionnaireChoice: { new (value: string, label: string): Element; new: (value: string, label: string) => Element };
+}
+declare module "gpui-fps" {
+  import { Element } from "gpui-kit";
+  export type Anchor = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center";
+  /** The performance HUD as an element; its parent must be `relative()`. */
+  export function fps_monitor(): Element;
+  export interface FpsMonitorOptions {
+    /** Default `top_right`. */
+    anchor?: Anchor;
+    /** Frame budget in milliseconds. */
+    frame_budget?: number;
+  }
+  /** Draws the HUD over the window until `hide_fps_monitor()`; again, it moves it. */
+  export function show_fps_monitor(options?: FpsMonitorOptions): void;
+  /** Takes the HUD down; true if it was up. */
+  export function hide_fps_monitor(): boolean;
+  export function fps_monitor_visible(): boolean;
 }
 /** A value of the shell: call it for the current one. */
 interface Signal<T> {

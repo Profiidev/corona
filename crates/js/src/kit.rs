@@ -25,7 +25,12 @@ use crate::{
 };
 
 /// The built-in module names
-pub(crate) const NAMES: &[&str] = &[GpuiKit::NAME, GpuiBase::NAME, GpuiComponent::NAME];
+pub(crate) const NAMES: &[&str] = &[
+  GpuiKit::NAME,
+  GpuiBase::NAME,
+  GpuiComponent::NAME,
+  GpuiFps::NAME,
+];
 
 /// Adds the built-in modules to `loader`.
 pub(crate) fn loader(loader: ModuleLoader) -> ModuleLoader {
@@ -33,6 +38,7 @@ pub(crate) fn loader(loader: ModuleLoader) -> ModuleLoader {
     .with_module(GpuiKit::NAME, GpuiKit)
     .with_module(GpuiBase::NAME, GpuiBase)
     .with_module(GpuiComponent::NAME, GpuiComponent)
+    .with_module(GpuiFps::NAME, GpuiFps)
 }
 
 /// Sets a context up for views: element methods and the `window` global.
@@ -269,6 +275,8 @@ declare module "gpui-base" {{
 declare module "gpui-component" {{
   import {{ ClickEvent, Context, Element, FocusHandle }} from "gpui-kit";
 {component}}}
+declare module "gpui-fps" {{
+{fps}}}
 "##,
       spacing = union(SPACING_TOKENS),
       radius = union(RADIUS_TOKENS),
@@ -280,6 +288,7 @@ declare module "gpui-component" {{
       theme = theme::d_ts(),
       base = families(GpuiBase::NAME),
       component = families(GpuiComponent::NAME),
+      fps = families(GpuiFps::NAME),
     )
   }
 }
@@ -344,6 +353,23 @@ impl GpuiComponent {
 }
 
 impl ModuleDef for GpuiComponent {
+  fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
+    declare(decl, Self::NAME, &[])
+  }
+
+  fn evaluate<'js>(ctx: &Ctx<'js>, exports: &Exports<'js>) -> Result<()> {
+    evaluate(ctx, exports, Self::NAME, Vec::new())
+  }
+}
+
+/// The `gpui-fps` module: the performance HUD
+pub struct GpuiFps;
+
+impl GpuiFps {
+  pub const NAME: &str = "gpui-fps";
+}
+
+impl ModuleDef for GpuiFps {
   fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
     declare(decl, Self::NAME, &[])
   }

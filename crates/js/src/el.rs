@@ -398,6 +398,7 @@ ts! {
   String => "string",
   Child<'_> => "Element | Entity | string | number | boolean",
   Vec<Child<'_>> => "Array<Element | Entity | string | number | boolean>",
+  Vec<String> => "string[]",
   Function<'_> => "(...args: any[]) => unknown",
 }
 
