@@ -137,7 +137,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_weather::init(cx, &buses);
   corona_brightness::init(cx, system)?;
   corona_auth::init(cx, system);
-  corona_mpris::init(cx, session).await?;
+  corona_mpris::init(cx, &buses).await?;
   let serve = cx.config().notification.enabled;
   corona_notifications::init(cx, session, serve).await?;
   corona_tray::init(cx, &buses).await?;

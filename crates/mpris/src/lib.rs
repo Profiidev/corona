@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, names::OwnedBusName, zvariant::OwnedObjectPath};
 
@@ -11,9 +13,15 @@ use crate::{
 
 pub use crate::state::{LoopStatus, PlaybackStatus, Player};
 
+pub mod commands;
+mod launcher;
 mod listener;
+pub mod script;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Mpris {
@@ -149,7 +157,17 @@ fn bus_name(name: &str) -> Result<OwnedBusName> {
   Ok(OwnedBusName::try_from(name.to_string())?)
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows the players on the session bus, registers their UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.session).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  cx.script_mut().register::<script::MprisModule>();
+  Ok(())
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Mpris {
     players: cx.new(|_| Vec::new()),
     active: cx.new(|_| None),
@@ -399,7 +417,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     bus

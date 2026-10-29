@@ -2,6 +2,7 @@ use clap::Subcommand;
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
+use corona_mpris::commands::media::{Action as MediaAction, Media};
 use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
@@ -12,7 +13,6 @@ use corona_shell::commands::bluetooth::{
 use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
-use corona_shell::commands::media::{Action as MediaAction, Media};
 use corona_shell::commands::parse_level;
 use corona_shell::commands::radio::{Bluetooth, Wifi};
 use corona_shell::commands::session::{Action, Session};
@@ -598,8 +598,8 @@ pub(crate) mod tests {
       (&["network", "hotspot", "toggle"], json!(true), corona_shell::commands::network::Hotspot::COMMAND, json!("Toggle")),
       (&["bluetooth-device", "connect", "Buds"], json!(null), DeviceAction::COMMAND, json!(["Connect", "Buds"])),
       (&["bluetooth-discover", "on"], json!(null), Discover::COMMAND, json!(true)),
-      (&["player", "seek", "-10"], json!(null), corona_shell::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
-      (&["player", "loop", "track"], json!(null), corona_shell::commands::player::Loop::COMMAND, json!("Track")),
+      (&["player", "seek", "-10"], json!(null), corona_mpris::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
+      (&["player", "loop", "track"], json!(null), corona_mpris::commands::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::commands::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),

@@ -1,13 +1,13 @@
+use crate::{MprisExt, PlaybackStatus};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_utils::error::ErrorLogExt;
 use futures::FutureExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Media>();
 }
 

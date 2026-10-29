@@ -2,6 +2,7 @@
 
 use std::{rc::Rc, time::Duration};
 
+use crate::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_ipc::IpcCommand;
 use corona_ipc::Switch;
 use corona_launcher::{
@@ -9,7 +10,6 @@ use corona_launcher::{
   kit::{switch_arg, switch_target},
   registry, simple,
 };
-use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
   App, AppContext, Context, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
@@ -274,7 +274,7 @@ fn now_playing() -> View {
   })
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register_all(
     [
       simple(

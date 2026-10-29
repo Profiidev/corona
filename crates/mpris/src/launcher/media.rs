@@ -1,12 +1,12 @@
 //! Play, pause, next and previous on the active player
 
+use crate::{MprisExt, PlaybackStatus};
 use corona_ipc::IpcCommand;
 use corona_launcher::{
   Action, Command, Icon, Meta, Outcome,
   kit::{Group, watch},
   simple,
 };
-use corona_mpris::{MprisExt, PlaybackStatus};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 use std::rc::Rc;
@@ -48,7 +48,7 @@ fn command(
   )
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   Group::new(
     "media",
     vec![

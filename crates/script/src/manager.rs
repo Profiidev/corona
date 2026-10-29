@@ -1619,12 +1619,11 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 14] = [
+  const ALL_MODULES: [&str; 13] = [
     "compositor",
     "compositor_control",
     "pipewire",
     "network",
-    "mpris",
     "bluetooth",
     "power",
     "brightness",

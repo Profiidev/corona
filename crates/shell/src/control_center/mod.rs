@@ -6,7 +6,6 @@ pub(crate) mod dashboard;
 mod disks;
 mod displays;
 mod hotspot;
-mod media;
 mod network;
 mod notifications;
 mod power;
@@ -26,7 +25,6 @@ pub use crate::control_center::{
   disks::DisksPanel,
   displays::DisplaysPanel,
   hotspot::{HotspotPanel, poll_clients},
-  media::MediaPanel,
   network::NetworkPanel,
   notifications::{NotificationsPanel, ReplyInputs},
   power::PowerPanel,
@@ -45,8 +43,7 @@ pub fn register_panels(cx: &mut App) {
     .register::<BrightnessPanel>()
     .register::<DisplaysPanel>()
     .register::<NotificationsPanel>()
-    .register::<ClipboardPanel>()
-    .register::<MediaPanel>();
+    .register::<ClipboardPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
   dashboard::register(cx);
   corona_surface::dashboard::warn_bad_ids(cx);

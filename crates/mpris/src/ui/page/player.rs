@@ -1,8 +1,8 @@
 use std::time::Duration;
 
+use crate::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
-use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
@@ -18,7 +18,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::media::MediaPanel;
+use crate::ui::page::MediaPanel;
 use rust_i18n::t;
 
 fn time(duration: Duration) -> String {

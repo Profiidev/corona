@@ -1,5 +1,5 @@
+use crate::{MprisExt, PlaybackStatus};
 use corona_components::components::card::CardExt;
-use corona_mpris::{MprisExt, PlaybackStatus};
 use gpui_kit::{
   App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
@@ -14,15 +14,23 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::MediaPanel;
-use crate::control_center::dashboard::{open, spawn_logged};
 use corona_surface::{
-  control_center::ControlCenterPage,
-  dashboard::{DashboardCard, DashboardExt},
+  control_center::{ControlCenter, ControlCenterPage},
+  dashboard::DashboardCard,
 };
+use corona_utils::error::ErrorLogExt;
 use rust_i18n::t;
 
+use crate::ui::page::MediaPanel;
+
 const ART: f32 = 64.;
+
+fn spawn_logged(cx: &mut App, task: impl Future<Output = anyhow::Result<()>> + 'static) {
+  cx.spawn(async move |_| {
+    let _ = task.await.log_err();
+  })
+  .detach();
+}
 
 fn card(id: &'static str, cx: &App) -> Stateful<Div> {
   div().id(id).flex().p_2().gap_2().card(cx)
@@ -67,7 +75,7 @@ fn media(cx: &App) -> Option<Stateful<Div>> {
       .min_w_0()
       .items_center()
       .cursor_pointer()
-      .on_click(open(MediaPanel::ID))
+      .on_click(|_, window, cx| ControlCenter::navigate_id(MediaPanel::ID, window, cx))
       .child(
         div()
           .size(px(ART))
@@ -160,8 +168,4 @@ impl Render for MediaCard {
   fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     media(cx).map_or_else(|| div().into_any_element(), |d| d.into_any_element())
   }
-}
-
-pub(crate) fn register(cx: &mut App) {
-  cx.dashboard_mut().card::<MediaCard>();
 }

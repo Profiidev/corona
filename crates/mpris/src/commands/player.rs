@@ -2,16 +2,16 @@
 
 use std::time::Duration;
 
+use crate::{LoopStatus, MprisExt};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use corona_mpris::{LoopStatus, MprisExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use corona_ipc::Switch;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<Seek>()
     .register::<Shuffle>()
@@ -20,7 +20,7 @@ pub fn register_commands(cx: &mut App) {
     .register::<ListPlayers>();
 }
 
-fn active(cx: &App) -> Result<corona_mpris::Player> {
+fn active(cx: &App) -> Result<crate::Player> {
   cx.mpris()
     .active_player(cx)
     .cloned()

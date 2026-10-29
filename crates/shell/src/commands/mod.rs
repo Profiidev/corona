@@ -10,12 +10,10 @@ pub mod dpms;
 pub mod extras;
 pub mod lock_key;
 
-pub mod media;
 pub mod monitor;
 pub mod network;
 pub mod nightlight;
 pub mod notification;
-pub mod player;
 pub mod power_profile;
 pub mod radio;
 pub mod session;
@@ -32,12 +30,10 @@ pub fn register_commands(cx: &mut App) {
   dpms::register_commands(cx);
   extras::register_commands(cx);
   lock_key::register_commands(cx);
-  media::register_commands(cx);
   monitor::register_commands(cx);
   network::register_commands(cx);
   nightlight::register_commands(cx);
   notification::register_commands(cx);
-  player::register_commands(cx);
   power_profile::register_commands(cx);
   radio::register_commands(cx);
   session::register_commands(cx);

@@ -2,7 +2,7 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::{IpcCommandSend, Switch};
-use corona_shell::commands::player::{
+use corona_mpris::commands::player::{
   ListPlayers, Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle,
 };
 

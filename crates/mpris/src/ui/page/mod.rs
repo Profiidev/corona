@@ -1,6 +1,6 @@
 use std::{iter, time::Duration};
 
-use corona_mpris::{MprisExt, PlaybackStatus, Player};
+use crate::{MprisExt, PlaybackStatus, Player};
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{

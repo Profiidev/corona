@@ -12,7 +12,6 @@ pub mod dbus;
 pub mod desktop;
 pub mod i18n;
 pub mod idle;
-pub mod mpris;
 pub mod network;
 pub mod notifications;
 pub mod pipewire;
@@ -32,7 +31,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<compositor::CompositorControl>()
     .register::<desktop::Desktop>()
     .register::<idle::Idle>()
-    .register::<mpris::Mpris>()
     .register::<network::Network>()
     .register::<notifications::Notifications>()
     .register::<notifications::NotificationCenter>()

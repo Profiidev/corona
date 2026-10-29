@@ -3,13 +3,13 @@
 use clap_complete::CompletionCandidate;
 use corona_ipc::IpcCommandSend;
 use corona_launcher::ipc::{ListCommands, ListProcesses, ListTimers};
+use corona_mpris::commands::player::ListPlayers;
 use corona_shell::commands::{
   audio::{Kind, ListNodes},
   bluetooth::ListDevices,
   clipboard::ListClipboard,
   extras::ListDrives,
   network::{ListVpns, ListWifi},
-  player::ListPlayers,
   window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},
 };
 use corona_tray::commands::ListEntries;

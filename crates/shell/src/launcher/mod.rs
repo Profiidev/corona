@@ -7,11 +7,9 @@ mod display;
 mod drives;
 mod info;
 mod ip;
-mod media;
 mod monitors;
 mod network;
 mod notifications;
-mod player;
 mod session;
 mod system;
 mod tools;
@@ -54,7 +52,6 @@ pub fn init(cx: &mut App) {
   session::init(cx);
   system::init(cx);
   audio::init(cx);
-  media::init(cx);
   display::init(cx);
   tools::init(cx);
   windows::init(cx);
@@ -64,7 +61,6 @@ pub fn init(cx: &mut App) {
   network::init(cx);
   bluetooth::init(cx);
   drives::init(cx);
-  player::init(cx);
   notifications::init(cx);
   monitors::init(cx);
   ip::init(cx);

@@ -1,9 +1,10 @@
 use std::time::Duration;
 
+use crate as mpris;
+use crate::MprisExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
 };
-use corona_mpris::{self as mpris, MprisExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};
@@ -166,9 +167,9 @@ async fn set_loop_status(mpris: Mprises, name: String, status: Json<LoopStatus>)
 }
 
 /// `corona/mpris`
-pub struct Mpris;
+pub struct MprisModule;
 
-impl ScriptModule for Mpris {
+impl ScriptModule for MprisModule {
   const NAME: &str = "mpris";
   const DOC: &str = "Media players.";
 

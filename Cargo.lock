@@ -1801,6 +1801,7 @@ dependencies = [
  "corona_ipc",
  "corona_js",
  "corona_launcher",
+ "corona_mpris",
  "corona_network_manager",
  "corona_printing",
  "corona_script",
@@ -2066,10 +2067,22 @@ name = "corona_mpris"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona-zbus-mpris2",
+ "corona_components",
+ "corona_ipc",
+ "corona_js",
+ "corona_launcher",
+ "corona_surface",
  "corona_utils",
+ "futures",
  "futures-lite",
  "gpui-kit",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "specta",
+ "uuid",
  "zbus",
 ]
 
@@ -2221,7 +2234,6 @@ dependencies = [
  "corona_idle",
  "corona_ipc",
  "corona_js",
- "corona_mpris",
  "corona_network_manager",
  "corona_notifications",
  "corona_pipewire",

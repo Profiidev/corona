@@ -20,7 +20,6 @@ use crate::control_center::dashboard::{session::SessionMenu, sliders::Sliders};
 use corona_surface::control_center::{ControlCenter, Standalone};
 use rust_i18n::t;
 
-pub(crate) mod cards;
 mod session;
 pub(crate) mod sliders;
 pub(crate) mod toggles;
@@ -38,7 +37,6 @@ pub struct DashboardPanel {
 pub(crate) fn register(cx: &mut App) {
   toggles::register(cx);
   sliders::register(cx);
-  cards::register(cx);
 }
 
 impl ControlCenterPage for DashboardPanel {
@@ -148,10 +146,6 @@ impl ControlCenterPage for DashboardPanel {
         .into_any_element(),
     ]
   }
-}
-
-fn open(page: &'static str) -> impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) {
-  move |_, window, cx| ControlCenter::navigate_id(page, window, cx)
 }
 
 impl DashboardPanel {
