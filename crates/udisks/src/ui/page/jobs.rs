@@ -7,9 +7,9 @@ use std::{
   time::{Duration, Instant},
 };
 
+use crate::{UdisksExt, is_not_authorized};
 use anyhow::Result;
 use corona_launcher::Tone;
-use corona_udisks::{UdisksExt, is_not_authorized};
 use futures::future::LocalBoxFuture;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, Global, IntoElement, ParentElement, Styled,
@@ -24,7 +24,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   DisksPanel,
   fd::Progress,
   model::{job_title, remaining},
@@ -88,7 +88,7 @@ pub fn init(cx: &mut App) {
     next_id: Rc::default(),
   };
   cx.set_global(log.clone());
-  let Some(udisks) = cx.try_global::<corona_udisks::Udisks>().cloned() else {
+  let Some(udisks) = cx.try_global::<crate::Udisks>().cloned() else {
     return;
   };
   cx.observe(&udisks.job_completed, move |completed, cx| {
@@ -284,7 +284,7 @@ impl DisksLog {
 
   /// udisks jobs and panel jobs
   pub fn running_count(&self, cx: &App) -> usize {
-    let udisks = cx.try_global::<corona_udisks::Udisks>();
+    let udisks = cx.try_global::<crate::Udisks>();
     self.running.read(cx).len() + udisks.map_or(0, |u| u.list_jobs(cx).len())
   }
 }
@@ -336,7 +336,7 @@ impl DisksPanel {
       .collect();
     running.extend(log.running.read(cx).iter().map(|job| {
       let done = job.progress.done.load(Ordering::Relaxed);
-      let percent = crate::control_center::disks::model::percent(done, job.total);
+      let percent = crate::ui::page::model::percent(done, job.total);
       let progress = job.progress.clone();
       job_row(
         job.title.clone(),

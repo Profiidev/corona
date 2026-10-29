@@ -1,4 +1,4 @@
-//! The option forms of the shell's bar widgets
+//! The disks button's options form
 
 use corona_config::bar::BarConfig;
 use corona_settings::{
@@ -8,12 +8,14 @@ use corona_settings::{
 use gpui_kit::{App, IntoElement, ParentElement, Window, component::Sizable};
 use rust_i18n::t;
 
-use crate::widgets::control_center::disks::{self, DisksButton};
+use crate::ui::widget::{DisksButton, Options};
 
-pub(super) fn register(cx: &mut App) {
-  let form = |form| WidgetOptions { form, label: None };
+pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
-    .widget_options::<DisksButton>(form(disks_form));
+    .widget_options::<DisksButton>(WidgetOptions {
+      form: disks_form,
+      label: None,
+    });
 }
 
 fn disks_form(
@@ -23,7 +25,7 @@ fn disks_form(
   _: &mut Window,
   _: &mut App,
 ) -> gpui_kit::AnyElement {
-  let current: disks::Options = options(bar, slot);
+  let current: Options = options(bar, slot);
   let name = name.to_string();
   form()
     .child(form_row(
@@ -36,7 +38,7 @@ fn disks_form(
             cx,
             &name,
             slot,
-            disks::Options {
+            Options {
               hide_when_idle: *checked,
             },
           );

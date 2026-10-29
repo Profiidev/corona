@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use corona_udisks::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
+use crate::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled, Window,
   assets::IconName,
@@ -17,7 +17,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   DisksPanel, DriveTab,
   dialogs::{Dialog, DialogKind},
   jobs::DisksLog,
@@ -93,7 +93,7 @@ impl DisksPanel {
   fn overview(
     &self,
     drive: &Drive,
-    disk: Option<&corona_udisks::Block>,
+    disk: Option<&crate::Block>,
     cx: &Context<'_, Self>,
   ) -> Vec<AnyElement> {
     let table = disk
@@ -534,7 +534,7 @@ impl DisksPanel {
     cx: &mut Context<Self>,
   ) {
     if kind == DialogKind::Format {
-      for f in crate::control_center::disks::types::FORMATS {
+      for f in crate::ui::page::types::FORMATS {
         self.load_caps(f, cx);
       }
     }

@@ -132,7 +132,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
 
   use super::*;
-  use crate::test_support::{FakeCompositor, setup};
+  use corona_surface::testing::{FakeCompositor, setup};
 
   fn enter(dialog: &Entity<DrivePasswordDialog>, password: &str, cx: &mut VisualTestContext) {
     dialog.update_in(cx, |dialog, window, cx| {

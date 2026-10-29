@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use corona_udisks::UdisksExt;
+use crate::UdisksExt;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -12,7 +12,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   DisksPanel,
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::DisksLog,

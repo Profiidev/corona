@@ -6,8 +6,8 @@ use std::{
   rc::Rc,
 };
 
+use crate::{MountOptions, Udisks, UdisksExt, Volume};
 use corona_notifications::{Action, Notifications, Notify, Urgency};
-use corona_udisks::{MountOptions, Udisks, UdisksExt, Volume};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use rust_i18n::t;
@@ -15,8 +15,8 @@ use zbus::zvariant::OwnedObjectPath;
 
 use corona_surface::{control_center::Standalone, panel::AppPanelExt};
 
-use crate::control_center::DisksPanel;
-use crate::control_center::disks::{DisksRequest, Request, types::size};
+use crate::ui::page::DisksPanel;
+use crate::ui::page::{DisksRequest, Request, types::size};
 
 const MOUNT: &str = "mount";
 const UNLOCK: &str = "unlock";
@@ -184,7 +184,7 @@ fn notify(drive: OwnedObjectPath, sent: Rc<RefCell<HashMap<u32, Sent>>>, cx: &mu
 
 #[cfg(test)]
 mod tests {
-  use corona_udisks::Lock;
+  use crate::Lock;
 
   use super::*;
 

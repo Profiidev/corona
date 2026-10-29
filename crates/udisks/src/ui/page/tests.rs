@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc, time::Instant};
 
-use corona_udisks::{Block, Drive, Job, Loop, Udisks};
+use crate::{Block, Drive, Job, Loop, Udisks};
 use corona_utils::test_bus::TestBus;
 use futures::executor::block_on;
 use gpui_kit::{
@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 
 use super::*;
-use crate::control_center::disks::{
+use crate::ui::page::{
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::Finished,
   model::tests::{block, path, stick},

@@ -5,7 +5,7 @@ use corona_ipc::IpcCommandSend;
 use corona_launcher::ipc::{
   EmptyTrash, KillPort, KillProcess, ListTimers, StartTimer, StopTimer, TimerRequest, TrashCount,
 };
-use corona_shell::commands::extras::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
+use corona_udisks::commands::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
 
 use crate::ipc::done;
 

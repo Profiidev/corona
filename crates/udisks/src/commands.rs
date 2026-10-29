@@ -1,14 +1,14 @@
 //! Drives over IPC
 
+use crate::{MountOptions, UdisksExt, UnmountOptions};
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use corona_udisks::{MountOptions, UdisksExt, UnmountOptions};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::overlays::drive_password;
+use crate::ui::drive_password;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<ListDrives>()
     .register::<DriveAction>()

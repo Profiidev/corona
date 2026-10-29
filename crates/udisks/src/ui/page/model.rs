@@ -1,6 +1,6 @@
 //! The panel's view of udisks' state: drives with their partitions, health, usage, free space
 
-use corona_udisks::{Block, Drive, Job};
+use crate::{Block, Drive, Job};
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
@@ -238,7 +238,7 @@ pub fn remaining(job: &Job, now_micros: u64) -> Option<u64> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-  use corona_udisks::{Ata, Encrypted, Filesystem, Partition, PartitionTable, Swapspace};
+  use crate::{Ata, Encrypted, Filesystem, Partition, PartitionTable, Swapspace};
 
   use super::*;
 

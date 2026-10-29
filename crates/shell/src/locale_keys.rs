@@ -56,7 +56,7 @@ mod tests {
         corona_weather::compass(f64::from(i) * 45.)
       )
     }));
-    keys.extend(crate::control_center::disks_runtime_keys());
+    keys.extend(corona_udisks::ui::page::runtime_keys());
     // the settings name built-in bar widgets by their type
     let widget =
       regex::Regex::new(r#"impl Widget for \w+ \{\s*const NAME: &'static str = "(\w+)""#).unwrap();

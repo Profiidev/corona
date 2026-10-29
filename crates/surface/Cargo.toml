@@ -8,7 +8,11 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = ["dep:tempfile", "gpui-kit/test-support"]
+
 [dependencies]
+tempfile = { workspace = true, optional = true }
 corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true

@@ -9,12 +9,12 @@ use std::{
   time::Duration,
 };
 
-use anyhow::Context as _;
-use corona_components::components::modal::modal;
-use corona_udisks::{
+use crate::{
   Block, CreatePartitionOptions, DeleteOptions, FormatOptions, LoopSetupOptions, PassphraseOptions,
   UdisksExt, UnlockOptions, is_not_authorized,
 };
+use anyhow::Context as _;
+use corona_components::components::modal::modal;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, PathPromptOptions,
   SharedString, Styled, Subscription, Window,
@@ -39,7 +39,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   DisksPanel,
   fd::{self, Bench},
   jobs::{DisksLog, Start},
@@ -1584,7 +1584,7 @@ fn log_progress(dialog: &Dialog, cx: &App) -> Option<String> {
   if !dialog.busy {
     return None;
   }
-  let jobs = crate::control_center::disks::jobs::log(cx).running.read(cx);
+  let jobs = crate::ui::page::jobs::log(cx).running.read(cx);
   let job = jobs.iter().find(|j| j.total == fd::SAMPLES)?;
   Some(format!(
     "{} / {}",
@@ -1599,12 +1599,12 @@ fn failed(title: String, objects: Vec<OwnedObjectPath>, e: anyhow::Error, cx: &m
     true => t!("app.disks.jobs.not_authorized").to_string(),
     false => format!("{e:#}"),
   };
-  crate::control_center::disks::jobs::log(cx).clone().push(
-    crate::control_center::disks::jobs::Finished {
+  crate::ui::page::jobs::log(cx).clone().push(
+    crate::ui::page::jobs::Finished {
       title,
       detail,
       success: false,
-      at: crate::control_center::disks::jobs::now(),
+      at: crate::ui::page::jobs::now(),
       objects,
       retry: None,
       when: std::time::Instant::now(),

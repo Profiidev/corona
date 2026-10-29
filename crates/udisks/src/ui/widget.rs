@@ -1,10 +1,10 @@
+use crate::UdisksExt;
 use corona_surface::bar::{Button, Widget};
-use corona_udisks::UdisksExt;
 use gpui_kit::{App, Context, IntoElement, Render, Subscription, Window, assets::IconName, div};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::{DisksPanel, disks_log};
+use crate::ui::page::{DisksPanel, jobs::log as disks_log};
 use corona_surface::control_center::Standalone;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -56,13 +56,13 @@ impl Render for DisksButton {
 
 #[cfg(test)]
 mod tests {
-  use corona_udisks::Udisks;
+  use crate::Udisks;
   use corona_utils::test_bus::TestBus;
   use futures::executor::block_on;
   use gpui_kit::{self as gpui, AppContext, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;
-  use crate::control_center::disks_test_drive;
+  use crate::ui::page::test_drive as disks_test_drive;
 
   fn shown(cx: &mut TestAppContext, hide_when_idle: bool, removable: bool) -> bool {
     cx.executor().allow_parking();
@@ -73,7 +73,7 @@ mod tests {
       cx.set_global(corona_config::Config::default());
       corona_surface::bar::BarState::init(cx);
       Udisks::fake(cx, &conn, vec![disks_test_drive(removable)], vec![], vec![]);
-      crate::control_center::init_disks(cx);
+      crate::ui::page::init(cx);
     });
     let (window, _) = cx
       .update(|cx| {

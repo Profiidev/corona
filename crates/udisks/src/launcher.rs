@@ -2,13 +2,13 @@
 
 use std::rc::Rc;
 
+use crate::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
 use corona_launcher::{
   Accessory, Action, Command, DetailView, Field, FieldKind, FormView, Icon, ListView, Meta,
   Outcome, Tone, View,
   kit::{ListSource, Notify, opener, watch},
   registry, simple,
 };
-use corona_udisks::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
@@ -419,7 +419,7 @@ fn drives_view(
     .into_view()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register_all(
     [
       opener(

@@ -1,6 +1,5 @@
 //! The launcher's commands that need the shell, registered into `corona_launcher`
 
-mod drives;
 mod monitors;
 mod session;
 mod system;
@@ -16,6 +15,5 @@ pub fn init(cx: &mut App) {
   tools::init(cx);
   windows::init(cx);
   windows::init_actions(cx);
-  drives::init(cx);
   monitors::init(cx);
 }

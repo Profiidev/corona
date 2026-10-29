@@ -50,11 +50,11 @@ zbus.workspace = true
 futures.workspace = true
 tracing.workspace = true
 jiff.workspace = true
-zstd = "0.14.3"
 rustix = { workspace = true, features = ["fs"] }
 rust-i18n.workspace = true
 
 [dev-dependencies]
+corona_surface = { workspace = true, features = ["test-support"] }
 corona_udisks = { workspace = true, features = ["test-support"] }
 corona_auth = { workspace = true, features = ["test-support"] }
 corona_utils = { workspace = true, features = ["test-support"] }

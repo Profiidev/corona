@@ -4,11 +4,9 @@
 use gpui_kit::App;
 
 mod pages;
-mod widget_forms;
 
 pub fn init(cx: &mut App) {
   pages::register(cx);
-  widget_forms::register(cx);
 }
 
 #[cfg(test)]

@@ -13,6 +13,8 @@ pub mod overlay;
 pub mod panel;
 pub mod per_display;
 pub mod popup;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 pub mod tooltip;
 
 pub fn init(cx: &mut App) -> Result<()> {

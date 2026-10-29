@@ -1,6 +1,5 @@
 use gpui_kit::App;
 
-pub mod drive_password;
 pub mod osk;
 pub mod polkit;
 pub mod screen_corners;

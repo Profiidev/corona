@@ -3,8 +3,8 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
+use crate::{Block, SmartAttributes, UdisksExt};
 use corona_launcher::Tone;
-use corona_udisks::{Block, SmartAttributes, UdisksExt};
 use gpui_kit::{
   AnyElement, App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render,
   SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window,
@@ -20,12 +20,18 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   dialogs::Dialog,
   jobs::{DisksLog, Start, log},
   model::{DriveView, Health, PartView, drives, health},
   ui::section,
 };
+
+/// The job history and drive notifications, which run with the panel closed
+pub(crate) fn init(cx: &mut App) {
+  jobs::init(cx);
+  hotplug::init(cx);
+}
 
 mod devices;
 mod dialogs;
@@ -620,8 +626,8 @@ impl Render for DisksPanel {
 mod tests;
 
 /// The locale keys the panel builds at runtime
-#[cfg(test)]
-pub(crate) fn runtime_keys() -> Vec<String> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn runtime_keys() -> Vec<String> {
   let operations = model::OPERATIONS
     .iter()
     .map(|o| format!("app.disks.operation.{}", o.replace('-', "_")));
@@ -632,6 +638,6 @@ pub(crate) fn runtime_keys() -> Vec<String> {
 }
 
 #[cfg(test)]
-pub(crate) fn test_drive(removable: bool) -> corona_udisks::Drive {
+pub(crate) fn test_drive(removable: bool) -> crate::Drive {
   model::tests::drive("usb", removable)
 }

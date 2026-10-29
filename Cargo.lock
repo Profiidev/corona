@@ -1856,6 +1856,7 @@ dependencies = [
  "corona_surface",
  "corona_sysinfo",
  "corona_tray",
+ "corona_udisks",
  "corona_utils",
  "corona_weather",
  "gpui-kit",
@@ -2435,7 +2436,6 @@ dependencies = [
  "tracing",
  "uuid",
  "zbus",
- "zstd",
 ]
 
 [[package]]
@@ -2452,6 +2452,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "uuid",
 ]
@@ -2515,10 +2516,29 @@ name = "corona_udisks"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
+ "corona_components",
+ "corona_config",
+ "corona_desktop",
+ "corona_ipc",
+ "corona_launcher",
+ "corona_notifications",
+ "corona_settings",
+ "corona_surface",
  "corona_utils",
+ "dirs 7.0.0",
+ "futures",
  "futures-lite",
  "gpui-kit",
+ "jiff",
+ "rust-i18n",
+ "rustix",
+ "serde",
+ "tempfile",
+ "tracing",
+ "uuid",
  "zbus",
+ "zstd",
 ]
 
 [[package]]

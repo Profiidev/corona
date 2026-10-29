@@ -5,10 +5,8 @@ use uuid::Uuid;
 
 use corona_surface::control_center::ControlCenter;
 
-pub(crate) mod disks;
 mod displays;
 
-pub use disks::DisksButton;
 pub use displays::DisplaysButton;
 
 pub struct ControlCenterButton;

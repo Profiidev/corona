@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
+use crate::{Block, UdisksExt};
 use corona_launcher::Tone;
-use corona_udisks::{Block, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::control_center::disks::{
+use crate::ui::page::{
   DisksPanel,
   dialogs::{Dialog, DialogKind, LabelTarget},
   model::system_block,

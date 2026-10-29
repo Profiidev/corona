@@ -1,6 +1,7 @@
 //! Drives, block devices and their filesystems through UDisks2
 
 use anyhow::{Context, Result};
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
@@ -23,11 +24,17 @@ pub use crate::{
 };
 
 mod actions;
+pub mod commands;
+mod launcher;
 mod listener;
 mod options;
 mod proxy;
+mod settings;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const SERVICE: &str = "org.freedesktop.UDisks2";
 
@@ -321,7 +328,18 @@ impl Udisks {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows UDisks2, registers the disks UI, drive notifications, commands and launcher
+/// commands
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  Ok(())
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Udisks {
     running: cx.new(|_| false),
     drives: cx.new(|_| Vec::new()),
@@ -633,7 +651,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     (bus, udisksd)

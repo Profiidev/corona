@@ -8,11 +8,9 @@ use corona_launcher::ipc::{ListCommands, ListProcesses, ListTimers};
 use corona_mpris::commands::player::ListPlayers;
 use corona_network_manager::commands::network::{ListVpns, ListWifi};
 use corona_pipewire::commands::audio::{Kind, ListNodes};
-use corona_shell::commands::{
-  extras::ListDrives,
-  window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces},
-};
+use corona_shell::commands::window::{KeyboardLayout, ListMonitors, ListWindows, ListWorkspaces};
 use corona_tray::commands::ListEntries;
+use corona_udisks::commands::ListDrives;
 
 /// Values with a description shown beside them
 fn described(items: impl IntoIterator<Item = (String, String)>) -> Vec<CompletionCandidate> {
