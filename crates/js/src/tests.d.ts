@@ -3760,6 +3760,127 @@ declare module "gpui-kit" {
     size(size: "xsmall" | "small" | "medium" | "large"): Element;
     /** The kind of a `Notification`. Default `"info"`. */
     type(level: "info" | "success" | "warning" | "error"): Element;
+    /**
+     * The value: a `Progress` percentage (`gpui-base` announces it, `gpui-component` draws
+     * it, `0..=100`), or the text of a `DescriptionItem`.
+     */
+    value(value: number | string): Element;
+    /** Withdraws a `gpui-base` `Progress` value from the accessibility tree: "no idea how far". */
+    indeterminate(value: boolean): Element;
+    /** Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback. */
+    image(image: Element): Element;
+    /** Fills an `Avatar`'s fallback slot with an `AvatarFallback`, shown without an image. */
+    fallback(fallback: Element): Element;
+    /** A `Table`'s total number of rows, also those not rendered, as announced. */
+    row_count(count: number): Element;
+    /** A `Table`'s total number of columns, also those not rendered. */
+    column_count(count: number): Element;
+    /** The semantic size of a styled widget. */
+    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    /** What a screen reader announces. */
+    accessibility_label(label: string): Element;
+    /** How many columns a table cell spans. */
+    col_span(span: number): Element;
+    /** Centers a table cell's text. */
+    text_center(): Element;
+    /** Right-aligns a table cell's text. */
+    text_right(): Element;
+    /** The color of a `Badge`, `Spinner`, `Icon` or `Progress`. */
+    color(color: Color): Element;
+    /** A `Badge` as a dot; a `LineChart` or `RadarChart` with dots on its points. */
+    dot(): Element;
+    /** The number a `Badge` shows. */
+    count(count: number): Element;
+    /** The largest number a `Badge` shows, `max+` above. */
+    max(max: number): Element;
+    /** The look of a `Tag` or an `EmptyMedia`. */
+    variant(variant: "primary" | "secondary" | "danger" | "success" | "warning" | "info" | "default" | "icon"): Element;
+    /** Draws a `Tag` outlined. */
+    outline(): Element;
+    /** The quieter color of a `Skeleton`. */
+    secondary(): Element;
+    /** The icon a `Spinner` turns. */
+    icon(icon: "loader" | "loader_circle"): Element;
+    /** How a `Spinner` turns. */
+    ease(ease: "linear" | "ease_in_out" | "ease_out_quint"): Element;
+    /** Fills an `Empty`'s header with an `EmptyHeader`. */
+    header(header: Element): Element;
+    /** Fills an `Empty`'s content with an `EmptyContent`. */
+    content(content: Element): Element;
+    /** Fills an `EmptyHeader`'s media with an `EmptyMedia`. */
+    media(media: Element): Element;
+    /** Fills an `EmptyHeader`'s title with an `EmptyTitle`. */
+    title(title: Element): Element;
+    /** Fills an `EmptyHeader`'s description with an `EmptyDescription`. */
+    description(description: Element): Element;
+    /** Rotates an `Icon`. */
+    rotate(radians: number): Element;
+    /** Animates a `gpui-component` `Progress` as busy. */
+    loading(value: boolean): Element;
+    /** The name an `Avatar` shows the initials of without an image. */
+    name(name: string): Element;
+    /** The image of an `Avatar`: an asset or an absolute path. */
+    src(path: string): Element;
+    /** Lays a `DescriptionList` out in a column. */
+    vertical(): Element;
+    /** Draws a `DescriptionList` or `DataTable` with borders. */
+    bordered(value: boolean): Element;
+    /** How many columns a `DescriptionList` has. */
+    columns(columns: number): Element;
+    /** Adds `DescriptionItem`s to a `DescriptionList`, or `TreeItem`s to a `Tree` or `TreeItem`. */
+    items(items: Element[]): Element;
+    /** Adds a separator row to a `DescriptionList`. */
+    separator(): Element;
+    /** How many columns a `DescriptionItem` spans. */
+    span(span: number): Element;
+    /** Whether a `TreeItem` starts expanded. */
+    expanded(value: boolean): Element;
+    /** Whether a `TreeItem` is disabled. */
+    disabled(value: boolean): Element;
+    /** Draws a chart's grid lines. */
+    grid(value?: boolean): Element;
+    /** Draws a `BarChart`'s label axis. */
+    label_axis(value: boolean): Element;
+    /** Draws a `BarChart`'s value axis. */
+    value_axis(value: boolean): Element;
+    /** Draws a `LineChart`'s or `AreaChart`'s x axis. */
+    x_axis(value: boolean): Element;
+    /** Labels every `margin`th tick of a chart's axis. */
+    tick_margin(margin: number): Element;
+    /** Draws a smooth curve. */
+    natural(): Element;
+    /** Draws straight segments. */
+    linear(): Element;
+    /** Draws steps. */
+    step_after(): Element;
+    /** A `PieChart`'s hole, in pixels: a donut. */
+    inner_radius(radius: number): Element;
+    /** The gap between a `PieChart`'s slices, in radians. */
+    pad_angle(angle: number): Element;
+    /** Labels a `PieChart`'s slices. */
+    labels(value: boolean): Element;
+    /** How many rings a `RadarChart`'s grid has. */
+    grid_levels(levels: number): Element;
+    /** How many months a `Calendar` shows side by side. */
+    number_of_months(count: number): Element;
+    /** Stripes a `DataTable`'s rows. */
+    stripe(value: boolean): Element;
+    /** When a `DataTable` shows its scrollbars. */
+    scrollbar_visible(vertical: boolean, horizontal: boolean): Element;
+    /** Whether a `DataTable`'s rows can be selected. */
+    row_selectable(value: boolean): Element;
+    /** Whether a `DataTable`'s columns can be selected. */
+    column_selectable(value: boolean): Element;
+    /** Whether a `DataTable`'s cells can be selected. */
+    cell_selectable(value: boolean): Element;
+    /** Whether a `DataTable` has a row header column. */
+    row_header(value: boolean): Element;
+    /** Whether a `DataTable`'s columns sort. */
+    sortable(value: boolean): Element;
+    /** Whether a `DataTable`'s columns resize. */
+    column_resizable(value: boolean): Element;
+    /** Whether a `DataTable`'s columns move. */
+    column_movable(value: boolean): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4099,6 +4220,52 @@ declare module "gpui-base" {
   export const HoverCard: { new (id: string | number): Element; new: (id: string | number) => Element };
   /** The bare anchored surface: shows `content(..)` while it is set, anchored to `trigger`. */
   export const Popup: { new (id: string | number, trigger: Element): Element; new: (id: string | number, trigger: Element) => Element };
+  /** The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it. */
+  export const Progress: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** The groove, a plain element. */
+  export const ProgressTrack: { new (): Element; new: () => Element };
+  /** The filled part, a plain element: size it from the value. */
+  export const ProgressIndicator: { new (): Element; new: () => Element };
+  /** Renders its `image` slot, or its `fallback` without one; draws nothing else. */
+  export const Avatar: { new (): Element; new: () => Element };
+  /** The image slot of an `Avatar`: an asset or an absolute path. */
+  export const AvatarImage: { new (source: string): Element; new: (source: string) => Element };
+  /** The fallback slot of an `Avatar`. */
+  export const AvatarFallback: { new (): Element; new: () => Element };
+  /** An unstyled semantic table: nest the parts below. */
+  export const Table: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** The header row group. */
+  export const TableHeader: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** The body row group. */
+  export const TableBody: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** One row, `row_index` one-based. */
+  export const TableRow: { new (id: string | number, row_index: number): Element; new: (id: string | number, row_index: number) => Element };
+  /** One column header, `column_index` one-based. */
+  export const TableHead: { new (id: string | number, column_index: number): Element; new: (id: string | number, column_index: number) => Element };
+  /** One data cell, `column_index` one-based. */
+  export const TableCell: { new (id: string | number, column_index: number): Element; new: (id: string | number, column_index: number) => Element };
+  /** A caption slot. */
+  export const TableCaption: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A selected date: a day, a `[start, end]` range, or nothing. Days are `"YYYY-MM-DD"`. */
+  export type CalendarDate = string | [string | null, string | null] | null;
+  /** A calendar month and its selected date. Retained: create it in `init`. */
+  export const CalendarState: { (): CalendarState; new: () => CalendarState };
+  export interface CalendarState {
+    /** Months of weeks of seven days, the neighbouring months' days included. */
+    month_days(): string[][][];
+    year(): number;
+    /** 1–12. */
+    month(): number;
+    today(): string;
+    value(): CalendarDate;
+    /** Selects a day, a range, or nothing, without a `change` event. */
+    set_value(next: CalendarDate): void;
+    next_month(): void;
+    prev_month(): void;
+    /** `"change"`: a date was picked in a `Calendar`. */
+    on(event: "change", handler: (date: CalendarDate, cx: Context) => void): boolean;
+    release(): boolean;
+  }
 }
 declare module "gpui-component" {
   import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
@@ -4364,6 +4531,119 @@ declare module "gpui-component" {
   export const WarningAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
   /** An inline message. */
   export const ErrorAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  import { CalendarState, CalendarDate } from "gpui-base";
+  export { CalendarState, CalendarDate };
+  export interface ChartRow {
+    label: string;
+    value: number;
+  }
+  export type ChartRows = readonly ChartRow[] | (() => readonly ChartRow[]);
+  /** Which slide a `Carousel` shows. Retained: create it in `init`. */
+  export const CarouselState: {
+    (item_count: number, selected_index?: number, axis?: "horizontal" | "vertical", looping?: boolean): CarouselState;
+    new: (item_count: number, selected_index?: number, axis?: "horizontal" | "vertical", looping?: boolean) => CarouselState;
+  };
+  export interface CarouselState {
+    item_count(): number;
+    selected_index(): number | undefined;
+    /** Selects a slide without a `change` event. */
+    set_selected_index(index: number): void;
+    set_item_count(count: number): void;
+    /** Moves on, with a `change` event; false at the end. */
+    select_next(): boolean;
+    select_previous(): boolean;
+    /** `"change"`: another slide was selected. */
+    on(event: "change", handler: (index: number, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  /** The columns, selection and scroll of a `DataTable`. Retained: create it in `init`. */
+  export const DataTableState: { (columns: string[]): DataTableState; new: (columns: string[]) => DataTableState };
+  export interface DataTableState {
+    on(event: "select_row" | "double_click_row" | "select_column", handler: (index: number, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  /** A count or dot over its children. */
+  export const Badge: { new (): Element; new: () => Element };
+  /** A small label. */
+  export const Tag: { new (): Element; new: () => Element };
+  /** A loading placeholder; size it. */
+  export const Skeleton: { new (): Element; new: () => Element };
+  /** A turning loading icon. */
+  export const Spinner: { new (): Element; new: () => Element };
+  /** An empty state: `header`, `content` and children. */
+  export const Empty: { new (): Element; new: () => Element };
+  /** The header of an `Empty`: `media`, `title`, `description`. */
+  export const EmptyHeader: { new (): Element; new: () => Element };
+  /** The media of an `EmptyHeader`. */
+  export const EmptyMedia: { new (): Element; new: () => Element };
+  /** The title of an `EmptyHeader`. */
+  export const EmptyTitle: { new (): Element; new: () => Element };
+  /** The description of an `EmptyHeader`. */
+  export const EmptyDescription: { new (): Element; new: () => Element };
+  /** The actions of an `Empty`. */
+  export const EmptyContent: { new (): Element; new: () => Element };
+  /** An icon from the app's assets. */
+  export const Icon: { new (path: string): Element; new: (path: string) => Element };
+  /** An image from the app's assets, or a file by absolute path. */
+  export const Image: { new (path: string): Element; new: (path: string) => Element };
+  /** Labelled values: add `DescriptionItem`s with `items`. */
+  export const DescriptionList: { new (): Element; new: () => Element };
+  /** One labelled value of a `DescriptionList`. */
+  export const DescriptionItem: { new (label: string): Element; new: (label: string) => Element };
+  /** A progress bar, `value` 0–100. */
+  export const Progress: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A round picture, or the initials of `name`. */
+  export const Avatar: { new (): Element; new: () => Element };
+  /** Bars of `{ label, value }` rows, or a function returning them; fills its size. */
+  export const BarChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  /** A line through the rows. */
+  export const LineChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  /** A filled line through the rows. */
+  export const AreaChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  /** Slices of the rows. */
+  export const PieChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  /** A radar of the rows. */
+  export const RadarChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  /** A month grid of a `CalendarState`, picking dates. */
+  export const Calendar: { new (state: CalendarState): Element; new: (state: CalendarState) => Element };
+  /** Slides: `CarouselContent` with `CarouselItem`s, and the controls. */
+  export const Carousel: { new (id: string | number, state: CarouselState): Element; new: (id: string | number, state: CarouselState) => Element };
+  /** The clipped viewport of a `Carousel`. */
+  export const CarouselContent: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  /** Slide `index`. */
+  export const CarouselItem: { new (id: string | number, index: number, state: CarouselState): Element; new: (id: string | number, index: number, state: CarouselState) => Element };
+  /** The previous-slide button. */
+  export const CarouselPrevious: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  /** The next-slide button. */
+  export const CarouselNext: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  /** The row of `CarouselPaginationItem`s. */
+  export const CarouselPagination: { new (): Element; new: () => Element };
+  /** The dot of slide `index`. */
+  export const CarouselPaginationItem: { new (id: string | number, index: number, state: CarouselState): Element; new: (id: string | number, index: number, state: CarouselState) => Element };
+  /** A list of rows rendered lazily by `render_row`; its state is kept by `id`. */
+  export const List: { new (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element): Element; new: (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element) => Element };
+  /** A table of rows, its visible cells rendered lazily by `render_cell`. */
+  export const DataTable: { new (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element): Element; new: (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element) => Element };
+  /** A tree of `TreeItem` children; what is expanded is kept by `id`. */
+  export const Tree: { new (id: string): Element; new: (id: string) => Element };
+  /** One node of a `Tree`; nest more as children. */
+  export const TreeItem: { new (id: string, label: string): Element; new: (id: string, label: string) => Element };
+  /** A styled table of `TableHeader`, `TableBody`, `TableFooter` and `TableCaption`. */
+  export const Table: { new (): Element; new: () => Element };
+  /** The header rows of a `Table`. */
+  export const TableHeader: { new (): Element; new: () => Element };
+  /** The body rows of a `Table`. */
+  export const TableBody: { new (): Element; new: () => Element };
+  /** The footer rows of a `Table`. */
+  export const TableFooter: { new (): Element; new: () => Element };
+  /** A row of `TableHead`s or `TableCell`s. */
+  export const TableRow: { new (): Element; new: () => Element };
+  /** A column header cell. */
+  export const TableHead: { new (): Element; new: () => Element };
+  /** A data cell. */
+  export const TableCell: { new (): Element; new: () => Element };
+  /** A caption under a `Table`. */
+  export const TableCaption: { new (): Element; new: () => Element };
 }
 /** A value of the shell: call it for the current one. */
 interface Signal<T> {

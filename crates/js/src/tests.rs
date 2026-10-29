@@ -21,6 +21,7 @@ use crate::{
   now, with,
 };
 
+mod components_data;
 mod components_forms;
 mod components_navigation;
 mod components_overlays;
