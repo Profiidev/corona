@@ -1,10 +1,11 @@
-use corona_js::{Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module};
-use corona_network_manager::{self as nm, NetworkManagerExt};
+use crate as nm;
+use crate::NetworkManagerExt;
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module, json,
+};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};
-
-use crate::module::json;
 
 #[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -411,9 +412,9 @@ async fn disconnect(cx: Cx, nm: Nm, name: String) -> Throws<()> {
 }
 
 /// `corona/network`
-pub struct Network;
+pub struct NetworkModule;
 
-impl ScriptModule for Network {
+impl ScriptModule for NetworkModule {
   const NAME: &str = "network";
   const DOC: &str = "Network interfaces, Wi-Fi, VPNs and the hotspot.";
 
@@ -538,7 +539,7 @@ impl ScriptModule for Network {
 
 #[cfg(test)]
 mod tests {
-  use corona_network_manager as nm;
+  use crate as nm;
 
   use super::*;
 

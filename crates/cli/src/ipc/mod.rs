@@ -11,6 +11,7 @@ use corona_capture::{
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
 use corona_mpris::commands::media::{Action as MediaAction, Media};
+use corona_network_manager::commands::radio::Wifi;
 use corona_pipewire::commands::volume::Device;
 use corona_script::commands::PluginCall;
 use corona_settings::commands::{
@@ -20,7 +21,6 @@ use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
-use corona_shell::commands::radio::Wifi;
 use corona_shell::commands::session::{Action, Session};
 use corona_shell::overlays::switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options};
 use corona_surface::commands::{ListPages, OpenPage};
@@ -590,10 +590,10 @@ pub(crate) mod tests {
       (&["audio", "default", "outputs", "Speakers"], json!(null), corona_pipewire::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
       (&["audio", "stream", "firefox", "40"], json!(null), corona_pipewire::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
       (&["audio", "move", "firefox", "Headphones"], json!(null), corona_pipewire::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
-      (&["network", "connect", "home"], json!(null), corona_shell::commands::network::ConnectWifi::COMMAND, json!("home")),
-      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_shell::commands::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
-      (&["network", "vpn", "work", "on"], json!(true), corona_shell::commands::network::SwitchVpn::COMMAND, json!(["work", "On"])),
-      (&["network", "hotspot", "toggle"], json!(true), corona_shell::commands::network::Hotspot::COMMAND, json!("Toggle")),
+      (&["network", "connect", "home"], json!(null), corona_network_manager::commands::network::ConnectWifi::COMMAND, json!("home")),
+      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_network_manager::commands::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
+      (&["network", "vpn", "work", "on"], json!(true), corona_network_manager::commands::network::SwitchVpn::COMMAND, json!(["work", "On"])),
+      (&["network", "hotspot", "toggle"], json!(true), corona_network_manager::commands::network::Hotspot::COMMAND, json!("Toggle")),
       (&["bluetooth-device", "connect", "Buds"], json!(null), DeviceAction::COMMAND, json!(["Connect", "Buds"])),
       (&["bluetooth-discover", "on"], json!(null), Discover::COMMAND, json!(true)),
       (&["player", "seek", "-10"], json!(null), corona_mpris::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),

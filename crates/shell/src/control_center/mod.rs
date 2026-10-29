@@ -1,8 +1,6 @@
 pub(crate) mod dashboard;
 mod disks;
 mod displays;
-mod hotspot;
-mod network;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -11,19 +9,13 @@ use corona_surface::{
 use gpui_kit::App;
 
 pub use crate::control_center::{
-  dashboard::DashboardPanel,
-  disks::DisksPanel,
-  displays::DisplaysPanel,
-  hotspot::{HotspotPanel, poll_clients},
-  network::NetworkPanel,
+  dashboard::DashboardPanel, disks::DisksPanel, displays::DisplaysPanel,
 };
 
 pub fn register_panels(cx: &mut App) {
   cx.panel().register::<ControlCenter>();
   cx.control_center_mut()
     .register::<DashboardPanel>()
-    .register::<NetworkPanel>()
-    .register::<HotspotPanel>()
     .register::<DisksPanel>()
     .register::<DisplaysPanel>();
   corona_surface::control_center::warn_bad_ids(cx);

@@ -2,7 +2,7 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::{IpcCommandSend, Switch};
-use corona_shell::commands::network::{
+use corona_network_manager::commands::network::{
   ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns, ListWifi,
   Portal, Rescan, Security, SwitchVpn,
 };

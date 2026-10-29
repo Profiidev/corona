@@ -1,15 +1,15 @@
+use crate::{
+  ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use corona_network_manager::{
-  ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
-};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use corona_ipc::Switch;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<ListWifi>()
     .register::<ConnectWifi>()

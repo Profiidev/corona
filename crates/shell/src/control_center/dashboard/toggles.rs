@@ -1,15 +1,11 @@
-use crate::control_center::NetworkPanel;
 use crate::control_center::dashboard::DashboardPanel;
-use corona_bluez::BluetoothExt;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 use corona_idle::{Idle, IdleExt};
-use corona_network_manager::{NetworkManagerExt, WifiStatus};
 use corona_surface::{
-  control_center::{ControlCenter, ControlCenterPage},
+  control_center::ControlCenter,
   dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
 };
-use corona_utils::error::spawn_logged;
 use gpui_kit::{
   App, BorrowAppContext, ClickEvent, Div, ElementId, InteractiveElement, MouseButton,
   ParentElement, SharedString, Styled, Subscription, Window,
@@ -77,17 +73,6 @@ macro_rules! action {
   };
 }
 
-action!(
-  Wifi,
-  "wifi",
-  "app.dashboard.wifi",
-  wifi,
-  Some(NetworkPanel::ID),
-  |cx| [
-    cx.network_manager().wifi_enabled,
-    cx.network_manager().wifi_networks,
-  ]
-);
 // a theme change redraws every window anyway
 action!(
   DarkMode,
@@ -105,21 +90,11 @@ action!(
   None,
   |cx| [cx.idle().stay_awake,]
 );
-action!(
-  Airplane,
-  "airplane",
-  "app.dashboard.airplane",
-  airplane,
-  Some(NetworkPanel::ID),
-  |cx| [cx.network_manager().wifi_enabled, cx.bluetooth().adapter,]
-);
 /// Registers every tile, in the order the settings offer them
 pub(crate) fn register(cx: &mut App) {
   cx.dashboard_mut()
-    .quick_action::<Wifi>()
     .quick_action::<DarkMode>()
-    .quick_action::<StayAwake>()
-    .quick_action::<Airplane>();
+    .quick_action::<StayAwake>();
 }
 
 /// The configured tiles, None for none
@@ -193,43 +168,6 @@ fn on_off(on: bool) -> String {
   .into()
 }
 
-/// The connected network's name while wifi is on
-fn wifi_status(enabled: bool, connected: Option<String>) -> String {
-  connected
-    .filter(|_| enabled)
-    .unwrap_or_else(|| on_off(enabled))
-}
-
-/// Airplane mode is on while no radio is
-pub(crate) fn airplane_on(wifi: bool, bluetooth: Option<bool>) -> bool {
-  !wifi && bluetooth != Some(true)
-}
-
-fn wifi(cx: &App) -> Toggle {
-  let network = cx.network_manager();
-  let enabled = network.wifi_enabled(cx);
-  let connected = network
-    .list_wifi_networks(cx)
-    .iter()
-    .find(|n| n.status == WifiStatus::Connected)
-    .map(|n| n.ssid.clone());
-  Toggle {
-    icon: if enabled {
-      IconName::Wifi
-    } else {
-      IconName::WifiOff
-    },
-    status: wifi_status(enabled, connected),
-    active: enabled,
-    on_click: network.wifi_supported(cx).then(|| {
-      Box::new(move |cx: &mut App| {
-        let task = cx.network_manager().set_wifi_enabled(!enabled);
-        spawn_logged(cx, task);
-      }) as Action
-    }),
-  }
-}
-
 fn dark_mode(cx: &App) -> Toggle {
   let dark = cx.theme().is_dark();
   Toggle {
@@ -237,36 +175,6 @@ fn dark_mode(cx: &App) -> Toggle {
     status: on_off(dark),
     active: dark,
     on_click: Some(Box::new(toggle_mode)),
-  }
-}
-
-/// Every radio off for on, back on for off
-pub(crate) fn set_airplane(on: bool, cx: &mut App) {
-  let task = cx.network_manager().set_wifi_enabled(!on);
-  spawn_logged(cx, task);
-  if cx.bluetooth().adapter(cx).is_some() {
-    let task = cx.bluetooth().set_powered(!on, cx);
-    spawn_logged(cx, task);
-  }
-}
-
-/// Whether every radio is off
-pub(crate) fn airplane_state(cx: &App) -> bool {
-  airplane_on(
-    cx.network_manager().wifi_enabled(cx),
-    cx.bluetooth().adapter(cx).map(|a| a.powered),
-  )
-}
-
-fn airplane(cx: &App) -> Toggle {
-  let wifi = cx.network_manager().wifi_enabled(cx);
-  let bluetooth = cx.bluetooth().adapter(cx).map(|a| a.powered);
-  let on = airplane_on(wifi, bluetooth);
-  Toggle {
-    icon: IconName::Plane,
-    status: on_off(on),
-    active: on,
-    on_click: Some(Box::new(move |cx| set_airplane(!on, cx))),
   }
 }
 
@@ -284,31 +192,9 @@ fn stay_awake(cx: &App) -> Toggle {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
   #[test]
   fn on_off_labels() {
     assert_eq!(super::on_off(true), "On");
     assert_eq!(super::on_off(false), "Off");
-  }
-
-  #[test]
-  fn wifi_status() {
-    assert_eq!(super::wifi_status(true, Some("Home".into())), "Home");
-    assert_eq!(super::wifi_status(true, None), on_off(true));
-    // a stale connection does not show while wifi is off
-    assert_eq!(
-      super::wifi_status(false, Some("Home".into())),
-      on_off(false)
-    );
-  }
-
-  #[test]
-  fn airplane_on() {
-    assert!(super::airplane_on(false, None));
-    assert!(super::airplane_on(false, Some(false)));
-    assert!(!super::airplane_on(false, Some(true)));
-    assert!(!super::airplane_on(true, None));
-    assert!(!super::airplane_on(true, Some(false)));
   }
 }

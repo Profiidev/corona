@@ -1,18 +1,11 @@
+use crate::NetworkManagerExt;
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Switch};
-use corona_network_manager::NetworkManagerExt;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::error::spawn_logged;
 use gpui_kit::App;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Wifi>();
-}
-
-fn spawn(task: impl Future<Output = Result<()>> + 'static, cx: &mut App) {
-  cx.spawn(async move |_| {
-    let _ = task.await.log_err();
-  })
-  .detach();
 }
 
 pub struct Wifi;
@@ -33,7 +26,7 @@ impl IpcCommand for Wifi {
     let Some(enabled) = switch.target(current) else {
       return Ok(current);
     };
-    spawn(network.set_wifi_enabled(enabled), cx);
+    spawn_logged(cx, network.set_wifi_enabled(enabled));
     Ok(enabled)
   }
 }

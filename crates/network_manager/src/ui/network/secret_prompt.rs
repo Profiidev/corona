@@ -1,5 +1,5 @@
+use crate::{NetworkManagerExt, Secret, SecretKind};
 use corona_components::components::{input::on_enter, modal::modal};
-use corona_network_manager::{NetworkManagerExt, Secret, SecretKind};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::{StyledExt, input::InputState},
@@ -12,7 +12,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::network::NetworkPanel;
+use crate::ui::network::NetworkPanel;
 use rust_i18n::t;
 
 pub struct SecretPrompt {

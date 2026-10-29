@@ -8,15 +8,12 @@ mod caffeine;
 mod keyboard;
 mod kinds;
 pub(crate) mod lock_keys;
-mod wifi;
 
 pub fn init(cx: &mut App) {
   cx.osd_mut()
-    .register::<WifiOsd>()
     .register::<KeyboardLayoutOsd>()
     .register::<LockKeysOsd>()
     .register::<StayAwakeOsd>();
-  wifi::init(cx);
   keyboard::init(cx);
   caffeine::init(cx);
 }

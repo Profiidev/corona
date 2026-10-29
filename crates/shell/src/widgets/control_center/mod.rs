@@ -7,13 +7,9 @@ use corona_surface::control_center::ControlCenter;
 
 pub(crate) mod disks;
 mod displays;
-mod hotspot;
-mod network;
 
 pub use disks::DisksButton;
 pub use displays::DisplaysButton;
-pub use hotspot::HotspotButton;
-pub use network::NetworkButton;
 
 pub struct ControlCenterButton;
 

@@ -2,31 +2,24 @@
 
 use std::rc::Rc;
 
-use corona_bluez::BluetoothExt;
 use corona_components::assets::{preview_theme, restore_theme, set_mode, set_theme, theme_names};
 use corona_config::ConfigProvider;
 use corona_idle::IdleExt;
 use corona_ipc::{IpcCommand, Switch};
 use corona_launcher::{
   Action, ArgSpec, ArgValue, Args, Command, Hud, Icon, Meta, Outcome,
-  kit::{Choices, Group, Toggle, on_off, pick_or_list, tag, watch},
+  kit::{Choices, Group, on_off, pick_or_list, tag, watch},
   simple,
 };
-use corona_network_manager::NetworkManagerExt;
 use gpui_kit::{App, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
 
-use crate::{
-  commands::{
-    caffeine::{Request, StayAwake},
-    dpms::{Dpms, Power},
-    radio::Wifi,
-  },
-  control_center::dashboard::toggles::{airplane_state, set_airplane},
+use crate::commands::{
+  caffeine::{Request, StayAwake},
+  dpms::{Dpms, Power},
 };
 
 pub fn init(cx: &mut App) {
-  network(cx);
   Group::new("system:stay_awake", vec![caffeine()])
     .observe(|notify, cx| {
       let idle = cx.idle().stay_awake.clone();
@@ -35,44 +28,6 @@ pub fn init(cx: &mut App) {
     .register(cx);
   Group::new("system", vec![dark_mode(), theme()]).register(cx);
   dpms(cx);
-}
-
-/// Wi-Fi and airplane mode
-fn network(cx: &mut App) {
-  let commands: Vec<Rc<dyn Command>> = vec![
-    Toggle::command(
-      "wifi",
-      t!("app.launcher.system.wifi"),
-      IconName::Wifi,
-      210.,
-      |cx| {
-        let network = cx.network_manager();
-        network.wifi_supported(cx).then(|| network.wifi_enabled(cx))
-      },
-      |on, cx| Wifi::handle(on.into(), cx).map(|_| ()),
-    ),
-    Toggle::command(
-      "airplane",
-      t!("app.launcher.system.airplane"),
-      IconName::Plane,
-      190.,
-      |cx| Some(airplane_state(cx)),
-      |on, cx| {
-        set_airplane(on, cx);
-        Ok(())
-      },
-    ),
-  ];
-  Group::new("system:network", commands)
-    .observe(|notify, cx| {
-      let network = cx.network_manager().clone();
-      let bluetooth = cx.bluetooth().clone();
-      vec![
-        watch(&network.wifi_enabled, &notify, cx),
-        watch(&bluetooth.adapter, &notify, cx),
-      ]
-    })
-    .register(cx);
 }
 
 fn theme() -> Rc<dyn Command> {

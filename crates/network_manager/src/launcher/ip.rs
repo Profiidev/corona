@@ -1,7 +1,7 @@
 //! Local and public IP addresses
 
+use crate::NetworkManagerExt;
 use corona_launcher::{Action, Clip, DetailView, Icon, Meta, Outcome, View, registry, simple};
-use corona_network_manager::NetworkManagerExt;
 use futures::AsyncReadExt;
 use gpui_kit::{
   App, SharedString,
@@ -27,7 +27,7 @@ fn local(cx: &App) -> Vec<(String, String)> {
     .collect()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register(
     simple(
       "ip",

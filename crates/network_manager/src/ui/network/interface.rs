@@ -1,6 +1,6 @@
+use crate::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
-use corona_network_manager::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
@@ -16,7 +16,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::control_center::network::{NetworkPanel, utils::address};
+use crate::ui::network::{NetworkPanel, utils::address};
 use rust_i18n::t;
 
 impl NetworkPanel {

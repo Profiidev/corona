@@ -6,6 +6,8 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, AsyncApp, BackgroundExecutor, Entity, Global, Task};
 use zbus::{Connection, zvariant::OwnedObjectPath};
@@ -23,13 +25,19 @@ pub use cosmic_dbus_networkmanager::interface::enums::{
 
 mod actions;
 mod agent;
+pub mod commands;
 mod forwarding;
+mod launcher;
 mod listener;
 #[cfg(test)]
 mod mock;
 pub mod nl80211;
+pub mod script;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
@@ -644,7 +652,17 @@ impl NetworkManager {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows NetworkManager, registers the network UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  cx.script_mut().register::<script::NetworkModule>();
+  Ok(())
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = NetworkManager::new(conn, cx);
 
   // subscribe before the first snapshot so no change can slip in between
@@ -689,7 +707,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     wait_until(cx, |cx| {

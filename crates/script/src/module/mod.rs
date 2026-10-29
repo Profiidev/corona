@@ -2,7 +2,7 @@
 //! `capabilities.corona`, registered as [`ScriptModule`](corona_js::ScriptModule)s, and the
 //! ones every plugin has (`settings`, `surface`, `plugin`, `i18n`, `dbus` with its grant).
 
-use corona_js::{ScriptRegistry, json};
+use corona_js::ScriptRegistry;
 
 pub mod auth;
 pub mod compositor;
@@ -10,7 +10,6 @@ pub mod dbus;
 pub mod desktop;
 pub mod i18n;
 pub mod idle;
-pub mod network;
 pub mod plugin;
 pub mod secrets;
 pub mod settings;
@@ -24,7 +23,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<compositor::CompositorControl>()
     .register::<desktop::Desktop>()
     .register::<idle::Idle>()
-    .register::<network::Network>()
     .register::<secrets::Secrets>();
 }
 

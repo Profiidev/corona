@@ -10,7 +10,6 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub mod commands;
 mod control_center;
-mod icons;
 mod idle;
 mod launcher;
 mod locale_keys;
@@ -129,8 +128,8 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
   corona_sysinfo::init(cx, &buses);
-  corona_network_manager::init(cx, system).await?;
   corona_bluez::init(cx, &buses).await?;
+  corona_network_manager::init(cx, &buses).await?;
   corona_printing::init(cx, &buses).await?;
   corona_power::init(cx, &buses).await?;
   corona_udisks::init(cx, system).await?;

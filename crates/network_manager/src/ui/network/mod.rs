@@ -1,11 +1,11 @@
-use corona_network_manager::NetworkManagerExt;
+use crate::NetworkManagerExt;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::control_center::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
+use crate::ui::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
 
 mod hidden_network;
 mod interface;

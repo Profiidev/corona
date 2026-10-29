@@ -12,6 +12,18 @@ categories.workspace = true
 test-support = []
 
 [dependencies]
+futures.workspace = true
+qrcode = { version = "0.14.1", default-features = false }
+corona_bluez.workspace = true
+corona_components.workspace = true
+corona_config.workspace = true
+corona_surface.workspace = true
+corona_launcher.workspace = true
+corona_ipc.workspace = true
+corona_js.workspace = true
+rust-i18n.workspace = true
+uuid.workspace = true
+clap.workspace = true
 tracing.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true

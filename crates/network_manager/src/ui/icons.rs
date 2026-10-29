@@ -1,4 +1,4 @@
-use corona_network_manager::{Interface, InterfaceType};
+use crate::{Interface, InterfaceType};
 use gpui_kit::assets::IconName;
 
 pub fn interface_icon(primary: Option<&Interface>) -> IconName {

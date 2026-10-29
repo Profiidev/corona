@@ -2,6 +2,7 @@
 
 use std::{rc::Rc, time::Duration};
 
+use crate::{NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus};
 use corona_ipc::IpcCommand;
 use corona_ipc::Switch;
 use corona_launcher::{
@@ -11,16 +12,20 @@ use corona_launcher::{
   registry, simple,
   ui::{self, Open},
 };
-use corona_network_manager::{
-  NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus,
-};
 use gpui_kit::{App, Global, SharedString, Subscription, Task, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::network::{
-  ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
-  Security, SwitchVpn,
+use crate::{
+  commands::{
+    network::{
+      ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
+      Security, SwitchVpn,
+    },
+    radio::Wifi,
+  },
+  ui::quick_action::{airplane_state, set_airplane},
 };
+use corona_bluez::BluetoothExt;
 
 /// Shows NetworkManager's next password request in the launcher, for a connect started there
 #[derive(Default)]
@@ -205,8 +210,7 @@ impl CommandSource for NetworkSource {
       let (name, uuid) = (vpn.name.clone(), vpn.uuid.clone());
       let up = matches!(
         vpn.state,
-        corona_network_manager::ActiveConnectionState::Activated
-          | corona_network_manager::ActiveConnectionState::Activating
+        crate::ActiveConnectionState::Activated | crate::ActiveConnectionState::Activating
       );
       commands.push(simple(
         format!("vpn:{uuid}"),
@@ -307,7 +311,8 @@ fn hidden_form() -> View {
   })
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
+  toggles(cx);
   registry::register_source(Rc::new(NetworkSource), cx);
   Group::new(
     "network:fixed",
@@ -411,4 +416,42 @@ pub fn init(cx: &mut App) {
   )
   .observe(observe_network)
   .register(cx);
+}
+
+/// Wi-Fi and airplane mode
+fn toggles(cx: &mut App) {
+  let commands: Vec<Rc<dyn Command>> = vec![
+    Toggle::command(
+      "wifi",
+      t!("app.launcher.system.wifi"),
+      IconName::Wifi,
+      210.,
+      |cx| {
+        let network = cx.network_manager();
+        network.wifi_supported(cx).then(|| network.wifi_enabled(cx))
+      },
+      |on, cx| Wifi::handle(on.into(), cx).map(|_| ()),
+    ),
+    Toggle::command(
+      "airplane",
+      t!("app.launcher.system.airplane"),
+      IconName::Plane,
+      190.,
+      |cx| Some(airplane_state(cx)),
+      |on, cx| {
+        set_airplane(on, cx);
+        Ok(())
+      },
+    ),
+  ];
+  Group::new("system:network", commands)
+    .observe(|notify, cx| {
+      let network = cx.network_manager().clone();
+      let bluetooth = cx.bluetooth().clone();
+      vec![
+        watch(&network.wifi_enabled, &notify, cx),
+        watch(&bluetooth.adapter, &notify, cx),
+      ]
+    })
+    .register(cx);
 }

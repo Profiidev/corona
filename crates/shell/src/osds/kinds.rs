@@ -3,12 +3,6 @@
 use corona_surface::{osd::ToggleOsd, osd_kind};
 
 osd_kind!(
-  WifiOsd(ToggleOsd),
-  "wifi",
-  "app.settings.osd.wi_fi.title",
-  "app.settings.osd.wi_fi.description"
-);
-osd_kind!(
   KeyboardLayoutOsd(ToggleOsd),
   "keyboard_layout",
   "app.settings.osd.keyboard_layout.title",
