@@ -18,7 +18,6 @@ pub mod notifications;
 pub mod pipewire;
 pub mod plugin;
 pub mod power;
-pub mod printing;
 pub mod secrets;
 pub mod settings;
 pub mod surface;
@@ -40,7 +39,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<notifications::NotificationCenter>()
     .register::<pipewire::Pipewire>()
     .register::<power::Power>()
-    .register::<printing::Printing>()
     .register::<secrets::Secrets>()
     .register::<tray::Tray>();
 }

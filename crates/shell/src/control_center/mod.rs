@@ -10,7 +10,6 @@ mod media;
 mod network;
 mod notifications;
 mod power;
-mod printers;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -31,7 +30,6 @@ pub use crate::control_center::{
   network::NetworkPanel,
   notifications::{NotificationsPanel, ReplyInputs},
   power::PowerPanel,
-  printers::PrintersPanel,
 };
 
 pub fn register_panels(cx: &mut App) {
@@ -42,7 +40,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<NetworkPanel>()
     .register::<HotspotPanel>()
     .register::<BluetoothPanel>()
-    .register::<PrintersPanel>()
     .register::<DisksPanel>()
     .register::<PowerPanel>()
     .register::<BrightnessPanel>()

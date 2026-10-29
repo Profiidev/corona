@@ -2,17 +2,16 @@
 
 use std::path::Path;
 
+use crate as pr;
+use crate::PrintingExt;
 use anyhow::{Context as _, Result, ensure};
 use corona_js::{
   Capabilities, Cx, Glob, Json, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws,
-  host_module, track,
+  host_module, json, track,
 };
-use corona_printing::{self as pr, PrintingExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};
-
-use crate::module::json;
 
 #[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -335,9 +334,9 @@ async fn scan(
 }
 
 /// `corona/printing`
-pub struct Printing;
+pub struct PrintingModule;
 
-impl ScriptModule for Printing {
+impl ScriptModule for PrintingModule {
   const NAME: &str = "printing";
   const DOC: &str = "Printers, print jobs and document scanners.";
 

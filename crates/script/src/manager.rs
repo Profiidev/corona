@@ -1619,7 +1619,7 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 16] = [
+  const ALL_MODULES: [&str; 15] = [
     "compositor",
     "compositor_control",
     "pipewire",
@@ -1635,7 +1635,6 @@ export default class Main extends View {
     "secrets",
     "desktop",
     "idle",
-    "printing",
   ];
 
   fn dts(plugins: &Plugins, id: &str) -> String {

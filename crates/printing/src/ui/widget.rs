@@ -1,10 +1,10 @@
-use corona_printing::PrintingExt;
+use crate::PrintingExt;
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window, assets::IconName, div};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::control_center::PrintersPanel;
+use crate::ui::page::PrintersPanel;
 use corona_surface::control_center::Standalone;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ impl Render for PrintersButton {
 
 #[cfg(test)]
 mod tests {
-  use corona_printing::{Job, JobState, Printing};
+  use crate::{Job, JobState, Printing};
   use gpui_kit::{self as gpui, AppContext, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;

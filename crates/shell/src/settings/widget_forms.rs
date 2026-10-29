@@ -17,10 +17,7 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use crate::widgets::{
-  control_center::{
-    disks::{self, DisksButton},
-    printers::{self, PrintersButton},
-  },
+  control_center::disks::{self, DisksButton},
   privacy::{self, Privacy},
   tray::{self, Tray},
 };
@@ -30,7 +27,6 @@ pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .widget_options::<Tray>(form(tray_form))
     .widget_options::<Privacy>(form(privacy_form))
-    .widget_options::<PrintersButton>(form(printers_form))
     .widget_options::<DisksButton>(form(disks_form));
 }
 
@@ -130,35 +126,6 @@ fn privacy_form(
             &name,
             slot,
             privacy::Options {
-              hide_when_idle: *checked,
-            },
-          );
-        }),
-    ))
-    .into_any_element()
-}
-
-fn printers_form(
-  name: &str,
-  bar: &BarConfig,
-  slot: Slot,
-  _: &mut Window,
-  _: &mut App,
-) -> gpui_kit::AnyElement {
-  let current: printers::Options = options(bar, slot);
-  let name = name.to_string();
-  form()
-    .child(form_row(
-      t!("app.settings.bar.form.hide_no_jobs"),
-      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
-        .checked(current.hide_when_idle)
-        .small()
-        .on_click(move |checked, _, cx| {
-          set_options(
-            cx,
-            &name,
-            slot,
-            printers::Options {
               hide_when_idle: *checked,
             },
           );

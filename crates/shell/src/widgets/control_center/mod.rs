@@ -17,7 +17,6 @@ mod media;
 mod network;
 mod notifications;
 mod power;
-pub(crate) mod printers;
 
 pub use audio::AudioButton;
 pub use battery::BatteryButton;
@@ -31,7 +30,6 @@ pub use media::MediaButton;
 pub use network::NetworkButton;
 pub use notifications::NotificationsButton;
 pub use power::PowerButton;
-pub use printers::PrintersButton;
 
 pub struct ControlCenterButton;
 

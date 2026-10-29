@@ -14,7 +14,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use gpui_kit::{App, AppContext, AsyncApp, Entity, Global, Task};
 use zbus::Connection;
 
-use corona_utils::error::ErrorLogExt;
+use corona_js::ScriptExt;
+use corona_utils::{Buses, error::ErrorLogExt};
 
 use crate::ipp::IppError;
 
@@ -31,8 +32,13 @@ mod listener;
 #[cfg(test)]
 mod mock;
 mod sane;
+pub mod script;
+mod settings;
 mod state;
 mod tls;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Printing {
@@ -487,8 +493,13 @@ where
   Ok(())
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
-  init_at(cx, conn, Path::new(cups::SOCKET)).await
+/// Connects to CUPS and Avahi, registers the printers' UI and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  init_at(cx, &buses.system, Path::new(cups::SOCKET)).await?;
+  ui::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::PrintingModule>();
+  Ok(())
 }
 
 async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {
