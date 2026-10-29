@@ -1,6 +1,6 @@
 use std::{mem, sync::Arc, time::Duration};
 
-use corona_capture::FrameView;
+use crate::FrameView;
 use corona_components::animation::animation_duration;
 use gpui_kit::{
   App, Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
@@ -12,7 +12,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::overlays::screenshot::{
+use crate::ui::screenshot::{
   mode::Mode,
   save::{commit_selection, is_empty},
   state::{Direction, DragArea, MonitorGeometry, ScreenshotState, window_at},

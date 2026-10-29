@@ -1,4 +1,3 @@
-pub mod commands;
 pub mod mode;
 mod overlay;
 pub(crate) mod save;

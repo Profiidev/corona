@@ -4,6 +4,10 @@ use corona_bluez::commands::Bluetooth;
 use corona_bluez::commands::{
   Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
 };
+use corona_capture::{
+  commands::{ColorPicker, Screenshot},
+  ui::screenshot::mode::Mode,
+};
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
 use corona_mpris::commands::media::{Action as MediaAction, Media};
@@ -18,11 +22,7 @@ use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
 use corona_shell::commands::radio::Wifi;
 use corona_shell::commands::session::{Action, Session};
-use corona_shell::overlays::{
-  colorpicker::commands::ColorPicker,
-  screenshot::{commands::Screenshot, mode::Mode},
-  switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options},
-};
+use corona_shell::overlays::switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options};
 use corona_surface::commands::{ListPages, OpenPage};
 
 use crate::ipc::{

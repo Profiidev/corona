@@ -1,4 +1,4 @@
-//! Screenshot, color picker, settings pages, panels, control center pages
+//! Settings pages, panels, control center pages
 
 use std::rc::Rc;
 
@@ -11,10 +11,6 @@ use corona_surface::{commands::OpenPage, control_center::ControlCenterExt, panel
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::overlays::{
-  colorpicker::commands::ColorPicker,
-  screenshot::{commands::Screenshot, mode::Mode},
-};
 use corona_settings::SettingsExt;
 
 fn settings_title(page: &str) -> String {
@@ -214,7 +210,6 @@ fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
 }
 
 pub fn init(cx: &mut App) {
-  capture(cx);
   let pages = cx.settings().ids();
   let mut commands: Vec<Rc<dyn Command>> = vec![
     simple(
@@ -258,68 +253,6 @@ pub fn init(cx: &mut App) {
   registry::register_all(commands, cx);
   registry::register_source(Rc::new(SettingsPages), cx);
   registry::register_source(Rc::new(SettingFields), cx);
-}
-
-/// Screenshot and color picker
-fn capture(cx: &mut App) {
-  let commands: Vec<Rc<dyn Command>> = vec![
-    simple(
-      "screenshot",
-      |_| Meta {
-        title: t!("app.launcher.tools.screenshot").into(),
-        icon: Icon::Tile(IconName::Camera, 190.),
-        keywords: vec!["capture".into(), "screen".into()],
-        ..Default::default()
-      },
-      |_| {
-        [
-          (
-            "selection",
-            t!("app.launcher.tools.screenshot"),
-            Mode::Selection,
-          ),
-          (
-            "monitor",
-            t!("app.launcher.tools.screenshot_monitor"),
-            Mode::Monitor,
-          ),
-          (
-            "window",
-            t!("app.launcher.tools.screenshot_window"),
-            Mode::Window,
-          ),
-        ]
-        .into_iter()
-        .map(|(id, title, mode)| {
-          Action::sync(id, title, move |_, _, cx| {
-            Screenshot::handle(mode, cx)?;
-            Ok(Outcome::close())
-          })
-        })
-        .collect()
-      },
-    ),
-    simple(
-      "colorpicker",
-      |_| Meta {
-        title: t!("app.launcher.tools.color_picker").into(),
-        icon: Icon::Tile(IconName::Pipette, 320.),
-        keywords: vec!["color".into(), "colour".into(), "eyedropper".into()],
-        ..Default::default()
-      },
-      |_| {
-        vec![Action::sync(
-          "pick",
-          t!("app.launcher.tools.color_picker"),
-          |_, _, cx| {
-            ColorPicker::handle((), cx)?;
-            Ok(Outcome::close())
-          },
-        )]
-      },
-    ),
-  ];
-  registry::register_all(commands, cx);
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
+use crate::{capture_all, image::RgbaImage};
 use anyhow::{Result, bail};
-use corona_capture::{capture_all, image::RgbaImage};
 use corona_compositor::CompositorExt;
 use corona_utils::display::display_uuid;
 use gpui_kit::{
@@ -8,7 +8,7 @@ use gpui_kit::{
 };
 use tracing::{error, warn};
 
-use crate::overlays::colorpicker::overlay::Overlay;
+use crate::ui::colorpicker::overlay::Overlay;
 use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_colorpicker";

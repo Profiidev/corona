@@ -1,10 +1,16 @@
+pub mod commands;
 mod convert;
 mod gpu;
 mod hyprland;
+mod launcher;
 mod live;
+pub mod settings;
 mod toplevel;
+pub mod ui;
 mod view;
 mod wayland;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 use anyhow::Result;
 pub use image;
@@ -13,6 +19,13 @@ pub use convert::RgbaImageExt;
 pub use live::capture_window;
 pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};
+
+/// Registers the screenshot and color picker commands and the screenshot settings
+pub fn init(cx: &mut gpui_kit::App, _: &corona_utils::Buses) {
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+}
 
 pub fn warm_up() {
   gpu::importable_modifiers();

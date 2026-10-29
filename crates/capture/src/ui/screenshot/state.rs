@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::{Frame, capture_all};
 use anyhow::{Result, bail};
-use corona_capture::{Frame, capture_all};
 use corona_components::animation::bounds::BoundsAnimation;
 use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;
@@ -10,7 +10,7 @@ use gpui_kit::{
 };
 use tracing::{error, warn};
 
-use crate::overlays::screenshot::{mode::Mode, overlay::Overlay};
+use crate::ui::screenshot::{mode::Mode, overlay::Overlay};
 use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_screenshot";

@@ -1,4 +1,4 @@
-use std::{iter, path::PathBuf};
+use std::iter;
 
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{
@@ -22,7 +22,7 @@ use gpui_kit::{
 };
 
 use corona_components::settings_fields::{
-  Choice, choice, number, optional_text,
+  Choice, choice, number,
   order::{OrderList, order_item},
   slider, switch, text,
 };
@@ -62,7 +62,6 @@ settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
 settings_page!(OskSettings, "osk", 90, |cx| osk());
 settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
-settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
 settings_page!(SystemSettings, "system", 160, |cx| system());
 
 pub(super) fn register(cx: &mut App) {
@@ -75,7 +74,6 @@ pub(super) fn register(cx: &mut App) {
     .register::<OskSettings>()
     .register::<LockscreenSettings>()
     .register::<IdleSettings>()
-    .register::<ScreenshotSettings>()
     .register::<SystemSettings>();
 }
 
@@ -693,49 +691,6 @@ fn monitor_choices(connected: &[Monitor], configured: Option<&String>) -> Vec<St
     names.push(configured.clone());
   }
   names
-}
-
-fn screenshot() -> SettingPage {
-  page(
-    t!("app.settings.screenshot.title"),
-    IconName::Camera,
-    vec![group(
-      t!("app.settings.screenshot.groups.saving"),
-      vec![
-        item(
-          t!("app.settings.screenshot.directory.title"),
-          t!("app.settings.screenshot.directory.description"),
-          optional_text(
-            "screenshot.directory",
-            |c| {
-              c.screenshot
-                .directory
-                .as_ref()
-                .map(|p| p.to_string_lossy().into_owned())
-            },
-            |c, v| c.screenshot.directory = v.map(PathBuf::from),
-            |_| {
-              corona_config::ScreenshotConfig::default()
-                .resolved_directory()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default()
-            },
-          ),
-        )
-        .layout(Axis::Vertical),
-        item(
-          t!("app.settings.screenshot.file_name.title"),
-          t!("app.settings.screenshot.file_name.description"),
-          text(
-            "screenshot.filename_pattern",
-            |c| c.screenshot.filename_pattern.clone(),
-            |c, v| c.screenshot.filename_pattern = v,
-          ),
-        )
-        .layout(Axis::Vertical),
-      ],
-    )],
-  )
 }
 
 fn system() -> SettingPage {

@@ -1,19 +1,19 @@
 use std::{collections::HashMap, fs};
 
-use anyhow::{Context, Result, bail};
-use corona_capture::{
+use crate::{
   Frame, RgbaImageExt,
   image::{
     RgbaImage,
     imageops::{self, FilterType},
   },
 };
+use anyhow::{Context, Result, bail};
 use corona_config::{ConfigProvider, ScreenshotConfig};
 use gpui_kit::{App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, ImageFormat, Pixels};
 use jiff::Zoned;
 use tracing::{error, info};
 
-use crate::overlays::screenshot::state::{MonitorGeometry, ScreenshotState};
+use crate::ui::screenshot::state::{MonitorGeometry, ScreenshotState};
 use corona_surface::overlay::OverlayState;
 
 fn finish(png: Vec<u8>, cx: &mut App) {

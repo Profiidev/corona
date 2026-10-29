@@ -9,6 +9,18 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+corona_components.workspace = true
+corona_compositor.workspace = true
+corona_config.workspace = true
+corona_surface.workspace = true
+corona_settings.workspace = true
+corona_launcher.workspace = true
+corona_ipc.workspace = true
+corona_utils.workspace = true
+rust-i18n.workspace = true
+serde.workspace = true
+clap.workspace = true
+jiff.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true
 image.workspace = true
@@ -24,4 +36,5 @@ wayland-protocols-wlr.workspace = true
 wayland-protocols.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }

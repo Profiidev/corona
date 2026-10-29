@@ -28,7 +28,8 @@ mod tests {
       cx.settings_mut()
         .register::<corona_weather::settings::LocationSettings>()
         .register::<corona_pipewire::settings::PrivacySettings>()
-        .register::<corona_notifications::settings::NotificationSettings>();
+        .register::<corona_notifications::settings::NotificationSettings>()
+        .register::<corona_capture::settings::ScreenshotSettings>();
     });
   }
 
