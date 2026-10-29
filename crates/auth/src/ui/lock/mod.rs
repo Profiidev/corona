@@ -21,7 +21,7 @@ fn user(cx: &App) -> User {
   }
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   // The lock is usually the first capture, keep the GPU setup out of its delay
   cx.background_spawn(async { corona_capture::warm_up() })
     .detach();

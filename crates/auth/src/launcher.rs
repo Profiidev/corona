@@ -5,9 +5,9 @@ use corona_launcher::{Action, Confirm, Icon, Meta, Outcome, kit::Group, simple};
 use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::session::{Action as SessionAction, Session};
+use crate::commands::{Action as SessionAction, Session};
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   use SessionAction::*;
   let commands = [
     ("session:lock", Lock, IconName::Lock, false),

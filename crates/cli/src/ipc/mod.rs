@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use clap_complete::CompletionCandidate;
+use corona_auth::commands::{Action, Session};
 use corona_bluez::commands::Bluetooth;
 use corona_bluez::commands::{
   Action as BluetoothAction, DeviceAction, Discover, ListDevices as ListBluetooth,
@@ -21,7 +22,6 @@ use corona_shell::commands::caffeine::{Request as StayAwakeRequest, StayAwake};
 use corona_shell::commands::dpms::{Dpms, Power};
 use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
-use corona_shell::commands::session::{Action, Session};
 use corona_shell::overlays::switcher::commands::{Cycle, Mode as SwitcherMode, Modifier, Options};
 use corona_surface::commands::{ListPages, OpenPage};
 

@@ -4,8 +4,8 @@ use std::{
   time::{Duration, Instant},
 };
 
+use crate as ca;
 use anyhow::{Result, bail, ensure};
-use corona_auth as ca;
 use corona_js::{Glob, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
 use specta::specta;
@@ -102,9 +102,9 @@ async fn fingerprint(auth: Glob<ca::Auth>, plugin: Plugin) -> Throws<bool> {
 
 /// `corona/auth`. No password check: a plugin could ask for the password in a look-alike
 /// prompt and confirm what it phished
-pub struct Auth;
+pub struct AuthModule;
 
-impl ScriptModule for Auth {
+impl ScriptModule for AuthModule {
   const NAME: &str = "auth";
   const DOC: &str = "Checking the user's fingerprint.";
 
@@ -120,13 +120,13 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use crate::module::harness;
+  use corona_script::harness;
 
   #[gpui::test]
   fn the_user_is_not_the_plugins_to_pick(cx: &mut TestAppContext) {
     let m = cx.update(|cx| {
       let mut m = ModuleBuilder::new("corona/auth", &Default::default());
-      Auth::module(&PluginRef::default(), &mut m, cx);
+      AuthModule::module(&PluginRef::default(), &mut m, cx);
       m
     });
     let declared = corona_js::d_ts([&m]);
@@ -164,12 +164,12 @@ mod tests {
     // no fprintd on this bus
     let bus = TestBus::new();
     let conn = block_on(bus.conn());
-    cx.update(|cx| corona_auth::init(cx, &conn));
+    cx.update(|cx| crate::connect(cx, &conn));
     let body = "if (!globalThis.started) {
       globalThis.started = true;
       m.fingerprint().catch((e) => report({ message: e.message }));
     }";
-    let (view, cx) = harness::module::<Auth>(cx, body);
+    let (view, cx) = harness::module::<AuthModule>(cx, body);
     wait_until(cx, |cx| !view.reports(cx).is_empty());
     let message = view.last(cx)["message"].as_str().unwrap().to_string();
     assert!(message.contains("Fprint"), "{message}");

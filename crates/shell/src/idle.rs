@@ -11,7 +11,7 @@ use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, BorrowAppContext};
 
-use crate::commands::session::{Action, Session};
+use corona_auth::commands::{Action, Session};
 
 pub fn init(cx: &mut App, session: &zbus::Connection) {
   corona_idle::init(cx, session, changed);

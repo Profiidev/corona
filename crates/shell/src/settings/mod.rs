@@ -28,7 +28,8 @@ mod tests {
         .register::<corona_pipewire::settings::PrivacySettings>()
         .register::<corona_notifications::settings::NotificationSettings>()
         .register::<corona_capture::settings::ScreenshotSettings>()
-        .register::<corona_osk::settings::OskSettings>();
+        .register::<corona_osk::settings::OskSettings>()
+        .register::<corona_auth::settings::LockscreenSettings>();
     });
   }
 

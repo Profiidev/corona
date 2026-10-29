@@ -6,7 +6,6 @@ pub mod dpms;
 pub mod lock_key;
 
 pub mod monitor;
-pub mod session;
 pub mod theme;
 pub mod window;
 
@@ -15,7 +14,6 @@ pub fn register_commands(cx: &mut App) {
   dpms::register_commands(cx);
   lock_key::register_commands(cx);
   monitor::register_commands(cx);
-  session::register_commands(cx);
   theme::register_commands(cx);
   window::register_commands(cx);
 }

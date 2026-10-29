@@ -120,6 +120,11 @@ struct Field<S, T> {
 }
 
 /// Free text, committed on enter or blur. `key` must be unique in the window.
+/// `Option<String>` settings as text, empty for unset
+pub fn non_empty(value: String) -> Option<String> {
+  (!value.trim().is_empty()).then_some(value)
+}
+
 pub fn text(
   key: impl Display,
   get: impl Get<String>,
@@ -447,7 +452,16 @@ pub fn searchable(
 mod tests {
   use corona_config::{NotificationPosition, Weekday};
 
-  use super::{format_number, name, optional, parse};
+  use super::{format_number, name, non_empty, optional, parse};
+
+  #[test]
+  fn non_empty_is_none_for_blank() {
+    assert_eq!(non_empty(String::new()), None);
+    assert_eq!(non_empty("  ".into()), None);
+    assert_eq!(non_empty("x".into()), Some("x".into()));
+    // kept as typed
+    assert_eq!(non_empty(" x ".into()), Some(" x ".into()));
+  }
 
   #[test]
   fn names_and_numbers() {

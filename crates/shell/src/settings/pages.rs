@@ -1,6 +1,3 @@
-use std::iter;
-
-use corona_compositor::{Compositor, types::Monitor};
 use corona_config::{Config, ConfigProvider, IdleAction, IdleBehavior, OsdPosition, Weekday};
 use corona_surface::{
   control_center::{ControlCenterExt, DASHBOARD},
@@ -14,7 +11,7 @@ use gpui_kit::{
 };
 
 use corona_components::settings_fields::{
-  Choice, choice, number,
+  Choice, choice, non_empty, number,
   order::{OrderList, order_item},
   slider, switch, text,
 };
@@ -51,7 +48,6 @@ settings_page!(TaskbarSettings, "taskbar", 60, |cx| taskbar());
 settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
   window_switcher()
 });
-settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 settings_page!(SystemSettings, "system", 160, |cx| system(cx));
 
@@ -62,14 +58,8 @@ pub(super) fn register(cx: &mut App) {
     .register::<ControlCenterSettings>()
     .register::<TaskbarSettings>()
     .register::<WindowSwitcherSettings>()
-    .register::<LockscreenSettings>()
     .register::<IdleSettings>()
     .register::<SystemSettings>();
-}
-
-/// `Option<String>` settings as text, empty for unset
-fn some(value: String) -> Option<String> {
-  (!value.trim().is_empty()).then_some(value)
 }
 
 const OPACITY: (f32, f32, f32) = (0., 1., 0.05);
@@ -87,7 +77,7 @@ fn wallpaper() -> SettingPage {
           text(
             "wallpaper.path",
             |c| c.wallpaper.path.clone().unwrap_or_default(),
-            |c, v| c.wallpaper.path = some(v),
+            |c, v| c.wallpaper.path = non_empty(v),
           ),
         )
         .layout(Axis::Vertical),
@@ -517,70 +507,11 @@ fn idle(cx: &App) -> SettingPage {
   )
 }
 
-fn lockscreen(cx: &App) -> SettingPage {
-  let connected = (cx.try_global::<Compositor>())
-    .map(|c| c.list_monitors(cx))
-    .unwrap_or_default();
-  let monitors = monitor_choices(connected, cx.config().lockscreen.monitor.as_ref());
-  page(
-    t!("app.settings.lockscreen.title"),
-    IconName::Lock,
-    vec![group(
-      t!("app.settings.lockscreen.groups.lock_screen"),
-      vec![
-        item(
-          t!("app.settings.lockscreen.lock_before_suspend.title"),
-          t!("app.settings.lockscreen.lock_before_suspend.description"),
-          switch(
-            |c| c.lockscreen.lock_before_suspend,
-            |c, v| c.lockscreen.lock_before_suspend = v,
-          ),
-        ),
-        item(
-          t!("app.settings.lockscreen.blur.title"),
-          t!("app.settings.lockscreen.blur.description"),
-          slider(
-            "lockscreen.blur",
-            (0., 10., 0.5),
-            |c| c.lockscreen.blur,
-            |c, v| c.lockscreen.blur = v,
-          ),
-        ),
-        item(
-          t!("app.settings.lockscreen.monitor.title"),
-          t!("app.settings.lockscreen.monitor.description"),
-          choice(
-            &iter::once((None, t!("app.settings.options.all_monitors")))
-              .chain(monitors.into_iter().map(|m| (Some(m.clone()), m.into())))
-              .collect::<Vec<_>>(),
-            |c| c.lockscreen.monitor.clone(),
-            |c, v| c.lockscreen.monitor = v,
-          ),
-        ),
-      ],
-    )],
-  )
-}
-
-/// The enabled monitors' names, and a configured one that is not connected so
-/// the dropdown still shows it
-fn monitor_choices(connected: &[Monitor], configured: Option<&String>) -> Vec<String> {
-  let mut names: Vec<String> = (connected.iter())
-    .filter(|m| !m.disabled)
-    .map(|m| m.name.clone())
-    .collect();
-  if let Some(configured) = configured
-    && !names.contains(configured)
-  {
-    names.push(configured.clone());
-  }
-  names
-}
-
 fn system(cx: &App) -> SettingPage {
-  // the other groups are the integrations': night light and polling from brightness and
-  // sysinfo
+  // the integrations' groups: the avatar from auth, night light and polling from
+  // brightness and sysinfo
   let shared = [
+    ("profile", t!("app.settings.system.groups.profile")),
     ("nightlight", t!("app.settings.system.groups.nightlight")),
     ("polling", t!("app.settings.system.groups.polling")),
     (
@@ -593,57 +524,13 @@ fn system(cx: &App) -> SettingPage {
   page(
     t!("app.settings.system.title"),
     IconName::Cpu,
-    iter::once(group(
-      t!("app.settings.system.groups.profile"),
-      vec![
-        item(
-          t!("app.settings.system.avatar.title"),
-          t!("app.settings.system.avatar.description"),
-          text(
-            "shell.avatar",
-            |c| c.shell.avatar.clone().unwrap_or_default(),
-            |c, v| c.shell.avatar = some(v),
-          ),
-        )
-        .layout(Axis::Vertical),
-      ],
-    ))
-    .chain(shared)
-    .collect(),
+    shared.collect(),
   )
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn monitor_choices_keep_the_configured() {
-    let mut off = crate::test_support::monitor("HDMI-A-1");
-    off.disabled = true;
-    let connected = [crate::test_support::monitor("DP-1"), off];
-    assert_eq!(monitor_choices(&connected, None), ["DP-1"]);
-    assert_eq!(monitor_choices(&connected, Some(&"DP-1".into())), ["DP-1"]);
-    // a disconnected or disabled choice stays selectable
-    assert_eq!(
-      monitor_choices(&connected, Some(&"DP-2".into())),
-      ["DP-1", "DP-2"]
-    );
-    assert_eq!(
-      monitor_choices(&connected, Some(&"HDMI-A-1".into())),
-      ["DP-1", "HDMI-A-1"]
-    );
-    assert_eq!(monitor_choices(&[], Some(&"DP-2".into())), ["DP-2"]);
-  }
-
-  #[test]
-  fn some_is_none_for_blank() {
-    assert_eq!(some(String::new()), None);
-    assert_eq!(some("  ".into()), None);
-    assert_eq!(some("x".into()), Some("x".into()));
-    // kept as typed
-    assert_eq!(some(" x ".into()), Some(" x ".into()));
-  }
 
   #[test]
   fn idle_behavior_creates_or_returns() {

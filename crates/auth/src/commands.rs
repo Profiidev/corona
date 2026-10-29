@@ -6,9 +6,9 @@ use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::lock::LockState;
+use crate::ui::lock::LockState;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Session>();
 }
 

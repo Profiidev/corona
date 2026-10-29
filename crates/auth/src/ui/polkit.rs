@@ -1,4 +1,4 @@
-use corona_auth::polkit::Polkit;
+use crate::polkit::Polkit;
 use corona_components::components::input::on_enter;
 use gpui_kit::{
   AnyWindowHandle, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
@@ -12,7 +12,7 @@ const NAMESPACE: &str = "corona_polkit";
 
 /// Opens a dialog on the focused monitor for the oldest polkit request, a
 /// fresh one for each request
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   let requests = cx.global::<Polkit>().requests.clone();
   follow_queue(requests, "polkit", |r| r.cookie.clone(), open_dialog, cx);
 }
@@ -109,7 +109,7 @@ mod tests {
   use tempfile::TempDir;
 
   use super::*;
-  use crate::test_support::{FakeCompositor, setup};
+  use corona_surface::testing::{FakeCompositor, setup};
 
   /// A Polkit whose helper takes the password `right`
   fn polkit(cx: &mut TestAppContext) -> (Polkit, TempDir) {

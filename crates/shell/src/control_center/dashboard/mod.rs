@@ -16,11 +16,11 @@ use gpui_kit::{
 };
 use jiff::Zoned;
 
-use crate::control_center::dashboard::{session::SessionMenu, sliders::Sliders};
+use crate::control_center::dashboard::sliders::Sliders;
+use corona_auth::ui::session::SessionMenu;
 use corona_surface::control_center::{ControlCenter, Standalone};
 use rust_i18n::t;
 
-mod session;
 pub(crate) mod sliders;
 pub(crate) mod toggles;
 

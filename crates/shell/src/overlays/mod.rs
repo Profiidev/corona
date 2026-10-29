@@ -1,6 +1,5 @@
 use gpui_kit::App;
 
-pub mod polkit;
 pub mod screen_corners;
 pub mod switcher;
 pub mod taskbar;

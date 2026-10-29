@@ -13,7 +13,6 @@ mod control_center;
 mod idle;
 mod launcher;
 mod locale_keys;
-mod lock;
 mod osds;
 pub mod overlays;
 pub mod settings;
@@ -24,9 +23,7 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   launcher::init(cx);
-  lock::init(cx);
   osds::init(cx);
-  overlays::polkit::init(cx);
   overlays::switcher::init(cx);
   overlays::taskbar::init(cx);
   overlays::wallpaper::init(cx);
@@ -134,7 +131,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_location::init(cx, system);
   corona_weather::init(cx, &buses);
   corona_brightness::init(cx, &buses)?;
-  corona_auth::init(cx, system);
+  corona_auth::init(cx, &buses);
   corona_mpris::init(cx, &buses).await?;
   corona_tray::init(cx, &buses).await?;
   idle::init(cx, session);

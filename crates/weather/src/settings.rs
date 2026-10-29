@@ -1,6 +1,6 @@
 //! The location page, with the forecast's units and refresh, and the clock's options form
 
-use corona_components::settings_fields::{choice, number, switch, text};
+use corona_components::settings_fields::{choice, non_empty, number, switch, text};
 use corona_config::{Units, bar::BarConfig};
 use corona_settings::{
   SettingsExt, SettingsPage, Slot, WidgetOptions,
@@ -34,11 +34,6 @@ pub(crate) fn register(cx: &mut App) {
     });
 }
 
-/// `Option<String>` settings as text, empty for unset
-fn some(value: String) -> Option<String> {
-  (!value.trim().is_empty()).then_some(value)
-}
-
 fn location() -> SettingPage {
   page(
     t!("app.settings.location.title"),
@@ -53,7 +48,7 @@ fn location() -> SettingPage {
             text(
               "location.city",
               |c| c.location.city.clone().unwrap_or_default(),
-              |c, v| c.location.city = some(v),
+              |c, v| c.location.city = non_empty(v),
             ),
           ),
           item(

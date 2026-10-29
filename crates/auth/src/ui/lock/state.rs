@@ -4,8 +4,8 @@ use std::{
   time::{Duration, Instant},
 };
 
+use crate::AuthExt;
 use anyhow::Result;
-use corona_auth::AuthExt;
 use corona_auth_screen::Fingerprint;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
@@ -28,7 +28,7 @@ use gpui_kit::{
 
 use corona_components::animation::animation_duration;
 
-use crate::lock::{
+use crate::ui::lock::{
   user,
   view::{Background, Lock, Unlock, ZOOM_SPEED},
 };
@@ -424,7 +424,7 @@ fn background(frame: &Frame, sigma: f32) -> Result<Background> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::test_support::{FakeCompositor, setup};
+  use corona_surface::testing::{FakeCompositor, setup};
   use gpui_kit::{self as gpui, TestAppContext};
 
   fn no_capture() {

@@ -13,7 +13,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::lock::LockState;
+use crate::ui::lock::LockState;
 use rust_i18n::t;
 
 const ROW: f32 = 40.;

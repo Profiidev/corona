@@ -6,13 +6,22 @@ use std::{
 
 use anyhow::{Result, bail};
 use corona_config::APP_NAME;
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use futures::channel::oneshot;
 use futures_lite::StreamExt;
 use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
 
+pub mod commands;
+mod launcher;
 pub mod polkit;
+pub mod script;
+pub mod settings;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const FAIL_DELAY: Duration = Duration::from_secs(2);
 const PAM_DIRS: [&str; 2] = ["/etc/pam.d", "/usr/lib/pam.d"];
@@ -203,7 +212,18 @@ async fn verify(device: &DeviceProxy<'_>, listening: oneshot::Sender<()>) -> Res
   bail!("fprintd went away")
 }
 
-pub fn init(cx: &mut App, conn: &Connection) {
+/// Starts authentication and the polkit agent, registers the lock screen, the polkit
+/// dialog, the session commands and the script module
+pub fn init(cx: &mut App, buses: &Buses) {
+  connect(cx, &buses.system);
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::AuthModule>();
+}
+
+pub(crate) fn connect(cx: &mut App, conn: &Connection) {
   cx.set_global(Auth {
     conn: conn.clone(),
     releasing: Releasing::default(),
