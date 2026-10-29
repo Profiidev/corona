@@ -3419,6 +3419,146 @@ declare module "gpui-kit" {
     group_hover(group: string, style: (style: Element) => Element): Element;
     /** Sets the probe's label. */
     label(text: string): Element;
+    /** The visible label of a button, check, switch, radio, toggle, color picker or field. */
+    label(text: string): Element;
+    /** An icon of an `InputGroupButton`, by asset path. */
+    icon(path: string): Element;
+    /** Concise hover help. */
+    tooltip(text: string): Element;
+    /** The controlled value of a `Checkbox`, `Switch`, `Radio` or `Toggle`. */
+    checked(value: boolean): Element;
+    /** The controlled state of a `gpui-base` `Toggle`: a button that stays down. */
+    pressed(value: boolean): Element;
+    /**
+     * `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
+     * the index of a `RadioGroup`, the stars of a `Rating`. The script owns the value.
+     */
+    on_change(handler: (event: any, cx: Context) => void): Element;
+    /** Blocks interaction and draws the control disabled. */
+    disabled(value: boolean): Element;
+    /** The selected state of a `Button`. */
+    selected(value: boolean): Element;
+    /** Shows a spinner and blocks clicks. */
+    loading(value: boolean): Element;
+    /** The semantic control size. */
+    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    /** The outlined look of a button, toggle or keycap. */
+    outline(): Element;
+    /** The primary action look. */
+    primary(): Element;
+    /** The secondary look of a `Button`, or the muted secondary text of a `Label`. */
+    secondary(text?: string): Element;
+    /** The destructive action look. */
+    danger(): Element;
+    /** The success look. */
+    success(): Element;
+    /** The warning look. */
+    warning(): Element;
+    /** The quiet look of a button. */
+    ghost(): Element;
+    /** The look of a link. */
+    link(): Element;
+    /** Tighter padding. */
+    compact(): Element;
+    /** A native button variant of an `InputGroupButton`. */
+    variant(variant: "default" | "primary" | "secondary" | "danger" | "warning" | "success" | "info" | "ghost" | "link" | "text"): Element;
+    /** The absolute HTTP(S) URL a `Link` opens. */
+    href(url: string): Element;
+    /** The checked radio of a `RadioGroup`, by index. */
+    selected_index(index: number): Element;
+    /** The orientation a `gpui-base` `RadioGroup` or `ToggleGroup` announces. */
+    axis(axis: "horizontal" | "vertical"): Element;
+    /** This item's one-based position and its collection's size, announced. */
+    set_position(position: number, size: number): Element;
+    /** Draws a `Label`'s text as a password. */
+    masked(value: boolean): Element;
+    /** Highlights the matches of `text` in a `Label`. */
+    highlights(text: string): Element;
+    /** Whether a keycap or text area draws its frame. */
+    appearance(value: boolean): Element;
+    /** What a `Clipboard` copies, or the stars of a `Rating`. */
+    value(value: string | number): Element;
+    /** How many stars a `Rating` has. */
+    max(count: number): Element;
+    /** The accent color of a `Rating`. */
+    color(color: Color): Element;
+    /** Draws a `Textarea`'s border. */
+    bordered(value: boolean): Element;
+    /** Allows selecting and copying but no edits. */
+    readonly(value: boolean): Element;
+    /** The prompt shown while empty. */
+    placeholder(text: string): Element;
+    /** The prompt of a `Combobox`'s search field. */
+    search_placeholder(text: string): Element;
+    /** The width of a `Select`'s or `Combobox`'s menu, in pixels. */
+    menu_width(width: number): Element;
+    /** Splits an `OtpInput`'s cells into this many groups. */
+    groups(count: number): Element;
+    /** A vertical `Slider`. */
+    vertical(): Element;
+    /** Fills a `Slider` from the other end. */
+    reverse(): Element;
+    /** Draws an `InputGroup` as invalid. */
+    invalid(value: boolean): Element;
+    /** Draws the focus ring of an `InputGroup`. */
+    focus_ring(value: boolean): Element;
+    /** Supporting text under a `Field`'s control. */
+    description(text: string): Element;
+    /** Marks a `Field` as required. */
+    required(value: boolean): Element;
+    /** Indents an unlabeled `Field` of a horizontal form like the labeled ones. */
+    label_indent(value: boolean): Element;
+    /** How many grid columns a `Field` spans. */
+    col_span(span: number): Element;
+    /** Where a `Field` aligns its control. */
+    align(to: string | number): Element;
+    /** How many columns a `Form` lays its fields out in. */
+    columns(count: number): Element;
+    /** The label width of a horizontal `Form`, in pixels. */
+    label_width(width: number): Element;
+    /**
+     * The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
+     * the editor slot of a `gpui-base` `NumberInput`.
+     */
+    input(control: Element | Entity | string | number | boolean): Element;
+    /** Appends an `InputGroupAddon` to an `InputGroup`. */
+    addon(addon: Element | Entity | string | number | boolean): Element;
+    /** Names the control for accessibility. */
+    aria_label(label: string): Element;
+    /** What a screen reader announces. */
+    accessibility_label(label: string): Element;
+    /** Whether Tab lands on a `Radio`. */
+    tab_stop(value: boolean): Element;
+    /** `handler(event, cx)` on activation. */
+    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    /** Whether a `gpui-base` `Select`, `Combobox` or `DatePicker` is showing its list. */
+    open(value: boolean): Element;
+    /** `handler(open, cx)` when something other than the script opened or closed it. */
+    on_open_change(handler: (event: boolean, cx: Context) => void): Element;
+    /** `handler(_, cx)` on Enter in an open `gpui-base` `Select` or `Combobox`. */
+    on_confirm(handler: (event: {}, cx: Context) => void): Element;
+    /** `handler(_, cx)` on Escape in an open `gpui-base` `Select` or `Combobox`. */
+    on_dismiss(handler: (event: {}, cx: Context) => void): Element;
+    /** The handle a `gpui-base` `Select` or `Combobox` moves the keyboard to when it opens. */
+    content_focus_handle(handle: FocusHandle): Element;
+    /** Which thumb of a range slider a `SliderThumb` is. */
+    start(value: boolean): Element;
+    /** How the filled part of a `SliderIndicator` looks: `declare(el)` styles it. */
+    range_style(declare: (...args: any[]) => unknown): Element;
+    /** How every cell of a `gpui-base` `OtpInput` looks. */
+    cell_style(declare: (...args: any[]) => unknown): Element;
+    /** What the cell the next digit lands in adds to `cell_style`. */
+    cell_active_style(declare: (...args: any[]) => unknown): Element;
+    /** The blinking mark in that cell while it is empty. */
+    caret_style(declare: (...args: any[]) => unknown): Element;
+    /** The look of a `gpui-base` `NumberInput`'s decrement button. */
+    decrement_button(look: Element | Entity | string | number | boolean): Element;
+    /** The look of a `gpui-base` `NumberInput`'s increment button. */
+    increment_button(look: Element | Entity | string | number | boolean): Element;
+    /** Stacks both step buttons to the right of the text. */
+    controls_right(): Element;
+    /** `handler(action, cx)` on a step; replaces the built-in stepping. */
+    on_step(handler: (event: "increment" | "decrement", cx: Context) => void): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -3610,7 +3750,7 @@ declare module "gpui-kit" {
 }
 declare var window: import("gpui-kit").Window;
 declare module "gpui-base" {
-  import { Element } from "gpui-kit";
+  import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
   /** A row, centered on the cross axis. */
   export function h_flex(): Element;
   /** A column. */
@@ -3650,9 +3790,211 @@ declare module "gpui-base" {
       };
     };
   }): void;
+  /** Activation, focus, disabled and selected state. No styling. */
+  export const Button: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** An external HTTP(S) resource opened through the system browser. */
+  export const Link: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A controlled toggle. No styling: draw the indicator yourself. */
+  export const Checkbox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A controlled switch. No styling. */
+  export const Switch: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** One option in a radio group. No styling. */
+  export const Radio: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A button that stays down: `pressed(..)` in, `on_change(..)` out. */
+  export const Toggle: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A set of radios, announced as one group. */
+  export const RadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A set of toggles, announced as a toolbar. */
+  export const ToggleGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A select root: the semantics and the keyboard, none of the picture. */
+  export const Select: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A combobox root whose trigger is an editable field. */
+  export const Combobox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A date-picker root; it holds no date. */
+  export const DatePicker: { new (id: string | number, focus_handle: FocusHandle): Element; new: (id: string | number, focus_handle: FocusHandle) => Element };
+  /** The bare editor of retained text. */
+  export const Input: { new (state: InputState): Element; new: (state: InputState) => Element };
+  /** A spinbutton; give it `decrement_button`/`increment_button`. */
+  export const NumberInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  /** The bare editor of retained multi-line text. */
+  export const Textarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  /** A code drawn cell by cell: `cell_style(..)`, `caret_style(..)`. */
+  export const OtpInput: { new (state: OtpState): Element; new: (state: OtpState) => Element };
+  /** The slider root: announces the value. */
+  export const Slider: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  /** The press and drag surface. */
+  export const SliderTrack: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  /** The groove; `range_style(..)` draws the fill. */
+  export const SliderIndicator: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  /** The knob; `start(true)` is a range's lower one. */
+  export const SliderThumb: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "gpui-component";
+  export { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent };
 }
 declare module "gpui-component" {
+  import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
   export const Probe: { new (): Element; new: () => Element };
+  /** A styled command button. */
+  export const Button: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** An external-resource link. */
+  export const Link: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A controlled check box: `checked(..)` in, `on_change(..)` out. */
+  export const Checkbox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A controlled switch: `checked(..)` in, `on_change(..)` out. */
+  export const Switch: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** One option of a radio group. */
+  export const Radio: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A column of `Radio`s; `on_change(index => ..)`. */
+  export const RadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A row of `Radio`s; `on_change(index => ..)`. */
+  export const HorizontalRadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A button that stays down: `checked(..)` in, `on_change(..)` out. */
+  export const Toggle: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A button copying `value(..)`. */
+  export const Clipboard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** Stars: `value(..)`, `max(..)`, `on_change(stars => ..)`. */
+  export const Rating: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A frame around `input(..)` and its `addon(..)`s. */
+  export const InputGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** An addon of an `InputGroup`, at `align(..)`. */
+  export const InputGroupAddon: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A compact button inside an `InputGroup`. */
+  export const InputGroupButton: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** The frame around retained text. */
+  export const Input: { new (state: InputState): Element; new: (state: InputState) => Element };
+  /** A spinbutton over an `InputState`. */
+  export const NumberInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  /** The single-line control of an `InputGroup`. */
+  export const InputGroupInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  /** The frame around retained multi-line text. */
+  export const Textarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  /** The multi-line control of an `InputGroup`. */
+  export const InputGroupTextarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  /** A fixed-length code. */
+  export const OtpInput: { new (state: OtpState): Element; new: (state: OtpState) => Element };
+  /** A slider over a retained `SliderState`. */
+  export const Slider: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  /** A color picker. */
+  export const ColorPicker: { new (state: ColorPickerState): Element; new: (state: ColorPickerState) => Element };
+  /** A date picker. */
+  export const DatePicker: { new (state: DatePickerState): Element; new: (state: DatePickerState) => Element };
+  /** A time of day field. */
+  export const TimeField: { new (state: TimeFieldState): Element; new: (state: TimeFieldState) => Element };
+  /** A text label. */
+  export const Label: { new (text: string): Element; new: (text: string) => Element };
+  /** A keyboard shortcut keycap, e.g. `"ctrl-s"`. */
+  export const Kbd: { new (keystroke: string): Element; new: (keystroke: string) => Element };
+  /** A labeled form field. */
+  export const Field: { new (): Element; new: () => Element };
+  /** A form of `Field`s. */
+  export const Form: { new (): Element; new: () => Element };
+  /** A form laying out its labels above. */
+  export const VForm: { new (): Element; new: () => Element };
+  /** A form laying out its labels beside. */
+  export const HForm: { new (): Element; new: () => Element };
+  /** Muted text inside an `InputGroup`. */
+  export const InputGroupText: { new (): Element; new: () => Element };
+  /** A native select over the `{ id, label, disabled? }` rows `rows()` returns. */
+  export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void) => Element };
+  /** A single-select searchable combobox over the rows `rows()` returns. */
+  export const Combobox: { new (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void) => Element };
+  /** A row of a `Select` or `Combobox`. */
+  export interface SelectRow { id: string; label: string; disabled?: boolean; }
+  /** What a text state's `on` handlers get; `submit` carries the keys held with Enter. */
+  export interface TextEvent { secondary?: boolean; shift?: boolean; }
+  /** Retained text of an `Input` or `NumberInput`. Make it in `init` or a handler. */
+  export interface InputState {
+    value(): string;
+    /** Replaces the text; emits no `change`. */
+    set_value(value: string): void;
+    /** Replaces the selection with `text`, as typing it would. */
+    replace(text: string): void;
+    set_placeholder(text: string): void;
+    set_masked(masked: boolean): void;
+    set_loading(loading: boolean): void;
+    /** How far a `NumberInput` steps; `null` stops stepping. */
+    set_step(step: number | null): void;
+    set_min(min: number | null): void;
+    set_max(max: number | null): void;
+    focus(): void;
+    on(event: "change" | "submit" | "focus" | "blur", handler: (event: TextEvent, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const InputState: {
+    (placeholder?: string, initial_value?: string): InputState;
+    new: (options?: { placeholder?: string; value?: string }) => InputState;
+  };
+  /** Retained text of a `Textarea`. */
+  export interface TextareaState {
+    value(): string;
+    set_value(value: string): void;
+    replace(text: string): void;
+    set_placeholder(text: string): void;
+    set_rows(rows: number): void;
+    set_auto_grow(min_rows: number, max_rows: number): void;
+    set_soft_wrap(wrap: boolean): void;
+    focus(): void;
+    on(event: "change" | "submit" | "focus" | "blur", handler: (event: TextEvent, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const TextareaState: {
+    (initial_value?: string): TextareaState;
+    new: (options?: { placeholder?: string; value?: string; rows?: number }) => TextareaState;
+  };
+  /** One thumb, or the two ends of a range. */
+  export type SliderValue = number | [number, number];
+  /** Where a `Slider` is; a drag writes it without rendering the script. */
+  export interface SliderState {
+    value(): SliderValue;
+    set_value(value: SliderValue): void;
+    min_value(): number;
+    max_value(): number;
+    step_value(): number;
+    /** `change` on every step of a drag, `release` once when it ends. */
+    on(event: "change" | "release", handler: (value: SliderValue, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const SliderState: {
+    (initial_value?: number): SliderState;
+    new: (options?: { min?: number; max?: number; step?: number; scale?: "linear" | "logarithmic"; value?: SliderValue }) => SliderState;
+  };
+  /** The code an `OtpInput` edits; its length is fixed. */
+  export interface OtpState {
+    value(): string;
+    set_value(value: string): void;
+    len(): number;
+    is_masked(): boolean;
+    set_masked(masked: boolean): void;
+    focus(): void;
+    on(event: "change" | "complete" | "focus" | "blur", handler: (event: {}, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export const OtpState: {
+    (length: number, options?: { value?: string; masked?: boolean }): OtpState;
+    new: (length: number, options?: { value?: string; masked?: boolean }) => OtpState;
+  };
+  export interface ColorPickerState {
+    /** The color as `#rrggbb[aa]`. */
+    value(): string | undefined;
+    set_value(color: import("gpui-kit").Color | null): void;
+    on(event: "change", handler: (color: string | undefined, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export function ColorPickerState(): ColorPickerState;
+  export interface DatePickerState {
+    /** The picked date as `YYYY-MM-DD`. */
+    value(): string | undefined;
+    on(event: "change", handler: (date: string | undefined, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export function DatePickerState(): DatePickerState;
+  export interface TimeFieldState {
+    /** The time as `HH:MM:SS`. */
+    value(): string;
+    on(event: "change", handler: (time: string, cx: Context) => void): boolean;
+    release(): boolean;
+  }
+  export function TimeFieldState(): TimeFieldState;
 }
 /** A value of the shell: call it for the current one. */
 interface Signal<T> {

@@ -21,6 +21,7 @@ use crate::{
   now, with,
 };
 
+mod components_forms;
 mod elements;
 
 pub(crate) use elements::FAMILY;
@@ -208,6 +209,31 @@ fn view<'a>(
   });
   cx.run_until_parked();
   (view, cx)
+}
+
+/// `source` mounted in a gpui-component `Root`, which hosts dialogs, sheets and toasts
+fn rooted<'a>(
+  cx: &'a mut TestAppContext,
+  source: &'static str,
+) -> (Entity<ScriptView>, &'a mut VisualTestContext) {
+  cx.update(gpui::init);
+  let (root, cx) = cx.add_window_view(|window, cx| {
+    let watches = Watches::default();
+    let modules = modules(&watches, cx);
+    let view = cx.new(|cx| ScriptView::new(source, modules, watches, window, cx).unwrap());
+    let content = cx.new(|_| crate::ScriptRoot::new(view));
+    gpui::base::Root::new(content, window, cx)
+  });
+  cx.run_until_parked();
+  let content = root.read_with(cx, |root, _| root.view().clone());
+  let content = content.downcast::<crate::ScriptRoot>().ok().unwrap();
+  let view = content.read_with(cx, |root, _| root.view().clone());
+  (view, cx)
+}
+
+/// What `code` evaluates to in the view's context, as a string
+fn eval(view: &Entity<ScriptView>, cx: &mut VisualTestContext, code: &str) -> String {
+  view.read_with(cx, |view, _| view.eval(code))
 }
 
 fn text(view: &Entity<ScriptView>, cx: &mut VisualTestContext) -> String {

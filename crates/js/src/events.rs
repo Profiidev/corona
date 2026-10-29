@@ -87,6 +87,16 @@ pub struct ClickEvent {
   modifiers: Mods,
 }
 
+impl From<&gpui_kit::ClickEvent> for ClickEvent {
+  fn from(e: &gpui_kit::ClickEvent) -> Self {
+    Self {
+      click_count: e.click_count() as u32,
+      position: e.position().into(),
+      modifiers: e.modifiers().into(),
+    }
+  }
+}
+
 #[derive(IntoJs)]
 pub struct MouseButtonEvent {
   button: String,
@@ -280,11 +290,7 @@ fn key_event(k: &gpui_kit::Keystroke, is_held: Option<bool>) -> KeyEvent {
 crate::el_methods! {
   /// `handler(event, cx)` on a click, or keyboard activation.
   fn on_click(handler: On<'js, ClickEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::ClickEvent| ClickEvent {
-      click_count: e.click_count() as u32,
-      position: e.position().into(),
-      modifiers: e.modifiers().into(),
-    });
+    let l = frame().listener(handler.0, |e: &gpui_kit::ClickEvent| ClickEvent::from(e));
     interact(c, n, |mut i| {
       i.0.on_click(l);
       i

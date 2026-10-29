@@ -2,6 +2,7 @@
 //! stripped), the task that drives its futures, and what it keeps for its views.
 
 use std::{
+  any::Any,
   cell::{Cell, RefCell},
   collections::HashMap,
   path::{Path, PathBuf},
@@ -49,6 +50,8 @@ pub(crate) struct Runtime {
   pub(crate) children: RefCell<HashMap<u32, Entity<ScriptView>>>,
   pub(crate) next_child: Cell<u32>,
   pub(crate) lists: RefCell<HashMap<(EntityId, String), ListState>>,
+  /// Native component states a view keeps by id: a `Select`'s, a `DataTable`'s, ..
+  keyed: RefCell<HashMap<(EntityId, String), Box<dyn Any>>>,
   /// What retained states' `.on` subscribed
   subs: RefCell<HashMap<u32, Subscription>>,
   watches: Watches,
@@ -61,6 +64,7 @@ pub(crate) struct Runtime {
 impl Drop for Runtime {
   fn drop(&mut self) {
     self.slots.get_mut().clear();
+    self.keyed.get_mut().clear();
     self.subs.get_mut().clear();
     self.watches.clear();
   }
@@ -117,6 +121,27 @@ impl Runtime {
     key
   }
 
+  /// What `view` keeps under `id`, made by `make` the first time.
+  pub(crate) fn keyed<T: Clone + 'static>(
+    &self,
+    view: EntityId,
+    id: String,
+    make: impl FnOnce() -> T,
+  ) -> T {
+    let key = (view, id);
+    if let Some(t) = self
+      .keyed
+      .borrow()
+      .get(&key)
+      .and_then(|b| b.downcast_ref::<T>())
+    {
+      return t.clone();
+    }
+    let t = make();
+    self.keyed.borrow_mut().insert(key, Box::new(t.clone()));
+    t
+  }
+
   /// The list state named `id` of `view`, with `count` items
   pub(crate) fn list(&self, view: EntityId, id: String, count: usize) -> ListState {
     let mut lists = self.lists.borrow_mut();
@@ -156,6 +181,7 @@ pub(crate) fn new(
     children: Default::default(),
     next_child: Cell::new(0),
     lists: Default::default(),
+    keyed: Default::default(),
     subs: Default::default(),
     watches,
     _drive: drive(&rt, cx),

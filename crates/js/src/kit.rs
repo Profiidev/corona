@@ -260,13 +260,14 @@ impl GpuiKit {
 {rest}}}
 declare var window: import("gpui-kit").Window;
 declare module "gpui-base" {{
-  import {{ Element }} from "gpui-kit";
+  import {{ ClickEvent, Context, Element, FocusHandle }} from "gpui-kit";
   /** A row, centered on the cross axis. */
   export function h_flex(): Element;
   /** A column. */
   export function v_flex(): Element;
 {theme}{base}}}
 declare module "gpui-component" {{
+  import {{ ClickEvent, Context, Element, FocusHandle }} from "gpui-kit";
 {component}}}
 "##,
       spacing = union(SPACING_TOKENS),

@@ -10,11 +10,15 @@
 //!    `InteractiveElement`, `ParentElement`). Style, event and child methods then work on it.
 //! 3. Export constructors with [`constructor`]: `new Button(id)` and `Button.new(id)` both
 //!    return an element, made by `crate::new_el(ctx, Button::new(id.into_inner()))`.
-//! 4. Add the widget's own builder methods with an [`el_methods!`](crate::el_methods) table.
-//!    Bodies reach the concrete type through [`map`](crate::map), which throws on other
-//!    elements: `fn primary() |c, n| crate::map(c, n, |b: Button| b.primary());`. Use
-//!    [`On`](crate::On) for handlers (`frame().listener(..)` makes the gpui listener) and the
-//!    value types of `style` (`Color`, `Len`, ..) for arguments.
+//! 4. Add the widget's own builder methods with an [`el_methods!`](crate::el_methods) table
+//!    headed `kinds: KINDS;`, the kinds the family makes. Bodies reach the concrete type
+//!    through [`map`](crate::map) or `pick!(c, n, Button => |b: Button| b.primary(), ..)`,
+//!    which throw a [`miss`](crate::miss) on other elements. Several families (and the style
+//!    and event tables) may define one name: [`define`](crate::define) tries the latest first
+//!    and hands an element outside its kinds, or a miss, to the one before. So check the kind
+//!    before taking a child out of the frame. Use [`On`](crate::On) for handlers ([`listen`]
+//!    makes the gpui listener), `choice!` for arguments naming one of a few values and the
+//!    value types of `style` (`Color`, `Len`, ..) for the rest.
 //! 5. Retained states (`InputState`, ..) are rquickjs classes holding a
 //!    [`Retained`](crate::Retained) with `on`/`release` methods; `Named` gives them a TS name.
 //! 6. Fill [`Family`]: the module (`"gpui-component"` or `"gpui-base"`), the export names,
@@ -32,7 +36,86 @@
 //! };
 //! ```
 
-use rquickjs::{Ctx, Function, Object, Result, Value};
+use std::{cell::RefCell, rc::Rc};
+
+use gpui_kit::{App, Entity, EventEmitter, Window, component::Size};
+use rquickjs::{Class, Ctx, Exception, Function, IntoJs, Object, Result, Value};
+
+use crate::{Child, El, Node, frame, frame_or_throw, runtime::runtime, view::window_or_throw};
+
+/// `choice! { Sz("size"): Size { "small" => Size::Small, .. } }`: an argument naming one of a
+/// few values, holding the value it names
+macro_rules! choice {
+  ($($ty:ident($what:literal): $out:ty { $($name:literal => $value:expr),* $(,)? })*) => {$(
+    pub(crate) struct $ty(pub $out);
+
+    impl<'js> rquickjs::FromJs<'js> for $ty {
+      fn from_js(ctx: &rquickjs::Ctx<'js>, value: rquickjs::Value<'js>) -> rquickjs::Result<Self> {
+        let name = String::from_js(ctx, value)?;
+        match name.as_str() {
+          $($name => Ok(Self($value)),)*
+          _ => Err(rquickjs::Exception::throw_type(
+            ctx,
+            &crate::style::unknown($what, &name, &[$($name),*]),
+          )),
+        }
+      }
+    }
+
+    impl crate::TsType for $ty {
+      fn ts() -> String {
+        [$(concat!("\"", $name, "\"")),*].join(" | ")
+      }
+    }
+  )*};
+}
+
+/// `pick!(c, n, Button => |b: Button| b.primary(), ..)`: applies the closure of the node's
+/// type, a [`miss`](crate::miss) on any other
+macro_rules! pick {
+  ($c:expr, $n:expr, $($ty:ty => $f:expr),+ $(,)?) => {{
+    let (c, n) = ($c, $n);
+    $(if $crate::components::is::<$ty>(&**n) { $crate::map(c, n, $f) } else)+ {
+      Err($crate::miss(c, n.kind()))
+    }
+  }};
+}
+
+/// A retained state's JS class: holds a [`Retained`](crate::Retained), typed by its JS name
+macro_rules! state {
+  ($ty:ident, $state:ty, $js:literal) => {
+    #[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
+    #[rquickjs::class(rename = $js)]
+    pub struct $ty {
+      #[qjs(skip_trace)]
+      pub(crate) state: crate::Retained<$state>,
+    }
+
+    impl crate::Named for $ty {
+      const TS: &'static str = $js;
+    }
+
+    impl $ty {
+      #[allow(dead_code)]
+      pub(crate) fn instance<'js>(
+        ctx: &rquickjs::Ctx<'js>,
+        state: gpui_kit::Entity<$state>,
+      ) -> rquickjs::Result<rquickjs::Class<'js, Self>> {
+        let state = crate::Retained::new(ctx, state)?;
+        rquickjs::Class::instance(ctx.clone(), Self { state })
+      }
+
+      /// The entity of this state, or a JS error once released
+      #[allow(dead_code)]
+      pub(crate) fn get(
+        this: &rquickjs::Class<'_, Self>,
+      ) -> rquickjs::Result<gpui_kit::Entity<$state>> {
+        let ctx = this.ctx().clone();
+        this.borrow().state.entity(&ctx).cloned()
+      }
+    }
+  };
+}
 
 /// Makes a family's exports, by name
 pub(crate) type Exports = for<'js> fn(&Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>>;
@@ -53,10 +136,14 @@ pub(crate) struct Family {
   pub el_d_ts: fn() -> String,
 }
 
+mod forms;
+
 /// Every family, one line each
 pub(crate) const FAMILIES: &[Family] = &[
   #[cfg(test)]
   crate::tests::FAMILY,
+  forms::FAMILY,
+  forms::BASE,
 ];
 
 /// A JS constructor for `make`: `new Name(..)` and `Name.new(..)` both return what it does.
@@ -65,4 +152,134 @@ pub fn constructor<'js>(ctx: &Ctx<'js>, name: &str, make: Function<'js>) -> Resu
     "(make) => {{ function {name}(...args) {{ return make(...args); }} {name}.new = make; return {name}; }}"
   ))?;
   wrap.call((make,))
+}
+
+/// Whether the node is a `T`
+pub(crate) fn is<T: 'static>(n: &dyn Node) -> bool {
+  (n as &dyn std::any::Any).is::<T>()
+}
+
+/// Moves a child element out of the frame as the widget `T`, or throws `what`.
+pub(crate) fn take<T: 'static>(c: &Ctx<'_>, child: Child<'_>, what: &str) -> Result<T> {
+  let Child::El(el) = child else {
+    return Err(Exception::throw_type(c, what));
+  };
+  take_el(c, &el, what)
+}
+
+/// Moves element `el` out of the frame as the widget `T`, or throws `what`.
+pub(crate) fn take_el<T: 'static>(c: &Ctx<'_>, el: &Class<'_, El>, what: &str) -> Result<T> {
+  let node = frame_or_throw(c)?.take(c, &el.borrow())?;
+  match node.into_any().downcast::<T>() {
+    Ok(t) => Ok(*t),
+    Err(_) => Err(Exception::throw_type(c, what)),
+  }
+}
+
+/// A constructor export, see [`constructor`]
+pub(crate) fn ctor<'js, P: 'js>(
+  ctx: &Ctx<'js>,
+  name: &'static str,
+  f: impl rquickjs::function::IntoJsFunc<'js, P> + 'js,
+) -> Result<(&'static str, Value<'js>)> {
+  Ok((
+    name,
+    constructor(ctx, name, Function::new(ctx.clone(), f)?)?,
+  ))
+}
+
+/// The declaration of a constructor export: `new Name(args)` and `Name.new(args)`
+pub(crate) fn declare(doc: &str, name: &str, args: &str) -> String {
+  let doc = crate::jsdoc(&[&format!(" {doc}")], "  ");
+  format!("{doc}  export const {name}: {{ new ({args}): Element; new: ({args}) => Element }};\n")
+}
+
+choice! {
+  Sz("size"): Size {
+    "xsmall" => Size::XSmall,
+    "small" => Size::Small,
+    "medium" => Size::Medium,
+    "large" => Size::Large,
+  }
+}
+
+/// A component size, or a style length on an element without one: `size(..)` is both
+pub(crate) struct SizeArg<'js>(Value<'js>);
+
+impl<'js> rquickjs::FromJs<'js> for SizeArg<'js> {
+  fn from_js(_: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+    Ok(Self(value))
+  }
+}
+
+impl crate::TsType for SizeArg<'_> {
+  fn ts() -> String {
+    <Sz as crate::TsType>::ts()
+  }
+}
+
+impl<'js> SizeArg<'js> {
+  /// The size, a miss for a length so the style method sizes the element
+  pub(crate) fn get(self, c: &Ctx<'js>, n: &dyn Node) -> Result<Size> {
+    match self.0.is_string() {
+      true => Ok(<Sz as rquickjs::FromJs>::from_js(c, self.0)?.0),
+      false => Err(crate::miss(c, n.kind())),
+    }
+  }
+}
+
+/// A gpui listener taking `P`
+type Listener<P> = Rc<dyn Fn(&P, &mut Window, &mut App)>;
+
+/// The listener the latest render of the view gave
+type Latest<P> = Rc<RefCell<Option<Listener<P>>>>;
+
+/// `handler(payload, cx)` for the events of `entity` that `pick` maps, as an element method
+/// sets it: subscribed once per entity and `key`, and calling the handler of the latest render.
+/// ponytail: a render that stops setting it keeps the last one; clear it if that matters
+pub(crate) fn on_entity<'js, T, E, P>(
+  ctx: &Ctx<'js>,
+  entity: &Entity<T>,
+  key: &'static str,
+  handler: Function<'js>,
+  pick: impl Fn(&Entity<T>, &E, &App) -> Option<P> + 'static,
+) -> Result<()>
+where
+  T: EventEmitter<E>,
+  E: 'static,
+  P: for<'a> IntoJs<'a> + Clone + 'static,
+{
+  let frame = frame_or_throw(ctx)?;
+  let view = frame.view.entity_id();
+  let listener: Listener<P> = Rc::new(frame.listener(handler, |p: &P| p.clone()));
+  let rt = runtime(ctx)?;
+  let mut fresh = false;
+  let id = format!("{key}:{}", entity.entity_id());
+  let latest: Latest<P> = rt.keyed(view, id, || {
+    fresh = true;
+    Rc::default()
+  });
+  *latest.borrow_mut() = Some(listener);
+  if fresh {
+    let window = window_or_throw(ctx)?;
+    let sub = window.subscribe(entity, crate::app(), move |entity, event, window, cx| {
+      let Some(payload) = pick(&entity, event, cx) else {
+        return;
+      };
+      let listener = latest.borrow().clone();
+      if let Some(listener) = listener {
+        listener(&payload, window, cx);
+      }
+    });
+    rt.keep(sub);
+  }
+  Ok(())
+}
+
+/// The handler a component takes for `event`, kept for this render
+pub(crate) fn listen<P: for<'a> IntoJs<'a> + 'static, E: ?Sized + 'static>(
+  handler: Function<'_>,
+  payload: impl Fn(&E) -> P + 'static,
+) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+  frame().listener(handler, payload)
 }

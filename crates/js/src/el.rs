@@ -14,6 +14,7 @@ use gpui_kit::{
 use rquickjs::{
   Class, Ctx, Exception, FromJs, Function, IntoJs, JsLifetime, Persistent, Result, Value,
   class::Trace,
+  function::{Rest, This},
 };
 
 use crate::{
@@ -226,7 +227,12 @@ pub fn frame_or_throw(ctx: &Ctx<'_>) -> Result<&'static mut Frame> {
 
 /// A new element in the current render
 pub fn new_el<'js>(ctx: &Ctx<'js>, node: impl Node) -> Result<Class<'js, El>> {
-  let el = frame_or_throw(ctx)?.push(Box::new(node));
+  new_boxed(ctx, Box::new(node))
+}
+
+/// A new element in the current render, of a boxed node
+pub(crate) fn new_boxed<'js>(ctx: &Ctx<'js>, node: Box<dyn Node>) -> Result<Class<'js, El>> {
+  let el = frame_or_throw(ctx)?.push(node);
   Class::instance(ctx.clone(), el)
 }
 
@@ -269,20 +275,77 @@ pub(crate) fn interact(ctx: &Ctx<'_>, n: &mut Box<dyn Node>, f: impl FnOnce(I) -
   Ok(())
 }
 
-/// Applies a builder method of the concrete type `T`, e.g. `Button::primary`.
+/// Applies a builder method of the concrete type `T`, e.g. `Button::primary`. On another
+/// type it throws a miss, which lets a same-named method of another family run instead.
 pub fn map<T: Node>(ctx: &Ctx<'_>, n: &mut Box<dyn Node>, f: impl FnOnce(T) -> T) -> Result<()> {
-  let kind = n.kind();
-  let any = mem::replace(n, Box::new(StyleRefinement::default())).into_any();
-  match any.downcast::<T>() {
-    Ok(t) => {
-      *n = Box::new(f(*t));
-      Ok(())
-    }
-    Err(_) => Err(Exception::throw_type(
-      ctx,
-      &format!("this method is not available on {kind}"),
-    )),
+  if !(&**n as &dyn Any).is::<T>() {
+    return Err(miss(ctx, n.kind()));
   }
+  let any = mem::replace(n, Box::new(StyleRefinement::default())).into_any();
+  *n = Box::new(f(*any.downcast::<T>().expect("checked")));
+  Ok(())
+}
+
+thread_local! {
+  /// Set by [`miss`]: the method does not apply to this element
+  static MISS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Throws "not available": the method does not apply to an element of `kind`. A same-named
+/// method defined before it then gets its turn.
+pub fn miss(ctx: &Ctx<'_>, kind: &str) -> rquickjs::Error {
+  MISS.set(true);
+  Exception::throw_type(ctx, &format!("this method is not available on {kind}"))
+}
+
+/// Puts method `f` on the element prototype as `name`. Several families may define one name:
+/// the latest runs first and, on an element not of its `kinds` (checked before its arguments
+/// are) or when it throws a [`miss`], hands the call to the one defined before it.
+pub fn define<'js>(
+  proto: &rquickjs::Object<'js>,
+  name: &str,
+  kinds: Option<&'static [&'static str]>,
+  f: Function<'js>,
+) -> Result<()> {
+  let prev: Option<Function<'js>> = proto.get(name)?;
+  if prev.is_none() && kinds.is_none() {
+    return proto.set(name, f);
+  }
+  let dispatch = move |this: This<Class<'js, El>>, args: Rest<Value<'js>>| -> Result<Value<'js>> {
+    let ctx = this.0.ctx().clone();
+    let mut kind = "";
+    with_node(&this.0, |_, n| {
+      kind = n.kind();
+      Ok(())
+    })?;
+    if kinds.is_none_or(|k| k.contains(&kind)) {
+      MISS.set(false);
+      match f.call::<_, Value>((This(this.0.clone()), Rest(args.0.clone()))) {
+        Err(_) if MISS.replace(false) => drop(ctx.catch()),
+        out => return out,
+      }
+    }
+    match &prev {
+      Some(prev) => prev.call((This(this.0), Rest(args.0))),
+      None => Err(miss(&ctx, kind)),
+    }
+  };
+  proto.set(name, Function::new(proto.ctx().clone(), dispatch)?)
+}
+
+/// Calls `f` with a style-only element and returns the style it built; what `f` returns is
+/// ignored.
+pub(crate) fn styled<'js>(ctx: &Ctx<'js>, f: Function<'js>) -> Result<StyleRefinement> {
+  let style = new_el(ctx, StyleRefinement::default())?;
+  f.call::<_, Value>((style.clone(),))?;
+  let mut out = StyleRefinement::default();
+  with_node(&style, |ctx, n| {
+    restyle(ctx, n, |s| {
+      out = s;
+      StyleRefinement::default()
+    })
+  })?;
+  Ok(out)
 }
 
 /// What `child` takes
@@ -390,12 +453,16 @@ pub fn jsdoc(lines: &[&str], indent: &str) -> String {
 }
 
 /// One line per builder method, `fn name(args) |ctx, node| body;` with `body` a
-/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. Emits `install(proto)`, which
+/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. A leading `kinds: KINDS;`
+/// limits the table to elements of those kinds, see [`define`]. Emits `install(proto)`, which
 /// puts the methods on the element prototype, and `d_ts()`, their `interface Element` members;
 /// doc comments become JSDoc.
 #[macro_export]
 macro_rules! el_methods {
-  ($(
+  (kinds: $kinds:expr; $($rest:tt)*) => {
+    $crate::el_methods!(@table Some($kinds); $($rest)*);
+  };
+  (@table $kinds:expr; $(
     $(#[doc = $doc:literal])*
     fn $name:ident($($arg:ident: $ty:ty),* $(,)?) |$ctx:pat_param, $n:pat_param| $body:expr;
   )*) => {
@@ -410,7 +477,7 @@ macro_rules! el_methods {
             Ok::<_, $crate::rquickjs::Error>(this.0)
           },
         )?;
-        proto.set(stringify!($name), f)?;
+        $crate::define(proto, stringify!($name), $kinds, f)?;
       )*
       Ok(())
     }
@@ -431,6 +498,9 @@ macro_rules! el_methods {
       )*
       out
     }
+  };
+  ($($rest:tt)*) => {
+    $crate::el_methods!(@table None; $($rest)*);
   };
 }
 
@@ -640,7 +710,7 @@ mod fns {
   use gpui_kit::StyleRefinement;
   use rquickjs::{Class, Function, Object, Result, Value, function::This};
 
-  use super::{El, interact, restyle, with_node};
+  use super::{El, interact, with_node};
 
   pub const D_TS: &str = r#"    /** Passes this element to `transform` and returns what it returns. */
     map<T>(transform: (element: Element) => T): T;
@@ -662,18 +732,8 @@ mod fns {
     group_hover(group: string, style: (style: Element) => Element): Element;
 "#;
 
-  /// Calls `f` with a style-only element and returns the style it built
   fn styled<'js>(this: &Class<'js, El>, f: Function<'js>) -> Result<StyleRefinement> {
-    let style = super::new_el(this.ctx(), StyleRefinement::default())?;
-    let style: Class<El> = f.call((style,))?;
-    let mut out = StyleRefinement::default();
-    with_node(&style, |ctx, n| {
-      restyle(ctx, n, |s| {
-        out = s;
-        StyleRefinement::default()
-      })
-    })?;
-    Ok(out)
+    super::styled(this.ctx(), f)
   }
 
   pub fn install<'js>(proto: &Object<'js>) -> Result<()> {

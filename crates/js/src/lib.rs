@@ -14,8 +14,8 @@ use rquickjs::{AsyncContext, Ctx};
 pub use caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant};
 pub use components::constructor;
 pub use el::{
-  Child, El, Frame, Id, Named, Node, On, Payload, TsType, frame_or_throw, jsdoc, map, new_el,
-  restyle, with_node,
+  Child, El, Frame, Id, Named, Node, On, Payload, TsType, define, frame_or_throw, jsdoc, map, miss,
+  new_el, restyle, with_node,
 };
 pub use entity::{Retained, ScrollHandle};
 pub use host::{Cx, Glob, Opt, Throws};
