@@ -1,13 +1,13 @@
-use anyhow::{Context, Result};
-use corona_ipc::{IpcCommand, IpcExt};
-use corona_pipewire::{
+use crate::{
   PipewireExt,
   volume::{to_linear, to_slider},
 };
+use anyhow::{Context, Result};
+use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Volume>();
 }
 

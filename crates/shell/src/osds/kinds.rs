@@ -6,12 +6,6 @@ use corona_surface::{
 };
 
 osd_kind!(
-  VolumeOsd(LevelOsd),
-  "volume",
-  "app.settings.osd.volume.title",
-  "app.settings.osd.volume.description"
-);
-osd_kind!(
   BrightnessOsd(LevelOsd),
   "brightness",
   "app.settings.osd.brightness.title",
@@ -34,12 +28,6 @@ osd_kind!(
   "power_profile",
   "app.settings.osd.power_profile.title",
   "app.settings.osd.power_profile.description"
-);
-osd_kind!(
-  PrivacyOsd(ToggleOsd),
-  "privacy",
-  "app.settings.osd.privacy.title",
-  "app.settings.osd.privacy.description"
 );
 osd_kind!(
   KeyboardLayoutOsd(ToggleOsd),

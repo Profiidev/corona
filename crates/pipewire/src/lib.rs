@@ -1,6 +1,8 @@
 use std::thread;
 
 use anyhow::Result;
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, main_loop::MainLoopRc, registry::RegistryRc};
 
@@ -10,12 +12,19 @@ mod api;
 mod audio;
 mod capture;
 mod command;
+pub mod commands;
 mod event;
+mod launcher;
 mod listener;
+pub mod script;
+pub mod settings;
 mod state;
 #[cfg(test)]
 mod testing;
+pub mod ui;
 pub mod volume;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
@@ -32,7 +41,18 @@ impl PipewireExt for App {
   }
 }
 
-pub fn init(cx: &mut App) -> Result<()> {
+/// Starts the PipeWire thread, registers the audio and privacy UI, commands and script module
+pub fn init(cx: &mut App, _: &Buses) -> Result<()> {
+  start(cx)?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  cx.script_mut().register::<script::PipewireModule>();
+  Ok(())
+}
+
+fn start(cx: &mut App) -> Result<()> {
   let (event_tx, event_rx) = flume::unbounded();
   let (command_tx, state) = spawn(event_tx)?;
 

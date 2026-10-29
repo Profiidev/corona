@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use crate::{PipewireExt, volume::to_slider};
 use anyhow::Result;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -9,14 +10,13 @@ use corona_launcher::{
   kit::{Group, level_target, percent, watch},
   simple,
 };
-use corona_pipewire::{PipewireExt, volume::to_slider};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use corona_surface::{control_center::Standalone, panel::AppPanelExt};
 
 use crate::commands::volume::{Action as VolumeAction, Device, Volume};
-use crate::control_center::AudioPanel;
+use crate::ui::page::AudioPanel;
 
 /// The default device's slider level and mute
 fn level(device: Device, cx: &App) -> Option<(f32, bool)> {
@@ -157,7 +157,7 @@ impl Command for LevelCommand {
   }
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   let mut commands: Vec<Rc<dyn Command>> = vec![
     Rc::new(LevelCommand(Device::Output)),
     Rc::new(LevelCommand(Device::Input)),

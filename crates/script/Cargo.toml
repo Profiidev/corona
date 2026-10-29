@@ -11,7 +11,6 @@ categories.workspace = true
 [dependencies]
 corona_config.workspace = true
 corona_compositor.workspace = true
-corona_pipewire.workspace = true
 corona_network_manager.workspace = true
 corona_power.workspace = true
 corona_idle.workspace = true

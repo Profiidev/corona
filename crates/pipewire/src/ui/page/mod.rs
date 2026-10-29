@@ -1,4 +1,4 @@
-use corona_pipewire::{AudioNode, PipewireAudio, PipewireExt};
+use crate::{AudioNode, PipewireAudio, PipewireExt};
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -8,7 +8,7 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::audio::{
+use crate::ui::page::{
   state::{DEFAULT_SINK_ID, DefaultState, StreamState},
   ui::{audio_node, audio_stream},
 };

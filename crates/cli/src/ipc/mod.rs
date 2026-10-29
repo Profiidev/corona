@@ -7,6 +7,7 @@ use corona_bluez::commands::{
 use corona_ipc::IpcCommandSend;
 use corona_ipc::Switch;
 use corona_mpris::commands::media::{Action as MediaAction, Media};
+use corona_pipewire::commands::volume::Device;
 use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
@@ -17,7 +18,6 @@ use corona_shell::commands::lock_key::{LockKey, Pressed};
 use corona_shell::commands::parse_level;
 use corona_shell::commands::radio::Wifi;
 use corona_shell::commands::session::{Action, Session};
-use corona_shell::commands::volume::Device;
 use corona_shell::overlays::{
   colorpicker::commands::ColorPicker,
   screenshot::{commands::Screenshot, mode::Mode},
@@ -442,13 +442,13 @@ pub(crate) mod tests {
 
   use clap::Parser;
   use corona_ipc::IpcCommand;
+  use corona_pipewire::commands::volume::Volume;
   use corona_shell::commands::{
     brightness::SetBrightness,
     nightlight::Nightlight,
     notification::{ClearHistory, DoNotDisturb, Show},
     power_profile::{CycleProfile, SetProfile},
     theme::{SetMode, SetTheme},
-    volume::Volume,
   };
   use corona_surface::commands::{ClosePanel, OpenPanel, TogglePanel};
   use serde_json::{Value, json};
@@ -590,9 +590,9 @@ pub(crate) mod tests {
       (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_shell::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
       (&["show-desktop"], json!(null), corona_shell::commands::window::ShowDesktop::COMMAND, json!(null)),
       (&["keyboard-layout", "next"], json!(["de", "us"]), corona_shell::commands::window::KeyboardLayout::COMMAND, json!("next")),
-      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_shell::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
-      (&["audio", "stream", "firefox", "40"], json!(null), corona_shell::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
-      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_shell::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
+      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_pipewire::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
+      (&["audio", "stream", "firefox", "40"], json!(null), corona_pipewire::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
+      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_pipewire::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
       (&["network", "connect", "home"], json!(null), corona_shell::commands::network::ConnectWifi::COMMAND, json!("home")),
       (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_shell::commands::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
       (&["network", "vpn", "work", "on"], json!(true), corona_shell::commands::network::SwitchVpn::COMMAND, json!(["work", "On"])),

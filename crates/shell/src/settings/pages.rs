@@ -67,7 +67,6 @@ settings_page!(OskSettings, "osk", 90, |cx| osk());
 settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
-settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
 settings_page!(SystemSettings, "system", 160, |cx| system());
 
 pub(super) fn register(cx: &mut App) {
@@ -82,7 +81,6 @@ pub(super) fn register(cx: &mut App) {
     .register::<LockscreenSettings>()
     .register::<IdleSettings>()
     .register::<ScreenshotSettings>()
-    .register::<PrivacySettings>()
     .register::<SystemSettings>();
 }
 
@@ -878,48 +876,6 @@ fn screenshot() -> SettingPage {
             "screenshot.filename_pattern",
             |c| c.screenshot.filename_pattern.clone(),
             |c, v| c.screenshot.filename_pattern = v,
-          ),
-        )
-        .layout(Axis::Vertical),
-      ],
-    )],
-  )
-}
-
-fn privacy() -> SettingPage {
-  page(
-    t!("app.settings.privacy.title"),
-    IconName::Shield,
-    vec![group(
-      t!("app.settings.privacy.groups.hidden_apps"),
-      vec![
-        item(
-          t!("app.settings.privacy.microphone.title"),
-          t!("app.settings.privacy.microphone.description"),
-          text(
-            "shell.privacy.mic",
-            |c| c.shell.privacy.mic_filter_regex.clone(),
-            |c, v| c.shell.privacy.mic_filter_regex = v,
-          ),
-        )
-        .layout(Axis::Vertical),
-        item(
-          t!("app.settings.privacy.camera.title"),
-          t!("app.settings.privacy.camera.description"),
-          text(
-            "shell.privacy.cam",
-            |c| c.shell.privacy.cam_filter_regex.clone(),
-            |c, v| c.shell.privacy.cam_filter_regex = v,
-          ),
-        )
-        .layout(Axis::Vertical),
-        item(
-          t!("app.settings.privacy.screen.title"),
-          t!("app.settings.privacy.screen.description"),
-          text(
-            "shell.privacy.screen",
-            |c| c.shell.privacy.screen_filter_regex.clone(),
-            |c, v| c.shell.privacy.screen_filter_regex = v,
           ),
         )
         .layout(Axis::Vertical),

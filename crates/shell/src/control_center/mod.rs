@@ -1,4 +1,3 @@
-mod audio;
 pub(crate) mod brightness;
 mod clipboard;
 pub(crate) mod dashboard;
@@ -16,7 +15,6 @@ use corona_surface::{
 use gpui_kit::App;
 
 pub use crate::control_center::{
-  audio::AudioPanel,
   brightness::BrightnessPanel,
   clipboard::ClipboardPanel,
   dashboard::DashboardPanel,
@@ -32,7 +30,6 @@ pub fn register_panels(cx: &mut App) {
   cx.panel().register::<ControlCenter>();
   cx.control_center_mut()
     .register::<DashboardPanel>()
-    .register::<AudioPanel>()
     .register::<NetworkPanel>()
     .register::<HotspotPanel>()
     .register::<DisksPanel>()

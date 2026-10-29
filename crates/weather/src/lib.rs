@@ -13,7 +13,7 @@ pub use corona_config::Units;
 mod api;
 mod launcher;
 pub mod script;
-mod settings;
+pub mod settings;
 mod state;
 pub mod ui;
 

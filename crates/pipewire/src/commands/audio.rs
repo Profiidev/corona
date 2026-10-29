@@ -1,17 +1,17 @@
+use crate::{
+  AudioNode, PipewireExt,
+  volume::{to_linear, to_slider},
+};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_compositor::CompositorExt;
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_pipewire::{
-  AudioNode, PipewireExt,
-  volume::{to_linear, to_slider},
-};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::volume::Action;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<ListNodes>()
     .register::<SetDefault>()

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use gpui_kit::{App, base::IndexPath, component::select::SelectItem};
 
-use corona_pipewire::{AudioNode, PipewireExt};
+use crate::{AudioNode, PipewireExt};
 
-use crate::control_center::audio::state::DEFAULT_SINK_ID;
+use crate::ui::page::state::DEFAULT_SINK_ID;
 use rust_i18n::t;
 
 #[derive(Clone, Debug)]
@@ -99,7 +99,7 @@ pub fn target_of(stream: u32, cx: &App) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-  use corona_pipewire::NodeType;
+  use crate::NodeType;
 
   use super::*;
 

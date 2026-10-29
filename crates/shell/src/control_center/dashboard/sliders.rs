@@ -3,15 +3,10 @@ use std::time::Duration;
 use corona_brightness::{BrightnessExt, Display};
 use corona_compositor::CompositorExt;
 use corona_config::ConfigProvider;
-use corona_pipewire::{
-  AudioNode, PipewireExt,
-  volume::{to_linear, to_slider},
-};
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::{Changed, DashboardExt, DashboardRegistry, DashboardSlider, SliderEntry},
 };
-use corona_utils::error::ErrorLogExt;
 use corona_utils::error::spawn_logged;
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, ParentElement, SharedString, Styled, Subscription, Window,
@@ -27,18 +22,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::{
-  control_center::{AudioPanel, BrightnessPanel, dashboard::DashboardPanel},
-  icons::volume_icon,
-};
-
-fn sink(cx: &App) -> Option<&AudioNode> {
-  cx.pipewire().default_sink(cx)
-}
-
-fn source(cx: &App) -> Option<&AudioNode> {
-  cx.pipewire().default_source(cx)
-}
+use crate::control_center::{BrightnessPanel, dashboard::DashboardPanel};
 
 /// the focused monitor's display, or the first usable one
 pub(crate) fn display(cx: &App) -> Option<&Display> {
@@ -53,113 +37,8 @@ fn pick_display<'d>(displays: &'d [Display], focused: &str) -> Option<&'d Displa
     .or_else(|| usable().next())
 }
 
-fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
-  let Some(node) = node else {
-    return;
-  };
-  let channels = node.volumes.len().max(1);
-  let _ = cx
-    .pipewire()
-    .audio()
-    .set_volumes(node.id, vec![to_linear(value); channels])
-    .log_err();
-}
-
-fn toggle_mute(node: Option<&AudioNode>, cx: &App) {
-  if let Some(node) = node {
-    let _ = cx
-      .pipewire()
-      .audio()
-      .set_mute(node.id, !node.mute)
-      .log_err();
-  }
-}
-
 fn observe<T: 'static>(entity: &Entity<T>, changed: Changed, cx: &mut App) -> Subscription {
   cx.observe(entity, move |_, cx| changed(cx))
-}
-
-pub struct Output;
-
-impl DashboardSlider for Output {
-  const ID: &'static str = "output";
-
-  fn title() -> SharedString {
-    t!("app.dashboard.sliders.output").into()
-  }
-
-  fn icon(cx: &App) -> IconName {
-    sink(cx).map_or(IconName::VolumeOff, |n| {
-      volume_icon(to_slider(n.volume()), n.mute)
-    })
-  }
-
-  fn value(cx: &App) -> Option<f32> {
-    sink(cx).map(|n| to_slider(n.volume()))
-  }
-
-  fn set(value: f32, cx: &mut App) {
-    set_volume(sink(cx), value, cx);
-  }
-
-  fn muted(cx: &App) -> Option<bool> {
-    Some(sink(cx).is_some_and(|n| n.mute))
-  }
-
-  fn toggle_mute(cx: &mut App) {
-    toggle_mute(sink(cx), cx);
-  }
-
-  fn page() -> Option<&'static str> {
-    Some(AudioPanel::ID)
-  }
-
-  fn observe(changed: Changed, cx: &mut App) -> Vec<Subscription> {
-    let sink = cx.pipewire().default_sink.clone();
-    vec![observe(&sink, changed, cx)]
-  }
-}
-
-pub struct Input;
-
-impl DashboardSlider for Input {
-  const ID: &'static str = "input";
-
-  fn title() -> SharedString {
-    t!("app.dashboard.sliders.input").into()
-  }
-
-  fn icon(cx: &App) -> IconName {
-    match source(cx) {
-      Some(n) if !n.mute => IconName::Mic,
-      _ => IconName::MicOff,
-    }
-  }
-
-  fn value(cx: &App) -> Option<f32> {
-    source(cx).map(|n| to_slider(n.volume()))
-  }
-
-  fn set(value: f32, cx: &mut App) {
-    set_volume(source(cx), value, cx);
-  }
-
-  fn muted(cx: &App) -> Option<bool> {
-    Some(source(cx).is_some_and(|n| n.mute))
-  }
-
-  fn toggle_mute(cx: &mut App) {
-    toggle_mute(source(cx), cx);
-  }
-
-  fn page() -> Option<&'static str> {
-    Some(AudioPanel::ID)
-  }
-
-  fn observe(changed: Changed, cx: &mut App) -> Vec<Subscription> {
-    let source = cx.pipewire().default_source.clone();
-    vec![observe(&source, changed, cx)]
-  }
 }
 
 pub struct Brightness;
@@ -205,10 +84,7 @@ impl DashboardSlider for Brightness {
 }
 
 pub(crate) fn register(cx: &mut App) {
-  cx.dashboard_mut()
-    .slider::<Output>()
-    .slider::<Input>()
-    .slider::<Brightness>();
+  cx.dashboard_mut().slider::<Brightness>();
 }
 
 /// A slider's state on the open dashboard

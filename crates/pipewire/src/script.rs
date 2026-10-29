@@ -1,17 +1,15 @@
-use corona_js::{
-  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
-};
-use corona_pipewire::{
+use crate::{
   AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
   PipewireExt,
+};
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json, track,
 };
 use gpui_kit::App;
 use serde::Serialize;
 use specta::{Type, specta};
 
-use crate::module::json;
-
-type Pw = Glob<corona_pipewire::Pipewire>;
+type Pw = Glob<crate::Pipewire>;
 
 // The script's view of an `AudioNode`: `volume` added, device ids left out.
 #[derive(Serialize, Type)]
@@ -136,9 +134,9 @@ fn target(cx: Cx, pipewire: Pw, stream: u32) -> Json<Option<u32>> {
 }
 
 /// `corona/pipewire`
-pub struct Pipewire;
+pub struct PipewireModule;
 
-impl ScriptModule for Pipewire {
+impl ScriptModule for PipewireModule {
   const NAME: &str = "pipewire";
   const DOC: &str = "Audio devices, streams and who records.";
 

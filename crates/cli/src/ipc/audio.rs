@@ -2,7 +2,7 @@ use crate::ipc::complete;
 use clap::Subcommand;
 use clap_complete::ArgValueCandidates;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::{
+use corona_pipewire::commands::{
   audio::{Kind, ListNodes, MoveStream, MuteFocused, SetDefault, StreamVolume},
   volume::Action,
 };

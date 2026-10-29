@@ -1,9 +1,9 @@
-use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
+use crate::{AudioNode, PipewireExt, volume::to_slider};
 use gpui_kit::{App, assets::IconName};
 
-use crate::{
+use crate::ui::{
   icons::volume_icon,
-  osds::{kinds::VolumeOsd, show},
+  osd::{VolumeOsd, show},
 };
 use corona_surface::osd::{LevelOsd, on_change};
 use rust_i18n::t;
@@ -14,7 +14,7 @@ fn level(node: Option<&AudioNode>) -> Option<(u32, u32, bool)> {
   Some((node.id, percent, node.mute))
 }
 
-pub fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App) {
   let pipewire = cx.pipewire();
   let (sink, source) = (
     pipewire.default_sink.clone(),
@@ -68,7 +68,7 @@ pub fn init(cx: &mut App) {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use corona_pipewire::NodeType;
+  use crate::NodeType;
 
   fn node(volumes: Vec<f32>, mute: bool) -> AudioNode {
     AudioNode {

@@ -1,9 +1,9 @@
-use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
+use crate::{AudioNode, PipewireExt, volume::to_slider};
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window};
 use uuid::Uuid;
 
-use crate::{control_center::AudioPanel, icons::volume_icon};
+use crate::ui::{icons::volume_icon, page::AudioPanel};
 use corona_surface::control_center::Standalone;
 
 pub struct AudioButton {

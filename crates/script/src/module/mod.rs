@@ -13,7 +13,6 @@ pub mod i18n;
 pub mod idle;
 pub mod network;
 pub mod notifications;
-pub mod pipewire;
 pub mod plugin;
 pub mod power;
 pub mod secrets;
@@ -32,7 +31,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<network::Network>()
     .register::<notifications::Notifications>()
     .register::<notifications::NotificationCenter>()
-    .register::<pipewire::Pipewire>()
     .register::<power::Power>()
     .register::<secrets::Secrets>();
 }

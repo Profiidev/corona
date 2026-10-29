@@ -17,6 +17,7 @@ mod types;
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
   registry
+    .register::<corona_pipewire::script::PipewireModule>()
     .register::<corona_bluez::script::BluetoothModule>()
     .register::<corona_mpris::script::MprisModule>()
     .register::<corona_printing::script::PrintingModule>()

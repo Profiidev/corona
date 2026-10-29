@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::volume::{Action as VolumeAction, Device, Volume};
+use corona_pipewire::commands::volume::{Action as VolumeAction, Device, Volume};
 
 use crate::ipc::{STEP, level};
 

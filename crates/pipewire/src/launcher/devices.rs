@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use crate::{AudioNode, PipewireExt, volume::to_slider};
 use corona_desktop::entry::name_for_names;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -10,7 +11,6 @@ use corona_launcher::{
   kit::{ListSource, Notify, level_target, opener, percent, watch},
   registry, simple,
 };
-use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
@@ -181,7 +181,7 @@ fn stream_row(stream: &AudioNode, sinks: &[AudioNode]) -> Rc<dyn Command> {
   )
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register_source(Rc::new(Devices), cx);
   registry::register_all(
     [

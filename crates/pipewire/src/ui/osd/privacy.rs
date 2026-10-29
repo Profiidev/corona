@@ -1,10 +1,10 @@
-use corona_pipewire::{CaptureKind, PipewireExt};
+use crate::{CaptureKind, PipewireExt};
 use gpui_kit::App;
 
-use crate::{
+use crate::ui::{
   icons::{capture_icon, capture_label},
-  osds::{kinds::PrivacyOsd, show},
-  widgets::privacy::hidden,
+  osd::{PrivacyOsd, show},
+  privacy::hidden,
 };
 use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
@@ -19,7 +19,7 @@ fn started<'a>(prev: &[Capture], next: &'a [Capture]) -> Option<&'a Capture> {
     .max_by_key(|(_, name)| !name.is_empty())
 }
 
-pub fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App) {
   let captures = cx.pipewire().captures.clone();
   on_change(
     &captures,

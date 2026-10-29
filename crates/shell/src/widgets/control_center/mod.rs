@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use corona_surface::control_center::ControlCenter;
 
-mod audio;
 mod battery;
 mod brightness;
 mod clipboard;
@@ -16,7 +15,6 @@ mod network;
 mod notifications;
 mod power;
 
-pub use audio::AudioButton;
 pub use battery::BatteryButton;
 pub use brightness::BrightnessButton;
 pub use clipboard::ClipboardButton;

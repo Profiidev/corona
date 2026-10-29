@@ -1,8 +1,8 @@
-use corona_pipewire::{AudioNode, PipewireExt};
+use crate::{AudioNode, PipewireExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{Context, Subscription, Window};
 
-use crate::control_center::audio::{
+use crate::ui::page::{
   AudioPanel,
   state::{DEFAULT_SINK_ID, StreamState},
 };
