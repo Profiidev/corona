@@ -3703,6 +3703,63 @@ declare module "gpui-kit" {
     overflow_x_scrollbar(): Element;
     /** Scrolls vertically and paints a base-layer scrollbar. */
     overflow_y_scrollbar(): Element;
+    /** The element a gpui-base `Popover` or `HoverCard` draws while closed, and that opens it. */
+    trigger(element: Element | Entity | string | number | boolean): Element;
+    /** The element that opens a gpui-component `HoverCard` when hovered. */
+    trigger_element(element: Element | Entity | string | number | boolean): Element;
+    /**
+     * What a surface shows while open: an element of this render. A `Dialog` or `Sheet`
+     * outlives the render, so it takes a fn rendering its content instead.
+     */
+    content(content: Element | (() => Element)): Element;
+    /** Whether a `Popover` is open; set, the script holds the state through `on_open_change`. */
+    open(value: boolean): Element;
+    /** Whether an uncontrolled `Popover` starts open. */
+    default_open(value: boolean): Element;
+    /** Whether a press outside an open `Popover` closes it. Default `true`. */
+    overlay_closable(value: boolean): Element;
+    /** Which pointer button opens a `Popover`. Default `"left"`. */
+    mouse_button(button: "left" | "right" | "middle"): Element;
+    /** Which corner of a `Popover`, `HoverCard` or `Popup` is pinned to its trigger. */
+    anchor(anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): Element;
+    /** Same as `anchor`. */
+    card_anchor(anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): Element;
+    /** How long the pointer rests on a `HoverCard`'s trigger before it opens. Default 600. */
+    open_delay(ms: number): Element;
+    /** How long a `HoverCard` stays open after the pointer left it and its trigger. Default 300. */
+    close_delay(ms: number): Element;
+    /** Whether a gpui-component `Popover` or `HoverCard` draws its surface. Default `true`. */
+    appearance(value: boolean): Element;
+    /** `handler(open, cx)` when a `Popover` or `HoverCard` opens or closes by itself. */
+    on_open_change(handler: (event: boolean, cx: Context) => void): Element;
+    /** The title of a window effect or an `Alert`. */
+    title(text: string): Element;
+    /** The text under an `AlertDialog`'s title. */
+    description(text: string): Element;
+    /** The text under a `Notification`'s title. */
+    message(text: string): Element;
+    /** Whether an `AlertDialog` has a cancel button. Default `false`. */
+    show_cancel(value: boolean): Element;
+    /** The window edge a `Sheet` slides in from. Default `"right"`. */
+    placement(at: "top" | "right" | "bottom" | "left"): Element;
+    /** Whether a `Notification` hides by itself. Default `true`. */
+    autohide(value: boolean): Element;
+    /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s OK button; the dialog closes after. */
+    on_ok(handler: (cx: Context) => void): Element;
+    /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s cancel button; the dialog closes after. */
+    on_cancel(handler: (cx: Context) => void): Element;
+    /** `handler(cx)` once a window effect closed, however it was closed. */
+    on_close(handler: (cx: Context) => void): Element;
+    /** `handler(cx)` on a click on a `Notification`. */
+    on_click(handler: (cx: Context) => void): Element;
+    /** Draws an `Alert` full width, without border, radius or title. */
+    banner(): Element;
+    /** Whether an `Alert` is drawn. Default `true`. */
+    visible(value?: boolean): Element;
+    /** An `Alert`'s semantic size. */
+    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    /** The kind of a `Notification`. Default `"info"`. */
+    type(level: "info" | "success" | "warning" | "error"): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4036,6 +4093,12 @@ declare module "gpui-base" {
     scroll_to_item(index: number, strategy?: "top" | "center"): void;
     scroll_to_bottom(): void;
   }
+  /** An unstyled surface anchored to `trigger(..)`, opened by a press: `content(..)`, `open(..)`, `on_open_change(..)`. */
+  export const Popover: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** An unstyled surface anchored to `trigger(..)`, opened by resting the pointer on it. */
+  export const HoverCard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** The bare anchored surface: shows `content(..)` while it is set, anchored to `trigger`. */
+  export const Popup: { new (id: string | number, trigger: Element): Element; new: (id: string | number, trigger: Element) => Element };
 }
 declare module "gpui-component" {
   import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
@@ -4277,6 +4340,30 @@ declare module "gpui-component" {
   export const MenuBar: Ctor<[id: string]>;
   /** A labelled button with a menu of `menu_item(label, cx => ..)`s. */
   export const DropdownButton: Ctor<[id: string | number, label: string]>;
+  /** A ghost button labelled `label` opening a styled surface: `content(..)`, `open(..)`, `on_open_change(..)`. */
+  export const Popover: { new (id: string, label: string): Element; new: (id: string, label: string) => Element };
+  /** A styled surface opened by hovering `trigger_element(..)`. */
+  export const HoverCard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  /** A button `label` showing `text` on hover. */
+  export const Tooltip: { new (id: string, label: string, text: string): Element; new: (id: string, label: string, text: string) => Element };
+  /** A button `label` opening a dialog of `title(..)` and `content(() => ..)`. */
+  export const Dialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  /** A button `label` opening an alert of `title(..)` and `description(..)`. */
+  export const AlertDialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  /** A button `label` opening a sheet of `content(() => ..)` at `placement(..)`. */
+  export const Sheet: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  /** A button `label` opening a toast of `title(..)` and `message(..)`. */
+  export const Notification: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  /** An inline message. */
+  export const Alert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  /** An inline message. */
+  export const InfoAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  /** An inline message. */
+  export const SuccessAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  /** An inline message. */
+  export const WarningAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  /** An inline message. */
+  export const ErrorAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
 }
 /** A value of the shell: call it for the current one. */
 interface Signal<T> {

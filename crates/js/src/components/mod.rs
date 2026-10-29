@@ -138,6 +138,7 @@ pub(crate) struct Family {
 
 mod forms;
 mod navigation;
+mod overlays;
 
 /// Every family, one line each
 pub(crate) const FAMILIES: &[Family] = &[
@@ -147,6 +148,8 @@ pub(crate) const FAMILIES: &[Family] = &[
   forms::BASE,
   navigation::FAMILY,
   navigation::BASE,
+  overlays::FAMILY,
+  overlays::BASE,
 ];
 
 /// A JS constructor for `make`: `new Name(..)` and `Name.new(..)` both return what it does.

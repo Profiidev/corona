@@ -23,6 +23,7 @@ use crate::{
 
 mod components_forms;
 mod components_navigation;
+mod components_overlays;
 mod elements;
 
 pub(crate) use elements::FAMILY;
