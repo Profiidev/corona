@@ -13,7 +13,6 @@ pub mod i18n;
 pub mod idle;
 pub mod network;
 pub mod plugin;
-pub mod power;
 pub mod secrets;
 pub mod settings;
 pub mod surface;
@@ -28,7 +27,6 @@ pub fn register(registry: &mut ScriptRegistry) {
     .register::<desktop::Desktop>()
     .register::<idle::Idle>()
     .register::<network::Network>()
-    .register::<power::Power>()
     .register::<secrets::Secrets>();
 }
 

@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use crate::{Battery, BatteryState, PowerExt};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_power::{Battery, BatteryState, PowerExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -12,11 +12,11 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::power::{PowerPanel, card};
+use crate::ui::page::{PowerPanel, card};
 use corona_components::i18n::decimal;
 use rust_i18n::t;
 
-pub(super) fn duration(duration: Duration) -> String {
+pub(crate) fn duration(duration: Duration) -> String {
   let minutes = (duration.as_secs() + 30) / 60;
   match minutes / 60 {
     0 => t!("app.power.duration.minutes", minutes = minutes).into(),

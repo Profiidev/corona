@@ -1,4 +1,6 @@
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, Task};
 use upower_dbus::KbdBacklightProxy;
@@ -17,11 +19,17 @@ pub use crate::state::{
 };
 
 mod charge;
+pub mod commands;
+mod launcher;
 mod listener;
 mod profiles;
+pub mod script;
 mod session;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 /// how long before a session watch that failed starts over
 const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
@@ -190,7 +198,18 @@ impl Power {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows UPower and power-profiles-daemon, registers the power UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  cx.script_mut().register::<script::PowerModule>();
+  Ok(())
+}
+
+/// Only the backend, without the shell's UI, e.g. for the greeter
+pub async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Power {
     status: cx.new(|_| None),
     battery: cx.new(|_| None),
@@ -601,7 +620,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
   }

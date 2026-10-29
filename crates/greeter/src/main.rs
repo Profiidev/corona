@@ -204,7 +204,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .method_timeout(Duration::from_secs(5))
     .build()
     .await?;
-  corona_power::init(cx, &system).await
+  corona_power::connect(cx, &system).await
 }
 
 fn main() {

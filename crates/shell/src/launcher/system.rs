@@ -14,8 +14,7 @@ use corona_launcher::{
   simple,
 };
 use corona_network_manager::NetworkManagerExt;
-use corona_power::PowerExt;
-use gpui_kit::{App, SharedString, assets::IconName, component::ActiveTheme};
+use gpui_kit::{App, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
 
 use crate::{
@@ -23,7 +22,6 @@ use crate::{
     caffeine::{Request, StayAwake},
     dpms::{Dpms, Power},
     nightlight::{Nightlight, Request as NightlightRequest},
-    power_profile::{CycleProfile, SetProfile},
     radio::Wifi,
   },
   control_center::dashboard::toggles::{airplane_state, set_airplane},
@@ -44,7 +42,6 @@ pub fn init(cx: &mut App) {
     })
     .register(cx);
   Group::new("system", vec![dark_mode(), theme()]).register(cx);
-  power_profile(cx);
   dpms(cx);
 }
 
@@ -96,54 +93,6 @@ fn theme() -> Rc<dyn Command> {
     |name, cx| set_theme(name.to_string(), cx),
     themes,
   )
-}
-
-fn power_profile(cx: &mut App) {
-  let commands = vec![
-    pick_or_list(
-      "power_profile",
-      t!("app.launcher.system.power_profile").into(),
-      Icon::Tile(IconName::Gauge, 40.),
-      &["performance", "battery", "balanced"],
-      |cx| {
-        cx.power()
-          .profiles(cx)
-          .map(|p| p.available.clone())
-          .unwrap_or_default()
-      },
-      |name, cx| SetProfile::handle(name.to_string(), cx),
-      profiles,
-    ),
-    simple(
-      "power_profile:cycle",
-      |cx| Meta {
-        title: t!("app.launcher.system.cycle_profile").into(),
-        subtitle: cx
-          .power()
-          .profiles(cx)
-          .map(|p| SharedString::from(p.active.clone())),
-        icon: Icon::Tile(IconName::Gauge, 40.),
-        keywords: vec!["power profile".into()],
-        ..Default::default()
-      },
-      |_| {
-        vec![Action::sync(
-          "cycle",
-          t!("app.launcher.system.cycle_profile"),
-          |_, _, cx| {
-            CycleProfile::handle((), cx)?;
-            Ok(Outcome::close())
-          },
-        )]
-      },
-    ),
-  ];
-  Group::new("system:power_profile", commands)
-    .observe(|notify, cx| {
-      let profiles = cx.power().profiles.clone();
-      vec![watch(&profiles, &notify, cx)]
-    })
-    .register(cx);
 }
 
 fn dpms(cx: &mut App) {
@@ -384,30 +333,5 @@ fn themes() -> corona_launcher::View {
   .view(
     t!("app.launcher.system.theme"),
     t!("app.launcher.system.search_themes"),
-  )
-}
-
-fn profiles() -> corona_launcher::View {
-  Choices {
-    id: "power_profile",
-    items: Rc::new(|cx| {
-      cx.power()
-        .profiles(cx)
-        .map(|p| {
-          p.available
-            .iter()
-            .map(|n| (n.clone().into(), n.clone().into()))
-            .collect()
-        })
-        .unwrap_or_default()
-    }),
-    current: Rc::new(|cx| cx.power().profiles(cx).map(|p| p.active.clone().into())),
-    apply: Rc::new(|name, cx| SetProfile::handle(name.to_string(), cx)),
-    preview: None,
-    icon: Icon::Named(IconName::Gauge),
-  }
-  .view(
-    t!("app.launcher.system.power_profile"),
-    t!("app.launcher.system.search_profiles"),
   )
 }

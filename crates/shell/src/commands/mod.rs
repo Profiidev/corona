@@ -10,7 +10,6 @@ pub mod lock_key;
 pub mod monitor;
 pub mod network;
 pub mod nightlight;
-pub mod power_profile;
 pub mod radio;
 pub mod session;
 pub mod theme;
@@ -25,7 +24,6 @@ pub fn register_commands(cx: &mut App) {
   monitor::register_commands(cx);
   network::register_commands(cx);
   nightlight::register_commands(cx);
-  power_profile::register_commands(cx);
   radio::register_commands(cx);
   session::register_commands(cx);
   theme::register_commands(cx);

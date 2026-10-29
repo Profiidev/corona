@@ -1,7 +1,7 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::power_profile::{CycleProfile, ListProfiles, SetProfile};
+use corona_power::commands::{CycleProfile, ListProfiles, SetProfile};
 
 use crate::ipc::candidates;
 

@@ -5,21 +5,17 @@ use uuid::Uuid;
 
 use corona_surface::control_center::ControlCenter;
 
-mod battery;
 mod brightness;
 pub(crate) mod disks;
 mod displays;
 mod hotspot;
 mod network;
-mod power;
 
-pub use battery::BatteryButton;
 pub use brightness::BrightnessButton;
 pub use disks::DisksButton;
 pub use displays::DisplaysButton;
 pub use hotspot::HotspotButton;
 pub use network::NetworkButton;
-pub use power::PowerButton;
 
 pub struct ControlCenterButton;
 

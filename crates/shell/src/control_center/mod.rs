@@ -4,7 +4,6 @@ mod disks;
 mod displays;
 mod hotspot;
 mod network;
-mod power;
 
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterExt},
@@ -19,7 +18,6 @@ pub use crate::control_center::{
   displays::DisplaysPanel,
   hotspot::{HotspotPanel, poll_clients},
   network::NetworkPanel,
-  power::PowerPanel,
 };
 
 pub fn register_panels(cx: &mut App) {
@@ -29,7 +27,6 @@ pub fn register_panels(cx: &mut App) {
     .register::<NetworkPanel>()
     .register::<HotspotPanel>()
     .register::<DisksPanel>()
-    .register::<PowerPanel>()
     .register::<BrightnessPanel>()
     .register::<DisplaysPanel>();
   corona_surface::control_center::warn_bad_ids(cx);
@@ -41,11 +38,6 @@ pub fn register_panels(cx: &mut App) {
 pub fn init_disks(cx: &mut App) {
   disks::jobs::init(cx);
   disks::hotplug::init(cx);
-}
-
-/// Low battery notifications, which run with the panel closed
-pub fn init_power(cx: &mut App) {
-  power::warnings::init(cx);
 }
 
 pub(crate) use disks::jobs::log as disks_log;

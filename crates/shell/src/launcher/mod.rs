@@ -2,7 +2,6 @@
 
 mod display;
 mod drives;
-mod info;
 mod ip;
 mod monitors;
 mod network;
@@ -21,7 +20,6 @@ pub fn init(cx: &mut App) {
   tools::init(cx);
   windows::init(cx);
   windows::init_actions(cx);
-  info::init(cx);
   network::init(cx);
   drives::init(cx);
   monitors::init(cx);

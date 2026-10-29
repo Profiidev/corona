@@ -444,10 +444,10 @@ pub(crate) mod tests {
   use corona_ipc::IpcCommand;
   use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
+  use corona_power::commands::{CycleProfile, SetProfile};
   use corona_shell::commands::{
     brightness::SetBrightness,
     nightlight::Nightlight,
-    power_profile::{CycleProfile, SetProfile},
     theme::{SetMode, SetTheme},
   };
   use corona_surface::commands::{ClosePanel, OpenPanel, TogglePanel};

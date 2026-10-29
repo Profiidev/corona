@@ -18,12 +18,6 @@ osd_kind!(
   "app.settings.osd.wi_fi.description"
 );
 osd_kind!(
-  PowerProfileOsd(ToggleOsd),
-  "power_profile",
-  "app.settings.osd.power_profile.title",
-  "app.settings.osd.power_profile.description"
-);
-osd_kind!(
   KeyboardLayoutOsd(ToggleOsd),
   "keyboard_layout",
   "app.settings.osd.keyboard_layout.title",

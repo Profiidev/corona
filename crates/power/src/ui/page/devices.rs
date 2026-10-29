@@ -1,4 +1,4 @@
-use corona_power::{BatteryLevel, BatteryType, PowerDevice, PowerExt};
+use crate::{BatteryLevel, BatteryType, PowerDevice, PowerExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -7,7 +7,7 @@ use gpui_kit::{
   div,
 };
 
-use crate::control_center::power::{PowerPanel, card};
+use crate::ui::page::{PowerPanel, card};
 use rust_i18n::t;
 
 fn icon(kind: BatteryType) -> IconName {
@@ -94,7 +94,7 @@ mod tests {
       model: "Test".into(),
       kind: BatteryType::Mouse,
       percentage,
-      state: corona_power::BatteryState::Discharging,
+      state: crate::BatteryState::Discharging,
       level,
     }
   }

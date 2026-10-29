@@ -1,10 +1,10 @@
+use crate::PowerExt;
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
     .register::<SetProfile>()
     .register::<CycleProfile>()

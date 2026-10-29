@@ -2,7 +2,7 @@ use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window, assets::IconName};
 use uuid::Uuid;
 
-use crate::control_center::PowerPanel;
+use crate::ui::page::PowerPanel;
 use corona_surface::control_center::Standalone;
 
 pub struct PowerButton;

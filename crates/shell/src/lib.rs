@@ -25,7 +25,6 @@ pub fn init(cx: &mut App) {
   init_integrations(cx);
   register_variants(cx);
   control_center::init_disks(cx);
-  control_center::init_power(cx);
   launcher::init(cx);
   lock::init(cx);
   osds::init(cx);
@@ -124,6 +123,8 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   let buses = Buses::connect().await?;
   let Buses { system, session } = &buses;
 
+  // first: the integrations after it notify
+  corona_notifications::init(cx, &buses).await?;
   corona_pipewire::init(cx, &buses)?;
   corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
@@ -131,14 +132,13 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   corona_network_manager::init(cx, system).await?;
   corona_bluez::init(cx, &buses).await?;
   corona_printing::init(cx, &buses).await?;
-  corona_power::init(cx, system).await?;
+  corona_power::init(cx, &buses).await?;
   corona_udisks::init(cx, system).await?;
   corona_location::init(cx, system);
   corona_weather::init(cx, &buses);
   corona_brightness::init(cx, system)?;
   corona_auth::init(cx, system);
   corona_mpris::init(cx, &buses).await?;
-  corona_notifications::init(cx, &buses).await?;
   corona_tray::init(cx, &buses).await?;
   idle::init(cx, session);
   corona_script::init_dbus(cx, system, session);

@@ -1,6 +1,6 @@
+use crate::PowerExt;
 use anyhow::Result;
 use corona_components::components::card::{CardExt, ErrorCard};
-use corona_power::PowerExt;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -8,10 +8,9 @@ use gpui_kit::{
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-mod battery;
+pub(crate) mod battery;
 mod devices;
 mod profiles;
-pub(crate) mod warnings;
 
 pub struct PowerPanel {
   error: Option<String>,

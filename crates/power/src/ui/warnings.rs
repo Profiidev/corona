@@ -3,13 +3,13 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use crate::{Battery, BatteryState, Power, PowerExt};
 use corona_config::{BatteryWarningConfig, ConfigProvider, observe_section};
 use corona_notifications::{Notifications, Notify, Urgency};
-use corona_power::{Battery, BatteryState, Power, PowerExt};
 use gpui_kit::App;
 use rust_i18n::t;
 
-use crate::control_center::power::battery::duration;
+use crate::ui::page::battery::duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
@@ -55,7 +55,7 @@ struct Warned {
   id: Option<u32>,
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   let (Some(power), Some(_)) = (
     cx.try_global::<Power>().cloned(),
     cx.try_global::<Notifications>(),

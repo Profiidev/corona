@@ -1,13 +1,11 @@
 use crate::control_center::dashboard::DashboardPanel;
-use crate::control_center::{BrightnessPanel, NetworkPanel, PowerPanel};
-use crate::icons::power_profile;
+use crate::control_center::{BrightnessPanel, NetworkPanel};
 use corona_bluez::BluetoothExt;
 use corona_brightness::BrightnessExt;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 use corona_idle::{Idle, IdleExt};
 use corona_network_manager::{NetworkManagerExt, WifiStatus};
-use corona_power::PowerExt;
 use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
@@ -124,15 +122,6 @@ action!(
   Some(NetworkPanel::ID),
   |cx| [cx.network_manager().wifi_enabled, cx.bluetooth().adapter,]
 );
-action!(
-  PowerProfile,
-  "power_profile",
-  "app.power.profile.title",
-  profile,
-  Some(PowerPanel::ID),
-  |cx| [cx.power().profiles,]
-);
-
 /// Registers every tile, in the order the settings offer them
 pub(crate) fn register(cx: &mut App) {
   cx.dashboard_mut()
@@ -140,8 +129,7 @@ pub(crate) fn register(cx: &mut App) {
     .quick_action::<DarkMode>()
     .quick_action::<StayAwake>()
     .quick_action::<Nightlight>()
-    .quick_action::<Airplane>()
-    .quick_action::<PowerProfile>();
+    .quick_action::<Airplane>();
 }
 
 /// The configured tiles, None for none
@@ -222,19 +210,6 @@ fn wifi_status(enabled: bool, connected: Option<String>) -> String {
     .unwrap_or_else(|| on_off(enabled))
 }
 
-fn profile_icon(active: Option<&str>) -> IconName {
-  match active {
-    Some("performance") => IconName::Gauge,
-    Some("power-saver") => IconName::Leaf,
-    _ => IconName::Scale,
-  }
-}
-
-/// Lit for any profile but the default one
-fn profile_active(active: Option<&str>) -> bool {
-  active.is_some_and(|a| a != "balanced")
-}
-
 /// Airplane mode is on while no radio is
 pub(crate) fn airplane_on(wifi: bool, bluetooth: Option<bool>) -> bool {
   !wifi && bluetooth != Some(true)
@@ -272,27 +247,6 @@ fn dark_mode(cx: &App) -> Toggle {
     status: on_off(dark),
     active: dark,
     on_click: Some(Box::new(toggle_mode)),
-  }
-}
-
-fn profile(cx: &App) -> Toggle {
-  let profiles = cx.power().profiles(cx);
-  let active = profiles.map(|p| p.active.clone());
-  // the next one, so a click cycles through them
-  let next = profiles.and_then(|p| p.next().cloned());
-  Toggle {
-    icon: profile_icon(active.as_deref()),
-    status: match active.as_deref() {
-      Some(name) => power_profile(name).1.into(),
-      None => t!("app.common.unavailable").into(),
-    },
-    active: profile_active(active.as_deref()),
-    on_click: next.map(|next| {
-      Box::new(move |cx: &mut App| {
-        let task = cx.power().set_profile(next.clone());
-        spawn_logged(cx, task);
-      }) as Action
-    }),
   }
 }
 
@@ -374,18 +328,6 @@ mod tests {
       super::wifi_status(false, Some("Home".into())),
       on_off(false)
     );
-  }
-
-  #[test]
-  fn profile() {
-    assert!(!profile_active(None));
-    assert!(!profile_active(Some("balanced")));
-    assert!(profile_active(Some("performance")));
-    assert!(profile_active(Some("power-saver")));
-    assert_eq!(profile_icon(Some("performance")), IconName::Gauge);
-    assert_eq!(profile_icon(Some("power-saver")), IconName::Leaf);
-    assert_eq!(profile_icon(Some("balanced")), IconName::Scale);
-    assert_eq!(profile_icon(None), IconName::Scale);
   }
 
   #[test]

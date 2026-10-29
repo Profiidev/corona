@@ -1,15 +1,14 @@
 use std::time::UNIX_EPOCH;
 
+use crate as pw;
+use crate::PowerExt;
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, PluginRef, ScriptModule, Throws, Unsubscribe,
-  host_module,
+  host_module, json,
 };
-use corona_power::{self as pw, PowerExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};
-
-use crate::module::json;
 
 #[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -255,9 +254,9 @@ async fn set_charge_threshold(cx: Cx, power: Pw, enabled: bool) -> Throws<()> {
 }
 
 /// `corona/power`
-pub struct Power;
+pub struct PowerModule;
 
-impl ScriptModule for Power {
+impl ScriptModule for PowerModule {
   const NAME: &str = "power";
   const DOC: &str = "Battery, power profiles and the session (suspend, reboot, …).";
 
@@ -357,14 +356,14 @@ impl ScriptModule for Power {
 mod tests {
   use std::time::Duration;
 
-  use corona_power as pw;
+  use crate as pw;
   use corona_utils::test_bus::{TestBus, wait_until};
   use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
   use serde_json::json;
 
   use super::{Battery, BatteryState, DeviceKind, SessionAction, SessionCapabilities};
-  use crate::module::harness;
+  use corona_script::harness;
 
   #[gpui::test]
   fn sleep_reaches_the_plugin(cx: &mut TestAppContext) {
@@ -373,7 +372,7 @@ mod tests {
     let conn = block_on(bus.conn());
     cx.update(|cx| {
       let executor = cx.foreground_executor().clone();
-      executor.block_on(pw::init(cx, &conn)).unwrap()
+      executor.block_on(pw::connect(cx, &conn)).unwrap()
     });
     let logind = block_on(async {
       let logind = bus.conn().await;
@@ -396,7 +395,7 @@ mod tests {
       m.onSleep((e) => report({ event: e }));
     }
     report([m.sleeping(), m.resumedAt()]);"#;
-    let (view, cx) = harness::module::<super::Power>(cx, body);
+    let (view, cx) = harness::module::<super::PowerModule>(cx, body);
     assert_eq!(view.last(cx), json!([false, null]));
 
     // the watch may not be up yet, so asleep until it is
