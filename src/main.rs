@@ -36,6 +36,7 @@ fn run_shell() {
 
   app.run(move |cx| {
     corona_components::i18n::extend_components();
+    gpui_kit::init(cx);
     corona_shell::init(cx);
   });
 }
