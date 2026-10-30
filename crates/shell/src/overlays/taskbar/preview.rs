@@ -76,7 +76,11 @@ impl Preview {
     let max = max_windows(cx);
     self.more == windows.len().saturating_sub(max)
       && self.windows.len() == windows.len().min(max)
-      && self.windows.iter().zip(windows).all(|((a, _), b)| a.address == b.address)
+      && self
+        .windows
+        .iter()
+        .zip(windows)
+        .all(|((a, _), b)| a.address == b.address)
   }
 
   fn widths(&self) -> Vec<f32> {
