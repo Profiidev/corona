@@ -71,6 +71,14 @@ impl Preview {
     cx.notify();
   }
 
+  /// Whether `windows` are the ones already shown
+  pub fn shows(&self, windows: &[types::Window], cx: &App) -> bool {
+    let max = max_windows(cx);
+    self.more == windows.len().saturating_sub(max)
+      && self.windows.len() == windows.len().min(max)
+      && self.windows.iter().zip(windows).all(|((a, _), b)| a.address == b.address)
+  }
+
   fn widths(&self) -> Vec<f32> {
     self.windows.iter().map(|(w, _)| width(w)).collect()
   }
