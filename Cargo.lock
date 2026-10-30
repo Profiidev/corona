@@ -1870,7 +1870,6 @@ dependencies = [
  "corona_printing",
  "corona_script",
  "corona_settings",
- "corona_shell",
  "corona_surface",
  "corona_sysinfo",
  "corona_tray",

@@ -1,6 +1,6 @@
 [package]
 name = "corona_shell"
-description = "The Corona shell: bar, panels, overlays and settings"
+description = "Starts the Corona shell: init order and config reloads"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
