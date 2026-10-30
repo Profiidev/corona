@@ -154,6 +154,7 @@ impl Taskbar {
     let windows = cx.compositor().windows.clone();
     let subscription = cx.observe(&windows, |this, windows, cx| {
       this.apps = group(windows.read(cx));
+      this.sync_preview(cx);
       cx.notify();
     });
 
@@ -259,6 +260,9 @@ impl Taskbar {
 
   fn show_preview(&mut self, class: String, window: &mut Window, cx: &mut Context<Self>) {
     let windows = self.windows(&class);
+    if windows.is_empty() {
+      return;
+    }
     let center = self
       .icon_bounds
       .get(&class)
@@ -296,6 +300,33 @@ impl Taskbar {
       _ => {}
     }
     cx.notify();
+  }
+
+  /// A closed icon never reports its hover end, so follow window changes here
+  fn sync_preview(&mut self, cx: &mut Context<Self>) {
+    if self
+      .hovered_icon
+      .as_ref()
+      .is_some_and(|c| self.windows(c).is_empty())
+    {
+      self.hovered_icon = None;
+    }
+    let Some((class, _, view)) = &self.preview else {
+      return;
+    };
+    let windows = self.windows(class);
+    if windows.is_empty() {
+      return self.hide_preview(cx);
+    }
+    if view.read(cx).shows(&windows, cx) {
+      return;
+    }
+    let center = self
+      .icon_bounds
+      .get(class)
+      .map_or(px(0.), |b| b.get().center().x)
+      .as_f32();
+    view.update(cx, |view, cx| view.show(windows, center, cx));
   }
 
   fn preview_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
@@ -389,7 +420,8 @@ impl Render for Taskbar {
     }
 
     let viewport = window.viewport_size();
-    let width = self.width();
+    // Inner top arcs span `n..2n` from each side, so narrower bodies overlap.
+    let width = self.width().max(n * 2.);
     let shape_width = width + n * 2.;
     let left = (viewport.width.as_f32() - shape_width) / 2.;
     let h = self.height() * progress;
@@ -473,6 +505,7 @@ impl Render for Taskbar {
               .h(px(height))
               .flex()
               .items_start()
+              .justify_center()
               .gap(px(GAP))
               .p(px(PADDING))
               .children(apps),
@@ -646,6 +679,24 @@ pub(crate) mod tests {
     cx.executor().advance_clock(PREVIEW_HIDE_DELAY * 2);
     cx.run_until_parked();
     assert_eq!(preview(&view, cx), None);
+  }
+
+  #[gpui::test]
+  fn closing_the_app_hides_its_preview(cx: &mut TestAppContext) {
+    let (handle, view) = open_taskbar(cx);
+    hover(handle, &view, "firefox", true, cx);
+    cx.executor().advance_clock(PREVIEW_DELAY);
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx).as_deref(), Some("firefox"));
+
+    let windows = cx.update(|cx| cx.compositor().windows.clone());
+    windows.update(cx, |w, cx| {
+      w.retain(|w| w.class != "firefox");
+      cx.notify();
+    });
+    cx.run_until_parked();
+    assert_eq!(preview(&view, cx), None);
+    assert!(view.read_with(cx, |t, _| t.hovered_icon.is_none()));
   }
 
   #[gpui::test]
