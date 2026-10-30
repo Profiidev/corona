@@ -20,7 +20,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.9";
+  gpuiVersion = "0.3.10";
 
   vendorCrate =
     pname: hash:
@@ -34,9 +34,9 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-Z+V7aBXIgjM37GLAkFBA0wS6LV0pzy+kgwd7GloMatM=";
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-Jer7t/39KJZT1Egahxc8NuXezMbPBbwD1ZS1smrsePI=";
-  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-2hqcogWqY1Un/561++THrKPNjQ+k54ufQEw6c79YljE=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-V1hvZZ8lZ0gyTzqrLgLx/LOCFNMzyc90USPXDufYhcY=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-O8ro+PYCWzEz0TKYzzj4DTTQyHrCBwxo8jMjPEr1yLY=";
+  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-NhoFFN7CgVTskMDuc6po/SX+y0gudmJbCb/F12QIy7k=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -47,13 +47,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   src = ./..;
 
-  cargoLock = {
-    lockFile = ../Cargo.lock;
-    outputHashes = {
-      "gpui-base-0.7.3" = "sha256-cbiG1o9ruLl9nGt8J4yT88l3QVhBN61hCxnkB3jdbG4=";
-      "rodio-0.22.2" = "sha256-ihFMFGWPacxEpH0L4wX9P2GPY6rfZSLzMITFJ65qvvk=";
-    };
-  };
+  cargoLock.lockFile = ../Cargo.lock;
 
   cargoBuildFlags = [
     "--package"
