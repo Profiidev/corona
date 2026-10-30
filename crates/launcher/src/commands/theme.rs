@@ -2,17 +2,17 @@
 
 use std::rc::Rc;
 
-use corona_components::assets::{preview_theme, restore_theme, set_mode, set_theme, theme_names};
-use corona_config::ConfigProvider;
-use corona_launcher::{
+use crate::{
   Action, ArgSpec, Command, Hud, Icon, Meta, Outcome,
   kit::{Choices, Group, pick_or_list},
   simple,
 };
+use corona_components::assets::{preview_theme, restore_theme, set_mode, set_theme, theme_names};
+use corona_config::ConfigProvider;
 use gpui_kit::{App, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   Group::new("system", vec![dark_mode(), theme()]).register(cx);
 }
 
@@ -68,7 +68,7 @@ fn dark_mode() -> Rc<dyn Command> {
   )
 }
 
-fn themes() -> corona_launcher::View {
+fn themes() -> crate::View {
   Choices {
     id: "theme",
     items: Rc::new(|cx| {

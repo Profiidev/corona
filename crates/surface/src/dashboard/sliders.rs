@@ -1,8 +1,5 @@
 use corona_config::ConfigProvider;
-use corona_surface::{
-  control_center::ControlCenter,
-  dashboard::{Changed, DashboardExt, DashboardRegistry, SliderEntry},
-};
+
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, ParentElement, Styled, Subscription, Window,
   assets::IconName,
@@ -16,7 +13,10 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::control_center::dashboard::DashboardPanel;
+use crate::{
+  control_center::ControlCenter,
+  dashboard::{Changed, DashboardExt, DashboardPanel, DashboardRegistry, SliderEntry},
+};
 
 /// A slider's state on the open dashboard
 struct Row {

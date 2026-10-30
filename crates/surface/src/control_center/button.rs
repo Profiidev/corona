@@ -1,10 +1,13 @@
 use corona_components::assets::icons::IconName;
-use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Window};
 use uuid::Uuid;
 
-use corona_surface::control_center::ControlCenter;
+use crate::{
+  bar::{Button, Widget},
+  control_center::ControlCenter,
+};
 
+/// Opens the control center
 pub struct ControlCenterButton;
 
 impl Widget for ControlCenterButton {

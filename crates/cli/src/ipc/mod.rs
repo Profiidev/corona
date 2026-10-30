@@ -19,8 +19,8 @@ use corona_script::commands::PluginCall;
 use corona_settings::commands::{
   Action as SettingsAction, ListPages as ListSettingsPages, SettingsWindow,
 };
-use corona_shell::commands::parse_level;
 use corona_surface::commands::{ListPages, OpenPage};
+use corona_utils::level::parse_level;
 use corona_windows::commands::dpms::{Dpms, Power};
 use corona_windows::commands::lock_key::{LockKey, Pressed};
 use corona_windows::commands::switcher::{Cycle, Mode as SwitcherMode, Modifier, Options};
@@ -446,8 +446,8 @@ pub(crate) mod tests {
   use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
   use corona_power::commands::{CycleProfile, SetProfile};
-  use corona_shell::commands::theme::{SetMode, SetTheme};
   use corona_surface::commands::{ClosePanel, OpenPanel, TogglePanel};
+  use corona_surface::theme::{SetMode, SetTheme};
   use serde_json::{Value, json};
 
   use super::*;

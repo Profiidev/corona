@@ -1,41 +1,26 @@
 use std::{rc::Rc, time::Duration};
 
 use corona_config::ConfigProvider;
-use corona_surface::{
-  control_center::{ControlCenterPage, resolve},
-  dashboard::{Changed, DashboardExt},
-  panel::AppPanelExt,
-};
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Anchor, AnyElement, AnyView, App, AppContext, Context, Entity, Focusable, IntoElement,
-  ParentElement, Render, Styled, Subscription, Task, Window,
-  assets::IconName,
-  component::{button::Button, popover::Popover},
-  div, px,
+  AnyElement, AnyView, App, Context, IntoElement, ParentElement, Render, Styled, Subscription,
+  Task, Window, div,
 };
 use jiff::Zoned;
 
-use crate::control_center::dashboard::sliders::Sliders;
-use corona_auth::ui::session::SessionMenu;
-use corona_surface::control_center::{ControlCenter, Standalone};
-use rust_i18n::t;
+use crate::{
+  control_center::{ControlCenterPage, resolve},
+  dashboard::{Changed, DashboardExt, sliders::Sliders, tiles},
+};
 
-pub(crate) mod sliders;
-pub(crate) mod toggles;
-
+/// The control center's first page: the header card, quick action tiles, sliders and
+/// cards the integrations register
 pub struct DashboardPanel {
   header: Option<AnyView>,
-  sliders: Sliders,
+  pub(super) sliders: Sliders,
   cards: Vec<(&'static str, AnyView)>,
-  session: Entity<SessionMenu>,
+  buttons: Vec<AnyView>,
   _clock: Task<()>,
   _subscriptions: Vec<Subscription>,
-}
-
-/// The tiles, sliders and cards the shell has
-pub(crate) fn register(cx: &mut App) {
-  toggles::register(cx);
 }
 
 impl ControlCenterPage for DashboardPanel {
@@ -88,62 +73,23 @@ impl ControlCenterPage for DashboardPanel {
       .map(|(id, open)| (id, open(window, cx)))
       .collect();
     sliders.sync(window, cx);
-    let session = cx.new(|cx| {
-      SessionMenu::new(
-        |_, cx| {
-          let _ = cx.close_panel::<ControlCenter>();
-          let _ = cx.close_panel::<Standalone<DashboardPanel>>();
-        },
-        cx,
-      )
-    });
-
+    let buttons = (cx.dashboard().buttons().to_vec().into_iter())
+      .map(|open| open(window, cx))
+      .collect();
     Self {
       header,
       sliders,
       cards,
-      session,
+      buttons,
       _clock: clock,
       _subscriptions: subscriptions,
     }
   }
 
-  fn buttons(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-    vec![
-      Button::new("settings")
-        .icon(IconName::Settings)
-        .cursor_pointer()
-        .tooltip(t!("app.dashboard.settings"))
-        .on_click(|_, _, cx| {
-          // the dashboard is in the control center, or a panel of its own
-          let _ = cx.close_panel::<ControlCenter>().log_err();
-          let _ = cx.close_panel::<Standalone<DashboardPanel>>().log_err();
-          let _ = corona_settings::open(None, cx).log_err();
-        })
-        .into_any_element(),
-      Popover::new("power-menu")
-        .anchor(Anchor::TopRight)
-        .p_1()
-        .track_focus(&self.session.focus_handle(cx))
-        .on_open_change({
-          let session = self.session.clone();
-          move |open, _, cx| {
-            if *open {
-              session.update(cx, |session, cx| session.reset(cx));
-            }
-          }
-        })
-        .trigger(
-          Button::new("power-menu-trigger")
-            .icon(IconName::Power)
-            .cursor_pointer(),
-        )
-        .content({
-          let session = self.session.clone();
-          move |_, _, _| div().w(px(SessionMenu::WIDTH)).child(session.clone())
-        })
-        .into_any_element(),
-    ]
+  fn buttons(&mut self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
+    (self.buttons.iter())
+      .map(|b| b.clone().into_any_element())
+      .collect()
   }
 }
 
@@ -168,7 +114,7 @@ impl Render for DashboardPanel {
       .flex_col()
       .gap_2()
       .children(self.header.clone())
-      .children(toggles::toggles(cx))
+      .children(tiles::tiles(cx))
       .child(self.sliders.render(cx))
       .child(
         div()

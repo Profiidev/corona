@@ -97,7 +97,14 @@ mod tests {
     assert_eq!(windows(cx), 0);
     assert_eq!(
       cx.update(|cx| ListPages::handle((), cx)).unwrap(),
-      ["appearance", "bar"]
+      [
+        "appearance",
+        "bar",
+        "wallpaper",
+        "osd",
+        "control_center",
+        "system"
+      ]
     );
   }
 }

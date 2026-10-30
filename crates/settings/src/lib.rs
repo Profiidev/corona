@@ -9,7 +9,13 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use corona_config::bar::BarConfig;
-use corona_surface::bar::Widget;
+use corona_surface::{
+  bar::Widget,
+  control_center::{ControlCenter, Standalone},
+  dashboard::{DashboardExt, DashboardPanel},
+  panel::AppPanelExt,
+};
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, Focusable, Global,
   InteractiveElement, IntoElement, ParentElement, Render, SharedString, Styled, TitlebarOptions,
@@ -17,6 +23,7 @@ use gpui_kit::{
   assets::IconName,
   component::{
     Icon, Root,
+    button::Button,
     group_box::GroupBoxVariant,
     setting::{SelectIndex, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
   },
@@ -29,6 +36,7 @@ pub use bar::{Form, Slot};
 mod appearance;
 pub mod bar;
 pub mod commands;
+pub mod pages;
 
 const APP_NAME_SETTINGS: &str = "corona-settings";
 
@@ -173,7 +181,28 @@ pub fn init(cx: &mut App) {
   cx.settings_mut()
     .register::<AppearanceSettings>()
     .register::<BarSettings>();
+  pages::register(cx);
   commands::register_commands(cx);
+  cx.dashboard_mut()
+    .button(|_, cx| cx.new(|_| DashboardButton).into());
+}
+
+/// The dashboard's button that opens the settings
+struct DashboardButton;
+
+impl Render for DashboardButton {
+  fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    Button::new("settings")
+      .icon(IconName::Settings)
+      .cursor_pointer()
+      .tooltip(t!("app.dashboard.settings"))
+      .on_click(|_, _, cx| {
+        // the dashboard is in the control center, or a panel of its own
+        let _ = cx.close_panel::<ControlCenter>().log_err();
+        let _ = cx.close_panel::<Standalone<DashboardPanel>>().log_err();
+        let _ = open(None, cx).log_err();
+      })
+  }
 }
 
 pub struct AppearanceSettings;
@@ -380,10 +409,32 @@ mod tests {
     setup(cx);
     cx.update(|cx| {
       cx.settings_mut().register::<Late>();
-      assert_eq!(cx.settings().ids(), ["appearance", "late", "bar"]);
+      assert_eq!(
+        cx.settings().ids(),
+        [
+          "appearance",
+          "late",
+          "bar",
+          "wallpaper",
+          "osd",
+          "control_center",
+          "system"
+        ]
+      );
       // registering again moves nothing
       cx.settings_mut().register::<Late>();
-      assert_eq!(cx.settings().ids(), ["appearance", "late", "bar"]);
+      assert_eq!(
+        cx.settings().ids(),
+        [
+          "appearance",
+          "late",
+          "bar",
+          "wallpaper",
+          "osd",
+          "control_center",
+          "system"
+        ]
+      );
       let registry = cx.settings();
       assert_eq!(registry.index(None), 0);
       assert_eq!(registry.index(Some("nope")), 0);

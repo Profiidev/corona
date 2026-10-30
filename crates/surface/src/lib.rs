@@ -3,6 +3,10 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 use anyhow::Result;
 use gpui_kit::App;
 
+use crate::{
+  bar::BarExt, control_center::ControlCenterExt, dashboard::DashboardExt, panel::AppPanelExt,
+};
+
 pub mod bar;
 pub mod commands;
 pub mod control_center;
@@ -15,6 +19,7 @@ pub mod per_display;
 pub mod popup;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
+pub mod theme;
 pub mod tooltip;
 
 pub fn init(cx: &mut App) -> Result<()> {
@@ -22,7 +27,20 @@ pub fn init(cx: &mut App) -> Result<()> {
   panel::PanelState::init(cx);
   tooltip::TooltipState::init(cx);
   osd::OsdState::init(cx);
+  commands::register_commands(cx);
+  theme::register_commands(cx);
   Ok(())
+}
+
+/// The control center with its dashboard, its bar button and the dark mode tile; before
+/// the integrations register theirs
+pub fn register_builtins(cx: &mut App) {
+  cx.bar_mut()
+    .register::<control_center::ControlCenterButton>();
+  cx.panel().register::<control_center::ControlCenter>();
+  cx.control_center_mut()
+    .register::<dashboard::DashboardPanel>();
+  cx.dashboard_mut().quick_action::<dashboard::DarkMode>();
 }
 
 #[cfg(test)]

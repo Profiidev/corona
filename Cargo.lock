@@ -2429,9 +2429,7 @@ name = "corona_shell"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "clap",
  "corona_auth",
- "corona_auth_screen",
  "corona_bluez",
  "corona_brightness",
  "corona_capture",
@@ -2439,7 +2437,6 @@ dependencies = [
  "corona_components",
  "corona_compositor",
  "corona_config",
- "corona_desktop",
  "corona_idle",
  "corona_ipc",
  "corona_launcher",
@@ -2460,19 +2457,10 @@ dependencies = [
  "corona_utils",
  "corona_weather",
  "corona_windows",
- "dirs 7.0.0",
- "futures",
  "gpui-kit",
- "jiff",
  "regex",
  "rust-i18n",
- "rustix",
- "serde",
- "serde_json",
- "tempfile",
  "tracing",
- "uuid",
- "zbus",
 ]
 
 [[package]]
@@ -2480,12 +2468,15 @@ name = "corona_surface"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_components",
  "corona_compositor",
  "corona_config",
  "corona_ipc",
  "corona_utils",
+ "dirs 7.0.0",
  "gpui-kit",
+ "jiff",
  "rust-i18n",
  "serde",
  "serde_json",

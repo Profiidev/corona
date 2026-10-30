@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 
 pub mod password;
+pub mod wallpaper;
 
 pub trait OverlayState: Global + Sized {
   fn overlays(&self) -> &[AnyWindowHandle];

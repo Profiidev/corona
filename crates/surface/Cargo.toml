@@ -12,6 +12,9 @@ categories.workspace = true
 test-support = ["dep:tempfile", "gpui-kit/test-support"]
 
 [dependencies]
+clap.workspace = true
+jiff.workspace = true
+dirs.workspace = true
 tempfile = { workspace = true, optional = true }
 corona_config.workspace = true
 corona_components.workspace = true
@@ -27,4 +30,5 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }

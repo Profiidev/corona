@@ -1,13 +1,19 @@
 use std::rc::Rc;
 
 use corona_power::{EntryTitle, PowerExt, SessionAction, SessionCapabilities, entry_title};
+use corona_surface::{
+  control_center::{ControlCenter, Standalone},
+  dashboard::DashboardPanel,
+  panel::AppPanelExt,
+};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Context, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, KeyDownEvent,
-  ParentElement, Render, StatefulInteractiveElement, Styled, Task, Window,
+  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, InteractiveElement,
+  IntoElement, KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Task,
+  Window,
   assets::IconName,
   base::actions::Cancel,
-  component::{ActiveTheme, Icon, scroll::ScrollableElement},
+  component::{ActiveTheme, Icon, button::Button, popover::Popover, scroll::ScrollableElement},
   div,
   prelude::FluentBuilder,
   px,
@@ -288,6 +294,52 @@ impl Render for SessionMenu {
           .overflow_y_scrollbar()
           .children(rows),
       )
+  }
+}
+
+/// The dashboard's power button, opening the session menu
+pub struct PowerMenu {
+  session: Entity<SessionMenu>,
+}
+
+impl PowerMenu {
+  pub fn new(cx: &mut Context<Self>) -> Self {
+    let session = cx.new(|cx| {
+      SessionMenu::new(
+        |_, cx| {
+          let _ = cx.close_panel::<ControlCenter>();
+          let _ = cx.close_panel::<Standalone<DashboardPanel>>();
+        },
+        cx,
+      )
+    });
+    Self { session }
+  }
+}
+
+impl Render for PowerMenu {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    Popover::new("power-menu")
+      .anchor(Anchor::TopRight)
+      .p_1()
+      .track_focus(&self.session.focus_handle(cx))
+      .on_open_change({
+        let session = self.session.clone();
+        move |open, _, cx| {
+          if *open {
+            session.update(cx, |session, cx| session.reset(cx));
+          }
+        }
+      })
+      .trigger(
+        Button::new("power-menu-trigger")
+          .icon(IconName::Power)
+          .cursor_pointer(),
+      )
+      .content({
+        let session = self.session.clone();
+        move |_, _, _| div().w(px(SessionMenu::WIDTH)).child(session.clone())
+      })
   }
 }
 

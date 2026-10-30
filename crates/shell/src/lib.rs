@@ -8,20 +8,16 @@ use rust_i18n::t;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
-pub mod commands;
-mod control_center;
-mod launcher;
 mod locale_keys;
-pub mod overlays;
-pub mod settings;
-mod widgets;
+mod settings;
 
 pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
   register_variants(cx);
-  launcher::init(cx);
-  overlays::wallpaper::init(cx);
+  // made once, from the settings and control center pages registered by now
+  corona_launcher::commands::init(cx);
+  corona_surface::overlay::wallpaper::init(cx);
 
   BarState::spawn_bars(cx);
   watch_config(cx);
@@ -74,8 +70,6 @@ fn config_failed(error: String, cx: &mut App) {
 fn init_ipc(cx: &mut App) {
   // binds first: a second instance exits before it starts anything
   corona_ipc::serve(cx);
-  corona_surface::commands::register_commands(cx);
-  commands::register_commands(cx);
 }
 
 fn init_integrations(cx: &mut App) {
@@ -84,6 +78,7 @@ fn init_integrations(cx: &mut App) {
   corona_compositor::init(cx).expect("Failed to init compositor");
   corona_components::assets::load(cx).expect("Failed to load assets");
   corona_surface::init(cx).expect("Failed to init ui");
+  corona_surface::register_builtins(cx);
   // the registries the integrations register into
   corona_settings::init(cx);
   corona_launcher::init(cx);
@@ -99,9 +94,8 @@ fn init_integrations(cx: &mut App) {
 }
 
 fn register_variants(cx: &mut App) {
-  settings::init(cx);
-  control_center::register_panels(cx);
-  widgets::register_widgets(cx);
+  corona_surface::control_center::warn_bad_ids(cx);
+  corona_surface::dashboard::warn_bad_ids(cx);
   corona_script::init(cx).expect("Failed to init plugins");
 }
 
@@ -133,7 +127,3 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
 
   Ok(())
 }
-
-/// Shared test helpers
-#[cfg(test)]
-pub(crate) use corona_surface::testing as test_support;

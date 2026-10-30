@@ -1,6 +1,7 @@
 //! The control center: a sidebar of pages, each also openable on its own as a
 //! panel. Pages register from their crates; `control_center.sidebar` orders them.
 
+mod button;
 mod layout;
 mod nav;
 mod panel;
@@ -11,6 +12,7 @@ use gpui_kit::{
   assets::IconName,
 };
 
+pub use button::ControlCenterButton;
 pub use layout::ControlCenterLayout;
 pub use nav::ControlCenterNav;
 pub use panel::{ControlCenter, Standalone};

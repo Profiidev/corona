@@ -1,9 +1,11 @@
-use crate::control_center::dashboard::DashboardPanel;
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
-use corona_surface::{
+
+use crate::{
   control_center::ControlCenter,
-  dashboard::{Changed, DashboardExt, DashboardRegistry, QuickAction, QuickActionEntry, Tile},
+  dashboard::{
+    Changed, DashboardExt, DashboardPanel, DashboardRegistry, QuickAction, QuickActionEntry, Tile,
+  },
 };
 use gpui_kit::{
   App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, SharedString,
@@ -81,13 +83,9 @@ action!(
   None,
   |cx| []
 );
-/// Registers every tile, in the order the settings offer them
-pub(crate) fn register(cx: &mut App) {
-  cx.dashboard_mut().quick_action::<DarkMode>();
-}
 
 /// The configured tiles, None for none
-pub(super) fn toggles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
+pub(super) fn tiles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
   let registry = cx.dashboard();
   let (actions, _) = DashboardRegistry::pick(
     registry.quick_actions(),

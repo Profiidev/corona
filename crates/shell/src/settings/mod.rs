@@ -1,17 +1,7 @@
-//! The shell's settings pages and bar widget forms, registered with
-//! [`corona_settings`]
-
-use gpui_kit::App;
-
-mod pages;
-
-pub fn init(cx: &mut App) {
-  pages::register(cx);
-}
+//! Checks that every settings page renders, the integrations' included
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use corona_settings::SettingsExt;
   use gpui_kit::{self as gpui, AppContext as _, TestAppContext, test::TestWindowExt};
 
@@ -21,7 +11,6 @@ mod tests {
       cx.set_global(corona_config::Config::default());
       corona_surface::bar::BarState::init(cx);
       corona_settings::init(cx);
-      init(cx);
       // the integrations' pages, rendered here too
       cx.settings_mut()
         .register::<corona_weather::settings::LocationSettings>()

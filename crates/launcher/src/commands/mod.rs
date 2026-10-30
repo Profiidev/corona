@@ -9,12 +9,15 @@ pub mod lookup;
 pub mod processes;
 pub mod run;
 pub mod storage;
+mod theme;
 pub mod timers;
+mod tools;
 pub mod web;
 
 use gpui_kit::App;
 
-/// Registers them; needs the compositor and config globals
+/// Registers them; needs the compositor and config globals, and the settings pages and
+/// control center pages registered, as the commands opening them are made once
 pub fn init(cx: &mut App) {
   apps::init(cx);
   calculator::init(cx);
@@ -27,4 +30,6 @@ pub fn init(cx: &mut App) {
   storage::init(cx);
   timers::init(cx);
   web::init(cx);
+  theme::init(cx);
+  tools::init(cx);
 }

@@ -1,3 +1,5 @@
+//! The `theme:*` IPC commands
+
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_components::assets::{set_mode, set_theme, theme_names};
@@ -5,7 +7,7 @@ use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, component::ActiveTheme};
 use serde::{Deserialize, Serialize};
 
-pub fn register_commands(cx: &mut App) {
+pub(crate) fn register_commands(cx: &mut App) {
   cx.ipc_mut()
     .register::<SetMode>()
     .register::<SetTheme>()
@@ -78,7 +80,7 @@ impl IpcCommand for ListThemes {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::test_support::temp_config;
+  use crate::testing::temp_config;
   use gpui_kit::{self as gpui, TestAppContext};
 
   #[gpui::test]

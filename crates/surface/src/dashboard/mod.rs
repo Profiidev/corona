@@ -19,6 +19,16 @@ pub fn on_off(on: bool) -> SharedString {
   .into()
 }
 
+mod panel;
+mod sliders;
+mod tiles;
+
+pub use panel::DashboardPanel;
+pub use tiles::DarkMode;
+
+/// Opens a button of the dashboard's title bar, like the power menu
+pub type OpenButton = fn(&mut Window, &mut App) -> AnyView;
+
 /// Called when something a tile or slider shows changed
 pub type Changed = Rc<dyn Fn(&mut App)>;
 
@@ -127,6 +137,7 @@ pub struct DashboardRegistry {
   sliders: Vec<SliderEntry>,
   cards: Vec<CardEntry>,
   header: Option<fn(&mut Window, &mut App) -> AnyView>,
+  buttons: Vec<OpenButton>,
 }
 
 impl Global for DashboardRegistry {}
@@ -177,6 +188,16 @@ impl DashboardRegistry {
     self
   }
 
+  /// Adds a button to the dashboard's title bar, after those registered before
+  pub fn button(&mut self, open: OpenButton) -> &mut Self {
+    self.buttons.push(open);
+    self
+  }
+
+  pub fn buttons(&self) -> &[OpenButton] {
+    &self.buttons
+  }
+
   /// What opens the header card, if one registered
   pub fn header_card(&self) -> Option<fn(&mut Window, &mut App) -> AnyView> {
     self.header
@@ -218,6 +239,7 @@ impl DashboardExt for App {
       sliders: Vec::new(),
       cards: Vec::new(),
       header: None,
+      buttons: Vec::new(),
     };
     self.try_global::<DashboardRegistry>().unwrap_or(&EMPTY)
   }

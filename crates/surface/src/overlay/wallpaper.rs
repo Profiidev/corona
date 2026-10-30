@@ -1,7 +1,7 @@
+use crate::per_display::PerDisplay;
 use anyhow::Result;
 use corona_components::assets::image_source;
 use corona_config::{APP_NAME, ConfigProvider, observe_section};
-use corona_surface::per_display::PerDisplay;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, ImageSource,
   IntoElement, ObjectFit, ParentElement, Render, Size, Styled, StyledImage, Window,
@@ -21,6 +21,7 @@ struct Wallpapers {
 
 impl Global for Wallpapers {}
 
+/// Shows the configured wallpaper on every display, again when it changes
 pub fn init(cx: &mut App) {
   cx.set_global(Wallpapers { displays: None });
   open(cx);

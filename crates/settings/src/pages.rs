@@ -1,3 +1,5 @@
+//! The wallpaper, OSD, control center and system pages
+
 use corona_config::{OsdPosition, Weekday};
 use corona_surface::{
   control_center::{ControlCenterExt, DASHBOARD},
@@ -12,7 +14,7 @@ use corona_components::settings_fields::{
   slider, switch, text,
 };
 
-use corona_settings::{SettingsExt, SettingsPage, group, item, page, shared_group};
+use crate::{SettingsExt, SettingsPage, group, item, page, shared_group};
 
 use rust_i18n::t;
 
@@ -33,8 +35,8 @@ macro_rules! settings_page {
   };
 }
 
-// the order is the sidebar's, between the bar (10) and launcher (80) pages of
-// their own crates
+// the order is the sidebar's; the appearance (0) and bar (10) pages are in lib.rs, the
+// integrations' pages in their crates
 settings_page!(WallpaperSettings, "wallpaper", 20, |cx| wallpaper());
 settings_page!(OsdSettings, "osd", 40, |cx| osd(cx));
 settings_page!(ControlCenterSettings, "control_center", 50, |cx| {
@@ -42,7 +44,7 @@ settings_page!(ControlCenterSettings, "control_center", 50, |cx| {
 });
 settings_page!(SystemSettings, "system", 160, |cx| system(cx));
 
-pub(super) fn register(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<WallpaperSettings>()
     .register::<OsdSettings>()

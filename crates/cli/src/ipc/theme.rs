@@ -1,7 +1,7 @@
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::IpcCommandSend;
-use corona_shell::commands::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
+use corona_surface::theme::{ListThemes, Mode as ThemeMode, SetMode, SetTheme};
 
 use crate::ipc::candidates;
 

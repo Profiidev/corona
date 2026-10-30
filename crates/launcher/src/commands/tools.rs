@@ -2,11 +2,11 @@
 
 use std::rc::Rc;
 
-use corona_ipc::IpcCommand;
-use corona_launcher::{
+use crate::{
   Action, Command, CommandSource, Icon, ListView, Meta, Outcome, Query, Section, kit::opener,
   registry, simple,
 };
+use corona_ipc::IpcCommand;
 use corona_surface::{commands::OpenPage, control_center::ControlCenterExt, panel::PanelState};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
@@ -157,7 +157,7 @@ impl CommandSource for Panels {
           move |_| Meta {
             title: title.clone(),
             icon: Icon::Named(IconName::PanelTop),
-            accessories: vec![corona_launcher::kit::tag(open)],
+            accessories: vec![crate::kit::tag(open)],
             ..Default::default()
           },
           move |_| {
@@ -209,7 +209,7 @@ fn control_center_pages(cx: &App) -> Vec<Rc<dyn Command>> {
     .collect()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn init(cx: &mut App) {
   let pages = cx.settings().ids();
   let mut commands: Vec<Rc<dyn Command>> = vec![
     simple(
@@ -218,9 +218,7 @@ pub fn init(cx: &mut App) {
         title: t!("app.launcher.tools.settings").into(),
         icon: Icon::Tile(IconName::Settings, 220.),
         keywords: vec!["preferences".into(), "config".into()],
-        args: vec![
-          corona_launcher::ArgSpec::choice(t!("app.launcher.tools.page"), pages.clone()).optional(),
-        ],
+        args: vec![crate::ArgSpec::choice(t!("app.launcher.tools.page"), pages.clone()).optional()],
         ..Default::default()
       },
       |_| {
