@@ -972,7 +972,7 @@ impl Launcher {
     if !modified || self.panel.is_some() || self.confirm.is_some() {
       return;
     }
-    let keys = e.keystroke.unparse();
+    let keys = e.keystroke.unparse(cx.platform_info().os);
     let Some(row) = self.page().selected_row().cloned() else {
       return;
     };

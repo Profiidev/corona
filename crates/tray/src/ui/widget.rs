@@ -5,7 +5,7 @@ use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-  ParentElement, Pixels, Render, ScrollWheelEvent, Styled, StyledImage, Subscription, Window,
+  ParentElement, Pixels, Render, ScrollEvent, Styled, StyledImage, Subscription, Window,
   assets::IconName,
   base::ElementExt,
   component::{ActiveTheme, Icon, Sizable},
@@ -148,9 +148,9 @@ impl Tray {
       .on_mouse_down(MouseButton::Left, press(MouseButton::Left))
       .on_mouse_down(MouseButton::Right, press(MouseButton::Right))
       .on_mouse_down(MouseButton::Middle, press(MouseButton::Middle))
-      .on_scroll_wheel(cx.listener({
+      .on_scroll(cx.listener({
         let address = address.clone();
-        move |_, e: &ScrollWheelEvent, window, cx| {
+        move |_, e: &ScrollEvent, window, cx| {
           let delta = e.delta.pixel_delta(window.line_height());
           let (delta, orientation) = if delta.y.abs() >= delta.x.abs() {
             (delta.y.as_f32(), Orientation::Vertical)

@@ -368,7 +368,7 @@ crate::el_methods! {
   };
   /// `handler(event, cx)` on wheel and trackpad scrolling over this element.
   fn on_scroll_wheel(handler: On<'js, ScrollWheelEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::ScrollWheelEvent| ScrollWheelEvent {
+    let l = frame().listener(handler.0, |e: &gpui_kit::ScrollEvent| ScrollWheelEvent {
       // gpui's default line height, the event has no window to ask
       delta: e.delta.pixel_delta(gpui_kit::px(20.)).into(),
       delta_lines: match e.delta {
@@ -386,7 +386,7 @@ crate::el_methods! {
       modifiers: e.modifiers.into(),
     });
     interact(c, n, |mut i| {
-      i.0.on_scroll_wheel(l);
+      i.0.on_scroll(l);
       i
     })
   };

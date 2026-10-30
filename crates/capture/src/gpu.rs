@@ -99,7 +99,7 @@ pub fn read(texture: &wgpu::Texture, x: u32, y: u32, w: u32, h: u32) -> Result<(
     .map_async(wgpu::MapMode::Read, move |r| drop(tx.send(r)));
   device.poll(wgpu::PollType::wait_indefinitely())?;
   rx.recv().context("readback dropped")??;
-  let data = buffer.slice(..).get_mapped_range().to_vec();
+  let data = buffer.slice(..).get_mapped_range()?.to_vec();
   Ok((data, stride))
 }
 

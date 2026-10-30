@@ -36,11 +36,12 @@ smol.workspace = true
 tracing.workspace = true
 dirs.workspace = true
 image.workspace = true
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
+rodio = { version = "0.23.0", default-features = false, features = [
   "playback",
-  "vorbis",
-  "pipewire"
+  "vorbis"
 ] }
+# rodio has no released `pipewire` feature yet; this turns on cpal's backend for it
+cpal = { version = "0.18.2", default-features = false, features = ["pipewire"] }
 
 [dev-dependencies]
 corona_script = { workspace = true, features = ["test-support"] }

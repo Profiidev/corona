@@ -2032,7 +2032,8 @@ fn text_area(state: &Entity<TextareaState>) -> TextArea {
 /// `Kbd(keystroke)`
 fn kbd(ctx: Ctx<'_>, keys: String) -> Result<Class<'_, El>> {
   let stroke =
-    Keystroke::parse(&keys).map_err(|e| Exception::throw_type(&ctx, &format!("Kbd: {e}")))?;
+    Keystroke::parse_with_os(&keys, app().platform_info().os)
+      .map_err(|e| Exception::throw_type(&ctx, &format!("Kbd: {e}")))?;
   new_el(&ctx, Kbd::new(stroke))
 }
 

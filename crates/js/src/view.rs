@@ -566,7 +566,7 @@ impl ViewCx {
           context.map(Rc::new),
           false,
           None,
-          &gpui_kit::DummyKeyboardMapper,
+          app(),
         )
         .map_err(|e| anyhow!("{}: {e}", b.keystroke))
       })

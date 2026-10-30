@@ -266,10 +266,10 @@ fn window_effects_open_from_their_buttons(cx: &mut TestAppContext) {
   assert!(cx.update(|window, cx| window.has_active_dialog(cx)));
   cx.simulate_keystrokes("escape");
   cx.run_until_parked();
-  // the content renders again on every redraw of the dialog
+  // the content renders again on every redraw of the dialog, its close animation included
   let logged = log(&view, cx);
   assert!(
-    logged.starts_with("content,") && logged.ends_with(",cancel,close:function"),
+    logged.starts_with("content,") && logged.contains(",cancel,close:function"),
     "{logged}"
   );
   assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));

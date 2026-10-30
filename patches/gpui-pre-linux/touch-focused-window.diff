@@ -88,7 +88,7 @@ leave it hovered afterwards only if the pointer is over it.
 -                                        if let Some(window) = state.mouse_focused_window.clone() {
 +                                        if let Some(window) = state.touch_focused_window.clone() {
                                              let input =
-                                                 PlatformInput::ScrollWheel(ScrollWheelEvent {
+                                                 PlatformInput::Scroll(ScrollEvent {
                                                      position: current_center,
 @@ -3536,10 +3554,11 @@
                      // Single touch mouse mode
@@ -111,7 +111,7 @@ leave it hovered afterwards only if the pointer is over it.
 -                        if let Some(window) = state.mouse_focused_window.clone() {
 +                        if let Some(window) = state.touch_focused_window.clone() {
                              let position = state.touch_location.unwrap_or_default();
-                             let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                             let input = PlatformInput::Scroll(ScrollEvent {
                                  position,
 @@ -3580,7 +3599,7 @@
                          state.active_touch_id = None;
@@ -142,7 +142,7 @@ leave it hovered afterwards only if the pointer is over it.
 -                    if let Some(window) = state.mouse_focused_window.clone() {
 +                    if let Some(window) = state.touch_focused_window.clone() {
                          let position = state.touch_location.unwrap_or_default();
-                         let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                         let input = PlatformInput::Scroll(ScrollEvent {
                              position,
 @@ -3634,7 +3657,8 @@
                  state.last_pinch_distance = None;
@@ -153,7 +153,7 @@ leave it hovered afterwards only if the pointer is over it.
 +                    let pointer_here = pointer_over(&state, &window);
                      if was_scrolling {
                          // Send scroll end event if we were scrolling
-                         let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                         let input = PlatformInput::Scroll(ScrollEvent {
 @@ -3654,6 +3678,7 @@
                          });
                          drop(state);

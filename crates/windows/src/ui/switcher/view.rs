@@ -37,10 +37,15 @@ gpui_kit::actions!(switcher, [Next, Prev]);
 /// Tab steps as actions: Root binds tab to focus navigation, which would run before a
 /// key-down listener, and this deeper context outranks it
 pub(super) fn bind_keys(cx: &mut App) {
-  for held in ["", "super-", "alt-", "ctrl-"] {
+  for (next, prev) in [
+    ("tab", "shift-tab"),
+    ("super-tab", "super-shift-tab"),
+    ("alt-tab", "alt-shift-tab"),
+    ("ctrl-tab", "ctrl-shift-tab"),
+  ] {
     cx.bind_keys([
-      KeyBinding::new(&format!("{held}tab"), Next, Some(CONTEXT)),
-      KeyBinding::new(&format!("{held}shift-tab"), Prev, Some(CONTEXT)),
+      KeyBinding::new(next, Next, Some(CONTEXT)),
+      KeyBinding::new(prev, Prev, Some(CONTEXT)),
     ]);
   }
 }
