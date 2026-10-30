@@ -389,7 +389,8 @@ impl Render for Taskbar {
     }
 
     let viewport = window.viewport_size();
-    let width = self.width();
+    // Inner top arcs span `n..2n` from each side, so narrower bodies overlap.
+    let width = self.width().max(n * 2.);
     let shape_width = width + n * 2.;
     let left = (viewport.width.as_f32() - shape_width) / 2.;
     let h = self.height() * progress;
@@ -473,6 +474,7 @@ impl Render for Taskbar {
               .h(px(height))
               .flex()
               .items_start()
+              .justify_center()
               .gap(px(GAP))
               .p(px(PADDING))
               .children(apps),
