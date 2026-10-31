@@ -59,15 +59,7 @@ pub struct Filter(pub Box<dyn Fn(&Notification) -> bool>);
 
 impl Global for Filter {}
 
-pub trait NotificationsExt {
-  fn notifications(&self) -> &Notifications;
-}
-
-impl NotificationsExt for App {
-  fn notifications(&self) -> &Notifications {
-    self.global::<Notifications>()
-  }
-}
+corona_utils::global_ext!(NotificationsExt, notifications, Notifications);
 
 impl Notifications {
   pub fn list<'c>(&self, cx: &'c App) -> &'c [Notification] {

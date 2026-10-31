@@ -37,15 +37,7 @@ pub struct Tray {
 
 impl Global for Tray {}
 
-pub trait TrayExt {
-  fn tray(&self) -> &Tray;
-}
-
-impl TrayExt for App {
-  fn tray(&self) -> &Tray {
-    self.global::<Tray>()
-  }
-}
+corona_utils::global_ext!(TrayExt, tray, Tray);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Orientation {

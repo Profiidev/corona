@@ -35,15 +35,7 @@ pub struct SystemMonitor {
 
 impl Global for SystemMonitor {}
 
-pub trait SystemMonitorExt {
-  fn system_monitor(&self) -> &SystemMonitor;
-}
-
-impl SystemMonitorExt for App {
-  fn system_monitor(&self) -> &SystemMonitor {
-    self.global::<SystemMonitor>()
-  }
-}
+corona_utils::global_ext!(SystemMonitorExt, system_monitor, SystemMonitor);
 
 impl SystemMonitor {
   pub fn info<'c>(&self, cx: &'c App) -> Option<&'c SystemInfo> {

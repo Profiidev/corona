@@ -41,15 +41,7 @@ pub struct LocationService {
 
 impl Global for LocationService {}
 
-pub trait LocationExt {
-  fn location(&self) -> &LocationService;
-}
-
-impl LocationExt for App {
-  fn location(&self) -> &LocationService {
-    self.global::<LocationService>()
-  }
-}
+corona_utils::global_ext!(LocationExt, location, LocationService);
 
 impl LocationService {
   pub fn current<'c>(&self, cx: &'c App) -> Option<&'c Location> {

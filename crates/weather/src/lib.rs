@@ -35,15 +35,7 @@ pub struct WeatherService {
 
 impl Global for WeatherService {}
 
-pub trait WeatherExt {
-  fn weather(&self) -> &WeatherService;
-}
-
-impl WeatherExt for App {
-  fn weather(&self) -> &WeatherService {
-    self.global::<WeatherService>()
-  }
-}
+corona_utils::global_ext!(WeatherExt, weather, WeatherService);
 
 impl WeatherService {
   pub fn current<'c>(&self, cx: &'c App) -> Option<&'c Weather> {

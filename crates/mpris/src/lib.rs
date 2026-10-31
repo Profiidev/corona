@@ -33,15 +33,7 @@ pub struct Mpris {
 
 impl Global for Mpris {}
 
-pub trait MprisExt {
-  fn mpris(&self) -> &Mpris;
-}
-
-impl MprisExt for App {
-  fn mpris(&self) -> &Mpris {
-    self.global::<Mpris>()
-  }
-}
+corona_utils::global_ext!(MprisExt, mpris, Mpris);
 
 impl Mpris {
   pub fn list_players<'c>(&self, cx: &'c App) -> &'c [Player] {

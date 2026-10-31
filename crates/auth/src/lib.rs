@@ -66,15 +66,7 @@ pub struct Auth {
 
 impl Global for Auth {}
 
-pub trait AuthExt {
-  fn auth(&self) -> &Auth;
-}
-
-impl AuthExt for App {
-  fn auth(&self) -> &Auth {
-    self.global::<Auth>()
-  }
-}
+corona_utils::global_ext!(AuthExt, auth, Auth);
 
 impl Auth {
   /// `Ok(false)` for a wrong password, `Err` when PAM itself failed

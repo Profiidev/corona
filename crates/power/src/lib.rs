@@ -48,15 +48,7 @@ pub struct Power {
 
 impl Global for Power {}
 
-pub trait PowerExt {
-  fn power(&self) -> &Power;
-}
-
-impl PowerExt for App {
-  fn power(&self) -> &Power {
-    self.global::<Power>()
-  }
-}
+corona_utils::global_ext!(PowerExt, power, Power);
 
 impl Power {
   pub fn status<'c>(&self, cx: &'c App) -> Option<&'c Status> {

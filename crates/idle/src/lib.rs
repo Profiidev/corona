@@ -158,16 +158,12 @@ impl Idle {
   }
 }
 
-/// Reads the watcher; changes go through `cx.update_global::<Idle, _>`
-pub trait IdleExt {
-  fn idle(&self) -> &Idle;
-}
-
-impl IdleExt for App {
-  fn idle(&self) -> &Idle {
-    self.global::<Idle>()
-  }
-}
+corona_utils::global_ext!(
+  /// Reads the watcher; changes go through `cx.update_global::<Idle, _>`
+  IdleExt,
+  idle,
+  Idle
+);
 
 struct State {
   events: flume::Sender<(String, bool)>,

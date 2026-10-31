@@ -55,15 +55,7 @@ pub struct Brightness {
 
 impl Global for Brightness {}
 
-pub trait BrightnessExt {
-  fn brightness(&self) -> &Brightness;
-}
-
-impl BrightnessExt for App {
-  fn brightness(&self) -> &Brightness {
-    self.global::<Brightness>()
-  }
-}
+corona_utils::global_ext!(BrightnessExt, brightness, Brightness);
 
 impl Brightness {
   pub fn list_displays<'c>(&self, cx: &'c App) -> &'c [Display] {

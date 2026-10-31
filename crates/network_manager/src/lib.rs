@@ -131,15 +131,7 @@ const AUTO_OFF_CHECK: Duration = Duration::from_secs(30);
 
 impl Global for NetworkManager {}
 
-pub trait NetworkManagerExt {
-  fn network_manager(&self) -> &NetworkManager;
-}
-
-impl NetworkManagerExt for App {
-  fn network_manager(&self) -> &NetworkManager {
-    self.global::<NetworkManager>()
-  }
-}
+corona_utils::global_ext!(NetworkManagerExt, network_manager, NetworkManager);
 
 impl NetworkManager {
   pub fn list_interfaces<'c>(&self, cx: &'c App) -> &'c [Interface] {

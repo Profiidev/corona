@@ -38,15 +38,7 @@ pub struct Bluetooth {
 
 impl Global for Bluetooth {}
 
-pub trait BluetoothExt {
-  fn bluetooth(&self) -> &Bluetooth;
-}
-
-impl BluetoothExt for App {
-  fn bluetooth(&self) -> &Bluetooth {
-    self.global::<Bluetooth>()
-  }
-}
+corona_utils::global_ext!(BluetoothExt, bluetooth, Bluetooth);
 
 pub enum PairingAnswer {
   Reject,

@@ -32,15 +32,7 @@ pub use audio::PipewireAudio;
 pub use capture::{Capture, CaptureAccess, CaptureKind};
 pub use state::{AudioNode, NodeType};
 
-pub trait PipewireExt {
-  fn pipewire(&self) -> &Pipewire;
-}
-
-impl PipewireExt for App {
-  fn pipewire(&self) -> &Pipewire {
-    self.global::<Pipewire>()
-  }
-}
+corona_utils::global_ext!(PipewireExt, pipewire, Pipewire);
 
 /// Starts the PipeWire thread, registers the audio and privacy UI, commands and script module
 pub fn init(cx: &mut App, _: &Buses) -> Result<()> {

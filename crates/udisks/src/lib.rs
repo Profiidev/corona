@@ -72,15 +72,7 @@ pub struct Udisks {
 
 impl Global for Udisks {}
 
-pub trait UdisksExt {
-  fn udisks(&self) -> &Udisks;
-}
-
-impl UdisksExt for App {
-  fn udisks(&self) -> &Udisks {
-    self.global::<Udisks>()
-  }
-}
+corona_utils::global_ext!(UdisksExt, udisks, Udisks);
 
 /// A proxy at `path`, reading no properties: those come from the snapshot
 async fn at<P>(conn: &Connection, path: OwnedObjectPath) -> zbus::Result<P>

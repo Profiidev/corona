@@ -64,15 +64,7 @@ pub struct Printing {
 
 impl Global for Printing {}
 
-pub trait PrintingExt {
-  fn printing(&self) -> &Printing;
-}
-
-impl PrintingExt for App {
-  fn printing(&self) -> &Printing {
-    self.global::<Printing>()
-  }
-}
+corona_utils::global_ext!(PrintingExt, printing, Printing);
 
 impl Printing {
   pub fn list_printers<'c>(&self, cx: &'c App) -> &'c [Printer] {

@@ -333,16 +333,12 @@ impl Osk {
   }
 }
 
-/// Reads the keyboard; changes go through `cx.update_global::<Osk, _>`
-pub trait OskExt {
-  fn osk(&self) -> &Osk;
-}
-
-impl OskExt for App {
-  fn osk(&self) -> &Osk {
-    self.global::<Osk>()
-  }
-}
+corona_utils::global_ext!(
+  /// Reads the keyboard; changes go through `cx.update_global::<Osk, _>`
+  OskExt,
+  osk,
+  Osk
+);
 
 /// The keyboard global with its commands in a queue, no compositor needed
 #[cfg(test)]
