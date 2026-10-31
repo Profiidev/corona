@@ -2,6 +2,7 @@
 
 use std::{borrow::Cow, time::Duration};
 
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Div, Entity, ParentElement, Pixels, Size, Styled,
   assets::IconName,
@@ -11,6 +12,8 @@ use gpui_kit::{
   px, relative, size,
 };
 use rust_i18n::t;
+
+use super::{Osd, OsdExt};
 
 const ICON: f32 = 20.;
 
@@ -171,6 +174,22 @@ pub fn on_change<E: 'static, K: PartialEq + 'static>(
     });
   })
   .detach();
+}
+
+/// Registers the on/off OSD `T` and shows it whenever `read` flips, labeled
+/// `label` with the icon `icon` picks for the new state
+pub fn toggle_on_change<T: Osd + From<ToggleOsd> + 'static, E: 'static>(
+  entity: &Entity<E>,
+  cx: &mut App,
+  label: fn() -> Cow<'static, str>,
+  icon: fn(bool) -> IconName,
+  read: impl Fn(&App) -> Option<bool> + 'static,
+) {
+  cx.osd_mut().register::<T>();
+  on_change(entity, cx, read, move |_, &on, cx| {
+    let osd = ToggleOsd::on_off(icon(on), label(), on);
+    let _ = cx.show_osd(T::from(osd)).log_err();
+  });
 }
 
 #[cfg(test)]

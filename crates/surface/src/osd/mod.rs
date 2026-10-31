@@ -21,7 +21,7 @@ const BORDER: f32 = 2.;
 
 mod views;
 
-pub use views::{LevelOsd, ToggleOsd, on_change};
+pub use views::{LevelOsd, ToggleOsd, on_change, toggle_on_change};
 
 /// An on-screen display, one type per kind the settings can turn off
 pub trait Osd: Render {
