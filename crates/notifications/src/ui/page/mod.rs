@@ -1,4 +1,4 @@
-use corona_components::components::list::card;
+use corona_components::components::{list::card, segmented};
 use corona_surface::control_center::ControlCenterPage;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
@@ -10,7 +10,7 @@ use gpui_kit::{
   assets::IconName,
   base::Disableable,
   component::{
-    ActiveTheme, Sizable,
+    ActiveTheme,
     button::{Button, ButtonVariant, ButtonVariants},
     scroll::ScrollableElement,
   },
@@ -139,20 +139,14 @@ impl NotificationsPanel {
         t!("app.notifications.earlier"),
       ),
     ];
-    div()
-      .flex()
-      .gap_1()
-      .children(filters.into_iter().map(|(filter, id, label)| {
-        Button::new(id)
-          .label(label)
-          .small()
-          .cursor_pointer()
-          .when(filter == self.filter, |b| b.primary())
-          .on_click(cx.listener(move |this, _, _, cx| {
-            this.filter = filter;
-            cx.notify();
-          }))
-      }))
+    segmented(
+      filters,
+      self.filter,
+      cx.listener(|this, filter, _, cx| {
+        this.filter = *filter;
+        cx.notify();
+      }),
+    )
   }
 }
 

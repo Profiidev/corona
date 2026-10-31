@@ -4,7 +4,10 @@ use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{Block, SmartAttributes, UdisksExt};
-use corona_components::components::list::{self, Tone, section};
+use corona_components::components::{
+  list::{self, Tone, section},
+  segmented,
+};
 use gpui_kit::{
   AnyElement, App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render,
   SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window,
@@ -446,42 +449,31 @@ impl DisksPanel {
 
   fn tabs(&self, cx: &Context<'_, Self>) -> AnyElement {
     let running = log(cx).running_count(cx);
-    div()
-      .flex()
-      .flex_shrink_0()
-      .gap_1()
-      .children(
-        [
-          (
-            Tab::Devices,
-            "disks-tab-devices",
-            t!("app.disks.tab.devices"),
-          ),
-          (
-            Tab::Storage,
-            "disks-tab-storage",
-            t!("app.disks.tab.storage"),
-          ),
-          (Tab::Jobs, "disks-tab-jobs", t!("app.disks.tab.jobs")),
-        ]
-        .map(|(tab, id, label)| {
-          let label: SharedString = match (tab, running) {
-            (Tab::Jobs, n) if n > 0 => format!("{label} · {n}").into(),
-            _ => label.into(),
-          };
-          Button::new(id)
-            .label(label)
-            .small()
-            .flex_1()
-            .cursor_pointer()
-            .when(tab == self.tab, |b| b.primary())
-            .on_click(cx.listener(move |this, _, _, cx| {
-              this.tab = tab;
-              cx.notify();
-            }))
-        }),
-      )
-      .into_any_element()
+    let jobs: SharedString = match running {
+      0 => t!("app.disks.tab.jobs").into(),
+      n => format!("{} · {n}", t!("app.disks.tab.jobs")).into(),
+    };
+    segmented(
+      [
+        (
+          Tab::Devices,
+          "disks-tab-devices",
+          t!("app.disks.tab.devices").into(),
+        ),
+        (
+          Tab::Storage,
+          "disks-tab-storage",
+          t!("app.disks.tab.storage").into(),
+        ),
+        (Tab::Jobs, "disks-tab-jobs", jobs),
+      ],
+      self.tab,
+      cx.listener(|this, tab, _, cx| {
+        this.tab = *tab;
+        cx.notify();
+      }),
+    )
+    .into_any_element()
   }
 
   fn unreachable(&self, cx: &Context<'_, Self>) -> AnyElement {

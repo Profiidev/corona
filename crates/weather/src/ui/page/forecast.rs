@@ -2,13 +2,8 @@ use crate::Weather;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   base::StyledExt,
-  component::{
-    Icon, Sizable, Theme,
-    button::{Button, ButtonVariants},
-    scroll::ScrollableElement,
-  },
+  component::{Icon, Sizable, Theme, scroll::ScrollableElement},
   div,
-  prelude::FluentBuilder,
 };
 
 use crate::ui::page::{
@@ -16,7 +11,7 @@ use crate::ui::page::{
   current::{clock, whole},
   describe, icon,
 };
-use corona_components::i18n::format_time;
+use corona_components::{components::segmented, i18n::format_time};
 use rust_i18n::t;
 
 impl WeatherPanel {
@@ -26,22 +21,15 @@ impl WeatherPanel {
     weather: &Weather,
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
-    let tabs = div().flex().gap_1().children(
+    let tabs = segmented(
       [
         (Tab::Daily, "weather-tab-daily", t!("app.weather.daily")),
         (Tab::Hourly, "weather-tab-hourly", t!("app.weather.hourly")),
-      ]
-      .map(|(tab, id, label)| {
-        Button::new(id)
-          .label(label)
-          .small()
-          .flex_1()
-          .cursor_pointer()
-          .when(tab == self.tab, |b| b.primary())
-          .on_click(cx.listener(move |this, _, _, cx| {
-            this.tab = tab;
-            cx.notify();
-          }))
+      ],
+      self.tab,
+      cx.listener(|this, tab, _, cx| {
+        this.tab = *tab;
+        cx.notify();
       }),
     );
 

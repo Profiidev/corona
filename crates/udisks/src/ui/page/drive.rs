@@ -3,14 +3,14 @@
 use std::rc::Rc;
 
 use crate::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
-use corona_components::components::list::{dot, kv, section};
+use corona_components::components::{
+  list::{dot, kv, section},
+  segmented,
+};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled, Window,
   assets::IconName,
-  component::{
-    ActiveTheme, Sizable,
-    button::{Button, ButtonVariants},
-  },
+  component::{ActiveTheme, Sizable, button::Button},
   div,
   prelude::FluentBuilder,
   px,
@@ -52,7 +52,8 @@ impl DisksPanel {
     };
     let _theme = cx.theme();
     let drive = &view.drive;
-    let sub_tabs = div().flex().flex_shrink_0().gap_1().children(
+    let tab_path = path.clone();
+    let sub_tabs = segmented(
       [
         (
           DriveTab::Overview,
@@ -64,22 +65,14 @@ impl DisksPanel {
           "disks-drive-tab-health",
           t!("app.disks.health"),
         ),
-      ]
-      .map(|(tab, id, label)| {
-        let path = path.clone();
-        Button::new(id)
-          .label(label)
-          .small()
-          .flex_1()
-          .cursor_pointer()
-          .when(tab == self.drive_tab, |b| b.primary())
-          .on_click(cx.listener(move |this, _, _, cx| {
-            this.drive_tab = tab;
-            if tab == DriveTab::Health && this.smart.as_ref().is_none_or(|(p, _)| p != &path) {
-              this.refresh_smart(path.clone(), cx);
-            }
-            cx.notify();
-          }))
+      ],
+      self.drive_tab,
+      cx.listener(move |this, tab, _, cx| {
+        this.drive_tab = *tab;
+        if *tab == DriveTab::Health && this.smart.as_ref().is_none_or(|(p, _)| p != &tab_path) {
+          this.refresh_smart(tab_path.clone(), cx);
+        }
+        cx.notify();
       }),
     );
     let mut page = vec![sub_tabs.into_any_element()];

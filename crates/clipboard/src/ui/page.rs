@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::launcher::{clip, kind_label, swatch};
 use crate::{ClipboardExt, Entry, Kind};
-use corona_components::components::{card::CardExt, modal::Dialog};
+use corona_components::components::{card::CardExt, modal::Dialog, segmented};
 use corona_launcher::command::Hud;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
@@ -165,27 +165,25 @@ fn preview(entry: &Entry) -> AnyElement {
 
 impl ClipboardPanel {
   fn filters(&self, cx: &Context<Self>) -> impl IntoElement {
-    div().flex().gap_1().children(KINDS.map(|kind| {
-      let (id, label) = match kind {
-        Some(kind) => (
-          format!("clipboard-kind-{kind:?}").to_lowercase(),
-          kind_label(kind),
+    segmented(
+      KINDS.map(|kind| match kind {
+        Some(k) => (
+          kind,
+          format!("clipboard-kind-{k:?}").to_lowercase(),
+          kind_label(k),
         ),
         None => (
+          kind,
           "clipboard-kind-all".to_string(),
           t!("app.launcher.clipboard.all").into(),
         ),
-      };
-      Button::new(SharedString::from(id))
-        .label(label)
-        .small()
-        .cursor_pointer()
-        .when(kind == self.kind, |b| b.primary())
-        .on_click(cx.listener(move |this, _, _, cx| {
-          this.kind = kind;
-          cx.notify();
-        }))
-    }))
+      }),
+      self.kind,
+      cx.listener(|this, kind, _, cx| {
+        this.kind = *kind;
+        cx.notify();
+      }),
+    )
   }
 
   fn row(entry: &Entry, cx: &App) -> impl IntoElement {

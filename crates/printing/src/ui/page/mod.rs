@@ -1,16 +1,11 @@
 use std::path::PathBuf;
 
 use crate::{PrintingExt, ScanSettings, ScannerCaps};
-use corona_components::components::card::PageError;
+use corona_components::components::{card::PageError, segmented};
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  component::{
-    ActiveTheme, Sizable,
-    button::{Button, ButtonVariants},
-  },
-  div,
-  prelude::FluentBuilder,
+  component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
 use rust_i18n::t;
@@ -86,7 +81,7 @@ impl ControlCenterPage for PrintersPanel {
 
 impl PrintersPanel {
   fn tabs(&self, cx: &Context<'_, Self>) -> impl IntoElement {
-    div().flex().gap_1().children(
+    segmented(
       [
         (
           Tab::Printers,
@@ -94,19 +89,12 @@ impl PrintersPanel {
           t!("app.printers.tab.printers"),
         ),
         (Tab::Scan, "printers-tab-scan", t!("app.printers.tab.scan")),
-      ]
-      .map(|(tab, id, label)| {
-        Button::new(id)
-          .label(label)
-          .small()
-          .flex_1()
-          .cursor_pointer()
-          .when(tab == self.tab, |b| b.primary())
-          .on_click(cx.listener(move |this, _, _, cx| {
-            this.tab = tab;
-            this.error.clear();
-            cx.notify();
-          }))
+      ],
+      self.tab,
+      cx.listener(|this, tab, _, cx| {
+        this.tab = *tab;
+        this.error.clear();
+        cx.notify();
       }),
     )
   }
