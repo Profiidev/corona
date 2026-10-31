@@ -475,8 +475,7 @@ mod tests {
   /// the events, and the session bus to keep alive
   fn start(cx: &mut TestAppContext) -> (Events, TestBus) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let session = futures_lite::future::block_on(bus.conn());
+    let (bus, session) = TestBus::with_conn();
     let events = Events::default();
     let seen = events.clone();
     cx.update(|cx| {

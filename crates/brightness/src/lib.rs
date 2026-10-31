@@ -714,8 +714,7 @@ mod global_tests {
 
   #[gpui::test]
   fn set_brightness_checks_the_display(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let (tx, rx) = flume::unbounded();
     state(cx, &conn, Some(tx));
 
@@ -747,8 +746,7 @@ mod global_tests {
 
   #[gpui::test]
   fn set_brightness_without_ddcutil(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     state(cx, &conn, None);
     assert_eq!(
       set(cx, "ddc/5", 1).unwrap_err().to_string(),
@@ -758,8 +756,7 @@ mod global_tests {
 
   #[gpui::test]
   fn backlights_go_through_logind(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let logind = block_on(async {
       let logind = bus.conn().await;
@@ -799,8 +796,7 @@ mod global_tests {
 
   #[gpui::test]
   fn refused_by_logind_writes_sysfs(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let _logind = block_on(async {
       let logind = bus.conn().await;
       logind
@@ -836,8 +832,7 @@ mod global_tests {
 
   #[gpui::test]
   fn no_logind_writes_sysfs(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let root = sysfs();
     state(cx, &conn, None);
     set(cx, "backlight/intel_backlight", 700).unwrap();

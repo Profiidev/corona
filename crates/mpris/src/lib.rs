@@ -410,8 +410,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext) -> TestBus {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()

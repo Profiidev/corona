@@ -67,6 +67,13 @@ impl TestBus {
     &self.address
   }
 
+  /// A fresh bus and a connection to it; the bus must outlive the connection.
+  pub fn with_conn() -> (Self, zbus::Connection) {
+    let bus = Self::new();
+    let conn = futures_lite::future::block_on(bus.conn());
+    (bus, conn)
+  }
+
   /// A fresh client connection to this bus.
   pub async fn conn(&self) -> zbus::Connection {
     zbus::connection::Builder::address(self.address())

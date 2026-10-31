@@ -53,7 +53,6 @@ impl ScriptModule for IdleModule {
 #[cfg(test)]
 mod tests {
   use corona_utils::test_bus::{TestBus, wait_until};
-  use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
   use serde_json::json;
 
@@ -69,8 +68,7 @@ mod tests {
       std::env::set_var("WAYLAND_DISPLAY", "nothing-here");
     }
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let session = block_on(bus.conn());
+    let (_bus, session) = TestBus::with_conn();
     cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
 
     let body = r#"if (!globalThis.started) {

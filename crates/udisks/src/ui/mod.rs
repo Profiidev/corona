@@ -42,7 +42,6 @@ impl IdlePage for page::DisksPanel {
 mod tests {
   use crate::Udisks;
   use corona_utils::test_bus::TestBus;
-  use futures::executor::block_on;
   use gpui_kit::{self as gpui, AppContext, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;
@@ -52,8 +51,7 @@ mod tests {
 
   fn shown(cx: &mut TestAppContext, hide_when_idle: bool, removable: bool) -> bool {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       gpui_kit::init(cx);
       cx.set_global(corona_config::Config::default());

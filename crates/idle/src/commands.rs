@@ -59,8 +59,7 @@ mod tests {
       std::env::set_var("WAYLAND_DISPLAY", "nothing-here");
     }
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let session = futures::executor::block_on(bus.conn());
+    let (_bus, session) = TestBus::with_conn();
     cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
     let send = |switch, minutes, cx: &mut TestAppContext| {
       cx.update(|cx| StayAwake::handle(Request { switch, minutes }, cx))

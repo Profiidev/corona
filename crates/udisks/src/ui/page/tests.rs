@@ -2,7 +2,6 @@ use std::{cell::Cell, rc::Rc, time::Instant};
 
 use crate::{Block, Drive, Job, Loop, Udisks};
 use corona_utils::test_bus::TestBus;
-use futures::executor::block_on;
 use gpui_kit::{
   self as gpui, AnyWindowHandle, AppContext, Entity, TestAppContext, WindowOptions,
   test::TestWindowExt,
@@ -23,8 +22,7 @@ struct Open {
 
 fn open(cx: &mut TestAppContext, drives: Vec<Drive>, blocks: Vec<Block>, jobs: Vec<Job>) -> Open {
   cx.executor().allow_parking();
-  let bus = TestBus::new();
-  let conn = block_on(bus.conn());
+  let (bus, conn) = TestBus::with_conn();
   cx.update(|cx| {
     gpui_kit::init(cx);
     cx.set_global(corona_config::Config::default());

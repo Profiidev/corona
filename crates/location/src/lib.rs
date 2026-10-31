@@ -593,8 +593,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext, config: Config) -> Running {
     let cache = isolated_cache();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let (client, urls) = fake(|url| {
       if url.contains("Nowhere") {
         (200, "{}".into())
@@ -663,8 +662,7 @@ mod tests {
       query: None,
     };
     save_cache(&cached).unwrap();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let client = gpui_kit::http_client::FakeHttpClient::create(|_| pending());
     cx.update(|cx| {
       cx.set_http_client(client);

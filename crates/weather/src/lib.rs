@@ -157,7 +157,7 @@ mod tests {
 
   use corona_config::{Config, LocationConfig};
   use corona_utils::test_bus::TestBus;
-  use futures_lite::future::{block_on, pending};
+  use futures_lite::future::pending;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -249,8 +249,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext, config: Config) -> Running {
     let cache = isolated_cache();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let status = Arc::new(Mutex::new(200));
     let answer = status.clone();
     let (client, urls) = fake(move |url| {
@@ -359,8 +358,7 @@ mod tests {
   fn shows_the_cache_first(cx: &mut TestAppContext) {
     let cache = isolated_cache();
     save_cache(&sample()).unwrap();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     // never answers: only the cache can be showing
     let client = gpui_kit::http_client::FakeHttpClient::create(|_| pending());
     cx.update(|cx| {

@@ -575,8 +575,7 @@ mod tests {
   /// a panel over a fake NetworkManager with a wifi device, and the bus it sits on
   fn panel(cx: &mut TestAppContext) -> (TestBus, Entity<HotspotPanel>, &mut VisualTestContext) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       gpui_kit::init(cx);
       cx.set_global(corona_config::Config::default());

@@ -117,7 +117,6 @@ impl ScriptModule for AuthModule {
 #[cfg(test)]
 mod tests {
   use corona_utils::test_bus::{TestBus, wait_until};
-  use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -163,8 +162,7 @@ mod tests {
   fn a_failed_scan_rejects(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     // no fprintd on this bus
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| crate::connect(cx, &conn));
     let body = "if (!globalThis.started) {
       globalThis.started = true;

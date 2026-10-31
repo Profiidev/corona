@@ -368,8 +368,7 @@ mod tests {
   #[gpui::test]
   fn sleep_reaches_the_plugin(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       let executor = cx.foreground_executor().clone();
       executor.block_on(pw::connect(cx, &conn)).unwrap()

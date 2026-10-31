@@ -474,7 +474,6 @@ mod tests {
   use std::time::{Duration, SystemTime};
 
   use corona_utils::test_bus::{TestBus, wait_until};
-  use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -532,8 +531,7 @@ mod tests {
   #[gpui::test]
   fn actions_reach_the_plugin_that_notified(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       let executor = cx.foreground_executor().clone();
       executor.block_on(nt::connect(cx, &conn, true)).unwrap()

@@ -150,7 +150,6 @@ impl ScriptModule for BrightnessModule {
 mod tests {
   use corona_config::Config;
   use corona_utils::test_bus::{TestBus, wait_until};
-  use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
   use serde_json::json;
 
@@ -160,8 +159,7 @@ mod tests {
   #[gpui::test]
   fn reads_and_failures(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let mut config = Config::default();
     // never the real monitors
     config.brightness.enable_ddcutil = false;

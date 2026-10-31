@@ -552,8 +552,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext, cups: &MockCups) -> (TestBus, Connection) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let sock = cups.sock.clone();
     cx.update(|cx| {
       cx.foreground_executor()
@@ -960,8 +959,7 @@ mod tests {
   fn follows_avahi_announcements(cx: &mut TestAppContext) {
     let cups = MockCups::start();
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let avahi = block_on(bus.conn());
+    let (bus, avahi) = TestBus::with_conn();
     let browsers = Arc::new(Mutex::new(Vec::new()));
     let address = Arc::new(Mutex::new("10.0.0.9".to_string()));
     block_on(async {
