@@ -1,21 +1,17 @@
 use corona_components::components::list::card;
-use std::{
-  collections::{HashMap, HashSet},
-  pin::Pin,
-  time::Duration,
-};
+use std::{collections::HashMap, pin::Pin, time::Duration};
 
 use crate::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
-use corona_components::components::card::PageError;
+use corona_components::components::{
+  card::PageError,
+  throttled_slider::{Moved, ThrottledSlider},
+};
 use corona_power::PowerExt;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  base::slider::{SliderEvent, SliderState},
-  component::ActiveTheme,
-  div,
-  prelude::FluentBuilder,
+  base::slider::SliderState, component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
 use crate::ui::page::lights::{Light, displays, keyboard};
@@ -33,18 +29,14 @@ pub fn display_name(display: &Display) -> String {
 }
 
 const KEYBOARD: &str = "keyboard";
-/// The nightlight slider in `dragging`
-const NIGHTLIGHT: &str = "nightlight";
 const THROTTLE: Duration = Duration::from_millis(100);
 
 pub struct BrightnessPanel {
   error: PageError,
-  sliders: HashMap<String, (Entity<SliderState>, Subscription)>,
-  dragging: HashSet<String>,
-  pending: HashMap<String, f32>,
+  sliders: HashMap<String, (Entity<ThrottledSlider>, Subscription)>,
   /// Kelvin
-  nightlight_slider: (Entity<SliderState>, Subscription),
-  _subscriptions: [Subscription; 3],
+  nightlight_slider: Entity<ThrottledSlider>,
+  _subscriptions: [Subscription; 4],
 }
 
 impl ControlCenterPage for BrightnessPanel {
@@ -63,6 +55,16 @@ impl ControlCenterPage for BrightnessPanel {
     let keyboard = cx.power().keyboard_backlight.clone();
     let nightlight = cx.brightness().nightlight.clone();
 
+    // the gamma thread takes only the latest, so no throttle is needed
+    let slider = cx.new(|cx| {
+      // max first: min clamps against the default max of 100
+      let state = SliderState::new()
+        .max(nightlight::MAX)
+        .min(nightlight::MIN)
+        .step(100.);
+      ThrottledSlider::new(state, None, cx)
+    });
+
     let subscriptions = [
       cx.observe_in(&displays, window, |this, _, window, cx| {
         this.sync_sliders(window, cx);
@@ -76,41 +78,22 @@ impl ControlCenterPage for BrightnessPanel {
         this.sync_nightlight(window, cx);
         cx.notify();
       }),
+      cx.subscribe(&slider, |this, _, Moved(kelvin), cx| {
+        if let Some(kelvin) = kelvin {
+          let result = cx
+            .brightness()
+            .set_nightlight_temperature(kelvin.round() as u32, cx)
+            .map(|_| ());
+          this.error.set(result);
+        }
+        cx.notify();
+      }),
     ];
-
-    let slider = cx.new(|_| {
-      // max first: min clamps against the default max of 100
-      SliderState::new()
-        .max(nightlight::MAX)
-        .min(nightlight::MIN)
-        .step(100.)
-    });
-    let subscription = cx.subscribe(&slider, |this, _, event: &SliderEvent, cx| {
-      // the gamma thread takes only the latest, so no throttle is needed
-      let kelvin = match event {
-        SliderEvent::Change(value) => {
-          this.dragging.insert(NIGHTLIGHT.into());
-          value.start()
-        }
-        SliderEvent::Release(value) => {
-          this.dragging.remove(NIGHTLIGHT);
-          value.start()
-        }
-      };
-      let result = cx
-        .brightness()
-        .set_nightlight_temperature(kelvin.round() as u32, cx)
-        .map(|_| ());
-      this.error.set(result);
-      cx.notify();
-    });
 
     let mut panel = Self {
       error: PageError::default(),
       sliders: HashMap::new(),
-      dragging: HashSet::new(),
-      pending: HashMap::new(),
-      nightlight_slider: (slider, subscription),
+      nightlight_slider: slider,
       _subscriptions: subscriptions,
     };
     panel.sync_sliders(window, cx);
@@ -128,58 +111,31 @@ impl BrightnessPanel {
 
     for light in lights {
       if !self.sliders.contains_key(&light.id) {
-        let slider = cx.new(|_| SliderState::new().min(0.).max(100.).step(1.));
-        let subscription = cx.subscribe(&slider, {
-          let id = light.id.clone();
-          move |this, _, event: &SliderEvent, cx| match event {
-            SliderEvent::Change(value) => {
-              this.dragging.insert(id.clone());
-              this.throttle(&id, value.start(), cx);
-              cx.notify();
-            }
-            SliderEvent::Release(value) => {
-              this.dragging.remove(&id);
-              this.pending.remove(&id);
-              this.set_brightness(&id, value.start(), cx);
-            }
+        let slider = cx.new(|cx| {
+          let state = SliderState::new().min(0.).max(100.).step(1.);
+          ThrottledSlider::new(state, Some(THROTTLE), cx)
+        });
+        let id = light.id.clone();
+        let subscription = cx.subscribe(&slider, move |this, _, Moved(percent), cx| {
+          if let Some(percent) = percent {
+            this.set_brightness(&id, *percent, cx);
           }
+          cx.notify();
         });
         self
           .sliders
           .insert(light.id.clone(), (slider, subscription));
       }
-      if !self.dragging.contains(&light.id) {
-        let (slider, _) = &self.sliders[&light.id];
-        slider.update(cx, |state, cx| state.set_value(light.percent(), window, cx));
-      }
+      let (slider, _) = &self.sliders[&light.id];
+      slider.update(cx, |slider, cx| slider.sync(light.percent(), window, cx));
     }
   }
 
   fn sync_nightlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    if self.dragging.contains(NIGHTLIGHT) {
-      return;
-    }
     let kelvin = cx.brightness().nightlight(cx).temperature as f32;
-    let (slider, _) = &self.nightlight_slider;
-    slider.update(cx, |state, cx| state.set_value(kelvin, window, cx));
-  }
-
-  fn throttle(&mut self, id: &str, percent: f32, cx: &mut Context<Self>) {
-    if self.pending.insert(id.to_string(), percent).is_some() {
-      return;
-    }
-    let id = id.to_string();
-    cx.spawn(async move |this, cx| {
-      cx.background_executor().timer(THROTTLE).await;
-      this
-        .update(cx, |this, cx| {
-          if let Some(percent) = this.pending.remove(&id) {
-            this.set_brightness(&id, percent, cx);
-          }
-        })
-        .ok();
-    })
-    .detach();
+    self
+      .nightlight_slider
+      .update(cx, |slider, cx| slider.sync(kelvin, window, cx));
   }
 
   fn set_brightness(&mut self, id: &str, percent: f32, cx: &mut Context<Self>) {

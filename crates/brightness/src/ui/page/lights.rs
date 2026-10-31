@@ -92,11 +92,11 @@ impl BrightnessPanel {
   }
 
   fn light(&self, theme: &Theme, light: &Light, cx: &Context<'_, Self>) -> impl IntoElement {
-    let slider = self.sliders.get(&light.id).map(|(slider, _)| slider);
-    let value = match slider {
-      Some(slider) if self.dragging.contains(&light.id) => slider.read(cx).value().start(),
-      _ => light.percent(),
-    };
+    let slider = self
+      .sliders
+      .get(&light.id)
+      .map(|(slider, _)| slider.read(cx));
+    let value = slider.map_or(light.percent(), |s| s.shown(light.percent(), cx));
     let status = match light.unavailable {
       Some(unavailable) => reason(unavailable).to_string(),
       None => format!("{value:.0}%"),
@@ -145,7 +145,7 @@ impl BrightnessPanel {
           .child(Icon::new(IconName::SunDim).small())
           .child(
             div().flex_1().child(
-              Slider::new(slider)
+              Slider::new(slider.state())
                 .px_2()
                 .cursor_pointer()
                 .disabled(light.unavailable.is_some()),

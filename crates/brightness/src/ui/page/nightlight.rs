@@ -24,11 +24,8 @@ impl BrightnessPanel {
     if !state.available {
       return None;
     }
-    let (slider, _) = &self.nightlight_slider;
-    let kelvin = match self.dragging.contains(super::NIGHTLIGHT) {
-      true => slider.read(cx).value().start() as u32,
-      false => state.temperature,
-    };
+    let slider = self.nightlight_slider.read(cx);
+    let kelvin = slider.shown(state.temperature as f32, cx) as u32;
     Some(
       card(cx).child(
         div()
@@ -77,7 +74,7 @@ impl BrightnessPanel {
               .child(
                 div()
                   .flex_1()
-                  .child(Slider::new(slider).px_2().cursor_pointer()),
+                  .child(Slider::new(slider.state()).px_2().cursor_pointer()),
               )
               .child(Icon::new(IconName::Sun).small()),
           ),

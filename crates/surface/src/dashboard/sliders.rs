@@ -1,9 +1,10 @@
+use corona_components::components::throttled_slider::{Moved, ThrottledSlider};
 use corona_config::ConfigProvider;
 
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, ParentElement, Styled, Subscription, Window,
   assets::IconName,
-  base::slider::{SliderEvent, SliderState},
+  base::slider::SliderState,
   component::{
     ActiveTheme,
     button::{Button, ButtonVariant, ButtonVariants},
@@ -21,10 +22,7 @@ use crate::{
 /// A slider's state on the open dashboard
 struct Row {
   id: &'static str,
-  state: Entity<SliderState>,
-  /// a throttled slider follows the drag, not the backend, until released
-  dragging: bool,
-  pending: Option<f32>,
+  slider: Entity<ThrottledSlider>,
 }
 
 pub(super) struct Sliders {
@@ -44,20 +42,20 @@ impl Sliders {
       .collect();
     let mut rows = Vec::new();
     let mut subscriptions = Vec::new();
-    for (index, (id, observe)) in entries.into_iter().enumerate() {
-      let state = cx.new(|_| SliderState::new().min(0.).max(1.).step(0.01));
-      subscriptions.push(
-        cx.subscribe(&state, move |this, _, event: &SliderEvent, cx| {
-          this.sliders.on_event(index, event, cx)
-        }),
-      );
-      subscriptions.extend(observe(changed.clone(), cx));
-      rows.push(Row {
-        id,
-        state,
-        dragging: false,
-        pending: None,
+    for (id, observe) in entries {
+      let throttle = entry(cx, id).and_then(|e| e.throttle);
+      let slider = cx.new(|cx| {
+        let state = SliderState::new().min(0.).max(1.).step(0.01);
+        ThrottledSlider::new(state, throttle, cx)
       });
+      subscriptions.push(cx.subscribe(&slider, move |_, _, Moved(value), cx| {
+        if let (Some(value), Some(entry)) = (value, entry(cx, id)) {
+          (entry.set)(*value, cx);
+        }
+        cx.notify();
+      }));
+      subscriptions.extend(observe(changed.clone(), cx));
+      rows.push(Row { id, slider });
     }
     Self {
       rows,
@@ -65,54 +63,15 @@ impl Sliders {
     }
   }
 
-  fn on_event(&mut self, index: usize, event: &SliderEvent, cx: &mut Context<DashboardPanel>) {
-    let Some(entry) = entry(cx, self.rows[index].id) else {
-      return;
-    };
-    let (set, throttle) = (entry.set, entry.throttle);
-    let Some(throttle) = throttle else {
-      if let SliderEvent::Change(value) = event {
-        set(value.start(), cx);
-      }
-      return;
-    };
-    let row = &mut self.rows[index];
-    match event {
-      SliderEvent::Change(value) => {
-        row.dragging = true;
-        if row.pending.replace(value.start()).is_none() {
-          cx.spawn(async move |panel, cx| {
-            cx.background_executor().timer(throttle).await;
-            let _ = panel.update(cx, |panel, cx| {
-              if let Some(value) = panel.sliders.rows[index].pending.take() {
-                set(value, cx);
-              }
-            });
-          })
-          .detach();
-        }
-        cx.notify();
-      }
-      SliderEvent::Release(value) => {
-        row.dragging = false;
-        row.pending = None;
-        set(value.start(), cx);
-      }
-    }
-  }
-
   /// Moves the sliders to the backends' values, all but ones being dragged
   pub fn sync(&mut self, window: &mut Window, cx: &mut Context<DashboardPanel>) {
     for row in &self.rows {
-      let value = entry(cx, row.id)
-        .and_then(|e| (e.value)(cx))
-        .filter(|_| !row.dragging);
-      let Some(value) = value else {
+      let Some(value) = entry(cx, row.id).and_then(|e| (e.value)(cx)) else {
         continue;
       };
-      row.state.update(cx, |state, cx| {
-        if (state.value().start() - value).abs() > 0.005 {
-          state.set_value(value, window, cx);
+      row.slider.update(cx, |slider, cx| {
+        if (slider.state().read(cx).value().start() - value).abs() > 0.005 {
+          slider.sync(value, window, cx);
         }
       });
     }
@@ -129,11 +88,7 @@ impl Sliders {
         let row = self.rows.iter().find(|r| r.id == entry.id)?;
         let value = (entry.value)(cx)?;
         // a drag shows where it is, not where the backend got to
-        let shown = if row.dragging {
-          row.state.read(cx).value().start()
-        } else {
-          value
-        };
+        let shown = row.slider.read(cx).shown(value, cx);
         Some(self.row(entry, row, shown * 100., cx))
       })
       .collect();
@@ -168,9 +123,11 @@ impl Sliders {
       .gap_1()
       .child(icon)
       .child(
-        div()
-          .flex_1()
-          .child(Slider::new(&row.state).px_2().cursor_pointer()),
+        div().flex_1().child(
+          Slider::new(row.slider.read(cx).state())
+            .px_2()
+            .cursor_pointer(),
+        ),
       )
       .child(
         div()
