@@ -5,23 +5,15 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use corona_components::time::span;
+use corona_components::{
+  format::{Base, bytes},
+  time::span,
+};
 use corona_launcher::{Action, Command, DetailView, Icon, Meta, Outcome, View, registry, simple};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use crate::SystemMonitorExt;
-
-fn bytes(n: u64) -> String {
-  const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let mut value = n as f64;
-  let mut unit = 0;
-  while value >= 1024. && unit < UNITS.len() - 1 {
-    value /= 1024.;
-    unit += 1;
-  }
-  format!("{value:.1} {}", UNITS[unit])
-}
 
 fn row(
   key: impl Into<SharedString>,
@@ -57,8 +49,8 @@ fn sysinfo(cx: &App) -> View {
       t!("app.launcher.info.memory"),
       format!(
         "{} / {}",
-        bytes(sample.memory_used),
-        bytes(sample.memory_total)
+        bytes(sample.memory_used, Base::Binary),
+        bytes(sample.memory_total, Base::Binary)
       ),
     ));
     rows.push(row(
@@ -70,8 +62,8 @@ fn sysinfo(cx: &App) -> View {
         "\n- **{}** {} {} / {}",
         disk.mount_point,
         t!("app.launcher.info.free"),
-        bytes(disk.available),
-        bytes(disk.total)
+        bytes(disk.available, Base::Binary),
+        bytes(disk.total, Base::Binary)
       ));
     }
   }

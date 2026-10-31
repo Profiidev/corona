@@ -41,7 +41,7 @@ pub(crate) mod jobs;
 mod model;
 mod partition;
 mod storage;
-mod types;
+pub(crate) mod types;
 mod ui;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

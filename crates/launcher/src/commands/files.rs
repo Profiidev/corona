@@ -8,6 +8,7 @@ use std::{
   time::{Duration, Instant, SystemTime},
 };
 
+use corona_components::format::{Base, bytes};
 use corona_config::{ConfigProvider, expand_home, launcher::FilesConfig};
 use corona_desktop::apps;
 use gpui_kit::{App, AppContext, Entity, Global, SharedString, assets::IconName};
@@ -176,17 +177,6 @@ fn is_image(path: &Path) -> bool {
   matches!(icon_for(path), IconName::FileImage)
 }
 
-fn size(bytes: u64) -> String {
-  const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let mut value = bytes as f64;
-  let mut unit = 0;
-  while value >= 1024. && unit < UNITS.len() - 1 {
-    value /= 1024.;
-    unit += 1;
-  }
-  format!("{value:.1} {}", UNITS[unit])
-}
-
 fn modified(time: SystemTime) -> String {
   jiff::Timestamp::try_from(time)
     .map(|ts| {
@@ -341,7 +331,7 @@ impl Command for FileRow {
     if meta.is_file() {
       metadata.push((
         t!("app.launcher.files.size").into(),
-        size(meta.len()).into(),
+        bytes(meta.len(), Base::Binary).into(),
       ));
     }
     if let Ok(time) = meta.modified() {

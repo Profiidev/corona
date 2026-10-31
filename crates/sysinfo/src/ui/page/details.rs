@@ -10,23 +10,14 @@ use gpui_kit::{
 };
 
 use crate::ui::page::{SysinfoPanel, card};
-use corona_components::i18n::decimal;
+use corona_components::{
+  format::{Base, bytes},
+  i18n::decimal,
+};
 use rust_i18n::t;
 
 const DETAIL_TEXT: f32 = 10.;
 const DETAIL_LINE: f32 = 14.;
-
-const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-
-fn size(bytes: u64) -> String {
-  let mut value = bytes as f64;
-  let mut unit = 0;
-  while value >= 1024. && unit < UNITS.len() - 1 {
-    value /= 1024.;
-    unit += 1;
-  }
-  format!("{} {}", decimal(value, 1), UNITS[unit])
-}
 
 pub(crate) fn rate(bytes_per_second: f64) -> String {
   match bytes_per_second {
@@ -192,15 +183,19 @@ impl SysinfoPanel {
         "RAM".into(),
         format!(
           "{} / {}",
-          size(sample.memory_used),
-          size(sample.memory_total)
+          bytes(sample.memory_used, Base::Binary),
+          bytes(sample.memory_total, Base::Binary)
         ),
       ))
       .child(value(
         theme,
         IconName::ArrowLeftRight,
         t!("app.resource.swap").into(),
-        format!("{} / {}", size(sample.swap_used), size(sample.swap_total)),
+        format!(
+          "{} / {}",
+          bytes(sample.swap_used, Base::Binary),
+          bytes(sample.swap_total, Base::Binary)
+        ),
       ));
 
     for disk in &sample.disks {
@@ -210,7 +205,11 @@ impl SysinfoPanel {
         theme,
         IconName::HardDrive,
         disk.mount_point.clone(),
-        format!("{} / {} ({percent:.0}%)", size(used), size(disk.total)),
+        format!(
+          "{} / {} ({percent:.0}%)",
+          bytes(used, Base::Binary),
+          bytes(disk.total, Base::Binary)
+        ),
       ));
     }
     resources
@@ -223,7 +222,7 @@ mod tests {
 
   #[test]
   fn formatting() {
-    assert_eq!(size(24_266_000_000), "22.6 GiB");
+    assert_eq!(bytes(24_266_000_000, Base::Binary), "22.6 GiB");
     assert_eq!(rate(15_900.), "15.9 kB/s");
     assert_eq!(rate(2_500_000.), "2.5 MB/s");
     assert_eq!(

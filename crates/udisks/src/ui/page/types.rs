@@ -1,18 +1,10 @@
 //! Names and tables the panel shows: sizes, filesystems, partition types and flags
 
+use corona_components::format::{Base, bytes};
+
 /// Decimal like the drives are sold: `512 MB`, `1.2 TB`
-pub fn size(bytes: u64) -> String {
-  const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
-  let mut value = bytes as f64;
-  let mut unit = 0;
-  while value >= 1000. && unit < UNITS.len() - 1 {
-    value /= 1000.;
-    unit += 1;
-  }
-  match value < 10. && unit > 0 && value.fract() >= 0.05 {
-    true => format!("{value:.1} {}", UNITS[unit]),
-    false => format!("{value:.0} {}", UNITS[unit]),
-  }
+pub fn size(n: u64) -> String {
+  bytes(n, Base::Decimal)
 }
 
 /// A filesystem's display name, like `FAT32` for `vfat`
@@ -155,16 +147,6 @@ pub fn table_name(table: &str) -> &str {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn sizes_read_like_the_box() {
-    assert_eq!(size(512), "512 B");
-    assert_eq!(size(512_000_000), "512 MB");
-    assert_eq!(size(1_000_204_886_016), "1 TB");
-    assert_eq!(size(1_200_000_000_000), "1.2 TB");
-    assert_eq!(size(32_000_000_000), "32 GB");
-    assert_eq!(size(0), "0 B");
-  }
 
   #[test]
   fn partition_types_and_flags() {

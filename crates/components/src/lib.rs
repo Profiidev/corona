@@ -5,6 +5,7 @@ pub mod assets;
 pub mod async_listener;
 pub mod components;
 pub mod filter;
+pub mod format;
 pub mod i18n;
 pub mod settings_fields;
 pub mod time;

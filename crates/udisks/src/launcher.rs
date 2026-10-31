@@ -12,13 +12,7 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-fn size(bytes: u64) -> String {
-  let gb = bytes as f64 / 1e9;
-  match gb >= 1. {
-    true => format!("{gb:.1} GB"),
-    false => format!("{:.0} MB", bytes as f64 / 1e6),
-  }
-}
+use crate::ui::page::types::size;
 
 fn observe(notify: Notify, cx: &mut App) -> Vec<Subscription> {
   let udisks = cx.udisks().clone();
