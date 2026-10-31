@@ -2,27 +2,17 @@
 
 use std::time::SystemTime;
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use corona_config::Units;
-use futures_lite::AsyncReadExt;
-use gpui_kit::http_client::{AsyncBody, HttpClient};
-use serde::{Deserialize, de::DeserializeOwned};
+use corona_reqwest::get_json;
+use gpui_kit::http_client::HttpClient;
+use serde::Deserialize;
 
 use crate::state::{Current, Day, Hour, Location, Weather};
 
 const FORECAST: &str = "https://api.open-meteo.com/v1/forecast";
 const DAYS: u32 = 7;
 const HOURS: u32 = 24;
-
-async fn get<T: DeserializeOwned>(client: &dyn HttpClient, url: &str) -> Result<T> {
-  let mut response = client.get(url, AsyncBody::empty(), true).await?;
-  let mut body = String::new();
-  response.body_mut().read_to_string(&mut body).await?;
-  if !response.status().is_success() {
-    bail!("{} answered {}: {}", url, response.status(), body.trim());
-  }
-  serde_json::from_str(&body).with_context(|| format!("parsing {url}"))
-}
 
 pub(crate) async fn forecast(
   client: &dyn HttpClient,
@@ -41,7 +31,7 @@ pub(crate) async fn forecast(
      &forecast_days={DAYS}&forecast_hours={HOURS}&timezone=auto{units_query}",
     location.latitude, location.longitude
   );
-  let response: Forecast = get(client, &url).await?;
+  let response: Forecast = get_json(client, &url).await?;
   Ok(response.into_weather(location, units))
 }
 
@@ -361,6 +351,7 @@ pub(crate) mod tests {
   #[test]
   fn body_streaming_io_failure() {
     use futures_lite::io::AsyncRead;
+    use gpui_kit::http_client::AsyncBody;
     use std::io;
     use std::pin::Pin;
     use std::task::{Context, Poll};

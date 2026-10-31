@@ -1,23 +1,13 @@
 //! Open-Meteo geocoding: free, no API key.
 
-use anyhow::{Context, Result, bail};
-use futures_lite::AsyncReadExt;
-use gpui_kit::http_client::{AsyncBody, HttpClient};
-use serde::{Deserialize, de::DeserializeOwned};
+use anyhow::{Context, Result};
+use corona_reqwest::get_json;
+use gpui_kit::http_client::HttpClient;
+use serde::Deserialize;
 
 use crate::Location;
 
 const GEOCODING: &str = "https://geocoding-api.open-meteo.com/v1/search";
-
-async fn get<T: DeserializeOwned>(client: &dyn HttpClient, url: &str) -> Result<T> {
-  let mut response = client.get(url, AsyncBody::empty(), true).await?;
-  let mut body = String::new();
-  response.body_mut().read_to_string(&mut body).await?;
-  if !response.status().is_success() {
-    bail!("{} answered {}: {}", url, response.status(), body.trim());
-  }
-  serde_json::from_str(&body).with_context(|| format!("parsing {url}"))
-}
 
 pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Location> {
   #[derive(Deserialize)]
@@ -44,7 +34,7 @@ pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Locat
     "{GEOCODING}?name={}&count={count}&format=json",
     encode(name)
   );
-  let places = get::<Results>(client, &url)
+  let places = get_json::<Results>(client, &url)
     .await?
     .results
     .unwrap_or_default();

@@ -11,6 +11,7 @@ categories.workspace = true
 [dependencies]
 corona_config.workspace = true
 corona_utils.workspace = true
+corona_reqwest.workspace = true
 gpui-kit.workspace = true
 zbus.workspace = true
 anyhow.workspace = true

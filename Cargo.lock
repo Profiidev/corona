@@ -2091,6 +2091,7 @@ dependencies = [
  "anyhow",
  "corona-zbus-geoclue2",
  "corona_config",
+ "corona_reqwest",
  "corona_utils",
  "dirs 7.0.0",
  "flume",
