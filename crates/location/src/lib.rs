@@ -1,11 +1,14 @@
 //! Where the device is: configured coordinates, GeoClue or a geocoded city, kept current for
 //! weather and nightlight.
 
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use corona_config::{ConfigProvider, LocationConfig, observe_section};
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{
+  error::ErrorLogExt,
+  persist::{load_json, save_json},
+};
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 use serde::{Deserialize, Serialize};
 use zbus::Connection;
@@ -70,17 +73,11 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 fn load_cache() -> Option<Location> {
-  serde_json::from_slice(&fs::read(cache_path()?).ok()?).ok()
+  load_json(&cache_path()?)
 }
 
 fn save_cache(location: &Location) -> Result<()> {
-  let Some(path) = cache_path() else {
-    return Ok(());
-  };
-  if let Some(dir) = path.parent() {
-    fs::create_dir_all(dir)?;
-  }
-  Ok(fs::write(path, serde_json::to_vec(location)?)?)
+  cache_path().map_or(Ok(()), |path| save_json(&path, location))
 }
 
 async fn resolve(
@@ -597,7 +594,7 @@ mod tests {
       dir.path().join("corona").join("location.json")
     );
     assert_eq!(load_cache(), Some(place));
-    fs::write(cache_path().unwrap(), b"{ broken").unwrap();
+    std::fs::write(cache_path().unwrap(), b"{ broken").unwrap();
     assert!(load_cache().is_none());
     assert!(cache_path_in(None).is_none());
   }

@@ -2549,6 +2549,8 @@ dependencies = [
  "flume",
  "futures-lite",
  "gpui-kit",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "uuid",

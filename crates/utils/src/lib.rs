@@ -4,6 +4,7 @@ pub mod display;
 pub mod entity;
 pub mod error;
 pub mod level;
+pub mod persist;
 pub mod stream;
 #[cfg(feature = "test-support")]
 pub mod test_bus;

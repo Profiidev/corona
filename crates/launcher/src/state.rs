@@ -5,8 +5,8 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use corona_utils::persist::{load_json, save_json};
 use serde::{Serialize, de::DeserializeOwned};
-use tracing::warn;
 
 /// `~/.local/state/corona/launcher`, where runtime data lives
 pub fn dir() -> Option<PathBuf> {
@@ -19,27 +19,19 @@ pub fn dir() -> Option<PathBuf> {
 
 /// `name.json` from the state dir, the default when missing or broken
 pub fn load<T: DeserializeOwned + Default>(name: &str) -> T {
-  let Some(path) = dir().map(|d| d.join(format!("{name}.json"))) else {
-    return T::default();
-  };
-  match std::fs::read(&path) {
-    Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
-      warn!("ignoring {}: {e}", path.display());
-      T::default()
-    }),
-    Err(_) => T::default(),
-  }
+  dir()
+    .and_then(|d| load_json(&d.join(format!("{name}.json"))))
+    .unwrap_or_default()
 }
 
 /// Writes `name.json` through a temp file, so a crash keeps the old one
 pub fn save<T: Serialize>(name: &str, value: &T) -> Result<()> {
-  let dir = dir().context("no state directory")?;
-  std::fs::create_dir_all(&dir)?;
-  let path = dir.join(format!("{name}.json"));
-  let tmp = dir.join(format!(".{name}.json.tmp"));
-  std::fs::write(&tmp, serde_json::to_vec(value)?)?;
-  std::fs::rename(tmp, path)?;
-  Ok(())
+  save_json(
+    &dir()
+      .context("no state directory")?
+      .join(format!("{name}.json")),
+    value,
+  )
 }
 
 pub fn now() -> u64 {

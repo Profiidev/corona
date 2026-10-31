@@ -1,10 +1,14 @@
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, observe_section};
 use corona_js::ScriptExt;
 use corona_location::LocationExt;
-use corona_utils::{Buses, error::ErrorLogExt};
+use corona_utils::{
+  Buses,
+  error::ErrorLogExt,
+  persist::{load_json, save_json},
+};
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 
 pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass};
@@ -63,7 +67,7 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 fn load_cache_from(path: Option<PathBuf>) -> Option<Weather> {
-  serde_json::from_slice(&fs::read(path?).ok()?).ok()
+  load_json(&path?)
 }
 
 fn load_cache() -> Option<Weather> {
@@ -71,13 +75,7 @@ fn load_cache() -> Option<Weather> {
 }
 
 fn save_cache_to(path: Option<PathBuf>, weather: &Weather) -> Result<()> {
-  let Some(path) = path else {
-    return Ok(());
-  };
-  if let Some(dir) = path.parent() {
-    fs::create_dir_all(dir)?;
-  }
-  Ok(fs::write(path, serde_json::to_vec(weather)?)?)
+  path.map_or(Ok(()), |path| save_json(&path, weather))
 }
 
 fn save_cache(weather: &Weather) -> Result<()> {
@@ -245,7 +243,7 @@ mod tests {
       dir.path().join("corona").join("weather.json")
     );
     assert_eq!(load_cache(), Some(sample()));
-    fs::write(cache_path().unwrap(), b"{ broken").unwrap();
+    std::fs::write(cache_path().unwrap(), b"{ broken").unwrap();
     assert!(load_cache().is_none());
   }
 
@@ -253,7 +251,7 @@ mod tests {
   fn cache_write_failures_are_errors() {
     let dir = isolated_cache();
     // a file where the directory should go
-    fs::write(dir.path().join("corona"), b"").unwrap();
+    std::fs::write(dir.path().join("corona"), b"").unwrap();
     assert!(save_cache(&sample()).is_err());
   }
 
