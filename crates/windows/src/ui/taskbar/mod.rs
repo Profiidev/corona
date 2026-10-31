@@ -9,9 +9,10 @@ use corona_components::{
   components::window_icon::WindowIcon,
 };
 use corona_compositor::{CompositorExt, types};
-use corona_config::{APP_NAME, ConfigProvider, observe_section, placement::Placement};
+use corona_config::{ConfigProvider, observe_section, placement::Placement};
 use corona_surface::{
   input_region::InputRegion,
+  overlay::{layer_options, root},
   panel::{Align, PanelStyle, panel_shape},
   per_display::PerDisplay,
   popup::{self, popup_options},
@@ -19,9 +20,8 @@ use corona_surface::{
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, InteractiveElement,
   IntoElement, MouseButton, ParentElement, Pixels, Render, Size, StatefulInteractiveElement,
-  Styled, Subscription, Task, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
-  WindowKind, WindowOptions,
-  base::{ElementExt, Root},
+  Styled, Subscription, Task, Window, WindowOptions,
+  base::ElementExt,
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
@@ -90,30 +90,24 @@ fn width(apps: usize, icon_size: f32) -> f32 {
 fn create_taskbar(cx: &mut App, display: DisplayId) -> Result<AnyWindowHandle> {
   let handle = cx.open_window(
     WindowOptions {
-      kind: WindowKind::LayerShell(LayerShellOptions {
-        anchor: Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-        exclusive_zone: Some(px(-1.)),
-        exclusive_edge: None,
-        margin: None,
-        layer: Layer::Top,
-        namespace: NAMESPACE.to_string(),
-        keyboard_interactivity: KeyboardInteractivity::None,
-      }),
-      window_background: WindowBackgroundAppearance::Transparent,
-      window_decorations: Some(WindowDecorations::Client),
       inactive_frame_interval: None,
-      app_id: Some(APP_NAME.to_string()),
-      display_id: Some(display),
-      titlebar: None,
-      window_bounds: Some(WindowBounds::Windowed(Bounds {
-        origin: point(px(0.), px(0.)),
-        size: Size::new(px(0.), px(height(cx.config().taskbar.icon_size))),
-      })),
-      ..Default::default()
+      ..layer_options(
+        LayerShellOptions {
+          anchor: Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+          exclusive_zone: Some(px(-1.)),
+          exclusive_edge: None,
+          margin: None,
+          layer: Layer::Top,
+          namespace: NAMESPACE.to_string(),
+          keyboard_interactivity: KeyboardInteractivity::None,
+        },
+        Some(display),
+        Size::new(px(0.), px(height(cx.config().taskbar.icon_size))),
+      )
     },
     |window, cx| {
       let view = cx.new(Taskbar::new);
-      cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+      root(view, window, cx)
     },
   )?;
 
@@ -285,7 +279,7 @@ impl Taskbar {
     let opened = cx.open_window(options, |window, cx| {
       let preview = cx.new(|cx| Preview::new(taskbar, windows, center, cx));
       view = Some(preview.clone());
-      cx.new(|cx| Root::new(preview, window, cx).bg(gpui_kit::transparent_black()))
+      root(preview, window, cx)
     });
     match (opened, view) {
       (Ok(handle), Some(view)) => self.preview = Some((class, handle.into(), view)),
@@ -480,6 +474,8 @@ impl Render for Taskbar {
 
 #[cfg(test)]
 pub(crate) mod tests {
+  use gpui_kit::component::Root;
+
   use super::*;
 
   pub fn window(address: &str, class: &str, width: i32, height: i32) -> types::Window {

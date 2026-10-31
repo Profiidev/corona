@@ -3,24 +3,23 @@ use std::time::Duration;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
 use corona_config::{
-  APP_NAME, ConfigProvider,
+  ConfigProvider,
   placement::{Placement, PlacementBounds, PlacementStyle},
 };
 use gpui_kit::{
   AnyView, AnyWindowHandle, AppContext, Background, Bounds, Canvas, Context, DisplayId,
   InteractiveElement, IntoElement, MouseButton, ParentElement, Path, PathBuilder, Pixels, Render,
-  Size, Styled, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
-  WindowKind, WindowOptions, canvas,
+  Size, Styled, WeakEntity, Window, WindowOptions, canvas,
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point,
   prelude::FluentBuilder,
   px,
 };
 
-use crate::panel::{
-  PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData,
+use crate::{
+  overlay::layer_options,
+  panel::{PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData},
 };
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
@@ -236,26 +235,20 @@ impl Render for Blocker {
 
 fn blocker_options(display_id: DisplayId) -> WindowOptions {
   WindowOptions {
-    kind: WindowKind::LayerShell(LayerShellOptions {
-      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-      exclusive_zone: None,
-      exclusive_edge: None,
-      margin: None,
-      layer: Layer::Top,
-      namespace: format!("{PANEL_NAME}_blocker"),
-      keyboard_interactivity: KeyboardInteractivity::None,
-    }),
-    window_background: WindowBackgroundAppearance::Transparent,
-    window_decorations: Some(WindowDecorations::Client),
     inactive_frame_interval: None,
-    app_id: Some(APP_NAME.to_string()),
-    titlebar: None,
-    window_bounds: Some(WindowBounds::Windowed(Bounds {
-      origin: point(px(0.), px(0.)),
-      size: Size::new(px(0.), px(0.)),
-    })),
-    display_id: Some(display_id),
-    ..Default::default()
+    ..layer_options(
+      LayerShellOptions {
+        anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+        exclusive_zone: None,
+        exclusive_edge: None,
+        margin: None,
+        layer: Layer::Top,
+        namespace: format!("{PANEL_NAME}_blocker"),
+        keyboard_interactivity: KeyboardInteractivity::None,
+      },
+      Some(display_id),
+      Size::default(),
+    )
   }
 }
 
@@ -330,7 +323,7 @@ pub fn panel_path(
 
 #[cfg(test)]
 mod tests {
-  use gpui_kit::size;
+  use gpui_kit::{WindowKind, point, size};
 
   use super::*;
 

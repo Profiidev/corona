@@ -5,17 +5,11 @@ mod overlays;
 mod rows;
 pub mod style;
 
-use anyhow::{Context as _, Result};
-use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider};
-use corona_utils::display::display_id_for;
+use anyhow::Result;
+use corona_config::ConfigProvider;
+use corona_surface::overlay::open_on_focused;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Global, KeyBinding, Pixels, Point, Size, Styled,
-  WeakEntity, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
-  WindowOptions,
-  component::Root,
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  px, size,
+  AnyWindowHandle, App, AppContext, Global, KeyBinding, Pixels, Size, WeakEntity, px, size,
 };
 
 pub use launcher::Launcher;
@@ -138,44 +132,21 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
     });
   }
 
-  let monitor = cx.compositor().active_monitor(cx).name.clone();
-  let display = display_id_for(&monitor, cx).context("no display for the focused monitor")?;
-
   // a full screen surface with the card centred: the keyboard stays with it wherever the
   // pointer is, and a click beside the card is what closes it
-  let options = WindowOptions {
-    kind: WindowKind::LayerShell(LayerShellOptions {
-      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-      exclusive_zone: Some(px(-1.)),
-      exclusive_edge: None,
-      margin: None,
-      layer: Layer::Overlay,
-      namespace: NAMESPACE.to_string(),
-      keyboard_interactivity: KeyboardInteractivity::Exclusive,
-    }),
-    window_background: WindowBackgroundAppearance::Transparent,
-    window_decorations: Some(WindowDecorations::Client),
-    app_id: Some(APP_NAME.to_string()),
-    titlebar: None,
-    window_bounds: Some(WindowBounds::Windowed(Bounds {
-      origin: Point::default(),
-      size: size(px(0.), px(0.)),
-    })),
-    display_id: Some(display),
-    ..Default::default()
-  };
-
   let mut view = WeakEntity::new_invalid();
-  let handle = cx.open_window(options, |window, cx| {
-    let launcher = cx.new(|cx| Launcher::new(open, window, cx));
-    view = launcher.downgrade();
-    launcher.update(cx, |launcher, cx| launcher.focus(window, cx));
-    cx.new(|cx| Root::new(launcher, window, cx).bg(gpui_kit::transparent_black()))
-  })?;
-  cx.set_global(LauncherState {
-    handle: handle.into(),
-    view,
-  });
+  let handle = open_on_focused(
+    NAMESPACE,
+    |_| {},
+    cx,
+    |window, cx| {
+      let launcher = cx.new(|cx| Launcher::new(open, window, cx));
+      view = launcher.downgrade();
+      launcher.update(cx, |launcher, cx| launcher.focus(window, cx));
+      launcher
+    },
+  )?;
+  cx.set_global(LauncherState { handle, view });
   Ok(())
 }
 

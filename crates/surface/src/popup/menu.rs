@@ -1,11 +1,10 @@
-use crate::{bar::BarState, popup::popup_options};
+use crate::{bar::BarState, overlay::root, popup::popup_options};
 use corona_config::{ConfigProvider, placement::Placement};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Bounds, Context, Div, ElementId, Focusable, Global,
   InteractiveElement, KeyDownEvent, ParentElement, Pixels, Render, Size, Stateful, Styled, Window,
-  component::{ActiveTheme, Root},
-  div, px,
+  component::ActiveTheme, div, px,
 };
 
 pub const WIDTH: f32 = 240.;
@@ -63,7 +62,7 @@ pub fn open_at<V: Render + Focusable>(
     let view = cx.new(|cx| build(window, cx));
     let focus = view.read(cx).focus_handle(cx);
     window.focus(&focus, cx);
-    cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+    root(view, window, cx)
   });
   if let Ok(handle) = opened.log_err() {
     cx.set_global(OpenPopup(Some(handle.into())));

@@ -2,19 +2,17 @@ use std::collections::{BTreeSet, HashMap};
 
 use anyhow::{Context as _, Result};
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, placement::Placement};
+use corona_config::placement::Placement;
 use corona_utils::display::display_id_for;
 use gpui_kit::{
-  App, AppContext, Bounds, Context, DisplayId, Entity, EntityId, Global, Pixels, Size, Styled,
-  WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
-  WindowOptions,
-  component::Root,
+  App, AppContext, Bounds, Context, DisplayId, Entity, EntityId, Global, Pixels, Size, WeakEntity,
+  Window, WindowOptions,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px,
 };
 
 use crate::{
   bar::{BarState, Widget, base::Bar},
+  overlay::{layer_options, root},
   panel::{
     PANEL_NAME,
     align::Align,
@@ -239,26 +237,20 @@ impl PanelState {
   ) -> Result<()> {
     cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-          exclusive_zone: None,
-          exclusive_edge: None,
-          margin: None,
-          layer: Layer::Top,
-          namespace: PANEL_NAME.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::OnDemand,
-        }),
-        window_background: WindowBackgroundAppearance::Transparent,
-        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: point(px(0.), px(0.)),
-          size: Size::new(px(0.), px(0.)),
-        })),
-        display_id,
-        ..Default::default()
+        ..layer_options(
+          LayerShellOptions {
+            anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+            exclusive_zone: None,
+            exclusive_edge: None,
+            margin: None,
+            layer: Layer::Top,
+            namespace: PANEL_NAME.to_string(),
+            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+          },
+          display_id,
+          Size::default(),
+        )
       },
       |window, cx| {
         let view = cx.new(|cx| BasePanel::new(&data, align, placement, display_id, window, cx));
@@ -272,7 +264,7 @@ impl PanelState {
           },
         );
 
-        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+        root(view, window, cx)
       },
     )?;
 
@@ -367,7 +359,7 @@ impl AppPanelExt for App {
 mod tests {
   use std::{cell::Cell, rc::Rc};
 
-  use gpui_kit::TestAppContext;
+  use gpui_kit::{TestAppContext, px};
 
   use super::*;
   use crate::{

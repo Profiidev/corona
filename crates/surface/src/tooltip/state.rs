@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use corona_config::placement::Placement;
 use gpui_kit::{
-  AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Size, Styled, WeakEntity,
-  Window, component::Root, px,
+  AnyView, AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Size, WeakEntity, Window, px,
 };
 
 use crate::{
   bar::BarState,
+  overlay::root,
   popup::popup_options,
   tooltip::{
     base::{BORDER, BaseTooltip},
@@ -117,7 +117,7 @@ impl TooltipState {
           },
         );
 
-        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+        root(view, window, cx)
       },
     )?;
 

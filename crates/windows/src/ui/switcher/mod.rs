@@ -4,13 +4,10 @@ use anyhow::{Context as _, Result};
 use corona_compositor::{Compositor, CompositorExt};
 use corona_config::ConfigProvider;
 use corona_utils::display::display_id_for;
-use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Global, Styled, WeakEntity, WindowBackgroundAppearance,
-  base::Root,
-};
+use gpui_kit::{AnyWindowHandle, App, AppContext, Global, WeakEntity, WindowBackgroundAppearance};
 
 use crate::{commands::switcher::Options, ui::switcher::view::Switcher};
-use corona_surface::overlay::{OverlayState, fullscreen_options};
+use corona_surface::overlay::{OverlayState, fullscreen_options, root};
 
 const NAMESPACE: &str = "corona_switcher";
 
@@ -62,7 +59,7 @@ impl SwitcherState {
       view = switcher.downgrade();
       let focus = switcher.read(cx).focus.clone();
       window.focus(&focus, cx);
-      cx.new(|cx| Root::new(switcher, window, cx).bg(gpui_kit::transparent_black()))
+      root(switcher, window, cx)
     })?;
     cx.set_global(SwitcherState {
       overlays: vec![handle.into()],

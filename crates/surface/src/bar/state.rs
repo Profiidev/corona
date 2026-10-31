@@ -1,21 +1,19 @@
 use std::collections::HashMap;
 
 use anyhow::{Context as _, Result};
-use corona_config::{
-  APP_NAME, ConfigProvider, bar::BarConfig, observe_section, placement::Placement,
-};
+use corona_config::{ConfigProvider, bar::BarConfig, observe_section, placement::Placement};
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Axis, Bounds, DisplayId, Entity, EntityId, Global, Pixels,
-  Styled, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
-  WindowId, WindowKind, WindowOptions,
-  component::{ActiveTheme, Root},
+  AnyWindowHandle, App, AppContext, Axis, DisplayId, Entity, EntityId, Global, Pixels, WeakEntity,
+  Window, WindowId, WindowOptions,
+  component::ActiveTheme,
   layer_shell::{KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px,
+  px,
 };
 use tracing::error;
 
 use crate::{
   bar::{BAR_NAMESPACE, Widget, base::Bar, widgets::WidgetData},
+  overlay::{layer_options, root},
   per_display::PerDisplay,
 };
 
@@ -125,26 +123,20 @@ impl BarState {
 
     let handle = cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: config.position.anchor(),
-          exclusive_zone: Some(px(config.thickness)),
-          exclusive_edge: None,
-          margin: None,
-          layer: Layer::Top,
-          namespace: BAR_NAMESPACE.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::OnDemand,
-        }),
-        window_decorations: Some(WindowDecorations::Client),
-        window_background: WindowBackgroundAppearance::Transparent,
         inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: point(px(0.), px(0.)),
-          size: config.position.size(config.thickness + flare, 0.),
-        })),
-        display_id: Some(display_id),
-        ..Default::default()
+        ..layer_options(
+          LayerShellOptions {
+            anchor: config.position.anchor(),
+            exclusive_zone: Some(px(config.thickness)),
+            exclusive_edge: None,
+            margin: None,
+            layer: Layer::Top,
+            namespace: BAR_NAMESPACE.to_string(),
+            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+          },
+          Some(display_id),
+          config.position.size(config.thickness + flare, 0.),
+        )
       },
       |window, cx| {
         let view = cx.new(|cx| Bar::new(config, window, cx, display_id, display_uuid));
@@ -155,7 +147,7 @@ impl BarState {
           .bars
           .insert(window.window_handle().window_id(), view.downgrade());
 
-        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+        root(view, window, cx)
       },
     )?;
 

@@ -1,17 +1,18 @@
-use crate::per_display::PerDisplay;
 use anyhow::Result;
 use corona_components::assets::image_source;
-use corona_config::{APP_NAME, ConfigProvider, observe_section};
+use corona_config::{ConfigProvider, observe_section};
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, ImageSource,
-  IntoElement, ObjectFit, ParentElement, Render, Size, Styled, StyledImage, Window,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  AnyWindowHandle, App, AppContext, Context, DisplayId, Entity, Global, ImageSource, IntoElement,
+  ObjectFit, ParentElement, Render, Size, Styled, StyledImage, Window, WindowBackgroundAppearance,
+  WindowOptions,
   base::Root,
   div, img,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px,
+  px,
 };
 use tracing::error;
+
+use crate::{overlay::layer_options, per_display::PerDisplay};
 
 const NAMESPACE: &str = "corona_wallpaper";
 
@@ -61,25 +62,20 @@ fn create_wallpaper(
 ) -> Result<AnyWindowHandle> {
   let handle = cx.open_window(
     WindowOptions {
-      kind: WindowKind::LayerShell(LayerShellOptions {
-        anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-        exclusive_zone: Some(px(-1.)),
-        exclusive_edge: None,
-        margin: None,
-        layer: Layer::Background,
-        namespace: NAMESPACE.to_string(),
-        keyboard_interactivity: KeyboardInteractivity::None,
-      }),
       window_background: WindowBackgroundAppearance::Opaque,
-      window_decorations: Some(WindowDecorations::Client),
-      app_id: Some(APP_NAME.to_string()),
-      display_id: Some(display),
-      titlebar: None,
-      window_bounds: Some(WindowBounds::Windowed(Bounds {
-        origin: point(px(0.), px(0.)),
-        size: Size::new(px(0.), px(0.)),
-      })),
-      ..Default::default()
+      ..layer_options(
+        LayerShellOptions {
+          anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+          exclusive_zone: Some(px(-1.)),
+          exclusive_edge: None,
+          margin: None,
+          layer: Layer::Background,
+          namespace: NAMESPACE.to_string(),
+          keyboard_interactivity: KeyboardInteractivity::None,
+        },
+        Some(display),
+        Size::default(),
+      )
     },
     |window, cx| {
       let view = cx.new(|_| Wallpaper { source });

@@ -4,14 +4,14 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use corona_config::{APP_NAME, ConfigProvider, observe_section};
-use corona_surface::per_display::PerDisplay;
+use corona_config::{ConfigProvider, observe_section};
+use corona_surface::{
+  overlay::{layer_options, root},
+  per_display::PerDisplay,
+};
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
-  PathBuilder, Pixels, Render, Size, Styled, Window, WindowBackgroundAppearance, WindowBounds,
-  WindowDecorations, WindowKind, WindowOptions,
-  base::Root,
-  canvas,
+  AnyWindowHandle, App, AppContext, Context, DisplayId, Entity, Global, IntoElement, PathBuilder,
+  Pixels, Render, Size, Styled, Window, canvas,
   component::ActiveTheme,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -84,8 +84,8 @@ fn create(
   cx: &mut App,
 ) -> Result<AnyWindowHandle> {
   let handle = cx.open_window(
-    WindowOptions {
-      kind: WindowKind::LayerShell(LayerShellOptions {
+    layer_options(
+      LayerShellOptions {
         anchor: corner,
         // 0: stays clear of other surfaces' exclusive zones, like a bar's
         exclusive_zone: Some(px(0.)),
@@ -94,23 +94,15 @@ fn create(
         layer: Layer::Top,
         namespace: NAMESPACE.to_string(),
         keyboard_interactivity: KeyboardInteractivity::None,
-      }),
-      window_background: WindowBackgroundAppearance::Transparent,
-      window_decorations: Some(WindowDecorations::Client),
-      app_id: Some(APP_NAME.to_string()),
-      display_id: Some(display),
-      titlebar: None,
-      window_bounds: Some(WindowBounds::Windowed(Bounds {
-        origin: point(px(0.), px(0.)),
-        size: Size::new(radius, radius),
-      })),
-      ..Default::default()
-    },
+      },
+      Some(display),
+      Size::new(radius, radius),
+    ),
     |window, cx| {
       // clicks go through to what is below
       window.set_input_region(Some(&[]));
       let view = cx.new(|_| Corner { corner });
-      cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+      root(view, window, cx)
     },
   )?;
   Ok(handle.into())

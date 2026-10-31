@@ -14,7 +14,10 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use corona_surface::overlay::password::{PasswordCard, follow_queue, open_window, password_input};
+use corona_surface::overlay::{
+  open_on_focused,
+  password::{PasswordCard, follow_queue, password_input},
+};
 
 const NAMESPACE: &str = "corona_drive_password";
 
@@ -43,7 +46,12 @@ pub fn init(cx: &mut App) {
 }
 
 fn open_dialog(cx: &mut App) -> anyhow::Result<AnyWindowHandle> {
-  open_window(NAMESPACE, cx, DrivePasswordDialog::new)
+  open_on_focused(
+    NAMESPACE,
+    |_| {},
+    cx,
+    |window, cx| cx.new(|cx| DrivePasswordDialog::new(window, cx)),
+  )
 }
 
 /// Queues a request for `device`'s passphrase; the receiver fails on cancel

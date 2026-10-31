@@ -11,15 +11,13 @@ use crate::{Filter, NotificationsExt, Urgency, strip_markup};
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
-use corona_config::{
-  APP_NAME, ConfigProvider, NotificationConfig, NotificationPosition, observe_section,
-};
+use corona_config::{ConfigProvider, NotificationConfig, NotificationPosition, observe_section};
+use corona_surface::overlay::{layer_options, root};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, IntoElement,
-  ParentElement, Pixels, Point, Render, Size, StatefulInteractiveElement, Styled, Window,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
-  base::{ElementExt, Root},
+  AnyWindowHandle, App, AppContext, Context, DisplayId, Entity, Global, IntoElement, ParentElement,
+  Pixels, Render, Size, StatefulInteractiveElement, Styled, Window, WindowOptions,
+  base::ElementExt,
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
@@ -293,34 +291,28 @@ impl NotificationPopups {
     let config = cx.config().notification.clone();
     let handle = cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP
-            | match config.position {
-              NotificationPosition::TopLeft => Anchor::LEFT,
-              NotificationPosition::TopRight => Anchor::RIGHT,
-            },
-          exclusive_zone: None,
-          exclusive_edge: None,
-          margin: Some((px(config.offset), px(0.), px(0.), px(0.))),
-          layer: Layer::Overlay,
-          namespace: NAMESPACE.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::OnDemand,
-        }),
-        window_background: WindowBackgroundAppearance::Transparent,
-        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: Point::default(),
-          size: Size::new(px(config.width + config.offset), px(1.)),
-        })),
-        display_id: display,
-        ..Default::default()
+        ..layer_options(
+          LayerShellOptions {
+            anchor: Anchor::TOP
+              | match config.position {
+                NotificationPosition::TopLeft => Anchor::LEFT,
+                NotificationPosition::TopRight => Anchor::RIGHT,
+              },
+            exclusive_zone: None,
+            exclusive_edge: None,
+            margin: Some((px(config.offset), px(0.), px(0.), px(0.))),
+            layer: Layer::Overlay,
+            namespace: NAMESPACE.to_string(),
+            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+          },
+          display,
+          Size::new(px(config.width + config.offset), px(1.)),
+        )
       },
       {
         let view = view.clone();
-        |window, cx| cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+        |window, cx| root(view, window, cx)
       },
     )?;
 

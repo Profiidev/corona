@@ -2,17 +2,19 @@ use std::time::Duration;
 
 use anyhow::Result;
 use corona_compositor::CompositorExt;
-use corona_config::{APP_NAME, ConfigProvider, OsdPosition};
+use corona_config::{ConfigProvider, OsdPosition};
 use corona_utils::display::display_id_for;
 use gpui_kit::{
-  AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Global, IntoElement,
-  ParentElement, Pixels, Point, Render, SharedString, Size, Styled, Task, WeakEntity, Window,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
-  component::{ActiveTheme, Root},
+  AnyView, AnyWindowHandle, App, AppContext, Context, DisplayId, Global, IntoElement,
+  ParentElement, Pixels, Render, SharedString, Size, Styled, Task, WeakEntity, Window,
+  WindowOptions,
+  component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   px,
 };
+
+use crate::overlay::{layer_options, root};
 
 const NAMESPACE: &str = "corona_osd";
 const BORDER: f32 = 2.;
@@ -190,32 +192,26 @@ impl OsdState {
     let (anchor, margin) = edge(config.position, px(config.offset));
     let handle = cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor,
-          exclusive_zone: None,
-          exclusive_edge: None,
-          margin: Some(margin),
-          layer: Layer::Overlay,
-          namespace: NAMESPACE.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::None,
-        }),
-        window_background: WindowBackgroundAppearance::Transparent,
-        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: Point::default(),
+        ..layer_options(
+          LayerShellOptions {
+            anchor,
+            exclusive_zone: None,
+            exclusive_edge: None,
+            margin: Some(margin),
+            layer: Layer::Overlay,
+            namespace: NAMESPACE.to_string(),
+            keyboard_interactivity: KeyboardInteractivity::None,
+          },
+          display,
           size,
-        })),
-        display_id: display,
-        ..Default::default()
+        )
       },
       |window, cx| {
         window.set_input_region(Some(&[]));
         let view = cx.new(|_| BaseOsd { content });
         base = view.downgrade();
-        cx.new(|cx| Root::new(view, window, cx).bg(gpui_kit::transparent_black()))
+        root(view, window, cx)
       },
     )?;
     Ok((handle.into(), base))

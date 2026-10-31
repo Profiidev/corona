@@ -13,17 +13,18 @@ use corona_capture::{
 };
 use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, ConfigProvider};
+use corona_surface::overlay::{layer_options, root};
 use corona_utils::display::{display_id_for, display_uuid};
 use futures::{
   channel::oneshot,
   future::{Either, FutureExt, Shared, select},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Size, Styled, Task,
+  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Size, Task,
   WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
   base::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point, px, transparent_black,
+  point, px,
 };
 
 use corona_components::animation::animation_duration;
@@ -346,31 +347,25 @@ impl LockState {
   ) -> Result<AnyWindowHandle> {
     let window = cx.open_window(
       WindowOptions {
-        kind: WindowKind::LayerShell(LayerShellOptions {
-          anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-          exclusive_zone: Some(px(-1.)),
-          exclusive_edge: None,
-          margin: None,
-          layer: Layer::Overlay,
-          namespace: UNLOCK_NAMESPACE.to_string(),
-          keyboard_interactivity: KeyboardInteractivity::None,
-        }),
-        display_id: Some(display),
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-          origin: point(px(0.), px(0.)),
-          size: Size::new(px(0.), px(0.)),
-        })),
-        window_background: WindowBackgroundAppearance::Transparent,
-        window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
-        app_id: Some(APP_NAME.to_string()),
-        titlebar: None,
-        ..Default::default()
+        ..layer_options(
+          LayerShellOptions {
+            anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+            exclusive_zone: Some(px(-1.)),
+            exclusive_edge: None,
+            margin: None,
+            layer: Layer::Overlay,
+            namespace: UNLOCK_NAMESPACE.to_string(),
+            keyboard_interactivity: KeyboardInteractivity::None,
+          },
+          Some(display),
+          Size::default(),
+        )
       },
       |window, cx| {
         window.set_input_region(Some(&[]));
         let view = cx.new(|_| Unlock::new(background, start));
-        cx.new(|cx| Root::new(view, window, cx).bg(transparent_black()))
+        root(view, window, cx)
       },
     )?;
 

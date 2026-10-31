@@ -1,16 +1,12 @@
 mod style;
 mod view;
 
-use anyhow::{Context as _, Result};
-use corona_compositor::CompositorExt;
-use corona_config::APP_NAME;
-use corona_utils::display::display_id_for;
+use anyhow::Result;
+use corona_surface::overlay::open_on_focused;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Styled,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
-  component::Root,
-  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  px, size,
+  AnyWindowHandle, App, AppContext, Global, Pixels, Point,
+  layer_shell::{KeyboardInteractivity, LayerShellOptions},
+  px,
 };
 
 pub use view::Keyboard;
@@ -39,35 +35,13 @@ pub fn open(cx: &mut App) -> Result<()> {
   if is_open(cx) {
     return Ok(());
   }
-  let monitor = cx.compositor().active_monitor(cx).name.clone();
-  let display = display_id_for(&monitor, cx).context("no display for the focused monitor")?;
-  let options = WindowOptions {
-    kind: WindowKind::LayerShell(LayerShellOptions {
-      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-      // inside bars and docks, over nothing they reserve
-      exclusive_zone: Some(px(0.)),
-      exclusive_edge: None,
-      margin: None,
-      layer: Layer::Overlay,
-      namespace: NAMESPACE.to_string(),
-      keyboard_interactivity: KeyboardInteractivity::None,
-    }),
-    window_background: WindowBackgroundAppearance::Transparent,
-    window_decorations: Some(WindowDecorations::Client),
-    app_id: Some(APP_NAME.to_string()),
-    titlebar: None,
-    window_bounds: Some(WindowBounds::Windowed(Bounds {
-      origin: Point::default(),
-      size: size(px(0.), px(0.)),
-    })),
-    display_id: Some(display),
-    ..Default::default()
+  let tweak = |layer: &mut LayerShellOptions| {
+    // inside bars and docks, over nothing they reserve
+    layer.exclusive_zone = Some(px(0.));
+    layer.keyboard_interactivity = KeyboardInteractivity::None;
   };
-  let handle = cx.open_window(options, |window, cx| {
-    let keyboard = cx.new(Keyboard::new);
-    cx.new(|cx| Root::new(keyboard, window, cx).bg(gpui_kit::transparent_black()))
-  })?;
-  cx.set_global(OskWindow(handle.into()));
+  let handle = open_on_focused(NAMESPACE, tweak, cx, |_, cx| cx.new(Keyboard::new))?;
+  cx.set_global(OskWindow(handle));
   Ok(())
 }
 

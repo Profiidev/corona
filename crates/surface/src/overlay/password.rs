@@ -3,14 +3,11 @@
 
 use std::collections::VecDeque;
 
-use anyhow::Context as _;
-use corona_compositor::CompositorExt;
-use corona_utils::display::display_id_for;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, ClickEvent, Context, Div, Entity, ParentElement, Render,
-  SharedString, Styled, Window, WindowBackgroundAppearance,
+  AnyWindowHandle, App, AppContext, ClickEvent, Div, Entity, ParentElement, SharedString, Styled,
+  Window,
   assets::IconName,
-  base::{Root, input::InputState},
+  base::input::InputState,
   component::{
     ActiveTheme, Icon, Sizable,
     button::{Button, ButtonVariants},
@@ -21,8 +18,6 @@ use gpui_kit::{
   px,
 };
 use rust_i18n::t;
-
-use crate::overlay::fullscreen_options;
 
 const WIDTH: f32 = 360.;
 
@@ -51,25 +46,6 @@ pub fn follow_queue<T: 'static, K: PartialEq + 'static>(
     }
   })
   .detach();
-}
-
-/// A transparent overlay window on the focused monitor showing `build`'s view
-pub fn open_window<V: Render + 'static>(
-  namespace: &str,
-  cx: &mut App,
-  build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static,
-) -> anyhow::Result<AnyWindowHandle> {
-  let monitor = cx.compositor().active_monitor(cx).name.clone();
-  let display = display_id_for(&monitor, cx)
-    .or_else(|| cx.primary_display().map(|d| d.id()))
-    .context("no display")?;
-  let mut options = fullscreen_options(namespace, display);
-  options.window_background = WindowBackgroundAppearance::Transparent;
-  let handle = cx.open_window(options, |window, cx| {
-    let dialog = cx.new(|cx| build(window, cx));
-    cx.new(|cx| Root::new(dialog, window, cx).bg(gpui_kit::transparent_black()))
-  })?;
-  Ok(handle.into())
 }
 
 /// A masked input focused for typing a password

@@ -1,12 +1,15 @@
 use crate::polkit::Polkit;
 use corona_components::components::input::on_enter;
 use gpui_kit::{
-  AnyWindowHandle, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
+  AnyWindowHandle, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
   KeyDownEvent, Render, SharedString, Subscription, Window, base::input::InputState,
 };
 use rust_i18n::t;
 
-use corona_surface::overlay::password::{PasswordCard, follow_queue, open_window, password_input};
+use corona_surface::overlay::{
+  open_on_focused,
+  password::{PasswordCard, follow_queue, password_input},
+};
 
 const NAMESPACE: &str = "corona_polkit";
 
@@ -18,7 +21,12 @@ pub(crate) fn init(cx: &mut App) {
 }
 
 fn open_dialog(cx: &mut App) -> anyhow::Result<AnyWindowHandle> {
-  open_window(NAMESPACE, cx, PolkitDialog::new)
+  open_on_focused(
+    NAMESPACE,
+    |_| {},
+    cx,
+    |window, cx| cx.new(|cx| PolkitDialog::new(window, cx)),
+  )
 }
 
 struct PolkitDialog {
