@@ -1,14 +1,14 @@
+use std::rc::Rc;
+
 use crate::polkit::Polkit;
-use corona_components::components::input::on_enter;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-  KeyDownEvent, Render, SharedString, Subscription, Window, base::input::InputState,
+  AnyWindowHandle, App, AppContext, Context, IntoElement, Render, SharedString, Window,
 };
 use rust_i18n::t;
 
 use corona_surface::overlay::{
   open_on_focused,
-  password::{PasswordCard, follow_queue, password_input},
+  password::{PasswordCard, PasswordForm, follow_queue},
 };
 
 const NAMESPACE: &str = "corona_polkit";
@@ -30,20 +30,15 @@ fn open_dialog(cx: &mut App) -> anyhow::Result<AnyWindowHandle> {
 }
 
 struct PolkitDialog {
-  focus: FocusHandle,
-  input: Entity<InputState>,
+  form: PasswordForm,
   error: Option<SharedString>,
   checking: bool,
-  _submit: Subscription,
 }
 
 impl PolkitDialog {
   fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-    let input = password_input(window, cx);
     Self {
-      focus: cx.focus_handle(),
-      _submit: on_enter(&input, window, cx, Self::submit),
-      input,
+      form: PasswordForm::new(window, cx, Self::submit),
       error: None,
       checking: false,
     }
@@ -54,7 +49,7 @@ impl PolkitDialog {
       return;
     }
     self.checking = true;
-    let password = self.input.read(cx).value().to_string();
+    let password = self.form.input.read(cx).value().to_string();
     let check = cx.global::<Polkit>().authenticate(password, cx);
     cx.spawn_in(window, async move |this, cx| {
       let result = check.await;
@@ -68,7 +63,7 @@ impl PolkitDialog {
             Some(t!("app.lock.auth_failed").into())
           }
         };
-        this.input.update(cx, |input, cx| {
+        this.form.input.update(cx, |input, cx| {
           input.set_value("", window, cx);
           input.focus(window, cx);
         });
@@ -77,12 +72,6 @@ impl PolkitDialog {
     })
     .detach();
     cx.notify();
-  }
-
-  fn on_key(&mut self, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-    if e.keystroke.key == "escape" {
-      cx.global::<Polkit>().clone().cancel(cx);
-    }
   }
 }
 
@@ -96,16 +85,14 @@ impl Render for PolkitDialog {
       title: t!("app.polkit.title").into(),
       message: message.into(),
       detail: Some(t!("app.polkit.as_user", user = user).into()),
-      input: &self.input,
+      form: &self.form,
       error: self.error.clone(),
       busy: self.checking,
       submit_label: t!("app.polkit.authenticate").into(),
-      on_cancel: Box::new(|_, _, cx| cx.global::<Polkit>().clone().cancel(cx)),
+      on_cancel: Rc::new(|_, cx| cx.global::<Polkit>().clone().cancel(cx)),
       on_submit: Box::new(cx.listener(|this, _, window, cx| this.submit(window, cx))),
     }
     .render(cx)
-    .track_focus(&self.focus)
-    .capture_key_down(cx.listener(Self::on_key))
   }
 }
 
@@ -113,7 +100,7 @@ impl Render for PolkitDialog {
 mod tests {
   use std::os::unix::fs::PermissionsExt;
 
-  use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
+  use gpui_kit::{self as gpui, Entity, TestAppContext, VisualTestContext};
   use tempfile::TempDir;
 
   use super::*;
@@ -167,6 +154,7 @@ mod tests {
   fn enter(dialog: &Entity<PolkitDialog>, password: &str, cx: &mut VisualTestContext) {
     dialog.update_in(cx, |dialog, window, cx| {
       dialog
+        .form
         .input
         .update(cx, |input, cx| input.set_value(password, window, cx));
       dialog.submit(window, cx);
@@ -185,7 +173,7 @@ mod tests {
       assert_eq!(dialog.error, Some(t!("app.lock.wrong").into()));
       assert!(!dialog.checking);
       // cleared for the next try
-      assert_eq!(dialog.input.read(cx).value(), "");
+      assert_eq!(dialog.form.input.read(cx).value(), "");
     });
     assert!(cx.read(|cx| polkit.request(cx).is_some()));
 

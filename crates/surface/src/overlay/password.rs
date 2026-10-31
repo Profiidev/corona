@@ -1,11 +1,12 @@
 //! What the polkit and drive passphrase dialogs share: a window per queued request and the card
 //! asking for a password
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, rc::Rc};
 
+use corona_components::components::input::on_enter;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, ClickEvent, Div, Entity, ParentElement, SharedString, Styled,
-  Window,
+  AnyWindowHandle, App, AppContext, ClickEvent, Context, Div, Entity, FocusHandle,
+  InteractiveElement, KeyDownEvent, ParentElement, SharedString, Styled, Subscription, Window,
   assets::IconName,
   base::input::InputState,
   component::{
@@ -48,18 +49,35 @@ pub fn follow_queue<T: 'static, K: PartialEq + 'static>(
   .detach();
 }
 
-/// A masked input focused for typing a password
-pub fn password_input(window: &mut Window, cx: &mut App) -> Entity<InputState> {
-  let input = cx.new(|cx| {
-    InputState::new(window, cx)
-      .masked(true)
-      .placeholder(t!("app.lock.password"))
-  });
-  input.update(cx, |input, cx| input.focus(window, cx));
-  input
+/// A masked input focused for typing a password, submitting on enter
+pub struct PasswordForm {
+  focus: FocusHandle,
+  pub input: Entity<InputState>,
+  _submit: Subscription,
+}
+
+impl PasswordForm {
+  pub fn new<T: 'static>(
+    window: &mut Window,
+    cx: &mut Context<T>,
+    submit: fn(&mut T, &mut Window, &mut Context<T>),
+  ) -> Self {
+    let input = cx.new(|cx| {
+      InputState::new(window, cx)
+        .masked(true)
+        .placeholder(t!("app.lock.password"))
+    });
+    input.update(cx, |input, cx| input.focus(window, cx));
+    Self {
+      focus: cx.focus_handle(),
+      _submit: on_enter(&input, window, cx, submit),
+      input,
+    }
+  }
 }
 
 type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type OnCancel = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The dimmed backdrop with a card asking for a password
 pub struct PasswordCard<'a> {
@@ -69,11 +87,12 @@ pub struct PasswordCard<'a> {
   pub message: SharedString,
   /// muted, under the message
   pub detail: Option<SharedString>,
-  pub input: &'a Entity<InputState>,
+  pub form: &'a PasswordForm,
   pub error: Option<SharedString>,
   pub busy: bool,
   pub submit_label: SharedString,
-  pub on_cancel: OnClick,
+  /// on the cancel button and escape
+  pub on_cancel: OnCancel,
   pub on_submit: OnClick,
 }
 
@@ -81,8 +100,15 @@ impl PasswordCard<'_> {
   pub fn render(self, cx: &App) -> Div {
     let theme = cx.theme();
     let on_cancel = self.on_cancel;
+    let on_escape = on_cancel.clone();
     let on_submit = self.on_submit;
     div()
+      .track_focus(&self.form.focus)
+      .capture_key_down(move |e: &KeyDownEvent, window, cx| {
+        if e.keystroke.key == "escape" {
+          on_escape(window, cx);
+        }
+      })
       .size_full()
       .flex()
       .items_center()
@@ -117,7 +143,11 @@ impl PasswordCard<'_> {
                 .child(detail),
             )
           })
-          .child(Input::new(self.input).mask_toggle().disabled(self.busy))
+          .child(
+            Input::new(&self.form.input)
+              .mask_toggle()
+              .disabled(self.busy),
+          )
           .when_some(self.error, |d, error| {
             d.child(div().text_xs().text_color(theme.colors.danger).child(error))
           })
@@ -129,7 +159,7 @@ impl PasswordCard<'_> {
               .child(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)))
                   .label(t!("app.common.cancel"))
-                  .on_click(move |e, window, cx| on_cancel(e, window, cx)),
+                  .on_click(move |_, window, cx| on_cancel(window, cx)),
               )
               .child(
                 Button::new(SharedString::from(format!("{}-submit", self.id)))

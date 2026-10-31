@@ -3,20 +3,19 @@
 
 use std::{
   collections::VecDeque,
+  rc::Rc,
   sync::atomic::{AtomicU64, Ordering},
 };
 
-use corona_components::components::input::on_enter;
 use futures::channel::oneshot;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement,
-  IntoElement, KeyDownEvent, Render, Subscription, Window, base::input::InputState,
+  AnyWindowHandle, App, AppContext, Context, Entity, Global, IntoElement, Render, Window,
 };
 use rust_i18n::t;
 
 use corona_surface::overlay::{
   open_on_focused,
-  password::{PasswordCard, follow_queue, password_input},
+  password::{PasswordCard, PasswordForm, follow_queue},
 };
 
 const NAMESPACE: &str = "corona_drive_password";
@@ -80,32 +79,21 @@ fn answer(password: Option<String>, cx: &mut App) {
 }
 
 struct DrivePasswordDialog {
-  focus: FocusHandle,
-  input: Entity<InputState>,
-  _submit: Subscription,
+  form: PasswordForm,
 }
 
 impl DrivePasswordDialog {
   fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-    let input = password_input(window, cx);
     Self {
-      focus: cx.focus_handle(),
-      _submit: on_enter(&input, window, cx, Self::submit),
-      input,
+      form: PasswordForm::new(window, cx, Self::submit),
     }
   }
 
   /// an empty passphrase is no answer, cancel is
   fn submit(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-    let password = self.input.read(cx).value().to_string();
+    let password = self.form.input.read(cx).value().to_string();
     if !password.is_empty() {
       answer(Some(password), cx);
-    }
-  }
-
-  fn on_key(&mut self, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-    if e.keystroke.key == "escape" {
-      answer(None, cx);
     }
   }
 }
@@ -122,16 +110,14 @@ impl Render for DrivePasswordDialog {
       title: t!("app.drive_password.title").into(),
       message: t!("app.drive_password.message", device = device).into(),
       detail: None,
-      input: &self.input,
+      form: &self.form,
       error: None,
       busy: false,
       submit_label: t!("app.drive_password.unlock").into(),
-      on_cancel: Box::new(|_, _, cx| answer(None, cx)),
+      on_cancel: Rc::new(|_, cx| answer(None, cx)),
       on_submit: Box::new(cx.listener(|this, _, window, cx| this.submit(window, cx))),
     }
     .render(cx)
-    .track_focus(&self.focus)
-    .capture_key_down(cx.listener(Self::on_key))
   }
 }
 
@@ -145,6 +131,7 @@ mod tests {
   fn enter(dialog: &Entity<DrivePasswordDialog>, password: &str, cx: &mut VisualTestContext) {
     dialog.update_in(cx, |dialog, window, cx| {
       dialog
+        .form
         .input
         .update(cx, |input, cx| input.set_value(password, window, cx));
       dialog.submit(window, cx);
