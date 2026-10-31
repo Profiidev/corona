@@ -15,20 +15,19 @@ use gpui_kit::{
   px, relative,
 };
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, cell::Cell, rc::Rc, time::Duration};
+use std::{borrow::Cow, cell::Cell, rc::Rc};
 use uuid::Uuid;
 
 use crate::ui::page::{SysinfoPanel, details::rate};
 use corona_components::i18n::decimal;
 use corona_surface::control_center::Standalone;
-use corona_surface::tooltip::TextTooltip;
+use corona_surface::tooltip::{TextTooltip, after_hover_delay};
 use rust_i18n::t;
 
 const METER_HEIGHT: f32 = 14.;
 const METER_WIDTH: f32 = 3.;
 /// network meters are relative to the busiest recent second
 const MIN_RATE: f64 = 1024. * 1024.;
-const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -269,11 +268,7 @@ impl Render for Resource {
           return;
         }
 
-        this.hover = Some(cx.spawn_in(window, async move |e, cx| {
-          cx.background_executor().timer(TOOLTIP_DELAY).await;
-          e.update_in(cx, |this, window, cx| this.show_tooltip(window, cx))
-            .ok();
-        }));
+        this.hover = Some(after_hover_delay(window, cx, Self::show_tooltip));
       }))
       .child(
         Button::<_, Standalone<SysinfoPanel>>::new(

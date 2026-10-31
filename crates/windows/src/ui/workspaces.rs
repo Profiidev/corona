@@ -18,12 +18,11 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use corona_surface::tooltip::TextTooltip;
+use corona_surface::tooltip::{TextTooltip, after_hover_delay};
 
 const ICON_SIZE: u16 = 18;
 const ICON_GAP: f32 = 2.;
 const WIDTH_CHANGE: Duration = Duration::from_millis(400);
-const TOOLTIP_DELAY: Duration = Duration::from_millis(200);
 
 pub struct Workspaces {
   windows: HashMap<String, Vec<types::Window>>,
@@ -319,30 +318,26 @@ fn workspace_windows(
                 return;
               }
 
-              this.current_hover = Some(cx.spawn_in(window, {
+              this.current_hover = Some(after_hover_delay(window, cx, {
                 let address = address.clone();
                 let bounds = bounds.clone();
                 let id = id.clone();
-                async move |e, cx| {
-                  cx.background_executor().timer(TOOLTIP_DELAY).await;
-                  e.update_in(cx, |this, window, cx| {
-                    let Some(title) = this
-                      .windows
-                      .get(&id)
-                      .and_then(|windows| windows.iter().find(|w| w.address == address))
-                      .map(|w| w.title.clone())
-                    else {
-                      return;
-                    };
-                    if cx
-                      .show_bar_tooltip(TextTooltip::new(title), bounds.get(), window)
-                      .log_err()
-                      .is_ok()
-                    {
-                      this.current_tooltip = Some((id, address, window.window_handle()));
-                    }
-                  })
-                  .ok();
+                move |this, window, cx| {
+                  let Some(title) = this
+                    .windows
+                    .get(&id)
+                    .and_then(|windows| windows.iter().find(|w| w.address == address))
+                    .map(|w| w.title.clone())
+                  else {
+                    return;
+                  };
+                  if cx
+                    .show_bar_tooltip(TextTooltip::new(title), bounds.get(), window)
+                    .log_err()
+                    .is_ok()
+                  {
+                    this.current_tooltip = Some((id, address, window.window_handle()));
+                  }
                 }
               }));
             }
