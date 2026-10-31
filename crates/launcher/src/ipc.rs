@@ -1,4 +1,4 @@
-//! The launcher's IPC commands: opening it, dmenu, the calculator, trash, processes and timers
+//! The launcher's IPC commands: opening it, dmenu, the calculator, trash and timers
 
 use anyhow::{Context, Result, anyhow, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
   commands::{
     calculator::calculate,
-    processes::{by_port, kill, snapshot},
     storage::{empty_trash, trash_count},
     timers::{self, Kind},
   },
@@ -26,9 +25,6 @@ pub(crate) fn register(cx: &mut App) {
     .register::<Evaluate>()
     .register::<TrashCount>()
     .register::<EmptyTrash>()
-    .register::<KillProcess>()
-    .register::<KillPort>()
-    .register::<ListProcesses>()
     .register::<StartTimer>()
     .register::<ListTimers>()
     .register::<StopTimer>();
@@ -184,54 +180,6 @@ impl IpcCommand for EmptyTrash {
 
   fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
     empty_trash()
-  }
-}
-
-pub struct KillProcess;
-
-impl IpcCommand for KillProcess {
-  const COMMAND: &'static str = "process:kill";
-
-  /// The pid and whether to force
-  type Payload = (u32, bool);
-  type Response = ();
-
-  fn handle((pid, force): Self::Payload, _: &mut App) -> Result<Self::Response> {
-    kill(pid, force)
-  }
-}
-
-/// Process ids with their names
-pub struct ListProcesses;
-
-impl IpcCommand for ListProcesses {
-  const COMMAND: &'static str = "process:list";
-
-  type Payload = ();
-  type Response = Vec<(u32, String)>;
-
-  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let mut list: Vec<(u32, String)> = snapshot().into_iter().map(|p| (p.pid, p.name)).collect();
-    list.sort();
-    Ok(list)
-  }
-}
-
-pub struct KillPort;
-
-impl IpcCommand for KillPort {
-  const COMMAND: &'static str = "process:kill_port";
-
-  type Payload = u16;
-  /// The pids that got the signal
-  type Response = Vec<u32>;
-
-  fn handle(port: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let pids = by_port(port)?;
-    for pid in &pids {
-      kill(*pid, false)?;
-    }
-    Ok(pids)
   }
 }
 

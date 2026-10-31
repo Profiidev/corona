@@ -9,8 +9,11 @@ use crate::sampler::Update;
 
 pub use crate::state::{Disk, Gpu, GpuSample, GpuVendor, History, Sample, SystemInfo};
 
+pub mod cli;
+pub mod commands;
 mod gpu;
 mod launcher;
+mod processes;
 mod sampler;
 pub mod script;
 mod settings;
@@ -74,6 +77,8 @@ pub fn init(cx: &mut App, _: &Buses) {
   start(cx);
   ui::register(cx);
   launcher::register(cx);
+  processes::register(cx);
+  commands::register(cx);
   settings::register(cx);
   register_script(cx.script_mut());
 }

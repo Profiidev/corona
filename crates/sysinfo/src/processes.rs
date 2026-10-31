@@ -12,7 +12,7 @@ use gpui_kit::{App, AppContext, Entity, assets::IconName};
 use rust_i18n::t;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::{
+use corona_launcher::{
   args::{ArgSpec, ArgValue},
   command::{Accessory, Action, Command, Confirm, Icon, Meta, Outcome},
   kit::{ListSource, watch},
@@ -167,14 +167,14 @@ fn process_row(p: Process) -> Rc<dyn Command> {
         Action::sync(
           "copy_pid",
           t!("app.launcher.processes.copy_pid"),
-          move |_, _, _| Ok(Outcome::Copy(crate::Clip::Text(pid.to_string()))),
+          move |_, _, _| Ok(Outcome::Copy(corona_launcher::Clip::Text(pid.to_string()))),
         ),
       ]
     },
   )
 }
 
-fn processes_view() -> crate::View {
+fn processes_view() -> corona_launcher::View {
   let selected = Rc::new(Cell::new(0));
   let filter = Filter {
     label: t!("app.launcher.processes.sort").into(),
@@ -235,10 +235,10 @@ fn processes_view() -> crate::View {
   .into_view()
 }
 
-pub fn init(cx: &mut App) {
+pub(crate) fn register(cx: &mut App) {
   registry::register_all(
     [
-      crate::kit::opener(
+      corona_launcher::kit::opener(
         "processes",
         t!("app.launcher.processes.title"),
         Icon::Tile(IconName::Activity, 0.),

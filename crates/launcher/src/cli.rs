@@ -1,4 +1,4 @@
-//! `corona ipc launcher`, `corona ipc process` and `corona launcher`
+//! `corona ipc launcher` and `corona launcher`
 
 use std::io::{BufRead, IsTerminal};
 
@@ -11,9 +11,8 @@ use corona_ipc::{
 };
 
 use crate::ipc::{
-  Close, Dmenu, DmenuRequest, EmptyTrash, Evaluate, KillPort, KillProcess, ListCommands,
-  ListProcesses, ListTimers, Open, OpenRequest, StartTimer, StopTimer, TimerRequest, Toggle,
-  TrashCount,
+  Close, Dmenu, DmenuRequest, EmptyTrash, Evaluate, ListCommands, ListTimers, Open, OpenRequest,
+  StartTimer, StopTimer, TimerRequest, Toggle, TrashCount,
 };
 
 #[derive(Subcommand)]
@@ -80,35 +79,6 @@ impl TrashCommands {
     match result {
       Ok(n) => println!("{n}"),
       Err(e) => tracing::error!("Failed to use the trash: {}", e),
-    }
-  }
-}
-
-#[derive(Subcommand)]
-pub enum ProcessCommands {
-  /// Send SIGTERM, or SIGKILL with --force
-  Kill {
-    #[arg(add = ArgValueCandidates::new(processes))]
-    pid: u32,
-    #[arg(long)]
-    force: bool,
-  },
-  /// Kill what listens on a TCP port
-  KillPort { port: u16 },
-}
-
-impl ProcessCommands {
-  pub fn run(self) {
-    match self {
-      ProcessCommands::Kill { pid, force } => done(KillProcess::send((pid, force)), "kill"),
-      ProcessCommands::KillPort { port } => match KillPort::send(port) {
-        Ok(pids) => {
-          for pid in pids {
-            println!("{pid}");
-          }
-        }
-        Err(e) => tracing::error!("Failed to kill by port: {}", e),
-      },
     }
   }
 }
@@ -188,15 +158,6 @@ impl TimerCommands {
 
 fn commands() -> Vec<CompletionCandidate> {
   described(ListCommands::send(()).unwrap_or_default())
-}
-
-fn processes() -> Vec<CompletionCandidate> {
-  described(
-    ListProcesses::send(())
-      .unwrap_or_default()
-      .into_iter()
-      .map(|(pid, name)| (pid.to_string(), name)),
-  )
 }
 
 fn timers() -> Vec<CompletionCandidate> {
