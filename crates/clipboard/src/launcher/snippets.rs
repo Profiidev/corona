@@ -2,7 +2,10 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use crate::ClipboardExt;
+use crate::{
+  ClipboardExt,
+  placeholders::{self, Env},
+};
 use corona_config::{
   ConfigProvider,
   launcher::{Quicklink, Snippet},
@@ -17,7 +20,6 @@ use corona_launcher::{
   commands::calculator::calculate,
   kit::{ListSource, opener},
   matching::{Match, Query, Tier, default_match},
-  placeholders::{self, Env},
   registry,
   view::{Field, FieldKind, FormValues, FormView, ListView, View},
 };

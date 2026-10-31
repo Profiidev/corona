@@ -73,11 +73,20 @@ struct GroupItems {
   items: fn(&App) -> Vec<SettingItem>,
 }
 
+/// A group a crate adds to another crate's page, listed by [`shared_groups`]
+struct GroupTitle {
+  page: &'static str,
+  group: &'static str,
+  order: i32,
+  title: fn() -> SharedString,
+}
+
 /// The settings pages, in sidebar order, and the bar widgets' option forms
 #[derive(Default)]
 pub struct SettingsRegistry {
   pages: Vec<PageEntry>,
   group_items: Vec<GroupItems>,
+  groups: Vec<GroupTitle>,
   widget_options: BTreeMap<&'static str, WidgetOptions>,
   on_open: Option<fn(&mut App)>,
 }
@@ -99,8 +108,8 @@ impl SettingsRegistry {
     self
   }
 
-  /// Adds `items` to the group `group` of page `page`, which another crate builds with
-  /// [`shared_group`]; the lowest `order` comes first
+  /// Adds `items` to the group `group` of page `page`, which the page builds with
+  /// [`shared_items`] or a crate adds with [`Self::group`]; the lowest `order` comes first
   pub fn group_items(
     &mut self,
     page: &'static str,
@@ -118,6 +127,31 @@ impl SettingsRegistry {
         items,
       },
     );
+    self
+  }
+
+  /// Adds the group `group` titled `title` to page `page`, which lists it with
+  /// [`shared_groups`] while it has items; the lowest `order` comes first, and adding a
+  /// group again keeps the first
+  pub fn group(
+    &mut self,
+    page: &'static str,
+    group: &'static str,
+    order: i32,
+    title: fn() -> SharedString,
+  ) -> &mut Self {
+    if !(self.groups.iter()).any(|g| g.page == page && g.group == group) {
+      let at = self.groups.partition_point(|g| g.order <= order);
+      self.groups.insert(
+        at,
+        GroupTitle {
+          page,
+          group,
+          order,
+          title,
+        },
+      );
+    }
     self
   }
 
@@ -162,6 +196,7 @@ impl SettingsExt for App {
     static EMPTY: SettingsRegistry = SettingsRegistry {
       pages: Vec::new(),
       group_items: Vec::new(),
+      groups: Vec::new(),
       widget_options: BTreeMap::new(),
       on_open: None,
     };
@@ -244,6 +279,14 @@ pub fn group(title: impl Into<SharedString>, items: Vec<SettingItem>) -> Setting
   SettingGroup::new().title(title).items(items)
 }
 
+/// The items crates added to the group `group` of page `page`
+pub fn shared_items(page: &str, group: &str, cx: &App) -> Vec<SettingItem> {
+  (cx.settings().group_items.iter())
+    .filter(|g| g.page == page && g.group == group)
+    .flat_map(|g| (g.items)(cx))
+    .collect()
+}
+
 /// The group `group` of page `page` with the items crates added to it, none without any
 pub fn shared_group(
   title: impl Into<SharedString>,
@@ -251,11 +294,19 @@ pub fn shared_group(
   group: &str,
   cx: &App,
 ) -> Option<SettingGroup> {
-  let items: Vec<_> = (cx.settings().group_items.iter())
-    .filter(|g| g.page == page && g.group == group)
-    .flat_map(|g| (g.items)(cx))
-    .collect();
+  let items = shared_items(page, group, cx);
   (!items.is_empty()).then(|| self::group(title, items))
+}
+
+/// The groups crates added to page `page`, with their items, leaving out empty ones
+pub fn shared_groups(page: &str, cx: &App) -> Vec<SettingGroup> {
+  (cx.settings().groups.iter())
+    .filter(|g| g.page == page)
+    .filter_map(|g| {
+      let items = shared_items(page, g.group, cx);
+      (!items.is_empty()).then(|| self::group((g.title)(), items))
+    })
+    .collect()
 }
 
 pub fn item(
@@ -378,9 +429,11 @@ mod tests {
       cx.settings_mut()
         .group_items("system", "polling", 10, items::<10>)
         .group_items("system", "polling", 0, items::<0>)
-        .group_items("system", "other", 5, items::<5>);
-      assert!(shared_group("Polling", "system", "polling", cx).is_some());
-      assert!(shared_group("None", "system", "none", cx).is_none());
+        .group_items("system", "other", 5, items::<5>)
+        .group("system", "polling", 0, || "Polling".into())
+        .group("system", "none", 0, || "None".into());
+      // the empty group is left out
+      assert_eq!(shared_groups("system", cx).len(), 1);
     });
     assert_eq!(CALLS.with(|c| c.take()), [0, 10]);
   }

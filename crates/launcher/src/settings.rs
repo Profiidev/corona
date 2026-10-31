@@ -1,13 +1,13 @@
-//! The launcher page: behavior, every command's alias and visibility, quicklinks,
-//! snippets and where results come from
+//! The launcher page: behavior, every command's alias and visibility and where results
+//! come from, with the groups other crates add, like quicklinks and snippets
 
 use std::rc::Rc;
 
 use corona_config::{
   Config, ConfigProvider,
-  launcher::{CommandConfig, Quicklink, SearchEngine, Snippet},
+  launcher::{CommandConfig, SearchEngine},
 };
-use corona_settings::{SettingsPage, group, item, page};
+use corona_settings::{SettingsPage, group, item, page, shared_groups, shared_items};
 use gpui_kit::{
   App, AppContext, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
   Window,
@@ -29,8 +29,8 @@ use corona_components::settings_fields::{
 
 use crate::registry::Registry;
 
-/// The launcher page: behavior, every command's alias and visibility,
-/// quicklinks, snippets and where results come from
+/// The launcher page: behavior, every command's alias and visibility and where
+/// results come from
 pub struct LauncherSettings;
 
 impl SettingsPage for LauncherSettings {
@@ -46,83 +46,11 @@ fn page_of(cx: &App) -> SettingPage {
   page(
     t!("app.settings.launcher.title"),
     IconName::Search,
-    vec![
-      behavior(cx),
-      commands(cx),
-      group(
-        t!("app.settings.launcher.groups.quicklinks"),
-        vec![records_item(
-          "quicklinks",
-          t!("app.settings.launcher.quicklinks.title"),
-          t!("app.settings.launcher.quicklinks.description"),
-          &[
-            t!("app.settings.launcher.fields.name"),
-            t!("app.settings.launcher.fields.url"),
-            t!("app.settings.launcher.fields.icon"),
-          ],
-          |c| {
-            c.launcher
-              .quicklinks
-              .iter()
-              .map(|q| {
-                vec![
-                  q.name.clone(),
-                  q.url.clone(),
-                  q.icon.clone().unwrap_or_default(),
-                ]
-              })
-              .collect()
-          },
-          |c, rows| {
-            c.launcher.quicklinks = rows
-              .into_iter()
-              .map(|r| Quicklink {
-                name: r[0].clone(),
-                url: r[1].clone(),
-                icon: some(&r[2]),
-              })
-              .collect()
-          },
-        )],
-      ),
-      group(
-        t!("app.settings.launcher.groups.snippets"),
-        vec![records_item(
-          "snippets",
-          t!("app.settings.launcher.snippets.title"),
-          t!("app.settings.launcher.snippets.description"),
-          &[
-            t!("app.settings.launcher.fields.name"),
-            t!("app.settings.launcher.fields.keyword"),
-            t!("app.settings.launcher.fields.text"),
-          ],
-          |c| {
-            c.launcher
-              .snippets
-              .iter()
-              .map(|s| {
-                vec![
-                  s.name.clone(),
-                  s.keyword.clone().unwrap_or_default(),
-                  s.text.clone(),
-                ]
-              })
-              .collect()
-          },
-          |c, rows| {
-            c.launcher.snippets = rows
-              .into_iter()
-              .map(|r| Snippet {
-                name: r[0].clone(),
-                keyword: some(&r[1]),
-                text: r[2].clone(),
-              })
-              .collect()
-          },
-        )],
-      ),
-      sources(),
-    ],
+    [behavior(cx), commands(cx)]
+      .into_iter()
+      .chain(shared_groups(LauncherSettings::ID, cx))
+      .chain([sources(cx)])
+      .collect(),
   )
 }
 
@@ -336,146 +264,118 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     ))
 }
 
-fn sources() -> SettingGroup {
-  group(
-    t!("app.settings.launcher.groups.sources"),
-    vec![
-      list_item(
-        "launcher.files.roots",
-        t!("app.settings.launcher.files_roots.title"),
-        t!("app.settings.launcher.files_roots.description"),
-        |c| c.launcher.files.roots.clone(),
-        |c, v| c.launcher.files.roots = v,
+fn sources(cx: &App) -> SettingGroup {
+  let files = [
+    list_item(
+      "launcher.files.roots",
+      t!("app.settings.launcher.files_roots.title"),
+      t!("app.settings.launcher.files_roots.description"),
+      |c| c.launcher.files.roots.clone(),
+      |c, v| c.launcher.files.roots = v,
+    ),
+    list_item(
+      "launcher.files.excludes",
+      t!("app.settings.launcher.files_excludes.title"),
+      t!("app.settings.launcher.files_excludes.description"),
+      |c| c.launcher.files.excludes.clone(),
+      |c, v| c.launcher.files.excludes = v,
+    ),
+    item(
+      t!("app.settings.launcher.files_hidden.title"),
+      t!("app.settings.launcher.files_hidden.description"),
+      switch(
+        |c| c.launcher.files.hidden,
+        |c, v| c.launcher.files.hidden = v,
       ),
-      list_item(
-        "launcher.files.excludes",
-        t!("app.settings.launcher.files_excludes.title"),
-        t!("app.settings.launcher.files_excludes.description"),
-        |c| c.launcher.files.excludes.clone(),
-        |c, v| c.launcher.files.excludes = v,
+    ),
+    item(
+      t!("app.settings.launcher.files_ignore.title"),
+      t!("app.settings.launcher.files_ignore.description"),
+      switch(
+        |c| c.launcher.files.respect_ignore,
+        |c, v| c.launcher.files.respect_ignore = v,
       ),
-      item(
-        t!("app.settings.launcher.files_hidden.title"),
-        t!("app.settings.launcher.files_hidden.description"),
-        switch(
-          |c| c.launcher.files.hidden,
-          |c, v| c.launcher.files.hidden = v,
-        ),
+    ),
+  ];
+  let rest = [
+    item(
+      t!("app.settings.launcher.deepl_key.title"),
+      t!("app.settings.launcher.deepl_key.description"),
+      optional_text(
+        "launcher.translate.deepl_key",
+        |c| c.launcher.translate.deepl_key.clone(),
+        |c, v| c.launcher.translate.deepl_key = v,
+        |_| String::new(),
       ),
-      item(
-        t!("app.settings.launcher.files_ignore.title"),
-        t!("app.settings.launcher.files_ignore.description"),
-        switch(
-          |c| c.launcher.files.respect_ignore,
-          |c, v| c.launcher.files.respect_ignore = v,
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.clipboard.title"),
-        t!("app.settings.launcher.clipboard.description"),
-        switch(
-          |c| c.launcher.clipboard.enabled,
-          |c, v| c.launcher.clipboard.enabled = v,
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.clipboard_images.title"),
-        t!("app.settings.launcher.clipboard_images.description"),
-        switch(
-          |c| c.launcher.clipboard.images,
-          |c, v| c.launcher.clipboard.images = v,
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.clipboard_image_size.title"),
-        t!("app.settings.launcher.clipboard_image_size.description"),
-        number(
-          "launcher.clipboard.image_max_mb",
-          (1., 100., 1.),
-          |c| c.launcher.clipboard.image_max_mb.into(),
-          |c, v| c.launcher.clipboard.image_max_mb = v as f32,
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.clipboard_retention.title"),
-        t!("app.settings.launcher.clipboard_retention.description"),
-        number(
-          "launcher.clipboard.image_retention_days",
-          (1., 365., 1.),
-          |c| c.launcher.clipboard.image_retention_days as f64,
-          |c, v| c.launcher.clipboard.image_retention_days = v as u32,
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.deepl_key.title"),
-        t!("app.settings.launcher.deepl_key.description"),
-        optional_text(
-          "launcher.translate.deepl_key",
-          |c| c.launcher.translate.deepl_key.clone(),
-          |c, v| c.launcher.translate.deepl_key = v,
-          |_| String::new(),
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.deepl_key_file.title"),
-        t!("app.settings.launcher.deepl_key_file.description"),
-        optional_text(
-          "launcher.translate.deepl_key_file",
-          |c| {
-            c.launcher
-              .translate
-              .deepl_key_file
-              .as_ref()
-              .map(|p| p.display().to_string())
-          },
-          |c, v| c.launcher.translate.deepl_key_file = v.map(Into::into),
-          |_| String::new(),
-        ),
-      ),
-      item(
-        t!("app.settings.launcher.translate_target.title"),
-        t!("app.settings.launcher.translate_target.description"),
-        text(
-          "launcher.translate.target",
-          |c| c.launcher.translate.target.clone(),
-          |c, v| c.launcher.translate.target = v,
-        ),
-      ),
-      list_item(
-        "launcher.close_all_exclude",
-        t!("app.settings.launcher.close_all_exclude.title"),
-        t!("app.settings.launcher.close_all_exclude.description"),
-        |c| c.launcher.close_all_exclude.clone(),
-        |c, v| c.launcher.close_all_exclude = v,
-      ),
-      records_item(
-        "search_engines",
-        t!("app.settings.launcher.search_engines.title"),
-        t!("app.settings.launcher.search_engines.description"),
-        &[
-          t!("app.settings.launcher.fields.keyword"),
-          t!("app.settings.launcher.fields.name"),
-          t!("app.settings.launcher.fields.url"),
-        ],
+    ),
+    item(
+      t!("app.settings.launcher.deepl_key_file.title"),
+      t!("app.settings.launcher.deepl_key_file.description"),
+      optional_text(
+        "launcher.translate.deepl_key_file",
         |c| {
           c.launcher
-            .search_engines
-            .iter()
-            .map(|e| vec![e.keyword.clone(), e.name.clone(), e.url.clone()])
-            .collect()
+            .translate
+            .deepl_key_file
+            .as_ref()
+            .map(|p| p.display().to_string())
         },
-        |c, rows| {
-          c.launcher.search_engines = rows
-            .into_iter()
-            .map(|r| SearchEngine {
-              keyword: r[0].clone(),
-              name: r[1].clone(),
-              url: r[2].clone(),
-            })
-            .collect()
-        },
+        |c, v| c.launcher.translate.deepl_key_file = v.map(Into::into),
+        |_| String::new(),
       ),
-    ],
+    ),
+    item(
+      t!("app.settings.launcher.translate_target.title"),
+      t!("app.settings.launcher.translate_target.description"),
+      text(
+        "launcher.translate.target",
+        |c| c.launcher.translate.target.clone(),
+        |c, v| c.launcher.translate.target = v,
+      ),
+    ),
+    list_item(
+      "launcher.close_all_exclude",
+      t!("app.settings.launcher.close_all_exclude.title"),
+      t!("app.settings.launcher.close_all_exclude.description"),
+      |c| c.launcher.close_all_exclude.clone(),
+      |c, v| c.launcher.close_all_exclude = v,
+    ),
+    records_item(
+      "search_engines",
+      t!("app.settings.launcher.search_engines.title"),
+      t!("app.settings.launcher.search_engines.description"),
+      &[
+        t!("app.settings.launcher.fields.keyword"),
+        t!("app.settings.launcher.fields.name"),
+        t!("app.settings.launcher.fields.url"),
+      ],
+      |c| {
+        c.launcher
+          .search_engines
+          .iter()
+          .map(|e| vec![e.keyword.clone(), e.name.clone(), e.url.clone()])
+          .collect()
+      },
+      |c, rows| {
+        c.launcher.search_engines = rows
+          .into_iter()
+          .map(|r| SearchEngine {
+            keyword: r[0].clone(),
+            name: r[1].clone(),
+            url: r[2].clone(),
+          })
+          .collect()
+      },
+    ),
+  ];
+  group(
+    t!("app.settings.launcher.groups.sources"),
+    files
+      .into_iter()
+      // the clipboard history's items
+      .chain(shared_items(LauncherSettings::ID, "sources", cx))
+      .chain(rest)
+      .collect(),
   )
 }
 
@@ -498,7 +398,7 @@ fn list_item(
 }
 
 /// Rows of several text fields, added and removed, each change saving the whole list
-fn records_item(
+pub fn records_item(
   key: &'static str,
   title: impl Into<SharedString>,
   description: impl Into<String>,

@@ -5,6 +5,8 @@ pub mod cli;
 pub mod commands;
 pub mod launcher;
 pub mod paste;
+pub mod placeholders;
+mod settings;
 pub mod store;
 pub mod ui;
 pub mod watch;
@@ -65,6 +67,7 @@ pub fn init(cx: &mut App, _: &Buses) {
   ui::register(cx);
   commands::register(cx);
   launcher::register(cx);
+  settings::register(cx);
 }
 
 /// Opens the history and starts watching the clipboard
