@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 use crate::ui::icons::{capture_icon, capture_label};
 use corona_components::filter::filter_regex;
-use corona_components::time::ago_long;
 use corona_surface::popup::{self, ROW, SEPARATOR};
 use rust_i18n::t;
 
@@ -286,6 +285,17 @@ impl Render for PrivacyLog {
   }
 }
 
+/// How long before `now` `time` was, spelled out: "just now", "5 min ago"
+fn ago_long(time: SystemTime, now: SystemTime) -> String {
+  let secs = now.duration_since(time).unwrap_or_default().as_secs();
+  match secs {
+    0..60 => t!("app.privacy.ago.now").into(),
+    60..3600 => t!("app.privacy.ago.minutes", count = secs / 60).into(),
+    3600..86400 => t!("app.privacy.ago.hours", count = secs / 3600).into(),
+    _ => t!("app.privacy.ago.days", count = secs / 86400).into(),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -318,5 +328,15 @@ mod tests {
         },
       ]
     );
+  }
+
+  #[test]
+  fn ago() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(100_000);
+    let before = |secs| now - Duration::from_secs(secs);
+    assert_eq!(ago_long(before(5), now), "just now");
+    assert_eq!(ago_long(before(300), now), "5 min ago");
+    assert_eq!(ago_long(before(7200), now), "2 h ago");
+    assert_eq!(ago_long(before(90_000), now), "1 d ago");
   }
 }
