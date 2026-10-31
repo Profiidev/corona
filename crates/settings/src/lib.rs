@@ -287,17 +287,6 @@ pub fn shared_items(page: &str, group: &str, cx: &App) -> Vec<SettingItem> {
     .collect()
 }
 
-/// The group `group` of page `page` with the items crates added to it, none without any
-pub fn shared_group(
-  title: impl Into<SharedString>,
-  page: &str,
-  group: &str,
-  cx: &App,
-) -> Option<SettingGroup> {
-  let items = shared_items(page, group, cx);
-  (!items.is_empty()).then(|| self::group(title, items))
-}
-
 /// The groups crates added to page `page`, with their items, leaving out empty ones
 pub fn shared_groups(page: &str, cx: &App) -> Vec<SettingGroup> {
   (cx.settings().groups.iter())

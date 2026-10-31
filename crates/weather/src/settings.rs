@@ -1,14 +1,17 @@
-//! The location page, with the forecast's units and refresh, and the clock's options form
+//! The location page, with the forecast's units and refresh, the clock's options form and
+//! the control center's time and date formats
 
 use corona_components::settings_fields::{choice, non_empty, number, switch, text};
-use corona_config::{Units, bar::BarConfig};
+use corona_config::{Units, Weekday, bar::BarConfig};
 use corona_settings::{
   SettingsExt, SettingsPage, Slot, WidgetOptions,
   bar::{form, form_input, form_key, form_row, options, set_options},
   group, item, page,
 };
 use gpui_kit::{
-  App, IntoElement, ParentElement, Window, assets::IconName, component::setting::SettingPage,
+  App, IntoElement, ParentElement, Window,
+  assets::IconName,
+  component::setting::{SettingItem, SettingPage},
 };
 use rust_i18n::t;
 
@@ -28,10 +31,47 @@ impl SettingsPage for LocationSettings {
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<LocationSettings>()
+    .group_items("control_center", "control_center", 0, clock_formats)
     .widget_options::<Clock>(WidgetOptions {
       form: clock_form,
       label: None,
     });
+}
+
+/// The control center clock's time and date formats and the calendar's first weekday
+fn clock_formats(_: &App) -> Vec<SettingItem> {
+  vec![
+    item(
+      t!("app.settings.control_center.time_format.title"),
+      t!("app.settings.control_center.time_format.description"),
+      text(
+        "control_center.time_format",
+        |c| c.control_center.time_format.clone(),
+        |c, v| c.control_center.time_format = v,
+      ),
+    ),
+    item(
+      t!("app.settings.control_center.date_format.title"),
+      t!("app.settings.control_center.date_format.description"),
+      text(
+        "control_center.date_format",
+        |c| c.control_center.date_format.clone(),
+        |c, v| c.control_center.date_format = v,
+      ),
+    ),
+    item(
+      t!("app.settings.control_center.week_starts_on.title"),
+      t!("app.settings.control_center.week_starts_on.description"),
+      choice(
+        &[
+          (Weekday::Monday, t!("app.settings.options.monday")),
+          (Weekday::Sunday, t!("app.settings.options.sunday")),
+        ],
+        |c| c.control_center.week_start,
+        |c, v| c.control_center.week_start = v,
+      ),
+    ),
+  ]
 }
 
 fn location() -> SettingPage {

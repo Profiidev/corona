@@ -27,6 +27,9 @@ impl SettingsPage for LockscreenSettings {
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<LockscreenSettings>()
+    .group("system", "profile", 0, || {
+      t!("app.settings.system.groups.profile").into()
+    })
     .group_items("system", "profile", 0, avatar);
 }
 

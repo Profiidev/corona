@@ -8,6 +8,15 @@ use rust_i18n::t;
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
+    .group("system", "nightlight", 10, || {
+      t!("app.settings.system.groups.nightlight").into()
+    })
+    .group("system", "polling", 20, || {
+      t!("app.settings.system.groups.polling").into()
+    })
+    .group("system", "applies_after_a_restart", 30, || {
+      t!("app.settings.system.groups.applies_after_a_restart").into()
+    })
     .group_items("system", "nightlight", 0, nightlight)
     .group_items("system", "polling", 10, polling)
     .group_items("system", "applies_after_a_restart", 0, restart);

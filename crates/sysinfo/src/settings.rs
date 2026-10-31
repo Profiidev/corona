@@ -14,6 +14,9 @@ use crate::ui::resource::{self, Resource};
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
+    .group("system", "polling", 20, || {
+      t!("app.settings.system.groups.polling").into()
+    })
     .group_items("system", "polling", 0, |_| {
       vec![item(
         t!("app.settings.system.system_monitor.title"),

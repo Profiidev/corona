@@ -1,6 +1,6 @@
 //! The wallpaper, OSD, control center and system pages
 
-use corona_config::{OsdPosition, Weekday};
+use corona_config::OsdPosition;
 use corona_surface::{
   control_center::{ControlCenterExt, DASHBOARD},
   dashboard::DashboardExt,
@@ -14,7 +14,7 @@ use corona_components::settings_fields::{
   slider, switch, text,
 };
 
-use crate::{SettingsExt, SettingsPage, group, item, page, shared_group};
+use crate::{SettingsExt, SettingsPage, group, item, page, shared_groups, shared_items};
 
 use rust_i18n::t;
 
@@ -40,7 +40,7 @@ macro_rules! settings_page {
 settings_page!(WallpaperSettings, "wallpaper", 20, |cx| wallpaper());
 settings_page!(OsdSettings, "osd", 40, |cx| osd(cx));
 settings_page!(ControlCenterSettings, "control_center", 50, |cx| {
-  control_center()
+  control_center(cx)
 });
 settings_page!(SystemSettings, "system", 160, |cx| system(cx));
 
@@ -158,140 +158,102 @@ fn osd(cx: &App) -> SettingPage {
   )
 }
 
-fn control_center() -> SettingPage {
+fn control_center(cx: &App) -> SettingPage {
+  // the items other crates add, like the clock's formats, come first
+  let mut items = shared_items(ControlCenterSettings::ID, "control_center", cx);
+  items.extend([
+    item(
+      t!("app.settings.control_center.background_opacity.title"),
+      t!("app.settings.control_center.background_opacity.description"),
+      slider(
+        "control_center.background_opacity",
+        OPACITY,
+        |c| c.control_center.background_opacity,
+        |c, v| c.control_center.background_opacity = v,
+      ),
+    ),
+    order_item([
+      OrderList {
+        key: "control_center.sidebar",
+        title: || t!("app.settings.control_center.sidebar.title"),
+        description: || t!("app.settings.control_center.sidebar.description"),
+        options: |cx| {
+          (cx.control_center().pages().iter())
+            .filter(|p| p.id != DASHBOARD)
+            .map(|p| Choice {
+              value: p.id.into(),
+              label: (p.title)().into(),
+            })
+            .collect()
+        },
+        get: |c| c.control_center.sidebar.clone(),
+        set: |c, v| c.control_center.sidebar = v,
+      },
+      OrderList {
+        key: "control_center.quick_actions",
+        title: || t!("app.settings.control_center.quick_actions.title"),
+        description: || t!("app.settings.control_center.quick_actions.description"),
+        options: |cx| {
+          (cx.dashboard().quick_actions().iter())
+            .map(|a| Choice {
+              value: a.id.into(),
+              label: (a.title)().into(),
+            })
+            .collect()
+        },
+        get: |c| c.control_center.quick_actions.clone(),
+        set: |c, v| c.control_center.quick_actions = v,
+      },
+    ]),
+    order_item([
+      OrderList {
+        key: "control_center.sliders",
+        title: || t!("app.settings.control_center.sliders.title"),
+        description: || t!("app.settings.control_center.sliders.description"),
+        options: |cx| {
+          (cx.dashboard().sliders().iter())
+            .map(|s| Choice {
+              value: s.id.into(),
+              label: (s.title)().into(),
+            })
+            .collect()
+        },
+        get: |c| c.control_center.sliders.clone(),
+        set: |c, v| c.control_center.sliders = v,
+      },
+      OrderList {
+        key: "control_center.cards",
+        title: || t!("app.settings.control_center.cards.title"),
+        description: || t!("app.settings.control_center.cards.description"),
+        options: |cx| {
+          (cx.dashboard().cards().iter())
+            .map(|c| Choice {
+              value: c.id.into(),
+              label: (c.title)().into(),
+            })
+            .collect()
+        },
+        get: |c| c.control_center.cards.clone(),
+        set: |c, v| c.control_center.cards = v,
+      },
+    ]),
+  ]);
   page(
     t!("app.settings.control_center.title"),
     IconName::LayoutDashboard,
     vec![group(
       t!("app.settings.control_center.groups.control_center"),
-      vec![
-        item(
-          t!("app.settings.control_center.time_format.title"),
-          t!("app.settings.control_center.time_format.description"),
-          text(
-            "control_center.time_format",
-            |c| c.control_center.time_format.clone(),
-            |c, v| c.control_center.time_format = v,
-          ),
-        ),
-        item(
-          t!("app.settings.control_center.date_format.title"),
-          t!("app.settings.control_center.date_format.description"),
-          text(
-            "control_center.date_format",
-            |c| c.control_center.date_format.clone(),
-            |c, v| c.control_center.date_format = v,
-          ),
-        ),
-        item(
-          t!("app.settings.control_center.week_starts_on.title"),
-          t!("app.settings.control_center.week_starts_on.description"),
-          choice(
-            &[
-              (Weekday::Monday, t!("app.settings.options.monday")),
-              (Weekday::Sunday, t!("app.settings.options.sunday")),
-            ],
-            |c| c.control_center.week_start,
-            |c, v| c.control_center.week_start = v,
-          ),
-        ),
-        item(
-          t!("app.settings.control_center.background_opacity.title"),
-          t!("app.settings.control_center.background_opacity.description"),
-          slider(
-            "control_center.background_opacity",
-            OPACITY,
-            |c| c.control_center.background_opacity,
-            |c, v| c.control_center.background_opacity = v,
-          ),
-        ),
-        order_item([
-          OrderList {
-            key: "control_center.sidebar",
-            title: || t!("app.settings.control_center.sidebar.title"),
-            description: || t!("app.settings.control_center.sidebar.description"),
-            options: |cx| {
-              (cx.control_center().pages().iter())
-                .filter(|p| p.id != DASHBOARD)
-                .map(|p| Choice {
-                  value: p.id.into(),
-                  label: (p.title)().into(),
-                })
-                .collect()
-            },
-            get: |c| c.control_center.sidebar.clone(),
-            set: |c, v| c.control_center.sidebar = v,
-          },
-          OrderList {
-            key: "control_center.quick_actions",
-            title: || t!("app.settings.control_center.quick_actions.title"),
-            description: || t!("app.settings.control_center.quick_actions.description"),
-            options: |cx| {
-              (cx.dashboard().quick_actions().iter())
-                .map(|a| Choice {
-                  value: a.id.into(),
-                  label: (a.title)().into(),
-                })
-                .collect()
-            },
-            get: |c| c.control_center.quick_actions.clone(),
-            set: |c, v| c.control_center.quick_actions = v,
-          },
-        ]),
-        order_item([
-          OrderList {
-            key: "control_center.sliders",
-            title: || t!("app.settings.control_center.sliders.title"),
-            description: || t!("app.settings.control_center.sliders.description"),
-            options: |cx| {
-              (cx.dashboard().sliders().iter())
-                .map(|s| Choice {
-                  value: s.id.into(),
-                  label: (s.title)().into(),
-                })
-                .collect()
-            },
-            get: |c| c.control_center.sliders.clone(),
-            set: |c, v| c.control_center.sliders = v,
-          },
-          OrderList {
-            key: "control_center.cards",
-            title: || t!("app.settings.control_center.cards.title"),
-            description: || t!("app.settings.control_center.cards.description"),
-            options: |cx| {
-              (cx.dashboard().cards().iter())
-                .map(|c| Choice {
-                  value: c.id.into(),
-                  label: (c.title)().into(),
-                })
-                .collect()
-            },
-            get: |c| c.control_center.cards.clone(),
-            set: |c, v| c.control_center.cards = v,
-          },
-        ]),
-      ],
+      items,
     )],
   )
 }
 
 fn system(cx: &App) -> SettingPage {
-  // the integrations' groups: the avatar from auth, night light and polling from
-  // brightness and sysinfo
-  let shared = [
-    ("profile", t!("app.settings.system.groups.profile")),
-    ("nightlight", t!("app.settings.system.groups.nightlight")),
-    ("polling", t!("app.settings.system.groups.polling")),
-    (
-      "applies_after_a_restart",
-      t!("app.settings.system.groups.applies_after_a_restart"),
-    ),
-  ]
-  .into_iter()
-  .filter_map(|(id, title)| shared_group(title, SystemSettings::ID, id, cx));
+  // only the integrations' groups, like the avatar from auth and night light from
+  // brightness
   page(
     t!("app.settings.system.title"),
     IconName::Cpu,
-    shared.collect(),
+    shared_groups(SystemSettings::ID, cx),
   )
 }
