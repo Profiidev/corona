@@ -1,7 +1,10 @@
 //! Workspaces, the active window, the switcher, the taskbar, screen corners, the displays
 //! page and the keyboard OSDs
 
-use corona_surface::{bar::BarExt, control_center::ControlCenterExt};
+use corona_surface::{
+  bar::{BarExt, PageButton},
+  control_center::ControlCenterExt,
+};
 use gpui_kit::App;
 
 mod active_window;
@@ -10,12 +13,11 @@ pub mod osd;
 pub mod screen_corners;
 pub mod switcher;
 pub mod taskbar;
-mod widget;
 pub mod workspaces;
 
 pub(crate) fn register(cx: &mut App) {
   cx.bar_mut()
-    .register::<widget::DisplaysButton>()
+    .register::<PageButton<displays::DisplaysPanel>>()
     .register::<workspaces::Workspaces>()
     .register::<active_window::ActiveWindow>();
   cx.control_center_mut()

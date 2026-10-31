@@ -60,10 +60,29 @@ mod tests {
     // the settings name built-in bar widgets by their type
     let widget =
       regex::Regex::new(r#"impl Widget for \w+ \{\s*const NAME: &'static str = "(\w+)""#).unwrap();
-    let widgets: Vec<String> = files
+    let mut widgets: Vec<String> = files
       .iter()
       .flat_map(|file| widget.captures_iter(file).map(|c| c[1].to_string()))
       .collect();
+    // and the page buttons by their page's id
+    let page = regex::Regex::new(
+      r#"impl ControlCenterPage for (\w+) \{\s*const ID: &'static str = "(\w+)""#,
+    )
+    .unwrap();
+    let pages: HashMap<String, String> = files
+      .iter()
+      .flat_map(|file| {
+        page
+          .captures_iter(file)
+          .map(|c| (c[1].to_string(), c[2].to_string()))
+      })
+      .collect();
+    let button = regex::Regex::new(r"PageButton<(?:\w+::)*(\w+)>").unwrap();
+    widgets.extend(files.iter().flat_map(|file| {
+      button
+        .captures_iter(file)
+        .filter_map(|c| pages.get(&c[1]).cloned())
+    }));
     assert!(widgets.len() > 10, "found only {} widgets", widgets.len());
     keys.extend(
       widgets

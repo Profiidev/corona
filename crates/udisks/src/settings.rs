@@ -8,11 +8,11 @@ use corona_settings::{
 use gpui_kit::{App, IntoElement, ParentElement, Window, component::Sizable};
 use rust_i18n::t;
 
-use crate::ui::widget::{DisksButton, Options};
+use corona_surface::bar::{IdleOptions as Options, IdlePageButton};
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()
-    .widget_options::<DisksButton>(WidgetOptions {
+    .widget_options::<IdlePageButton<crate::ui::page::DisksPanel>>(WidgetOptions {
       form: disks_form,
       label: None,
     });
