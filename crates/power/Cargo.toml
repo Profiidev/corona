@@ -27,6 +27,8 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-upower = "0.1.0"
+clap.workspace = true
+clap_complete.workspace = true
 
 [dev-dependencies]
 corona_script = { workspace = true, features = ["test-support"] }

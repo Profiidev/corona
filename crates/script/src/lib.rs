@@ -21,6 +21,7 @@ const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";
 /// The TypeScript of what a plugin imports, written next to its manifest
 const PLUGIN_TYPES_FILENAME: &str = "gpui-kit.d.ts";
 
+pub mod cli;
 pub mod commands;
 pub mod hooks;
 mod host;

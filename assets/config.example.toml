@@ -134,7 +134,7 @@ power_profile = true
 privacy = true
 keyboard_layout = true
 # Caps, num and scroll lock. Hyprland has to tell corona about the keys, e.g.
-#   hl.bind("Caps_Lock", hl.dsp.exec_cmd("corona ipc lock-key caps"))
+#   hl.bind("Caps_Lock", hl.dsp.exec_cmd("corona ipc keyboard lock-key caps"))
 lock_keys = true
 stay_awake = true
 # The pill the launcher shows after a command

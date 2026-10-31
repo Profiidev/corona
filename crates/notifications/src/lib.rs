@@ -18,6 +18,7 @@ use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
 pub use crate::state::{Action, Notification, NotificationImage, Urgency, strip_markup};
 
+pub mod cli;
 pub mod commands;
 mod hooks;
 mod launcher;
@@ -332,10 +333,15 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   launcher::register(cx);
   settings::register(cx);
   hooks::init(cx);
-  cx.script_mut()
+  register_script(cx.script_mut());
+  Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry
     .register::<script::NotificationsModule>()
     .register::<script::NotificationCenterModule>();
-  Ok(())
 }
 
 pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {

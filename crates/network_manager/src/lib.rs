@@ -25,6 +25,7 @@ pub use cosmic_dbus_networkmanager::interface::enums::{
 
 mod actions;
 mod agent;
+pub mod cli;
 pub mod commands;
 mod forwarding;
 mod launcher;
@@ -32,6 +33,7 @@ mod listener;
 #[cfg(test)]
 mod mock;
 pub mod nl80211;
+pub mod root;
 pub mod script;
 mod snapshot;
 mod state;
@@ -658,8 +660,13 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   ui::register(cx);
   commands::register(cx);
   launcher::register(cx);
-  cx.script_mut().register::<script::NetworkModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::NetworkModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

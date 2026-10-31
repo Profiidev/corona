@@ -1692,6 +1692,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona-zbus-bluez",
  "corona_components",
  "corona_ipc",
@@ -1706,6 +1707,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "tracing",
  "uuid",
  "zbus",
 ]
@@ -1716,6 +1718,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -1814,7 +1817,6 @@ dependencies = [
  "gpui-kit",
  "serde_json",
  "tempfile",
- "tracing",
 ]
 
 [[package]]
@@ -1822,6 +1824,8 @@ name = "corona_clipboard"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
+ "clap_complete",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -1948,6 +1952,7 @@ name = "corona_idle"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_auth",
  "corona_components",
  "corona_compositor",
@@ -1983,6 +1988,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_utils",
  "gpui-kit",
  "rustix",
@@ -2034,6 +2040,8 @@ name = "corona_launcher"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
+ "clap_complete",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2089,6 +2097,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona-zbus-mpris2",
  "corona_components",
  "corona_ipc",
@@ -2103,6 +2112,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "tracing",
  "uuid",
  "zbus",
 ]
@@ -2113,6 +2123,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona-zbus-networkmanager",
  "corona-zbus-nm-secret-agent-manager",
  "corona_bluez",
@@ -2181,6 +2192,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
+ "clap",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2208,6 +2220,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2236,6 +2249,8 @@ name = "corona_power"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
+ "clap_complete",
  "corona-zbus-upower",
  "corona_components",
  "corona_config",
@@ -2308,6 +2323,7 @@ name = "corona_script"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2346,6 +2362,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_components",
  "corona_config",
  "corona_ipc",
@@ -2403,6 +2420,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2449,6 +2467,8 @@ name = "corona_tray"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
+ "clap_complete",
  "corona_components",
  "corona_config",
  "corona_desktop",
@@ -2479,6 +2499,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_components",
  "corona_config",
  "corona_desktop",
@@ -2551,6 +2572,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "corona_capture",
  "corona_components",
  "corona_compositor",

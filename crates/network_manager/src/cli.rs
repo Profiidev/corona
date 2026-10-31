@@ -1,28 +1,34 @@
-use crate::ipc::complete;
+//! `corona ipc network`
+
 use clap::Subcommand;
-use clap_complete::ArgValueCandidates;
-use corona_ipc::{IpcCommandSend, Switch};
-use corona_network_manager::commands::network::{
-  ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns, ListWifi,
-  Portal, Rescan, Security, SwitchVpn,
+use clap_complete::{ArgValueCandidates, CompletionCandidate};
+use corona_ipc::{
+  IpcCommandSend, Switch,
+  cli::{described, done, plain, print_switch},
 };
 
-use crate::ipc::{done, print_switch};
+use crate::commands::{
+  network::{
+    ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns,
+    ListWifi, Portal, Rescan, Security, SwitchVpn,
+  },
+  radio::Wifi,
+};
 
 #[derive(Subcommand)]
-pub enum NetworkCommands {
+pub enum Commands {
   /// List the Wi-Fi networks in range
   List,
   /// Connect to a Wi-Fi network
   Connect {
-    #[arg(add = ArgValueCandidates::new(complete::ssids))]
+    #[arg(add = ArgValueCandidates::new(ssids))]
     ssid: String,
   },
   /// Disconnect from the Wi-Fi network
   Disconnect,
   /// Forget a saved Wi-Fi network
   Forget {
-    #[arg(add = ArgValueCandidates::new(complete::ssids))]
+    #[arg(add = ArgValueCandidates::new(ssids))]
     ssid: String,
   },
   /// Join a network that hides its name
@@ -39,7 +45,7 @@ pub enum NetworkCommands {
   Vpns,
   /// A VPN by name or uuid: on, off, toggle or status
   Vpn {
-    #[arg(add = ArgValueCandidates::new(complete::vpns))]
+    #[arg(add = ArgValueCandidates::new(vpns))]
     name: String,
     switch: Switch,
   },
@@ -47,12 +53,14 @@ pub enum NetworkCommands {
   Hotspot { switch: Switch },
   /// Open the captive portal's login page
   Portal,
+  /// Wi-Fi radio: on, off, toggle or status
+  Wifi { switch: Switch },
 }
 
-impl NetworkCommands {
-  pub fn execute(self) {
+impl Commands {
+  pub fn run(self) {
     match self {
-      NetworkCommands::List => match ListWifi::send(()) {
+      Commands::List => match ListWifi::send(()) {
         Ok(networks) => {
           for n in networks {
             let lock = if n.secured { "🔒" } else { "  " };
@@ -61,10 +69,10 @@ impl NetworkCommands {
         }
         Err(e) => tracing::error!("Failed to list networks: {}", e),
       },
-      NetworkCommands::Connect { ssid } => done(ConnectWifi::send(ssid), "connect"),
-      NetworkCommands::Disconnect => done(DisconnectWifi::send(()), "disconnect"),
-      NetworkCommands::Forget { ssid } => done(ForgetWifi::send(ssid), "forget the network"),
-      NetworkCommands::JoinHidden {
+      Commands::Connect { ssid } => done(ConnectWifi::send(ssid), "connect"),
+      Commands::Disconnect => done(DisconnectWifi::send(()), "disconnect"),
+      Commands::Forget { ssid } => done(ForgetWifi::send(ssid), "forget the network"),
+      Commands::JoinHidden {
         ssid,
         security,
         password,
@@ -76,12 +84,12 @@ impl NetworkCommands {
         }),
         "join the network",
       ),
-      NetworkCommands::Rescan => match Rescan::send(()) {
+      Commands::Rescan => match Rescan::send(()) {
         Ok(true) => {}
         Ok(false) => println!("timed out"),
         Err(e) => tracing::error!("Failed to scan: {}", e),
       },
-      NetworkCommands::Vpns => match ListVpns::send(()) {
+      Commands::Vpns => match ListVpns::send(()) {
         Ok(vpns) => {
           for v in vpns {
             println!("{} {} {}", if v.active { "*" } else { " " }, v.uuid, v.name);
@@ -89,13 +97,30 @@ impl NetworkCommands {
         }
         Err(e) => tracing::error!("Failed to list VPNs: {}", e),
       },
-      NetworkCommands::Vpn { name, switch } => {
+      Commands::Vpn { name, switch } => {
         print_switch(SwitchVpn::send((name, switch)), switch, "the VPN")
       }
-      NetworkCommands::Hotspot { switch } => {
-        print_switch(Hotspot::send(switch), switch, "the hotspot")
-      }
-      NetworkCommands::Portal => done(Portal::send(()), "open the portal"),
+      Commands::Hotspot { switch } => print_switch(Hotspot::send(switch), switch, "the hotspot"),
+      Commands::Portal => done(Portal::send(()), "open the portal"),
+      Commands::Wifi { switch } => print_switch(Wifi::send(switch), switch, "Wi-Fi"),
     }
   }
+}
+
+fn ssids() -> Vec<CompletionCandidate> {
+  described(
+    ListWifi::send(())
+      .unwrap_or_default()
+      .into_iter()
+      .map(|n| (n.ssid, format!("{}% {}", n.strength, n.status))),
+  )
+}
+
+fn vpns() -> Vec<CompletionCandidate> {
+  plain(
+    ListVpns::send(())
+      .unwrap_or_default()
+      .into_iter()
+      .map(|v| v.name),
+  )
 }

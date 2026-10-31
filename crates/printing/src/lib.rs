@@ -498,8 +498,13 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   init_at(cx, &buses.system, Path::new(cups::SOCKET)).await?;
   ui::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::PrintingModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::PrintingModule>();
 }
 
 async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {

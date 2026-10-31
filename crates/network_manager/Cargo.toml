@@ -36,6 +36,7 @@ serde.workspace = true
 specta.workspace = true
 corona-zbus-networkmanager = "0.1.0"
 corona-zbus-nm-secret-agent-manager = "0.1.0"
+clap_complete.workspace = true
 
 [dev-dependencies]
 corona_utils = { workspace = true, features = ["test-support"] }

@@ -14,6 +14,7 @@ use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
 
+pub mod cli;
 pub mod commands;
 mod launcher;
 pub mod polkit;
@@ -220,7 +221,12 @@ pub fn init(cx: &mut App, buses: &Buses) {
   commands::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::AuthModule>();
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::AuthModule>();
 }
 
 pub(crate) fn connect(cx: &mut App, conn: &Connection) {

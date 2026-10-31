@@ -26,6 +26,8 @@ anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-bluez = "0.1.0"
 futures-channel.workspace = true
+clap_complete.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

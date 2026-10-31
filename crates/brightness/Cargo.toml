@@ -35,8 +35,10 @@ jiff.workspace = true
 rustix = { workspace = true, features = ["event", "fs"] }
 wayland-client.workspace = true
 wayland-protocols-wlr.workspace = true
+clap_complete.workspace = true
 
 [dev-dependencies]
+corona_ipc = { workspace = true, features = ["test-support"] }
 corona_script = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }

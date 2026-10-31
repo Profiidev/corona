@@ -37,6 +37,8 @@ ignore = "0.4.33"
 emojis = "0.9.1"
 unicode_names2 = "4.0.0"
 trash = "5.2.9"
+clap.workspace = true
+clap_complete.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

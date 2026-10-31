@@ -35,6 +35,7 @@ pub use bar::{Form, Slot};
 
 mod appearance;
 pub mod bar;
+pub mod cli;
 pub mod commands;
 pub mod pages;
 

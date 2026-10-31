@@ -15,6 +15,7 @@ use crate::{
 
 pub use crate::state::{Category, MenuItem, Status, Toggle, TrayItem};
 
+pub mod cli;
 pub mod commands;
 mod launcher;
 mod listener;
@@ -205,8 +206,13 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   settings::register(cx);
   commands::register(cx);
   launcher::register(cx);
-  cx.script_mut().register::<script::TrayModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::TrayModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

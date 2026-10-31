@@ -19,6 +19,7 @@ pub use crate::state::{
 };
 
 mod charge;
+pub mod cli;
 pub mod commands;
 mod launcher;
 mod listener;
@@ -204,8 +205,13 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   ui::register(cx);
   commands::register(cx);
   launcher::register(cx);
-  cx.script_mut().register::<script::PowerModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::PowerModule>();
 }
 
 /// Only the backend, without the shell's UI, e.g. for the greeter

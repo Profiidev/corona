@@ -26,6 +26,7 @@ pub use crate::{
 };
 
 mod backlight;
+pub mod cli;
 pub mod commands;
 mod ddc;
 mod gamma;
@@ -233,8 +234,13 @@ pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   commands::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::BrightnessModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::BrightnessModule>();
 }
 
 pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

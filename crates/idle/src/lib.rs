@@ -15,6 +15,7 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 mod behavior;
+pub mod cli;
 pub mod commands;
 mod launcher;
 mod screensaver;
@@ -32,7 +33,12 @@ pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
   commands::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  corona_js::ScriptExt::script_mut(cx).register::<script::IdleModule>();
+  register_script(corona_js::ScriptExt::script_mut(cx));
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::IdleModule>();
 }
 
 /// How often the watcher looks for new timeouts while the compositor is quiet

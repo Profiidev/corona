@@ -1,12 +1,13 @@
+//! `corona ipc power-profile`
+
 use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
-use corona_ipc::IpcCommandSend;
-use corona_power::commands::{CycleProfile, ListProfiles, SetProfile};
+use corona_ipc::{IpcCommandSend, cli::candidates};
 
-use crate::ipc::candidates;
+use crate::commands::{CycleProfile, ListProfiles, SetProfile};
 
 #[derive(Subcommand)]
-pub enum PowerProfileCommands {
+pub enum Commands {
   /// Activate a profile by name
   Set {
     /// The profile, like performance, balanced or power-saver
@@ -22,11 +23,11 @@ fn profile_names() -> Vec<CompletionCandidate> {
   candidates(ListProfiles::send(()))
 }
 
-impl PowerProfileCommands {
-  pub fn execute(self) {
+impl Commands {
+  pub fn run(self) {
     let result = match self {
-      PowerProfileCommands::Set { name } => SetProfile::send(name),
-      PowerProfileCommands::Cycle => CycleProfile::send(()),
+      Commands::Set { name } => SetProfile::send(name),
+      Commands::Cycle => CycleProfile::send(()),
     };
     if let Err(e) = result {
       tracing::error!("Failed to change power profile: {}", e);

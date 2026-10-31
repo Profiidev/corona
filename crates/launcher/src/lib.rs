@@ -1,4 +1,5 @@
 pub mod args;
+pub mod cli;
 pub mod command;
 pub mod commands;
 pub mod common;

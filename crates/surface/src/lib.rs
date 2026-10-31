@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub mod bar;
+pub mod cli;
 pub mod commands;
 pub mod control_center;
 pub mod dashboard;

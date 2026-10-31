@@ -2,37 +2,31 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
 use crate::{
-  config::ConfigCommands, ipc::IpcCommands, launcher::LauncherCommands, network::NetworkCommands,
-  schema::SchemaCommands, types::TypesCommand,
+  config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands, types::TypesCommand,
 };
 
 mod config;
 mod ipc;
-mod launcher;
-mod network;
 mod schema;
 mod types;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
-  registry
-    .register::<corona_idle::script::IdleModule>()
-    .register::<corona_windows::script::CompositorModule>()
-    .register::<corona_windows::script::CompositorControlModule>()
-    .register::<corona_auth::script::AuthModule>()
-    .register::<corona_network_manager::script::NetworkModule>()
-    .register::<corona_brightness::script::BrightnessModule>()
-    .register::<corona_power::script::PowerModule>()
-    .register::<corona_notifications::script::NotificationsModule>()
-    .register::<corona_notifications::script::NotificationCenterModule>()
-    .register::<corona_pipewire::script::PipewireModule>()
-    .register::<corona_bluez::script::BluetoothModule>()
-    .register::<corona_mpris::script::MprisModule>()
-    .register::<corona_printing::script::PrintingModule>()
-    .register::<corona_sysinfo::script::SysinfoModule>()
-    .register::<corona_tray::script::TrayModule>()
-    .register::<corona_weather::script::WeatherModule>();
+  corona_idle::register_script(registry);
+  corona_windows::register_script(registry);
+  corona_auth::register_script(registry);
+  corona_network_manager::register_script(registry);
+  corona_brightness::register_script(registry);
+  corona_power::register_script(registry);
+  corona_notifications::register_script(registry);
+  corona_pipewire::register_script(registry);
+  corona_bluez::register_script(registry);
+  corona_mpris::register_script(registry);
+  corona_printing::register_script(registry);
+  corona_sysinfo::register_script(registry);
+  corona_tray::register_script(registry);
+  corona_weather::register_script(registry);
 }
 
 /// Corona Shell CLI
@@ -62,7 +56,7 @@ pub enum Commands {
   /// Launcher tools: dmenu and links
   Launcher {
     #[command(subcommand)]
-    command: LauncherCommands,
+    command: corona_launcher::cli::ToolCommands,
   },
   /// Settings commands
   Config {
@@ -80,7 +74,7 @@ pub enum Commands {
   #[command(hide = true)]
   Network {
     #[command(subcommand)]
-    command: NetworkCommands,
+    command: corona_network_manager::root::Commands,
   },
 }
 

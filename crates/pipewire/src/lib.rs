@@ -11,6 +11,7 @@ use crate::{event::AudioEvent, listener::Handles, state::PipewireState};
 mod api;
 mod audio;
 mod capture;
+pub mod cli;
 mod command;
 pub mod commands;
 mod event;
@@ -48,8 +49,13 @@ pub fn init(cx: &mut App, _: &Buses) -> Result<()> {
   commands::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::PipewireModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::PipewireModule>();
 }
 
 fn start(cx: &mut App) -> Result<()> {

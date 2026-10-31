@@ -1,12 +1,12 @@
+//! `corona ipc osk`
+
 use clap::Subcommand;
+use corona_ipc::{IpcCommandSend, Switch, cli::print_switch};
 
-use corona_ipc::{IpcCommandSend, Switch};
-use corona_osk::commands::{Hide, Show, Tablet, Toggle};
-
-use super::print_switch;
+use crate::commands::{Hide, Show, Tablet, Toggle};
 
 #[derive(Subcommand)]
-pub enum OskCommands {
+pub enum Commands {
   Show,
   Hide,
   Toggle,
@@ -17,13 +17,13 @@ pub enum OskCommands {
   },
 }
 
-impl OskCommands {
-  pub fn execute(self) {
+impl Commands {
+  pub fn run(self) {
     let result = match self {
-      OskCommands::Show => Show::send(()),
-      OskCommands::Hide => Hide::send(()),
-      OskCommands::Toggle => Toggle::send(()),
-      OskCommands::Tablet { switch } => {
+      Commands::Show => Show::send(()),
+      Commands::Hide => Hide::send(()),
+      Commands::Toggle => Toggle::send(()),
+      Commands::Tablet { switch } => {
         return print_switch(Tablet::send(switch), switch, "tablet mode");
       }
     };

@@ -90,7 +90,12 @@ pub fn init(cx: &mut App, _: &Buses) {
   ui::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::WeatherModule>();
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::WeatherModule>();
 }
 
 fn start(cx: &mut App) {

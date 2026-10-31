@@ -26,6 +26,8 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-mpris2 = "0.1.0"
+clap_complete.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

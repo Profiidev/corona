@@ -4,9 +4,9 @@ use std::{
   process::{Command, Output},
 };
 
+use crate::nl80211;
 use anyhow::{Context, Result, ensure};
 use clap::Subcommand;
-use corona_network_manager::nl80211;
 
 /// where distributions put iptables and nft, pkexec resets PATH
 const BIN_DIRS: [&str; 4] = [
@@ -20,7 +20,7 @@ const BIN_DIRS: [&str; 4] = [
 const TAG: &str = "corona-hotspot";
 
 #[derive(Subcommand)]
-pub enum NetworkCommands {
+pub enum Commands {
   /// Add an access point interface on a wifi radio, so a hotspot runs beside its connection, and
   /// let its clients through the firewall. Needs root, the shell runs it through pkexec
   AddApInterface {
@@ -46,10 +46,10 @@ pub enum NetworkCommands {
   DisallowHotspot,
 }
 
-impl NetworkCommands {
-  pub fn execute(self) {
+impl Commands {
+  pub fn run(self) {
     let result: Result<()> = match self {
-      NetworkCommands::AddApInterface {
+      Commands::AddApInterface {
         phy,
         name,
         mac,
@@ -70,7 +70,7 @@ impl NetworkCommands {
             disallow().ok();
           })
         }),
-      NetworkCommands::AllowHotspot { name, lock } => {
+      Commands::AllowHotspot { name, lock } => {
         // pkexec lets the session run this without a password: no rules for a wired interface
         let wifi = nl80211::valid_interface_name(&name)
           && Path::new("/sys/class/net")
@@ -83,7 +83,7 @@ impl NetworkCommands {
           Err(anyhow::anyhow!("{name:?} is no wifi interface"))
         }
       }
-      NetworkCommands::DisallowHotspot => disallow(),
+      Commands::DisallowHotspot => disallow(),
     };
     if let Err(e) = result {
       eprintln!("error: {e:#}");

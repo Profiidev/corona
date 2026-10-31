@@ -17,6 +17,7 @@ pub use crate::{
 };
 
 mod agent;
+pub mod cli;
 pub mod commands;
 mod launcher;
 mod listener;
@@ -202,8 +203,13 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   ui::register(cx);
   commands::register(cx);
   launcher::register(cx);
-  cx.script_mut().register::<script::BluetoothModule>();
+  register_script(cx.script_mut());
   Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::BluetoothModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

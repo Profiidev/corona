@@ -1,6 +1,7 @@
 //! The on-screen keyboard: a floating key board that types into the focused
 //! window without taking its focus, shown when a text field gets focus
 
+pub mod cli;
 pub mod commands;
 pub mod hinge;
 pub mod keymap;

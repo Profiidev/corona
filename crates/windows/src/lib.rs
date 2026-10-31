@@ -6,6 +6,7 @@ use corona_js::ScriptExt;
 use corona_utils::Buses;
 use gpui_kit::App;
 
+pub mod cli;
 pub mod commands;
 mod launcher;
 pub mod script;
@@ -21,7 +22,12 @@ pub fn init(cx: &mut App, _: &Buses) {
   commands::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut()
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry
     .register::<script::CompositorModule>()
     .register::<script::CompositorControlModule>();
 }

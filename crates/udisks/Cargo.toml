@@ -34,6 +34,7 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 zbus.workspace = true
+clap_complete.workspace = true
 
 [dev-dependencies]
 corona_surface = { workspace = true, features = ["test-support"] }

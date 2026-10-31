@@ -1,6 +1,7 @@
 //! Clipboard history: a watcher on the data control protocol fills a SQLite store, the
 //! launcher reads it; pasting presses Ctrl+V on a virtual keyboard
 
+pub mod cli;
 pub mod commands;
 pub mod launcher;
 pub mod paste;

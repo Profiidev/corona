@@ -5,7 +5,7 @@ layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim 
 
 # Always this checkout's debug build, never a corona on PATH.
 corona := justfile_directory() / "target/debug/corona"
-keybinds := 'hl.bind("SUPER + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher")) hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher --mode workspace --current-monitor"))'
+keybinds := 'hl.bind("SUPER + TAB", hl.dsp.exec_cmd("' + corona + ' ipc window switcher")) hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("' + corona + ' ipc window switcher --mode workspace --current-monitor"))'
 
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
 # zed's own crates can't be used directly, they need its entire workspace.

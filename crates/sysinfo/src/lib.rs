@@ -75,7 +75,12 @@ pub fn init(cx: &mut App, _: &Buses) {
   ui::register(cx);
   launcher::register(cx);
   settings::register(cx);
-  cx.script_mut().register::<script::SysinfoModule>();
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::SysinfoModule>();
 }
 
 fn start(cx: &mut App) {

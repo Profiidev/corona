@@ -12,11 +12,11 @@ fn main() {
     corona_cli::Commands::Shell => {
       run_shell();
     }
-    corona_cli::Commands::Launcher { command } => command.execute(),
+    corona_cli::Commands::Launcher { command } => command.run(),
     corona_cli::Commands::Config { command } => command.execute(),
     corona_cli::Commands::Schema { command } => command.execute(),
     corona_cli::Commands::Types(command) => command.execute(),
-    corona_cli::Commands::Network { command } => command.execute(),
+    corona_cli::Commands::Network { command } => command.run(),
   }
 }
 

@@ -24,6 +24,7 @@ pub use crate::{
 };
 
 mod actions;
+pub mod cli;
 pub mod commands;
 mod launcher;
 mod listener;
