@@ -453,6 +453,7 @@ export default class Main extends View {
     cx.set_global(plugins.manager());
     cx.update(|cx| {
       crate::register_modules(cx.script_mut());
+      corona_desktop::register_script(cx.script_mut());
       cx.script_mut()
         .register::<crate::test_support::TestCompositor>();
       if !cx.has_global::<Config>() {
@@ -1566,7 +1567,7 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 2] = ["secrets", "desktop"];
+  const ALL_MODULES: [&str; 1] = ["secrets"];
 
   fn dts(plugins: &Plugins, id: &str) -> String {
     fs::read_to_string(plugins.paths.local.join(id).join("gpui-kit.d.ts")).unwrap()

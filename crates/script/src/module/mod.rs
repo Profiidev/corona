@@ -5,7 +5,6 @@
 use corona_js::ScriptRegistry;
 
 pub mod dbus;
-pub mod desktop;
 pub mod i18n;
 pub mod plugin;
 pub mod secrets;
@@ -14,9 +13,7 @@ pub mod surface;
 
 /// Registers the modules plugins are granted by name.
 pub fn register(registry: &mut ScriptRegistry) {
-  registry
-    .register::<desktop::Desktop>()
-    .register::<secrets::Secrets>();
+  registry.register::<secrets::Secrets>();
 }
 
 /// Runs a module in a real script view, for tests of what plugins see.

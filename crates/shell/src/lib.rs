@@ -1,5 +1,6 @@
 use anyhow::Result;
 use corona_config::{ConfigProvider, observe_section};
+use corona_js::ScriptExt;
 use corona_notifications::NotificationsExt;
 use corona_surface::bar::BarState;
 use corona_utils::{Buses, error::ErrorLogExt};
@@ -96,6 +97,7 @@ fn init_integrations(cx: &mut App) {
 fn register_variants(cx: &mut App) {
   corona_surface::control_center::warn_bad_ids(cx);
   corona_surface::dashboard::warn_bad_ids(cx);
+  corona_desktop::register_script(cx.script_mut());
   corona_script::init(cx).expect("Failed to init plugins");
 }
 

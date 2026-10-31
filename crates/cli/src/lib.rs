@@ -13,6 +13,7 @@ mod types;
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
+  corona_desktop::register_script(registry);
   corona_idle::register_script(registry);
   corona_windows::register_script(registry);
   corona_auth::register_script(registry);

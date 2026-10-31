@@ -13,3 +13,17 @@ anyhow.workspace = true
 dirs.workspace = true
 freedesktop-desktop-entry.workspace = true
 corona-freedesktop-icons = "0.1.0"
+corona_js.workspace = true
+gpui-kit.workspace = true
+futures.workspace = true
+futures-lite.workspace = true
+serde.workspace = true
+smol.workspace = true
+specta.workspace = true
+
+[dev-dependencies]
+corona_script = { workspace = true, features = ["test-support"] }
+corona_utils = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true
+tempfile.workspace = true

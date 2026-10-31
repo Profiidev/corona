@@ -26,6 +26,7 @@ corona_bluez.workspace = true
 corona_launcher.workspace = true
 corona_config.workspace = true
 corona_script.workspace = true
+corona_desktop.workspace = true
 corona_js.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

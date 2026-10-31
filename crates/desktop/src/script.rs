@@ -355,7 +355,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use crate::module::harness;
+  use corona_script::harness;
 
   #[gpui::test]
   fn refused_uris_never_reach_the_platform(cx: &mut TestAppContext) {
