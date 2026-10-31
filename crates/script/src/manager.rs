@@ -341,6 +341,7 @@ mod tests {
 
   use corona_config::Config;
   use corona_js::ScriptExt;
+  use corona_surface::testing::FakeCompositor;
   use corona_utils::test_bus::wait_until;
   use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
 
@@ -348,7 +349,7 @@ mod tests {
   use crate::{
     PLUGIN_MANIFEST_FILENAME,
     plugin::registry,
-    test_support::{Fake, setup},
+    test_support::{reports, setup},
   };
 
   const VIEW: &str = r#"
@@ -606,7 +607,7 @@ export default class Main extends View {
     plugins.add("a", &manifest, &[("main.ts", view), ("util.ts", util)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello ts");
+    assert_eq!(reports(&fake).last().unwrap(), "hello ts");
   }
 
   #[gpui::test]
@@ -630,7 +631,7 @@ export default class Main extends View {
     let (host, cx) = host(cx, &plugins);
     let _a = show(cx, &host, "a").unwrap();
     let _b = show(cx, &host, "b").unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "undefined then");
+    assert_eq!(reports(&fake).last().unwrap(), "undefined then");
   }
 
   #[gpui::test]
@@ -660,9 +661,9 @@ export default class Main extends View {
     plugins.add("a", &manifest("a", extra), &[("main.js", COMPOSITOR_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let script = script.unwrap();
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     assert!(rendered > 0, "the view rendered");
-    assert_eq!(fake.calls.borrow()[0], "rendered 2");
+    assert_eq!(reports(&fake)[0], "rendered 2");
 
     // the view read the workspaces, so a change renders it again
     let workspaces = cx.update(|_, cx| {
@@ -677,8 +678,8 @@ export default class Main extends View {
       })
     });
     cx.run_until_parked();
-    assert!(fake.calls.borrow().len() > rendered);
-    assert_eq!(fake.calls.borrow().last().unwrap(), "rendered 1");
+    assert!(reports(&fake).len() > rendered);
+    assert_eq!(reports(&fake).last().unwrap(), "rendered 1");
     drop(script);
   }
 
@@ -693,7 +694,7 @@ export default class Main extends View {
       format!("{error:#}").contains("corona/compositor"),
       "{error:#}"
     );
-    assert!(fake.calls.borrow().is_empty());
+    assert!(reports(&fake).is_empty());
   }
 
   /// Reports its `label` setting through `focusWorkspace` on every render.
@@ -725,9 +726,9 @@ default = "hello""#;
     plugins.add("a", &manifest("a", extra), &[("main.js", SETTINGS_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "hello 1 null");
 
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     // another plugin's settings change nothing
     cx.update(|_, cx| {
       cx.global_mut::<Config>().plugin_settings.insert(
@@ -739,7 +740,7 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().len(), rendered);
+    assert_eq!(reports(&fake).len(), rendered);
 
     cx.update(|_, cx| {
       cx.global_mut::<Config>().plugin_settings.insert(
@@ -751,7 +752,7 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "bye 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "bye 1 null");
 
     // a value of the wrong type reads as the default
     cx.update(|_, cx| {
@@ -764,7 +765,7 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "hello 1 null");
   }
 
   /// Reports what `corona/surface` answers through `focusWorkspace` on every
@@ -804,8 +805,8 @@ export default class Main extends View {
     let (cx, script) = load(cx, &plugins, "a");
     let script = script.unwrap();
     script.set_opener(cx.update(|_, cx| cx.new(|_| ()).entity_id()));
-    let last = |fake: &Fake| -> serde_json::Value {
-      let calls = fake.calls.borrow();
+    let last = |fake: &FakeCompositor| -> serde_json::Value {
+      let calls = reports(fake);
       serde_json::from_str(calls.last().unwrap()).unwrap()
     };
     assert_eq!(
@@ -822,7 +823,7 @@ export default class Main extends View {
     );
 
     // it asked whether `p` is open, so it renders as that changes
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     cx.update(|_, cx| {
       corona_surface::panel::PanelState::open_panels(cx).update(cx, |open, cx| {
         open.insert("a:p".into());
@@ -830,7 +831,7 @@ export default class Main extends View {
       })
     });
     cx.run_until_parked();
-    assert!(fake.calls.borrow().len() > rendered);
+    assert!(reports(&fake).len() > rendered);
     assert_eq!(last(&fake)["open"], true);
   }
 
@@ -944,8 +945,8 @@ type = "secret""#;
     );
   }
 
-  fn reported(fake: &Fake, prefix: &str) -> Vec<String> {
-    let calls = fake.calls.borrow();
+  fn reported(fake: &FakeCompositor, prefix: &str) -> Vec<String> {
+    let calls = reports(fake);
     let found = calls.iter().filter_map(|c| c.strip_prefix(prefix));
     found.map(str::to_string).collect()
   }
@@ -1283,7 +1284,7 @@ export default function main() {
     );
     running(cx, &plugins);
     let _service = service(cx, "a");
-    assert_eq!(fake.calls.borrow().last().unwrap(), "onCall,reply,fail");
+    assert_eq!(reports(&fake).last().unwrap(), "onCall,reply,fail");
     let (host, cx) = window(cx);
     let error = format!(
       "{:#}",
@@ -1371,16 +1372,13 @@ export default class Main extends View {
     rust_i18n::set_locale("en");
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
-    assert_eq!(
-      fake.calls.borrow().last().unwrap(),
-      "en|hi x|english|missing"
-    );
+    assert_eq!(reports(&fake).last().unwrap(), "en|hi x|english|missing");
 
     rust_i18n::set_locale("de-AT");
     cx.update(|_, cx| cx.global_mut::<Config>().shell.language = Some("de".into()));
     cx.run_until_parked();
     assert_eq!(
-      fake.calls.borrow().last().unwrap(),
+      reports(&fake).last().unwrap(),
       "de-AT|hallo x|english|missing"
     );
   }
@@ -1461,8 +1459,8 @@ export default class Main extends View {
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
 
-    wait_until(cx, |_| fake.calls.borrow().len() == 2);
-    let calls = fake.calls.borrow();
+    wait_until(cx, |_| reports(&fake).len() == 2);
+    let calls = reports(&fake);
     assert!(calls.contains(&"owned true".to_string()), "{calls:?}");
     assert!(
       calls
@@ -1560,10 +1558,7 @@ export default class Main extends View {
       Some(vec!["/tmp/a".into(), "/tmp/b".into()])
     });
     cx.run_until_parked();
-    assert_eq!(
-      fake.calls.borrow().last().unwrap(),
-      r#"["/tmp/a","/tmp/b"]"#
-    );
+    assert_eq!(reports(&fake).last().unwrap(), r#"["/tmp/a","/tmp/b"]"#);
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers

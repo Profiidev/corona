@@ -125,7 +125,10 @@ mod tests {
   use gpui_kit::TestAppContext;
 
   use super::*;
-  use crate::test_support::{self, monitor, plain_window, windows};
+  use crate::{
+    test_support::{self, plain_window, windows},
+    testing::{FakeCompositor, monitor},
+  };
 
   fn ids(ids: &[u64]) -> HashSet<DisplayId> {
     ids.iter().map(|&i| DisplayId::new(i)).collect()
@@ -162,8 +165,12 @@ mod tests {
 
   #[gpui_kit::test]
   fn opens_nothing_without_a_matching_monitor(cx: &mut TestAppContext) {
-    let fake = test_support::setup(cx);
-    fake.monitors.borrow_mut().push(monitor("DP-1"));
+    let fake = FakeCompositor {
+      monitors: vec![monitor("DP-1")],
+      ..Default::default()
+    };
+    crate::testing::setup(fake, cx);
+    cx.update(|cx| crate::init(cx).unwrap());
     let (this, opened) = per_display(cx);
     // waits for the monitor's display, then gives up
     cx.executor()

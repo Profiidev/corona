@@ -46,6 +46,7 @@ clap.workspace = true
 
 [dev-dependencies]
 corona_compositor.workspace = true
+corona_surface = { workspace = true, features = ["test-support"] }
 corona_desktop.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true

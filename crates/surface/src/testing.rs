@@ -1,7 +1,7 @@
 //! A fake compositor and app setup for tests of the crates above
 use std::{cell::RefCell, rc::Rc};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use corona_compositor::{Compositor, CompositorImpl, types};
 use gpui_kit::TestAppContext;
 
@@ -39,6 +39,18 @@ pub struct FakeCompositor {
   pub windows: Vec<types::Window>,
   pub monitors: Vec<types::Monitor>,
   pub calls: RefCell<Vec<String>>,
+  /// fails everything it is told to do, like a compositor that went away
+  pub fail: bool,
+}
+
+impl FakeCompositor {
+  fn call(&self, call: String) -> Result<()> {
+    if self.fail {
+      bail!("compositor down");
+    }
+    self.calls.borrow_mut().push(call);
+    Ok(())
+  }
 }
 
 impl CompositorImpl for FakeCompositor {
@@ -61,36 +73,28 @@ impl CompositorImpl for FakeCompositor {
     Ok(self.windows.first().cloned())
   }
   fn focus_workspace(&self, workspace: &str) -> Result<()> {
-    self
-      .calls
-      .borrow_mut()
-      .push(format!("workspace {workspace}"));
-    Ok(())
+    self.call(format!("workspace {workspace}"))
   }
   fn focus_window(&self, address: &str) -> Result<()> {
-    self.calls.borrow_mut().push(format!("window {address}"));
-    Ok(())
+    self.call(format!("window {address}"))
   }
   fn close_window(&self, address: &str) -> Result<()> {
-    self.calls.borrow_mut().push(format!("close {address}"));
-    Ok(())
+    self.call(format!("close {address}"))
   }
   fn cursor_position(&self) -> Result<(i32, i32)> {
+    if self.fail {
+      bail!("compositor down");
+    }
     Ok((0, 0))
   }
   fn keyboard_layout(&self) -> Result<Option<String>> {
     Ok(None)
   }
   fn set_dpms(&self, on: bool) -> Result<()> {
-    self.calls.borrow_mut().push(format!("dpms {on}"));
-    Ok(())
+    self.call(format!("dpms {on}"))
   }
   fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()> {
-    self
-      .calls
-      .borrow_mut()
-      .push(format!("monitor {name} {change:?}"));
-    Ok(())
+    self.call(format!("monitor {name} {change:?}"))
   }
 }
 

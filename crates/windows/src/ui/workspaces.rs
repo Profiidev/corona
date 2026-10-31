@@ -354,20 +354,11 @@ fn workspace_windows(
 
 #[cfg(test)]
 mod tests {
-  use anyhow::Result;
-  use corona_compositor::{Compositor, CompositorImpl};
+  use corona_compositor::Compositor;
+  use corona_surface::testing::{FakeCompositor, workspace};
   use gpui_kit::{self as gpui, AppContext as _, TestAppContext};
 
   use super::*;
-
-  fn workspace(id: &str, monitor: &str) -> types::Workspace {
-    types::Workspace {
-      id: id.into(),
-      name: id.into(),
-      monitor: monitor.into(),
-      monitor_id: 0,
-    }
-  }
 
   fn window(address: &str, workspace: &str) -> types::Window {
     types::Window {
@@ -422,68 +413,6 @@ mod tests {
     );
   }
 
-  struct Fake;
-
-  impl CompositorImpl for Fake {
-    fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-      Ok(vec![
-        workspace("1", "DP-1"),
-        workspace("2", "DP-1"),
-        workspace("9", "HDMI-1"),
-      ])
-    }
-    fn active_workspace(&self) -> Result<types::Workspace> {
-      Ok(workspace("1", "DP-1"))
-    }
-    fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
-      Ok(vec![])
-    }
-    fn active_monitor(&self) -> Result<types::Monitor> {
-      Ok(types::Monitor {
-        id: 0,
-        name: "DP-1".into(),
-        width: 1,
-        height: 1,
-        refresh_rate: 60.,
-        x: 0,
-        y: 0,
-        active_scratchpad: None,
-        active_workspace: workspace("1", "DP-1"),
-        scale: 1.,
-        focused: true,
-        disabled: false,
-        mirror_of: "none".into(),
-      })
-    }
-    fn list_windows(&self) -> Result<Vec<types::Window>> {
-      Ok(vec![window("a", "1"), window("b", "9")])
-    }
-    fn active_window(&self) -> Result<Option<types::Window>> {
-      Ok(None)
-    }
-    fn focus_workspace(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn focus_window(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn close_window(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn cursor_position(&self) -> Result<(i32, i32)> {
-      Ok((0, 0))
-    }
-    fn keyboard_layout(&self) -> Result<Option<String>> {
-      Ok(None)
-    }
-    fn set_dpms(&self, _: bool) -> Result<()> {
-      Ok(())
-    }
-    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> Result<()> {
-      Ok(())
-    }
-  }
-
   fn ids(widget: &Workspaces) -> Vec<&str> {
     widget.workspaces.iter().map(|w| w.id.as_str()).collect()
   }
@@ -491,7 +420,16 @@ mod tests {
   #[gpui::test]
   fn follows_the_compositor(cx: &mut TestAppContext) {
     let (windows, workspaces) = cx.update(|cx| {
-      let compositor = Compositor::new(cx, std::rc::Rc::new(Fake)).unwrap();
+      let fake = FakeCompositor {
+        workspaces: vec![
+          workspace("1", "DP-1"),
+          workspace("2", "DP-1"),
+          workspace("9", "HDMI-1"),
+        ],
+        windows: vec![window("a", "1"), window("b", "9")],
+        ..Default::default()
+      };
+      let compositor = Compositor::new(cx, std::rc::Rc::new(fake)).unwrap();
       let entities = (compositor.windows.clone(), compositor.workspaces.clone());
       cx.set_global(compositor);
       entities

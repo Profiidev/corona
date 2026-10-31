@@ -105,86 +105,23 @@ impl ScriptModule for CompositorControlModule {
 mod tests {
   use std::rc::Rc;
 
-  use anyhow::{Result, bail};
-  use corona_compositor::{CompositorImpl, types};
+  use corona_compositor::types;
   use gpui_kit::{self as gpui, TestAppContext};
   use serde_json::json;
 
   use super::*;
   use corona_script::harness;
-  use corona_surface::testing::{FakeCompositor, setup};
-
-  /// Has one workspace and no windows, fails everything it is told to do.
-  struct Down;
-
-  fn workspace() -> types::Workspace {
-    types::Workspace {
-      id: "1".into(),
-      name: "1".into(),
-      monitor: "DP-1".into(),
-      monitor_id: 0,
-    }
-  }
-
-  impl CompositorImpl for Down {
-    fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-      Ok(vec![workspace()])
-    }
-    fn active_workspace(&self) -> Result<types::Workspace> {
-      Ok(workspace())
-    }
-    fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
-      Ok(vec![])
-    }
-    fn active_monitor(&self) -> Result<types::Monitor> {
-      Ok(types::Monitor {
-        id: 0,
-        name: "DP-1".into(),
-        width: 1,
-        height: 1,
-        refresh_rate: 60.,
-        x: 0,
-        y: 0,
-        active_scratchpad: None,
-        active_workspace: workspace(),
-        scale: 1.,
-        focused: true,
-        disabled: false,
-        mirror_of: "none".into(),
-      })
-    }
-    fn list_windows(&self) -> Result<Vec<types::Window>> {
-      Ok(vec![])
-    }
-    fn active_window(&self) -> Result<Option<types::Window>> {
-      Ok(None)
-    }
-    fn focus_workspace(&self, _: &str) -> Result<()> {
-      bail!("compositor down")
-    }
-    fn focus_window(&self, _: &str) -> Result<()> {
-      bail!("compositor down")
-    }
-    fn close_window(&self, _: &str) -> Result<()> {
-      bail!("compositor down")
-    }
-    fn cursor_position(&self) -> Result<(i32, i32)> {
-      bail!("compositor down")
-    }
-    fn keyboard_layout(&self) -> Result<Option<String>> {
-      Ok(None)
-    }
-    fn set_dpms(&self, _: bool) -> Result<()> {
-      bail!("compositor down")
-    }
-    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> Result<()> {
-      bail!("compositor down")
-    }
-  }
+  use corona_surface::testing::{FakeCompositor, setup, workspace};
 
   fn install(cx: &mut TestAppContext) {
     cx.update(|cx| {
-      let compositor = cc::Compositor::new(cx, Rc::new(Down)).unwrap();
+      // one workspace and no windows, fails everything it is told to do
+      let down = FakeCompositor {
+        workspaces: vec![workspace("1", "DP-1")],
+        fail: true,
+        ..Default::default()
+      };
+      let compositor = cc::Compositor::new(cx, Rc::new(down)).unwrap();
       cx.set_global(compositor);
     });
   }
@@ -193,10 +130,7 @@ mod tests {
   fn calls_every_compositor_function(cx: &mut TestAppContext) {
     let fake = setup(
       FakeCompositor {
-        workspaces: vec![
-          corona_surface::testing::workspace("1", "DP-1"),
-          corona_surface::testing::workspace("2", "DP-1"),
-        ],
+        workspaces: vec![workspace("1", "DP-1"), workspace("2", "DP-1")],
         ..Default::default()
       },
       cx,
