@@ -94,6 +94,7 @@ pub struct CompositorControlModule;
 impl ScriptModule for CompositorControlModule {
   const NAME: &str = "compositor_control";
   const DOC: &str = "Focusing and closing other apps' windows, and the cursor position.";
+  const PRIVILEGED: bool = true;
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     host_module!(m, { sync: [focus_window, close_window, cursor_position] });

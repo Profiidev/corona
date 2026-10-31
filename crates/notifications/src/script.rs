@@ -423,6 +423,7 @@ pub struct NotificationCenterModule;
 impl ScriptModule for NotificationCenterModule {
   const NAME: &str = "notification_center";
   const DOC: &str = "Every app's notifications, do not disturb, and acting on them.";
+  const PRIVILEGED: bool = true;
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     m.watch(

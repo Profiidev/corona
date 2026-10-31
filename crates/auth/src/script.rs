@@ -107,6 +107,7 @@ pub struct AuthModule;
 impl ScriptModule for AuthModule {
   const NAME: &str = "auth";
   const DOC: &str = "Checking the user's fingerprint.";
+  const PRIVILEGED: bool = true;
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     host_module!(m, { async: [fingerprint] });

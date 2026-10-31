@@ -86,6 +86,7 @@ pub struct Secrets;
 impl ScriptModule for Secrets {
   const NAME: &str = "secrets";
   const DOC: &str = "Strings in the user's keyring, e.g. tokens.";
+  const PRIVILEGED: bool = true;
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     host_module!(m, { async: [get, set, remove_secret] });

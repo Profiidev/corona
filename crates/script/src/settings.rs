@@ -4,6 +4,7 @@ use corona_config::{
   Config, ConfigProvider,
   plugins::{Approval, AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
 };
+use corona_js::ScriptRegistry;
 use corona_settings::{SettingsExt, SettingsPage};
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
@@ -596,7 +597,7 @@ fn changes(previous: &Approval, approval: &Approval, cx: &App) -> Div {
       d.child(muted(t!("app.settings.plugins.approve.nothing"), cx))
     })
     .children(rows.into_iter().map(|(change, kind, values)| {
-      let (text, warning) = permission(&kind, &values);
+      let (text, warning) = permission(&kind, &values, cx);
       let tag = match change {
         Change::Added => Some((
           TagVariant::Success,
@@ -637,15 +638,6 @@ fn changes(previous: &Approval, approval: &Approval, cx: &App) -> Div {
     }))
 }
 
-/// Corona modules that reach the user's credentials, notifications or
-/// windows
-const PRIVILEGED_MODULES: &[&str] = &[
-  "auth",
-  "secrets",
-  "notification_center",
-  "compositor_control",
-];
-
 fn permissions(capabilities: &str, cx: &App) -> Div {
   let rows = registry::permissions(capabilities);
   if rows.is_empty() {
@@ -656,7 +648,7 @@ fn permissions(capabilities: &str, cx: &App) -> Div {
     .flex_col()
     .gap_2()
     .children(rows.into_iter().map(|(kind, values)| {
-      let (text, warning) = permission(&kind, &values);
+      let (text, warning) = permission(&kind, &values, cx);
       div()
         .flex()
         .flex_col()
@@ -668,7 +660,11 @@ fn permissions(capabilities: &str, cx: &App) -> Div {
 }
 
 /// A grant in plain words, and a warning when it reaches far
-fn permission(kind: &str, values: &str) -> (Cow<'static, str>, Option<Cow<'static, str>>) {
+fn permission(
+  kind: &str,
+  values: &str,
+  cx: &App,
+) -> (Cow<'static, str>, Option<Cow<'static, str>>) {
   match kind {
     "fs.read" => (
       t!("app.settings.plugins.approve.fs_read", values = values),
@@ -720,7 +716,11 @@ fn permission(kind: &str, values: &str) -> (Cow<'static, str>, Option<Cow<'stati
     "corona" => {
       let privileged: Vec<&str> = values
         .split(", ")
-        .filter(|m| PRIVILEGED_MODULES.contains(m))
+        .filter(|m| {
+          (cx.try_global::<ScriptRegistry>())
+            .and_then(|r| r.get(m))
+            .is_some_and(|r| r.privileged)
+        })
         .collect();
       (
         t!("app.settings.plugins.approve.corona", values = values),

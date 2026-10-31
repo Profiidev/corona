@@ -24,6 +24,9 @@ pub trait ScriptModule: 'static {
   const NAME: &'static str;
   /// Shown in the plugin JSON schema
   const DOC: &'static str;
+  /// Reaches the user's credentials, notifications or windows; approving a plugin that
+  /// imports it warns
+  const PRIVILEGED: bool = false;
   fn module(plugin: &PluginRef, m: &mut ModuleBuilder, cx: &mut App);
 }
 
@@ -32,6 +35,7 @@ pub trait ScriptModule: 'static {
 pub struct Registered {
   pub name: &'static str,
   pub doc: &'static str,
+  pub privileged: bool,
   module: fn(&PluginRef, &mut ModuleBuilder, &mut App),
 }
 
@@ -56,6 +60,7 @@ impl ScriptRegistry {
     let module = Registered {
       name: M::NAME,
       doc: M::DOC,
+      privileged: M::PRIVILEGED,
       module: M::module,
     };
     self.modules.insert(M::NAME, module);
