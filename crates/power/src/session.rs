@@ -2,7 +2,8 @@ use std::env;
 
 use anyhow::{Context, Result};
 use futures_lite::StreamExt;
-use gpui_kit::{AsyncApp, Task};
+use gpui_kit::{AsyncApp, SharedString, Task, assets::IconName};
+use rust_i18n::t;
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 #[zbus::proxy(
@@ -75,6 +76,46 @@ pub enum SessionAction {
   Reboot,
   PowerOff,
   RebootToFirmware,
+}
+
+impl SessionAction {
+  pub fn label(self) -> SharedString {
+    match self {
+      SessionAction::Logout => t!("app.session.logout"),
+      SessionAction::Suspend => t!("app.session.suspend"),
+      SessionAction::Hibernate => t!("app.session.hibernate"),
+      SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+      SessionAction::Reboot => t!("app.session.reboot"),
+      SessionAction::PowerOff => t!("app.session.shutdown"),
+      SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
+    }
+    .into()
+  }
+
+  pub fn icon(self) -> IconName {
+    match self {
+      SessionAction::Logout => IconName::LogOut,
+      SessionAction::Suspend => IconName::Pause,
+      SessionAction::Hibernate => IconName::Snowflake,
+      SessionAction::SuspendThenHibernate => IconName::Moon,
+      SessionAction::Reboot => IconName::RotateCw,
+      SessionAction::PowerOff => IconName::Power,
+      SessionAction::RebootToFirmware => IconName::Cpu,
+    }
+  }
+
+  /// Whether this machine lets the action run
+  pub fn allowed(self, capabilities: &SessionCapabilities) -> bool {
+    match self {
+      SessionAction::Logout => true,
+      SessionAction::Suspend => capabilities.suspend,
+      SessionAction::Hibernate => capabilities.hibernate,
+      SessionAction::SuspendThenHibernate => capabilities.suspend_then_hibernate,
+      SessionAction::Reboot => capabilities.reboot,
+      SessionAction::PowerOff => capabilities.power_off,
+      SessionAction::RebootToFirmware => capabilities.reboot_to_firmware,
+    }
+  }
 }
 
 /// What this machine allows, read when the session menu opens

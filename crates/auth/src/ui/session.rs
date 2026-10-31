@@ -38,16 +38,7 @@ impl Item {
   fn label(&self) -> String {
     match self {
       Item::Lock => t!("app.session.lock").into(),
-      Item::Action(action) => match action {
-        SessionAction::Logout => t!("app.session.logout"),
-        SessionAction::Suspend => t!("app.session.suspend"),
-        SessionAction::Hibernate => t!("app.session.hibernate"),
-        SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
-        SessionAction::Reboot => t!("app.session.reboot"),
-        SessionAction::PowerOff => t!("app.session.shutdown"),
-        SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
-      }
-      .into(),
+      Item::Action(action) => action.label().into(),
       Item::RebootTo => t!("app.session.reboot_to").into(),
       Item::BootEntry(entry) => match entry_title(entry) {
         EntryTitle::NixosGeneration(generation) => {
@@ -62,13 +53,7 @@ impl Item {
   fn icon(&self) -> IconName {
     match self {
       Item::Lock => IconName::Lock,
-      Item::Action(SessionAction::Logout) => IconName::LogOut,
-      Item::Action(SessionAction::Suspend) => IconName::Pause,
-      Item::Action(SessionAction::Hibernate) => IconName::Snowflake,
-      Item::Action(SessionAction::SuspendThenHibernate) => IconName::Moon,
-      Item::Action(SessionAction::Reboot) => IconName::RotateCw,
-      Item::Action(SessionAction::PowerOff) => IconName::Power,
-      Item::Action(SessionAction::RebootToFirmware) => IconName::Cpu,
+      Item::Action(action) => action.icon(),
       Item::RebootTo => IconName::ChevronRight,
       Item::BootEntry(_) => IconName::RotateCw,
       Item::Back => IconName::ChevronLeft,
@@ -78,15 +63,7 @@ impl Item {
   fn enabled(&self, capabilities: &SessionCapabilities) -> bool {
     match self {
       Item::Lock => true,
-      Item::Action(action) => match action {
-        SessionAction::Logout => true,
-        SessionAction::Suspend => capabilities.suspend,
-        SessionAction::Hibernate => capabilities.hibernate,
-        SessionAction::SuspendThenHibernate => capabilities.suspend_then_hibernate,
-        SessionAction::Reboot => capabilities.reboot,
-        SessionAction::PowerOff => capabilities.power_off,
-        SessionAction::RebootToFirmware => capabilities.reboot_to_firmware,
-      },
+      Item::Action(action) => action.allowed(capabilities),
       Item::RebootTo => !boot_entries(capabilities).is_empty(),
       Item::BootEntry(_) | Item::Back => true,
     }
