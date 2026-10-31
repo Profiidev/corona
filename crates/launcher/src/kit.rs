@@ -7,6 +7,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Result, anyhow};
+use clap::ValueEnum;
+use corona_ipc::Switch;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
@@ -187,11 +189,10 @@ pub fn tag(on: bool) -> Accessory {
 
 /// The state an `on`, `off` or `toggle` argument asks for, from `current`
 pub fn switch_target(args: &Args, current: bool) -> bool {
-  match args.text(0) {
-    Some("on") => true,
-    Some("off") => false,
-    _ => !current,
-  }
+  (args.text(0))
+    .and_then(|s| Switch::from_str(s, false).ok())
+    .and_then(|switch| switch.target(current))
+    .unwrap_or(!current)
 }
 
 pub fn switch_arg() -> ArgSpec {
