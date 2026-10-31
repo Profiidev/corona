@@ -4,12 +4,12 @@ use corona_config::ConfigProvider;
 use crate::{
   control_center::ControlCenter,
   dashboard::{
-    Changed, DashboardExt, DashboardPanel, DashboardRegistry, QuickAction, QuickActionEntry, Tile,
+    DashboardExt, DashboardPanel, DashboardRegistry, QuickAction, QuickActionEntry, Tile, on_off,
   },
 };
 use gpui_kit::{
   App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, SharedString,
-  Styled, Subscription, Window,
+  Styled, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -24,65 +24,26 @@ use rust_i18n::t;
 
 const COLUMNS: usize = 3;
 
-type Action = Box<dyn Fn(&mut App)>;
-
-struct Toggle {
-  icon: IconName,
-  status: String,
-  active: bool,
-  on_click: Option<Action>,
-}
-
-/// A quick action whose tile `$build` makes, re-rendered when the entities
-/// `$observe` names notify
-macro_rules! action {
-  (
-    $name:ident, $id:literal, $title:literal, $build:ident, $page:expr,
-    |$cx:ident| [$($entity:expr),* $(,)?]
-  ) => {
-    pub struct $name;
-
-    impl QuickAction for $name {
-      const ID: &'static str = $id;
-
-      fn title() -> SharedString {
-        t!($title).into()
-      }
-
-      fn tile(cx: &App) -> Tile {
-        let toggle = $build(cx);
-        Tile {
-          icon: toggle.icon,
-          status: toggle.status.into(),
-          active: toggle.active,
-          toggle: toggle.on_click,
-        }
-      }
-
-      fn page() -> Option<&'static str> {
-        $page
-      }
-
-      #[allow(unused_variables)]
-      fn observe(changed: Changed, $cx: &mut App) -> Vec<Subscription> {
-        vec![$({
-          let (entity, changed) = ($entity.clone(), changed.clone());
-          $cx.observe(&entity, move |_, cx| changed(cx))
-        }),*]
-      }
-    }
-  };
-}
-
 // a theme change redraws every window anyway
-action!(
-  DarkMode,
-  "dark_mode",
-  "app.dashboard.dark_mode",
-  dark_mode,
-  None,
-  |cx| []
-);
+pub struct DarkMode;
+
+impl QuickAction for DarkMode {
+  const ID: &'static str = "dark_mode";
+
+  fn title() -> SharedString {
+    t!("app.dashboard.dark_mode").into()
+  }
+
+  fn tile(cx: &App) -> Tile {
+    let dark = cx.theme().is_dark();
+    Tile {
+      icon: if dark { IconName::Moon } else { IconName::Sun },
+      status: on_off(dark),
+      active: dark,
+      toggle: Some(Box::new(toggle_mode)),
+    }
+  }
+}
 
 /// The configured tiles, None for none
 pub(super) fn tiles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
@@ -145,31 +106,4 @@ fn tile(action: &QuickActionEntry, tile: Tile) -> Button {
         ControlCenter::navigate_id(page, window, cx)
       })
     })
-}
-
-fn on_off(on: bool) -> String {
-  match on {
-    true => t!("app.common.on"),
-    false => t!("app.common.off"),
-  }
-  .into()
-}
-
-fn dark_mode(cx: &App) -> Toggle {
-  let dark = cx.theme().is_dark();
-  Toggle {
-    icon: if dark { IconName::Moon } else { IconName::Sun },
-    status: on_off(dark),
-    active: dark,
-    on_click: Some(Box::new(toggle_mode)),
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn on_off_labels() {
-    assert_eq!(super::on_off(true), "On");
-    assert_eq!(super::on_off(false), "Off");
-  }
 }

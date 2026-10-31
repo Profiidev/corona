@@ -282,6 +282,12 @@ pub fn warn_bad_ids(cx: &mut App) {
 mod tests {
   use super::*;
 
+  #[test]
+  fn on_off_labels() {
+    assert_eq!(super::on_off(true), "On");
+    assert_eq!(super::on_off(false), "Off");
+  }
+
   struct Wifi;
 
   impl QuickAction for Wifi {
