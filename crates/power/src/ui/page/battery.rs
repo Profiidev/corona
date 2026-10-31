@@ -143,7 +143,7 @@ impl PowerPanel {
               .checked(limit.enabled)
               .on_change(cx.async_listener(
                 |_, enabled: &bool, _, cx| cx.power().set_charge_threshold(*enabled, cx),
-                Self::show_error,
+                |this, result, _| this.error.set(result),
               )),
           ))
         }),

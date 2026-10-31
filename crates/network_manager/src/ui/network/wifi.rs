@@ -101,11 +101,7 @@ impl NetworkPanel {
               .disabled(!supported)
               .on_change(cx.async_listener(
                 |_, checked, _, cx| cx.network_manager().set_wifi_enabled(*checked),
-                |this, result, _| {
-                  if let Err(e) = result.log_err() {
-                    this.error = Some(e.to_string());
-                  }
-                },
+                |this, result, _| this.error.set(result),
               )),
           ),
       )
@@ -201,11 +197,7 @@ impl NetworkPanel {
               .cursor_pointer()
               .on_click(cx.async_listener(
                 move |_, _, _, cx| cx.network_manager().disconnect(&interface, cx),
-                |this, result, _| {
-                  if let Err(e) = result.log_err() {
-                    this.error = Some(e.to_string());
-                  }
-                },
+                |this, result, _| this.error.set(result),
               )),
           )
         },
@@ -215,11 +207,7 @@ impl NetworkPanel {
               let ssid = network.ssid.clone();
               move |_, _, _, cx| cx.network_manager().connect_wifi(ssid.clone(), cx)
             },
-            |this, result, _| {
-              if let Err(e) = result.log_err() {
-                this.error = Some(e.to_string());
-              }
-            },
+            |this, result, _| this.error.set(result),
           ))
         },
       )
@@ -239,11 +227,7 @@ impl NetworkPanel {
                   cx.network_manager().forget_wifi(ssid.clone(), cx)
                 }
               },
-              |this, result, _| {
-                if let Err(e) = result.log_err() {
-                  this.error = Some(e.to_string());
-                }
-              },
+              |this, result, _| this.error.set(result),
             )),
         )
       })

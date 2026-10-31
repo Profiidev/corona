@@ -122,7 +122,7 @@ impl PrintersPanel {
                 {
                   let name = name.clone();
                   move |this, _, _, cx| {
-                    this.error = None;
+                    this.error.clear();
                     let paths = cx.prompt_for_paths(PathPromptOptions {
                       files: true,
                       directories: false,
@@ -139,7 +139,7 @@ impl PrintersPanel {
                     }
                   }
                 },
-                Self::show_error,
+                |this, result, _| this.error.set(result),
               )),
           )
           .child(
@@ -148,10 +148,10 @@ impl PrintersPanel {
               .tooltip(t!("app.printers.enabled"))
               .on_change(cx.async_listener(
                 move |this, running: &bool, _, cx| {
-                  this.error = None;
+                  this.error.clear();
                   cx.printing().set_paused(&name, !*running)
                 },
-                Self::show_error,
+                |this, result, _| this.error.set(result),
               )),
           ),
       )
@@ -218,12 +218,12 @@ impl PrintersPanel {
           .on_click(cx.async_listener(
             move |this, _, _, cx| {
               this.adding = Some(name.clone());
-              this.error = None;
+              this.error.clear();
               cx.printing().add_printer(&name, cx)
             },
-            |this, result, cx| {
+            |this, result, _| {
               this.adding = None;
-              this.show_error(result, cx);
+              this.error.set(result);
             },
           )),
       )
@@ -311,10 +311,10 @@ impl PrintersPanel {
                 .cursor_pointer()
                 .on_click(cx.async_listener(
                   move |this, _, _, cx| {
-                    this.error = None;
+                    this.error.clear();
                     cx.printing().cancel_job(id)
                   },
-                  Self::show_error,
+                  |this, result, _| this.error.set(result),
                 )),
             )
           }),

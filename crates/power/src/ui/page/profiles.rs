@@ -47,7 +47,7 @@ impl PowerPanel {
                     let name = name.clone();
                     move |_, _, _, cx| cx.power().set_profile(name.clone())
                   },
-                  Self::show_error,
+                  |this, result, _| this.error.set(result),
                 ))
             })),
         )

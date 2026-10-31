@@ -1,9 +1,8 @@
 use anyhow::Result;
-use corona_components::components::card::ErrorCard;
+use corona_components::components::card::PageError;
 use corona_components::components::list::card;
 use corona_compositor::{Compositor, CompositorExt, types::Monitor, types::MonitorChange};
 use corona_surface::control_center::ControlCenterPage;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
   Styled, Subscription, Window,
@@ -31,7 +30,7 @@ pub struct DisplaysPanel {
   target: Entity<SelectState<Names>>,
   /// What the user picked; until then the mirror that is on, or a sensible pair
   picked: (Option<String>, Option<String>),
-  error: Option<String>,
+  error: PageError,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -84,7 +83,7 @@ impl ControlCenterPage for DisplaysPanel {
       source,
       target,
       picked: (None, None),
-      error: None,
+      error: PageError::default(),
       _subscriptions: subscriptions,
     };
     panel.sync_selects(window, cx);
@@ -168,9 +167,7 @@ impl DisplaysPanel {
   }
 
   fn show(&mut self, result: Result<()>, cx: &mut Context<Self>) {
-    if let Err(e) = result.log_err() {
-      self.error = Some(e.to_string());
-    }
+    self.error.set(result);
     cx.notify();
   }
 
@@ -204,19 +201,9 @@ impl DisplaysPanel {
   }
 
   fn configure(&mut self, name: &str, change: MonitorChange, cx: &mut Context<Self>) {
-    self.error = None;
+    self.error.clear();
     let result = Compositor::configure_monitor(name, change, cx);
     self.show(result, cx);
-  }
-
-  fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    let error = self.error.clone()?;
-    Some(
-      ErrorCard::new("displays-error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
-        this.error = None;
-        cx.notify();
-      })),
-    )
   }
 
   fn row(&self, monitor: &Monitor, all: &[Monitor], cx: &Context<'_, Self>) -> impl IntoElement {
@@ -370,7 +357,12 @@ impl Render for DisplaysPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(
+        self
+          .error
+          .card("displays-error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .child(
         // takes the height the mirror card leaves, so the panel is filled
         card(cx)
@@ -520,7 +512,7 @@ mod tests {
       *fake.calls.borrow(),
       ["monitor HDMI-A-1 StopMirroring", "monitor DP-2 Enable"]
     );
-    assert!(panel.read_with(cx, |panel, _| panel.error.is_none()));
+    assert!(panel.read_with(cx, |panel, _| panel.error.message().is_none()));
     cx.update(|window, cx| window.render_frame(cx));
   }
 }

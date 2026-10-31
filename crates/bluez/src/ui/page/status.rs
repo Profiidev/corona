@@ -1,6 +1,6 @@
 use crate::BluetoothExt;
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::{CardExt, ErrorCard};
+use corona_components::components::card::CardExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -72,7 +72,10 @@ impl BluetoothPanel {
               .tooltip(t!("app.bluetooth.scan"))
               .disabled(!powered)
               .loading(scanning)
-              .on_click(cx.async_listener(|_, _, _, cx| Self::start_scan(cx), Self::show_error)),
+              .on_click(cx.async_listener(
+                |_, _, _, cx| Self::start_scan(cx),
+                |this, result, _| this.error.set(result),
+              )),
           )
           .child(
             Switch::new("bt-powered")
@@ -80,7 +83,7 @@ impl BluetoothPanel {
               .disabled(adapter.is_none())
               .on_change(cx.async_listener(
                 |_, checked: &bool, _, cx| cx.bluetooth().set_powered(*checked, cx),
-                Self::show_error,
+                |this, result, _| this.error.set(result),
               )),
           ),
       )
@@ -101,20 +104,10 @@ impl BluetoothPanel {
                 .checked(adapter.discoverable)
                 .on_change(cx.async_listener(
                   |_, checked: &bool, _, cx| cx.bluetooth().set_discoverable(*checked, cx),
-                  Self::show_error,
+                  |this, result, _| this.error.set(result),
                 )),
             ),
         )
       })
-  }
-
-  pub fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    let error = self.error.clone()?;
-    Some(
-      ErrorCard::new("bt-error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
-        this.error = None;
-        cx.notify();
-      })),
-    )
   }
 }

@@ -1,4 +1,5 @@
 use crate::NetworkManagerExt;
+use corona_components::components::card::PageError;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -35,7 +36,7 @@ impl<T, E> From<Result<T, E>> for LoadingState {
 pub struct NetworkPanel {
   connectivity_checking: LoadingState,
   wifi_scanning: LoadingState,
-  error: Option<String>,
+  error: PageError,
   secret_prompt: Option<SecretPrompt>,
   hidden_prompt: Option<HiddenPrompt>,
   _secret_request: Subscription,
@@ -64,7 +65,7 @@ impl ControlCenterPage for NetworkPanel {
     Self {
       connectivity_checking: LoadingState::Idle,
       wifi_scanning: LoadingState::Idle,
-      error: None,
+      error: PageError::default(),
       secret_prompt: None,
       hidden_prompt: None,
       _secret_request: subscription,

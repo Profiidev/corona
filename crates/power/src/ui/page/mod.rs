@@ -1,9 +1,7 @@
 use crate::PowerExt;
-use anyhow::Result;
-use corona_components::components::card::ErrorCard;
+use corona_components::components::card::PageError;
 use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
@@ -14,7 +12,7 @@ mod devices;
 mod profiles;
 
 pub struct PowerPanel {
-  error: Option<String>,
+  error: PageError,
   _subscriptions: [Subscription; 4],
 }
 
@@ -40,29 +38,13 @@ impl ControlCenterPage for PowerPanel {
     ];
 
     Self {
-      error: None,
+      error: PageError::default(),
       _subscriptions: subscriptions,
     }
   }
 }
 
-impl PowerPanel {
-  fn show_error(&mut self, result: Result<()>, _: &mut Context<Self>) {
-    if let Err(e) = result.log_err() {
-      self.error = Some(e.to_string());
-    }
-  }
-
-  fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    let error = self.error.clone()?;
-    Some(
-      ErrorCard::new("power-error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
-        this.error = None;
-        cx.notify();
-      })),
-    )
-  }
-}
+impl PowerPanel {}
 
 impl Render for PowerPanel {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -73,7 +55,12 @@ impl Render for PowerPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(
+        self
+          .error
+          .card("power-error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .when_some(self.battery(theme, cx), |d, battery| d.child(battery))
       .when_some(self.profiles(theme, cx), |d, profiles| d.child(profiles))
       .when_some(self.battery_details(theme, cx), |d, details| {

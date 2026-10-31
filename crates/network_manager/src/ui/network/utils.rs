@@ -15,13 +15,8 @@ pub fn address(i: &Interface) -> String {
 
 impl NetworkPanel {
   pub fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    if let Some(error) = &self.error {
-      return Some(
-        ErrorCard::new("error-dismiss", error.clone()).on_dismiss(cx.listener(|this, _, _, cx| {
-          this.error = None;
-          cx.notify();
-        })),
-      );
+    if let Some(card) = self.error.card("error-dismiss", |this| &mut this.error, cx) {
+      return Some(card);
     }
 
     let failure = cx.network_manager().wifi_failure(cx)?;

@@ -1,3 +1,4 @@
+use corona_components::components::card::PageError;
 use std::time::Duration;
 
 use crate::BluetoothExt;
@@ -18,7 +19,7 @@ mod status;
 const SCAN: Duration = Duration::from_secs(30);
 
 pub struct BluetoothPanel {
-  error: Option<String>,
+  error: PageError,
   prompt: Option<PairingPrompt>,
   _subscriptions: [Subscription; 3],
 }
@@ -47,7 +48,7 @@ impl ControlCenterPage for BluetoothPanel {
     cx.defer_in(window, |this, window, cx| this.sync_prompt(window, cx));
 
     Self {
-      error: None,
+      error: PageError::default(),
       prompt: None,
       _subscriptions: subscriptions,
     }
@@ -55,12 +56,6 @@ impl ControlCenterPage for BluetoothPanel {
 }
 
 impl BluetoothPanel {
-  fn show_error(&mut self, result: Result<()>, _: &mut Context<Self>) {
-    if let Err(e) = result.log_err() {
-      self.error = Some(e.to_string());
-    }
-  }
-
   fn start_scan(cx: &mut Context<Self>) -> impl Future<Output = Result<()>> + use<> {
     let start = cx.bluetooth().start_discovery(cx);
     cx.spawn(async move |_, cx| {
@@ -93,7 +88,12 @@ impl Render for BluetoothPanel {
       .size_full()
       .gap_2()
       .child(self.status(theme, cx))
-      .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(
+        self
+          .error
+          .card("bt-error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .when(powered, |d| {
         d.child(self.paired(theme, cx))
           .when_some(self.available(theme, cx), |d, available| d.child(available))

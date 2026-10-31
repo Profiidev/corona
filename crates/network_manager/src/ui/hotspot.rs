@@ -3,7 +3,7 @@ use std::{pin::Pin, time::Duration};
 use crate::{DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt};
 use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::{CardExt, ErrorCard};
+use corona_components::components::card::{CardExt, PageError};
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -29,7 +29,7 @@ use qrcode::{Color, QrCode};
 use rust_i18n::t;
 
 pub struct HotspotPanel {
-  error: Option<String>,
+  error: PageError,
   ssid: Entity<InputState>,
   password: Entity<InputState>,
   band: Entity<SelectState<Vec<String>>>,
@@ -171,7 +171,7 @@ impl ControlCenterPage for HotspotPanel {
     cx.defer_in(window, |this, window, cx| this.load_hotspot(window, cx));
 
     Self {
-      error: None,
+      error: PageError::default(),
       ssid: cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.hidden.ssid"))),
       password: cx.new(|cx| {
         InputState::new(window, cx)
@@ -230,14 +230,10 @@ impl Render for HotspotPanel {
       .size_full()
       .gap_2()
       .overflow_y_scrollbar()
-      .when_some(self.error.clone(), |d, error| {
-        d.child(
-          ErrorCard::new("error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
-            this.error = None;
-            cx.notify();
-          })),
-        )
-      })
+      .when_some(
+        self.error.card("error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .child(match self.hotspot(theme, cx) {
         Some(hotspot) => hotspot.into_any_element(),
         None => div()
@@ -438,7 +434,7 @@ impl HotspotPanel {
                   |this, result, _| {
                     this.pending = false;
                     if let Err(e) = result.log_err() {
-                      this.error = Some(format!("{e:#}"));
+                      this.error.show(format!("{e:#}"));
                     }
                   },
                 )),

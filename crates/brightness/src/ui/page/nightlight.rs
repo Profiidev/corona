@@ -63,7 +63,7 @@ impl BrightnessPanel {
                   .checked(state.on)
                   .on_change(cx.listener(|this, on: &bool, _, cx| {
                     let result = cx.brightness().set_nightlight(*on, cx);
-                    this.show_error(result, cx);
+                    this.error.set(result);
                     cx.notify();
                   })),
               ),

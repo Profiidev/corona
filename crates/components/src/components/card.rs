@@ -1,6 +1,9 @@
+use std::fmt::{Debug, Display};
+
 use corona_config::ConfigProvider;
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window,
+  App, ClickEvent, Context, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window,
   assets::IconName,
   component::{ActiveTheme, Sizable, button::Button},
   div,
@@ -77,6 +80,47 @@ impl RenderOnce for ErrorCard {
   }
 }
 
+/// The error a page shows in a dismissable card
+#[derive(Default)]
+pub struct PageError(Option<String>);
+
+impl PageError {
+  /// Logs what `result` failed with and shows it; a success leaves the shown error
+  pub fn set<E: Debug + Display>(&mut self, result: Result<(), E>) {
+    if let Err(e) = result.log_err() {
+      self.0 = Some(e.to_string());
+    }
+  }
+
+  pub fn show(&mut self, message: impl Into<String>) {
+    self.0 = Some(message.into());
+  }
+
+  pub fn clear(&mut self) {
+    self.0 = None;
+  }
+
+  pub fn message(&self) -> Option<&str> {
+    self.0.as_deref()
+  }
+
+  /// The card, if there is an error; dismissing it clears the error `field` points to
+  pub fn card<T: 'static>(
+    &self,
+    id: impl Into<ElementId>,
+    field: fn(&mut T) -> &mut Self,
+    cx: &Context<T>,
+  ) -> Option<ErrorCard> {
+    let error = self.0.clone()?;
+    Some(
+      ErrorCard::new(id, error).on_dismiss(cx.listener(move |this, _, _, cx| {
+        field(this).clear();
+        cx.notify();
+      })),
+    )
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use gpui_kit::{self as gpui, TestAppContext, px};
@@ -96,5 +140,15 @@ mod tests {
     test_view::draw(handle, cx);
     cx.update(|cx| cx.global_mut::<corona_config::Config>().theme.card_borders = false);
     test_view::draw(handle, cx);
+  }
+
+  #[test]
+  fn page_error_keeps_the_last_failure() {
+    let mut error = PageError::default();
+    error.set(Err("failed"));
+    error.set(Ok::<_, &str>(()));
+    assert_eq!(error.message(), Some("failed"));
+    error.clear();
+    assert_eq!(error.message(), None);
   }
 }

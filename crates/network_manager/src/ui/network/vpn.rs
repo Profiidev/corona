@@ -1,7 +1,6 @@
 use crate::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::ListCard;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -95,11 +94,7 @@ impl NetworkPanel {
                 async move { if up { disconnect.await } else { connect.await } }
               }
             },
-            |this, result, _| {
-              if let Err(e) = result.log_err() {
-                this.error = Some(e.to_string());
-              }
-            },
+            |this, result, _| this.error.set(result),
           )),
       )
   }

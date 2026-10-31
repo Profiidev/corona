@@ -7,10 +7,9 @@ use std::{
 
 use crate::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
-use corona_components::components::card::ErrorCard;
+use corona_components::components::card::PageError;
 use corona_power::PowerExt;
 use corona_surface::control_center::ControlCenterPage;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   base::slider::{SliderEvent, SliderState},
@@ -39,7 +38,7 @@ const NIGHTLIGHT: &str = "nightlight";
 const THROTTLE: Duration = Duration::from_millis(100);
 
 pub struct BrightnessPanel {
-  error: Option<String>,
+  error: PageError,
   sliders: HashMap<String, (Entity<SliderState>, Subscription)>,
   dragging: HashSet<String>,
   pending: HashMap<String, f32>,
@@ -102,12 +101,12 @@ impl ControlCenterPage for BrightnessPanel {
         .brightness()
         .set_nightlight_temperature(kelvin.round() as u32, cx)
         .map(|_| ());
-      this.show_error(result, cx);
+      this.error.set(result);
       cx.notify();
     });
 
     let mut panel = Self {
-      error: None,
+      error: PageError::default(),
       sliders: HashMap::new(),
       dragging: HashSet::new(),
       pending: HashMap::new(),
@@ -121,12 +120,6 @@ impl ControlCenterPage for BrightnessPanel {
 }
 
 impl BrightnessPanel {
-  fn show_error(&mut self, result: Result<()>, _: &mut Context<Self>) {
-    if let Err(e) = result.log_err() {
-      self.error = Some(e.to_string());
-    }
-  }
-
   fn sync_sliders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
     let lights: Vec<Light> = displays(cx).into_iter().chain(keyboard(cx)).collect();
     self
@@ -207,24 +200,12 @@ impl BrightnessPanel {
       let result = task.await;
       this
         .update(cx, |this, cx| {
-          this.show_error(result, cx);
+          this.error.set(result);
           cx.notify();
         })
         .ok();
     })
     .detach();
-  }
-
-  fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    let error = self.error.clone()?;
-    Some(
-      ErrorCard::new("brightness-error-dismiss", error).on_dismiss(cx.listener(
-        |this, _, _, cx| {
-          this.error = None;
-          cx.notify();
-        },
-      )),
-    )
   }
 }
 
@@ -237,7 +218,12 @@ impl Render for BrightnessPanel {
       .flex_col()
       .size_full()
       .gap_2()
-      .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(
+        self
+          .error
+          .card("brightness-error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .when_some(self.nightlight(theme, cx), |d, nightlight| {
         d.child(nightlight)
       })

@@ -189,7 +189,7 @@ impl BluetoothPanel {
           task
         }
       },
-      Self::show_error,
+      |this, result, _| this.error.set(result),
     )))
     .when(paired, |d| {
       d.child(
@@ -201,7 +201,7 @@ impl BluetoothPanel {
           .cursor_pointer()
           .on_click(cx.async_listener(
             move |_, _, _, cx| cx.bluetooth().forget(&address, cx),
-            Self::show_error,
+            |this, result, _| this.error.set(result),
           )),
       )
     })

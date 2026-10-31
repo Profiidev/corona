@@ -174,7 +174,7 @@ impl PrintersPanel {
         .on_click(cx.async_listener(
           move |this, _, _, cx| {
             this.scanner = Some(name.clone());
-            this.error = None;
+            this.error.clear();
             (this.caps, this.settings, this.saved) = (None, None, None);
             let caps = cx.printing().scanner_capabilities(&name, cx);
             let name = name.clone();
@@ -189,7 +189,7 @@ impl PrintersPanel {
               Ok(caps) => this.loaded(caps, cx),
               Err(e) => {
                 this.scanner = None;
-                this.show_error(Err(e), cx);
+                this.error.set(Err(e));
               }
             }
           },
@@ -348,7 +348,7 @@ impl PrintersPanel {
                 .tooltip(t!("app.printers.choose_folder"))
                 .on_click(cx.async_listener(
                   |this, _, _, cx| {
-                    this.error = None;
+                    this.error.clear();
                     let paths = cx.prompt_for_paths(PathPromptOptions {
                       files: false,
                       directories: true,
@@ -360,7 +360,7 @@ impl PrintersPanel {
                       Ok(picked.and_then(|p| p.into_iter().next()))
                     }
                   },
-                  |this, picked: Result<Option<PathBuf>>, cx| match picked {
+                  |this, picked: Result<Option<PathBuf>>, _| match picked {
                     Ok(Some(dir)) => {
                       if let Some(settings) = this.settings.as_mut() {
                         settings.destination = dir.clone();
@@ -368,7 +368,7 @@ impl PrintersPanel {
                       this.destination = dir;
                     }
                     Ok(None) => {}
-                    Err(e) => this.show_error(Err(e), cx),
+                    Err(e) => this.error.set(Err(e)),
                   },
                 )),
             ),
@@ -398,7 +398,8 @@ impl PrintersPanel {
                 .disabled(busy.is_some())
                 .on_click(cx.async_listener(
                   |this, _, _, cx| {
-                    (this.saved, this.error) = (None, None);
+                    this.saved = None;
+                    this.error.clear();
                     let printing = cx.printing().clone();
                     let name = this.scanner.clone();
                     let task = match (&name, this.settings.clone()) {
@@ -413,14 +414,14 @@ impl PrintersPanel {
                       (name, files)
                     }
                   },
-                  |this, (name, files): (Option<String>, Result<Vec<PathBuf>>), cx| {
+                  |this, (name, files): (Option<String>, Result<Vec<PathBuf>>), _| {
                     // another scanner was picked meanwhile, its card is not about this scan
                     if this.scanner != name {
                       return;
                     }
                     match files {
                       Ok(files) => this.saved = Some(files.len()),
-                      Err(e) => this.show_error(Err(e), cx),
+                      Err(e) => this.error.set(Err(e)),
                     }
                   },
                 )),

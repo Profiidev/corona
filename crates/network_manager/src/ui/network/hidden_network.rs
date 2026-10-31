@@ -1,6 +1,5 @@
 use crate::{HiddenSecurity, NetworkManagerExt};
 use corona_components::components::{input::on_enter, modal::modal};
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::{IndexPath, StyledExt, input::InputState},
@@ -100,10 +99,11 @@ impl NetworkPanel {
       .join_hidden_wifi(ssid, prompt.security, password, cx);
     self.hidden_prompt = None;
     cx.spawn(async move |this, cx| {
-      if let Err(e) = join.await.log_err() {
+      let result = join.await;
+      if result.is_err() {
         this
           .update(cx, |this, cx| {
-            this.error = Some(e.to_string());
+            this.error.set(result);
             cx.notify();
           })
           .ok();

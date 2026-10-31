@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{PrintingExt, ScanSettings, ScannerCaps};
-use anyhow::Result;
-use corona_components::components::card::ErrorCard;
+use corona_components::components::card::PageError;
 use corona_surface::control_center::ControlCenterPage;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::{
@@ -28,7 +26,7 @@ enum Tab {
 
 pub struct PrintersPanel {
   tab: Tab,
-  error: Option<String>,
+  error: PageError,
   /// the scanner picked on the scan tab, its capabilities once loaded
   scanner: Option<String>,
   caps: Option<ScannerCaps>,
@@ -74,7 +72,7 @@ impl ControlCenterPage for PrintersPanel {
     ];
     Self {
       tab: Tab::Printers,
-      error: None,
+      error: PageError::default(),
       scanner: None,
       caps: None,
       settings: None,
@@ -87,22 +85,6 @@ impl ControlCenterPage for PrintersPanel {
 }
 
 impl PrintersPanel {
-  fn show_error(&mut self, result: Result<()>, _: &mut Context<Self>) {
-    if let Err(e) = result.log_err() {
-      self.error = Some(e.to_string());
-    }
-  }
-
-  fn error(&self, cx: &Context<'_, Self>) -> Option<ErrorCard> {
-    let error = self.error.clone()?;
-    Some(
-      ErrorCard::new("printers-error-dismiss", error).on_dismiss(cx.listener(|this, _, _, cx| {
-        this.error = None;
-        cx.notify();
-      })),
-    )
-  }
-
   fn tabs(&self, cx: &Context<'_, Self>) -> impl IntoElement {
     div().flex().gap_1().children(
       [
@@ -122,7 +104,7 @@ impl PrintersPanel {
           .when(tab == self.tab, |b| b.primary())
           .on_click(cx.listener(move |this, _, _, cx| {
             this.tab = tab;
-            this.error = None;
+            this.error.clear();
             cx.notify();
           }))
       }),
@@ -139,7 +121,12 @@ impl Render for PrintersPanel {
       .size_full()
       .gap_2()
       .child(self.tabs(cx))
-      .when_some(self.error(cx), |d, error| d.child(error))
+      .when_some(
+        self
+          .error
+          .card("printers-error-dismiss", |this| &mut this.error, cx),
+        |d, error| d.child(error),
+      )
       .map(|d| match self.tab {
         Tab::Printers => d
           .child(self.printers(theme, cx))
