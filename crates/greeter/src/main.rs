@@ -218,16 +218,13 @@ fn main() {
         .and_then(|file| config::read(&file))
         .inspect_err(|e| tracing::error!("greeter: default settings: {e:#}"))
         .unwrap_or_default();
-      let language = (config.language)
-        .or_else(|| std::env::var("LANG").ok())
-        .unwrap_or_default();
       let monitor = config.monitor;
       // the theme loader reads the shell's settings
       cx.set_global(corona_config::Config {
         theme: config.theme,
         ..Default::default()
       });
-      rust_i18n::set_locale(language.split(['_', '.', '-']).next().unwrap_or_default());
+      corona_components::i18n::apply(config.language.as_deref());
       corona_components::assets::load(cx).expect("Failed to load assets");
       cx.foreground_executor()
         .clone()
