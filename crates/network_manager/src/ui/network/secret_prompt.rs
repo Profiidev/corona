@@ -1,13 +1,9 @@
 use crate::{NetworkManagerExt, Secret, SecretKind};
-use corona_components::components::{input::on_enter, modal::modal};
+use corona_components::components::{input::on_enter, modal::Dialog};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
-  base::{StyledExt, input::InputState},
-  component::{
-    Sizable, Theme,
-    button::{Button, ButtonVariants},
-    input::Input,
-  },
+  base::input::InputState,
+  component::{Sizable, Theme, input::Input},
   div,
   prelude::FluentBuilder,
 };
@@ -68,52 +64,30 @@ impl NetworkPanel {
     let prompt = self.secret_prompt.as_ref()?;
     let request = cx.network_manager().secret_request(cx)?;
 
-    Some(modal(
-      theme,
-      div()
-        .child(
+    Some(
+      Dialog::new(
+        "secret",
+        t!("app.network.password_for", name = request.name),
+        cx.listener(|_, _, _, cx| cx.network_manager().clone().answer_secret(cx, None)),
+      )
+      .when(request.retry, |d| {
+        d.child(
           div()
-            .font_bold()
-            .text_sm()
-            .truncate()
-            .child(t!("app.network.password_for", name = request.name)),
+            .text_xs()
+            .text_color(theme.colors.danger)
+            .child(t!("app.network.wrong_password")),
         )
-        .when(request.retry, |d| {
-          d.child(
-            div()
-              .text_xs()
-              .text_color(theme.colors.danger)
-              .child(t!("app.network.wrong_password")),
-          )
-        })
-        .when_some(prompt.identity.as_ref(), |d, identity| {
-          d.child(Input::new(identity).small())
-        })
-        .child(Input::new(&prompt.password).mask_toggle().small())
-        .child(
-          div()
-            .flex()
-            .gap_2()
-            .justify_end()
-            .child(
-              Button::new("secret-cancel")
-                .label(t!("app.common.cancel"))
-                .cursor_pointer()
-                .small()
-                .on_click(cx.listener(|_, _, _, cx| {
-                  cx.network_manager().clone().answer_secret(cx, None);
-                })),
-            )
-            .child(
-              Button::new("secret-connect")
-                .primary()
-                .label(t!("app.common.connect"))
-                .cursor_pointer()
-                .small()
-                .on_click(cx.listener(|this, _, window, cx| this.submit_secret(window, cx))),
-            ),
-        ),
-      cx.listener(|_, _, _, cx| cx.network_manager().clone().answer_secret(cx, None)),
-    ))
+      })
+      .when_some(prompt.identity.as_ref(), |d, identity| {
+        d.child(Input::new(identity).small())
+      })
+      .child(Input::new(&prompt.password).mask_toggle().small())
+      .confirm(
+        t!("app.common.connect"),
+        false,
+        false,
+        cx.listener(|this, _, window, cx| this.submit_secret(window, cx)),
+      ),
+    )
   }
 }

@@ -1,13 +1,9 @@
 use crate::{BluetoothExt, PairingAnswer, PairingKind};
-use corona_components::components::{input::on_enter, modal::modal};
+use corona_components::components::{input::on_enter, modal::Dialog};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::{StyledExt, input::InputState},
-  component::{
-    Sizable, Theme,
-    button::{Button, ButtonVariants},
-    input::Input,
-  },
+  component::{Sizable, input::Input},
   div,
   prelude::FluentBuilder,
 };
@@ -58,7 +54,7 @@ impl BluetoothPanel {
     bluetooth.answer_pairing(cx, answer);
   }
 
-  pub fn pairing_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+  pub fn pairing_prompt(&self, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
     let prompt = self.prompt.as_ref()?;
     let bluetooth = cx.bluetooth();
     let request = bluetooth.pairing_request(cx)?;
@@ -83,61 +79,36 @@ impl BluetoothPanel {
       _ => Some(t!("app.bluetooth.pair")),
     };
 
-    Some(modal(
-      theme,
-      div()
-        .child(
-          div()
-            .font_bold()
-            .text_sm()
-            .truncate()
-            .child(t!("app.bluetooth.prompt.title", name = name)),
-        )
-        .child(
-          div()
-            .text_xs()
-            .text_color(theme.colors.muted_foreground)
-            .child(hint),
-        )
-        .when_some(passkey, |d, passkey| {
-          // always 6 digits, zero padded
-          d.child(
-            div()
-              .flex()
-              .justify_center()
-              .p_2()
-              .font_bold()
-              .child(format!("{passkey:06}")),
-          )
-        })
-        .when(needs_code(request.kind), |d| {
-          d.child(Input::new(&prompt.code).small())
-        })
-        .child(
+    Some(
+      Dialog::new(
+        "bt-pair",
+        t!("app.bluetooth.prompt.title", name = name),
+        cx.listener(|this, _, _, cx| this.answer(false, cx)),
+      )
+      .message(hint)
+      .when_some(passkey, |d, passkey| {
+        // always 6 digits, zero padded
+        d.child(
           div()
             .flex()
-            .gap_2()
-            .justify_end()
-            .child(
-              Button::new("bt-pair-cancel")
-                .label(t!("app.common.cancel"))
-                .small()
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| this.answer(false, cx))),
-            )
-            .when_some(accept_label, |d, label| {
-              d.child(
-                Button::new("bt-pair-accept")
-                  .primary()
-                  .label(label)
-                  .small()
-                  .cursor_pointer()
-                  .on_click(cx.listener(|this, _, _, cx| this.answer(true, cx))),
-              )
-            }),
-        ),
-      cx.listener(|this, _, _, cx| this.answer(false, cx)),
-    ))
+            .justify_center()
+            .p_2()
+            .font_bold()
+            .child(format!("{passkey:06}")),
+        )
+      })
+      .when(needs_code(request.kind), |d| {
+        d.child(Input::new(&prompt.code).small())
+      })
+      .when_some(accept_label, |d, label| {
+        d.confirm(
+          label,
+          false,
+          false,
+          cx.listener(|this, _, _, cx| this.answer(true, cx)),
+        )
+      }),
+    )
   }
 }
 

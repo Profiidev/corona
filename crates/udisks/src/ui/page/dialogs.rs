@@ -15,7 +15,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use corona_components::components::list::kv;
-use corona_components::components::modal::modal;
+use corona_components::components::modal;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, PathPromptOptions,
   SharedString, Styled, Subscription, Window,
@@ -27,7 +27,7 @@ use gpui_kit::{
   },
   component::{
     ActiveTheme, Icon, Sizable,
-    button::{Button, ButtonVariants},
+    button::Button,
     checkbox::Checkbox,
     input::Input,
     select::{Select, SelectState},
@@ -35,7 +35,6 @@ use gpui_kit::{
   },
   div,
   prelude::FluentBuilder,
-  px,
 };
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
@@ -46,7 +45,6 @@ use crate::ui::page::{
   jobs::{DisksLog, Start},
   model::{free_spaces, usage},
   types::{FORMATS, default_partition_type, flags_of, fs_name, partition_types, size},
-  ui,
 };
 
 const MIB: u64 = 1 << 20;
@@ -1500,86 +1498,39 @@ impl DisksPanel {
     };
     let _ = window;
     Some(
-      modal(
-        &theme,
-        div()
-          .max_h_full()
-          .child(
-            div()
-              .flex()
-              .items_center()
-              .gap_2()
-              .child(ui::icon(icon))
-              .child(
-                div()
-                  .flex()
-                  .flex_col()
-                  .flex_1()
-                  .min_w_0()
-                  .child(
-                    div()
-                      .text_sm()
-                      .font_weight(gpui_kit::FontWeight::BOLD)
-                      .child(title),
-                  )
-                  .child(
-                    div()
-                      .text_xs()
-                      .text_color(theme.colors.muted_foreground)
-                      .child(description),
-                  ),
-              ),
-          )
-          .when_some(warning, |d, warning| {
-            d.child(
-              div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .p_2()
-                .rounded_md()
-                .bg(theme.colors.danger.opacity(0.15))
-                .text_xs()
-                .text_color(theme.colors.danger)
-                .child(Icon::new(IconName::TriangleAlert).small())
-                .child(warning),
-            )
-          })
-          .children(fields)
-          .when_some(error, |d, error| {
-            d.child(div().text_xs().text_color(theme.colors.danger).child(error))
-          })
-          .child(
-            div()
-              .flex()
-              .gap_2()
-              .justify_end()
-              .pt(px(4.))
-              .child(
-                Button::new(format!("disks-dialog-{id}-cancel"))
-                  .label(cancel_label)
-                  .small()
-                  .cursor_pointer()
-                  .on_click(cx.listener(|this, _, _, cx| this.close_dialog(cx))),
-              )
-              .when_some(ok, |d, ok| {
-                d.child(
-                  Button::new(format!("disks-dialog-{id}-ok"))
-                    .label(ok)
-                    .small()
-                    .loading(busy)
-                    .when_else(danger, |b| b.danger(), |b| b.primary())
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))),
-                )
-              }),
-          ),
-        cx.listener(|this, _, _, cx| {
-          if !this.dialog.as_ref().is_some_and(|d| d.busy) {
-            this.close_dialog(cx);
-          }
-        }),
+      modal::Dialog::new(
+        format!("disks-dialog-{id}"),
+        title,
+        cx.listener(|this, _, _, cx| this.close_dialog(cx)),
       )
+      .icon(icon)
+      .message(description)
+      .when_some(warning, |d, warning| {
+        d.child(
+          div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .p_2()
+            .rounded_md()
+            .bg(theme.colors.danger.opacity(0.15))
+            .text_xs()
+            .text_color(theme.colors.danger)
+            .child(Icon::new(IconName::TriangleAlert).small())
+            .child(warning),
+        )
+      })
+      .children(fields)
+      .error(error)
+      .cancel_label(cancel_label)
+      .when_some(ok, |d, ok| {
+        d.confirm(
+          ok,
+          danger,
+          busy,
+          cx.listener(|this, _, window, cx| this.confirm(window, cx)),
+        )
+      })
       .into_any_element(),
     )
   }

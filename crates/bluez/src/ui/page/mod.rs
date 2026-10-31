@@ -98,6 +98,6 @@ impl Render for BluetoothPanel {
         d.child(self.paired(theme, cx))
           .when_some(self.available(theme, cx), |d, available| d.child(available))
       })
-      .when_some(self.pairing_prompt(theme, cx), |d, prompt| d.child(prompt))
+      .when_some(self.pairing_prompt(cx), |d, prompt| d.child(prompt))
   }
 }

@@ -197,7 +197,7 @@ fn every_dialog_opens(cx: &mut TestAppContext) {
     })
     .unwrap();
     let cancel = format!("disks-dialog-{id}-cancel");
-    let ok = format!("disks-dialog-{id}-ok");
+    let ok = format!("disks-dialog-{id}-confirm");
     assert_eq!(present(cx, o.window, &[&cancel, &ok]), [true, true], "{id}");
   }
   for dialog in [
@@ -215,7 +215,7 @@ fn every_dialog_opens(cx: &mut TestAppContext) {
       cx.notify();
     });
     let cancel = format!("disks-dialog-{id}-cancel");
-    let ok = format!("disks-dialog-{id}-ok");
+    let ok = format!("disks-dialog-{id}-confirm");
     // a result only closes
     assert_eq!(
       present(cx, o.window, &[&cancel, &ok]),
@@ -435,7 +435,7 @@ fn the_running_systems_partitions_stay_put(cx: &mut TestAppContext) {
     present(
       cx,
       o.window,
-      &["disks-dialog-benchmark-ok", "disks-dialog-check-write"]
+      &["disks-dialog-benchmark-confirm", "disks-dialog-check-write"]
     ),
     [true, false]
   );

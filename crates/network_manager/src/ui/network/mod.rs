@@ -88,7 +88,7 @@ impl Render for NetworkPanel {
       .child(self.wifi(theme, cx))
       .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
       .child(self.interfaces(theme, cx))
-      .when_some(self.hidden_prompt(theme, cx), |d, prompt| d.child(prompt))
+      .when_some(self.hidden_prompt(cx), |d, prompt| d.child(prompt))
       .when_some(self.secret_prompt(theme, cx), |d, prompt| d.child(prompt))
   }
 }

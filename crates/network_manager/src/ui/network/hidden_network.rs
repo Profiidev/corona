@@ -1,15 +1,13 @@
 use crate::{HiddenSecurity, NetworkManagerExt};
-use corona_components::components::{input::on_enter, modal::modal};
+use corona_components::components::{input::on_enter, modal::Dialog};
 use gpui_kit::{
-  AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
-  base::{IndexPath, StyledExt, input::InputState},
+  AppContext, Context, Entity, IntoElement, ParentElement, Subscription, Window,
+  base::{IndexPath, input::InputState},
   component::{
-    Sizable, Theme,
-    button::{Button, ButtonVariants},
+    Sizable,
     input::Input,
     select::{Select, SelectEvent, SelectState},
   },
-  div,
   prelude::FluentBuilder,
 };
 
@@ -113,52 +111,30 @@ impl NetworkPanel {
     cx.notify();
   }
 
-  pub fn hidden_prompt(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+  pub fn hidden_prompt(&self, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
     let prompt = self.hidden_prompt.as_ref()?;
 
-    Some(modal(
-      theme,
-      div()
-        .child(
-          div()
-            .font_bold()
-            .text_sm()
-            .child(t!("app.network.hidden.title")),
-        )
-        .child(Input::new(&prompt.ssid).small())
-        .child(Select::new(&prompt.security_select).small())
-        .when(prompt.security != HiddenSecurity::Open, |d| {
-          d.child(Input::new(&prompt.password).mask_toggle().small())
-        })
-        .child(
-          div()
-            .flex()
-            .gap_2()
-            .justify_end()
-            .child(
-              Button::new("hidden-cancel")
-                .label(t!("app.common.cancel"))
-                .cursor_pointer()
-                .small()
-                .on_click(cx.listener(|this, _, _, cx| {
-                  this.hidden_prompt = None;
-                  cx.notify();
-                })),
-            )
-            .child(
-              Button::new("hidden-connect")
-                .primary()
-                .label(t!("app.common.connect"))
-                .cursor_pointer()
-                .small()
-                .on_click(cx.listener(|this, _, window, cx| this.join_hidden(window, cx))),
-            ),
-        ),
-      cx.listener(|this, _, _, cx| {
-        this.hidden_prompt = None;
-        cx.notify();
-      }),
-    ))
+    Some(
+      Dialog::new(
+        "hidden",
+        t!("app.network.hidden.title"),
+        cx.listener(|this, _, _, cx| {
+          this.hidden_prompt = None;
+          cx.notify();
+        }),
+      )
+      .child(Input::new(&prompt.ssid).small())
+      .child(Select::new(&prompt.security_select).small())
+      .when(prompt.security != HiddenSecurity::Open, |d| {
+        d.child(Input::new(&prompt.password).mask_toggle().small())
+      })
+      .confirm(
+        t!("app.common.connect"),
+        false,
+        false,
+        cx.listener(|this, _, window, cx| this.join_hidden(window, cx)),
+      ),
+    )
   }
 }
 

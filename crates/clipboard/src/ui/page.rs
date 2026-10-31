@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::launcher::{clip, kind_label, swatch};
 use crate::{ClipboardExt, Entry, Kind};
-use corona_components::components::{card::CardExt, modal::modal};
+use corona_components::components::{card::CardExt, modal::Dialog};
 use corona_launcher::command::Hud;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
 use gpui_kit::{
@@ -254,54 +254,24 @@ impl ClipboardPanel {
   }
 
   fn confirm(&self, cx: &Context<Self>) -> impl IntoElement {
-    let theme = cx.theme();
-    modal(
-      theme,
-      div()
-        .child(
-          div()
-            .text_sm()
-            .font_weight(gpui_kit::FontWeight::BOLD)
-            .child(t!("app.launcher.clipboard.clear")),
-        )
-        .child(
-          div()
-            .text_xs()
-            .text_color(theme.colors.muted_foreground)
-            .child(t!("app.launcher.clipboard.clear_message")),
-        )
-        .child(
-          div()
-            .flex()
-            .justify_end()
-            .gap_2()
-            .child(
-              Button::new("clipboard-clear-cancel")
-                .label(t!("app.common.cancel"))
-                .small()
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| {
-                  this.confirm_clear = false;
-                  cx.notify();
-                })),
-            )
-            .child(
-              Button::new("clipboard-clear-confirm")
-                .label(t!("app.launcher.clipboard.clear_button"))
-                .small()
-                .with_variant(ButtonVariant::Danger)
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| {
-                  this.confirm_clear = false;
-                  if let Some(history) = cx.clipboard_history().cloned() {
-                    let _ = history.clear(cx).log_err();
-                  }
-                  cx.notify();
-                })),
-            ),
-        ),
+    Dialog::new(
+      "clipboard-clear",
+      t!("app.launcher.clipboard.clear"),
       cx.listener(|this, _, _, cx| {
         this.confirm_clear = false;
+        cx.notify();
+      }),
+    )
+    .message(t!("app.launcher.clipboard.clear_message"))
+    .confirm(
+      t!("app.launcher.clipboard.clear_button"),
+      true,
+      false,
+      cx.listener(|this, _, _, cx| {
+        this.confirm_clear = false;
+        if let Some(history) = cx.clipboard_history().cloned() {
+          let _ = history.clear(cx).log_err();
+        }
         cx.notify();
       }),
     )
