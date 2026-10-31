@@ -33,6 +33,25 @@ use rust_i18n::t;
 
 pub use bar::{Form, Slot};
 
+/// The [`SettingsPage`] `$name`, its page built by `$page`
+#[macro_export]
+macro_rules! settings_page {
+  ($(#[$meta:meta])* $name:ident, $id:literal, $order:literal, |$cx:ident| $page:expr) => {
+    $(#[$meta])*
+    pub struct $name;
+
+    impl $crate::SettingsPage for $name {
+      const ID: &'static str = $id;
+      const ORDER: i32 = $order;
+
+      #[allow(unused_variables)]
+      fn page($cx: &::gpui_kit::App) -> ::gpui_kit::component::setting::SettingPage {
+        $page
+      }
+    }
+  };
+}
+
 mod appearance;
 pub mod bar;
 pub mod cli;
@@ -241,27 +260,11 @@ impl Render for DashboardButton {
   }
 }
 
-pub struct AppearanceSettings;
+settings_page!(AppearanceSettings, "appearance", 0, |cx| {
+  appearance::page(cx)
+});
 
-impl SettingsPage for AppearanceSettings {
-  const ID: &'static str = "appearance";
-  const ORDER: i32 = 0;
-
-  fn page(cx: &App) -> SettingPage {
-    appearance::page(cx)
-  }
-}
-
-pub struct BarSettings;
-
-impl SettingsPage for BarSettings {
-  const ID: &'static str = "bar";
-  const ORDER: i32 = 10;
-
-  fn page(cx: &App) -> SettingPage {
-    bar::page(cx)
-  }
-}
+settings_page!(BarSettings, "bar", 10, |cx| bar::page(cx));
 
 /// A page with its title, icon and groups
 pub fn page(

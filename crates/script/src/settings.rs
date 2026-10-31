@@ -5,7 +5,7 @@ use corona_config::{
   plugins::{Approval, AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
 };
 use corona_js::ScriptRegistry;
-use corona_settings::{SettingsExt, SettingsPage};
+use corona_settings::{SettingsExt, settings_page};
 use gpui_kit::{
   App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
   SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
@@ -43,17 +43,13 @@ use crate::{
   secrets,
 };
 
-/// The plugins page: sources, plugins, their approval and their settings
-pub struct PluginSettings;
-
-impl SettingsPage for PluginSettings {
-  const ID: &'static str = "plugins";
-  const ORDER: i32 = 150;
-
-  fn page(cx: &App) -> SettingPage {
-    page(cx)
-  }
-}
+settings_page!(
+  /// The plugins page: sources, plugins, their approval and their settings
+  PluginSettings,
+  "plugins",
+  150,
+  |cx| page(cx)
+);
 
 /// Registers the plugins page, which lists what the sources offer as the window opens
 pub(crate) fn register(cx: &mut App) {

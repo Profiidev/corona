@@ -2,7 +2,7 @@
 
 use corona_components::settings_fields::{choice, switch};
 use corona_config::osk::{AutoShow, OskLanguage, OskLayout, TabletSource};
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{
   App, BorrowAppContext,
   assets::IconName,
@@ -16,16 +16,7 @@ use rust_i18n::t;
 
 use crate::Osk;
 
-pub struct OskSettings;
-
-impl SettingsPage for OskSettings {
-  const ID: &'static str = "osk";
-  const ORDER: i32 = 90;
-
-  fn page(_: &App) -> SettingPage {
-    osk()
-  }
-}
+settings_page!(OskSettings, "osk", 90, |cx| osk());
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut().register::<OskSettings>();

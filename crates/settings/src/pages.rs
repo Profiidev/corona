@@ -18,23 +18,6 @@ use crate::{SettingsExt, SettingsPage, group, item, page, shared_groups, shared_
 
 use rust_i18n::t;
 
-/// A settings page `$page` builds
-macro_rules! settings_page {
-  ($name:ident, $id:literal, $order:literal, |$cx:ident| $page:expr) => {
-    pub struct $name;
-
-    impl SettingsPage for $name {
-      const ID: &'static str = $id;
-      const ORDER: i32 = $order;
-
-      #[allow(unused_variables)]
-      fn page($cx: &App) -> SettingPage {
-        $page
-      }
-    }
-  };
-}
-
 // the order is the sidebar's; the appearance (0) and bar (10) pages are in lib.rs, the
 // integrations' pages in their crates
 settings_page!(WallpaperSettings, "wallpaper", 20, |cx| wallpaper());

@@ -4,9 +4,9 @@
 use corona_components::settings_fields::{choice, non_empty, number, switch, text};
 use corona_config::{Units, Weekday, bar::BarConfig};
 use corona_settings::{
-  SettingsExt, SettingsPage, Slot, WidgetOptions,
+  SettingsExt, Slot, WidgetOptions,
   bar::{form, form_input, form_key, form_row, options, set_options},
-  group, item, page,
+  group, item, page, settings_page,
 };
 use gpui_kit::{
   App, IntoElement, ParentElement, Window,
@@ -17,16 +17,7 @@ use rust_i18n::t;
 
 use crate::ui::clock::{Clock, Options};
 
-pub struct LocationSettings;
-
-impl SettingsPage for LocationSettings {
-  const ID: &'static str = "location";
-  const ORDER: i32 = 130;
-
-  fn page(_: &App) -> SettingPage {
-    location()
-  }
-}
+settings_page!(LocationSettings, "location", 130, |cx| location());
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()

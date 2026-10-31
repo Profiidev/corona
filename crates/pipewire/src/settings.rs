@@ -3,23 +3,14 @@
 use corona_components::settings_fields::text;
 use corona_config::bar::BarConfig;
 use corona_settings::{
-  SettingsExt, SettingsPage, Slot, WidgetOptions, bar::idle_form, group, item, page,
+  SettingsExt, Slot, WidgetOptions, bar::idle_form, group, item, page, settings_page,
 };
 use gpui_kit::{App, Axis, Window, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
 
 use crate::ui::privacy::Privacy;
 
-pub struct PrivacySettings;
-
-impl SettingsPage for PrivacySettings {
-  const ID: &'static str = "privacy";
-  const ORDER: i32 = 140;
-
-  fn page(_: &App) -> SettingPage {
-    privacy()
-  }
-}
+settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()

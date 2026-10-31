@@ -1,33 +1,17 @@
 //! The taskbar and window switcher pages
 
 use corona_components::settings_fields::{number, slider, switch};
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{App, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
 
 const OPACITY: (f32, f32, f32) = (0., 1., 0.05);
 
-pub struct TaskbarSettings;
+settings_page!(TaskbarSettings, "taskbar", 60, |cx| taskbar());
 
-impl SettingsPage for TaskbarSettings {
-  const ID: &'static str = "taskbar";
-  const ORDER: i32 = 60;
-
-  fn page(_: &App) -> SettingPage {
-    taskbar()
-  }
-}
-
-pub struct WindowSwitcherSettings;
-
-impl SettingsPage for WindowSwitcherSettings {
-  const ID: &'static str = "window_switcher";
-  const ORDER: i32 = 70;
-
-  fn page(_: &App) -> SettingPage {
-    window_switcher()
-  }
-}
+settings_page!(WindowSwitcherSettings, "window_switcher", 70, |cx| {
+  window_switcher()
+});
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()

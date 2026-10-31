@@ -2,22 +2,15 @@
 
 use corona_components::settings_fields::{choice, number, slider, switch, text};
 use corona_config::NotificationPosition;
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{App, Axis, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
 
 const OPACITY: (f32, f32, f32) = (0., 1., 0.05);
 
-pub struct NotificationSettings;
-
-impl SettingsPage for NotificationSettings {
-  const ID: &'static str = "notifications";
-  const ORDER: i32 = 30;
-
-  fn page(_: &App) -> SettingPage {
-    notifications()
-  }
-}
+settings_page!(NotificationSettings, "notifications", 30, |cx| {
+  notifications()
+});
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut().register::<NotificationSettings>();

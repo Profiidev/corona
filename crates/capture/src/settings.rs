@@ -3,20 +3,11 @@
 use std::path::PathBuf;
 
 use corona_components::settings_fields::{optional_text, text};
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{App, Axis, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
 
-pub struct ScreenshotSettings;
-
-impl SettingsPage for ScreenshotSettings {
-  const ID: &'static str = "screenshot";
-  const ORDER: i32 = 120;
-
-  fn page(_: &App) -> SettingPage {
-    screenshot()
-  }
-}
+settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut().register::<ScreenshotSettings>();

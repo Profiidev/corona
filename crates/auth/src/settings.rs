@@ -5,7 +5,7 @@ use std::iter;
 use corona_components::settings_fields::{choice, non_empty, slider, switch, text};
 use corona_compositor::{Compositor, types::Monitor};
 use corona_config::ConfigProvider;
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{
   App, Axis,
   assets::IconName,
@@ -13,16 +13,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-pub struct LockscreenSettings;
-
-impl SettingsPage for LockscreenSettings {
-  const ID: &'static str = "lockscreen";
-  const ORDER: i32 = 100;
-
-  fn page(cx: &App) -> SettingPage {
-    lockscreen(cx)
-  }
-}
+settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut()

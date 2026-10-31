@@ -2,7 +2,7 @@
 
 use corona_components::settings_fields::{choice, number, switch, text};
 use corona_config::{Config, ConfigProvider, IdleAction, IdleBehavior};
-use corona_settings::{SettingsExt, SettingsPage, group, item, page};
+use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{
   App, Axis,
   assets::IconName,
@@ -10,16 +10,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-pub struct IdleSettings;
-
-impl SettingsPage for IdleSettings {
-  const ID: &'static str = "idle";
-  const ORDER: i32 = 110;
-
-  fn page(cx: &App) -> SettingPage {
-    idle(cx)
-  }
-}
+settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 
 pub(crate) fn register(cx: &mut App) {
   cx.settings_mut().register::<IdleSettings>();

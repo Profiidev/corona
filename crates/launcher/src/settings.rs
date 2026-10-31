@@ -7,7 +7,9 @@ use corona_config::{
   Config, ConfigProvider,
   launcher::{CommandConfig, SearchEngine},
 };
-use corona_settings::{SettingsPage, group, item, page, shared_groups, shared_items};
+use corona_settings::{
+  SettingsPage, group, item, page, settings_page, shared_groups, shared_items,
+};
 use gpui_kit::{
   App, AppContext, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
   Window,
@@ -29,18 +31,14 @@ use corona_components::settings_fields::{
 
 use crate::registry::Registry;
 
-/// The launcher page: behavior, every command's alias and visibility and where
-/// results come from
-pub struct LauncherSettings;
-
-impl SettingsPage for LauncherSettings {
-  const ID: &'static str = "launcher";
-  const ORDER: i32 = 80;
-
-  fn page(cx: &App) -> SettingPage {
-    page_of(cx)
-  }
-}
+settings_page!(
+  /// The launcher page: behavior, every command's alias and visibility and where
+  /// results come from
+  LauncherSettings,
+  "launcher",
+  80,
+  |cx| page_of(cx)
+);
 
 fn page_of(cx: &App) -> SettingPage {
   page(
