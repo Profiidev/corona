@@ -9,7 +9,7 @@ use corona_config::{
 use std::borrow::Cow;
 use std::{cell::Cell, rc::Rc};
 
-use corona_surface::bar::BarState;
+use corona_surface::bar::{BarState, IdleOptions};
 use gpui_kit::base::Disableable;
 use gpui_kit::{
   Anchor, App, AppContext, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Pixels,
@@ -800,6 +800,35 @@ pub fn form_key(name: &str, slot: Slot, field: &str) -> String {
     "form-{name}-{:?}-{}-{:?}-{field}",
     slot.section, slot.index, slot.member
   )
+}
+
+/// The form of a widget that can hide while idle, one switch labelled `label`
+pub fn idle_form(
+  name: &str,
+  bar: &BarConfig,
+  slot: Slot,
+  label: impl IntoElement,
+) -> gpui_kit::AnyElement {
+  let current: IdleOptions = options(bar, slot);
+  let name = name.to_string();
+  form()
+    .child(form_row(
+      label,
+      gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
+        .checked(current.hide_when_idle)
+        .small()
+        .on_click(move |checked, _, cx| {
+          set_options(
+            cx,
+            &name,
+            slot,
+            IdleOptions {
+              hide_when_idle: *checked,
+            },
+          );
+        }),
+    ))
+    .into_any_element()
 }
 
 #[cfg(test)]
