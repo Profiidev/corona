@@ -4,14 +4,14 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use corona_config::{ConfigProvider, observe_section};
+use corona_config::ConfigProvider;
 use corona_surface::{
   overlay::{layer_options, root},
   per_display::PerDisplay,
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Context, DisplayId, Entity, Global, IntoElement, PathBuilder,
-  Pixels, Render, Size, Styled, Window, canvas,
+  AnyWindowHandle, App, AppContext, Context, DisplayId, IntoElement, PathBuilder, Pixels, Render,
+  Size, Styled, Window, canvas,
   component::ActiveTheme,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -27,36 +27,20 @@ const CORNERS: [Anchor; 4] = [
   Anchor::BOTTOM.union(Anchor::RIGHT),
 ];
 
-struct ScreenCorners {
-  displays: Option<Entity<PerDisplay>>,
-}
-
-impl Global for ScreenCorners {}
-
 pub fn init(cx: &mut App) {
-  cx.set_global(ScreenCorners { displays: None });
-  open(cx);
   // the radius follows the theme, which corners are free the bars
-  observe_section(cx, |c| &c.theme, |_, cx| reopen(cx));
-  observe_section(cx, |c| &c.bar, |_, cx| reopen(cx));
+  PerDisplay::follow(cx, |c| (c.theme.clone(), c.bar.clone()), open);
 }
 
-fn reopen(cx: &mut App) {
-  if let Some(displays) = cx.global_mut::<ScreenCorners>().displays.take() {
-    PerDisplay::close(displays, cx);
-  }
-  open(cx);
-}
-
-fn open(cx: &mut App) {
+fn open(cx: &mut App) -> Option<impl Fn(&mut App, DisplayId) -> Vec<AnyWindowHandle> + use<>> {
   if !cx.config().theme.screen_corners {
-    return;
+    return None;
   }
   let placements: HashSet<_> = cx.config().bar.values().map(|b| b.position).collect();
   let corners = free_corners(placements.iter().map(|p| p.anchor()));
   // the bars flare by the same radius
   let radius = cx.theme().radius * 2;
-  let displays = PerDisplay::new(cx, move |cx, display| {
+  Some(move |cx: &mut App, display| {
     corners
       .iter()
       .filter_map(|corner| {
@@ -65,8 +49,7 @@ fn open(cx: &mut App) {
           .ok()
       })
       .collect()
-  });
-  cx.global_mut::<ScreenCorners>().displays = Some(displays);
+  })
 }
 
 /// The corners no bar covers; a bar's anchor holds the two corners it flares into

@@ -5,6 +5,7 @@ use std::{
 };
 
 use corona_compositor::CompositorExt;
+use corona_config::{Config, ConfigProvider};
 use corona_utils::display::display_uuid;
 use gpui_kit::{AnyWindowHandle, App, AppContext, DisplayId, Entity, Subscription, WeakEntity};
 use uuid::Uuid;
@@ -41,6 +42,31 @@ impl PerDisplay {
     for handle in windows.into_values().flatten() {
       let _ = handle.update(cx, |_, window, _| window.remove_window());
     }
+  }
+
+  /// Keeps the windows `open` makes on every display, opened again once what `watch` reads
+  /// from the config changes; `open` gives `None` for none at all
+  pub fn follow<T: PartialEq + 'static, F>(
+    cx: &mut App,
+    watch: fn(&Config) -> T,
+    open: impl Fn(&mut App) -> Option<F> + 'static,
+  ) where
+    F: Fn(&mut App, DisplayId) -> Vec<AnyWindowHandle> + 'static,
+  {
+    let mut displays = open(cx).map(|f| Self::new(cx, f));
+    let mut last = watch(cx.config());
+    cx.observe_global::<Config>(move |cx| {
+      let now = watch(cx.config());
+      if now == last {
+        return;
+      }
+      last = now;
+      if let Some(displays) = displays.take() {
+        Self::close(displays, cx);
+      }
+      displays = open(cx).map(|f| Self::new(cx, f));
+    })
+    .detach();
   }
 
   pub fn windows(&self, display: DisplayId) -> &[AnyWindowHandle] {
@@ -214,6 +240,32 @@ mod tests {
     cx.run_until_parked();
     assert_eq!(windows(cx), before);
     assert!(this.read_with(cx, |this, _| this.windows.is_empty()));
+  }
+
+  #[gpui_kit::test]
+  fn follow_opens_again_only_when_the_watched_part_changes(cx: &mut TestAppContext) {
+    test_support::setup(cx);
+    let opened = Rc::new(Cell::new(0));
+    let count = opened.clone();
+    cx.update(|cx| {
+      PerDisplay::follow(
+        cx,
+        |c| c.wallpaper.path.clone(),
+        move |cx| {
+          count.set(count.get() + 1);
+          cx.config()
+            .wallpaper
+            .path
+            .is_some()
+            .then_some(|_: &mut App, _| Vec::new())
+        },
+      )
+    });
+    assert_eq!(opened.get(), 1);
+    cx.update(|cx| cx.global_mut::<Config>().theme.screen_corners ^= true);
+    assert_eq!(opened.get(), 1);
+    cx.update(|cx| cx.global_mut::<Config>().wallpaper.path = Some("a.png".into()));
+    assert_eq!(opened.get(), 2);
   }
 
   #[gpui_kit::test]

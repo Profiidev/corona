@@ -9,7 +9,7 @@ use corona_components::{
   components::window_icon::WindowIcon,
 };
 use corona_compositor::{CompositorExt, types};
-use corona_config::{ConfigProvider, observe_section, placement::Placement};
+use corona_config::{ConfigProvider, placement::Placement};
 use corona_surface::{
   input_region::InputRegion,
   overlay::{layer_options, root},
@@ -18,7 +18,7 @@ use corona_surface::{
   popup::{self, popup_options},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, Global, InteractiveElement,
+  AnyWindowHandle, App, AppContext, Bounds, Context, DisplayId, Entity, InteractiveElement,
   IntoElement, MouseButton, ParentElement, Pixels, Render, Size, StatefulInteractiveElement,
   Styled, Subscription, Task, Window, WindowOptions,
   base::ElementExt,
@@ -43,39 +43,23 @@ const PREVIEW_DELAY: Duration = Duration::from_millis(200);
 const PREVIEW_GAP: f32 = 8.;
 const PREVIEW_HIDE_DELAY: Duration = Duration::from_millis(150);
 
-struct Taskbars {
-  displays: Option<Entity<PerDisplay>>,
-}
-
-impl Global for Taskbars {}
-
 pub fn init(cx: &mut App) {
-  cx.set_global(Taskbars { displays: None });
-  open(cx);
   // the window's height follows the icon size, so open them again
-  observe_section(
+  PerDisplay::follow(
     cx,
-    |c| &c.taskbar,
-    |_, cx| {
-      if let Some(displays) = cx.global_mut::<Taskbars>().displays.take() {
-        PerDisplay::close(displays, cx);
-      }
-      open(cx);
+    |c| c.taskbar.clone(),
+    |cx| {
+      cx.config()
+        .taskbar
+        .enabled
+        .then_some(|cx: &mut App, display| {
+          create_taskbar(cx, display)
+            .inspect_err(|e| error!("failed to create taskbar: {e:#}"))
+            .into_iter()
+            .collect()
+        })
     },
   );
-}
-
-fn open(cx: &mut App) {
-  if !cx.config().taskbar.enabled {
-    return;
-  }
-  let taskbars = PerDisplay::new(cx, |cx, display| {
-    create_taskbar(cx, display)
-      .inspect_err(|e| error!("failed to create taskbar: {e:#}"))
-      .into_iter()
-      .collect()
-  });
-  cx.global_mut::<Taskbars>().displays = Some(taskbars);
 }
 
 fn height(icon_size: f32) -> f32 {

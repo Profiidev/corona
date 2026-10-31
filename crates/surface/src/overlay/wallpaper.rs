@@ -1,9 +1,9 @@
 use anyhow::Result;
 use corona_components::assets::image_source;
-use corona_config::{ConfigProvider, observe_section};
+use corona_config::ConfigProvider;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Context, DisplayId, Entity, Global, ImageSource, IntoElement,
-  ObjectFit, ParentElement, Render, Size, Styled, StyledImage, Window, WindowBackgroundAppearance,
+  AnyWindowHandle, App, AppContext, Context, DisplayId, ImageSource, IntoElement, ObjectFit,
+  ParentElement, Render, Size, Styled, StyledImage, Window, WindowBackgroundAppearance,
   WindowOptions,
   base::Root,
   div, img,
@@ -16,39 +16,21 @@ use crate::{overlay::layer_options, per_display::PerDisplay};
 
 const NAMESPACE: &str = "corona_wallpaper";
 
-struct Wallpapers {
-  displays: Option<Entity<PerDisplay>>,
-}
-
-impl Global for Wallpapers {}
-
 /// Shows the configured wallpaper on every display, again when it changes
 pub fn init(cx: &mut App) {
-  cx.set_global(Wallpapers { displays: None });
-  open(cx);
-  observe_section(
+  PerDisplay::follow(
     cx,
-    |c| &c.wallpaper,
-    |_, cx| {
-      if let Some(displays) = cx.global_mut::<Wallpapers>().displays.take() {
-        PerDisplay::close(displays, cx);
-      }
-      open(cx);
+    |c| c.wallpaper.clone(),
+    |cx| {
+      let source = configured(cx)?;
+      Some(move |cx: &mut App, display| {
+        create_wallpaper(source.clone(), display, cx)
+          .inspect_err(|e| error!("failed to create wallpaper: {e:#}"))
+          .into_iter()
+          .collect()
+      })
     },
   );
-}
-
-fn open(cx: &mut App) {
-  let Some(source) = configured(cx) else {
-    return;
-  };
-  let wallpapers = PerDisplay::new(cx, move |cx, display| {
-    create_wallpaper(source.clone(), display, cx)
-      .inspect_err(|e| error!("failed to create wallpaper: {e:#}"))
-      .into_iter()
-      .collect()
-  });
-  cx.global_mut::<Wallpapers>().displays = Some(wallpapers);
 }
 
 pub fn configured(cx: &App) -> Option<ImageSource> {
