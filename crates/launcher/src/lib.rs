@@ -28,7 +28,7 @@ pub use command::{
 };
 pub use matching::{Match, Query, Tier};
 pub use view::{
-  CustomView, DetailView, Field, FieldKind, Filter, FormView, Layout, ListView, View,
+  CustomView, DetailView, Field, FieldKind, Filter, FormView, Layout, ListView, View, detail_row,
 };
 
 pub fn init(cx: &mut App) {

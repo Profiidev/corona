@@ -207,6 +207,14 @@ pub struct DetailView {
   pub actions: Vec<Action>,
 }
 
+/// A row of [`DetailView::metadata`]
+pub fn detail_row(
+  key: impl Into<SharedString>,
+  value: impl Into<SharedString>,
+) -> (SharedString, SharedString) {
+  (key.into(), value.into())
+}
+
 /// A view that draws itself, like Now Playing; the host keeps Esc and back
 pub struct CustomView {
   pub title: SharedString,

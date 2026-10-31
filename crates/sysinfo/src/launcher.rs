@@ -9,18 +9,13 @@ use corona_components::{
   format::{Base, bytes},
   time::span,
 };
-use corona_launcher::{Action, Command, DetailView, Icon, Meta, Outcome, View, registry, simple};
+use corona_launcher::{
+  Action, Command, DetailView, Icon, Meta, Outcome, View, detail_row, registry, simple,
+};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use crate::SystemMonitorExt;
-
-fn row(
-  key: impl Into<SharedString>,
-  value: impl Into<SharedString>,
-) -> (SharedString, SharedString) {
-  (key.into(), value.into())
-}
 
 fn sysinfo(cx: &App) -> View {
   let monitor = cx.system_monitor();
@@ -31,21 +26,27 @@ fn sysinfo(cx: &App) -> View {
     let uptime = SystemTime::now()
       .duration_since(info.booted)
       .unwrap_or_default();
-    rows.push(row(t!("app.launcher.info.uptime"), span(uptime)));
-    rows.push(row(t!("app.launcher.info.kernel"), info.kernel.clone()));
-    rows.push(row(
+    rows.push(detail_row(t!("app.launcher.info.uptime"), span(uptime)));
+    rows.push(detail_row(
+      t!("app.launcher.info.kernel"),
+      info.kernel.clone(),
+    ));
+    rows.push(detail_row(
       t!("app.launcher.info.cpu"),
       format!("{} ({})", info.cpu_model, info.cpu_cores),
     ));
     for gpu in &info.gpus {
-      rows.push(row(t!("app.launcher.info.gpu"), gpu.name.clone()));
+      rows.push(detail_row(t!("app.launcher.info.gpu"), gpu.name.clone()));
     }
     if let Some(compositor) = &info.compositor {
-      rows.push(row(t!("app.launcher.info.compositor"), compositor.clone()));
+      rows.push(detail_row(
+        t!("app.launcher.info.compositor"),
+        compositor.clone(),
+      ));
     }
   }
   if let Some(sample) = monitor.sample(cx) {
-    rows.push(row(
+    rows.push(detail_row(
       t!("app.launcher.info.memory"),
       format!(
         "{} / {}",
@@ -53,7 +54,7 @@ fn sysinfo(cx: &App) -> View {
         bytes(sample.memory_total, Base::Binary)
       ),
     ));
-    rows.push(row(
+    rows.push(detail_row(
       t!("app.launcher.info.cpu_usage"),
       format!("{:.0}%", sample.cpu),
     ));

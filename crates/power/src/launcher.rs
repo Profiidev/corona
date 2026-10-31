@@ -9,36 +9,32 @@ use crate::{
 };
 use corona_ipc::IpcCommand;
 use corona_launcher::{
-  Action, DetailView, Icon, Meta, Outcome, View,
+  Action, DetailView, Icon, Meta, Outcome, View, detail_row,
   kit::{Choices, Group, opener, pick_or_list, watch},
   registry, simple,
 };
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-fn row(
-  key: impl Into<SharedString>,
-  value: impl Into<SharedString>,
-) -> (SharedString, SharedString) {
-  (key.into(), value.into())
-}
-
 fn battery(cx: &App) -> View {
   let mut rows = Vec::new();
   let body = match cx.power().battery(cx) {
     Some(b) => {
-      rows.push(row(t!("app.launcher.info.state"), format!("{:?}", b.state)));
+      rows.push(detail_row(
+        t!("app.launcher.info.state"),
+        format!("{:?}", b.state),
+      ));
       if let Some(t) = b.time_to_empty.filter(|t| !t.is_zero()) {
-        rows.push(row(t!("app.launcher.info.to_empty"), span(t)));
+        rows.push(detail_row(t!("app.launcher.info.to_empty"), span(t)));
       }
       if let Some(t) = b.time_to_full.filter(|t| !t.is_zero()) {
-        rows.push(row(t!("app.launcher.info.to_full"), span(t)));
+        rows.push(detail_row(t!("app.launcher.info.to_full"), span(t)));
       }
-      rows.push(row(
+      rows.push(detail_row(
         t!("app.launcher.info.health"),
         format!("{:.0}%", b.capacity),
       ));
-      rows.push(row(
+      rows.push(detail_row(
         t!("app.launcher.info.rate"),
         format!("{:.1} W", b.energy_rate),
       ));
