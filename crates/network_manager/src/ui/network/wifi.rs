@@ -20,7 +20,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::network::{LoadingState, NetworkPanel};
+use crate::ui::network::{LoadingState, NetworkPanel, refresh_button};
 use rust_i18n::t;
 
 impl NetworkPanel {
@@ -72,21 +72,9 @@ impl NetworkPanel {
               .on_click(cx.listener(|this, _, window, cx| this.open_hidden_prompt(window, cx))),
           )
           .child(
-            Button::new("wifi-rescan")
-              .icon(IconName::RefreshCw)
+            refresh_button("wifi-rescan", &self.wifi_scanning)
               .disabled(device.is_none())
-              .small()
-              .cursor_pointer()
               .tooltip(t!("app.network.wifi.scan"))
-              .loading(self.wifi_scanning == LoadingState::Loading)
-              .when_else(
-                self.wifi_scanning == LoadingState::Error,
-                |b| {
-                  b.with_variant(ButtonVariant::Danger)
-                    .icon(IconName::RotateCw)
-                },
-                |b| b.icon(IconName::RefreshCw),
-              )
               .on_click(cx.async_listener(
                 |this, _, _, cx| {
                   this.wifi_scanning = LoadingState::Loading;

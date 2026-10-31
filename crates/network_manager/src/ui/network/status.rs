@@ -8,7 +8,7 @@ use gpui_kit::{
   base::{Disableable, StyledExt},
   component::{
     Icon, Sizable, Theme,
-    button::{Button, ButtonVariant, ButtonVariants},
+    button::Button,
     tag::{Tag, TagVariant},
   },
   div,
@@ -16,7 +16,7 @@ use gpui_kit::{
 };
 
 use crate::ui::icons::interface_icon;
-use crate::ui::network::{LoadingState, NetworkPanel, utils::address};
+use crate::ui::network::{LoadingState, NetworkPanel, refresh_button, utils::address};
 use rust_i18n::t;
 
 impl NetworkPanel {
@@ -61,21 +61,10 @@ impl NetworkPanel {
               .child(primary.map_or(t!("app.network.no_connection").into(), address)),
           )
           .child(
-            Button::new("connectivity-check")
-              .small()
+            refresh_button("connectivity-check", &self.connectivity_checking)
               .ml_auto()
-              .cursor_pointer()
               .tooltip(t!("app.network.recheck"))
               .disabled(!connectivity_check_enabled)
-              .loading(self.connectivity_checking == LoadingState::Loading)
-              .when_else(
-                self.connectivity_checking == LoadingState::Error,
-                |b| {
-                  b.with_variant(ButtonVariant::Danger)
-                    .icon(IconName::RotateCw)
-                },
-                |b| b.icon(IconName::RefreshCw),
-              )
               .on_click(cx.async_listener(
                 |this, _, _, cx| {
                   this.connectivity_checking = LoadingState::Loading;

@@ -2,8 +2,14 @@ use crate::NetworkManagerExt;
 use corona_components::components::card::PageError;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
-  Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-  component::ActiveTheme, div, prelude::FluentBuilder,
+  Context, ElementId, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  assets::IconName,
+  component::{
+    ActiveTheme, Sizable,
+    button::{Button, ButtonVariant, ButtonVariants},
+  },
+  div,
+  prelude::FluentBuilder,
 };
 
 use crate::ui::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
@@ -31,6 +37,22 @@ impl<T, E> From<Result<T, E>> for LoadingState {
       Self::Error
     }
   }
+}
+
+/// A small refresh button showing `state`: spinning while loading, a red retry after a failure
+fn refresh_button(id: impl Into<ElementId>, state: &LoadingState) -> Button {
+  Button::new(id)
+    .small()
+    .cursor_pointer()
+    .loading(*state == LoadingState::Loading)
+    .when_else(
+      *state == LoadingState::Error,
+      |b| {
+        b.with_variant(ButtonVariant::Danger)
+          .icon(IconName::RotateCw)
+      },
+      |b| b.icon(IconName::RefreshCw),
+    )
 }
 
 pub struct NetworkPanel {
