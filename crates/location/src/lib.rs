@@ -8,6 +8,7 @@ use corona_config::{ConfigProvider, LocationConfig, observe_section};
 use corona_utils::{
   error::ErrorLogExt,
   persist::{load_json, save_json},
+  ticker::wait_or_refresh,
 };
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 use serde::{Deserialize, Serialize};
@@ -145,15 +146,7 @@ pub fn init(cx: &mut App, system: &Connection) {
           RETRY
         }
       };
-      let next = futures_lite::future::or(
-        async {
-          cx.background_executor().timer(wait).await;
-          true
-        },
-        async { requests.recv_async().await.is_ok() },
-      )
-      .await;
-      if !next {
+      if !wait_or_refresh(cx, &requests, wait).await {
         break;
       }
     }
