@@ -229,6 +229,12 @@ fn merge(
 /// Follows the backlights and monitors, registers the brightness UI, commands and script
 /// module
 pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  // read once at startup
+  observe_section(
+    cx,
+    |c| &c.brightness.enable_ddcutil,
+    |_, _| tracing::warn!("brightness.enable_ddcutil applies after a restart"),
+  );
   connect(cx, &buses.system)?;
   ui::register(cx);
   commands::register(cx);

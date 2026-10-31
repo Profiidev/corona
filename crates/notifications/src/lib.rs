@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
 use anyhow::{Context, Result};
-use corona_config::{APP_NAME, ConfigProvider};
+use corona_config::{APP_NAME, ConfigProvider, observe_section};
 use corona_js::ScriptExt;
 use corona_utils::Buses;
 use futures_lite::{Stream, StreamExt};
@@ -321,11 +321,29 @@ async fn object_server_listening(conn: &Connection) -> Result<()> {
   }
 }
 
+/// Names the notification sound's pipewire stream
+pub fn pre_start() {
+  // cpal names its pipewire streams `cpal-playback-<pid>` with no way to change it,
+  // so the notification sound shows as corona this way. Set before any thread starts.
+  unsafe {
+    std::env::set_var(
+      "PIPEWIRE_PROPS",
+      r#"{ node.description = "corona" application.icon-name = "corona-settings" }"#,
+    )
+  };
+}
+
 /// `serve`: be the notification daemon. Without it the state stays empty, for
 /// when another daemon is wanted.
 /// Serves or follows the notifications on the session bus, as `notification.enabled` says,
 /// registers their UI, commands, script modules and the plugin host's and launcher's hooks
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  // read once at startup
+  observe_section(
+    cx,
+    |c| &c.notification.enabled,
+    |_, _| tracing::warn!("notification.enabled applies after a restart"),
+  );
   let serve = cx.config().notification.enabled;
   connect(cx, &buses.session, serve).await?;
   ui::register(cx);

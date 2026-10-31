@@ -12,6 +12,11 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 mod locale_keys;
 mod settings;
 
+/// What has to happen before any thread starts
+pub fn pre_start() {
+  corona_notifications::pre_start();
+}
+
 pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
@@ -39,21 +44,6 @@ fn watch_config(cx: &mut App) {
       corona_components::i18n::apply(language.as_deref());
       cx.refresh_windows();
     },
-  );
-
-  // read once at startup
-  fn later<T>(name: &'static str) -> impl FnMut(&T, &mut App) {
-    move |_, _| tracing::warn!("{name} applies after a restart")
-  }
-  observe_section(
-    cx,
-    |c| &c.brightness.enable_ddcutil,
-    later("brightness.enable_ddcutil"),
-  );
-  observe_section(
-    cx,
-    |c| &c.notification.enabled,
-    later("notification.enabled"),
   );
 }
 
