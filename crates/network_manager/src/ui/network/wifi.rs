@@ -1,6 +1,7 @@
 use crate::{Interface, NetworkManagerExt, WifiNetwork, WifiStatus};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
+use corona_components::components::list::empty_note;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
@@ -109,15 +110,7 @@ impl NetworkPanel {
           ),
       )
       .when_some(placeholder_text.clone(), |d, text| {
-        d.child(
-          div()
-            .flex()
-            .justify_center()
-            .p_2()
-            .text_xs()
-            .text_color(theme.colors.muted_foreground)
-            .child(text),
-        )
+        d.child(empty_note(text, cx))
       })
       .when_none(&placeholder_text, |d| {
         d.child(

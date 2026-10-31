@@ -4,6 +4,7 @@ use crate::{ColorMode, Format, InputSource, PrintingExt, ScanSettings, Scanner, 
 use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
+use corona_components::components::list::{ListItem, empty_note};
 use gpui_kit::{
   Context, IntoElement, ParentElement, PathPromptOptions, Styled,
   assets::IconName,
@@ -18,7 +19,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::page::{PrintersPanel, list::placeholder};
+use crate::ui::page::PrintersPanel;
 use rust_i18n::t;
 
 /// What a fresh scan uses: 300 dpi or the closest, PDF when offered.
@@ -115,7 +116,7 @@ impl PrintersPanel {
           .child(t!("app.printers.scanners")),
       )
       .when(scanners.is_empty(), |d| {
-        d.child(placeholder(theme, t!("app.printers.no_scanners")))
+        d.child(empty_note(t!("app.printers.no_scanners"), cx))
       })
       .child(
         div()
@@ -158,65 +159,42 @@ impl PrintersPanel {
     let details = details.join(" · ");
     let name = scanner.name.clone();
 
-    div()
-      .flex()
-      .w_full()
-      .gap_2()
-      .p_2()
-      .items_center()
-      .rounded_xl()
-      .bg(theme.colors.background)
-      .child(
-        Icon::new(IconName::ScanLine)
-          .small()
-          .when(selected, |i| i.text_color(theme.colors.primary)),
-      )
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .flex_1()
-          .min_w_0()
-          .child(div().text_sm().truncate().child(scanner.name.clone()))
-          .child(
-            div()
-              .text_xs()
-              .text_color(theme.colors.muted_foreground)
-              .truncate()
-              .child(details),
-          ),
-      )
-      .child(
-        Button::new(format!("scanner-{name}"))
-          .icon(IconName::Check)
-          .small()
-          .cursor_pointer()
-          .when(selected, |b| b.primary())
-          .loading(selected && self.caps.is_none())
-          .on_click(cx.async_listener(
-            move |this, _, _, cx| {
-              this.scanner = Some(name.clone());
-              this.error = None;
-              (this.caps, this.settings, this.saved) = (None, None, None);
-              let caps = cx.printing().scanner_capabilities(&name, cx);
-              let name = name.clone();
-              async move { (name, caps.await) }
-            },
-            |this, (name, caps): (String, Result<ScannerCaps>), cx| {
-              // a later pick wins over a slow answer
-              if this.scanner.as_deref() != Some(&name) {
-                return;
+    ListItem::new(
+      Icon::new(IconName::ScanLine).when(selected, |i| i.text_color(theme.colors.primary)),
+      scanner.name.clone(),
+      details,
+    )
+    .child(
+      Button::new(format!("scanner-{name}"))
+        .icon(IconName::Check)
+        .small()
+        .cursor_pointer()
+        .when(selected, |b| b.primary())
+        .loading(selected && self.caps.is_none())
+        .on_click(cx.async_listener(
+          move |this, _, _, cx| {
+            this.scanner = Some(name.clone());
+            this.error = None;
+            (this.caps, this.settings, this.saved) = (None, None, None);
+            let caps = cx.printing().scanner_capabilities(&name, cx);
+            let name = name.clone();
+            async move { (name, caps.await) }
+          },
+          |this, (name, caps): (String, Result<ScannerCaps>), cx| {
+            // a later pick wins over a slow answer
+            if this.scanner.as_deref() != Some(&name) {
+              return;
+            }
+            match caps {
+              Ok(caps) => this.loaded(caps, cx),
+              Err(e) => {
+                this.scanner = None;
+                this.show_error(Err(e), cx);
               }
-              match caps {
-                Ok(caps) => this.loaded(caps, cx),
-                Err(e) => {
-                  this.scanner = None;
-                  this.show_error(Err(e), cx);
-                }
-              }
-            },
-          )),
-      )
+            }
+          },
+        )),
+    )
   }
 
   /// One row of buttons, one per value the scanner offers.

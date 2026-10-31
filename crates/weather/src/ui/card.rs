@@ -1,3 +1,4 @@
+use corona_components::components::list::muted;
 use std::time::Duration;
 
 use corona_components::{components::card::CardExt, i18n::format_time};
@@ -27,14 +28,6 @@ use crate::{
 
 fn open<P: ControlCenterPage>(_: &ClickEvent, window: &mut Window, cx: &mut App) {
   ControlCenter::navigate_id(P::ID, window, cx)
-}
-
-fn muted(text: impl Into<String>, cx: &App) -> Div {
-  div()
-    .text_sm()
-    .truncate()
-    .text_color(cx.theme().muted_foreground)
-    .child(text.into())
 }
 
 fn clock(cx: &App) -> Stateful<Div> {

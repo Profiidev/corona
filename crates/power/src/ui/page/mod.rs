@@ -1,10 +1,11 @@
 use crate::PowerExt;
 use anyhow::Result;
-use corona_components::components::card::{CardExt, ErrorCard};
+use corona_components::components::card::ErrorCard;
+use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
@@ -43,10 +44,6 @@ impl ControlCenterPage for PowerPanel {
       _subscriptions: subscriptions,
     }
   }
-}
-
-fn card(cx: &App) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 impl PowerPanel {

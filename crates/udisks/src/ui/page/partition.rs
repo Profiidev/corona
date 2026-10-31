@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use crate::UdisksExt;
+use corona_components::components::list::{kv, section};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -17,7 +18,6 @@ use crate::ui::page::{
   dialogs::{DialogKind, LabelTarget, ResizeTarget},
   jobs::DisksLog,
   types::{fs_name, partition_type_name, size, table_name},
-  ui::{kv, section},
 };
 
 /// Opens `path` in the default app for `inode/directory`, `xdg-open` when there is none

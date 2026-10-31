@@ -5,7 +5,7 @@ use gpui_kit::{
   linear_color_stop, linear_gradient, px,
 };
 
-use crate::command::Tone;
+pub use corona_components::components::list::tone;
 
 pub const SEARCH_HEIGHT: f32 = 58.;
 pub const FOOTER_HEIGHT: f32 = 42.;
@@ -59,18 +59,6 @@ pub fn chip(cx: &App) -> (Hsla, Hsla) {
 
 pub fn focus_ring(cx: &App) -> Hsla {
   cx.theme().colors.ring
-}
-
-/// Fill and text of a tag
-pub fn tone(tone: Tone, cx: &App) -> (Hsla, Hsla) {
-  let theme = cx.theme();
-  let tinted = |c: Hsla| (c.opacity(0.18), c);
-  match tone {
-    Tone::Ok => tinted(theme.colors.success),
-    Tone::Warn => tinted(theme.colors.warning),
-    Tone::Err => tinted(theme.colors.danger),
-    Tone::Off => (foreground(0.08, cx), theme.colors.muted_foreground),
-  }
 }
 
 /// The 145° tile gradient for a hue in degrees

@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use crate::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
+use corona_components::components::list::{dot, kv, section};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled, Window,
   assets::IconName,
@@ -23,7 +24,6 @@ use crate::ui::page::{
   jobs::DisksLog,
   model::{Health, free_spaces, health},
   types::{size, table_name},
-  ui::{dot, kv, ok_color, section, warn_color},
 };
 
 /// ATA attributes whose raw value above 0 means wear: reallocated, pending, uncorrectable
@@ -325,8 +325,8 @@ impl DisksPanel {
       .and_then(|(_, a)| a.clone());
     let state = health(drive);
     let (status, color) = match state {
-      Health::Ok => (t!("app.disks.passed"), ok_color()),
-      Health::Warn => (t!("app.disks.warning"), warn_color()),
+      Health::Ok => (t!("app.disks.passed"), cx.theme().colors.success),
+      Health::Warn => (t!("app.disks.warning"), cx.theme().colors.warning),
       _ => (t!("app.disks.failing"), theme.colors.danger),
     };
     let power_on = smart
@@ -408,7 +408,7 @@ impl DisksPanel {
             Some(if warning.is_some() {
               theme.colors.danger
             } else {
-              ok_color()
+              cx.theme().colors.success
             }),
           ),
           (
@@ -441,9 +441,9 @@ impl DisksPanel {
             t!("app.disks.media_errors"),
             log.media_errors.to_string(),
             Some(if log.media_errors > 0 {
-              warn_color()
+              cx.theme().colors.warning
             } else {
-              ok_color()
+              cx.theme().colors.success
             }),
           ),
           (t!("app.disks.power_on"), power_on, None),
@@ -474,8 +474,8 @@ impl DisksPanel {
         let rows = attributes.iter().map(|a| {
           let color = match attribute_state(a) {
             Health::Err => theme.colors.danger,
-            Health::Warn => warn_color(),
-            _ => ok_color(),
+            Health::Warn => cx.theme().colors.warning,
+            _ => cx.theme().colors.success,
           };
           attribute_line(
             [
@@ -515,7 +515,11 @@ impl DisksPanel {
           [kv(
             t!("app.disks.last_result"),
             selftest_name(&smart.selftest_status),
-            Some(if ok { ok_color() } else { warn_color() }),
+            Some(if ok {
+              cx.theme().colors.success
+            } else {
+              cx.theme().colors.warning
+            }),
             cx,
           )],
           cx,

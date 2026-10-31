@@ -156,13 +156,7 @@ pub enum Icon {
   Image(Arc<std::path::Path>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tone {
-  Ok,
-  Off,
-  Warn,
-  Err,
-}
+pub use corona_components::components::list::Tone;
 
 #[derive(Clone)]
 pub enum Accessory {

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::{Job, JobState, Printer, PrinterState, PrintingExt};
 use anyhow::Context as _;
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::CardExt;
+use corona_components::components::list::{ListCard, ListItem, card, empty_note};
 use gpui_kit::{
   Context, IntoElement, ParentElement, PathPromptOptions, Styled,
   assets::IconName,
@@ -12,7 +12,6 @@ use gpui_kit::{
     Icon, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
     progress::Progress,
-    scroll::ScrollableElement,
     switch::Switch,
   },
   div,
@@ -43,50 +42,17 @@ fn job_state(state: JobState) -> Cow<'static, str> {
   }
 }
 
-pub(super) fn placeholder(theme: &Theme, text: impl IntoElement) -> impl IntoElement {
-  div()
-    .flex()
-    .justify_center()
-    .p_2()
-    .text_xs()
-    .text_color(theme.colors.muted_foreground)
-    .child(text)
-}
-
 impl PrintersPanel {
   pub(super) fn printers(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
     let printers = cx.printing().list_printers(cx);
-    div()
-      .flex()
-      .flex_col()
-      .w_full()
-      .when_else(
-        printers.len() > 1,
-        |d| d.min_h(px(128.)),
-        |d| d.flex_shrink_0(),
+    ListCard::new("printers-list", t!("app.printers.tab.printers"))
+      .scroll_after(1)
+      .empty(
+        printers
+          .is_empty()
+          .then(|| empty_note(t!("app.printers.no_printers"), cx)),
       )
-      .gap_2()
-      .p_2()
-      .card(cx)
-      .child(
-        div()
-          .font_bold()
-          .text_sm()
-          .child(t!("app.printers.tab.printers")),
-      )
-      .when(printers.is_empty(), |d| {
-        d.child(placeholder(theme, t!("app.printers.no_printers")))
-      })
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .gap_1()
-          .h_auto()
-          .overflow_y_scrollbar()
-          .id("printers-list")
-          .children(printers.iter().map(|p| self.printer(theme, p, cx))),
-      )
+      .children(printers.iter().map(|p| self.printer(theme, p, cx)))
   }
 
   fn printer(&self, theme: &Theme, printer: &Printer, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -224,7 +190,7 @@ impl PrintersPanel {
   }
 
   /// Network printers without a queue, each with a button to add one.
-  pub(super) fn network(&self, theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
+  pub(super) fn network(&self, _theme: &Theme, cx: &Context<'_, Self>) -> Option<impl IntoElement> {
     let found = cx.printing().new_printers(cx);
     if found.is_empty() {
       return None;
@@ -232,67 +198,40 @@ impl PrintersPanel {
     let rows = found.into_iter().map(|printer| {
       let name = printer.name.clone();
       let adding = self.adding.as_deref() == Some(&name);
-      div()
-        .flex()
-        .w_full()
-        .gap_2()
-        .p_2()
-        .items_center()
-        .rounded_xl()
-        .bg(theme.colors.background)
-        .child(Icon::new(IconName::Printer).small())
-        .child(
-          div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .child(div().text_sm().truncate().child(printer.name.clone()))
-            .child(
-              div()
-                .text_xs()
-                .text_color(theme.colors.muted_foreground)
-                .truncate()
-                .child(
-                  printer
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| printer.address.clone()),
-                ),
-            ),
-        )
-        .child(
-          Button::new(format!("printer-add-{name}"))
-            .icon(IconName::Plus)
-            .small()
-            .cursor_pointer()
-            .with_variant(ButtonVariant::Primary)
-            .tooltip(t!("app.printers.add"))
-            .loading(adding)
-            .disabled(self.adding.is_some())
-            .on_click(cx.async_listener(
-              move |this, _, _, cx| {
-                this.adding = Some(name.clone());
-                this.error = None;
-                cx.printing().add_printer(&name, cx)
-              },
-              |this, result, cx| {
-                this.adding = None;
-                this.show_error(result, cx);
-              },
-            )),
-        )
+      ListItem::new(
+        IconName::Printer,
+        printer.name.clone(),
+        printer
+          .model
+          .clone()
+          .unwrap_or_else(|| printer.address.clone()),
+      )
+      .child(
+        Button::new(format!("printer-add-{name}"))
+          .icon(IconName::Plus)
+          .small()
+          .cursor_pointer()
+          .with_variant(ButtonVariant::Primary)
+          .tooltip(t!("app.printers.add"))
+          .loading(adding)
+          .disabled(self.adding.is_some())
+          .on_click(cx.async_listener(
+            move |this, _, _, cx| {
+              this.adding = Some(name.clone());
+              this.error = None;
+              cx.printing().add_printer(&name, cx)
+            },
+            |this, result, cx| {
+              this.adding = None;
+              this.show_error(result, cx);
+            },
+          )),
+      )
     });
 
     Some(
-      div()
-        .flex()
-        .flex_col()
-        .w_full()
+      card(cx)
         .flex_shrink_0()
-        .gap_2()
-        .p_2()
-        .card(cx)
         .child(div().font_bold().text_sm().child(t!("app.printers.found")))
         .children(rows),
     )
@@ -300,28 +239,13 @@ impl PrintersPanel {
 
   pub(super) fn jobs(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
     let jobs = cx.printing().list_jobs(cx);
-    div()
-      .flex()
-      .flex_col()
-      .w_full()
-      .when_else(jobs.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
-      .gap_2()
-      .p_2()
-      .card(cx)
-      .child(div().font_bold().text_sm().child(t!("app.printers.jobs")))
-      .when(jobs.is_empty(), |d| {
-        d.child(placeholder(theme, t!("app.printers.no_jobs")))
-      })
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .gap_1()
-          .h_auto()
-          .overflow_y_scrollbar()
-          .id("printers-jobs")
-          .children(jobs.iter().map(|j| self.job(theme, j, cx))),
+    ListCard::new("printers-jobs", t!("app.printers.jobs"))
+      .empty(
+        jobs
+          .is_empty()
+          .then(|| empty_note(t!("app.printers.no_jobs"), cx)),
       )
+      .children(jobs.iter().map(|j| self.job(theme, j, cx)))
   }
 
   fn job(&self, theme: &Theme, job: &Job, cx: &Context<'_, Self>) -> impl IntoElement {

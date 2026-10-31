@@ -1,5 +1,6 @@
 use crate::{MprisExt, PlaybackStatus};
 use corona_components::components::card::CardExt;
+use corona_components::components::list::muted;
 use gpui_kit::{
   App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
@@ -27,14 +28,6 @@ const ART: f32 = 64.;
 
 fn card(id: &'static str, cx: &App) -> Stateful<Div> {
   div().id(id).flex().p_2().gap_2().card(cx)
-}
-
-fn muted(text: impl Into<String>, cx: &App) -> Div {
-  div()
-    .text_sm()
-    .truncate()
-    .text_color(cx.theme().muted_foreground)
-    .child(text.into())
 }
 
 fn media(cx: &App) -> Option<Stateful<Div>> {

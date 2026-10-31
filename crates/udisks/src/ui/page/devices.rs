@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use crate::{Block, Drive, MountOptions, UdisksExt, UnmountOptions};
+use corona_components::components::list::{dot, empty_note, section, usage_bar};
 use gpui_kit::{
   AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
   Styled, TestSupportExt, Window,
@@ -22,7 +23,7 @@ use crate::ui::page::{
   dialogs::Dialog,
   model::{DriveView, Health, PartView, health, percent, system_block, usage},
   types::{fs_name, size},
-  ui::{dot, icon, note, ok_color, partition_map, section, usage_bar, warn_color},
+  ui::{icon, partition_map},
 };
 
 /// `NVMe`, `USB`, `ATA · 5400 rpm`
@@ -86,7 +87,14 @@ impl DisksPanel {
     let views = self.drive_views(cx);
     if views.is_empty() {
       return vec![
-        section("", "", None, [note(t!("app.disks.no_devices"), cx)], cx).into_any_element(),
+        section(
+          "",
+          "",
+          None,
+          [empty_note(t!("app.disks.no_devices"), cx)],
+          cx,
+        )
+        .into_any_element(),
       ];
     }
     let (removable, internal): (Vec<_>, Vec<_>) =
@@ -122,8 +130,8 @@ impl DisksPanel {
       None => String::new(),
     };
     let health_dot = match health(drive) {
-      Health::Ok => Some(ok_color()),
-      Health::Warn => Some(warn_color()),
+      Health::Ok => Some(cx.theme().colors.success),
+      Health::Warn => Some(cx.theme().colors.warning),
       Health::Err => Some(theme.colors.danger),
       Health::Unknown => None,
     };

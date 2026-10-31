@@ -1,19 +1,16 @@
 use crate::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::CardExt;
+use corona_components::components::list::ListCard;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
-  base::StyledExt,
   component::{
     Icon, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
-    scroll::ScrollableElement,
   },
   div,
   prelude::FluentBuilder,
-  px,
 };
 
 use crate::ui::network::{NetworkPanel, utils::address};
@@ -23,36 +20,8 @@ impl NetworkPanel {
   pub fn interfaces(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
     let interfaces = cx.network_manager().list_interfaces(cx);
 
-    div()
-      .flex()
-      .flex_col()
-      .w_full()
-      .when_else(
-        interfaces.len() > 2,
-        |d| d.min_h(px(128.)),
-        |d| d.flex_shrink_0(),
-      )
-      .gap_2()
-      .p_2()
-      .card(cx)
-      .child(
-        div().flex().gap_2().items_center().child(
-          div()
-            .font_bold()
-            .text_sm()
-            .child(t!("app.network.interfaces")),
-        ),
-      )
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .gap_1()
-          .h_auto()
-          .overflow_y_scrollbar()
-          .children(interfaces.iter().map(|i| self.interface(theme, i, cx))),
-      )
-      .into_any_element()
+    ListCard::new("network-interfaces", t!("app.network.interfaces"))
+      .children(interfaces.iter().map(|i| self.interface(theme, i, cx)))
   }
 
   fn interface(

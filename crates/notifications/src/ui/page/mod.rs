@@ -1,13 +1,12 @@
+use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
 
 use crate::{Notification, NotificationsExt};
-use corona_components::components::card::CardExt;
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
-  AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Task,
-  Window,
+  AnyElement, Context, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,
   assets::IconName,
   base::Disableable,
   component::{
@@ -110,10 +109,6 @@ impl ControlCenterPage for NotificationsPanel {
         .into_any_element(),
     ]
   }
-}
-
-fn card(cx: &App) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 fn today(notification: &Notification) -> bool {

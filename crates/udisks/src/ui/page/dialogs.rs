@@ -14,6 +14,7 @@ use crate::{
   UdisksExt, UnlockOptions, is_not_authorized,
 };
 use anyhow::Context as _;
+use corona_components::components::list::kv;
 use corona_components::components::modal::modal;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, PathPromptOptions,
@@ -46,7 +47,6 @@ use crate::ui::page::{
   model::{free_spaces, usage},
   types::{FORMATS, default_partition_type, flags_of, fs_name, partition_types, size},
   ui,
-  ui::{kv, ok_color, warn_color},
 };
 
 const MIB: u64 = 1 << 20;
@@ -1108,7 +1108,7 @@ impl DisksPanel {
           fields.push(
             div()
               .text_xs()
-              .text_color(warn_color())
+              .text_color(cx.theme().colors.warning)
               .child(t!("app.disks.dialog.unsupported", fs = fs_name(&fs)))
               .into_any_element(),
           );
@@ -1356,14 +1356,14 @@ impl DisksPanel {
           fields.push(kv(
             t!("app.disks.dialog.read_speed"),
             rate(bench.read),
-            Some(ok_color()),
+            Some(cx.theme().colors.success),
             cx,
           ));
           if let Some(write) = bench.write {
             fields.push(kv(
               t!("app.disks.dialog.write_speed"),
               rate(write),
-              Some(ok_color()),
+              Some(cx.theme().colors.success),
               cx,
             ));
           }
@@ -1420,10 +1420,16 @@ impl DisksPanel {
         secs,
       } => {
         let (result, color) = match (repair, clean) {
-          (false, true) => (t!("app.disks.dialog.no_errors"), ok_color()),
-          (false, false) => (t!("app.disks.dialog.errors_found"), warn_color()),
-          (true, true) => (t!("app.disks.dialog.repaired"), ok_color()),
-          (true, false) => (t!("app.disks.dialog.not_repaired"), warn_color()),
+          (false, true) => (t!("app.disks.dialog.no_errors"), cx.theme().colors.success),
+          (false, false) => (
+            t!("app.disks.dialog.errors_found"),
+            cx.theme().colors.warning,
+          ),
+          (true, true) => (t!("app.disks.dialog.repaired"), cx.theme().colors.success),
+          (true, false) => (
+            t!("app.disks.dialog.not_repaired"),
+            cx.theme().colors.warning,
+          ),
         };
         fields.push(kv(t!("app.disks.dialog.result"), result, Some(color), cx));
         fields.push(kv(
@@ -1472,7 +1478,7 @@ impl DisksPanel {
         fields.push(kv(
           t!("app.disks.dialog.status"),
           t!("app.disks.dialog.powered_off"),
-          Some(ok_color()),
+          Some(cx.theme().colors.success),
           cx,
         ));
         (

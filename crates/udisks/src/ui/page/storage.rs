@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use crate::{Block, UdisksExt};
-use corona_launcher::Tone;
+use corona_components::components::list::{Tone, empty_note, section, tag};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -23,7 +23,7 @@ use crate::ui::page::{
   dialogs::{Dialog, DialogKind, LabelTarget},
   model::system_block,
   types::size,
-  ui::{icon, note, section, tag},
+  ui::icon,
 };
 
 fn short(block: &Block) -> String {
@@ -56,11 +56,11 @@ impl DisksPanel {
       .into_any_element();
     let mut loop_rows: Vec<AnyElement> = loops.iter().map(|b| self.loop_row(b, cx)).collect();
     if loop_rows.is_empty() {
-      loop_rows.push(note(t!("app.disks.no_loops"), cx));
+      loop_rows.push(empty_note(t!("app.disks.no_loops"), cx));
     }
     let mut swap_rows: Vec<AnyElement> = swaps.iter().map(|b| self.swap_row(b, cx)).collect();
     if swap_rows.is_empty() {
-      swap_rows.push(note(t!("app.disks.no_swap"), cx));
+      swap_rows.push(empty_note(t!("app.disks.no_swap"), cx));
     }
     vec![
       section(

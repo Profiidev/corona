@@ -1,8 +1,8 @@
 use crate::{Condition, Location, WeatherExt};
-use corona_components::components::card::CardExt;
+use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
-  AnyElement, App, Context, Div, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  AnyElement, Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   assets::IconName,
   component::{ActiveTheme, button::Button, scroll::ScrollableElement},
   div,
@@ -58,10 +58,6 @@ impl ControlCenterPage for WeatherPanel {
         .into_any_element(),
     ]
   }
-}
-
-fn card(cx: &App) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 /// The condition in words, like "Partly cloudy"

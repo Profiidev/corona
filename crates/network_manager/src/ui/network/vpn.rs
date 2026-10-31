@@ -1,20 +1,17 @@
 use crate::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::CardExt;
+use corona_components::components::list::ListCard;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
-  base::StyledExt,
   component::{
     Icon, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
-    scroll::ScrollableElement,
     tag::{Tag, TagVariant},
   },
   div,
   prelude::FluentBuilder,
-  px,
 };
 
 use crate::ui::network::NetworkPanel;
@@ -29,30 +26,8 @@ impl NetworkPanel {
     }
 
     Some(
-      div()
-        .flex()
-        .flex_col()
-        .w_full()
-        .when_else(vpns.len() > 2, |d| d.min_h(px(128.)), |d| d.flex_shrink_0())
-        .gap_2()
-        .p_2()
-        .card(cx)
-        .child(
-          div()
-            .flex()
-            .gap_2()
-            .items_center()
-            .child(div().font_bold().text_sm().child(t!("app.network.vpns"))),
-        )
-        .child(
-          div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .h_auto()
-            .overflow_y_scrollbar()
-            .children(vpns.iter().map(|v| self.vpn(theme, v, cx))),
-        ),
+      ListCard::new("network-vpns", t!("app.network.vpns"))
+        .children(vpns.iter().map(|v| self.vpn(theme, v, cx))),
     )
   }
 

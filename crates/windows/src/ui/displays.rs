@@ -1,11 +1,12 @@
 use anyhow::Result;
-use corona_components::components::card::{CardExt, ErrorCard};
+use corona_components::components::card::ErrorCard;
+use corona_components::components::list::card;
 use corona_compositor::{Compositor, CompositorExt, types::Monitor, types::MonitorChange};
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AnyElement, App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render,
-  SharedString, Styled, Subscription, Window,
+  AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, SharedString,
+  Styled, Subscription, Window,
   assets::IconName,
   base::{Disableable, FocusableExt, IndexPath, StyledExt},
   component::{
@@ -159,10 +160,6 @@ pub(crate) fn detail(monitor: &Monitor, all: &[Monitor]) -> String {
     .into(),
     None => mode(monitor),
   }
-}
-
-fn card(cx: &App) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 impl DisplaysPanel {

@@ -1,5 +1,6 @@
 //! The dashboard's header: the user, host, system and uptime
 
+use corona_components::components::list::muted;
 use std::{
   env,
   time::{Duration, SystemTime},
@@ -20,14 +21,6 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use crate::{SystemMonitorExt, ui::page::SysinfoPanel};
-
-fn muted(text: impl Into<String>, cx: &App) -> Div {
-  div()
-    .text_sm()
-    .truncate()
-    .text_color(cx.theme().muted_foreground)
-    .child(text.into())
-}
 
 fn uptime(booted: SystemTime) -> String {
   uptime_at(booted, SystemTime::now())

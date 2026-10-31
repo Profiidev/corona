@@ -3,20 +3,17 @@ use std::pin::Pin;
 
 use crate::{BluetoothExt, Device};
 use corona_components::async_listener::AsyncListenerExt;
-use corona_components::components::card::CardExt;
+use corona_components::components::list::{ListCard, ListItem, empty_note};
 use gpui_kit::{
-  Context, IntoElement, ParentElement, Styled,
+  Context, IntoElement, ParentElement, SharedString, Styled,
   assets::IconName,
-  base::StyledExt,
   component::{
     Icon, Sizable, Theme,
     button::{Button, ButtonVariant, ButtonVariants},
-    scroll::ScrollableElement,
     spinner::Spinner,
   },
   div,
   prelude::FluentBuilder,
-  px,
 };
 
 use crate::ui::page::BluetoothPanel;
@@ -85,7 +82,7 @@ impl BluetoothPanel {
       .collect();
     let empty = devices
       .is_empty()
-      .then(|| placeholder(theme, t!("app.bluetooth.no_paired")));
+      .then(|| empty_note(t!("app.bluetooth.no_paired"), cx));
     self.devices(
       theme,
       "bt-paired",
@@ -136,35 +133,14 @@ impl BluetoothPanel {
     &self,
     theme: &Theme,
     id: &'static str,
-    title: impl IntoElement,
+    title: impl Into<SharedString>,
     devices: Vec<&Device>,
     empty: Option<impl IntoElement>,
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
-    div()
-      .flex()
-      .flex_col()
-      .w_full()
-      .when_else(
-        devices.len() > 2,
-        |d| d.min_h(px(128.)),
-        |d| d.flex_shrink_0(),
-      )
-      .gap_2()
-      .p_2()
-      .card(cx)
-      .child(div().font_bold().text_sm().child(title))
-      .when_some(empty, |d, empty| d.child(empty))
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .gap_1()
-          .h_auto()
-          .overflow_y_scrollbar()
-          .id(id)
-          .children(devices.into_iter().map(|d| self.device(theme, d, cx))),
-      )
+    ListCard::new(id, title)
+      .empty(empty)
+      .children(devices.into_iter().map(|d| self.device(theme, d, cx)))
   }
 
   fn device(&self, theme: &Theme, device: &Device, cx: &Context<'_, Self>) -> impl IntoElement {
@@ -193,76 +169,43 @@ impl BluetoothPanel {
     };
     let (paired, connected) = (device.paired, device.connected);
 
-    div()
-      .flex()
-      .w_full()
-      .gap_2()
-      .p_2()
-      .items_center()
-      .rounded_xl()
-      .bg(theme.colors.background)
-      .child(
-        Icon::new(icon)
+    ListItem::new(
+      Icon::new(icon).when(connected, |i| i.text_color(theme.colors.primary)),
+      device.name.clone(),
+      details,
+    )
+    .child(action.small().cursor_pointer().on_click(cx.async_listener(
+      {
+        let address = address.clone();
+        move |_, _, _, cx| {
+          let bluetooth = cx.bluetooth();
+          let task: Pin<Box<dyn Future<Output = anyhow::Result<()>>>> = if !paired {
+            Box::pin(bluetooth.pair(&address, cx))
+          } else if connected {
+            Box::pin(bluetooth.disconnect(&address, cx))
+          } else {
+            Box::pin(bluetooth.connect(&address, cx))
+          };
+          task
+        }
+      },
+      Self::show_error,
+    )))
+    .when(paired, |d| {
+      d.child(
+        Button::new(format!("bt-forget-{address}"))
+          .icon(IconName::Trash)
           .small()
-          .when(connected, |i| i.text_color(theme.colors.primary)),
+          .with_variant(ButtonVariant::Danger)
+          .tooltip(t!("app.common.forget"))
+          .cursor_pointer()
+          .on_click(cx.async_listener(
+            move |_, _, _, cx| cx.bluetooth().forget(&address, cx),
+            Self::show_error,
+          )),
       )
-      .child(
-        div()
-          .flex()
-          .flex_col()
-          .flex_1()
-          .min_w_0()
-          .child(div().text_sm().truncate().child(device.name.clone()))
-          .child(
-            div()
-              .text_xs()
-              .text_color(theme.colors.muted_foreground)
-              .truncate()
-              .child(details),
-          ),
-      )
-      .child(action.small().cursor_pointer().on_click(cx.async_listener(
-        {
-          let address = address.clone();
-          move |_, _, _, cx| {
-            let bluetooth = cx.bluetooth();
-            let task: Pin<Box<dyn Future<Output = anyhow::Result<()>>>> = if !paired {
-              Box::pin(bluetooth.pair(&address, cx))
-            } else if connected {
-              Box::pin(bluetooth.disconnect(&address, cx))
-            } else {
-              Box::pin(bluetooth.connect(&address, cx))
-            };
-            task
-          }
-        },
-        Self::show_error,
-      )))
-      .when(paired, |d| {
-        d.child(
-          Button::new(format!("bt-forget-{address}"))
-            .icon(IconName::Trash)
-            .small()
-            .with_variant(ButtonVariant::Danger)
-            .tooltip(t!("app.common.forget"))
-            .cursor_pointer()
-            .on_click(cx.async_listener(
-              move |_, _, _, cx| cx.bluetooth().forget(&address, cx),
-              Self::show_error,
-            )),
-        )
-      })
+    })
   }
-}
-
-fn placeholder(theme: &Theme, text: impl IntoElement) -> impl IntoElement {
-  div()
-    .flex()
-    .justify_center()
-    .p_2()
-    .text_xs()
-    .text_color(theme.colors.muted_foreground)
-    .child(text)
 }
 
 #[cfg(test)]

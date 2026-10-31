@@ -9,7 +9,7 @@ use std::{
 
 use crate::{UdisksExt, is_not_authorized};
 use anyhow::Result;
-use corona_launcher::Tone;
+use corona_components::components::list::{Tone, empty_note, section, tag, usage_bar};
 use futures::future::LocalBoxFuture;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, Global, IntoElement, ParentElement, Styled,
@@ -28,7 +28,7 @@ use crate::ui::page::{
   DisksPanel,
   fd::Progress,
   model::{job_title, remaining},
-  ui::{icon, note, section, tag, usage_bar},
+  ui::icon,
 };
 
 /// Finished entries kept
@@ -355,7 +355,7 @@ impl DisksPanel {
     }));
     let count = running.len();
     if running.is_empty() {
-      running.push(note(t!("app.disks.jobs.none_running"), cx));
+      running.push(empty_note(t!("app.disks.jobs.none_running"), cx));
     }
 
     let finished = log.finished.read(cx);
@@ -417,7 +417,7 @@ impl DisksPanel {
       })
       .collect();
     if done.is_empty() {
-      done.push(note(t!("app.disks.jobs.none_finished"), cx));
+      done.push(empty_note(t!("app.disks.jobs.none_finished"), cx));
     }
     vec![
       section(

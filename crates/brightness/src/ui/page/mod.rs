@@ -1,3 +1,4 @@
+use corona_components::components::list::card;
 use std::{
   collections::{HashMap, HashSet},
   pin::Pin,
@@ -6,13 +7,12 @@ use std::{
 
 use crate::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
-use corona_components::components::card::{CardExt, ErrorCard};
+use corona_components::components::card::ErrorCard;
 use corona_power::PowerExt;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
-  Window,
+  AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   base::slider::{SliderEvent, SliderState},
   component::ActiveTheme,
   div,
@@ -118,10 +118,6 @@ impl ControlCenterPage for BrightnessPanel {
     panel.sync_nightlight(window, cx);
     panel
   }
-}
-
-fn card(cx: &App) -> Div {
-  div().flex().flex_col().w_full().gap_2().p_2().card(cx)
 }
 
 impl BrightnessPanel {

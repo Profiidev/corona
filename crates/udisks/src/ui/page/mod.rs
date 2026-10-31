@@ -4,7 +4,7 @@ use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{Block, SmartAttributes, UdisksExt};
-use corona_launcher::Tone;
+use corona_components::components::list::{self, Tone, section};
 use gpui_kit::{
   AnyElement, App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render,
   SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window,
@@ -24,7 +24,6 @@ use crate::ui::page::{
   dialogs::Dialog,
   jobs::{DisksLog, Start, log},
   model::{DriveView, Health, PartView, drives, health},
-  ui::section,
 };
 
 /// The job history and drive notifications, which run with the panel closed
@@ -345,7 +344,7 @@ impl DisksPanel {
             Health::Unknown => None,
           };
           let tags = tag
-            .map(|(text, tone)| ui::tag(text, tone, cx).into_any_element())
+            .map(|(text, tone)| list::tag(text, tone, cx).into_any_element())
             .into_iter()
             .collect();
           let map = (!view.parts.is_empty())
@@ -364,9 +363,9 @@ impl DisksPanel {
           let (state, tone) = state_tag(&part);
           let mut tags = Vec::new();
           if part.is_system() {
-            tags.push(ui::tag(t!("app.disks.system"), Tone::Warn, cx).into_any_element());
+            tags.push(list::tag(t!("app.disks.system"), Tone::Warn, cx).into_any_element());
           }
-          tags.push(ui::tag(state, tone, cx).into_any_element());
+          tags.push(list::tag(state, tone, cx).into_any_element());
           let mount = block
             .filesystem
             .as_ref()
@@ -377,7 +376,7 @@ impl DisksPanel {
             .zip(mount.clone())
             .map(|((used, total), mount)| {
               let used_percent = model::percent(used, total);
-              ui::usage_bar(
+              list::usage_bar(
                 used_percent,
                 t!("app.disks.used", percent = format!("{used_percent:.0}")),
                 mount,
