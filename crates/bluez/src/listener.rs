@@ -1,10 +1,15 @@
 use anyhow::Result;
 use bluez_zbus::agent1::Message;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
+use corona_utils::{
+  dbus::{owner_changed, sender_signals, subscribe as subscribe_to},
+  entity::WriteChangedExt,
+  error::ErrorLogExt,
+  stream::{next_burst, pump},
+};
 use futures_channel::mpsc;
-use futures_lite::{Stream, StreamExt, future::poll_once};
+use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, Entity};
-use zbus::{Connection, MatchRule, MessageStream, message::Type};
+use zbus::Connection;
 
 use crate::{
   Bluetooth, PairingRequest,
@@ -16,20 +21,7 @@ const BLUEZ: &str = "org.bluez";
 
 /// fires on bluez's signals and on bluetoothd starting or quitting
 pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unpin + use<>> {
-  let signals = MatchRule::builder()
-    .msg_type(Type::Signal)
-    .sender(BLUEZ)?
-    .build();
-  let owner = MatchRule::builder()
-    .msg_type(Type::Signal)
-    .sender("org.freedesktop.DBus")?
-    .interface("org.freedesktop.DBus")?
-    .member("NameOwnerChanged")?
-    .arg(0, BLUEZ)?
-    .build();
-  let signals = MessageStream::for_match_rule(signals, conn, None).await?;
-  let owner = MessageStream::for_match_rule(owner, conn, None).await?;
-  Ok(signals.map(|_| ()).or(owner.map(|_| ())))
+  Ok(subscribe_to(conn, [sender_signals(BLUEZ)?, owner_changed(BLUEZ)?]).await?)
 }
 
 pub fn listener(
@@ -46,11 +38,9 @@ pub fn listener(
       state.adapter.write_changed(cx, adapter);
       state.devices.write_changed(cx, devices);
 
-      if changes.next().await.is_none() {
+      if next_burst(&mut changes).await.is_none() {
         break;
       }
-      // drain the rest of the burst already queued, one snapshot covers it
-      while let Some(Some(_)) = poll_once(changes.next()).await {}
     }
   })
   .detach();

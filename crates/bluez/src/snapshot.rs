@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
+use corona_utils::dbus::get;
 use zbus::{
   Connection,
   fdo::{ManagedObjects, ObjectManagerProxy},
-  zvariant::{OwnedObjectPath, OwnedValue},
+  zvariant::OwnedObjectPath,
 };
 
 use crate::state::{Adapter, Device, sort_devices};
@@ -80,10 +79,6 @@ fn read(objects: &ManagedObjects) -> Snapshot {
   sort_devices(&mut devices);
 
   Snapshot { adapter, devices }
-}
-
-fn get<T: TryFrom<OwnedValue>>(props: &HashMap<String, OwnedValue>, key: &str) -> Option<T> {
-  T::try_from(props.get(key)?.try_clone().ok()?).ok()
 }
 
 #[cfg(test)]

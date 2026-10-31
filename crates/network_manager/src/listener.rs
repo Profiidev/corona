@@ -1,5 +1,7 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
+use corona_utils::{
+  dbus::owner_changed, entity::WriteChangedExt, error::ErrorLogExt, stream::pump,
+};
 use cosmic_dbus_networkmanager::interface::{
   NetworkManagerProxy,
   active_connection::ActiveConnectionProxy,
@@ -55,15 +57,8 @@ pub async fn subscribe(
     .sender(name.clone())?
     .path_namespace(NetworkManagerProxy::PATH.clone().unwrap())?
     .build();
-  let owner = MatchRule::builder()
-    .msg_type(Type::Signal)
-    .sender("org.freedesktop.DBus")?
-    .interface("org.freedesktop.DBus")?
-    .member("NameOwnerChanged")?
-    .arg(0, name.as_str())?
-    .build();
   let signals = MessageStream::for_match_rule(rule, conn, None).await?;
-  let owner = MessageStream::for_match_rule(owner, conn, None).await?;
+  let owner = MessageStream::for_match_rule(owner_changed(&name)?, conn, None).await?;
   Ok(signals.or(owner))
 }
 

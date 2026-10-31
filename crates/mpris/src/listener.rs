@@ -1,6 +1,10 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
-use futures_lite::{Stream, StreamExt, future::poll_once};
+use corona_utils::{
+  entity::WriteChangedExt,
+  error::ErrorLogExt,
+  stream::{next_burst, pump},
+};
+use futures_lite::{Stream, StreamExt};
 use gpui_kit::App;
 use mpris2_zbus::enumerator::Enumerator;
 use zbus::{Connection, MatchRule, MessageStream, message::Type};
@@ -44,11 +48,9 @@ pub fn listener(
         state.players.write_changed(cx, players);
       }
 
-      if changes.next().await.is_none() {
+      if next_burst(&mut changes).await.is_none() {
         break;
       }
-      // drain the rest of the burst already queued, one snapshot covers it
-      while let Some(Some(())) = poll_once(changes.next()).await {}
     }
   })
   .detach();

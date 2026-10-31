@@ -1,8 +1,13 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
-use futures_lite::{Stream, StreamExt, future::poll_once};
+use corona_utils::{
+  dbus::subscribe as subscribe_to,
+  entity::WriteChangedExt,
+  error::ErrorLogExt,
+  stream::{next_burst, pump},
+};
+use futures_lite::Stream;
 use gpui_kit::App;
-use zbus::{Connection, MatchRule, MessageStream, message::Type};
+use zbus::{Connection, MatchRule, message::Type};
 
 use crate::{
   Tray,
@@ -10,31 +15,19 @@ use crate::{
   snapshot::{Activatable, snapshot},
 };
 
-async fn signals(conn: &Connection, rule: MatchRule<'_>) -> Result<MessageStream> {
-  Ok(MessageStream::for_match_rule(rule, conn, None).await?)
-}
-
 pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unpin + use<>> {
   let signal = || MatchRule::builder().msg_type(Type::Signal);
-  let watcher = signals(conn, signal().interface(WATCHER_NAME)?.build()).await?;
-  let items = signals(conn, signal().interface(ITEM_INTERFACE)?.build()).await?;
-  let menus = signals(conn, signal().interface(MENU_INTERFACE)?.build()).await?;
-  let properties = signals(
-    conn,
+  let rules = [
+    signal().interface(WATCHER_NAME)?.build(),
+    signal().interface(ITEM_INTERFACE)?.build(),
+    signal().interface(MENU_INTERFACE)?.build(),
     signal()
       .interface("org.freedesktop.DBus.Properties")?
       .member("PropertiesChanged")?
       .arg(0, ITEM_INTERFACE)?
       .build(),
-  )
-  .await?;
-  Ok(
-    watcher
-      .map(|_| ())
-      .or(items.map(|_| ()))
-      .or(menus.map(|_| ()))
-      .or(properties.map(|_| ())),
-  )
+  ];
+  Ok(subscribe_to(conn, rules).await?)
 }
 
 pub fn listener(
@@ -52,11 +45,9 @@ pub fn listener(
         state.items.write_changed(cx, items);
       }
 
-      if changes.next().await.is_none() {
+      if next_burst(&mut changes).await.is_none() {
         break;
       }
-      // drain the rest of the burst already queued, one snapshot covers it
-      while let Some(Some(())) = poll_once(changes.next()).await {}
     }
   })
   .detach();
