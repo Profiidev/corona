@@ -1,6 +1,9 @@
 //! The dashboard's header: the user, host, system and uptime
 
-use std::{env, time::SystemTime};
+use std::{
+  env,
+  time::{Duration, SystemTime},
+};
 
 use corona_components::{assets::image_source, components::card::CardExt};
 use corona_config::ConfigProvider;
@@ -8,10 +11,11 @@ use corona_surface::{
   control_center::{ControlCenter, ControlCenterPage},
   dashboard::DashboardCard,
 };
+use corona_utils::ticker::TickerExt;
 use gpui_kit::{
   App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
-  SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
-  base::StyledExt, component::ActiveTheme, div, img, px,
+  SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Task,
+  Window, base::StyledExt, component::ActiveTheme, div, img, px,
 };
 use rust_i18n::t;
 
@@ -92,6 +96,8 @@ fn profile(cx: &App) -> Stateful<Div> {
 /// Shown above the dashboard's tiles
 pub struct ProfileCard {
   _subscription: Subscription,
+  /// The uptime counts minutes
+  _ticker: Task<()>,
 }
 
 impl DashboardCard for ProfileCard {
@@ -105,6 +111,7 @@ impl DashboardCard for ProfileCard {
     let info = cx.system_monitor().info.clone();
     Self {
       _subscription: cx.observe(&info, |_, _, cx| cx.notify()),
+      _ticker: cx.ticker(Duration::from_secs(60), |_, cx| cx.notify()),
     }
   }
 }
@@ -117,8 +124,6 @@ impl Render for ProfileCard {
 
 #[cfg(test)]
 mod tests {
-  use std::time::Duration;
-
   use super::*;
 
   fn after(minutes: u64) -> String {

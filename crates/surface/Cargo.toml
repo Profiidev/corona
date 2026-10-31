@@ -13,7 +13,6 @@ test-support = ["dep:tempfile", "gpui-kit/test-support"]
 
 [dependencies]
 clap.workspace = true
-jiff.workspace = true
 dirs.workspace = true
 tempfile = { workspace = true, optional = true }
 corona_config.workspace = true

@@ -1,11 +1,10 @@
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use corona_config::ConfigProvider;
 use gpui_kit::{
   AnyElement, AnyView, App, Context, IntoElement, ParentElement, Render, Styled, Subscription,
-  Task, Window, div,
+  Window, div,
 };
-use jiff::Zoned;
 
 use crate::{
   control_center::{ControlCenterPage, resolve},
@@ -19,7 +18,6 @@ pub struct DashboardPanel {
   pub(super) sliders: Sliders,
   cards: Vec<(&'static str, AnyView)>,
   buttons: Vec<AnyView>,
-  _clock: Task<()>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -52,18 +50,6 @@ impl ControlCenterPage for DashboardPanel {
       .flat_map(|observe| observe(changed.clone(), cx))
       .collect();
 
-    let clock = cx.spawn(async move |this, cx| {
-      loop {
-        let wait = 60 - u64::from(Zoned::now().second().unsigned_abs());
-        cx.background_executor()
-          .timer(Duration::from_secs(wait.max(1)))
-          .await;
-        if this.update(cx, |_, cx| cx.notify()).is_err() {
-          break;
-        }
-      }
-    });
-
     let header = cx.dashboard().header_card().map(|open| open(window, cx));
     let mut sliders = Sliders::new(&changed, cx);
     let cards = (cx.dashboard().cards().iter())
@@ -81,7 +67,6 @@ impl ControlCenterPage for DashboardPanel {
       sliders,
       cards,
       buttons,
-      _clock: clock,
       _subscriptions: subscriptions,
     }
   }

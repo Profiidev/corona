@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use corona_components::{components::card::CardExt, i18n::format_time};
 use corona_config::ConfigProvider;
 use corona_surface::{
@@ -6,7 +8,7 @@ use corona_surface::{
 };
 use gpui_kit::{
   App, ClickEvent, Context, Div, InteractiveElement, IntoElement, ParentElement, Render,
-  SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Window,
+  SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Task, Window,
   base::StyledExt,
   component::{ActiveTheme, Icon, Sizable},
   div,
@@ -91,6 +93,7 @@ fn clock(cx: &App) -> Stateful<Div> {
 /// The time, date and current weather
 pub struct ClockCard {
   _subscription: Subscription,
+  _clock: Task<()>,
 }
 
 impl DashboardCard for ClockCard {
@@ -104,6 +107,18 @@ impl DashboardCard for ClockCard {
     let weather = cx.weather().weather.clone();
     Self {
       _subscription: cx.observe(&weather, |_, _, cx| cx.notify()),
+      // on the minute
+      _clock: cx.spawn(async move |this, cx| {
+        loop {
+          let wait = 60 - u64::from(Zoned::now().second().unsigned_abs());
+          cx.background_executor()
+            .timer(Duration::from_secs(wait.max(1)))
+            .await;
+          if this.update(cx, |_, cx| cx.notify()).is_err() {
+            break;
+          }
+        }
+      }),
     }
   }
 }
