@@ -20,7 +20,7 @@ wayland-client.workspace = true
 wayland-protocols.workspace = true
 wayland-protocols-wlr.workspace = true
 wayland-protocols-misc.workspace = true
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.41.0", features = ["bundled"] }
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
