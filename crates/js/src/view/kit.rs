@@ -13,15 +13,14 @@ use rquickjs::{
 
 use crate::{
   Access, Child, ScrollHandle,
-  background::{backgrounds, path_builders},
-  components::FAMILIES,
-  el::{el_d_ts, frame_or_throw, new_el},
-  events,
-  plugin::plugin,
-  runtime::runtime,
-  style::{COLOR_TOKENS, RADIUS_TOKENS, SPACING_TOKENS, nullary_d_ts},
-  theme,
-  window::ScriptWindow,
+  element::{
+    background::{backgrounds, path_builders},
+    components::FAMILIES,
+    el_d_ts, events, frame_or_throw, new_el,
+    style::{COLOR_TOKENS, RADIUS_TOKENS, SPACING_TOKENS, nullary_d_ts},
+  },
+  runtime::{plugin::plugin, runtime},
+  view::{theme, window::ScriptWindow},
 };
 
 /// The built-in module names
@@ -43,7 +42,7 @@ pub(crate) fn loader(loader: ModuleLoader) -> ModuleLoader {
 
 /// Sets a context up for views: element methods and the `window` global.
 pub(crate) fn install(ctx: &Ctx<'_>) -> Result<()> {
-  crate::el::install(ctx)?;
+  crate::element::install(ctx)?;
   ctx.globals().set(
     "window",
     Class::instance(ctx.clone(), ScriptWindow::default())?,

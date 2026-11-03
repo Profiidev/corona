@@ -17,10 +17,12 @@ use rquickjs::{Class, Ctx, Exception, FromJs, Function, JsLifetime, Object, Resu
 
 use crate::{
   Child, El, Opt, ScriptView,
-  background::{JsPath, paint_path},
-  events::{Pt, ScriptAction},
+  element::{
+    background::{JsPath, paint_path},
+    events::{Pt, ScriptAction},
+    style::Fill,
+  },
   runtime::runtime,
-  style::Fill,
   view::{current_view, window_or_throw},
 };
 
@@ -31,7 +33,7 @@ struct ScriptToast;
 fn keep<'js>(ctx: &Ctx<'js>, content: Function<'js>) -> Result<(WeakEntity<ScriptView>, u64)> {
   let view = current_view()
     .ok_or_else(|| Exception::throw_type(ctx, "no view here: call this from an event handler"))?;
-  if crate::scope::try_frame().is_some() {
+  if crate::runtime::scope::try_frame().is_some() {
     return Err(Exception::throw_type(
       ctx,
       "overlays open from event handlers, not render",
@@ -75,7 +77,7 @@ fn placement(ctx: &Ctx<'_>, name: &str) -> Result<Placement> {
       let names = ["top", "bottom", "left", "right"];
       return Err(Exception::throw_type(
         ctx,
-        &crate::style::unknown("placement", name, &names),
+        &crate::element::style::unknown("placement", name, &names),
       ));
     }
   })
@@ -184,7 +186,7 @@ impl ScriptWindow {
         let names = ["info", "success", "warning", "error"];
         return Err(Exception::throw_type(
           &ctx,
-          &crate::style::unknown("level", other, &names),
+          &crate::element::style::unknown("level", other, &names),
         ));
       }
     };
@@ -377,7 +379,7 @@ impl ScriptRoot {
 impl Render for ScriptRoot {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let view = self.view.clone();
-    let hud = crate::components::misc::fps_hud(window, cx);
+    let hud = crate::element::components::misc::fps_hud(window, cx);
     div()
       .when_some(self.background, |root, bg| root.bg(bg))
       .when_some(hud, |root, hud| root.relative().child(hud))

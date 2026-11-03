@@ -42,8 +42,11 @@ use serde_json::{Value as Json, json};
 
 use super::{Family, SizeArg, ctor, declare, is, listen, on_entity, take};
 use crate::{
-  Child, Color, El, Id, Node, On, Opt, Payload, ScriptView, app, el::styled, events::ClickEvent,
-  frame, frame_or_throw, map, miss, new_el, runtime::runtime, view::window_or_throw,
+  Child, Color, El, Id, Node, On, Opt, Payload, ScriptView, app,
+  element::{events::ClickEvent, styled},
+  frame, frame_or_throw, map, miss, new_el,
+  runtime::runtime,
+  view::window_or_throw,
 };
 
 crate::node!(Button, "Button", style, interactive, parent);
@@ -1743,7 +1746,7 @@ impl JsOtpState {
 }
 
 fn hex(color: Option<Hsla>) -> Option<String> {
-  color.map(crate::style::to_hex)
+  color.map(crate::element::style::to_hex)
 }
 
 state!(JsColorPickerState, ColorPickerState, "ColorPickerState");
@@ -2031,9 +2034,8 @@ fn text_area(state: &Entity<TextareaState>) -> TextArea {
 
 /// `Kbd(keystroke)`
 fn kbd(ctx: Ctx<'_>, keys: String) -> Result<Class<'_, El>> {
-  let stroke =
-    Keystroke::parse_with_os(&keys, app().platform_info().os)
-      .map_err(|e| Exception::throw_type(&ctx, &format!("Kbd: {e}")))?;
+  let stroke = Keystroke::parse_with_os(&keys, app().platform_info().os)
+    .map_err(|e| Exception::throw_type(&ctx, &format!("Kbd: {e}")))?;
   new_el(&ctx, Kbd::new(stroke))
 }
 
@@ -2129,7 +2131,7 @@ fn slider_part<'js>(
     name,
     move |ctx: Ctx<'js>, state: Class<'js, JsSliderState>| {
       let state = JsSliderState::get(&state)?;
-      let el = crate::el::new_boxed(&ctx, make(&state))?;
+      let el = crate::element::new_boxed(&ctx, make(&state))?;
       Ok::<_, rquickjs::Error>(el)
     },
   )

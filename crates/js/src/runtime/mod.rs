@@ -18,13 +18,20 @@ use rquickjs::{
   module::Evaluated,
 };
 
-use crate::{
-  Enter, ModuleBuilder, PluginRef, ScriptView, Watches, kit,
-  module::{HostLoader, HostModules},
-  now,
-  plugin::PluginData,
-  stdlib, ts, with,
-};
+use crate::{Enter, ModuleBuilder, PluginRef, ScriptView, Watches, now, stdlib, view::kit, with};
+use module::{HostLoader, HostModules};
+use plugin::PluginData;
+
+pub(crate) mod caps;
+pub(crate) mod host;
+pub(crate) mod module;
+pub(crate) mod plugin;
+pub(crate) mod registry;
+pub(crate) mod reload;
+pub(crate) mod scope;
+pub(crate) mod service;
+pub(crate) mod ts;
+pub(crate) mod watch;
 
 /// What a runtime evaluates first
 pub(crate) enum Main<'a> {

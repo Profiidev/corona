@@ -11,7 +11,10 @@ use rquickjs::{
   function::{Opt, This},
 };
 
-use crate::{El, Named, el::new_el, style::Color};
+use crate::{
+  El, Named,
+  element::{new_el, style::Color},
+};
 
 /// A fill: `Background.solid(color)`, `Background.linear_gradient(..)`, ..
 #[derive(Trace, JsLifetime, Clone, Copy)]

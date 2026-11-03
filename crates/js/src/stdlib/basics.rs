@@ -19,7 +19,7 @@ use rquickjs::{
 use sha2::Digest;
 
 use super::io::{Buf, bytes};
-use crate::plugin::plugin;
+use crate::runtime::plugin::plugin;
 
 /// Defines a module exporting `names` of the object `make` builds, and it as `default`.
 macro_rules! object_module {

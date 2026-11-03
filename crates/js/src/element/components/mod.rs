@@ -23,7 +23,7 @@
 //!    [`Retained`](crate::Retained) with `on`/`release` methods; `Named` gives them a TS name.
 //! 6. Fill [`Family`]: the module (`"gpui-component"` or `"gpui-base"`), the export names,
 //!    `exports` making their values, `methods: install` and the d.ts of both. Then run the
-//!    `d_ts_unchanged` test and update `src/tests.d.ts`.
+//!    `d_ts_unchanged` test and update `src/tests/kit.d.ts`.
 //!
 //! ```ignore
 //! pub(crate) const FAMILY: Family = Family {
@@ -56,7 +56,7 @@ macro_rules! choice {
           $($name => Ok(Self($value)),)*
           _ => Err(rquickjs::Exception::throw_type(
             ctx,
-            &crate::style::unknown($what, &name, &[$($name),*]),
+            &crate::element::style::unknown($what, &name, &[$($name),*]),
           )),
         }
       }
@@ -75,7 +75,7 @@ macro_rules! choice {
 macro_rules! pick {
   ($c:expr, $n:expr, $($ty:ty => $f:expr),+ $(,)?) => {{
     let (c, n) = ($c, $n);
-    $(if $crate::components::is::<$ty>(&**n) { $crate::map(c, n, $f) } else)+ {
+    $(if $crate::element::components::is::<$ty>(&**n) { $crate::map(c, n, $f) } else)+ {
       Err($crate::miss(c, n.kind()))
     }
   }};

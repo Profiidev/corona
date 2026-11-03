@@ -24,7 +24,7 @@ use super::{
   io::{Bytes, Fail, Res, bytes, io, promise},
   net::{TIMEOUT, tcp},
 };
-use crate::{caps::effective_port, plugin::plugin};
+use crate::runtime::{caps::effective_port, plugin::plugin};
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 

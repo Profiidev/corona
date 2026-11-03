@@ -175,7 +175,7 @@ macro_rules! names {
           $($name => Ok(Self($name)),)*
           _ => Err(Exception::throw_type(
             ctx,
-            &crate::style::unknown($what, &name, &[$($name),*]),
+            &crate::element::style::unknown($what, &name, &[$($name),*]),
           )),
         }
       }

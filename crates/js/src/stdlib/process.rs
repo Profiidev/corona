@@ -24,8 +24,10 @@ use tokio::{
 use super::io::{Fail, Null, Res, detach, enter, io, promise};
 use crate::{
   app,
-  caps::{Access, CapabilityError},
-  plugin::plugin,
+  runtime::{
+    caps::{Access, CapabilityError},
+    plugin::plugin,
+  },
 };
 
 const MAX_OUTPUT: u64 = 8 * 1024 * 1024;

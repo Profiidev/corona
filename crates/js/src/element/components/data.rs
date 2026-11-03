@@ -348,7 +348,7 @@ macro_rules! choice {
           $($js => $val,)+
           _ => {
             let known = &[$($js),+];
-            return Err(Exception::throw_type(ctx, &crate::style::unknown($what, &name, known)));
+            return Err(Exception::throw_type(ctx, &crate::element::style::unknown($what, &name, known)));
           }
         }))
       }

@@ -27,12 +27,20 @@ use rquickjs::{
 
 use crate::{
   Child, Enter, Frame, ModuleBuilder, Named, Opt, PluginRef, Watches, app,
-  events::ScriptAction,
-  plugin::plugin,
-  runtime::{self, Main, Runtime, Slot, runtime},
-  scope::{try_frame, try_window},
+  element::events::ScriptAction,
+  runtime::{
+    self, Main, Runtime, Slot,
+    plugin::plugin,
+    runtime,
+    scope::{try_frame, try_window},
+  },
   with,
 };
+
+pub(crate) mod entity;
+pub(crate) mod kit;
+pub(crate) mod theme;
+pub(crate) mod window;
 
 thread_local! {
   /// The views JS runs for, innermost last
@@ -598,7 +606,7 @@ impl ViewCx {
 
   /// The theme's semantic tokens.
   pub fn theme<'js>(&self, ctx: Ctx<'js>) -> Result<Object<'js>> {
-    crate::theme::theme_object(&ctx)
+    crate::view::theme::theme_object(&ctx)
   }
 
   /// Opens an absolute `http`/`https` URL with the system's handler.

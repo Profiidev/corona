@@ -16,9 +16,9 @@ use specta::{Type, specta};
 
 use crate::{
   Cx, Glob, GpuiKit, ModuleBuilder, Opt, PluginRef, ScriptExt, ScriptModule, ScriptRegistry,
-  ScriptView, Throws, Watches, d_ts,
-  module::{HostLoader, HostModules},
-  now, with,
+  ScriptView, Throws, Watches, d_ts, now,
+  runtime::module::{HostLoader, HostModules},
+  with,
 };
 
 mod components_data;
@@ -368,14 +368,14 @@ fn d_ts_unchanged(cx: &mut TestAppContext) {
   let d_ts = cx.update(|cx| GpuiKit::d_ts() + &d_ts(&modules(&Watches::default(), cx)));
   if std::env::var_os("CORONA_REGEN_DTS").is_some() {
     std::fs::write(
-      concat!(env!("CARGO_MANIFEST_DIR"), "/src/tests.d.ts"),
+      concat!(env!("CARGO_MANIFEST_DIR"), "/src/tests/kit.d.ts"),
       &d_ts,
     )
     .unwrap();
   }
   assert_eq!(
     d_ts,
-    include_str!("tests.d.ts"),
+    include_str!("kit.d.ts"),
     "typings changed, regenerate with CORONA_REGEN_DTS=1"
   );
 }

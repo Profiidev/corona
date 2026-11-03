@@ -9,7 +9,11 @@ use rquickjs::{
 use specta::{Type, Types, datatype::DataType};
 use specta_typescript::{Typescript, define, primitives};
 
-use crate::{Enter, host::floats, runtime::runtime, scope::try_frame, with};
+use crate::{
+  Enter,
+  runtime::{host::floats, runtime, scope::try_frame},
+  with,
+};
 
 /// A JS fn kept to be called later, from a gpui observer or task.
 #[derive(Clone)]

@@ -24,9 +24,11 @@ use specta_typescript::{Typescript, primitives};
 
 use crate::{
   Watches, app,
-  el::jsdoc,
-  host::{camel, floats},
-  watch::track,
+  element::jsdoc,
+  runtime::{
+    host::{camel, floats},
+    watch::track,
+  },
 };
 
 /// Makes one export's value in the context importing the module

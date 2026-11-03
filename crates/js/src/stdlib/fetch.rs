@@ -21,7 +21,7 @@ use super::{
   io::{Bytes, Fail, Null, Res, bytes, detach, io, promise},
   net::reachable,
 };
-use crate::{Capabilities, plugin::plugin};
+use crate::{Capabilities, runtime::plugin::plugin};
 
 const MAX_BODY: usize = 8 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 10;

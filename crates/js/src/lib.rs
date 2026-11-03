@@ -8,55 +8,40 @@ use std::{
 
 use rquickjs::{AsyncContext, Ctx};
 
-pub use caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant};
-pub use components::constructor;
-pub use el::{
-  Child, El, Frame, Id, Named, Node, On, Payload, TsType, define, frame_or_throw, jsdoc, map, miss,
-  new_el, restyle, with_node,
+pub use element::{
+  Child, El, Frame, Id, Named, Node, On, Payload, TsType,
+  components::constructor,
+  define, frame_or_throw, jsdoc, map, miss, new_el, restyle,
+  style::{Abs, Color, Def, Fill, Len, LineHeight, Radius},
+  with_node,
 };
-pub use entity::{Retained, ScrollHandle};
-pub use host::{Cx, Glob, Json, Opt, Throws, json};
-pub use kit::GpuiKit;
-pub use module::{Data, ModuleBuilder, d_ts};
-pub use plugin::Plugin;
-pub use registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry};
-pub use reload::{POLL, reload_view, watch};
-pub use scope::{Enter, app, frame, window};
-pub use service::Service;
+pub use runtime::{
+  caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant},
+  host::{Cx, Glob, Json, Opt, Throws, json},
+  module::{Data, ModuleBuilder, d_ts},
+  plugin::Plugin,
+  registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry},
+  reload::{POLL, reload_view, watch},
+  scope::{Enter, app, frame, window},
+  service::Service,
+  watch::{Callback, Listener, Unsubscribe, Watches, track},
+};
 pub use stdlib::D_TS as STDLIB_D_TS;
-pub use style::{Abs, Color, Def, Fill, Len, LineHeight, Radius};
-pub use view::{FocusHandle, ScriptView, ViewCx, ViewHandle};
-pub use watch::{Callback, Listener, Unsubscribe, Watches, track};
-pub use window::ScriptRoot;
+pub use view::{
+  FocusHandle, ScriptView, ViewCx, ViewHandle,
+  entity::{Retained, ScrollHandle},
+  kit::GpuiKit,
+  window::ScriptRoot,
+};
 
 #[doc(hidden)]
 pub use {gpui_kit, rquickjs, specta};
 
-mod background;
-mod caps;
-mod components;
-mod el;
-mod entity;
-mod events;
-mod host;
-mod kit;
-mod module;
-mod plugin;
-mod registry;
-mod reload;
+mod element;
 mod runtime;
-mod scope;
-mod service;
 mod stdlib;
-mod style;
-mod theme;
-mod ts;
 mod view;
-mod watch;
-mod window;
 
-#[cfg(test)]
-mod stdlib_tests;
 #[cfg(test)]
 mod tests;
 

@@ -12,7 +12,7 @@ use std::{
 use rquickjs::{Coerced, Ctx, Exception, JsLifetime, Promise, Result, class::Trace};
 
 use super::io::{Fail, Null, Res, blocking, promise};
-use crate::{PluginRef, caps::CapabilityError};
+use crate::{PluginRef, runtime::caps::CapabilityError};
 
 pub(crate) struct Store {
   map: RefCell<BTreeMap<String, String>>,

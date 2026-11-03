@@ -22,7 +22,7 @@ use tokio::{
 };
 
 use super::io::{Bytes, Fail, Null, Res, bytes, io, promise};
-use crate::plugin::plugin;
+use crate::runtime::plugin::plugin;
 
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CHUNK: usize = 1024 * 1024;

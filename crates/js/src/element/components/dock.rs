@@ -41,11 +41,9 @@ use serde_json::{Value as Json, json};
 use super::{Family, ctor, declare};
 use crate::{
   Child, El, Node, Opt, Retained, ScriptView, ViewCx, app,
-  el::interact,
+  element::interact,
   frame_or_throw, new_el,
-  plugin::plugin,
-  runtime::{Runtime, runtime},
-  scope::try_frame,
+  runtime::{Runtime, plugin::plugin, runtime, scope::try_frame},
   view::{ViewHandle, current_view, new_child, window_or_throw},
 };
 
@@ -359,7 +357,7 @@ fn placement(ctx: &Ctx<'_>, name: &str) -> Result<DockPlacement> {
     "bottom" => DockPlacement::Bottom,
     _ => {
       let known = ["center", "left", "right", "bottom"];
-      let message = crate::style::unknown("dock placement", name, &known);
+      let message = crate::element::style::unknown("dock placement", name, &known);
       return Err(Exception::throw_type(ctx, &message));
     }
   })

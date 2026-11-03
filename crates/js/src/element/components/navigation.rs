@@ -37,7 +37,10 @@ use rquickjs::{
 use super::{Family, constructor};
 use crate::{
   Child, Color, El, Id, Named, Node, On, Opt, Payload, Retained, ScriptView, ScrollHandle, TsType,
-  ViewCx, app, el::I, events::Pt, frame, frame_or_throw, new_el, runtime::runtime,
+  ViewCx, app,
+  element::{I, events::Pt},
+  frame, frame_or_throw, new_el,
+  runtime::runtime,
 };
 
 pub(crate) const BASE: Family = Family {
@@ -231,7 +234,7 @@ impl Node for VList {
 }
 
 /// A row key and the press, what `on_item_secondary_click` gets as `(key, event)`
-struct KeyPress(String, crate::events::MouseButtonEvent);
+struct KeyPress(String, crate::element::events::MouseButtonEvent);
 
 impl<'js> IntoJs<'js> for KeyPress {
   fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
@@ -273,7 +276,7 @@ fn link_scroll(c: &Ctx<'_>, n: &mut Box<dyn Node>) -> Result<()> {
     return Ok(());
   }
   if let AnyScroll::Plain(handle) = named_scroll(c, &name)? {
-    crate::el::interact(c, n, |i| {
+    crate::element::interact(c, n, |i| {
       gpui_kit::StatefulInteractiveElement::track_scroll(i, &handle)
     })?;
   }
@@ -447,7 +450,8 @@ impl Node for NativeTrigger {
   fn into_element(self: Box<Self>) -> AnyElement {
     let items = Rc::new(self.items);
     let button = self.button.on_click(move |e, window, cx| {
-      let action = |a: &str| Box::new(crate::events::ScriptAction(a.to_string().into())) as _;
+      let action =
+        |a: &str| Box::new(crate::element::events::ScriptAction(a.to_string().into())) as _;
       let menu = items
         .iter()
         .fold(NativeMenu::new(), |menu, item| match item {
@@ -491,7 +495,7 @@ impl AppMenu {
     let items = self.entries.iter().map(|e| match e {
       None => gpui_kit::MenuItem::separator(),
       Some(i) => {
-        let action = crate::events::ScriptAction(i.action.clone().into());
+        let action = crate::element::events::ScriptAction(i.action.clone().into());
         (gpui_kit::MenuItem::action(i.label.clone(), action))
           .disabled(i.disabled)
           .checked(i.checked)
@@ -742,7 +746,7 @@ impl SizeArg {
 }
 
 fn unknown(ctx: &Ctx<'_>, what: &str, name: &str, names: &[&str]) -> rquickjs::Error {
-  Exception::throw_type(ctx, &crate::style::unknown(what, name, names))
+  Exception::throw_type(ctx, &crate::element::style::unknown(what, name, names))
 }
 
 /// The value `names` pairs with `name`, or a JS error naming the choices
@@ -829,7 +833,7 @@ payloads! {
 pub struct ClickPayload {
   click_count: u32,
   position: Pt,
-  modifiers: crate::events::Mods,
+  modifiers: crate::element::events::Mods,
 }
 
 #[derive(rquickjs::IntoJs)]
@@ -913,7 +917,7 @@ impl Named for CommandStateHandle {
 impl CommandStateHandle {
   #[qjs(constructor)]
   pub fn new(ctx: Ctx<'_>) -> Result<Self> {
-    let window = crate::scope::try_window().ok_or_else(|| {
+    let window = crate::runtime::scope::try_window().ok_or_else(|| {
       Exception::throw_type(
         &ctx,
         "CommandState needs a window: make it in init or a handler",
@@ -1423,7 +1427,7 @@ mod methods {
     );
     /// The action a command or native menu item dispatches, for `on_action`.
     fn action(action: String) |c, n| on!(c, n,
-      CommandItem => |t| t.action(Box::new(crate::events::ScriptAction(action.into()))),
+      CommandItem => |t| t.action(Box::new(crate::element::events::ScriptAction(action.into()))),
       NativeItem => |t| NativeItem { action, ..t },
     );
     /// The outlined look of a `DropdownButton`.
@@ -1627,7 +1631,7 @@ mod scrollbars {
     /// A stable name for this element; a scrolling one is what a `Scrollbar` of that name
     /// drives.
     fn id(id: Id) |c, n| {
-      crate::el::interact(c, n, |mut i| {
+      crate::element::interact(c, n, |mut i| {
         i.0.element_id = Some(id.into_inner());
         i
       })?;
@@ -1635,17 +1639,17 @@ mod scrollbars {
     };
     /// Scrolls both axes for overflowing children.
     fn overflow_scroll() |c, n| {
-      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_scroll)?;
+      crate::element::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_scroll)?;
       link_scroll(c, n)
     };
     /// Scrolls horizontally for overflowing children.
     fn overflow_x_scroll() |c, n| {
-      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_x_scroll)?;
+      crate::element::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_x_scroll)?;
       link_scroll(c, n)
     };
     /// Scrolls vertically for overflowing children.
     fn overflow_y_scroll() |c, n| {
-      crate::el::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_y_scroll)?;
+      crate::element::interact(c, n, gpui_kit::StatefulInteractiveElement::overflow_y_scroll)?;
       link_scroll(c, n)
     };
     /// Lets a `ScrollHandle` drive this element; a `Scrollbar` of its name drives it too.
@@ -1654,7 +1658,7 @@ mod scrollbars {
       if let Some(name) = name_of(n) {
         name_scroll(c, &name, AnyScroll::Plain(handle.clone()))?;
       }
-      crate::el::interact(c, n, |i| gpui_kit::StatefulInteractiveElement::track_scroll(i, &handle))
+      crate::element::interact(c, n, |i| gpui_kit::StatefulInteractiveElement::track_scroll(i, &handle))
     };
     /// Scrolls both axes and paints base-layer scrollbars.
     fn overflow_scrollbar() |c, n| scrollable(c, n, |d| d.overflow_scrollbar());

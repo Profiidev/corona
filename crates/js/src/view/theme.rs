@@ -10,7 +10,7 @@ use rquickjs::{Ctx, Exception, Object, Result};
 
 use crate::{
   app,
-  style::{
+  element::style::{
     COLOR_TOKENS, RADIUS_TOKENS, SPACING_TOKENS, color_token, hex, radius_token, spacing_token,
     theme, to_hex,
   },
@@ -88,7 +88,7 @@ pub(crate) fn theme_object<'js>(ctx: &Ctx<'js>) -> Result<Object<'js>> {
 /// `set_theme({ appearance, tokens: { colors, spacing, radius, typography? } })`: replaces the
 /// tokens it names and redraws every window. Not while rendering.
 pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
-  if crate::scope::try_frame().is_some() {
+  if crate::runtime::scope::try_frame().is_some() {
     return Err(Exception::throw_type(
       &ctx,
       "set_theme while rendering would loop",
@@ -134,7 +134,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
         "ring" => &mut c.ring,
         "selection" => &mut c.selection,
         _ => {
-          return Err(bad(crate::style::unknown(
+          return Err(bad(crate::element::style::unknown(
             "color token",
             &key,
             COLOR_TOKENS,
@@ -156,7 +156,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
         "xl" => &mut s.xl,
         "xxl" => &mut s.xxl,
         _ => {
-          return Err(bad(crate::style::unknown(
+          return Err(bad(crate::element::style::unknown(
             "spacing token",
             &key,
             SPACING_TOKENS,
@@ -177,7 +177,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
         "xl" => &mut r.xl,
         "full" => &mut r.full,
         _ => {
-          return Err(bad(crate::style::unknown(
+          return Err(bad(crate::element::style::unknown(
             "radius token",
             &key,
             RADIUS_TOKENS,

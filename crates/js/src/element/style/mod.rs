@@ -1,5 +1,5 @@
 //! Style methods: every no-argument method of gpui's `Styled` and gpui-base's `StyledExt`
-//! (the checked-in table in `styles.rs`, kept in step by a test against gpui's inspector
+//! (the checked-in table in `generated.rs`, kept in step by a test against gpui's inspector
 //! reflection), the methods with arguments, and the values they take: lengths
 //! (`4`, `"4px"`, `"1rem"`, `"50%"`, `"auto"`, spacing tokens) and colors (theme tokens,
 //! `"#rrggbb"`, `0xrrggbb`, a `Background`).
@@ -11,7 +11,11 @@ use gpui_kit::{
 };
 use rquickjs::{Class, Ctx, Exception, FromJs, Function, Object, Result, Value, function::This};
 
-use crate::{El, TsType, background::JsBackground, el::restyle, with_node};
+use crate::{
+  El, TsType,
+  element::{background::JsBackground, restyle},
+  with_node,
+};
 
 /// `nullary! { w_0 w_neg_0 .. }`: the no-argument style methods by name
 macro_rules! nullary {
@@ -22,7 +26,7 @@ macro_rules! nullary {
   };
 }
 
-include!("styles.rs");
+include!("generated.rs");
 
 /// The color tokens of the theme, as `gpui_base::ColorTokens` names them
 pub(crate) const COLOR_TOKENS: &[&str] = &[
@@ -51,7 +55,7 @@ pub(crate) const RADIUS_TOKENS: &[&str] = &["none", "sm", "md", "lg", "xl", "ful
 
 /// The active theme
 pub(crate) fn theme() -> Theme {
-  crate::scope::try_app()
+  crate::runtime::scope::try_app()
     .map(|cx| Theme::global(cx))
     .unwrap_or_default()
 }
@@ -352,7 +356,7 @@ mod params {
   use gpui_kit::{FontWeight, Styled};
 
   use super::{Abs, Color, Def, Fill, Len, LineHeight, Radius};
-  use crate::{Opt, el::restyle};
+  use crate::{Opt, element::restyle};
 
   crate::el_methods! {
     /// Sets the width.

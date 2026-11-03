@@ -23,6 +23,9 @@ mod storage;
 pub(crate) mod timers;
 mod ws;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) const NAMES: &[&str] = &[
   "buffer",
   "console",

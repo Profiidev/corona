@@ -15,9 +15,8 @@ use std::{
 };
 
 use gpui_fps::FpsOverlay;
-use gpui_kit::Anchor;
 use gpui_kit::{
-  AnyElement, App, AppContext, Axis, Bounds, Element, ElementId, Global, GlobalElementId,
+  Anchor, AnyElement, App, AppContext, Axis, Bounds, Element, ElementId, Global, GlobalElementId,
   InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Refineable, Style,
   StyleRefinement, Styled, WeakEntity, Window, WindowId,
   base::TextView,
@@ -44,8 +43,8 @@ use rquickjs::{
 
 use super::{Family, constructor};
 use crate::{
-  Child, Named, Node, On, Opt, Payload, Retained, ScriptView, TsType, app, frame, map, new_el,
-  runtime::runtime, style::unknown, view::window_or_throw,
+  Child, Named, Node, On, Opt, Payload, Retained, ScriptView, TsType, app, element::style::unknown,
+  frame, map, new_el, runtime::runtime, view::window_or_throw,
 };
 
 /// Every kind this file makes; their methods throw on any other element

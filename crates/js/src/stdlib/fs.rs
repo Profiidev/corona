@@ -15,7 +15,7 @@ use rquickjs::{
 };
 
 use super::io::{Bytes, Fail, Null, Res, blocking, bytes, promise};
-use crate::{
+use crate::runtime::{
   caps::{Access, Grant},
   plugin::plugin,
 };

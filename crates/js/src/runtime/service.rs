@@ -10,8 +10,7 @@ use rquickjs::{CatchResultExt, Function, Object, Promise, Value};
 
 use crate::{
   Enter, ModuleBuilder, PluginRef, Watches,
-  reload::watch,
-  runtime::{self, Main, Runtime},
+  runtime::{self, Main, Runtime, reload::watch},
   stdlib::timers,
   with,
 };

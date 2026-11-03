@@ -12,7 +12,7 @@ use rquickjs::{
 };
 use tokio::{runtime::Runtime, task::JoinHandle};
 
-use crate::caps::CapabilityError;
+use crate::runtime::caps::CapabilityError;
 
 /// Runs the IO of every plugin; JS awaits its tasks from the gpui executor.
 static RT: LazyLock<Runtime> = LazyLock::new(|| {

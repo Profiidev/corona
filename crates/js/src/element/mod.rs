@@ -19,8 +19,13 @@ use rquickjs::{
 
 use crate::{
   Opt, ScriptView, ViewHandle,
-  scope::{frame, try_frame},
+  runtime::scope::{frame, try_frame},
 };
+
+pub(crate) mod background;
+pub(crate) mod components;
+pub(crate) mod events;
+pub(crate) mod style;
 
 /// Observes an entity the render read, see [`track`](crate::track)
 pub(crate) type Observe = Box<dyn FnOnce(&mut Context<ScriptView>) -> Subscription>;
@@ -508,11 +513,11 @@ macro_rules! el_methods {
 /// Puts every builder method on the element prototype, once per context.
 pub(crate) fn install(ctx: &Ctx<'_>) -> Result<()> {
   let proto = Class::<El>::prototype(ctx)?.expect("element prototype");
-  crate::style::install(&proto)?;
+  crate::element::style::install(&proto)?;
   methods::install(&proto)?;
-  crate::events::install(&proto)?;
+  crate::element::events::install(&proto)?;
   fns::install(&proto)?;
-  for family in crate::components::FAMILIES {
+  for family in crate::element::components::FAMILIES {
     (family.methods)(&proto)?;
   }
   Ok(())
@@ -520,8 +525,9 @@ pub(crate) fn install(ctx: &Ctx<'_>) -> Result<()> {
 
 /// The members of `interface Element`
 pub(crate) fn el_d_ts() -> String {
-  let mut out = crate::style::d_ts() + &methods::d_ts() + &crate::events::d_ts() + fns::D_TS;
-  for family in crate::components::FAMILIES {
+  let mut out =
+    crate::element::style::d_ts() + &methods::d_ts() + &crate::element::events::d_ts() + fns::D_TS;
+  for family in crate::element::components::FAMILIES {
     out.push_str(&(family.el_d_ts)());
   }
   out
@@ -660,7 +666,7 @@ mod methods {
     fn role(name: String) |ctx, n| {
       let Some((_, role)) = ROLES.iter().find(|(r, _)| *r == name) else {
         let names: Vec<&str> = ROLES.iter().map(|(r, _)| *r).collect();
-        return Err(Exception::throw_type(ctx, &crate::style::unknown("role", &name, &names)));
+        return Err(Exception::throw_type(ctx, &crate::element::style::unknown("role", &name, &names)));
       };
       interact(ctx, n, |i| gpui_kit::StatefulInteractiveElement::role(i, *role))
     };

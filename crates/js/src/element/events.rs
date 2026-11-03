@@ -8,7 +8,7 @@ use rquickjs::{Ctx, Exception, FromJs, IntoJs, Result, Value};
 
 use crate::{
   TsType,
-  el::{On, Payload, interact},
+  element::{On, Payload, interact},
   frame,
 };
 
@@ -258,7 +258,7 @@ impl<'js> FromJs<'js> for Button {
         let names = ["left", "right", "middle", "back", "forward"];
         return Err(Exception::throw_type(
           ctx,
-          &crate::style::unknown("mouse button", &name, &names),
+          &crate::element::style::unknown("mouse button", &name, &names),
         ));
       }
     }))
