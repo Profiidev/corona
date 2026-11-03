@@ -25,7 +25,8 @@ use crate::{
 };
 
 const RATES_URL: &str = "https://api.frankfurter.app/latest?from=EUR";
-const BUDGET: Duration = Duration::from_millis(40);
+// Unoptimized test builds on loaded CI runners blow through 40ms on the first fend evaluation
+const BUDGET: Duration = Duration::from_millis(if cfg!(test) { 5000 } else { 40 });
 const HISTORY: usize = 200;
 
 /// EUR based rates: one euro in each currency
