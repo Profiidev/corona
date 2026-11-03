@@ -24,12 +24,7 @@ use crate::{
 };
 
 /// The built-in module names
-pub(crate) const NAMES: &[&str] = &[
-  Kit::NAME,
-  Base::NAME,
-  Component::NAME,
-  Fps::NAME,
-];
+pub(crate) const NAMES: &[&str] = &[Kit::NAME, Base::NAME, Component::NAME, Fps::NAME];
 
 /// Adds the built-in modules to `loader`.
 pub(crate) fn loader(loader: ModuleLoader) -> ModuleLoader {
