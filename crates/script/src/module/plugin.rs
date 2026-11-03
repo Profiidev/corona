@@ -242,7 +242,7 @@ fn set_state(mut cx: Cx, hub: Data<Hub>, key: String, value: Json<Value>) {
 
 /// `corona/plugin`: state shared by all of the plugin's views and its service, and calls
 /// from the views into the service. Every plugin has it; a `service` takes the calls. Only views have `call`, only the service `onCall`, `reply` and `fail`, but
-/// both are typed with all of them: they share the plugin's `gpui-kit.d.ts`.
+/// both are typed with all of them: they share the plugin's `corona.d.ts`.
 pub fn module(hub: &Hub, service: bool, m: &mut ModuleBuilder) {
   m.provide(hub.clone());
   match service {

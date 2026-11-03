@@ -1,4 +1,4 @@
-//! Dockable layouts: `DockArea` (a retained gpui-base dock area), `dock_area(area)` drawing it
+//! Dockable layouts: `DockArea` (a retained `corona/base` dock area), `dock_area(area)` drawing it
 //! with script chrome, `dock_content()` and the dock commands chrome elements carry.
 //!
 //! The layout is the user's, so it lives in the retained area, not in a description: drags,
@@ -1002,10 +1002,10 @@ macro_rules! chrome_ts {
 }
 
 chrome_ts! {
-  GroupChrome => "(group: import(\"gpui-base\").DockGroup, cx: Context) => Element",
-  EmptyChrome => "(group: import(\"gpui-base\").DockGroup, cx: Context) => Element | null",
-  DropChrome => "(drop: import(\"gpui-base\").DockDrop, cx: Context) => Element | null",
-  DockChrome => "(dock: import(\"gpui-base\").DockRegion, cx: Context) => Element | null"
+  GroupChrome => "(group: import(\"corona/base\").DockGroup, cx: Context) => Element",
+  EmptyChrome => "(group: import(\"corona/base\").DockGroup, cx: Context) => Element | null",
+  DropChrome => "(drop: import(\"corona/base\").DockDrop, cx: Context) => Element | null",
+  DockChrome => "(dock: import(\"corona/base\").DockRegion, cx: Context) => Element | null"
 }
 
 /// Keeps a chrome handler as a view slot for this render
@@ -1035,7 +1035,7 @@ impl<'js> FromJs<'js> for Target {
 
 impl crate::TsType for Target {
   fn ts() -> String {
-    "import(\"gpui-base\").DockGroup".into()
+    "import(\"corona/base\").DockGroup".into()
   }
 }
 
@@ -1050,7 +1050,7 @@ impl<'js> FromJs<'js> for DockTarget {
 
 impl crate::TsType for DockTarget {
   fn ts() -> String {
-    "import(\"gpui-base\").DockRegion".into()
+    "import(\"corona/base\").DockRegion".into()
   }
 }
 
@@ -1295,7 +1295,7 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
   /** A dockable layout the user rearranges. Make it in `init` or a handler. */
   export interface DockArea {
     /** Docks `view`, a view from `cx.new(Class)`. */
-    add_panel(view: import("gpui-kit").Entity, options: DockPanelOptions): void;
+    add_panel(view: import("corona/kit").Entity, options: DockPanelOptions): void;
     remove_panel(id: number): boolean;
     panels(): DockPanel[];
     /** The layout as plain data, with each panel's `serialize()`. */
@@ -1319,14 +1319,14 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
   export const DockArea: {
     new: (id: string, options?: { version?: number }) => DockArea;
     /** Rebuilds `name`'s panel from `Class` when a saved layout names it; answers the qualified name. */
-    register_panel: (name: string, Class: import("gpui-kit").ViewClass) => string;
+    register_panel: (name: string, Class: import("corona/kit").ViewClass) => string;
   };
   /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
   export function dock_area(area: DockArea): Element;
 "#;
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: &["DockArea", "dock_area", "dock_content"],
   exports,
   methods: install,

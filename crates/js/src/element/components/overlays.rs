@@ -1,7 +1,7 @@
 //! Overlays: surfaces anchored to a trigger (`Popover`, `HoverCard`, `Popup`), window effects a
 //! button opens (`Dialog`, `AlertDialog`, `Sheet`, `Notification`) and the inline `Alert`.
-//! gpui-base's unstyled surfaces are exported from `"gpui-base"` ([`BASE`]), gpui-component's
-//! from `"gpui-component"` ([`FAMILY`]).
+//! gpui-base's unstyled surfaces are exported from `"corona/base"` ([`BASE`]), gpui-component's
+//! from `"corona/component"` ([`FAMILY`]).
 //!
 //! A surface's `content(element)` belongs to the render that built it. A window effect outlives
 //! that render, so its options sit in a JS object its button reads when clicked; from then on
@@ -289,7 +289,7 @@ mod methods {
 
   crate::el_methods! {
     kinds: KINDS;
-    /// The element a gpui-base `Popover` or `HoverCard` draws while closed, and that opens it.
+    /// The element a `corona/base` `Popover` or `HoverCard` draws while closed, and that opens it.
     fn trigger(element: Child<'js>) |c, n| {
       let t = frame().child(c, element)?;
       ov(c, n, |o| match o {
@@ -298,7 +298,7 @@ mod methods {
         o => Err(o),
       })
     };
-    /// The element that opens a gpui-component `HoverCard` when hovered.
+    /// The element that opens a `corona/component` `HoverCard` when hovered.
     fn trigger_element(element: Child<'js>) |c, n| {
       let t = frame().child(c, element)?;
       ov(c, n, |o| match o {
@@ -362,7 +362,7 @@ mod methods {
       CHoverCard(h) => Ok(CHoverCard(h.close_delay(ms.0))),
       o => Err(o),
     });
-    /// Whether a gpui-component `Popover` or `HoverCard` draws its surface. Default `true`.
+    /// Whether a `corona/component` `Popover` or `HoverCard` draws its surface. Default `true`.
     fn appearance(value: bool) |c, n| ov(c, n, |o| match o {
       CPopover(p) => Ok(CPopover(p.appearance(value))),
       CHoverCard(h) => Ok(CHoverCard(h.appearance(value))),
@@ -722,7 +722,7 @@ const EFFECT_ARGS: &str = "id: string, label: string, \
   on_effect_error?: (message: string, cx: Context) => void";
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: &[
     "Popover",
     "HoverCard",
@@ -783,7 +783,7 @@ pub(crate) const FAMILY: Family = Family {
 };
 
 pub(crate) const BASE: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: &["Popover", "HoverCard", "Popup"],
   exports: base_exports,
   methods: |_| Ok(()),

@@ -1,4 +1,4 @@
-declare module "gpui-kit" {
+declare module "corona/kit" {
   export type SpacingToken = "xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
   export type RadiusToken = "none" | "sm" | "md" | "lg" | "xl" | "full";
   export type ColorToken = "background" | "foreground" | "surface" | "surface_foreground" | "primary" | "primary_foreground" | "secondary" | "secondary_foreground" | "muted" | "muted_foreground" | "accent" | "accent_foreground" | "destructive" | "destructive_foreground" | "border" | "input" | "ring" | "selection";
@@ -3427,7 +3427,7 @@ declare module "gpui-kit" {
     tooltip(text: string): Element;
     /** The controlled value of a `Checkbox`, `Switch`, `Radio` or `Toggle`. */
     checked(value: boolean): Element;
-    /** The controlled state of a `gpui-base` `Toggle`: a button that stays down. */
+    /** The controlled state of a `corona/base` `Toggle`: a button that stays down. */
     pressed(value: boolean): Element;
     /**
      * `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
@@ -3466,7 +3466,7 @@ declare module "gpui-kit" {
     href(url: string): Element;
     /** The checked radio of a `RadioGroup`, by index. */
     selected_index(index: number): Element;
-    /** The orientation a `gpui-base` `RadioGroup` or `ToggleGroup` announces. */
+    /** The orientation a `corona/base` `RadioGroup` or `ToggleGroup` announces. */
     axis(axis: "horizontal" | "vertical"): Element;
     /** This item's one-based position and its collection's size, announced. */
     set_position(position: number, size: number): Element;
@@ -3520,7 +3520,7 @@ declare module "gpui-kit" {
     label_width(width: number): Element;
     /**
      * The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
-     * the editor slot of a `gpui-base` `NumberInput`.
+     * the editor slot of a `corona/base` `NumberInput`.
      */
     input(control: Element | Entity | string | number | boolean): Element;
     /** Appends an `InputGroupAddon` to an `InputGroup`. */
@@ -3537,9 +3537,9 @@ declare module "gpui-kit" {
      */
     token(render: (...args: any[]) => unknown): Element;
     /** `listener(event, cx)` after a click on a token that nothing consumed. */
-    on_token_click(listener: (event: import("gpui-component").InlineTokenClickEvent, cx: Context) => void): Element;
+    on_token_click(listener: (event: import("corona/component").InlineTokenClickEvent, cx: Context) => void): Element;
     /** `listener(event, cx)` when the pointer enters or leaves a token. */
-    on_token_hover(listener: (event: import("gpui-component").InlineTokenHoverEvent, cx: Context) => void): Element;
+    on_token_hover(listener: (event: import("corona/component").InlineTokenHoverEvent, cx: Context) => void): Element;
     /** The kind of text an `Input` holds, for autofill and keyboards. */
     content_type(kind: "name" | "name_prefix" | "given_name" | "middle_name" | "family_name" | "name_suffix" | "nickname" | "job_title" | "organization_name" | "location" | "full_street_address" | "street_address_line1" | "street_address_line2" | "address_city" | "address_state" | "address_city_and_state" | "sublocality" | "country_name" | "postal_code" | "telephone_number" | "email_address" | "url" | "credit_card_number" | "credit_card_name" | "credit_card_given_name" | "credit_card_middle_name" | "credit_card_family_name" | "credit_card_security_code" | "credit_card_expiration" | "credit_card_expiration_month" | "credit_card_expiration_year" | "credit_card_type" | "username" | "password" | "new_password" | "one_time_code" | "shipment_tracking_number" | "flight_number" | "date_time" | "birthdate" | "birthdate_day" | "birthdate_month" | "birthdate_year" | "cellular_eid" | "cellular_imei"): Element;
     /** A developer-assigned accessibility identifier. */
@@ -3550,29 +3550,29 @@ declare module "gpui-kit" {
     auto_grow(min_rows: number, max_rows: number): Element;
     /** `handler(event, cx)` on activation. */
     on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
-    /** Whether a `gpui-base` `Select`, `Combobox` or `DatePicker` is showing its list. */
+    /** Whether a `corona/base` `Select`, `Combobox` or `DatePicker` is showing its list. */
     open(value: boolean): Element;
     /** `handler(open, cx)` when something other than the script opened or closed it. */
     on_open_change(handler: (event: boolean, cx: Context) => void): Element;
-    /** `handler(_, cx)` on Enter in an open `gpui-base` `Select` or `Combobox`. */
+    /** `handler(_, cx)` on Enter in an open `corona/base` `Select` or `Combobox`. */
     on_confirm(handler: (event: {}, cx: Context) => void): Element;
-    /** `handler(_, cx)` on Escape in an open `gpui-base` `Select` or `Combobox`. */
+    /** `handler(_, cx)` on Escape in an open `corona/base` `Select` or `Combobox`. */
     on_dismiss(handler: (event: {}, cx: Context) => void): Element;
-    /** The handle a `gpui-base` `Select` or `Combobox` moves the keyboard to when it opens. */
+    /** The handle a `corona/base` `Select` or `Combobox` moves the keyboard to when it opens. */
     content_focus_handle(handle: FocusHandle): Element;
     /** Which thumb of a range slider a `SliderThumb` is. */
     start(value: boolean): Element;
     /** How the filled part of a `SliderIndicator` looks: `declare(el)` styles it. */
     range_style(declare: (...args: any[]) => unknown): Element;
-    /** How every cell of a `gpui-base` `OtpInput` looks. */
+    /** How every cell of a `corona/base` `OtpInput` looks. */
     cell_style(declare: (...args: any[]) => unknown): Element;
     /** What the cell the next digit lands in adds to `cell_style`. */
     cell_active_style(declare: (...args: any[]) => unknown): Element;
     /** The blinking mark in that cell while it is empty. */
     caret_style(declare: (...args: any[]) => unknown): Element;
-    /** The look of a `gpui-base` `NumberInput`'s decrement button. */
+    /** The look of a `corona/base` `NumberInput`'s decrement button. */
     decrement_button(look: Element | Entity | string | number | boolean): Element;
-    /** The look of a `gpui-base` `NumberInput`'s increment button. */
+    /** The look of a `corona/base` `NumberInput`'s increment button. */
     increment_button(look: Element | Entity | string | number | boolean): Element;
     /** Stacks both step buttons to the right of the text. */
     controls_right(): Element;
@@ -3626,7 +3626,7 @@ declare module "gpui-kit" {
     /** Which axes a `Scrollbar` or `Scroll` covers: `"vertical"`, `"horizontal"` or `"both"`. */
     scroll_axis(axis: string): Element;
     /** Lets a `VirtualListScrollHandle` drive a virtual list. */
-    track_scroll(handle: import("gpui-base").VirtualListScrollHandle): Element;
+    track_scroll(handle: import("corona/base").VirtualListScrollHandle): Element;
     /** Which item a virtual list measures for its cross-axis size. */
     with_item_to_measure_index(index: number): Element;
     /** A `Tab`'s text, or a `Separator`'s. */
@@ -3744,9 +3744,9 @@ declare module "gpui-kit" {
     overflow_x_scrollbar(): Element;
     /** Scrolls vertically and paints a base-layer scrollbar. */
     overflow_y_scrollbar(): Element;
-    /** The element a gpui-base `Popover` or `HoverCard` draws while closed, and that opens it. */
+    /** The element a `corona/base` `Popover` or `HoverCard` draws while closed, and that opens it. */
     trigger(element: Element | Entity | string | number | boolean): Element;
-    /** The element that opens a gpui-component `HoverCard` when hovered. */
+    /** The element that opens a `corona/component` `HoverCard` when hovered. */
     trigger_element(element: Element | Entity | string | number | boolean): Element;
     /**
      * What a surface shows while open: an element of this render. A `Dialog` or `Sheet`
@@ -3769,7 +3769,7 @@ declare module "gpui-kit" {
     open_delay(ms: number): Element;
     /** How long a `HoverCard` stays open after the pointer left it and its trigger. Default 300. */
     close_delay(ms: number): Element;
-    /** Whether a gpui-component `Popover` or `HoverCard` draws its surface. Default `true`. */
+    /** Whether a `corona/component` `Popover` or `HoverCard` draws its surface. Default `true`. */
     appearance(value: boolean): Element;
     /** `handler(open, cx)` when a `Popover` or `HoverCard` opens or closes by itself. */
     on_open_change(handler: (event: boolean, cx: Context) => void): Element;
@@ -3802,11 +3802,11 @@ declare module "gpui-kit" {
     /** The kind of a `Notification`. Default `"info"`. */
     type(level: "info" | "success" | "warning" | "error"): Element;
     /**
-     * The value: a `Progress` percentage (`gpui-base` announces it, `gpui-component` draws
+     * The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
      * it, `0..=100`), or the text of a `DescriptionItem`.
      */
     value(value: number | string): Element;
-    /** Withdraws a `gpui-base` `Progress` value from the accessibility tree: "no idea how far". */
+    /** Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far". */
     indeterminate(value: boolean): Element;
     /** Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback. */
     image(image: Element): Element;
@@ -3856,7 +3856,7 @@ declare module "gpui-kit" {
     description(description: Element): Element;
     /** Rotates an `Icon`. */
     rotate(radians: number): Element;
-    /** Animates a `gpui-component` `Progress` as busy. */
+    /** Animates a `corona/component` `Progress` as busy. */
     loading(value: boolean): Element;
     /** The name an `Avatar` shows the initials of without an image. */
     name(name: string): Element;
@@ -4012,27 +4012,27 @@ declare module "gpui-kit" {
     /** The frame budget in milliseconds the HUD grades against. */
     frame_budget(ms: number): Element;
     /** The tab bar above a group's displayed panel. */
-    tab_bar(handler: (group: import("gpui-base").DockGroup, cx: Context) => Element): Element;
+    tab_bar(handler: (group: import("corona/base").DockGroup, cx: Context) => Element): Element;
     /** What a group with no displayed panel shows. */
-    empty_group(handler: (group: import("gpui-base").DockGroup, cx: Context) => Element | null): Element;
+    empty_group(handler: (group: import("corona/base").DockGroup, cx: Context) => Element | null): Element;
     /** The hint where a dragged panel would land. */
-    drop_indicator(handler: (drop: import("gpui-base").DockDrop, cx: Context) => Element | null): Element;
+    drop_indicator(handler: (drop: import("corona/base").DockDrop, cx: Context) => Element | null): Element;
     /** One dock's chrome around its content; put `dock_content()` where its panels go. */
-    dock(handler: (dock: import("gpui-base").DockRegion, cx: Context) => Element | null): Element;
+    dock(handler: (dock: import("corona/base").DockRegion, cx: Context) => Element | null): Element;
     /** Displays tab `index` of `group` on a click. */
-    select_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    select_tab(group: import("corona/base").DockGroup, index: number): Element;
     /** Closes `panel` (an id) of `group` on a click, if the group allows it. */
-    close_panel(group: import("gpui-base").DockGroup, panel: number): Element;
+    close_panel(group: import("corona/base").DockGroup, panel: number): Element;
     /** Zooms `group` in, or back out, on a click. */
-    toggle_zoom(group: import("gpui-base").DockGroup): Element;
+    toggle_zoom(group: import("corona/base").DockGroup): Element;
     /** Makes this element the drag source of tab `index` of `group`. */
-    drag_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    drag_tab(group: import("corona/base").DockGroup, index: number): Element;
     /** Accepts a dragged panel into `group`, at slot `index` or appended. */
-    drop_tab(group: import("gpui-base").DockGroup, index?: number): Element;
+    drop_tab(group: import("corona/base").DockGroup, index?: number): Element;
     /** Opens or closes `dock` on a click. */
-    toggle_dock(dock: import("gpui-base").DockRegion): Element;
+    toggle_dock(dock: import("corona/base").DockRegion): Element;
     /** Drags `dock`'s edge. */
-    resize_dock(dock: import("gpui-base").DockRegion): Element;
+    resize_dock(dock: import("corona/base").DockRegion): Element;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4089,7 +4089,7 @@ declare module "gpui-kit" {
     propagate(): void;
     phase(): "render" | "event" | "task";
     /** The theme's semantic tokens. */
-    theme(): import("gpui-base").Theme;
+    theme(): import("corona/base").Theme;
     /** Opens an absolute http(s) URL with the system's handler. */
     open_url(url: string): void;
     read_from_clipboard(): string | undefined;
@@ -4222,14 +4222,14 @@ declare module "gpui-kit" {
     paint_path(path: Path, fill: Color | Background): Element;
   }
 }
-declare var window: import("gpui-kit").Window;
-declare module "gpui-base" {
-  import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
+declare var window: import("corona/kit").Window;
+declare module "corona/base" {
+  import { ClickEvent, Context, Element, FocusHandle } from "corona/kit";
   /** A row, centered on the cross axis. */
   export function h_flex(): Element;
   /** A column. */
   export function v_flex(): Element;
-  export type ColorTokens = { readonly [Role in import("gpui-kit").ColorToken]: import("gpui-kit").Color };
+  export type ColorTokens = { readonly [Role in import("corona/kit").ColorToken]: import("corona/kit").Color };
   export type SpacingTokens = { readonly [Step in "xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl"]: number };
   export type RadiusTokens = { readonly [Step in "none" | "sm" | "md" | "lg" | "xl" | "full"]: number };
   export interface TextStyleToken {
@@ -4256,7 +4256,7 @@ declare module "gpui-base" {
   export function set_theme(theme: {
     readonly appearance?: "light" | "dark";
     readonly tokens: {
-      readonly colors?: Partial<Record<import("gpui-kit").ColorToken, `#${string}`>>;
+      readonly colors?: Partial<Record<import("corona/kit").ColorToken, `#${string}`>>;
       readonly spacing?: Partial<SpacingTokens>;
       readonly radius?: Partial<RadiusTokens>;
       readonly typography?: { readonly sans?: string; readonly mono?: string } & {
@@ -4302,7 +4302,7 @@ declare module "gpui-base" {
   export const SliderIndicator: { new (state: SliderState): Element; new: (state: SliderState) => Element };
   /** The knob; `start(true)` is a range's lower one. */
   export const SliderThumb: { new (state: SliderState): Element; new: (state: SliderState) => Element };
-  import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "gpui-component";
+  import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "corona/component";
   export { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent };
   type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };
   /** A tab list; each `Tab` is told whether it is selected and reports clicks. */
@@ -4336,7 +4336,7 @@ declare module "gpui-base" {
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
   export function resizable_panel(): Element;
   /** A scroll area's or virtual list's name, or its handle. */
-  type ScrollTarget = string | number | import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
+  type ScrollTarget = string | number | import("corona/kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
     new: (handle: ScrollTarget) => Element;
@@ -4349,7 +4349,7 @@ declare module "gpui-base" {
     item_count: number,
     item_sizes: number | number[],
     get_key: (index: number) => string,
-    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+    render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
   ): Element;
   /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
   export function h_virtual_list(
@@ -4357,7 +4357,7 @@ declare module "gpui-base" {
     item_count: number,
     item_sizes: number | number[],
     get_key: (index: number) => string,
-    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+    render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
   ): Element;
   /** A virtual list's scroll position; `track_scroll(handle)` on the list. */
   export class VirtualListScrollHandle {
@@ -4490,7 +4490,7 @@ declare module "gpui-base" {
   /** A dockable layout the user rearranges. Make it in `init` or a handler. */
   export interface DockArea {
     /** Docks `view`, a view from `cx.new(Class)`. */
-    add_panel(view: import("gpui-kit").Entity, options: DockPanelOptions): void;
+    add_panel(view: import("corona/kit").Entity, options: DockPanelOptions): void;
     remove_panel(id: number): boolean;
     panels(): DockPanel[];
     /** The layout as plain data, with each panel's `serialize()`. */
@@ -4514,15 +4514,15 @@ declare module "gpui-base" {
   export const DockArea: {
     new: (id: string, options?: { version?: number }) => DockArea;
     /** Rebuilds `name`'s panel from `Class` when a saved layout names it; answers the qualified name. */
-    register_panel: (name: string, Class: import("gpui-kit").ViewClass) => string;
+    register_panel: (name: string, Class: import("corona/kit").ViewClass) => string;
   };
   /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
   export function dock_area(area: DockArea): Element;
   /** Where a dock's panels go inside its chrome handler. */
   export const dock_content: { new (): Element; new: () => Element };
 }
-declare module "gpui-component" {
-  import { ClickEvent, Context, Element, FocusHandle } from "gpui-kit";
+declare module "corona/component" {
+  import { ClickEvent, Context, Element, FocusHandle } from "corona/kit";
   export const Probe: { new (): Element; new: () => Element };
   /** A styled command button. */
   export const Button: { new (id: string | number): Element; new: (id: string | number) => Element };
@@ -4698,7 +4698,7 @@ declare module "gpui-component" {
   export interface ColorPickerState {
     /** The color as `#rrggbb[aa]`. */
     value(): string | undefined;
-    set_value(color: import("gpui-kit").Color | null): void;
+    set_value(color: import("corona/kit").Color | null): void;
     on(event: "change", handler: (color: string | undefined, cx: Context) => void): boolean;
     release(): boolean;
   }
@@ -4752,8 +4752,8 @@ declare module "gpui-component" {
   /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
   export const Scroll: Ctor<[handle: ScrollbarHandle]>;
   /** A scrollbar driving the area that tracks `handle`. */
-  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
-  export type ScrollbarHandle = import("gpui-kit").ScrollHandle;
+  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("corona/base").VirtualListScrollHandle]>;
+  export type ScrollbarHandle = import("corona/kit").ScrollHandle;
   export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
   /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */
   export const Sidebar: Ctor<[id: string | number]>;
@@ -4817,7 +4817,7 @@ declare module "gpui-component" {
   export const WarningAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
   /** An inline message. */
   export const ErrorAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
-  import { CalendarState, CalendarDate } from "gpui-base";
+  import { CalendarState, CalendarDate } from "corona/base";
   export { CalendarState, CalendarDate };
   export interface ChartRow {
     label: string;
@@ -5010,8 +5010,8 @@ declare module "gpui-component" {
   /** One answer of a question. */
   export const QuestionnaireChoice: { new (value: string, label: string): Element; new: (value: string, label: string) => Element };
 }
-declare module "gpui-fps" {
-  import { Element } from "gpui-kit";
+declare module "corona/fps" {
+  import { Element } from "corona/kit";
   export type Anchor = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center";
   /** The performance HUD as an element; its parent must be `relative()`. */
   export function fps_monitor(): Element;

@@ -1,4 +1,4 @@
-//! The theme a script reads (`cx.theme()`) and sets (`set_theme` of `gpui-base`): gpui-base's
+//! The theme a script reads (`cx.theme()`) and sets (`set_theme` of `corona/base`): gpui-base's
 //! semantic tokens, which gpui-component keeps in step with corona's theme.
 
 use gpui_kit::{
@@ -215,7 +215,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
   Ok(())
 }
 
-/// The theme's TypeScript, in `gpui-base`
+/// The theme's TypeScript, in `corona/base`
 pub(crate) fn d_ts() -> String {
   let union = |names: &[&str]| -> String {
     names
@@ -225,7 +225,7 @@ pub(crate) fn d_ts() -> String {
       .join(" | ")
   };
   format!(
-    r#"  export type ColorTokens = {{ readonly [Role in import("gpui-kit").ColorToken]: import("gpui-kit").Color }};
+    r#"  export type ColorTokens = {{ readonly [Role in import("corona/kit").ColorToken]: import("corona/kit").Color }};
   export type SpacingTokens = {{ readonly [Step in {spacing}]: number }};
   export type RadiusTokens = {{ readonly [Step in {radius}]: number }};
   export interface TextStyleToken {{
@@ -252,7 +252,7 @@ pub(crate) fn d_ts() -> String {
   export function set_theme(theme: {{
     readonly appearance?: "light" | "dark";
     readonly tokens: {{
-      readonly colors?: Partial<Record<import("gpui-kit").ColorToken, `#${{string}}`>>;
+      readonly colors?: Partial<Record<import("corona/kit").ColorToken, `#${{string}}`>>;
       readonly spacing?: Partial<SpacingTokens>;
       readonly radius?: Partial<RadiusTokens>;
       readonly typography?: {{ readonly sans?: string; readonly mono?: string }} & {{

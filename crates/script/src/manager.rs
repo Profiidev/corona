@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use corona_js::{
-  GpuiKit, ModuleBuilder, PluginRef, STDLIB_D_TS, ScriptRegistry, ScriptRoot, ScriptView, Watches,
+  Kit, ModuleBuilder, PluginRef, STDLIB_D_TS, ScriptRegistry, ScriptRoot, ScriptView, Watches,
   d_ts, reload_view,
 };
 use gpui_kit::{
@@ -87,7 +87,7 @@ pub struct ScriptManager {
 impl Global for ScriptManager {}
 
 /// What a failed load hands gpui, which needs a view to make one
-const EMPTY: &str = "import { View, div } from \"gpui-kit\";
+const EMPTY: &str = "import { View, div } from \"corona/kit\";
 export default class Empty extends View { render() { return div(); } }";
 
 impl ScriptManager {
@@ -215,7 +215,7 @@ impl ScriptManager {
     Ok(modules)
   }
 
-  /// Writes the `gpui-kit.d.ts` of the plugin in `dir` as loading it does, typing its own
+  /// Writes the `corona.d.ts` of the plugin in `dir` as loading it does, typing its own
   /// settings and granted modules, without a running shell
   pub fn write_types(dir: &Path, cx: &mut App) -> Result<Vec<PathBuf>> {
     let file = ManifestFile::read(dir)?;
@@ -311,10 +311,10 @@ impl ScriptManager {
   }
 }
 
-/// Writes the `gpui-kit.d.ts` of a plugin in `dir` with `modules`, when it changed
+/// Writes the `corona.d.ts` of a plugin in `dir` with `modules`, when it changed
 fn write_d_ts(dir: &Path, modules: &[ModuleBuilder]) -> Result<PathBuf> {
   let path = dir.join(PLUGIN_TYPES_FILENAME);
-  let text = format!("{}{STDLIB_D_TS}{}", GpuiKit::d_ts(), d_ts(modules));
+  let text = format!("{}{STDLIB_D_TS}{}", Kit::d_ts(), d_ts(modules));
   if fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
     fs::write(&path, text).with_context(|| path.display().to_string())?;
   }
@@ -353,8 +353,8 @@ mod tests {
   };
 
   const VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 
 export default class Main extends View {
   render(_cx) {
@@ -365,8 +365,8 @@ export default class Main extends View {
 
   /// Focuses workspace `rendered` on every render, after reading the workspaces.
   const COMPOSITOR_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { listWorkspaces, focusWorkspace } from "corona/compositor";
 
 export default class Main extends View {
@@ -591,8 +591,8 @@ export default class Main extends View {
     let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { greet } from "./util";
 
@@ -618,8 +618,8 @@ export default class Main extends View {
       VIEW
         .replace("render(", &format!("init() {{ {init} }}\n  render("))
         .replace(
-          "\"gpui-base\";",
-          "\"gpui-base\";\nimport { focusWorkspace } from \"corona/compositor\";",
+          "\"corona/base\";",
+          "\"corona/base\";\nimport { focusWorkspace } from \"corona/compositor\";",
         )
     };
     let extra = "capabilities = { corona = [\"compositor\"] }";
@@ -699,8 +699,8 @@ export default class Main extends View {
 
   /// Reports its `label` setting through `focusWorkspace` on every render.
   const SETTINGS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { get, all } from "corona/settings";
 
@@ -771,8 +771,8 @@ default = "hello""#;
   /// Reports what `corona/surface` answers through `focusWorkspace` on every
   /// render.
   const SURFACE_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { panels, isPanelOpen, togglePanel, openPanel, closePanel, bar } from "corona/surface";
 
@@ -840,8 +840,8 @@ export default class Main extends View {
     let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { options } from "corona/surface";
 export default class Main extends View {
@@ -935,7 +935,7 @@ type = "secret""#;
     plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    let dts = fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let dts = fs::read_to_string(plugins.paths.local.join("a/corona.d.ts")).unwrap();
     let start = dts.find("declare module \"corona/settings\"").unwrap();
     let module = &dts[start..start + dts[start..].find("\n}").unwrap()];
     assert!(module.contains("    \"units\": \"a\" | \"b\";"), "{module}");
@@ -965,8 +965,8 @@ export default function main(_cx) {
 
   /// Calls `METHOD` as it starts and reports the answer.
   const CALLER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { call } from "corona/plugin";
 
@@ -1016,8 +1016,8 @@ export default class Main extends View {
 
   /// Reads `PATH` before and after picking it, and reports both.
   const PICKER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { pickFiles } from "corona/desktop";
 import { readFile } from "fs/promises";
@@ -1203,8 +1203,8 @@ export default function main(cx) {
 
   /// Counts its starts in the shared state and reports what it reads.
   const STATE_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { getState, setState } from "corona/plugin";
 
@@ -1264,7 +1264,7 @@ export default function main() { setState("starts", getState("starts") * 10); }"
     let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
+import { View } from "corona/kit";
 import { onCall } from "corona/plugin";
 export default class Main extends View { render() { return onCall; } }
 "#;
@@ -1295,8 +1295,8 @@ export default function main() {
 
   /// Counts its starts in the shared state as it starts.
   const START_COUNTER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { getState, setState } from "corona/plugin";
 
@@ -1339,8 +1339,8 @@ export default class Main extends View {
 
   /// Reports translations.
   const I18N_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { t, language } from "corona/i18n";
 
@@ -1389,7 +1389,7 @@ export default class Main extends View {
     plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    let dts = || fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let dts = || fs::read_to_string(plugins.paths.local.join("a/corona.d.ts")).unwrap();
     let (call, next) = (
       "  export function call(method: string, args?: Value | null): Promise<Value>;",
       "  export function onCall(cb: (value: Call) => void): () => void;",
@@ -1418,8 +1418,8 @@ export default class Main extends View {
   /// Reports through `focusWorkspace` whether the test name is on the bus,
   /// and what calling an ungranted one answers.
   const DBUS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { call, nameHasOwner } from "corona/dbus";
 
@@ -1474,8 +1474,8 @@ export default class Main extends View {
   fn importing(module: &str) -> String {
     format!(
       r#"
-import {{ View }} from "gpui-kit";
-import {{ v_flex }} from "gpui-base";
+import {{ View }} from "corona/kit";
+import {{ v_flex }} from "corona/base";
 import * as m from "corona/{module}";
 
 export default class Main extends View {{
@@ -1525,8 +1525,8 @@ export default class Main extends View {{
 
   /// Reports what the user picked through `focusWorkspace`.
   const PICK_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { pickFiles } from "corona/desktop";
 
@@ -1565,7 +1565,7 @@ export default class Main extends View {
   const ALL_MODULES: [&str; 1] = ["secrets"];
 
   fn dts(plugins: &Plugins, id: &str) -> String {
-    fs::read_to_string(plugins.paths.local.join(id).join("gpui-kit.d.ts")).unwrap()
+    fs::read_to_string(plugins.paths.local.join(id).join("corona.d.ts")).unwrap()
   }
 
   #[gpui::test]
@@ -1583,7 +1583,7 @@ export default class Main extends View {
       .update(|cx| crate::write_plugin_types(std::slice::from_ref(&dir), cx))
       .unwrap();
 
-    assert!(written.contains(&dir.join("gpui-kit.d.ts")), "{written:?}");
+    assert!(written.contains(&dir.join("corona.d.ts")), "{written:?}");
     let dts = dts(&plugins, "a");
     for module in ALL_MODULES
       .iter()
@@ -1649,7 +1649,7 @@ export default class Main extends View {
     script.unwrap();
     let loaded = dts(&plugins, "a");
 
-    let path = plugins.paths.local.join("a/gpui-kit.d.ts");
+    let path = plugins.paths.local.join("a/corona.d.ts");
     fs::remove_file(&path).unwrap();
     let dir = plugins.paths.local.join("a");
     cx.update(|_, cx| ScriptManager::write_types(&dir, cx))
@@ -1673,7 +1673,7 @@ export default class Main extends View {
     cx.update(|cx| ScriptManager::write_types(&dir, cx))
       .unwrap();
 
-    assert!(dir.join("gpui-kit.d.ts").is_file());
+    assert!(dir.join("corona.d.ts").is_file());
     assert!(!dir.join("jsconfig.json").exists());
     assert_eq!(
       fs::read_to_string(dir.join("tsconfig.json")).unwrap(),
@@ -1690,6 +1690,6 @@ export default class Main extends View {
       cx.update(|cx| ScriptManager::write_types(&dir, cx))
         .is_err()
     );
-    assert!(!dir.join("gpui-kit.d.ts").exists());
+    assert!(!dir.join("corona.d.ts").exists());
   }
 }

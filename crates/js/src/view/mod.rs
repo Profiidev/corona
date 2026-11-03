@@ -85,7 +85,7 @@ pub struct ScriptView {
 
 impl ScriptView {
   /// Evaluates `source`, whose default export extends `View`, and calls its `init`. The
-  /// module can import `gpui-kit`, `gpui-base`, `gpui-component`, the stdlib and `modules`,
+  /// module can import `corona/kit`, `corona/base`, `corona/component`, the stdlib and `modules`,
   /// which subscribe through `watches`. It runs with no plugin's grant.
   pub fn new(
     source: &str,

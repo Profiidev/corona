@@ -1,4 +1,4 @@
-//! Component bindings: gpui-component (and gpui-base) widgets as script elements, one file
+//! Component bindings: `corona/component` (and `corona/base`) widgets as script elements, one file
 //! per family, each registered by one line in [`FAMILIES`].
 //!
 //! # Adding a family
@@ -21,13 +21,13 @@
 //!    value types of `style` (`Color`, `Len`, ..) for the rest.
 //! 5. Retained states (`InputState`, ..) are rquickjs classes holding a
 //!    [`Retained`](crate::Retained) with `on`/`release` methods; `Named` gives them a TS name.
-//! 6. Fill [`Family`]: the module (`"gpui-component"` or `"gpui-base"`), the export names,
+//! 6. Fill [`Family`]: the module (`"corona/component"` or `"corona/base"`), the export names,
 //!    `exports` making their values, `methods: install` and the d.ts of both. Then run the
 //!    `d_ts_unchanged` test and update `src/tests/kit.d.ts`.
 //!
 //! ```ignore
 //! pub(crate) const FAMILY: Family = Family {
-//!   module: "gpui-component",
+//!   module: "corona/component",
 //!   names: &["Button"],
 //!   exports: |ctx| Ok(vec![("Button", constructor(ctx, "Button", Function::new(ctx.clone(), button)?)?)]),
 //!   methods: install,

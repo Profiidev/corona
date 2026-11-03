@@ -1,6 +1,6 @@
 //! Chat (`Message`, `Bubble`, `Attachment`, `Marker`, `ShimmerText`, `MessageScroller`),
-//! `Editor`, `Diff`, `Text`, settings, questionnaires, `TextView` (`gpui-base`) and the FPS
-//! HUD (`gpui-fps`).
+//! `Editor`, `Diff`, `Text`, settings, questionnaires, `TextView` (`corona/base`) and the FPS
+//! HUD (`corona/fps`).
 //!
 //! Settings and questionnaires take typed children: a `SettingItem` becomes a
 //! [`Carrier`] element its `SettingGroup` takes the native value back out of.
@@ -1419,7 +1419,7 @@ const D_TS: &str = r#"  export type ComponentSize = "xsmall" | "small" | "medium
 "#;
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: &[
     "Attachment",
     "Bubble",
@@ -1457,9 +1457,9 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
   Ok(vec![("TextView", text_view.into_value())])
 }
 
-/// `TextView` of `gpui-base`
+/// `TextView` of `corona/base`
 pub(crate) const BASE: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: &["TextView"],
   exports: base_exports,
   methods: |_| Ok(()),
@@ -1498,9 +1498,9 @@ fn fps_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
   ])
 }
 
-/// The FPS HUD, `gpui-fps`
+/// The FPS HUD, `corona/fps`
 pub(crate) const FPS: Family = Family {
-  module: "gpui-fps",
+  module: "corona/fps",
   names: &[
     "fps_monitor",
     "show_fps_monitor",
@@ -1510,7 +1510,7 @@ pub(crate) const FPS: Family = Family {
   exports: fps_exports,
   methods: |_| Ok(()),
   d_ts: || {
-    r#"  import { Element } from "gpui-kit";
+    r#"  import { Element } from "corona/kit";
   export type Anchor = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center";
   /** The performance HUD as an element; its parent must be `relative()`. */
   export function fps_monitor(): Element;

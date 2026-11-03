@@ -6,9 +6,9 @@ use super::{eval, rooted, text};
 
 /// Builds every form component of both modules with its methods, one result line each
 const ALL: &str = r##"
-import { View, div } from "gpui-kit";
-import * as base from "gpui-base";
-import * as c from "gpui-component";
+import { View, div } from "corona/kit";
+import * as base from "corona/base";
+import * as c from "corona/component";
 
 const attempt = (f) => {
   try {
@@ -123,10 +123,10 @@ fn every_form_component_renders(cx: &mut TestAppContext) {
 }
 
 const EVENTS: &str = r##"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import * as base from "gpui-base";
-import { Button, Checkbox, Switch, Input, InputState } from "gpui-component";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
+import * as base from "corona/base";
+import { Button, Checkbox, Switch, Input, InputState } from "corona/component";
 
 globalThis.log = [];
 
@@ -177,9 +177,9 @@ fn events_carry_their_payloads(cx: &mut TestAppContext) {
 }
 
 const TOKENS: &str = r##"
-import { View, div } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import { Input, InputState, Textarea, TextareaState, InputGroup, InputGroupInput, InputGroupTextarea, Label, Combobox } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex } from "corona/base";
+import { Input, InputState, Textarea, TextareaState, InputGroup, InputGroupInput, InputGroupTextarea, Label, Combobox } from "corona/component";
 
 globalThis.log = [];
 globalThis.renders = 0;

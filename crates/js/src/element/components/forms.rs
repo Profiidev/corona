@@ -1,6 +1,6 @@
 //! Form controls: buttons, toggles, text fields, sliders, pickers, selects and forms.
 //!
-//! `"gpui-component"` exports the styled widgets ([`FAMILY`]), `"gpui-base"` the unstyled
+//! `"corona/component"` exports the styled widgets ([`FAMILY`]), `"corona/base"` the unstyled
 //! primitives of the same names ([`BASE`]), which a script draws itself. Both take the same
 //! retained text, slider and code states.
 
@@ -312,7 +312,7 @@ markers! {
   Nothing => "{}",
 }
 
-/// A `Slider` part of `gpui-base` that the shell places: the fill of the indicator, the thumb
+/// A `Slider` part of `corona/base` that the shell places: the fill of the indicator, the thumb
 #[derive(IntoElement)]
 pub struct Indicator {
   inner: base::SliderIndicator,
@@ -385,7 +385,7 @@ impl RenderOnce for Thumb {
   }
 }
 
-/// The cells of a `gpui-base` `OtpInput`, drawn from its state each frame
+/// The cells of a `corona/base` `OtpInput`, drawn from its state each frame
 #[derive(IntoElement)]
 pub struct Cells {
   inner: base::OtpInput,
@@ -440,7 +440,7 @@ impl RenderOnce for Cells {
   }
 }
 
-/// Puts a `gpui-base` `NumberInput` step button around `look`
+/// Puts a `corona/base` `NumberInput` step button around `look`
 fn step_button(look: AnyElement) -> impl FnOnce(base::Button) -> base::Button + 'static {
   move |b| b.child(look)
 }
@@ -485,7 +485,7 @@ mod methods {
       base::Switch => |b: base::Switch| b.checked(value),
       base::Radio => |b: base::Radio| b.checked(value),
     );
-    /// The controlled state of a `gpui-base` `Toggle`: a button that stays down.
+    /// The controlled state of a `corona/base` `Toggle`: a button that stays down.
     fn pressed(value: bool) |c, n| pick!(c, n, base::Toggle => |b: base::Toggle| b.pressed(value));
     /// `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
     /// the index of a `RadioGroup`, the stars of a `Rating`. The script owns the value.
@@ -622,7 +622,7 @@ mod methods {
     fn selected_index(index: u32) |c, n| {
       pick!(c, n, RadioGroup => |b: RadioGroup| b.selected_index(Some(index as usize)))
     };
-    /// The orientation a `gpui-base` `RadioGroup` or `ToggleGroup` announces.
+    /// The orientation a `corona/base` `RadioGroup` or `ToggleGroup` announces.
     fn axis(axis: AxisArg) |c, n| pick!(c, n,
       base::RadioGroup => |b: base::RadioGroup| b.axis(axis.0),
       base::ToggleGroup => |b: base::ToggleGroup| b.axis(axis.0),
@@ -772,7 +772,7 @@ mod methods {
     /// The label width of a horizontal `Form`, in pixels.
     fn label_width(width: f32) |c, n| pick!(c, n, Form => |b: Form| b.label_width(px(width)));
     /// The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
-    /// the editor slot of a `gpui-base` `NumberInput`.
+    /// the editor slot of a `corona/base` `NumberInput`.
     fn input(control: Child<'js>) |c, n| {
       if is::<base::NumberInput>(&**n) {
         let el = frame().child(c, control)?;
@@ -929,7 +929,7 @@ mod methods {
         base::Button => |b: base::Button| b.on_click(l()),
       )
     };
-    /// Whether a `gpui-base` `Select`, `Combobox` or `DatePicker` is showing its list.
+    /// Whether a `corona/base` `Select`, `Combobox` or `DatePicker` is showing its list.
     fn open(value: bool) |c, n| pick!(c, n,
       base::Select => |b: base::Select| b.open(value),
       base::Combobox => |b: base::Combobox| b.open(value),
@@ -948,7 +948,7 @@ mod methods {
         base::DatePicker => |b: base::DatePicker| b.on_open_change(l()),
       )
     };
-    /// `handler(_, cx)` on Enter in an open `gpui-base` `Select` or `Combobox`.
+    /// `handler(_, cx)` on Enter in an open `corona/base` `Select` or `Combobox`.
     fn on_confirm(handler: On<'js, Nothing>) |c, n| {
       let h = handler.0;
       let l = || {
@@ -960,7 +960,7 @@ mod methods {
         base::Combobox => |b: base::Combobox| b.on_confirm(l()),
       )
     };
-    /// `handler(_, cx)` on Escape in an open `gpui-base` `Select` or `Combobox`.
+    /// `handler(_, cx)` on Escape in an open `corona/base` `Select` or `Combobox`.
     fn on_dismiss(handler: On<'js, Nothing>) |c, n| {
       let h = handler.0;
       let l = || {
@@ -972,7 +972,7 @@ mod methods {
         base::Combobox => |b: base::Combobox| b.on_dismiss(l()),
       )
     };
-    /// The handle a `gpui-base` `Select` or `Combobox` moves the keyboard to when it opens.
+    /// The handle a `corona/base` `Select` or `Combobox` moves the keyboard to when it opens.
     fn content_focus_handle(handle: Class<'js, crate::FocusHandle>) |c, n| {
       let h = handle.borrow().handle(c)?;
       pick!(c, n,
@@ -996,7 +996,7 @@ mod methods {
         b
       })
     };
-    /// How every cell of a `gpui-base` `OtpInput` looks.
+    /// How every cell of a `corona/base` `OtpInput` looks.
     fn cell_style(declare: Function<'js>) |c, n| {
       if !is::<Cells>(&**n) {
         return Err(miss(c, n.kind()));
@@ -1029,7 +1029,7 @@ mod methods {
         b
       })
     };
-    /// The look of a `gpui-base` `NumberInput`'s decrement button.
+    /// The look of a `corona/base` `NumberInput`'s decrement button.
     fn decrement_button(look: Child<'js>) |c, n| {
       if !is::<base::NumberInput>(&**n) {
         return Err(miss(c, n.kind()));
@@ -1037,7 +1037,7 @@ mod methods {
       let look = frame().child(c, look)?;
       map(c, n, |b: base::NumberInput| b.decrement_button(step_button(look)))
     };
-    /// The look of a `gpui-base` `NumberInput`'s increment button.
+    /// The look of a `corona/base` `NumberInput`'s increment button.
     fn increment_button(look: Child<'js>) |c, n| {
       if !is::<base::NumberInput>(&**n) {
         return Err(miss(c, n.kind()));
@@ -1089,7 +1089,7 @@ mod methods {
   }
 }
 
-/// Children a `RadioGroup` or `Form` of `gpui-component` takes: `Radio`s, `Field`s. Typed
+/// Children a `RadioGroup` or `Form` of `corona/component` takes: `Radio`s, `Field`s. Typed
 /// as the generic `child`.
 #[allow(dead_code)]
 mod children {
@@ -1192,8 +1192,8 @@ macro_rules! json_payloads {
 }
 
 json_payloads! {
-  TokenClick => "import(\"gpui-component\").InlineTokenClickEvent",
-  TokenHover => "import(\"gpui-component\").InlineTokenHoverEvent"
+  TokenClick => "import(\"corona/component\").InlineTokenClickEvent",
+  TokenHover => "import(\"corona/component\").InlineTokenHoverEvent"
 }
 
 fn token_error(ctx: &Ctx<'_>, e: impl std::fmt::Display) -> rquickjs::Error {
@@ -2120,7 +2120,7 @@ fn exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
   Ok(out)
 }
 
-/// A `gpui-base` slider part
+/// A `corona/base` slider part
 fn slider_part<'js>(
   ctx: &Ctx<'js>,
   name: &'static str,
@@ -2461,7 +2461,7 @@ fn base_d_ts() -> String {
     out += &declare(doc, name, &format!("state: {state}"));
   }
   let states = "InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent";
-  out += &format!("  import {{ {states} }} from \"gpui-component\";\n  export {{ {states} }};\n");
+  out += &format!("  import {{ {states} }} from \"corona/component\";\n  export {{ {states} }};\n");
   out
 }
 
@@ -2576,7 +2576,7 @@ const STATES_D_TS: &str = r#"  /** Half-open UTF-16 string offsets, as `slice()`
   export interface ColorPickerState {
     /** The color as `#rrggbb[aa]`. */
     value(): string | undefined;
-    set_value(color: import("gpui-kit").Color | null): void;
+    set_value(color: import("corona/kit").Color | null): void;
     on(event: "change", handler: (color: string | undefined, cx: Context) => void): boolean;
     release(): boolean;
   }
@@ -2602,7 +2602,7 @@ fn el_d_ts() -> String {
 }
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: NAMES,
   exports,
   methods: install,
@@ -2611,7 +2611,7 @@ pub(crate) const FAMILY: Family = Family {
 };
 
 pub(crate) const BASE: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: BASE_NAMES,
   exports: base_exports,
   methods: |_| Ok(()),

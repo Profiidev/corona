@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use corona_js::ScriptExt;
 
-/// Writes each plugin's `gpui-kit.d.ts`, as loading it does; no running shell needed
+/// Writes each plugin's `corona.d.ts`, as loading it does; no running shell needed
 #[derive(Args)]
 pub struct TypesCommand {
   /// The plugin directories, each with a `plugin.toml`
@@ -43,8 +43,8 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   const VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 
 export default class Main extends View {
   render(_cx) {
@@ -65,7 +65,7 @@ export default class Main extends View {
   }
 
   fn settings(dir: &Path) -> String {
-    let dts = fs::read_to_string(dir.join("gpui-kit.d.ts")).unwrap();
+    let dts = fs::read_to_string(dir.join("corona.d.ts")).unwrap();
     let start = dts.find("declare module \"corona/settings\"").unwrap();
     dts[start..start + dts[start..].find("\n}").unwrap()].to_string()
   }
@@ -85,8 +85,8 @@ export default class Main extends View {
       .update(|cx| corona_script::write_plugin_types(&dirs, cx))
       .unwrap();
 
-    assert!(written.contains(&a.join("gpui-kit.d.ts")), "{written:?}");
-    assert!(written.contains(&b.join("gpui-kit.d.ts")), "{written:?}");
+    assert!(written.contains(&a.join("corona.d.ts")), "{written:?}");
+    assert!(written.contains(&b.join("corona.d.ts")), "{written:?}");
     assert!(!settings(&a).contains("\"units\""));
     assert!(
       settings(&b).contains("\"units\": string;"),

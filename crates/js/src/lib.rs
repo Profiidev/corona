@@ -30,7 +30,7 @@ pub use stdlib::D_TS as STDLIB_D_TS;
 pub use view::{
   FocusHandle, ScriptView, ViewCx, ViewHandle,
   entity::{Retained, ScrollHandle},
-  kit::GpuiKit,
+  kit::Kit,
   window::ScriptRoot,
 };
 

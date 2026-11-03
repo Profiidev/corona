@@ -236,8 +236,8 @@ mod tests {
   use crate::{plugin::paths::Paths, test_support::setup};
 
   const VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 
 export default class Main extends View {
   render(_cx) {
@@ -376,7 +376,7 @@ export default class Main extends View {
 
   /// 40px wide, without text the test platform cannot measure
   const SIZED_VIEW: &str = r#"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 export default class Main extends View {
   render(_cx) {

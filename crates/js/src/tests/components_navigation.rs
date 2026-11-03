@@ -6,9 +6,9 @@ use super::{eval, rooted, text};
 
 /// Builds every navigation component of both modules with its methods, one result line each
 const ALL: &str = r##"
-import { View, div, ScrollHandle } from "gpui-kit";
-import * as base from "gpui-base";
-import * as c from "gpui-component";
+import { View, div, ScrollHandle } from "corona/kit";
+import * as base from "corona/base";
+import * as c from "corona/component";
 
 const attempt = (f) => {
   try {
@@ -107,9 +107,9 @@ fn every_navigation_component_renders(cx: &mut TestAppContext) {
 }
 
 const EVENTS: &str = r##"
-import { View, div } from "gpui-kit";
-import { v_flex, Collapsible } from "gpui-base";
-import { TabBar, Tab, SidebarToggleButton } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex, Collapsible } from "corona/base";
+import { TabBar, Tab, SidebarToggleButton } from "corona/component";
 
 globalThis.log = [];
 
@@ -150,9 +150,9 @@ fn events_carry_their_payloads(cx: &mut TestAppContext) {
 }
 
 const ROWS: &str = r##"
-import { View, div } from "gpui-kit";
-import { v_flex, v_virtual_list, Scrollbar } from "gpui-base";
-import { MenuBar, Menu, MenuItem, NativeMenuTrigger } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex, v_virtual_list, Scrollbar } from "corona/base";
+import { MenuBar, Menu, MenuItem, NativeMenuTrigger } from "corona/component";
 
 globalThis.log = [];
 

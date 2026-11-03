@@ -8,9 +8,9 @@ use super::{eval, rooted, text};
 
 /// Builds every data component of both modules with its methods, one result line each
 const ALL: &str = r##"
-import { View, div } from "gpui-kit";
-import * as base from "gpui-base";
-import * as c from "gpui-component";
+import { View, div } from "corona/kit";
+import * as base from "corona/base";
+import * as c from "corona/component";
 
 const attempt = (f) => {
   try {
@@ -118,9 +118,9 @@ fn every_data_component_renders(cx: &mut TestAppContext) {
 }
 
 const STATES: &str = r##"
-import { View, div } from "gpui-kit";
-import { CalendarState } from "gpui-base";
-import { CarouselState } from "gpui-component";
+import { View, div } from "corona/kit";
+import { CalendarState } from "corona/base";
+import { CarouselState } from "corona/component";
 
 globalThis.log = [];
 

@@ -1,8 +1,8 @@
 //! Navigation: tabs, accordions, pagination, collapsibles, resizable panes, scrollbars,
 //! virtual lists, steppers, sidebars, breadcrumbs, toolbars, menus and the command palette.
 //!
-//! [`BASE`] binds `gpui_kit::base` widgets for `gpui-base`, [`FAMILY`] `gpui_kit::component`
-//! ones for `gpui-component`; `Tab`, `Accordion`, `Collapsible`, `Pagination` and `Scrollbar`
+//! [`BASE`] binds `gpui_kit::base` widgets for `corona/base`, [`FAMILY`] `gpui_kit::component`
+//! ones for `corona/component`; `Tab`, `Accordion`, `Collapsible`, `Pagination` and `Scrollbar`
 //! are in both. Containers that take one kind of child (`TabBar`, `Stepper`, `Sidebar`,
 //! `Menu`, ..) adopt it through their own `child`.
 
@@ -44,7 +44,7 @@ use crate::{
 };
 
 pub(crate) const BASE: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: &[
     "Tabs",
     "Tab",
@@ -72,7 +72,7 @@ pub(crate) const BASE: Family = Family {
 };
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: &[
     "TabBar",
     "Tabs",
@@ -868,7 +868,7 @@ pub struct VirtualListScrollHandle {
 }
 
 impl Named for VirtualListScrollHandle {
-  const TS: &'static str = "import(\"gpui-base\").VirtualListScrollHandle";
+  const TS: &'static str = "import(\"corona/base\").VirtualListScrollHandle";
 }
 
 #[rquickjs::methods]
@@ -2380,7 +2380,7 @@ const BASE_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A): El
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
   export function resizable_panel(): Element;
   /** A scroll area's or virtual list's name, or its handle. */
-  type ScrollTarget = string | number | import("gpui-kit").ScrollHandle | VirtualListScrollHandle;
+  type ScrollTarget = string | number | import("corona/kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
     new: (handle: ScrollTarget) => Element;
@@ -2393,7 +2393,7 @@ const BASE_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A): El
     item_count: number,
     item_sizes: number | number[],
     get_key: (index: number) => string,
-    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+    render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
   ): Element;
   /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
   export function h_virtual_list(
@@ -2401,7 +2401,7 @@ const BASE_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A): El
     item_count: number,
     item_sizes: number | number[],
     get_key: (index: number) => string,
-    render: (range: import("gpui-kit").ItemRange, cx: import("gpui-kit").Context) => Element[],
+    render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
   ): Element;
   /** A virtual list's scroll position; `track_scroll(handle)` on the list. */
   export class VirtualListScrollHandle {
@@ -2448,8 +2448,8 @@ const COMPONENT_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A
   /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
   export const Scroll: Ctor<[handle: ScrollbarHandle]>;
   /** A scrollbar driving the area that tracks `handle`. */
-  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("gpui-base").VirtualListScrollHandle]>;
-  export type ScrollbarHandle = import("gpui-kit").ScrollHandle;
+  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("corona/base").VirtualListScrollHandle]>;
+  export type ScrollbarHandle = import("corona/kit").ScrollHandle;
   export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
   /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */
   export const Sidebar: Ctor<[id: string | number]>;

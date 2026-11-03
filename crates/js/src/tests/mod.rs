@@ -15,7 +15,7 @@ use rquickjs::{
 use specta::{Type, specta};
 
 use crate::{
-  Cx, Glob, GpuiKit, ModuleBuilder, Opt, PluginRef, ScriptExt, ScriptModule, ScriptRegistry,
+  Cx, Glob, Kit, ModuleBuilder, Opt, PluginRef, ScriptExt, ScriptModule, ScriptRegistry,
   ScriptView, Throws, Watches, d_ts, now,
   runtime::module::{HostLoader, HostModules},
   with,
@@ -143,7 +143,7 @@ fn modules(watches: &Watches, cx: &mut App) -> Vec<ModuleBuilder> {
 }
 
 const VIEW: &str = r#"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 import { add, doubleLater, square } from "corona/test";
 
 export default class Main extends View {
@@ -175,7 +175,7 @@ export default class Main extends View {
 
 /// Counts its renders, shows `count` and what its subscription saw until it stopped at 2
 const WATCH: &str = r#"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 import { count } from "corona/test";
 
 let renders = 0;
@@ -326,7 +326,7 @@ fn unhandled_rejection_is_logged(cx: &mut TestAppContext) {
   let _guard = tracing::subscriber::set_default(subscriber);
 
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 import { check } from "corona/test";
 
 export default class Main extends View {
@@ -365,7 +365,7 @@ fn registry_finds_modules_by_name(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn d_ts_unchanged(cx: &mut TestAppContext) {
-  let d_ts = cx.update(|cx| GpuiKit::d_ts() + &d_ts(&modules(&Watches::default(), cx)));
+  let d_ts = cx.update(|cx| Kit::d_ts() + &d_ts(&modules(&Watches::default(), cx)));
   if std::env::var_os("CORONA_REGEN_DTS").is_some() {
     std::fs::write(
       concat!(env!("CARGO_MANIFEST_DIR"), "/src/tests/kit.d.ts"),

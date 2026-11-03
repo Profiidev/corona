@@ -103,7 +103,7 @@ fn exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
 }
 
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: &["Probe", "TestState"],
   exports,
   methods: probe::install,
@@ -123,9 +123,9 @@ fn eval(view: &Entity<ScriptView>, cx: &mut VisualTestContext, code: &str) -> St
 }
 
 const STYLES: &str = r##"
-import { View, div, svg, image, ScrollHandle, Background, PathBuilder } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
-import { Probe } from "gpui-component";
+import { View, div, svg, image, ScrollHandle, Background, PathBuilder } from "corona/kit";
+import { h_flex, v_flex } from "corona/base";
+import { Probe } from "corona/component";
 
 const attempt = (f) => {
   try {
@@ -269,7 +269,7 @@ fn style_table_matches_gpui() {
 }
 
 const EVENTS: &str = r##"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 export default class Main extends View {
   init(_props, cx) {
@@ -331,7 +331,7 @@ fn events_reach_handlers_with_payloads(cx: &mut TestAppContext) {
 }
 
 const CHILDREN: &str = r##"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 globalThis.log = [];
 
@@ -404,7 +404,7 @@ fn child_views_update_alone(cx: &mut TestAppContext) {
 }
 
 const TIMERS: &str = r##"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 export default class Main extends View {
   init(_props, cx) {
@@ -449,8 +449,8 @@ fn timers_and_tasks(cx: &mut TestAppContext) {
 }
 
 const THEME: &str = r##"
-import { View, div } from "gpui-kit";
-import { set_theme } from "gpui-base";
+import { View, div } from "corona/kit";
+import { set_theme } from "corona/base";
 
 export default class Main extends View {
   render(cx) {
@@ -480,7 +480,7 @@ fn theme_tokens(cx: &mut TestAppContext) {
 }
 
 const COUNTS: &str = r##"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 export default class Main extends View {
   render(_cx) {
@@ -507,8 +507,8 @@ fn clean_frames_do_not_enter_js(cx: &mut TestAppContext) {
 }
 
 const STATES: &str = r##"
-import { View, div, list, uniform_list } from "gpui-kit";
-import { TestState } from "gpui-component";
+import { View, div, list, uniform_list } from "corona/kit";
+import { TestState } from "corona/component";
 
 globalThis.log = [];
 
@@ -555,7 +555,7 @@ fn retained_states_and_lists(cx: &mut TestAppContext) {
 }
 
 const WINDOW: &str = r##"
-import { View, div } from "gpui-kit";
+import { View, div } from "corona/kit";
 
 globalThis.log = [];
 

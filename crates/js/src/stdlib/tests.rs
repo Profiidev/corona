@@ -1036,7 +1036,7 @@ fn a_typescript_view_loads_and_reloads(cx: &mut TestAppContext) {
   let entry = root.join("main.ts");
   let source = |text: &str| {
     format!(
-      "import {{ View, div }} from 'gpui-kit';\n\
+      "import {{ View, div }} from 'corona/kit';\n\
        export default class Main extends View {{ render(_cx: unknown) {{ return div().child('{text}' as string); }} }}\n"
     )
   };

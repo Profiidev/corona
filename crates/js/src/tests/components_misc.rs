@@ -6,10 +6,10 @@ use super::{eval, rooted, text};
 
 /// Builds every misc component with its methods, one result line each
 const ALL: &str = r##"
-import { View, div } from "gpui-kit";
-import { v_flex, TextView } from "gpui-base";
-import * as c from "gpui-component";
-import { fps_monitor, show_fps_monitor, hide_fps_monitor, fps_monitor_visible } from "gpui-fps";
+import { View, div } from "corona/kit";
+import { v_flex, TextView } from "corona/base";
+import * as c from "corona/component";
+import { fps_monitor, show_fps_monitor, hide_fps_monitor, fps_monitor_visible } from "corona/fps";
 
 const attempt = (f) => {
   try {
@@ -106,8 +106,8 @@ fn every_misc_component_renders(cx: &mut TestAppContext) {
 }
 
 const EDITOR: &str = r##"
-import { View, div } from "gpui-kit";
-import { Editor, EditorState } from "gpui-component";
+import { View, div } from "corona/kit";
+import { Editor, EditorState } from "corona/component";
 
 globalThis.log = [];
 

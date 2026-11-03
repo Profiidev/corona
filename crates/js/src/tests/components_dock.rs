@@ -5,8 +5,8 @@ use gpui_kit::{self as gpui, Modifiers, TestAppContext, point, px};
 use super::{eval, rooted};
 
 const DOCK: &str = r##"
-import { View, div } from "gpui-kit";
-import { h_flex, v_flex, DockArea, dock_area, dock_content } from "gpui-base";
+import { View, div } from "corona/kit";
+import { h_flex, v_flex, DockArea, dock_area, dock_content } from "corona/base";
 
 globalThis.log = [];
 

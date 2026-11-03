@@ -1,8 +1,8 @@
 //! Data display: lists, tables, trees, charts, calendars, carousels, progress, avatars,
 //! badges, tags and empty states.
 //!
-//! [`BASE`] holds the unstyled parts of `gpui-base` (`Progress`, `Avatar`, `Table` and their
-//! parts), [`FAMILY`] the styled widgets of `gpui-component`; `CalendarState` is in both.
+//! [`BASE`] holds the unstyled parts of `corona/base` (`Progress`, `Avatar`, `Table` and their
+//! parts), [`FAMILY`] the styled widgets of `corona/component`; `CalendarState` is in both.
 //! Widgets that are not `Styled` sit in a styled `div` ([`W`]). Parts another element takes
 //! whole (`AvatarImage`, `EmptyTitle`, `TreeItem`, ..) are passed to its slot method, not to
 //! `child`. `List` and `DataTable` render their rows lazily through view slots, like `list()`.
@@ -1370,7 +1370,7 @@ mod methods {
 
   crate::el_methods! {
     kinds: KINDS;
-    /// The value: a `Progress` percentage (`gpui-base` announces it, `gpui-component` draws
+    /// The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
     /// it, `0..=100`), or the text of a `DescriptionItem`.
     fn value(value: NumStr) |c, n| match value {
       NumStr::Num(v) => any!(c, n,
@@ -1380,7 +1380,7 @@ mod methods {
       ),
       NumStr::Str(v) => any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.value(v))),
     };
-    /// Withdraws a `gpui-base` `Progress` value from the accessibility tree: "no idea how far".
+    /// Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far".
     fn indeterminate(value: bool) |c, n| any!(c, n, base::Progress => |p| p.indeterminate(value));
     /// Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback.
     fn image(image: Part<'js>) |c, n| {
@@ -1500,7 +1500,7 @@ mod methods {
     };
     /// Rotates an `Icon`.
     fn rotate(radians: f32) |c, n| any!(c, n, Icon => |i| i.rotate(super::radians(radians)));
-    /// Animates a `gpui-component` `Progress` as busy.
+    /// Animates a `corona/component` `Progress` as busy.
     fn loading(value: bool) |c, n| any!(c, n, Progress => |p| p.loading(value));
     /// The name an `Avatar` shows the initials of without an image.
     fn name(name: String) |c, n| any!(c, n, Avatar => |a| a.name(name));
@@ -1864,7 +1864,7 @@ fn component_d_ts() -> String {
   out
 }
 
-const COMPONENT_D_TS: &str = r#"  import { CalendarState, CalendarDate } from "gpui-base";
+const COMPONENT_D_TS: &str = r#"  import { CalendarState, CalendarDate } from "corona/base";
   export { CalendarState, CalendarDate };
   export interface ChartRow {
     label: string;
@@ -1897,9 +1897,9 @@ const COMPONENT_D_TS: &str = r#"  import { CalendarState, CalendarDate } from "g
   }
 "#;
 
-/// The `gpui-base` parts
+/// The `corona/base` parts
 pub(crate) const BASE: Family = Family {
-  module: "gpui-base",
+  module: "corona/base",
   names: &[
     "Progress",
     "ProgressTrack",
@@ -1922,9 +1922,9 @@ pub(crate) const BASE: Family = Family {
   el_d_ts: String::new,
 };
 
-/// The `gpui-component` widgets, and the element methods of both
+/// The `corona/component` widgets, and the element methods of both
 pub(crate) const FAMILY: Family = Family {
-  module: "gpui-component",
+  module: "corona/component",
   names: &[
     "Badge",
     "Tag",

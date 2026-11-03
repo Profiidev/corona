@@ -30,8 +30,8 @@ fn at((x, y): (f32, f32)) -> Point<Pixels> {
 #[gpui::test]
 fn base_popover_is_controlled_through_open_and_on_open_change(cx: &mut TestAppContext) {
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
-import { v_flex, Popover } from "gpui-base";
+import { View, div } from "corona/kit";
+import { v_flex, Popover } from "corona/base";
 
 globalThis.log = [];
 
@@ -76,9 +76,9 @@ export default class Main extends View {
 #[gpui::test]
 fn component_popover_opens_from_its_button(cx: &mut TestAppContext) {
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import { Popover } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex } from "corona/base";
+import { Popover } from "corona/component";
 
 globalThis.log = [];
 
@@ -116,8 +116,8 @@ fn base_hover_card_opens_after_its_delay(cx: &mut TestAppContext) {
   hover(
     cx,
     r#"
-import { View, div } from "gpui-kit";
-import { v_flex, HoverCard } from "gpui-base";
+import { View, div } from "corona/kit";
+import { v_flex, HoverCard } from "corona/base";
 
 globalThis.log = [];
 
@@ -142,9 +142,9 @@ fn component_hover_card_opens_after_its_delay(cx: &mut TestAppContext) {
   hover(
     cx,
     r#"
-import { View, div } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import { HoverCard } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex } from "corona/base";
+import { HoverCard } from "corona/component";
 
 globalThis.log = [];
 
@@ -168,8 +168,8 @@ export default class Main extends View {
 #[gpui::test]
 fn popup_shows_its_content_while_set(cx: &mut TestAppContext) {
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
-import { v_flex, Popup } from "gpui-base";
+import { View, div } from "corona/kit";
+import { v_flex, Popup } from "corona/base";
 
 globalThis.log = [];
 
@@ -203,9 +203,9 @@ export default class Main extends View {
 }
 
 const EFFECTS: &str = r#"
-import { View, div } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import { Dialog, AlertDialog, Sheet, Notification } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex } from "corona/base";
+import { Dialog, AlertDialog, Sheet, Notification } from "corona/component";
 
 globalThis.log = [];
 
@@ -305,9 +305,9 @@ fn window_effects_open_from_their_buttons(cx: &mut TestAppContext) {
 #[gpui::test]
 fn alerts_and_wrong_kinds(cx: &mut TestAppContext) {
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
-import { v_flex, Popover as BasePopover, Popup } from "gpui-base";
-import { Alert, ErrorAlert, HoverCard, Popover, Dialog } from "gpui-component";
+import { View, div } from "corona/kit";
+import { v_flex, Popover as BasePopover, Popup } from "corona/base";
+import { Alert, ErrorAlert, HoverCard, Popover, Dialog } from "corona/component";
 
 const attempt = (f) => {
   try {
@@ -360,9 +360,9 @@ export default class Main extends View {
 #[gpui::test]
 fn same_names_reach_their_family(cx: &mut TestAppContext) {
   const SOURCE: &str = r#"
-import { View, div } from "gpui-kit";
-import * as base from "gpui-base";
-import * as c from "gpui-component";
+import { View, div } from "corona/kit";
+import * as base from "corona/base";
+import * as c from "corona/component";
 
 const attempt = (f) => {
   try {

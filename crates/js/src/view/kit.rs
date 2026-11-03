@@ -1,5 +1,5 @@
-//! The built-in modules: `gpui-kit` (views, elements, `window`), `gpui-base` (layout helpers,
-//! theme) and `gpui-component`, plus the component families of `components/`.
+//! The built-in modules: `corona/kit` (views, elements, `window`), `corona/base` (layout helpers,
+//! theme) and `corona/component`, plus the component families of `components/`.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -25,19 +25,19 @@ use crate::{
 
 /// The built-in module names
 pub(crate) const NAMES: &[&str] = &[
-  GpuiKit::NAME,
-  GpuiBase::NAME,
-  GpuiComponent::NAME,
-  GpuiFps::NAME,
+  Kit::NAME,
+  Base::NAME,
+  Component::NAME,
+  Fps::NAME,
 ];
 
 /// Adds the built-in modules to `loader`.
 pub(crate) fn loader(loader: ModuleLoader) -> ModuleLoader {
   loader
-    .with_module(GpuiKit::NAME, GpuiKit)
-    .with_module(GpuiBase::NAME, GpuiBase)
-    .with_module(GpuiComponent::NAME, GpuiComponent)
-    .with_module(GpuiFps::NAME, GpuiFps)
+    .with_module(Kit::NAME, Kit)
+    .with_module(Base::NAME, Base)
+    .with_module(Component::NAME, Component)
+    .with_module(Fps::NAME, Fps)
 }
 
 /// Sets a context up for views: element methods and the `window` global.
@@ -212,11 +212,11 @@ fn uniform_list_el<'js>(
   new_el(&ctx, el)
 }
 
-/// The `gpui-kit` module: views, elements, geometry
-pub struct GpuiKit;
+/// The `corona/kit` module: views, elements, geometry
+pub struct Kit;
 
-impl GpuiKit {
-  pub const NAME: &str = "gpui-kit";
+impl Kit {
+  pub const NAME: &str = "corona/kit";
   const OWN: &[&str] = &[
     "View",
     "div",
@@ -246,7 +246,7 @@ impl GpuiKit {
         .collect()
     };
     format!(
-      r##"declare module "gpui-kit" {{
+      r##"declare module "corona/kit" {{
   export type SpacingToken = {spacing};
   export type RadiusToken = {radius};
   export type ColorToken = {colors};
@@ -263,18 +263,18 @@ impl GpuiKit {
 {el}  }}
   export type NativeElement = Element;
 {rest}}}
-declare var window: import("gpui-kit").Window;
-declare module "gpui-base" {{
-  import {{ ClickEvent, Context, Element, FocusHandle }} from "gpui-kit";
+declare var window: import("corona/kit").Window;
+declare module "corona/base" {{
+  import {{ ClickEvent, Context, Element, FocusHandle }} from "corona/kit";
   /** A row, centered on the cross axis. */
   export function h_flex(): Element;
   /** A column. */
   export function v_flex(): Element;
 {theme}{base}}}
-declare module "gpui-component" {{
-  import {{ ClickEvent, Context, Element, FocusHandle }} from "gpui-kit";
+declare module "corona/component" {{
+  import {{ ClickEvent, Context, Element, FocusHandle }} from "corona/kit";
 {component}}}
-declare module "gpui-fps" {{
+declare module "corona/fps" {{
 {fps}}}
 "##,
       spacing = union(SPACING_TOKENS),
@@ -285,14 +285,14 @@ declare module "gpui-fps" {{
       el = el_d_ts(),
       rest = KIT_D_TS,
       theme = theme::d_ts(),
-      base = families(GpuiBase::NAME),
-      component = families(GpuiComponent::NAME),
-      fps = families(GpuiFps::NAME),
+      base = families(Base::NAME),
+      component = families(Component::NAME),
+      fps = families(Fps::NAME),
     )
   }
 }
 
-impl ModuleDef for GpuiKit {
+impl ModuleDef for Kit {
   fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
     declare(decl, Self::NAME, Self::OWN)
   }
@@ -316,14 +316,14 @@ impl ModuleDef for GpuiKit {
   }
 }
 
-/// The `gpui-base` module: layout helpers and the theme
-pub struct GpuiBase;
+/// The `corona/base` module: layout helpers and the theme
+pub struct Base;
 
-impl GpuiBase {
-  pub const NAME: &str = "gpui-base";
+impl Base {
+  pub const NAME: &str = "corona/base";
 }
 
-impl ModuleDef for GpuiBase {
+impl ModuleDef for Base {
   fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
     declare(decl, Self::NAME, &["h_flex", "v_flex", "set_theme"])
   }
@@ -344,14 +344,14 @@ impl ModuleDef for GpuiBase {
   }
 }
 
-/// The `gpui-component` module: the component families
-pub struct GpuiComponent;
+/// The `corona/component` module: the component families
+pub struct Component;
 
-impl GpuiComponent {
-  pub const NAME: &str = "gpui-component";
+impl Component {
+  pub const NAME: &str = "corona/component";
 }
 
-impl ModuleDef for GpuiComponent {
+impl ModuleDef for Component {
   fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
     declare(decl, Self::NAME, &[])
   }
@@ -361,14 +361,14 @@ impl ModuleDef for GpuiComponent {
   }
 }
 
-/// The `gpui-fps` module: the performance HUD
-pub struct GpuiFps;
+/// The `corona/fps` module: the performance HUD
+pub struct Fps;
 
-impl GpuiFps {
-  pub const NAME: &str = "gpui-fps";
+impl Fps {
+  pub const NAME: &str = "corona/fps";
 }
 
-impl ModuleDef for GpuiFps {
+impl ModuleDef for Fps {
   fn declare<'js>(decl: &Declarations<'js>) -> Result<()> {
     declare(decl, Self::NAME, &[])
   }
@@ -378,7 +378,7 @@ impl ModuleDef for GpuiFps {
   }
 }
 
-/// The hand-written rest of `gpui-kit`
+/// The hand-written rest of `corona/kit`
 const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child wherever a child is taken. */
   export interface Entity {
     /** Runs the child's `update(props)` and renders it again. */
@@ -433,7 +433,7 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     propagate(): void;
     phase(): "render" | "event" | "task";
     /** The theme's semantic tokens. */
-    theme(): import("gpui-base").Theme;
+    theme(): import("corona/base").Theme;
     /** Opens an absolute http(s) URL with the system's handler. */
     open_url(url: string): void;
     read_from_clipboard(): string | undefined;

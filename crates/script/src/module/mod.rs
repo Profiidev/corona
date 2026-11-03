@@ -69,7 +69,7 @@ pub mod harness {
     let main = dir.path().join("main.js");
     let source = format!(
       r#"
-import {{ View, div }} from "gpui-kit";
+import {{ View, div }} from "corona/kit";
 import {{ report }} from "corona/test";
 import * as m from "{name}";
 

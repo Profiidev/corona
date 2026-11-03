@@ -19,7 +19,7 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const PLUGIN_MANIFEST_FILENAME: &str = "plugin.toml";
 /// The TypeScript of what a plugin imports, written next to its manifest
-const PLUGIN_TYPES_FILENAME: &str = "gpui-kit.d.ts";
+const PLUGIN_TYPES_FILENAME: &str = "corona.d.ts";
 
 pub mod cli;
 pub mod commands;
@@ -43,7 +43,7 @@ pub fn init(cx: &mut App) -> Result<()> {
   Ok(())
 }
 
-/// Writes the `gpui-kit.d.ts` of the plugins in `dirs` as loading them does, with no shell
+/// Writes the `corona.d.ts` of the plugins in `dirs` as loading them does, with no shell
 /// or system service running, for `corona types`. The written files.
 pub fn write_plugin_types(dirs: &[PathBuf], cx: &mut App) -> Result<Vec<PathBuf>> {
   if !cx.has_global::<Config>() {
