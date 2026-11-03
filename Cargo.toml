@@ -85,7 +85,11 @@ gpui-kit = "0.8.1"
 anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-specta = { version = "=2.0.0-rc.27", features = ["derive", "function", "serde_json"] }
+specta = { version = "=2.0.0-rc.27", features = [
+  "derive",
+  "function",
+  "serde_json"
+] }
 bitflags = "2.13.2"
 tracing = "0.1.44"
 dashmap = "6.2.1"
