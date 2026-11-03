@@ -65,7 +65,6 @@ crate::node!(Slider, "Slider", style);
 crate::node!(ColorPicker, "ColorPicker", style);
 crate::node!(DatePicker, "DatePicker", style);
 crate::node!(TimeField, "TimeField", style);
-crate::node!(Select<Items>, "Select", style);
 crate::node!(Form, "Form", style);
 crate::node!(Field, "Field", style, parent);
 crate::node!(InputGroup, "InputGroup", style);
@@ -110,6 +109,7 @@ pub struct Stated<T, S: 'static> {
 
 type TextIn = Stated<Input, InputState>;
 type TextArea = Stated<Textarea, TextareaState>;
+type Sel = Stated<Select<Items>, SelectState<Items>>;
 type Combo = Stated<Combobox<Items>, ComboboxState<Items>>;
 
 impl<T, S> Stated<T, S> {
@@ -532,7 +532,7 @@ mod methods {
       Slider => |b: Slider| b.disabled(value),
       DatePicker => |b: DatePicker| b.disabled(value),
       TimeField => |b: TimeField| b.disabled(value),
-      Select<Items> => |b: Select<Items>| b.disabled(value),
+      Sel => |b: Sel| b.with(|b| b.disabled(value)),
       Combo => |b: Combo| b.with(|b| b.disabled(value)),
       InputGroup => |b: InputGroup| b.disabled(value),
       InputGroupButton => |b: InputGroupButton| b.disabled(value),
@@ -660,8 +660,17 @@ mod methods {
       Kbd => |b: Kbd| b.appearance(value),
       TextArea => |b: TextArea| b.with(|b| b.appearance(value)),
     );
-    /// What a `Clipboard` copies, or the stars of a `Rating`.
+    /// What a `Clipboard` copies, the stars of a `Rating`, or the row id a `Select` shows as
+    /// selected; an id without a row selects nothing.
     fn value(value: Scalar<'js>) |c, n| {
+      if let Some(st) = text_state::<Sel, _>(&**n, |t| &t.state) {
+        let id = SharedString::from(Coerced::<String>::from_js(c, value.0)?.0);
+        if st.read(app()).selected_value() != Some(&id) {
+          let window = window_or_throw(c)?;
+          st.update(app(), |s, cx| s.set_selected_value(&id, window, cx));
+        }
+        return Ok(());
+      }
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
         let text = String::from_js(c, value.0)?;
         if st.read(app()).value() != text.as_str() {
@@ -712,7 +721,7 @@ mod methods {
       pick!(c, n,
       NumberInput => |b: NumberInput| b.placeholder(text),
       DatePicker => |b: DatePicker| b.placeholder(text),
-      Select<Items> => |b: Select<Items>| b.placeholder(text),
+      Sel => |b: Sel| b.with(|b| b.placeholder(text)),
       Combo => |b: Combo| b.with(|b| b.placeholder(text)),
     )};
     /// The prompt of a `Combobox`'s search field.
@@ -731,7 +740,7 @@ mod methods {
     };
     /// The width of a `Select`'s or `Combobox`'s menu, in pixels.
     fn menu_width(width: f32) |c, n| pick!(c, n,
-      Select<Items> => |b: Select<Items>| b.menu_width(px(width)),
+      Sel => |b: Sel| b.with(|b| b.menu_width(px(width))),
       Combo => |b: Combo| b.with(|b| b.menu_width(px(width))),
     );
     /// Splits an `OtpInput`'s cells into this many groups.
@@ -1950,7 +1959,16 @@ fn select<'js>(
       v.as_ref().map(|v| v.to_string())
     },
   )?;
-  new_el(&ctx, Select::new(&state))
+  let el = Select::new(&state);
+  new_el(
+    &ctx,
+    Stated {
+      kind: "Select",
+      el,
+      state,
+      searchable: None,
+    },
+  )
 }
 
 /// `Combobox(id, rows, on_change, on_confirm)`: a single-select searchable combobox

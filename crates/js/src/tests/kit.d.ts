@@ -3476,7 +3476,10 @@ declare module "corona/kit" {
     highlights(text: string): Element;
     /** Whether a keycap or text area draws its frame. */
     appearance(value: boolean): Element;
-    /** What a `Clipboard` copies, or the stars of a `Rating`. */
+    /**
+     * What a `Clipboard` copies, the stars of a `Rating`, or the row id a `Select` shows as
+     * selected; an id without a row selects nothing.
+     */
     value(value: string | number): Element;
     /** How many stars a `Rating` has. */
     max(count: number): Element;

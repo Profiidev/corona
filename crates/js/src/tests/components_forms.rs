@@ -255,3 +255,50 @@ fn inline_tokens_and_text_state_methods(cx: &mut TestAppContext) {
   // the combobox's searchability takes one more frame
   assert_eq!(eval(&view, cx, "renders >= 2"), "true");
 }
+
+const SELECT_VALUE: &str = r##"
+import { View, div } from "corona/kit";
+import { v_flex } from "corona/base";
+import { Button, Select } from "corona/component";
+
+globalThis.log = [];
+const rows = () => [{ id: "a", label: "A" }, { id: "b", label: "B" }, { id: "c", label: "C" }];
+
+export default class Main extends View {
+  init(_props, _cx) {
+    this.theme = "b";
+  }
+
+  render(_cx) {
+    return v_flex().w(200).children([
+      Button.new("next").label("Next").h(30).w(200).on_click((_e, cx) => {
+        this.theme = "c";
+        cx.notify();
+      }),
+      Select.new("s", rows, (row) => div().child(row.label), (v, cx) => {
+        log.push(v);
+        this.theme = v;
+        cx.notify();
+      }).h(30).w(200).value(this.theme),
+    ]);
+  }
+}
+"##;
+
+#[gpui::test]
+fn select_value_sets_the_selection(cx: &mut TestAppContext) {
+  let (view, cx) = rooted(cx, SELECT_VALUE);
+  let confirm = |cx: &mut gpui::VisualTestContext| {
+    cx.simulate_click(point(px(100.), px(45.)), Modifiers::none());
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+  };
+  // the initial value is selected, so Enter in the opened menu confirms it
+  confirm(cx);
+  // a changed value moves the selection
+  cx.simulate_click(point(px(100.), px(15.)), Modifiers::none());
+  cx.run_until_parked();
+  confirm(cx);
+  assert_eq!(eval(&view, cx, "log.join()"), "b,c");
+}
