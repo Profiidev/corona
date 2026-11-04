@@ -83,7 +83,9 @@ impl PluginManifest {
     configured: Option<&Map<String, Value>>,
   ) {
     let values = user_values(&self.id, &self.settings, configured);
-    self.capabilities = capabilities.grant(&self.dir, data_dir, &values);
+    let mut grant = capabilities.grant(&self.dir, data_dir, &values);
+    grant.share_picks(&self.capabilities);
+    self.capabilities = grant;
   }
 }
 
@@ -798,6 +800,26 @@ const DENIED_ENV: &[&str] = &[
   "IFS",
   "JAVA_TOOL_OPTIONS",
   "_JAVA_OPTIONS",
+  "HOME",
+  "XDG_CONFIG",
+  "XDG_DATA",
+  "XDG_CACHE",
+  "XDG_STATE",
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "MANPAGER",
+  "LESSOPEN",
+  "SHELL",
+  "BROWSER",
+  "OPENSSL_CONF",
+  "SSL_CERT_",
+  "CC",
+  "CXX",
+  "MAKEFLAGS",
+  "CARGO_",
+  "RUSTC_WRAPPER",
+  "npm_config_",
 ];
 
 /// Loader and interpreter variables would run the plugin's own code in any
@@ -1128,11 +1150,11 @@ process = { exit = true }
   fn process_env_and_unix_sockets() {
     let capabilities = grant(
       r#"
-process = { env = ["HOME", "XDG_RUNTIME_DIR", "PATH"] }
+process = { env = ["LANG", "XDG_RUNTIME_DIR", "PATH"] }
 network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
 "#,
     );
-    assert!(capabilities.may_pass_env("HOME"));
+    assert!(capabilities.may_pass_env("LANG"));
     // the host's; the runtime refuses a script's own
     assert!(capabilities.may_pass_env("PATH"));
     assert!(!capabilities.may_pass_env("LD_PRELOAD"));
@@ -1151,7 +1173,7 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     assert!(grant(&body).unix_socket(&ipc).is_none());
 
     let none = grant("");
-    assert!(!none.may_pass_env("HOME"));
+    assert!(!none.may_pass_env("LANG"));
     assert!(
       none
         .unix_socket(Path::new("/run/tailscale/tailscaled.sock"))
@@ -1170,6 +1192,14 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       "BASH_ENV",
       "PERL5OPT",
       "DYLD_INSERT_LIBRARIES",
+      "HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_DIRS",
+      "EDITOR",
+      "OPENSSL_CONF",
+      "SSL_CERT_FILE",
+      "RUSTC_WRAPPER",
+      "npm_config_prefix",
     ] {
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");

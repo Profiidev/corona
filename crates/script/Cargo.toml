@@ -42,6 +42,8 @@ futures.workspace = true
 # only for its jpeg feature: plugin icons
 image = { workspace = true, features = ["jpeg"] }
 clap.workspace = true
+# kill the whole git process group on timeout
+libc = "0.2"
 
 [dev-dependencies]
 corona_compositor.workspace = true

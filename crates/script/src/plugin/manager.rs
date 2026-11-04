@@ -157,7 +157,15 @@ impl PluginManager {
     let config = cx.config().plugins.clone();
     let settings = cx.config().plugin_settings.clone();
     let this = cx.global_mut::<Self>();
-    (this.active, this.unapproved) = registry::scan(&this.worker.paths, &config, &settings)
+    let mut scanned = registry::scan(&this.worker.paths, &config, &settings);
+    // a plugin that did not change keeps its grant, which holds the files the user picked
+    for (id, found) in &mut scanned {
+      let old = this.active.get(id);
+      if let Some(old) = old.filter(|old| signature(old) == signature(found)) {
+        found.manifest.capabilities = old.manifest.capabilities.clone();
+      }
+    }
+    (this.active, this.unapproved) = scanned
       .into_iter()
       .partition(|(_, found)| registry::is_approved(&config, found));
     for (id, found) in &this.unapproved {
@@ -529,7 +537,8 @@ impl PluginManager {
         this
           .source_errors
           .insert(name.to_string(), format!("{e:#}"));
-        cx.refresh_windows();
+        // a failed fetch may still have exported the enabled plugins offline
+        Self::rescan(cx);
         return;
       }
     };
@@ -757,22 +766,23 @@ pub fn in_scope(scope: AutoUpdate, source: &SourceConfig) -> bool {
 fn signatures(active: &HashMap<String, Found>) -> BTreeMap<String, String> {
   active
     .iter()
-    .map(|(id, found)| {
-      let m = &found.manifest;
-      let signature = format!(
-        "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-        m.dir.display(),
-        m.version,
-        m.widgets,
-        m.panels,
-        m.service,
-        m.capabilities,
-        m.modules,
-        m.dbus
-      );
-      (id.clone(), signature)
-    })
+    .map(|(id, found)| (id.clone(), signature(found)))
     .collect()
+}
+
+fn signature(found: &Found) -> String {
+  let m = &found.manifest;
+  format!(
+    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+    m.dir.display(),
+    m.version,
+    m.widgets,
+    m.panels,
+    m.service,
+    m.capabilities,
+    m.modules,
+    m.dbus
+  )
 }
 
 #[cfg(test)]

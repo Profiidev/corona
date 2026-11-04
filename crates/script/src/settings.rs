@@ -143,6 +143,14 @@ fn muted(text: impl Into<SharedString>, cx: &App) -> Div {
     .child(text.into())
 }
 
+/// The slider's f32 as the f64 it displays (`0.3`, not `0.30000001192`), within `[min, max]`
+fn slider_value(v: f32, min: f64, max: f64) -> f64 {
+  let v = format!("{v}")
+    .parse::<f64>()
+    .unwrap_or_else(|_| f64::from(v));
+  v.clamp(min, max)
+}
+
 fn error_text(error: Option<&str>, cx: &App) -> Option<Div> {
   error.map(|e| {
     div()
@@ -232,6 +240,9 @@ fn source_row(name: &str, cx: &App) -> Div {
 /// The kind picked for a new source
 struct NewKind(SourceKind);
 
+/// Why the last add failed
+struct AddError(Option<String>);
+
 fn add_source(window: &mut Window, cx: &mut App) -> Div {
   let name = window.use_keyed_state("plugins-source-name", cx, |window, cx| {
     InputState::new(window, cx).placeholder(t!("app.settings.plugins.add.name"))
@@ -241,6 +252,9 @@ fn add_source(window: &mut Window, cx: &mut App) -> Div {
   });
   let kind: Entity<NewKind> =
     window.use_keyed_state("plugins-source-kind", cx, |_, _| NewKind(SourceKind::Git));
+  let error: Entity<AddError> =
+    window.use_keyed_state("plugins-source-error", cx, |_, _| AddError(None));
+  let shown = error.read(cx).0.clone();
   let current = kind.read(cx).0;
   let kinds = [SourceKind::Git, SourceKind::Path, SourceKind::Dev]
     .into_iter()
@@ -269,7 +283,7 @@ fn add_source(window: &mut Window, cx: &mut App) -> Div {
       });
     },
   );
-  div()
+  let row = div()
     .flex()
     .items_center()
     .gap_2()
@@ -292,11 +306,27 @@ fn add_source(window: &mut Window, cx: &mut App) -> Div {
             Ok(()) => {
               name.update(cx, |input, cx| input.set_value("", window, cx));
               location.update(cx, |input, cx| input.set_value("", window, cx));
+              error.update(cx, |e, cx| {
+                e.0 = None;
+                cx.notify();
+              });
             }
-            Err(e) => tracing::error!("adding a plugin source: {e:#}"),
+            Err(e) => {
+              tracing::error!("adding a plugin source: {e:#}");
+              error.update(cx, |slot, cx| {
+                slot.0 = Some(format!("{e:#}"));
+                cx.notify();
+              });
+            }
           }
         }),
-    )
+    );
+  div()
+    .flex()
+    .flex_col()
+    .gap_1()
+    .child(row)
+    .children(error_text(shown.as_deref(), cx))
 }
 
 fn kind_name(kind: SourceKind) -> &'static str {
@@ -676,7 +706,7 @@ fn permission(
     ),
     "process.env" => (
       t!("app.settings.plugins.approve.process_env", values = values),
-      None,
+      Some(t!("app.settings.plugins.approve.execute_warning")),
     ),
     "process.exit" => (t!("app.settings.plugins.approve.process_exit"), None),
     "network.hosts" => (
@@ -815,7 +845,10 @@ fn setting_item(id: &str, setting: &Setting, cx: &App) -> SettingItem {
         key,
         (*min as f32, *max as f32, *step as f32),
         move |c| get(c).as_f64().unwrap_or_default() as f32,
-        move |c, v| set(c, json_number(f64::from(v))),
+        {
+          let (min, max) = (*min, *max);
+          move |c, v| set(c, json_number(slider_value(v, min, max)))
+        },
       ),
     ),
     SettingKind::Select { .. } => {
@@ -1068,6 +1101,14 @@ mod tests {
 
   use super::*;
   use crate::plugin::settings::SelectOption;
+
+  #[test]
+  fn slider_value_stays_inside_declared_bounds() {
+    assert_eq!(slider_value(0.3_f32, 0., 0.3), 0.3);
+    assert_eq!(slider_value(0.7_f32, 0.7, 1.), 0.7);
+    assert_eq!(slider_value(0.1_f32, 0., 1.), 0.1);
+    assert_eq!(slider_value(5., 0., 1.), 1.);
+  }
 
   fn setting(kind: SettingKind) -> Setting {
     Setting {

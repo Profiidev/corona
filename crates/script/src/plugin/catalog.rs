@@ -170,15 +170,11 @@ pub fn scan_dir(dir: &Path) -> Vec<CatalogEntry> {
 /// The catalog of a cloned git source and the revision it was read at: the
 /// newest fetched one, so plugins published since the last update show up,
 /// or the applied one when that is all there is.
-pub fn read_git(
-  source: &str,
-  repo: &Path,
-  local_only: bool,
-) -> Result<(String, Vec<CatalogEntry>)> {
+pub fn read_git(source: &str, repo: &Path) -> Result<(String, Vec<CatalogEntry>)> {
   let head = git::head(repo)?;
   let newest = git::remote_head(repo).unwrap_or_else(|_| head.clone());
   let read = |rev: &str| -> Result<Vec<CatalogEntry>> {
-    let bytes = git::show_file(repo, rev, CATALOG_FILENAME, local_only)?;
+    let bytes = git::show_file(repo, rev, CATALOG_FILENAME)?;
     parse_catalog(source, &String::from_utf8(bytes)?)
   };
   match read(&newest) {
@@ -315,7 +311,7 @@ version = "9"
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     git::ensure_repo(tmp.path(), &repo, &remote.url()).unwrap();
-    let (rev, entries) = read_git("s", &repo, false).unwrap();
+    let (rev, entries) = read_git("s", &repo).unwrap();
     assert_eq!(
       (rev.as_str(), entries[0].version.as_str()),
       (first.as_str(), "1")
@@ -327,7 +323,7 @@ version = "9"
     );
     let second = remote.commit();
     git::fetch(&repo).unwrap();
-    let (rev, entries) = read_git("s", &repo, false).unwrap();
+    let (rev, entries) = read_git("s", &repo).unwrap();
     assert_eq!(
       (rev.as_str(), entries[0].version.as_str()),
       (second.as_str(), "2")
@@ -339,7 +335,7 @@ version = "9"
     remote.remove(CATALOG_FILENAME);
     remote.commit();
     git::fetch(&repo).unwrap();
-    let (rev, entries) = read_git("s", &repo, false).unwrap();
+    let (rev, entries) = read_git("s", &repo).unwrap();
     assert_eq!(
       (rev.as_str(), entries[0].version.as_str()),
       (first.as_str(), "1")
