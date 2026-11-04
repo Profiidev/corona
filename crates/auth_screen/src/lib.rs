@@ -316,6 +316,9 @@ impl AuthScreen {
   }
 
   fn activate(&mut self, action: SessionAction, cx: &mut Context<Self>) {
+    if matches!(self.log, Log::Busy(_)) {
+      return;
+    }
     self.log = Log::Busy(busy(action));
     cx.notify();
     let task = cx.power().session_action(action);
