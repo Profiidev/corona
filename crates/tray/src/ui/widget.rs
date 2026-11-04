@@ -2,9 +2,8 @@ use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use crate::{Orientation, TrayExt, TrayItem};
 use corona_surface::bar::{BarStyle, Widget};
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AppContext, Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+  Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
   ParentElement, Pixels, Render, ScrollEvent, Styled, StyledImage, Subscription, Window,
   assets::IconName,
   base::ElementExt,
@@ -16,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use corona_components::filter::filter_regex;
+use corona_utils::error::spawn_logged;
 
 use crate::ui::menu;
 
@@ -32,6 +32,8 @@ pub struct Options {
 pub struct Tray {
   blacklist: Vec<Regex>,
   bounds: HashMap<String, Rc<Cell<Bounds<Pixels>>>>,
+  /// Scrolled pixels not yet worth a step, per address and axis (true = vertical)
+  scrolled: HashMap<(String, bool), f32>,
   _subscription: Subscription,
 }
 
@@ -62,22 +64,19 @@ impl Widget for Tray {
         .filter_map(|p| filter_regex(p))
         .collect(),
       bounds: HashMap::new(),
+      scrolled: HashMap::new(),
       _subscription: cx.observe(&items, |this, items, cx| {
         let items = items.read(cx);
         this
           .bounds
           .retain(|address, _| items.iter().any(|i| &i.address == address));
+        this
+          .scrolled
+          .retain(|(address, _), _| items.iter().any(|i| &i.address == address));
         cx.notify();
       }),
     }
   }
-}
-
-fn run(cx: &mut Context<Tray>, action: impl Future<Output = anyhow::Result<()>> + Send + 'static) {
-  cx.background_spawn(async move {
-    let _ = action.await.log_err();
-  })
-  .detach();
 }
 
 impl Tray {
@@ -98,15 +97,35 @@ impl Tray {
       .map(|b| b.get())
       .unwrap_or_default();
     let tray = cx.tray().clone();
+    // the icon's screen position, for apps that place their windows or menus from it
+    let origin = window.bounds().origin;
+    let (x, y) = (
+      (origin.x + anchor.center().x).as_f32() as i32,
+      (origin.y + anchor.center().y).as_f32() as i32,
+    );
 
     match button {
-      MouseButton::Left if (item.item_is_menu || !item.can_activate) && has_menu => {
-        menu::open(item.address, anchor, window, cx)
+      MouseButton::Left if item.item_is_menu || !item.can_activate => {
+        if has_menu {
+          menu::open(item.address, anchor, window, cx)
+        } else {
+          let action = tray.context_menu(address, x, y, cx);
+          spawn_logged(cx, action)
+        }
       }
-      MouseButton::Left => run(cx, tray.activate(address, 0, 0)),
-      MouseButton::Middle => run(cx, tray.secondary_activate(address, 0, 0)),
+      MouseButton::Left => {
+        let action = tray.activate(address, x, y, cx);
+        spawn_logged(cx, action)
+      }
+      MouseButton::Middle => {
+        let action = tray.secondary_activate(address, x, y, cx);
+        spawn_logged(cx, action)
+      }
       MouseButton::Right if has_menu => menu::open(item.address, anchor, window, cx),
-      MouseButton::Right => run(cx, tray.context_menu(address, 0, 0)),
+      MouseButton::Right => {
+        let action = tray.context_menu(address, x, y, cx);
+        spawn_logged(cx, action)
+      }
       _ => {}
     }
   }
@@ -150,17 +169,29 @@ impl Tray {
       .on_mouse_down(MouseButton::Middle, press(MouseButton::Middle))
       .on_scroll(cx.listener({
         let address = address.clone();
-        move |_, e: &ScrollEvent, window, cx| {
-          let delta = e.delta.pixel_delta(window.line_height());
+        move |this, e: &ScrollEvent, window, cx| {
+          let line = window.line_height();
+          let delta = e.delta.pixel_delta(line);
           let (delta, orientation) = if delta.y.abs() >= delta.x.abs() {
             (delta.y.as_f32(), Orientation::Vertical)
           } else {
             (delta.x.as_f32(), Orientation::Horizontal)
           };
-          if delta != 0. {
-            let step = if delta > 0. { 1 } else { -1 };
-            let action = cx.tray().scroll(&address, step, orientation);
-            run(cx, action);
+          let line = line.as_f32();
+          let pending = this
+            .scrolled
+            .entry((
+              address.clone(),
+              matches!(orientation, Orientation::Vertical),
+            ))
+            .or_default();
+          *pending += delta;
+          let step = (*pending / line).trunc();
+          *pending -= step * line;
+          if step != 0. {
+            let step = step as i32;
+            let action = cx.tray().scroll(&address, step, orientation, cx);
+            spawn_logged(cx, action);
           }
         }
       }))

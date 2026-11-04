@@ -32,7 +32,7 @@ impl Commands {
             println!("{}\t{menu}\t{}", e.address, e.label);
           }
         }
-        Err(e) => tracing::error!("Failed to list the tray: {}", e),
+        Err(e) => done(Err::<(), _>(e), "list the tray"),
       },
       Commands::Activate { address, menu } => {
         done(Activate::send((address, menu)), "activate the tray item")

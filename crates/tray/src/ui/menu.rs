@@ -1,11 +1,10 @@
 use crate::{MenuItem, Toggle, TrayExt};
 
 use corona_surface::popup::{self, ROW, SEPARATOR};
-use corona_utils::error::ErrorLogExt;
+use corona_utils::error::spawn_logged;
 use gpui_kit::{
-  App, AppContext, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement,
-  KeyDownEvent, ParentElement, Pixels, Render, Size, StatefulInteractiveElement, Styled,
-  Subscription, Window,
+  App, Bounds, Context, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
+  ParentElement, Pixels, Render, Size, StatefulInteractiveElement, Styled, Subscription, Window,
   assets::IconName,
   component::{ActiveTheme, Icon, Sizable},
   div,
@@ -14,17 +13,10 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-fn spawn(cx: &mut App, action: impl Future<Output = anyhow::Result<()>> + Send + 'static) {
-  cx.background_spawn(async move {
-    let _ = action.await.log_err();
-  })
-  .detach();
-}
-
 pub fn open(address: String, anchor: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
   let tray = cx.tray().clone();
   let about = tray.about_to_show(&address, 0, cx);
-  spawn(cx, about);
+  spawn_logged(cx, about);
 
   let Some(item) = tray.item(&address, cx) else {
     return;
@@ -84,7 +76,7 @@ impl TrayMenu {
     self.path = path;
     if let Some(&id) = self.path.last() {
       let about = cx.tray().about_to_show(&self.address, id, cx);
-      spawn(cx, about);
+      spawn_logged(cx, about);
     }
     if let Some(entries) = self.entries(cx) {
       window.resize(size(&entries, !self.path.is_empty()));
@@ -100,7 +92,7 @@ impl TrayMenu {
 
     let checked = matches!(entry.toggle, Toggle::Checkmark(true) | Toggle::Radio(true));
     let toggles = entry.toggle != Toggle::None;
-    let submenu = !entry.children.is_empty();
+    let submenu = entry.submenu;
     let (id, enabled) = (entry.id, entry.enabled);
     let hover = theme.tokens.button_hover;
 
@@ -130,7 +122,7 @@ impl TrayMenu {
             this.navigate(path, window, cx);
           } else {
             let click = cx.tray().menu_click(&this.address, id, cx);
-            spawn(cx, click);
+            spawn_logged(cx, click);
             window.remove_window();
           }
         }))
@@ -191,6 +183,7 @@ mod tests {
       visible,
       toggle: Toggle::None,
       icon_name: None,
+      submenu: false,
       children: Vec::new(),
     }
   }

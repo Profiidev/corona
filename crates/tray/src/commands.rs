@@ -25,7 +25,7 @@ fn menu_entries(address: &str, path: &str, items: &[MenuItem], out: &mut Vec<Tra
     .filter(|i| i.visible && !i.separator && i.enabled)
   {
     let label = format!("{path} › {}", item.label);
-    if item.children.is_empty() {
+    if !item.submenu {
       out.push(TrayEntry {
         address: address.to_string(),
         label,
@@ -86,7 +86,7 @@ impl IpcCommand for Activate {
     let tray = cx.tray();
     match menu {
       Some(id) => Box::pin(tray.menu_click(&address, id, cx)),
-      None => Box::pin(tray.activate(&address, 0, 0)),
+      None => Box::pin(tray.activate(&address, 0, 0, cx)),
     }
   }
 }
@@ -104,6 +104,7 @@ mod tests {
       visible: true,
       toggle: Default::default(),
       icon_name: None,
+      submenu: !children.is_empty(),
       children,
     }
   }

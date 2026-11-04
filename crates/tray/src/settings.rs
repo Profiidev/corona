@@ -39,7 +39,6 @@ fn tray_form(
     .enumerate()
     .map(|(i, pattern)| {
       let (edit_name, remove_name) = (name.to_string(), name.to_string());
-      let remove_list = current.blacklist.clone();
       div()
         .flex()
         .items_center()
@@ -66,15 +65,18 @@ fn tray_form(
             .ghost()
             .xsmall()
             .on_click(move |_, _, cx| {
-              let mut blacklist = remove_list.clone();
-              blacklist.remove(i);
-              set_options(cx, &remove_name, slot, Options { blacklist });
+              let Some(mut options) = current_options::<Options>(cx, &remove_name, slot) else {
+                return;
+              };
+              if i < options.blacklist.len() {
+                options.blacklist.remove(i);
+                set_options(cx, &remove_name, slot, options);
+              }
             }),
         )
     })
     .collect();
   let add_name = name.to_string();
-  let add_list = current.blacklist.clone();
   form()
     .child(
       div()
@@ -91,9 +93,11 @@ fn tray_form(
           .xsmall()
           .outline()
           .on_click(move |_, _, cx| {
-            let mut blacklist = add_list.clone();
-            blacklist.push(String::new());
-            set_options(cx, &add_name, slot, Options { blacklist });
+            let Some(mut options) = current_options::<Options>(cx, &add_name, slot) else {
+              return;
+            };
+            options.blacklist.push(String::new());
+            set_options(cx, &add_name, slot, options);
           }),
       ),
     )

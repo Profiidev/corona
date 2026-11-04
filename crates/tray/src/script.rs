@@ -120,30 +120,31 @@ type Trays = Glob<tray::Tray>;
 
 /// The primary action, usually a left click. `x`, `y` are screen coordinates.
 #[specta]
-async fn activate(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
-  tray.activate(&address, x, y).await.into()
+async fn activate(cx: Cx, tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.activate(&address, x, y, &cx).await.into()
 }
 
 /// Usually a middle click.
 #[specta]
-async fn secondary_activate(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
-  tray.secondary_activate(&address, x, y).await.into()
+async fn secondary_activate(cx: Cx, tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.secondary_activate(&address, x, y, &cx).await.into()
 }
 
 /// Asks the app to show its own menu, for items with an empty `menu`.
 #[specta]
-async fn context_menu(tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
-  tray.context_menu(&address, x, y).await.into()
+async fn context_menu(cx: Cx, tray: Trays, address: String, x: i32, y: i32) -> Throws<()> {
+  tray.context_menu(&address, x, y, &cx).await.into()
 }
 
 #[specta]
 async fn scroll(
+  cx: Cx,
   tray: Trays,
   address: String,
   delta: i32,
   orientation: Json<Orientation>,
 ) -> Throws<()> {
-  let scroll = tray.scroll(&address, delta, orientation.0.into());
+  let scroll = tray.scroll(&address, delta, orientation.0.into(), &cx);
   scroll.await.into()
 }
 
@@ -204,6 +205,7 @@ mod tests {
       visible: true,
       toggle,
       icon_name: None,
+      submenu: false,
       children,
     }
   }

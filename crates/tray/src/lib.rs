@@ -71,9 +71,15 @@ impl Tray {
     address: &str,
     x: i32,
     y: i32,
+    cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
     let (conn, address) = (self.conn.clone(), address.to_string());
+    let known = self
+      .item(&address, cx)
+      .context("unknown tray item")
+      .map(drop);
     async move {
+      known?;
       Ok(
         Self::item_proxy(&conn, &address)
           .await?
@@ -88,9 +94,15 @@ impl Tray {
     address: &str,
     x: i32,
     y: i32,
+    cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
     let (conn, address) = (self.conn.clone(), address.to_string());
+    let known = self
+      .item(&address, cx)
+      .context("unknown tray item")
+      .map(drop);
     async move {
+      known?;
       Ok(
         Self::item_proxy(&conn, &address)
           .await?
@@ -105,9 +117,15 @@ impl Tray {
     address: &str,
     x: i32,
     y: i32,
+    cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
     let (conn, address) = (self.conn.clone(), address.to_string());
+    let known = self
+      .item(&address, cx)
+      .context("unknown tray item")
+      .map(drop);
     async move {
+      known?;
       Ok(
         Self::item_proxy(&conn, &address)
           .await?
@@ -122,13 +140,19 @@ impl Tray {
     address: &str,
     delta: i32,
     orientation: Orientation,
+    cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
     let (conn, address) = (self.conn.clone(), address.to_string());
+    let known = self
+      .item(&address, cx)
+      .context("unknown tray item")
+      .map(drop);
     let orientation = match orientation {
       Orientation::Vertical => "vertical",
       Orientation::Horizontal => "horizontal",
     };
     async move {
+      known?;
       Ok(
         Self::item_proxy(&conn, &address)
           .await?
@@ -208,8 +232,8 @@ pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
-  // the icon cache is not cleared: its files are named by their pixels, another corona may be
-  // showing them, and the runtime dir goes with the session
+  // the icon cache is not cleared here: its files are named by their pixels, prune_cache drops the
+  // unused ones, and the runtime dir goes with the session
   watcher::serve(conn, cx).await?;
 
   let state = Tray {
@@ -656,14 +680,14 @@ mod tests {
     wait_until(cx, |cx| items(cx).len() == 1);
     let address = app.address();
     let tray = cx.read(|cx| cx.tray().clone());
-    block_on(tray.activate(&address, 1, 2)).unwrap();
-    block_on(tray.secondary_activate(&address, 3, 4)).unwrap();
-    block_on(tray.context_menu(&address, 5, 6)).unwrap();
-    block_on(tray.scroll(&address, -1, Orientation::Vertical)).unwrap();
-    block_on(tray.scroll(&address, 2, Orientation::Horizontal)).unwrap();
-    block_on(tray.scroll(&address, 0, Orientation::Vertical)).unwrap();
-    block_on(tray.scroll(&address, i32::MIN, Orientation::Vertical)).unwrap();
-    block_on(tray.scroll(&address, i32::MAX, Orientation::Horizontal)).unwrap();
+    block_on(cx.read(|cx| tray.activate(&address, 1, 2, cx))).unwrap();
+    block_on(cx.read(|cx| tray.secondary_activate(&address, 3, 4, cx))).unwrap();
+    block_on(cx.read(|cx| tray.context_menu(&address, 5, 6, cx))).unwrap();
+    block_on(cx.read(|cx| tray.scroll(&address, -1, Orientation::Vertical, cx))).unwrap();
+    block_on(cx.read(|cx| tray.scroll(&address, 2, Orientation::Horizontal, cx))).unwrap();
+    block_on(cx.read(|cx| tray.scroll(&address, 0, Orientation::Vertical, cx))).unwrap();
+    block_on(cx.read(|cx| tray.scroll(&address, i32::MIN, Orientation::Vertical, cx))).unwrap();
+    block_on(cx.read(|cx| tray.scroll(&address, i32::MAX, Orientation::Horizontal, cx))).unwrap();
     let task = cx.read(|cx| tray.about_to_show(&address, 7, cx));
     block_on(task).unwrap();
     let task = cx.read(|cx| tray.menu_click(&address, 7, cx));
@@ -685,13 +709,15 @@ mod tests {
     );
     let task = cx.read(|cx| tray.menu_click("nope", 1, cx));
     assert_eq!(block_on(task).unwrap_err().to_string(), "unknown tray item");
-    assert!(block_on(tray.activate(":1.9999/StatusNotifierItem", 0, 0)).is_err());
+    assert!(block_on(cx.read(|cx| tray.activate(":1.9999/StatusNotifierItem", 0, 0, cx))).is_err());
     // malformed addresses fail across all actions
-    assert!(block_on(tray.activate("/only/path", 0, 0)).is_err());
-    assert!(block_on(tray.secondary_activate("/only/path", 0, 0)).is_err());
-    assert!(block_on(tray.context_menu("/only/path", 0, 0)).is_err());
-    assert!(block_on(tray.scroll("/only/path", 0, Orientation::Vertical)).is_err());
-    assert!(block_on(tray.activate(":1.42//invalid//path", 0, 0)).is_err());
+    assert!(block_on(cx.read(|cx| tray.activate("/only/path", 0, 0, cx))).is_err());
+    assert!(block_on(cx.read(|cx| tray.secondary_activate("/only/path", 0, 0, cx))).is_err());
+    assert!(block_on(cx.read(|cx| tray.context_menu("/only/path", 0, 0, cx))).is_err());
+    assert!(
+      block_on(cx.read(|cx| tray.scroll("/only/path", 0, Orientation::Vertical, cx))).is_err()
+    );
+    assert!(block_on(cx.read(|cx| tray.activate(":1.42//invalid//path", 0, 0, cx))).is_err());
   }
 
   #[gpui::test]
@@ -816,7 +842,9 @@ mod tests {
   fn init_keeps_other_instances_icons(cx: &mut TestAppContext) {
     let runtime = tempfile::tempdir().unwrap();
     unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
-    let cached = crate::snapshot::cache_dir().join("0123456789abcdef.png");
+    let cached = crate::snapshot::cache_dir()
+      .unwrap()
+      .join("0123456789abcdef.png");
     std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
     std::fs::write(&cached, b"png").unwrap();
     let bus = TestBus::new();
@@ -873,9 +901,12 @@ mod tests {
       .unwrap()
       .build();
     let mut unregistered = block_on(MessageStream::for_match_rule(rule, &watcher, None)).unwrap();
+    let mut expected = Vec::new();
     let conn = block_on(async {
       let conn = bus.conn().await;
+      let unique = conn.unique_name().unwrap().to_string();
       for path in ["/Item1", "/Item2"] {
+        expected.push(format!("{unique}{path}"));
         conn
           .object_server()
           .at(
@@ -913,7 +944,7 @@ mod tests {
       sig2.body().deserialize::<String>().unwrap(),
     ];
     left.sort();
-    assert_eq!(left.len(), 2);
+    assert_eq!(left.as_slice(), expected.as_slice());
   }
 
   struct NeedsAttentionItemNoAttentionIcon;
