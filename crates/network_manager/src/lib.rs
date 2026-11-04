@@ -1,11 +1,14 @@
 pub use agent::{Secret, SecretKind, SecretRequest};
 
 use std::{
-  sync::{Arc, Mutex},
+  sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+  },
   time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use corona_js::ScriptExt;
 use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
@@ -64,9 +67,21 @@ pub struct NetworkManager {
   routing: Entity<Vec<String>>,
   /// the firewall rules corona let the hotspot's clients through with, None: none
   hotspot_rules: Arc<Mutex<Option<HotspotRules>>>,
+  /// hotspot starts and stops under way: a start sets its rules once it is done, a stop took them,
+  /// the listener must not adopt the hotspot meanwhile
+  hotspot_starting: Arc<AtomicUsize>,
   /// one root call at a time, so a late one cannot undo a later one
   root: RootLock,
   conn: Connection,
+}
+
+/// counted down on drop too: a dropped start or stop would keep the listener from adopting forever
+struct Starting(Arc<AtomicUsize>);
+
+impl Drop for Starting {
+  fn drop(&mut self) {
+    self.0.fetch_sub(1, Ordering::SeqCst);
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -333,7 +348,16 @@ impl NetworkManager {
     let activated = self.routing.read(cx).clone();
     let executor = cx.background_executor().clone();
     let (rules, root) = (self.hotspot_rules.clone(), self.root.clone());
+    let starting = self.hotspot_starting.clone();
+    let running = self.hotspot(cx).is_some();
     async move {
+      // held until the rules are set below
+      let busy = starting.fetch_add(1, Ordering::SeqCst) > 0;
+      let _starting = Starting(starting);
+      // a failing second start would strip the running hotspot's rules
+      if running || busy {
+        bail!("the hotspot is already running or starting");
+      }
       // before the password is asked for
       config.validate()?;
       let primary = primary.context("no usable wifi device")?;
@@ -433,8 +457,12 @@ impl NetworkManager {
       .map(|h| h.connection_path.clone())
       .context("the hotspot is not running");
     let (rules, root) = (self.hotspot_rules.clone(), self.root.clone());
+    let stopping = self.hotspot_starting.clone();
     async move {
       let profile = profile?;
+      // the listener must not adopt the hotspot back while its rules are taken
+      stopping.fetch_add(1, Ordering::SeqCst);
+      let _stopping = Starting(stopping);
       // first: a cancelled password prompt keeps the hotspot running with its rules, instead of
       // leaving them on an interface that may connect as a client later
       let ours = rules.lock().unwrap().take();
@@ -442,7 +470,14 @@ impl NetworkManager {
         *rules.lock().unwrap() = ours;
         return Err(e);
       }
-      actions::stop_hotspot(&conn, profile).await
+      let stopped = actions::stop_hotspot(&conn, profile).await;
+      if let (Err(_), Some(ours)) = (&stopped, ours) {
+        // still running: put its rules back
+        let restore = ours.allow();
+        *rules.lock().unwrap() = Some(ours);
+        root.run(restore).await.log_err().ok();
+      }
+      stopped
     }
   }
 
@@ -478,6 +513,8 @@ impl NetworkManager {
         *rules = HotspotRules::new(&rules.interface, activated);
         rules.clone()
       }
+      // the start sets its rules itself once it is done
+      (None, Some(_)) if self.hotspot_starting.load(Ordering::SeqCst) > 0 => return,
       (None, Some(interface)) => {
         let rules = HotspotRules::new(interface, activated);
         *guard = Some(rules.clone());
@@ -634,6 +671,7 @@ impl NetworkManager {
       hotspot_beside_wifi: cx.new(|_| false),
       routing: cx.new(|_| Vec::new()),
       hotspot_rules: Arc::default(),
+      hotspot_starting: Arc::default(),
       root: RootLock::new(),
       conn: conn.clone(),
     }
@@ -670,12 +708,15 @@ async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   // another agent (another corona, say) leaves NetworkManager to ask it for
   // passwords; everything else still works
   match agent::register(conn).await {
-    Ok(events) => agent_listener(
-      cx,
-      events,
-      state.secret_request.clone(),
-      state.wifi_failure.clone(),
-    ),
+    Ok((events, reregister)) => {
+      agent_listener(
+        cx,
+        events,
+        state.secret_request.clone(),
+        state.wifi_failure.clone(),
+      );
+      cx.background_executor().spawn(reregister).detach();
+    }
     Err(e) => tracing::warn!("Not asking for network passwords: {e:#}"),
   }
   cx.set_global(state);
@@ -1098,6 +1139,11 @@ mod tests {
       auto_off: Some(10),
       isolate: false,
     };
+    // a running hotspot is not started again
+    assert!(block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).is_err());
+    mock.world().ap0_active = "/".into();
+    mock.changed();
+    wait_until(cx, |cx| hotspot(cx).is_none());
     block_on(cx.read(|cx| nm.start_hotspot(config.clone(), cx))).unwrap();
     assert!(
       mock
@@ -1847,7 +1893,7 @@ mod tests {
   }
 
   #[gpui::test]
-  fn networkmanager_restarts_are_noticed(cx: &mut TestAppContext) {
+  fn networkmanager_restarts_reregister_the_agent(cx: &mut TestAppContext) {
     let (bus, mock) = start(cx, World::default());
     assert!(mock.world().agent.is_some());
     drop(mock);
@@ -1857,19 +1903,18 @@ mod tests {
     wait_until(cx, |cx| {
       cx.read(|cx| cx.network_manager().connectivity(cx) == NmConnectivityState::None)
     });
-    // The secret agent is not re-registered after daemon restart
-    assert!(restarted.world().agent.is_none());
+    wait_until(cx, |_| restarted.world().agent.is_some());
   }
 
   #[gpui::test]
-  fn transient_primary_connection_deactivation_crashes_snapshot(_cx: &mut TestAppContext) {
+  fn transient_primary_connection_deactivation_falls_back(_cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let mut world = World::default();
     world.primary = format!("{NM}/ActiveConnection/999");
     let _mock = MockNm::start(&bus, world);
     let conn = block_on(bus.conn());
-    let res = block_on(snapshot::snapshot(&conn));
-    assert!(res.is_err());
+    let snapshot = block_on(snapshot::snapshot(&conn)).unwrap();
+    assert!(snapshot.primary_interface.is_some());
   }
 
   #[gpui::test]

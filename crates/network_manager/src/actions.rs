@@ -1,4 +1,10 @@
-use std::{collections::HashMap, io::Read, path::Path, process::Command, time::Duration};
+use std::{
+  collections::HashMap,
+  io::Read,
+  path::{Path, PathBuf},
+  process::Command,
+  time::Duration,
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use corona_utils::error::ErrorLogExt;
@@ -186,8 +192,10 @@ impl HotspotConfig {
     if let Some(password) = &self.password {
       let hex_key = password.len() == 64 && password.bytes().all(|b| b.is_ascii_hexdigit());
       ensure!(
-        (8..=63).contains(&password.len()) || hex_key,
-        "the hotspot password needs 8 to 63 characters"
+        ((8..=63).contains(&password.len())
+          && password.bytes().all(|b| (0x20..=0x7e).contains(&b)))
+          || hex_key,
+        "the hotspot password needs ASCII, 8 to 63 characters"
       );
     }
     Ok(())
@@ -273,7 +281,7 @@ async fn strongest_access_point(
   conn: &Connection,
   device: &OwnedObjectPath,
   ssid: &[u8],
-) -> Result<OwnedObjectPath> {
+) -> Result<(OwnedObjectPath, bool)> {
   let wireless = proxy::<WirelessDeviceProxy, WirelessDevice>(conn, device.clone()).await?;
   let mut strongest = None;
   for ap in wireless.get_access_points().await? {
@@ -283,14 +291,18 @@ async fn strongest_access_point(
     if ap_info.ssid == ssid
       && strongest
         .as_ref()
-        .is_none_or(|(s, _)| ap_info.strength > *s)
+        .is_none_or(|(s, _, _)| ap_info.strength > *s)
     {
-      strongest = Some((ap_info.strength, ap.inner().path().to_owned()));
+      strongest = Some((
+        ap_info.strength,
+        ap.inner().path().to_owned(),
+        ap_info.enterprise,
+      ));
     }
   }
-  let (_, path) =
+  let (_, path, enterprise) =
     strongest.with_context(|| format!("{} is not in range", String::from_utf8_lossy(ssid)))?;
-  Ok(path.into())
+  Ok((path.into(), enterprise))
 }
 
 pub(crate) async fn connect_wifi(
@@ -299,12 +311,19 @@ pub(crate) async fn connect_wifi(
   ssid: Vec<u8>,
 ) -> Result<()> {
   let nm = NetworkManager::new(conn).await?;
-  let access_point = strongest_access_point(conn, &device, &ssid).await?;
+  let (access_point, enterprise) = strongest_access_point(conn, &device, &ssid).await?;
   let device = proxy::<DeviceProxy, Device>(conn, device).await?;
   let saved = saved_connections(&device, &ssid).await?;
   if let Some(connection) = saved.first() {
     nm.activate_connection(connection, &device).await?;
     return Ok(());
+  }
+  // NM cannot complete an 802.1X profile from the SSID alone
+  if enterprise {
+    bail!(
+      "{} needs an 802.1X login (username/password), add it with connectEnterpriseWifi or nmcli",
+      String::from_utf8_lossy(&ssid)
+    );
   }
 
   let settings = Settings {
@@ -397,7 +416,9 @@ pub(crate) async fn connect_enterprise_wifi(
   let access_point = if config.hidden {
     OwnedObjectPath::default()
   } else {
-    strongest_access_point(conn, &device, config.ssid.as_bytes()).await?
+    strongest_access_point(conn, &device, config.ssid.as_bytes())
+      .await?
+      .0
   };
   let settings = enterprise_settings(config)?;
   let nm = NetworkManager::new(conn).await?;
@@ -836,11 +857,12 @@ async fn wait_for_activation(
     // NM drops a failed activation's object
     match active.state().await.ok() {
       Some(ACTIVATED) => return Ok(true),
-      Some(DEACTIVATED) | None => break,
+      Some(DEACTIVATED) | None => return Ok(false),
       _ => executor.timer(Duration::from_millis(200)).await,
     }
   }
-  Ok(false)
+  // not a refusal: no WPA2 fallback for a slow start
+  bail!("the hotspot did not come up in time")
 }
 
 /// asks for root through pkexec to add corona's access point interface on `beside`'s radio and let
@@ -883,6 +905,14 @@ pub(crate) async fn disallow_hotspot() -> Result<()> {
   as_root(vec!["disallow-hotspot".to_owned()]).await
 }
 
+/// Linux appends " (deleted)" to the path of a binary replaced while running
+fn exe_path(path: PathBuf) -> PathBuf {
+  match path.to_str().and_then(|p| p.strip_suffix(" (deleted)")) {
+    Some(path) => path.into(),
+    None => path,
+  }
+}
+
 /// runs `corona network <args>` through pkexec
 async fn as_root(args: Vec<String>) -> Result<()> {
   // the tests run without pkexec
@@ -891,7 +921,7 @@ async fn as_root(args: Vec<String>) -> Result<()> {
   }
   let mut helper = Command::new("pkexec");
   helper
-    .arg(std::env::current_exe()?)
+    .arg(exe_path(std::env::current_exe()?))
     .arg("network")
     .args(args);
   // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
@@ -1211,6 +1241,15 @@ mod tests {
   }
 
   #[test]
+  fn exe_path_drops_deleted_suffix() {
+    assert_eq!(
+      exe_path("/bin/corona (deleted)".into()),
+      Path::new("/bin/corona")
+    );
+    assert_eq!(exe_path("/bin/corona".into()), Path::new("/bin/corona"));
+  }
+
+  #[test]
   fn hotspot_validation() {
     assert!(hotspot("corona", Some("12345678")).validate().is_ok());
     assert!(hotspot("corona", None).validate().is_ok());
@@ -1223,8 +1262,10 @@ mod tests {
         .validate()
         .unwrap_err()
         .to_string(),
-      "the hotspot password needs 8 to 63 characters"
+      "the hotspot password needs ASCII, 8 to 63 characters"
     );
+    // 9 characters, 18 bytes
+    assert!(hotspot("corona", Some("äääääääää")).validate().is_err());
     assert!(hotspot("", None).validate().is_err());
     assert!(hotspot(&"s".repeat(33), None).validate().is_err());
   }

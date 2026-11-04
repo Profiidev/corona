@@ -689,7 +689,7 @@ mod tests {
     panel.read_with(cx, |panel, _| assert!(panel.pending));
     assert_eq!(
       block_on(start).unwrap_err().to_string(),
-      "the hotspot password needs 8 to 63 characters"
+      "the hotspot password needs ASCII, 8 to 63 characters"
     );
     cx.update(|window, cx| {
       window.render_frame(cx);

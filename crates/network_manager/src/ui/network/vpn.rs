@@ -70,7 +70,7 @@ impl NetworkPanel {
         )
       })
       .child(
-        Button::new(format!("vpn-{}", vpn.name))
+        Button::new(format!("vpn-{}", vpn.uuid))
           .small()
           .cursor_pointer()
           .ml_auto()

@@ -403,9 +403,10 @@ pub(crate) fn register(cx: &mut App) {
         },
         |on, cx| {
           let task = Hotspot::reply(if on { Switch::On } else { Switch::Off }, cx);
-          cx.spawn(async move |_| {
+          cx.spawn(async move |cx| {
             if let Err(e) = task.await {
               tracing::warn!("hotspot: {e:#}");
+              cx.update(|cx| ui::hud::show(Hud::new(format!("{e:#}")), cx));
             }
           })
           .detach();

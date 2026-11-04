@@ -23,7 +23,7 @@ pub(crate) fn register(cx: &mut App) {
     .register::<Portal>();
 }
 
-fn later<T: 'static>(future: impl Future<Output = Result<T>> + 'static) -> Reply<T> {
+pub(super) fn later<T: 'static>(future: impl Future<Output = Result<T>> + 'static) -> Reply<T> {
   Box::pin(future)
 }
 

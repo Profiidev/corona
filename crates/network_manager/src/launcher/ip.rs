@@ -9,14 +9,20 @@ use gpui_kit::{
   http_client::{AsyncBody, HttpClient},
 };
 use rust_i18n::t;
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 async fn public(client: &Arc<dyn HttpClient>, url: &str) -> Option<String> {
   let mut response = client.get(url, AsyncBody::empty(), true).await.ok()?;
   let mut body = String::new();
-  response.body_mut().read_to_string(&mut body).await.ok()?;
-  let body = body.trim().to_string();
-  (response.status().is_success() && !body.is_empty()).then_some(body)
+  // an address is 45 characters at most
+  response
+    .body_mut()
+    .take(64)
+    .read_to_string(&mut body)
+    .await
+    .ok()?;
+  let ip: IpAddr = body.trim().parse().ok()?;
+  response.status().is_success().then(|| ip.to_string())
 }
 
 fn local(cx: &App) -> Vec<(String, String)> {
@@ -42,8 +48,10 @@ pub(crate) fn register(cx: &mut App) {
           let client = cx.http_client();
           let local = local(cx);
           async move {
-            let v4 = public(&client, "https://api.ipify.org").await;
-            let v6 = public(&client, "https://api6.ipify.org").await;
+            let (v4, v6) = futures::join!(
+              public(&client, "https://api.ipify.org"),
+              public(&client, "https://api6.ipify.org")
+            );
             let mut rows: Vec<(SharedString, SharedString)> = local
               .iter()
               .map(|(name, ip)| (name.clone().into(), ip.clone().into()))
@@ -64,21 +72,28 @@ pub(crate) fn register(cx: &mut App) {
                 .map(|ip| format!("{}: {ip}", t!("app.launcher.ip.public")))
                 .unwrap_or_default()
             );
-            let public_ip = v4.unwrap_or_default();
+            let public_ip = v4;
+            let local_ip = first_local.clone();
+            let mut actions = Vec::new();
+            if !local_ip.is_empty() {
+              actions.push(Action::sync(
+                "copy",
+                t!("app.launcher.ip.copy_local"),
+                move |_, _, _| Ok(Outcome::Copy(Clip::Text(local_ip.clone()))),
+              ));
+            }
+            if let Some(public_ip) = public_ip {
+              actions.push(Action::sync(
+                "copy_public",
+                t!("app.launcher.ip.copy_public"),
+                move |_, _, _| Ok(Outcome::Copy(Clip::Text(public_ip.clone()))),
+              ));
+            }
             Ok(Outcome::Push(View::Detail(DetailView {
               title: t!("app.launcher.ip.title").into(),
               markdown: markdown.into(),
               metadata: rows,
-              actions: vec![
-                Action::sync("copy", t!("app.launcher.ip.copy_local"), move |_, _, _| {
-                  Ok(Outcome::Copy(Clip::Text(first_local.clone())))
-                }),
-                Action::sync(
-                  "copy_public",
-                  t!("app.launcher.ip.copy_public"),
-                  move |_, _, _| Ok(Outcome::Copy(Clip::Text(public_ip.clone()))),
-                ),
-              ],
+              actions,
             })))
           }
         })]

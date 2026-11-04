@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use cosmic_dbus_networkmanager::settings::connection::Settings;
+use corona_utils::{dbus::owner_changed, error::ErrorLogExt};
+use cosmic_dbus_networkmanager::{interface::NetworkManagerProxy, settings::connection::Settings};
+use futures_lite::StreamExt;
 use nm_secret_agent_manager::AgentManagerProxy;
 use zbus::{
-  Connection,
+  Connection, MessageStream,
+  proxy::Defaults,
   zvariant::{OwnedObjectPath, OwnedValue, Str},
 };
 
@@ -95,6 +98,7 @@ impl SecretAgent {
       return Err(AgentError::NoSecrets("interaction not allowed".into()));
     }
 
+    let psk_key = psk_key(&connection);
     let identity = connection
       .get(ENTERPRISE_SETTING)
       .and_then(|setting| setting.get(IDENTITY_KEY))
@@ -131,7 +135,7 @@ impl SecretAgent {
       .map_err(|_| AgentError::UserCanceled("canceled".into()))?;
 
     let password_key = match kind {
-      SecretKind::Psk => PSK_KEY,
+      SecretKind::Psk => psk_key.as_str(),
       _ if hints.iter().any(|hint| hint == PRIVATE_KEY_PASSWORD_KEY) => PRIVATE_KEY_PASSWORD_KEY,
       SecretKind::Enterprise => PASSWORD_KEY,
     };
@@ -156,21 +160,68 @@ impl SecretAgent {
   async fn delete_secrets(&self, _connection: SettingsMap, _connection_path: OwnedObjectPath) {}
 }
 
+/// the key the wifi password goes to, WEP and LEAP profiles don't use `psk`
+fn psk_key(connection: &SettingsMap) -> String {
+  let security = connection.get(WIFI_SECURITY_SETTING);
+  let field = |key| security.and_then(|setting| setting.get(key)).cloned();
+  let string = |key| field(key).and_then(|value| String::try_from(value).ok());
+  if string("key-mgmt").as_deref() == Some("none") {
+    let index = field("wep-tx-keyidx")
+      .and_then(|value| u32::try_from(value).ok())
+      .unwrap_or(0);
+    format!("wep-key{index}")
+  } else if string("auth-alg").as_deref() == Some("leap") {
+    "leap-password".into()
+  } else {
+    PSK_KEY.into()
+  }
+}
+
 fn owned(value: String) -> OwnedValue {
   OwnedValue::from(Str::from(value))
 }
 
-pub(crate) async fn register(conn: &Connection) -> Result<flume::Receiver<AgentEvent>> {
+/// the requests, and a future registering the agent again whenever NetworkManager restarts: NM
+/// keeps agents in memory only
+pub(crate) async fn register(
+  conn: &Connection,
+) -> Result<(
+  flume::Receiver<AgentEvent>,
+  impl Future<Output = ()> + use<>,
+)> {
+  // before the first registration, so no restart is missed
+  let name = NetworkManagerProxy::DESTINATION.clone().unwrap();
+  let mut restarts = MessageStream::for_match_rule(owner_changed(&name)?, conn, None).await?;
   let (events, rx) = flume::unbounded();
   conn
     .object_server()
     .at(AGENT_PATH, SecretAgent { events })
     .await?;
+  // NM may not be up yet: the loop below registers once it is
+  register_with_nm(conn).await.log_err().ok();
+  let conn = conn.clone();
+  let reregister = async move {
+    while let Some(msg) = restarts.next().await {
+      let started = msg.ok().is_some_and(|msg| {
+        msg
+          .body()
+          .deserialize::<(String, String, String)>()
+          .is_ok_and(|(_, _, owner)| !owner.is_empty())
+      });
+      if started {
+        register_with_nm(&conn).await.log_err().ok();
+      }
+    }
+  };
+  Ok((rx, reregister))
+}
+
+async fn register_with_nm(conn: &Connection) -> Result<()> {
   AgentManagerProxy::new(conn)
     .await?
     .register(AGENT_ID)
     .await?;
-  Ok(rx)
+  Ok(())
 }
 
 #[cfg(test)]
@@ -262,6 +313,46 @@ mod tests {
     );
     // a psk never sends an identity
     assert_eq!(result[WIFI_SECURITY_SETTING].len(), 1);
+  }
+
+  #[test]
+  fn wep_and_leap_keys() {
+    let mut wep = wifi(b"old");
+    wep.extend(settings(&[
+      (WIFI_SECURITY_SETTING, "key-mgmt", "none".into()),
+      (WIFI_SECURITY_SETTING, "wep-tx-keyidx", 2u32.into()),
+    ]));
+    let result = ask(
+      wep,
+      WIFI_SECURITY_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| request.reply.send(secret("abcde", None)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+      value(&result, WIFI_SECURITY_SETTING, "wep-key2").as_deref(),
+      Some("abcde")
+    );
+    assert_eq!(value(&result, WIFI_SECURITY_SETTING, PSK_KEY), None);
+
+    let mut leap = wifi(b"cisco");
+    leap.extend(settings(&[
+      (WIFI_SECURITY_SETTING, "key-mgmt", "ieee8021x".into()),
+      (WIFI_SECURITY_SETTING, "auth-alg", "leap".into()),
+    ]));
+    let result = ask(
+      leap,
+      WIFI_SECURITY_SETTING,
+      vec![],
+      FLAG_ALLOW_INTERACTION,
+      |request| request.reply.send(secret("pw", None)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+      value(&result, WIFI_SECURITY_SETTING, "leap-password").as_deref(),
+      Some("pw")
+    );
   }
 
   #[test]

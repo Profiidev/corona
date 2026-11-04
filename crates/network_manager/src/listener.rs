@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use anyhow::Result;
 use corona_utils::{
   dbus::owner_changed, entity::WriteChangedExt, error::ErrorLogExt, stream::pump,
@@ -13,8 +15,12 @@ use cosmic_dbus_networkmanager::interface::{
 use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::{App, Entity};
 use zbus::{
-  Connection, MatchRule, Message, MessageStream, fdo::PropertiesChanged, message::Type,
-  names::InterfaceName, proxy::Defaults, zvariant::OwnedObjectPath,
+  Connection, MatchRule, Message, MessageStream,
+  fdo::{DBusProxy, PropertiesChanged},
+  message::Type,
+  names::InterfaceName,
+  proxy::Defaults,
+  zvariant::OwnedObjectPath,
 };
 
 use crate::{
@@ -22,7 +28,7 @@ use crate::{
   agent::AgentEvent,
   forwarding,
   nl80211::{self, AP_INTERFACE},
-  snapshot::{WifiFailure, WifiStatus, snapshot},
+  snapshot::{Snapshot, WifiFailure, WifiStatus, snapshot},
 };
 
 /// interfaces whose PropertiesChanged trigger a snapshot
@@ -62,6 +68,15 @@ pub async fn subscribe(
   Ok(signals.or(owner))
 }
 
+async fn nm_gone(conn: &Connection) -> bool {
+  async {
+    let name = NetworkManagerProxy::DESTINATION.clone().unwrap();
+    Ok::<_, zbus::Error>(!DBusProxy::new(conn).await?.name_has_owner(name).await?)
+  }
+  .await
+  .unwrap_or(false)
+}
+
 pub fn listener(
   cx: &mut App,
   conn: Connection,
@@ -84,7 +99,12 @@ pub fn listener(
     let mut networks = Vec::new();
     let mut ap_seen = false;
     loop {
-      if let Ok(snapshot) = snapshot(&conn).await.log_err() {
+      let snapshot = match snapshot(&conn).await.log_err() {
+        Ok(snapshot) => Some(snapshot),
+        // a transient D-Bus error keeps what is shown, NM gone empties it
+        Err(_) => nm_gone(&conn).await.then(Snapshot::offline),
+      };
+      if let Some(snapshot) = snapshot {
         wifi_path = snapshot.primary_wifi.as_ref().map(|i| i.path.clone());
         if failed_path.is_some() && failed_path != wifi_path {
           failed_path = None;
@@ -110,7 +130,7 @@ pub fn listener(
           .collect();
         let networks_changed = routing != networks;
         networks = routing;
-        if snapshot.hotspot.is_none() {
+        if snapshot.hotspot.is_none() && state.hotspot_starting.load(Ordering::SeqCst) == 0 {
           // NM may leave forwarding on after a hotspot, so it is recorded before one only
           let names: Vec<_> = snapshot
             .interfaces

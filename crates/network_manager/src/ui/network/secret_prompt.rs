@@ -10,10 +10,14 @@ use gpui_kit::{
 
 use crate::ui::network::NetworkPanel;
 use rust_i18n::t;
+use zbus::zvariant::OwnedObjectPath;
 
 pub struct SecretPrompt {
   password: Entity<InputState>,
   identity: Option<Entity<InputState>>,
+  /// the request it was built for, a newer one replacing it gets a fresh prompt
+  connection: OwnedObjectPath,
+  setting: String,
   _submit: Vec<Subscription>,
 }
 
@@ -23,9 +27,14 @@ impl NetworkPanel {
       self.secret_prompt = None;
       return;
     };
-    if self.secret_prompt.is_some() {
+    if self
+      .secret_prompt
+      .as_ref()
+      .is_some_and(|p| p.connection == request.connection && p.setting == request.setting)
+    {
       return;
     }
+    let (connection, setting) = (request.connection.clone(), request.setting.clone());
     let identity = (request.kind == SecretKind::Enterprise && request.identity.is_none())
       .then(|| cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.username"))));
     let password = cx.new(|cx| {
@@ -42,6 +51,8 @@ impl NetworkPanel {
     self.secret_prompt = Some(SecretPrompt {
       password,
       identity,
+      connection,
+      setting,
       _submit: submit,
     });
   }

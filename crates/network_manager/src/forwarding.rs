@@ -15,10 +15,7 @@ fn store() -> Option<PathBuf> {
   if cfg!(test) {
     return None;
   }
-  let state = std::env::var_os("XDG_STATE_HOME")
-    .map(PathBuf::from)
-    .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".local/state")))?;
-  Some(state.join("corona/forwarding"))
+  Some(dirs::state_dir()?.join("corona/forwarding"))
 }
 
 fn boot_id() -> Option<String> {
@@ -70,7 +67,11 @@ pub(crate) fn observe<'a>(interfaces: impl Iterator<Item = &'a str>) {
   if let Some(dir) = path.parent() {
     fs::create_dir_all(dir).ok();
   }
-  fs::write(path, format!("{boot}\n{body}")).ok();
+  // renamed into place: a read never sees it half written, and a concurrent call has its own file
+  let tmp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+  if fs::write(&tmp, format!("{boot}\n{body}")).is_ok() {
+    fs::rename(tmp, path).ok();
+  }
 }
 
 /// adds the interfaces missing from `known`, true if any. One created after the first observation
