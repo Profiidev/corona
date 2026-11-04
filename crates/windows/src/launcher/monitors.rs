@@ -12,10 +12,20 @@ use corona_launcher::{
 use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::monitor::{Change, Configure};
+use crate::{
+  commands::monitor::{Change, Configure},
+  ui::displays::mirror_source,
+};
 
-fn row(monitor: &Monitor, others: Vec<String>) -> Rc<dyn corona_launcher::Command> {
+fn row(monitor: &Monitor, all: &[Monitor]) -> Rc<dyn corona_launcher::Command> {
   let m = monitor.clone();
+  let mirror = mirror_source(monitor, all).map(|s| s.name.clone());
+  let others: Vec<String> = all
+    .iter()
+    .filter(|o| o.name != monitor.name && !o.disabled)
+    .map(|o| o.name.clone())
+    .collect();
+  let mirror_tag = mirror.clone();
   simple(
     format!("monitor:{}", monitor.name),
     move |_| {
@@ -30,12 +40,10 @@ fn row(monitor: &Monitor, others: Vec<String>) -> Rc<dyn corona_launcher::Comman
           .into(),
         ),
         icon: Icon::Named(IconName::Monitor),
-        accessories: vec![match (m.disabled, m.mirror_of.as_str()) {
+        accessories: vec![match (m.disabled, &mirror_tag) {
           (true, _) => Accessory::Tag(t!("app.launcher.monitors.disabled").into(), Tone::Off),
-          (false, "none" | "") => {
-            Accessory::Tag(t!("app.launcher.monitors.enabled").into(), Tone::Ok)
-          }
-          (false, source) => Accessory::Tag(
+          (false, None) => Accessory::Tag(t!("app.launcher.monitors.enabled").into(), Tone::Ok),
+          (false, Some(source)) => Accessory::Tag(
             t!("app.launcher.monitors.mirrors", source = source).into(),
             Tone::Warn,
           ),
@@ -63,7 +71,7 @@ fn row(monitor: &Monitor, others: Vec<String>) -> Rc<dyn corona_launcher::Comman
           true => change(Change::Enable, None, t!("app.launcher.monitors.enable")),
           false => change(Change::Disable, None, t!("app.launcher.monitors.disable")).destructive(),
         }];
-        if !matches!(m.mirror_of.as_str(), "none" | "") {
+        if mirror.is_some() {
           actions.push(change(
             Change::StopMirroring,
             None,
@@ -97,17 +105,7 @@ pub(crate) fn register(cx: &mut App) {
           Rc::new(
             ListSource::new("monitors", |_, cx| {
               let monitors = cx.compositor().list_monitors(cx).to_vec();
-              monitors
-                .iter()
-                .map(|m| {
-                  let others = monitors
-                    .iter()
-                    .filter(|o| o.name != m.name)
-                    .map(|o| o.name.clone())
-                    .collect();
-                  row(m, others)
-                })
-                .collect()
+              monitors.iter().map(|m| row(m, &monitors)).collect()
             })
             .observe(|notify, cx| {
               let monitors = cx.compositor().monitors.clone();

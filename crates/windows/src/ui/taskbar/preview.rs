@@ -71,6 +71,18 @@ impl Preview {
     cx.notify();
   }
 
+  /// Update titles and sizes of the shown windows, keeping their captures
+  pub fn refresh(&mut self, windows: Vec<types::Window>, cx: &mut Context<Self>) {
+    let mut changed = false;
+    for ((old, _), new) in self.windows.iter_mut().zip(windows) {
+      changed |= old.title != new.title || old.width != new.width || old.height != new.height;
+      *old = new;
+    }
+    if changed {
+      cx.notify();
+    }
+  }
+
   /// Whether `windows` are the ones already shown
   pub fn shows(&self, windows: &[types::Window], cx: &App) -> bool {
     let max = max_windows(cx);

@@ -60,9 +60,7 @@ impl Widget for Workspaces {
       this
         .pill_size
         .retain(|id, _| workspaces.iter().any(|w| &w.id == id));
-      this
-        .windows
-        .retain(|id, _| workspaces.iter().any(|w| &w.id == id));
+      this.windows = group_windows(cx.compositor().windows.read(cx), &workspaces);
       this.workspaces = workspaces;
 
       if let Some(tooltip) = &this.current_tooltip
@@ -234,7 +232,7 @@ fn group_windows(
 ) -> HashMap<String, Vec<types::Window>> {
   let mut grouped: HashMap<String, Vec<types::Window>> = HashMap::new();
   for window in windows {
-    if workspaces.iter().any(|w| w.id == window.workspace) {
+    if !window.hidden && workspaces.iter().any(|w| w.id == window.workspace) {
       grouped
         .entry(window.workspace.clone())
         .or_default()
@@ -360,6 +358,7 @@ mod tests {
       address: address.into(),
       monitor: 0,
       workspace: workspace.into(),
+      special: false,
       class: "class".into(),
       title: address.into(),
       x: 0,
@@ -396,6 +395,11 @@ mod tests {
     // a workspace elsewhere drops its windows
     assert!(!grouped.contains_key("3"));
     assert!(super::group_windows(&windows, &[]).is_empty());
+    // a workspace that arrives, or moves here, picks up its windows
+    let workspaces = [workspace("1", "DP-1"), workspace("3", "DP-1")];
+    let grouped = super::group_windows(&windows, &workspaces);
+    assert_eq!(addresses(&grouped, "3"), ["b"]);
+    assert!(!grouped.contains_key("2"));
   }
 
   #[test]

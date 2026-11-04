@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use clap::ValueEnum;
 use corona_compositor::{Compositor, CompositorExt, types};
 use corona_launcher::{
   Accessory, Action, ArgSpec, Command, Icon, ListView, Meta, Outcome, Query,
@@ -205,7 +206,8 @@ pub(crate) fn register(cx: &mut App) {
               let Some(corona_launcher::ArgValue::Number(n)) = args.get(0) else {
                 anyhow::bail!("{}", t!("app.launcher.windows.number"));
               };
-              cx.compositor().focus_workspace(&(*n as i64).to_string())?;
+              cx.compositor()
+                .focus_workspace(&workspace_number(*n)?.to_string())?;
               Ok(Outcome::close())
             },
           )]
@@ -253,29 +255,11 @@ pub(crate) fn register_actions(cx: &mut App) {
       },
     )
   };
-  let layout_names: Vec<&'static str> = Layout::ALL
+  let names: Vec<String> = Layout::value_variants()
     .iter()
-    .map(|l| match l {
-      Layout::Left => "left",
-      Layout::Right => "right",
-      Layout::Top => "top",
-      Layout::Bottom => "bottom",
-      Layout::LeftThird => "left-third",
-      Layout::CenterThird => "center-third",
-      Layout::RightThird => "right-third",
-      Layout::LeftTwoThirds => "left-two-thirds",
-      Layout::RightTwoThirds => "right-two-thirds",
-      Layout::TopLeft => "top-left",
-      Layout::TopRight => "top-right",
-      Layout::BottomLeft => "bottom-left",
-      Layout::BottomRight => "bottom-right",
-      Layout::Center => "center",
-      Layout::Maximize => "maximize",
-      Layout::AlmostMaximize => "almost-maximize",
-      Layout::Restore => "restore",
-    })
+    .filter_map(|l| l.to_possible_value())
+    .map(|v| v.get_name().to_string())
     .collect();
-  let names = layout_names.clone();
   registry::register_all(
     [
       toggle(
@@ -314,7 +298,9 @@ pub(crate) fn register_actions(cx: &mut App) {
                 .text(0)
                 .map(str::to_string)
                 .or_else(|| match args.get(0) {
-                  Some(corona_launcher::ArgValue::Number(n)) => Some((*n as i64).to_string()),
+                  Some(corona_launcher::ArgValue::Number(n)) => {
+                    workspace_number(*n).ok().map(|n| n.to_string())
+                  }
                   _ => None,
                 });
               let workspace = workspace
@@ -375,17 +361,13 @@ pub(crate) fn register_actions(cx: &mut App) {
           ..Default::default()
         },
         move |_| {
-          let names = layout_names.clone();
           vec![Action::sync(
             "place",
             t!("app.launcher.windows.place"),
-            move |args, _, cx| {
+            |args, _, cx| {
               let name = args.text(0).unwrap_or_default();
-              let layout = names
-                .iter()
-                .position(|n| *n == name)
-                .map(|i| Layout::ALL[i])
-                .ok_or_else(|| anyhow::anyhow!("{}", t!("app.launcher.windows.position")))?;
+              let layout = Layout::from_str(name, true)
+                .map_err(|_| anyhow::anyhow!("{}", t!("app.launcher.windows.position")))?;
               Place::handle((layout, None), cx)?;
               Ok(Outcome::close())
             },
@@ -539,4 +521,12 @@ pub(crate) fn register_actions(cx: &mut App) {
     ],
     cx,
   );
+}
+
+/// A launcher number argument as a workspace id; whole and at least 1
+fn workspace_number(n: f64) -> anyhow::Result<i64> {
+  if n.fract() != 0. || n < 1. {
+    anyhow::bail!("{}", t!("app.launcher.windows.number"));
+  }
+  Ok(n as i64)
 }

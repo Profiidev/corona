@@ -235,6 +235,7 @@ mod tests {
       address: "0xa".into(),
       monitor: 0,
       workspace: "1".into(),
+      special: false,
       class: "foot".into(),
       title: "shell".into(),
       x: 0,

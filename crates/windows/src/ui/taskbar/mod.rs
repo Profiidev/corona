@@ -114,7 +114,8 @@ pub struct Taskbar {
   preview: Option<(String, AnyWindowHandle, Entity<Preview>)>,
   preview_hovered: bool,
   pending: Option<Task<()>>,
-  menu_open: bool,
+  /// Menus alive, counted since a closing one may outlive its replacement
+  menus: usize,
   /// from the settings when it opened; it opens again when they change
   icon_size: f32,
   _subscription: Subscription,
@@ -144,7 +145,7 @@ impl Taskbar {
       preview: None,
       preview_hovered: false,
       pending: None,
-      menu_open: false,
+      menus: 0,
       icon_size: cx.config().taskbar.icon_size,
       _subscription: subscription,
     }
@@ -171,7 +172,7 @@ impl Taskbar {
   }
 
   fn open(&self) -> bool {
-    self.hovered || self.preview.is_some() || self.menu_open
+    self.hovered || self.preview.is_some() || self.menus > 0
   }
 
   fn windows(&self, class: &str) -> Vec<types::Window> {
@@ -216,7 +217,7 @@ impl Taskbar {
     if !cx.config().taskbar.previews {
       return;
     }
-    if self.menu_open || self.preview.as_ref().is_some_and(|(c, _, _)| c == class) {
+    if self.menus > 0 || self.preview.as_ref().is_some_and(|(c, _, _)| c == class) {
       self.pending = None;
       return;
     }
@@ -294,7 +295,7 @@ impl Taskbar {
       return self.hide_preview(cx);
     }
     if view.read(cx).shows(&windows, cx) {
-      return;
+      return view.update(cx, |view, cx| view.refresh(windows, cx));
     }
     let center = self
       .icon_bounds
@@ -338,10 +339,11 @@ impl Taskbar {
 
   fn open_menu(&mut self, class: &str, window: &mut Window, cx: &mut Context<Self>) {
     self.hide_preview(cx);
-    self.menu_open = true;
     let windows = self.windows(class);
     let taskbar = cx.weak_entity();
-    popup::open_at(
+    // counted before the open: the build closure runs while this entity is leased
+    self.menu_opened(cx);
+    let opened = popup::open_at(
       self.anchor(class, window),
       menu::size(&windows),
       Placement::Bottom,
@@ -349,17 +351,25 @@ impl Taskbar {
       cx,
       move |_, cx| TaskbarMenu::new(taskbar, windows, cx),
     );
+    if !opened {
+      self.menu_closed(cx);
+    }
+  }
+
+  fn menu_opened(&mut self, cx: &mut Context<Self>) {
+    self.menus += 1;
+    cx.notify();
   }
 
   fn menu_closed(&mut self, cx: &mut Context<Self>) {
-    self.menu_open = false;
+    self.menus = self.menus.saturating_sub(1);
     cx.notify();
   }
 }
 
 fn group(windows: &[types::Window]) -> Vec<Application> {
   let mut apps: Vec<Application> = Vec::new();
-  for window in windows {
+  for window in windows.iter().filter(|w| !w.hidden) {
     match apps.iter_mut().find(|a| a.class == window.class) {
       Some(app) => app.windows.push(window.clone()),
       None => apps.push(Application {
@@ -500,6 +510,7 @@ pub(crate) mod tests {
       address: address.into(),
       monitor: 0,
       workspace: "1".into(),
+      special: false,
       class: class.into(),
       title: address.into(),
       x: 0,

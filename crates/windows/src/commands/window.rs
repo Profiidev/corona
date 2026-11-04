@@ -115,11 +115,14 @@ impl IpcCommand for MoveToMonitor {
 }
 
 /// The monitor `which` names relative to the one with id `current`
-fn neighbour(monitors: &[types::Monitor], current: u32, which: &str) -> Result<String> {
+fn neighbour(monitors: &[types::Monitor], current: i32, which: &str) -> Result<String> {
   if monitors.is_empty() {
     bail!("no monitors");
   }
-  let index = monitors.iter().position(|m| m.id == current).unwrap_or(0);
+  let index = monitors
+    .iter()
+    .position(|m| m.id as i32 == current)
+    .unwrap_or(0);
   let n = monitors.len();
   let pick = match which {
     "next" => (index + 1) % n,
@@ -157,26 +160,6 @@ pub enum Layout {
 }
 
 impl Layout {
-  pub const ALL: [Layout; 17] = [
-    Layout::Left,
-    Layout::Right,
-    Layout::Top,
-    Layout::Bottom,
-    Layout::LeftThird,
-    Layout::CenterThird,
-    Layout::RightThird,
-    Layout::LeftTwoThirds,
-    Layout::RightTwoThirds,
-    Layout::TopLeft,
-    Layout::TopRight,
-    Layout::BottomLeft,
-    Layout::BottomRight,
-    Layout::Center,
-    Layout::Maximize,
-    Layout::AlmostMaximize,
-    Layout::Restore,
-  ];
-
   /// The window's rect on a monitor area `(x, y, w, h)`; None for restore
   pub fn rect(
     self,
@@ -236,19 +219,34 @@ impl IpcCommand for Place {
       .compositor()
       .list_monitors(cx)
       .iter()
-      .find(|m| m.id == window.monitor)
+      .find(|m| m.id as i32 == window.monitor)
       .cloned()
       .context("the window's monitor is gone")?;
     let scale = monitor.scale.max(0.1);
+    let [left, top, right, bottom] = monitor.reserved;
     let area = (
-      monitor.x,
-      monitor.y,
-      (monitor.width as f32 / scale) as i32,
-      (monitor.height as f32 / scale) as i32,
+      monitor.x + left,
+      monitor.y + top,
+      (monitor.width as f32 / scale) as i32 - left - right,
+      (monitor.height as f32 / scale) as i32 - top - bottom,
     );
     let current = (window.x, window.y, window.width, window.height);
+    // forget windows that are gone, their addresses may be reused
+    let open: Vec<String> = cx
+      .compositor()
+      .list_windows(cx)
+      .iter()
+      .map(|w| w.address.clone())
+      .collect();
+    cx.default_global::<Placed>()
+      .0
+      .retain(|address, _| open.contains(address));
     let Some(rect) = layout.rect(area, (window.width, window.height)) else {
-      let placed = cx.default_global::<Placed>().0.remove(&window.address);
+      let placed = cx
+        .default_global::<Placed>()
+        .0
+        .get(&window.address)
+        .copied();
       let Some((rect, floating)) = placed else {
         bail!("nothing to restore");
       };
@@ -256,6 +254,7 @@ impl IpcCommand for Place {
       if !floating {
         cx.compositor().toggle_floating(&window.address)?;
       }
+      cx.default_global::<Placed>().0.remove(&window.address);
       return Ok(());
     };
     cx.default_global::<Placed>()
@@ -289,10 +288,17 @@ impl IpcCommand for CloseAll {
       .filter(|w| !(keep_focused && Some(&w.address) == focused.as_ref()))
       .map(|w| w.address.clone())
       .collect();
+    let mut closed = 0;
     for address in &windows {
-      compositor.close_window(address)?;
+      match compositor.close_window(address) {
+        Ok(()) => closed += 1,
+        Err(e) => tracing::warn!("could not close window {address}: {e}"),
+      }
     }
-    Ok(windows.len())
+    if closed == 0 && !windows.is_empty() {
+      bail!("could not close any window");
+    }
+    Ok(closed)
   }
 }
 
@@ -313,7 +319,7 @@ impl IpcCommand for FocusMonitor {
       .filter(|m| !m.disabled)
       .cloned()
       .collect();
-    let current = compositor.active_monitor(cx).id;
+    let current = compositor.active_monitor(cx).id as i32;
     let name = neighbour(&monitors, current, &which)?;
     compositor.focus_monitor(&name)
   }
@@ -342,7 +348,7 @@ impl IpcCommand for KeyboardLayout {
   const COMMAND: &'static str = "keyboard:layout";
 
   type Payload = Option<String>;
-  /// The layouts; the active one first after a switch
+  /// The layouts; the active one first after a switch to an index or name
   type Response = Vec<String>;
 
   fn handle(which: Self::Payload, cx: &mut App) -> Result<Self::Response> {
@@ -351,33 +357,24 @@ impl IpcCommand for KeyboardLayout {
     let Some(which) = which else {
       return Ok(layouts);
     };
-    let index = match which.as_str() {
-      "next" | "previous" | "prev" => {
-        let active = compositor
-          .keyboard_layout(cx)
-          .unwrap_or_default()
-          .to_lowercase();
-        let current = layouts
-          .iter()
-          .position(|l| active.starts_with(l) || active.contains(l.as_str()))
-          .unwrap_or(0);
-        let n = layouts.len().max(1);
-        match which.as_str() {
-          "next" => (current + 1) % n,
-          _ => (current + n - 1) % n,
-        }
-      }
+    let which = match which.as_str() {
+      "previous" => "prev".to_string(),
+      "next" | "prev" => which.clone(),
       other => match other.parse::<usize>() {
-        Ok(index) => index,
+        Ok(index) => index.to_string(),
         Err(_) => layouts
           .iter()
           .position(|l| l == other)
-          .with_context(|| format!("no layout {other}, expected one of {}", layouts.join(", ")))?,
+          .with_context(|| format!("no layout {other}, expected one of {}", layouts.join(", ")))?
+          .to_string(),
       },
     };
-    compositor.set_keyboard_layout(index)?;
+    compositor.set_keyboard_layout(&which)?;
+    // the active one first, as far as it is known
     let mut layouts = layouts;
-    if index < layouts.len() {
+    if let Ok(index) = which.parse::<usize>()
+      && index < layouts.len()
+    {
       let active = layouts.remove(index);
       layouts.insert(0, active);
     }
@@ -494,12 +491,13 @@ mod tests {
         id: "1".into(),
         name: "1".into(),
         monitor: name.into(),
-        monitor_id: id,
+        monitor_id: id as i32,
       },
       scale: 1.,
       focused: false,
       disabled: false,
       mirror_of: String::new(),
+      reserved: [0; 4],
     };
     let monitors = [monitor(0, "DP-1"), monitor(1, "HDMI-A-1")];
     assert_eq!(neighbour(&monitors, 0, "next").unwrap(), "HDMI-A-1");

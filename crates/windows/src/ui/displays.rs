@@ -409,12 +409,13 @@ mod tests {
         id: "1".into(),
         name: "1".into(),
         monitor: name.into(),
-        monitor_id: id,
+        monitor_id: id as i32,
       },
       scale: 1.,
       focused: false,
       disabled,
       mirror_of: mirror_of.into(),
+      reserved: [0; 4],
     }
   }
 
