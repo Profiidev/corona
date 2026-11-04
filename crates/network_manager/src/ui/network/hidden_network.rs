@@ -85,8 +85,9 @@ impl NetworkPanel {
     let Some(prompt) = &self.hidden_prompt else {
       return;
     };
-    let ssid = prompt.ssid.read(cx).value().trim().to_string();
-    if ssid.is_empty() {
+    let ssid = prompt.ssid.read(cx).value().to_string();
+    // an SSID may legally start or end with spaces, only a blank one is rejected
+    if ssid.trim().is_empty() {
       prompt.ssid.update(cx, |input, cx| input.focus(window, cx));
       return;
     }

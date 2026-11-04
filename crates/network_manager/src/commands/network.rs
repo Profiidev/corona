@@ -154,9 +154,6 @@ impl IpcCommand for JoinHidden {
       Security::Wpa => HiddenSecurity::Wpa,
       Security::Wpa3 => HiddenSecurity::Wpa3,
     };
-    if security != HiddenSecurity::Open && request.password.as_deref().is_none_or(str::is_empty) {
-      return later(async { Err(anyhow!("a secured network needs a password")) });
-    }
     later(
       cx.network_manager()
         .join_hidden_wifi(request.ssid, security, request.password, cx),

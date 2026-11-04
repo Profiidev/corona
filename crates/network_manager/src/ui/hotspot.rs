@@ -55,6 +55,8 @@ const AUTO_OFF: [Option<u32>; 5] = [None, Some(5), Some(10), Some(30), Some(60)]
 /// whether the clients are kept from each other
 const ISOLATE: [bool; 2] = [true, false];
 const CLIENTS_POLL: Duration = Duration::from_secs(3);
+/// consecutive failed polls after which polling stops
+const CLIENTS_FAILURES: u32 = 3;
 /// how long a start that turned wifi on waits for its device, 10s in all
 const WIFI_UP_WAIT: Duration = Duration::from_millis(250);
 const WIFI_UP_WAITS: u32 = 40;
@@ -113,7 +115,7 @@ fn selected<T: Copy>(
 }
 
 /// what phone cameras read to join a network
-fn wifi_qr_text(ssid: &str, password: Option<&str>) -> String {
+fn wifi_qr_text(ssid: &str, password: Option<&str>, sae: bool) -> String {
   let escape = |text: &str| {
     text.chars().fold(String::new(), |mut out, c| {
       if matches!(c, '\\' | ';' | ',' | ':' | '"') {
@@ -124,7 +126,12 @@ fn wifi_qr_text(ssid: &str, password: Option<&str>) -> String {
     })
   };
   match password {
-    Some(password) => format!("WIFI:T:WPA;S:{};P:{};;", escape(ssid), escape(password)),
+    Some(password) => format!(
+      "WIFI:T:{};S:{};P:{};;",
+      if sae { "SAE" } else { "WPA" },
+      escape(ssid),
+      escape(password)
+    ),
     None => format!("WIFI:T:nopass;S:{};;", escape(ssid)),
   }
 }
@@ -246,26 +253,36 @@ impl Render for HotspotPanel {
 }
 
 /// NM signals no client joining, so the running hotspot's are asked for every few seconds,
-/// handed to `set`; None while no hotspot runs
+/// handed to `set`, which tells whether they changed; None while no hotspot runs
 pub fn poll_clients<T: 'static>(
   cx: &mut Context<T>,
-  set: impl Fn(&mut T, Vec<HotspotClient>) + 'static,
+  set: impl Fn(&mut T, Vec<HotspotClient>) -> bool + 'static,
 ) -> Option<Task<()>> {
   let running = cx.network_manager().hotspot(cx).is_some();
   running.then(|| {
     cx.spawn(async move |this, cx| {
+      let mut failures = 0;
       loop {
         let clients = cx.update(|cx| cx.network_manager().hotspot_clients(cx));
-        // a radio without nl80211 stays so, no point in asking again
-        let Ok(clients) = clients.await.log_err() else {
-          break;
-        };
-        let updated = this.update(cx, |this, cx| {
-          set(this, clients);
-          cx.notify();
-        });
-        if updated.is_err() {
-          break;
+        // a radio without nl80211 stays so, a transient failure keeps the old list
+        match clients.await.log_err() {
+          Ok(clients) => {
+            failures = 0;
+            let updated = this.update(cx, |this, cx| {
+              if set(this, clients) {
+                cx.notify();
+              }
+            });
+            if updated.is_err() {
+              break;
+            }
+          }
+          Err(_) => {
+            failures += 1;
+            if failures >= CLIENTS_FAILURES {
+              break;
+            }
+          }
         }
         cx.background_executor().timer(CLIENTS_POLL).await;
       }
@@ -289,7 +306,11 @@ impl HotspotPanel {
   /// fills the form and the QR code from the running or the saved hotspot
   pub fn load_hotspot(&mut self, window: &mut Window, cx: &mut Context<Self>) {
     self.clients.clear();
-    self._poll_clients = poll_clients(cx, |this, clients| this.clients = clients);
+    self._poll_clients = poll_clients(cx, |this, clients| {
+      let changed = this.clients != clients;
+      this.clients = clients;
+      changed
+    });
     let load = cx.network_manager().hotspot_config(cx);
     cx.spawn_in(window, async move |this, cx| {
       let Ok(config) = load.await.log_err() else {
@@ -313,7 +334,7 @@ impl HotspotPanel {
     form.qr = config
       .as_ref()
       .filter(|_| running)
-      .map(|c| wifi_qr_text(&c.ssid, c.password.as_deref()));
+      .map(|c| wifi_qr_text(&c.ssid, c.password.as_deref(), c.wpa3));
     // the first start shares a password, not an open network
     if let Some(config) = config.or_else(|| HotspotConfig::generated().log_err().ok()) {
       form
@@ -541,15 +562,19 @@ mod tests {
   #[test]
   fn wifi_qr_texts() {
     assert_eq!(
-      wifi_qr_text("home", Some("pass word")),
+      wifi_qr_text("home", Some("pass word"), false),
       "WIFI:T:WPA;S:home;P:pass word;;"
     );
-    assert_eq!(wifi_qr_text("café", None), "WIFI:T:nopass;S:café;;");
+    assert_eq!(wifi_qr_text("café", None, false), "WIFI:T:nopass;S:café;;");
     assert_eq!(
-      wifi_qr_text(r#"a;b,c:d"e\f"#, Some(";")),
+      wifi_qr_text(r#"a;b,c:d"e\f"#, Some(";"), false),
       r#"WIFI:T:WPA;S:a\;b\,c\:d\"e\\f;P:\;;;"#
     );
-    assert!(QrCode::new(wifi_qr_text("corona", Some(&"x".repeat(63)))).is_ok());
+    assert_eq!(
+      wifi_qr_text("home", Some("pw"), true),
+      "WIFI:T:SAE;S:home;P:pw;;"
+    );
+    assert!(QrCode::new(wifi_qr_text("corona", Some(&"x".repeat(63)), false)).is_ok());
   }
 
   #[test]
@@ -624,7 +649,7 @@ mod tests {
       });
     });
     panel.update(cx, |panel, cx| {
-      panel.qr = Some(wifi_qr_text("corona", Some("hunter22")));
+      panel.qr = Some(wifi_qr_text("corona", Some("hunter22"), false));
       panel.clients = vec![HotspotClient {
         mac: "5e:0b:2a:11:42:07".into(),
         ip: Some([10, 42, 0, 65].into()),

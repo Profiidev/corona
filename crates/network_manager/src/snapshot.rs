@@ -119,7 +119,7 @@ impl From<u32> for FailReason {
 }
 
 /// the object went away between listing and reading it
-fn is_gone(e: &anyhow::Error) -> bool {
+pub(crate) fn is_gone(e: &anyhow::Error) -> bool {
   const GONE: [&str; 2] = [
     "org.freedesktop.DBus.Error.UnknownObject",
     "org.freedesktop.DBus.Error.UnknownMethod",

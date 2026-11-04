@@ -8,9 +8,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[features]
-test-support = []
-
 [dependencies]
 futures.workspace = true
 qrcode = { version = "0.14.1", default-features = false }

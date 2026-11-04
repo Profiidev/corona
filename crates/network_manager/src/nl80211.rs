@@ -8,6 +8,7 @@ use std::{
   os::fd::OwnedFd,
   path::Path,
   sync::{Mutex, OnceLock},
+  time::Duration,
 };
 
 use anyhow::{Context, Result, bail, ensure};
@@ -18,6 +19,7 @@ use rustix::{
     AddressFamily, RecvFlags, SendFlags, SocketFlags, SocketType,
     netlink::{self, SocketAddrNetlink},
     recv, sendto, socket_with,
+    sockopt::{Timeout, set_socket_timeout},
   },
 };
 
@@ -119,6 +121,8 @@ fn request(message: &[u8], mut reply: impl FnMut(&[u8])) -> Result<()> {
     SocketFlags::CLOEXEC,
     Some(netlink::GENERIC),
   )?;
+  // a wedged driver must not block the caller forever, the listener awaits this
+  set_socket_timeout(&socket, Timeout::Recv, Some(Duration::from_secs(3)))?;
   sendto(
     &socket,
     message,
@@ -334,14 +338,15 @@ fn frequencies(phy: u32, restrictions: &[u16]) -> Result<Vec<u32>> {
 /// its combinations, so each is asked once; a failed query, a driver still loading say, is retried
 pub fn station_beside_ap(phy: u32) -> bool {
   static ASKED: OnceLock<Mutex<HashMap<u32, bool>>> = OnceLock::new();
-  let mut asked = ASKED.get_or_init(Default::default).lock().unwrap();
-  if let Some(&fits) = asked.get(&phy) {
+  let asked = ASKED.get_or_init(Default::default);
+  if let Some(&fits) = asked.lock().unwrap().get(&phy) {
     return fits;
   }
+  // the lock is not held across the query, it may take until the socket timeout
   let Ok(fits) = query_station_beside_ap(phy).log_err() else {
     return false;
   };
-  asked.insert(phy, fits);
+  asked.lock().unwrap().insert(phy, fits);
   fits
 }
 

@@ -34,7 +34,11 @@ impl Widget for HotspotButton {
 impl HotspotButton {
   fn poll(&mut self, cx: &mut Context<Self>) {
     self.clients = 0;
-    self._poll_clients = poll_clients(cx, |this, clients| this.clients = clients.len());
+    self._poll_clients = poll_clients(cx, |this, clients| {
+      let changed = this.clients != clients.len();
+      this.clients = clients.len();
+      changed
+    });
     cx.notify();
   }
 }

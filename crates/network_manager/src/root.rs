@@ -141,6 +141,10 @@ fn allow(interface: &str, locks: &[String]) -> Result<()> {
     remove(&iptables, &old)?;
     // the profile disables IPv6, a hotspot started elsewhere may not
     match ip6tables() {
+      // kernel IPv6 off: nothing can leak, and ip6tables may fail on it
+      Some(_) if !Path::new("/proc/net/if_inet6").exists() => {
+        eprintln!("warning: IPv6 is disabled in the kernel, ip6tables is skipped")
+      }
       Some(ip6tables) => {
         let old = listed(&ip6tables)?;
         allow_ipv6(&ip6tables, interface)?;

@@ -37,7 +37,7 @@ use crate::{
     ENTERPRISE_SETTING, IDENTITY_KEY, PASSWORD_KEY, PRIVATE_KEY_PASSWORD_KEY, WIFI_SECURITY_SETTING,
   },
   nl80211,
-  snapshot::{AP_MODE, WIFI_SETTING, frequency, profile, read_access_point, saved_ssid},
+  snapshot::{AP_MODE, WIFI_SETTING, frequency, is_gone, profile, read_access_point, saved_ssid},
   state::{HotspotBand, HotspotClient, Interface},
 };
 
@@ -364,9 +364,11 @@ pub(crate) async fn join_hidden_wifi(
   security: HiddenSecurity,
   password: Option<String>,
 ) -> Result<()> {
+  let ssid = ssid.into_bytes();
+  let password = password.filter(|password| !password.is_empty());
   let wifi = Settings {
     wifi: Some(WifiSettings {
-      ssid: Some(ssid.into_bytes()),
+      ssid: Some(ssid.clone()),
       hidden: Some(true),
       ..Default::default()
     }),
@@ -378,6 +380,7 @@ pub(crate) async fn join_hidden_wifi(
     HiddenSecurity::Wpa => Some(KEY_MGMT_PSK),
     HiddenSecurity::Wpa3 => Some(KEY_MGMT_SAE),
   };
+  let password_given = password.is_some();
   let wifi_security = key_mgmt.map(|key_mgmt| WifiSecurity {
     key_mgmt: Some(key_mgmt.to_owned()),
     psk: password,
@@ -389,6 +392,44 @@ pub(crate) async fn join_hidden_wifi(
     settings.insert(WIFI_SECURITY_SETTING.to_owned(), wifi_security.build());
   }
   let nm = NetworkManager::new(conn).await?;
+  // a retry fixes the saved profile instead of piling up another one, hidden APs have no row to reconnect with
+  let device_proxy = proxy::<DeviceProxy, Device>(conn, device.clone()).await?;
+  if let Some(saved) = saved_connections(&device_proxy, &ssid).await?.first() {
+    let path: OwnedObjectPath = saved.inner().path().to_owned().into();
+    let profile =
+      proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path.clone()).await?;
+    let mut current: SettingsMap = profile
+      .get_settings()
+      .await?
+      .into_iter()
+      .map(|(name, setting)| {
+        let setting = setting
+          .into_iter()
+          .map(|(k, v)| (k, Value::from(v)))
+          .collect();
+        (name, setting)
+      })
+      .collect();
+    // profiles saved while the AP broadcast have no hidden flag, NM would never probe for the SSID
+    current
+      .entry(WIFI_SETTING.to_owned())
+      .or_default()
+      .insert("hidden".to_owned(), Value::from(true));
+    // without a password the saved psk stays, the user only reconnects
+    if password_given || key_mgmt.is_none() {
+      current.remove(WIFI_SECURITY_SETTING);
+    }
+    if let Some(security) = settings.remove(WIFI_SECURITY_SETTING) {
+      let kept = current.entry(WIFI_SECURITY_SETTING.to_owned()).or_default();
+      kept.extend(security);
+    }
+    profile
+      .update(borrowed(&current))
+      .await
+      .context("updating the saved hidden network profile")?;
+    nm.activate_connection_by_paths(&path, &device).await?;
+    return Ok(());
+  }
   nm.add_and_activate_connection(borrowed(&settings), &device, &ObjectPath::default())
     .await?;
   Ok(())
@@ -412,22 +453,21 @@ pub(crate) async fn connect_enterprise_wifi(
   conn: &Connection,
   device: OwnedObjectPath,
   config: EnterpriseConfig,
+  ssid: Vec<u8>,
 ) -> Result<()> {
   let access_point = if config.hidden {
     OwnedObjectPath::default()
   } else {
-    strongest_access_point(conn, &device, config.ssid.as_bytes())
-      .await?
-      .0
+    strongest_access_point(conn, &device, &ssid).await?.0
   };
-  let settings = enterprise_settings(config)?;
+  let settings = enterprise_settings(config, ssid)?;
   let nm = NetworkManager::new(conn).await?;
   nm.add_and_activate_connection(borrowed(&settings), &device, &access_point)
     .await?;
   Ok(())
 }
 
-fn enterprise_settings(config: EnterpriseConfig) -> Result<SettingsMap<'static>> {
+fn enterprise_settings(config: EnterpriseConfig, ssid: Vec<u8>) -> Result<SettingsMap<'static>> {
   let eap = match config.eap {
     EapMethod::Peap => EAP_PEAP,
     EapMethod::Ttls => EAP_TTLS,
@@ -471,7 +511,7 @@ fn enterprise_settings(config: EnterpriseConfig) -> Result<SettingsMap<'static>>
 
   let wifi = Settings {
     wifi: Some(WifiSettings {
-      ssid: Some(config.ssid.into_bytes()),
+      ssid: Some(ssid),
       hidden: Some(config.hidden),
       ..Default::default()
     }),
@@ -640,8 +680,17 @@ async fn client_channel(
 
 /// fails right away when a hotspot sharing `primary`'s radio, which serves both on one channel,
 /// cannot start on the channel `primary` is connected on: NM would only give up half a minute later
-pub(crate) async fn ensure_ap_beside(conn: &Connection, primary: &Interface) -> Result<()> {
-  let Some((phy, _)) = nl80211::radio(&primary.name) else {
+pub(crate) async fn ensure_ap_beside(
+  conn: &Connection,
+  primary: &Interface,
+  executor: &BackgroundExecutor,
+) -> Result<()> {
+  // sysfs and netlink can block on a wedged driver, not on the UI thread
+  let name = primary.name.clone();
+  let Some(phy) = executor
+    .spawn(async move { nl80211::radio(&name).map(|(phy, _)| phy) })
+    .await
+  else {
     return Ok(());
   };
   let Some(frequency) = frequency(conn, primary).await.log_err().ok().flatten() else {
@@ -651,7 +700,10 @@ pub(crate) async fn ensure_ap_beside(conn: &Connection, primary: &Interface) -> 
   let Some((HotspotBand::A, channel)) = channel(frequency) else {
     return Ok(());
   };
-  let Ok(allowed) = nl80211::ap_frequencies_beside_station(phy).log_err() else {
+  let Ok(allowed) = executor
+    .spawn(async move { nl80211::ap_frequencies_beside_station(phy).log_err() })
+    .await
+  else {
     return Ok(());
   };
   ensure!(
@@ -668,15 +720,19 @@ pub(crate) async fn ensure_ap_beside(conn: &Connection, primary: &Interface) -> 
 async fn free_5ghz_channel(
   conn: &Connection,
   device: OwnedObjectPath,
+  executor: &BackgroundExecutor,
 ) -> Result<Option<(HotspotBand, u32)>> {
   let name = proxy::<DeviceProxy, DeviceProxy>(conn, device)
     .await?
     .interface()
     .await?;
-  let Some((phy, _)) = nl80211::radio(&name) else {
-    return Ok(None);
-  };
-  let Ok(frequencies) = nl80211::ap_frequencies(phy).log_err() else {
+  let frequencies = executor
+    .spawn(async move {
+      let (phy, _) = nl80211::radio(&name)?;
+      nl80211::ap_frequencies(phy).log_err().ok()
+    })
+    .await;
+  let Some(frequencies) = frequencies else {
     return Ok(None);
   };
   match frequencies.into_iter().find_map(channel) {
@@ -781,7 +837,9 @@ pub(crate) async fn start_hotspot(
     None => None,
   };
   let channel = match shared {
-    None if config.band == HotspotBand::A => free_5ghz_channel(conn, device.clone()).await?,
+    None if config.band == HotspotBand::A => {
+      free_5ghz_channel(conn, device.clone(), executor).await?
+    }
     shared => shared,
   };
   let nm = NetworkManager::new(conn).await?;
@@ -855,10 +913,12 @@ async fn wait_for_activation(
   let active = proxy::<ActiveConnectionProxy, ActiveConnectionProxy>(conn, active).await?;
   for _ in 0..150 {
     // NM drops a failed activation's object
-    match active.state().await.ok() {
-      Some(ACTIVATED) => return Ok(true),
-      Some(DEACTIVATED) | None => return Ok(false),
-      _ => executor.timer(Duration::from_millis(200)).await,
+    match active.state().await.map_err(anyhow::Error::from) {
+      Ok(ACTIVATED) => return Ok(true),
+      Ok(DEACTIVATED) => return Ok(false),
+      Ok(_) => executor.timer(Duration::from_millis(200)).await,
+      Err(e) if is_gone(&e) => return Ok(false),
+      Err(e) => return Err(e),
     }
   }
   // not a refusal: no WPA2 fallback for a slow start
@@ -926,7 +986,13 @@ async fn as_root(args: Vec<String>) -> Result<()> {
     .args(args);
   // pkexec waits for the password, which corona's own polkit agent asks for on the UI thread
   let (done, output) = flume::bounded(1);
-  std::thread::spawn(move || done.send(helper.output()));
+  // one helper process at a time, also past a dropped call: a stale helper still waiting for the
+  // password must finish before a later one runs, or it would undo it
+  static HELPER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+  std::thread::spawn(move || {
+    let _turn = HELPER.lock().unwrap_or_else(|e| e.into_inner());
+    done.send(helper.output()).ok()
+  });
   let output = output
     .recv_async()
     .await?
@@ -1025,6 +1091,11 @@ pub(crate) async fn hotspot_config(
   let profile = proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path).await?;
   let mut settings = profile.get_settings().await?;
   let auto_off = auto_off(&settings);
+  let corona = settings
+    .get("connection")
+    .and_then(|connection| connection.get("id"))
+    .and_then(|id| <&str>::try_from(&**id).ok())
+    == Some(HOTSPOT_ID);
   let chosen_band = settings
     .get("user")
     .and_then(|user| user.get("data"))
@@ -1049,10 +1120,18 @@ pub(crate) async fn hotspot_config(
   // NM leaves the password out of the settings and hands it out on its own
   let password = if settings.contains_key(WIFI_SECURITY_SETTING) {
     let mut secrets = profile.get_secrets(WIFI_SECURITY_SETTING).await?;
-    secrets
+    let psk = secrets
       .remove(WIFI_SECURITY_SETTING)
       .map(WifiSecurity::new)
       .and_then(|security| security.psk)
+      .filter(|psk| !psk.is_empty());
+    // only the saved Corona Hotspot is restarted from it, none would restart it open; any other
+    // hotspot is shown as it is
+    if corona {
+      Some(psk.context("the saved hotspot password could not be read")?)
+    } else {
+      psk
+    }
   } else {
     None
   };
@@ -1092,7 +1171,7 @@ mod tests {
 
   #[test]
   fn enterprise_settings() {
-    let settings = super::enterprise_settings(config(EapMethod::Ttls)).unwrap();
+    let settings = super::enterprise_settings(config(EapMethod::Ttls), b"ssid".to_vec()).unwrap();
     let enterprise = &settings[ENTERPRISE_SETTING];
     assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TTLS.to_owned()]));
     assert_eq!(enterprise[PHASE2_KEY], string(PHASE2_PAP));
@@ -1110,7 +1189,7 @@ mod tests {
       client_cert: Some("/home/user/cert.pem".into()),
       ..config(EapMethod::Tls)
     };
-    let settings = super::enterprise_settings(tls).unwrap();
+    let settings = super::enterprise_settings(tls, b"ssid".to_vec()).unwrap();
     let enterprise = &settings[ENTERPRISE_SETTING];
     assert_eq!(
       enterprise[CA_CERT_KEY],
@@ -1123,7 +1202,7 @@ mod tests {
       ca_cert: Some("ca.pem".into()),
       ..config(EapMethod::Peap)
     };
-    assert!(super::enterprise_settings(relative).is_err());
+    assert!(super::enterprise_settings(relative, b"ssid".to_vec()).is_err());
   }
 
   #[test]
@@ -1137,7 +1216,7 @@ mod tests {
       private_key: Some(String::new()),
       ..config(EapMethod::Peap)
     };
-    let settings = super::enterprise_settings(peap).unwrap();
+    let settings = super::enterprise_settings(peap, b"eduroam".to_vec()).unwrap();
     let enterprise = &settings[ENTERPRISE_SETTING];
     assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_PEAP.to_owned()]));
     assert_eq!(enterprise[PHASE2_KEY], string(PHASE2_MSCHAPV2));
@@ -1161,7 +1240,7 @@ mod tests {
       private_key_password: Some("keypw".into()),
       ..config(EapMethod::Tls)
     };
-    let settings = super::enterprise_settings(tls).unwrap();
+    let settings = super::enterprise_settings(tls, b"ssid".to_vec()).unwrap();
     let enterprise = &settings[ENTERPRISE_SETTING];
     assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TLS.to_owned()]));
     assert!(!enterprise.contains_key(PHASE2_KEY));
@@ -1181,7 +1260,9 @@ mod tests {
         ..config(EapMethod::Tls)
       },
     ] {
-      let error = super::enterprise_settings(bad).unwrap_err().to_string();
+      let error = super::enterprise_settings(bad, b"ssid".to_vec())
+        .unwrap_err()
+        .to_string();
       assert!(error.ends_with("is not absolute"), "{error}");
     }
   }
@@ -1358,7 +1439,7 @@ mod tests {
   #[test]
   fn eap_tls_missing_client_cert_and_private_key() {
     let tls_bare = config(EapMethod::Tls);
-    let settings = super::enterprise_settings(tls_bare).unwrap();
+    let settings = super::enterprise_settings(tls_bare, b"ssid".to_vec()).unwrap();
     let enterprise = &settings[ENTERPRISE_SETTING];
     assert_eq!(enterprise[EAP_KEY], Value::from(vec![EAP_TLS.to_owned()]));
     assert!(!enterprise.contains_key(CLIENT_CERT_KEY));

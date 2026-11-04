@@ -24,7 +24,7 @@ use zbus::{
 };
 
 use crate::{
-  ActiveConnectionState, NetworkManager, SecretRequest, actions,
+  NetworkManager, SecretRequest, actions,
   agent::AgentEvent,
   forwarding,
   nl80211::{self, AP_INTERFACE},
@@ -95,8 +95,6 @@ pub fn listener(
     // the channel the hotspot is about to follow the wifi connection to, and the task doing so
     let mut roam = None;
     let mut _roam_task = None;
-    // the activated interfaces and VPNs, which route the host's networks
-    let mut networks = Vec::new();
     let mut ap_seen = false;
     loop {
       let snapshot = match snapshot(&conn).await.log_err() {
@@ -117,19 +115,6 @@ pub fn listener(
           .map(|n| n.ssid.clone());
 
         let activated = snapshot.routing.clone();
-        let routing: Vec<_> = activated
-          .iter()
-          .cloned()
-          .chain(
-            snapshot
-              .vpns
-              .iter()
-              .filter(|v| v.state == ActiveConnectionState::Activated)
-              .map(|v| v.uuid.clone()),
-          )
-          .collect();
-        let networks_changed = routing != networks;
-        networks = routing;
         if snapshot.hotspot.is_none() && state.hotspot_starting.load(Ordering::SeqCst) == 0 {
           // NM may leave forwarding on after a hotspot, so it is recorded before one only
           let names: Vec<_> = snapshot
@@ -198,20 +183,17 @@ pub fn listener(
           .write_changed(cx, snapshot.wifi_networks);
         state.vpns.write_changed(cx, snapshot.vpns);
 
-        let ended = snapshot.hotspot.is_none() && cx.update(|cx| state.hotspot(cx).is_some());
+        // a restart under way shows a gap: the rules stay
+        let ended = snapshot.hotspot.is_none()
+          && state.hotspot_starting.load(Ordering::SeqCst) == 0
+          && cx.update(|cx| state.hotspot(cx).is_some());
         // a Corona Hotspot left running by an earlier corona
         let adopt = snapshot
           .hotspot
           .as_ref()
           .filter(|h| h.active && h.corona)
           .map(|h| h.interface.as_str());
-        state.follow_hotspot_rules(
-          ended,
-          adopt,
-          &activated,
-          networks_changed,
-          cx.background_executor(),
-        );
+        state.follow_hotspot_rules(ended, adopt, &activated, cx.background_executor());
         // restarts with every hotspot, corona's own or one found running on startup
         let running = snapshot
           .hotspot
@@ -346,9 +328,12 @@ fn is_relevant(msg: &Message) -> bool {
   }
   PropertiesChanged::from_message(msg.clone()).is_some_and(|signal| {
     signal.args().is_ok_and(|args| {
-      WATCHED_INTERFACES
-        .iter()
-        .any(|i| i.as_ref() == Some(&args.interface_name))
+      // a roam changes the access point only: Bitrate and LastScan churn is not worth a snapshot
+      (WirelessDeviceProxy::INTERFACE.as_ref() == Some(&args.interface_name)
+        && args.changed_properties.contains_key("ActiveAccessPoint"))
+        || WATCHED_INTERFACES
+          .iter()
+          .any(|i| i.as_ref() == Some(&args.interface_name))
     })
   })
 }
@@ -366,7 +351,11 @@ mod tests {
   }
 
   fn properties_changed(interface: &str) -> Message {
-    let changed: HashMap<&str, Value<'_>> = HashMap::from([("State", Value::from(100u32))]);
+    changed_property(interface, "State")
+  }
+
+  fn changed_property(interface: &str, property: &str) -> Message {
+    let changed: HashMap<&str, Value<'_>> = HashMap::from([(property, Value::from(100u32))]);
     signal(
       "/org/freedesktop/NetworkManager",
       "org.freedesktop.DBus.Properties",
@@ -426,6 +415,13 @@ mod tests {
     assert!(!is_relevant(&properties_changed(
       "org.freedesktop.NetworkManager.AccessPoint"
     )));
+    // a roam to another access point is, its other properties are not
+    let wireless = "org.freedesktop.NetworkManager.Device.Wireless";
+    assert!(is_relevant(&changed_property(
+      wireless,
+      "ActiveAccessPoint"
+    )));
+    assert!(!is_relevant(&changed_property(wireless, "Bitrate")));
     for (interface, member) in [
       ("org.freedesktop.NetworkManager.Settings", "NewConnection"),
       (
