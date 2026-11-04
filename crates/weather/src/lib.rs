@@ -121,7 +121,8 @@ fn start(cx: &mut App) {
           save_cache(&next).log_err().ok();
           weather.write(cx, Some(next));
           error.write(cx, None);
-          Duration::from_secs(config.refresh_minutes.max(1) * 60)
+          // a hand-edited huge value would overflow the timer instant
+          Duration::from_secs(config.refresh_minutes.clamp(1, 24 * 60) * 60)
         }
         Err(e) => {
           tracing::warn!("weather: {e:?}");
@@ -338,7 +339,10 @@ mod tests {
     cx.run_until_parked();
     cx.read(|cx| {
       let service = cx.weather();
-      assert!(service.error(cx).unwrap().contains("500"));
+      let error = service.error(cx).unwrap();
+      assert!(error.contains("500"));
+      // the exact coordinates stay out of the shown error
+      assert!(!error.contains("latitude") && !error.contains("52.5"));
       // the last weather stays
       assert_eq!(
         service.current(cx).unwrap().location.name,
@@ -442,7 +446,8 @@ mod tests {
 
   #[gpui::test]
   fn background_task_terminates_on_disconnect(cx: &mut TestAppContext) {
-    start(cx, berlin());
+    let running = start(cx, berlin());
+    let before = requests(&running);
     cx.update(|cx| {
       let (dummy_tx, _) = flume::unbounded();
       let dummy_service = WeatherService {
@@ -452,6 +457,16 @@ mod tests {
       };
       cx.set_global(dummy_service);
     });
-    cx.executor().advance_clock(Duration::from_secs(10 * 60));
+    cx.executor().advance_clock(Duration::from_secs(31 * 60));
+    // the loop is gone, nothing fetches after the refresh interval
+    assert_eq!(requests(&running), before);
+  }
+
+  #[gpui::test]
+  fn huge_refresh_minutes_does_not_overflow(cx: &mut TestAppContext) {
+    let mut config = berlin();
+    config.weather.refresh_minutes = u64::MAX;
+    let running = start(cx, config);
+    assert_eq!(requests(&running), 2);
   }
 }

@@ -68,8 +68,8 @@ struct Day {
   min: f64,
   condition: String,
   /// Local time, like `2026-10-08T07:12`.
-  sunrise: String,
-  sunset: String,
+  sunrise: Option<String>,
+  sunset: Option<String>,
 }
 
 #[derive(Serialize, Type)]
@@ -253,8 +253,8 @@ mod tests {
         max: 15.,
         min: 6.,
         code: 61,
-        sunrise: "2026-10-08T07:20".into(),
-        sunset: "2026-10-08T18:40".into(),
+        sunrise: Some("2026-10-08T07:20".into()),
+        sunset: Some("2026-10-08T18:40".into()),
       }],
       fetched: UNIX_EPOCH + Duration::from_secs(100),
     }

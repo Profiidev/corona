@@ -119,8 +119,10 @@ pub struct Day {
   pub max: f64,
   pub min: f64,
   pub code: u8,
-  pub sunrise: String,
-  pub sunset: String,
+  #[serde(default)]
+  pub sunrise: Option<String>,
+  #[serde(default)]
+  pub sunset: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -283,8 +285,8 @@ mod tests {
       max: 0.,
       min: 0.,
       code: 200,
-      sunrise: String::new(),
-      sunset: String::new(),
+      sunrise: None,
+      sunset: None,
     };
     assert_eq!(day.condition(), Condition::Unknown);
   }

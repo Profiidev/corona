@@ -92,13 +92,11 @@ fn location() -> SettingPage {
                 _ => String::new(),
               },
               |c, v| {
-                let parsed = v.split_once(',').and_then(|(lat, lon)| {
-                  Some((lat.trim().parse().ok()?, lon.trim().parse().ok()?))
-                });
-                (c.location.latitude, c.location.longitude) = match parsed {
-                  Some((lat, lon)) => (Some(lat), Some(lon)),
-                  None => (None, None),
-                };
+                if v.trim().is_empty() {
+                  (c.location.latitude, c.location.longitude) = (None, None);
+                } else if let Some((lat, lon)) = parse_coordinates(&v) {
+                  (c.location.latitude, c.location.longitude) = (Some(lat), Some(lon));
+                }
               },
             ),
           ),
@@ -166,4 +164,30 @@ fn clock_form(
       ),
     ))
     .into_any_element()
+}
+
+/// Parses "lat, lon", rejecting non-finite and out-of-range values
+fn parse_coordinates(v: &str) -> Option<(f64, f64)> {
+  let (lat, lon) = v.split_once(',')?;
+  let (lat, lon) = (
+    lat.trim().parse::<f64>().ok()?,
+    lon.trim().parse::<f64>().ok()?,
+  );
+  ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then_some((lat, lon))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::parse_coordinates;
+
+  #[test]
+  fn coordinates() {
+    assert_eq!(parse_coordinates("47.5, 12.1"), Some((47.5, 12.1)));
+    assert_eq!(parse_coordinates("-47.5,-12"), Some((-47.5, -12.0)));
+    assert_eq!(parse_coordinates("47,5, 12,1"), None);
+    assert_eq!(parse_coordinates("123, 10"), None);
+    assert_eq!(parse_coordinates("10, 181"), None);
+    assert_eq!(parse_coordinates("NaN, 10"), None);
+    assert_eq!(parse_coordinates(""), None);
+  }
 }

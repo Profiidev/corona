@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::WeatherExt;
 use corona_components::components::card::CardExt;
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::ticker::TickerExt;
@@ -14,7 +13,6 @@ use jiff::{Zoned, civil::Date};
 
 use corona_components::components::progress_ring::ring;
 
-use crate::ui::page::place_name;
 use corona_components::i18n::format_time;
 
 mod month;
@@ -60,11 +58,6 @@ fn gmt_offset(seconds: i32) -> String {
     0 => format!("GMT{sign}{hours}"),
     _ => format!("GMT{sign}{hours}:{minutes:02}"),
   }
-}
-
-fn place(cx: &App) -> Option<String> {
-  let name = place_name(&cx.weather().current(cx)?.location);
-  Some(name.split(',').next().unwrap_or(&name).trim().to_string())
 }
 
 impl CalendarPanel {
@@ -119,7 +112,6 @@ impl CalendarPanel {
               .items_baseline()
               .text_sm()
               .truncate()
-              .children(place(cx))
               .child(
                 div()
                   .text_xs()

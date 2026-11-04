@@ -12,6 +12,7 @@ use gpui_kit::{
 use rust_i18n::t;
 
 mod current;
+pub(crate) use current::{degrees, speed};
 mod forecast;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

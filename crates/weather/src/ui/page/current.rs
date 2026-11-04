@@ -13,15 +13,19 @@ use corona_components::i18n::decimal;
 use rust_i18n::t;
 
 /// Rounds to a whole number, `+ 0.` turns -0 into 0 so (-0.5, 0) doesn't render as "-0"
-pub(super) fn whole(value: f64) -> f64 {
+pub(crate) fn whole(value: f64) -> f64 {
   value.round() + 0.
 }
 
-fn degrees(value: f64) -> String {
-  format!("{:.0}°", whole(value))
+pub(crate) fn degrees(value: f64, units: Units) -> String {
+  let unit = match units {
+    Units::Metric => "C",
+    Units::Imperial => "F",
+  };
+  format!("{:.0}°{unit}", whole(value))
 }
 
-fn speed(value: f64, units: Units) -> String {
+pub(crate) fn speed(value: f64, units: Units) -> String {
   match units {
     Units::Metric => t!("app.weather.unit.kmh", value = format!("{value:.0}")).to_string(),
     Units::Imperial => t!("app.weather.unit.mph", value = format!("{value:.0}")).to_string(),
@@ -82,13 +86,17 @@ impl WeatherPanel {
               div()
                 .text_3xl()
                 .font_bold()
-                .child(format!("{}C", degrees(current.temperature))),
+                .child(degrees(current.temperature, weather.units)),
             )
             .children(today.map(|day| {
               div()
                 .text_sm()
                 .text_color(theme.colors.primary)
-                .child(format!("{:.0} / {}C", whole(day.min), degrees(day.max)))
+                .child(format!(
+                  "{} / {}",
+                  degrees(day.min, weather.units),
+                  degrees(day.max, weather.units)
+                ))
             }))
             .child(div().text_sm().child(describe(current.condition())))
             .child(
@@ -109,21 +117,22 @@ impl WeatherPanel {
       theme,
       IconName::Feather,
       t!("app.weather.feels_like"),
-      format!("{}C", degrees(current.apparent_temperature)),
+      degrees(current.apparent_temperature, weather.units),
     ));
-    if let Some(today) = weather.daily.first() {
+    let today = weather.daily.first();
+    if let Some(today) = today {
       details = details
         .child(detail(
           theme,
           IconName::ThermometerSnowflake,
           t!("app.weather.temperature_min"),
-          format!("{}C", degrees(today.min)),
+          degrees(today.min, weather.units),
         ))
         .child(detail(
           theme,
           IconName::ThermometerSun,
           t!("app.weather.temperature_max"),
-          format!("{}C", degrees(today.max)),
+          degrees(today.max, weather.units),
         ));
     }
     details = details
@@ -146,20 +155,21 @@ impl WeatherPanel {
         t!("app.weather.humidity"),
         format!("{:.0}%", current.humidity),
       ));
-    if let Some(today) = weather.daily.first() {
-      details = details
-        .child(detail(
-          theme,
-          IconName::Sunrise,
-          t!("app.weather.sunrise"),
-          clock(&today.sunrise).to_string(),
-        ))
-        .child(detail(
-          theme,
-          IconName::Sunset,
-          t!("app.weather.sunset"),
-          clock(&today.sunset).to_string(),
-        ));
+    if let Some(sunrise) = today.and_then(|d| d.sunrise.as_deref()) {
+      details = details.child(detail(
+        theme,
+        IconName::Sunrise,
+        t!("app.weather.sunrise"),
+        clock(sunrise).to_string(),
+      ));
+    }
+    if let Some(sunset) = today.and_then(|d| d.sunset.as_deref()) {
+      details = details.child(detail(
+        theme,
+        IconName::Sunset,
+        t!("app.weather.sunset"),
+        clock(sunset).to_string(),
+      ));
     }
     let timezone = weather
       .timezone
@@ -194,15 +204,17 @@ mod tests {
 
   #[test]
   fn degrees() {
-    assert_eq!(super::degrees(21.4), "21°");
-    assert_eq!(super::degrees(21.6), "22°");
-    assert_eq!(super::degrees(-3.6), "-4°");
-    assert_eq!(super::degrees(0.0), "0°");
+    let m = Units::Metric;
+    assert_eq!(super::degrees(21.4, m), "21°C");
+    assert_eq!(super::degrees(21.6, m), "22°C");
+    assert_eq!(super::degrees(-3.6, m), "-4°C");
+    assert_eq!(super::degrees(0.0, m), "0°C");
+    assert_eq!(super::degrees(71.6, Units::Imperial), "72°F");
   }
 
   #[test]
   fn degrees_negative_zero() {
-    assert_eq!(super::degrees(-0.4), "0°");
+    assert_eq!(super::degrees(-0.4, Units::Metric), "0°C");
   }
 
   #[test]

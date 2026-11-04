@@ -22,7 +22,7 @@ use crate::{
   WeatherExt,
   ui::{
     calendar::CalendarPanel,
-    page::{WeatherPanel, describe, icon},
+    page::{WeatherPanel, degrees, describe, icon},
   },
 };
 
@@ -39,7 +39,11 @@ fn clock(cx: &App) -> Stateful<Div> {
     let condition = current.condition();
     (
       icon(condition, current.is_day),
-      format!("{:.0}° · {}", current.temperature, describe(condition)),
+      format!(
+        "{} · {}",
+        degrees(current.temperature, w.units),
+        describe(condition)
+      ),
     )
   });
 
