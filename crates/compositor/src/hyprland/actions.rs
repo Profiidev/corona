@@ -1,14 +1,6 @@
 use anyhow::{Result, bail};
-use serde::Deserialize;
 
-use crate::{
-  hypr_data_cmd,
-  hyprland::command::{Command, CommandFlags, lua_string, lua_value},
-};
-
-fn window(address: &str) -> String {
-  lua_string(&format!("address:{address}"))
-}
+use crate::hyprland::command::{Command, CommandFlags, lua_string, lua_value, window};
 
 impl crate::hyprland::command::Ipc {
   pub fn toggle_floating(&self, address: &str) -> Result<()> {
@@ -70,10 +62,14 @@ impl crate::hyprland::command::Ipc {
     self.dsp(format!("workspace.toggle_special({})", lua_string(name)))
   }
 
-  /// Switches the main keyboard to layout `index` of its configured ones
-  pub fn set_keyboard_layout(&self, index: usize) -> Result<()> {
+  /// Switches the main keyboard to `next`, `prev` or the layout index of its configured ones
+  pub fn set_keyboard_layout(&self, which: &str) -> Result<()> {
+    let index = !which.is_empty() && which.bytes().all(|b| b.is_ascii_digit());
+    if which != "next" && which != "prev" && !index {
+      bail!("Invalid keyboard layout: {which}");
+    }
     let res = self.send_cmd(&Command {
-      command: format!("switchxkblayout main {index}"),
+      command: format!("switchxkblayout main {which}"),
       flags: CommandFlags::empty(),
     })?;
     if res.trim() != "ok" {
@@ -82,36 +78,6 @@ impl crate::hyprland::command::Ipc {
     Ok(())
   }
 }
-
-#[derive(Debug, Deserialize)]
-pub struct Devices {
-  keyboards: Vec<Keyboard>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Keyboard {
-  layout: String,
-  main: bool,
-}
-
-/// The main keyboard's configured layouts, like `["us", "de"]`
-fn layouts(devices: Devices) -> Vec<String> {
-  let keyboards = devices.keyboards;
-  let main = keyboards.iter().position(|k| k.main).unwrap_or(0);
-  keyboards
-    .into_iter()
-    .nth(main)
-    .map(|k| {
-      k.layout
-        .split(',')
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect()
-    })
-    .unwrap_or_default()
-}
-
-hypr_data_cmd!(keyboard_layouts, "devices", Devices, Vec<String>, layouts);
 
 #[cfg(test)]
 mod tests {
@@ -154,14 +120,11 @@ mod tests {
   }
 
   #[test]
-  fn layouts() {
-    let devices = serde_json::from_str(
-      r#"{ "keyboards": [
-        { "layout": "us", "main": false },
-        { "layout": "us, de", "main": true }
-      ] }"#,
-    )
-    .unwrap();
-    assert_eq!(super::layouts(devices), ["us", "de"]);
+  fn keyboard_layout_argument_is_checked() {
+    let hypr = FakeHyprland::start();
+    for which in ["", "1 extra", "next;x", "-1"] {
+      assert!(hypr.ipc().set_keyboard_layout(which).is_err(), "{which}");
+    }
+    assert!(hypr.commands().is_empty());
   }
 }

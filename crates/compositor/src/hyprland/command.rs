@@ -61,6 +61,11 @@ pub(crate) fn lua_value(value: &str) -> String {
   lua_string(value)
 }
 
+/// The Lua window selector for the window at `address`
+pub(crate) fn window(address: &str) -> String {
+  lua_string(&format!("address:{address}"))
+}
+
 /// `value` as a double quoted Lua string
 pub(crate) fn lua_string(value: &str) -> String {
   let mut out = String::with_capacity(value.len() + 2);
@@ -108,7 +113,6 @@ impl Display for Command {
   }
 }
 
-#[macro_export]
 macro_rules! hypr_data_cmd {
   ($cmd:ident, $arg:literal, $output:ty, $parsed:ty, $convert:expr) => {
     impl $crate::hyprland::command::Ipc {
@@ -124,6 +128,7 @@ macro_rules! hypr_data_cmd {
     }
   };
 }
+pub(crate) use hypr_data_cmd;
 
 #[cfg(test)]
 mod tests {

@@ -45,12 +45,7 @@ impl CompositorImpl for Hyprland {
     self.ipc.list_monitors()
   }
   fn active_monitor(&self) -> Result<types::Monitor> {
-    self
-      .ipc
-      .list_monitors()?
-      .into_iter()
-      .find(|m| m.focused && !m.disabled)
-      .context("No active monitor found")
+    types::focused_monitor(&self.ipc.list_monitors()?).context("No active monitor found")
   }
 
   fn list_windows(&self) -> Result<Vec<types::Window>> {
@@ -123,7 +118,7 @@ impl CompositorImpl for Hyprland {
     self.ipc.keyboard_layouts()
   }
 
-  fn set_keyboard_layout(&self, index: usize) -> Result<()> {
-    self.ipc.set_keyboard_layout(index)
+  fn set_keyboard_layout(&self, which: &str) -> Result<()> {
+    self.ipc.set_keyboard_layout(which)
   }
 }

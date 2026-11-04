@@ -1,6 +1,9 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, types};
+use crate::{
+  hyprland::command::{hypr_data_cmd, window},
+  types,
+};
 
 impl crate::hyprland::command::Ipc {
   pub fn close_window(&self, address: &str) -> anyhow::Result<()> {
@@ -12,10 +15,6 @@ impl crate::hyprland::command::Ipc {
   }
 }
 
-fn window(address: &str) -> String {
-  crate::hyprland::command::lua_string(&format!("address:{address}"))
-}
-
 hypr_data_cmd!(
   list_windows,
   "clients",
@@ -23,7 +22,12 @@ hypr_data_cmd!(
   Vec<types::Window>,
   |windows: Vec<Window>| {
     let mut windows: Vec<types::Window> = windows.into_iter().map(|m| m.into()).collect();
-    windows.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+    windows.sort_unstable_by(|a, b| {
+      a.x
+        .cmp(&b.x)
+        .then_with(|| a.y.cmp(&b.y))
+        .then_with(|| a.address.cmp(&b.address))
+    });
     windows
   }
 );
@@ -48,7 +52,8 @@ impl crate::hyprland::command::Ipc {
 #[derive(Debug, Deserialize)]
 pub struct Window {
   pub address: String,
-  pub monitor: u32,
+  /// -1 when on no monitor
+  pub monitor: i32,
   pub class: String,
   pub title: String,
   pub workspace: WindowWorkspace,
@@ -66,6 +71,8 @@ pub struct Window {
 #[derive(Debug, Deserialize)]
 pub struct WindowWorkspace {
   pub address: String,
+  #[serde(default)]
+  pub name: String,
 }
 
 impl From<Window> for types::Window {
@@ -73,6 +80,7 @@ impl From<Window> for types::Window {
     types::Window {
       address: w.address,
       monitor: w.monitor,
+      special: w.workspace.name.starts_with("special:"),
       workspace: w.workspace.address,
       class: w.class,
       title: w.title,
@@ -111,6 +119,8 @@ mod tests {
     assert!(kitty.fullscreen);
     assert_eq!((kitty.workspace.as_str(), kitty.monitor), ("0x2", 1));
     assert!(kitty.floating);
+    // the special tier comes from the workspace name, not its address
+    assert!(kitty.special && !firefox.special);
   }
 
   #[test]
@@ -133,7 +143,7 @@ mod tests {
   }
 
   #[test]
-  fn negative_monitor_deserialization_fails() {
+  fn negative_monitor_is_accepted() {
     let raw = r#"{
       "address": "0x1",
       "monitor": -1,
@@ -148,7 +158,10 @@ mod tests {
       "hidden": false,
       "focusHistoryID": 0
     }"#;
-    assert!(serde_json::from_str::<super::Window>(raw).is_err());
+    assert_eq!(
+      serde_json::from_str::<super::Window>(raw).unwrap().monitor,
+      -1
+    );
   }
 
   #[test]

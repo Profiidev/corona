@@ -31,7 +31,7 @@ pub(crate) const MONITORS: &str = r#"[
 ]"#;
 
 pub(crate) const CLIENTS: &str = r#"[
-  {"address": "0xb", "monitor": 1, "class": "kitty", "title": "zsh", "workspace": {"address": "0x2"},
+  {"address": "0xb", "monitor": 1, "class": "kitty", "title": "zsh", "workspace": {"address": "0x2", "name": "special:magic"},
    "at": [1920, 30], "size": [800, 600], "floating": true, "pinned": false, "fullscreen": 2,
    "hidden": false, "focusHistoryID": 1},
   {"address": "0xa", "monitor": 0, "class": "firefox", "title": "Fünf ✓", "workspace": {"address": "0x1"},
@@ -44,7 +44,7 @@ pub(crate) const ACTIVE_WINDOW: &str = r#"{"address": "0xa", "monitor": 0, "clas
   "floating": false, "pinned": false, "fullscreen": 0, "hidden": false, "focusHistoryID": 0}"#;
 
 pub(crate) const DEVICES: &str =
-  r#"{"mice": [], "keyboards": [{"active_keymap": "German", "main": true}]}"#;
+  r#"{"mice": [], "keyboards": [{"layout": "de", "active_keymap": "German", "main": true}]}"#;
 
 pub(crate) struct FakeHyprland {
   pub dir: PathBuf,

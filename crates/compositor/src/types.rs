@@ -8,7 +8,7 @@ pub struct Workspace {
   pub id: String,
   pub name: String,
   pub monitor: String,
-  pub monitor_id: u32,
+  pub monitor_id: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -27,6 +27,13 @@ pub struct Monitor {
   pub focused: bool,
   pub disabled: bool,
   pub mirror_of: String,
+  /// Space layer surfaces reserve, as left, top, right, bottom
+  pub reserved: [i32; 4],
+}
+
+/// The monitor in focus, none for a moment while the compositor has none
+pub(crate) fn focused_monitor(monitors: &[Monitor]) -> Option<Monitor> {
+  monitors.iter().find(|m| m.focused && !m.disabled).cloned()
 }
 
 /// A change to one monitor's configuration. It lasts until the compositor
@@ -43,8 +50,10 @@ pub enum MonitorChange {
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct Window {
   pub address: String,
-  pub monitor: u32,
+  pub monitor: i32,
   pub workspace: String,
+  /// On a special workspace (scratchpad)
+  pub special: bool,
   pub class: String,
   pub title: String,
   pub x: i32,
@@ -64,7 +73,7 @@ impl Window {
   /// Draw order: special workspaces > pinned > fullscreen > floating > focus history
   pub fn stacking(&self) -> impl Ord + use<> {
     (
-      self.workspace.starts_with("special:"),
+      self.special,
       self.pinned,
       self.fullscreen,
       self.floating,
@@ -88,6 +97,7 @@ mod tests {
       address: String::new(),
       monitor: 0,
       workspace: workspace.into(),
+      special: workspace.starts_with("special:"),
       class: String::new(),
       title: String::new(),
       x: 0,

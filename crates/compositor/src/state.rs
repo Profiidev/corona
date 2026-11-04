@@ -2,7 +2,7 @@ use std::{collections::HashSet, rc::Rc};
 
 use anyhow::Result;
 use corona_utils::{display::display_uuid, entity::WriteChangedExt};
-use gpui_kit::{App, AppContext, Entity, Global};
+use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global};
 use uuid::Uuid;
 
 use crate::types;
@@ -52,10 +52,22 @@ impl Compositor {
 
   /// required when relying on size and position of windows, no event when they change
   pub fn refresh_windows(cx: &mut App) -> Result<()> {
-    let compositor = cx.global::<Compositor>();
-    let windows = compositor.inner.list_windows()?;
-    compositor.windows.clone().write_changed(cx, windows);
+    let windows = cx.global::<Compositor>().inner.list_windows()?;
+    cx.update_global::<Compositor, _>(|compositor, cx| compositor.set_windows(cx, windows));
     Ok(())
+  }
+
+  /// Stores `windows`, dropping urgent marks of windows that are gone: a window
+  /// closed while disconnected leaves no event, addresses get reused
+  pub(crate) fn set_windows(&self, cx: &mut App, windows: Vec<types::Window>) {
+    self.urgent.update(cx, |urgent, cx| {
+      let before = urgent.len();
+      urgent.retain(|a| windows.iter().any(|w| &w.address == a));
+      if urgent.len() != before {
+        cx.notify();
+      }
+    });
+    self.windows.write_changed(cx, windows);
   }
 
   pub fn focus_workspace(&self, workspace: &str) -> Result<()> {
@@ -93,7 +105,8 @@ impl Compositor {
     let (monitors, workspaces, active, windows) = (
       inner.list_monitors()?,
       inner.list_workspaces()?,
-      inner.active_workspace()?,
+      // best effort: it can fail right after the focused monitor was disabled
+      inner.active_workspace().ok(),
       inner.list_windows()?,
     );
     let compositor = cx.global::<Compositor>();
@@ -101,12 +114,19 @@ impl Compositor {
       compositor.monitors.clone(),
       compositor.workspaces.clone(),
       compositor.active_workspace.clone(),
-      compositor.windows.clone(),
     );
+    if let Some(active) = crate::types::focused_monitor(&monitors) {
+      cx.global::<Compositor>()
+        .active_monitor
+        .clone()
+        .write_changed(cx, active);
+    }
     entities.0.write_changed(cx, monitors);
     entities.1.write_changed(cx, workspaces);
-    entities.2.write_changed(cx, active);
-    entities.3.write_changed(cx, windows);
+    if let Some(active) = active {
+      entities.2.write_changed(cx, active);
+    }
+    cx.update_global::<Compositor, _>(|compositor, cx| compositor.set_windows(cx, windows));
     Ok(())
   }
 
@@ -146,8 +166,8 @@ impl Compositor {
     self.inner.keyboard_layouts()
   }
 
-  pub fn set_keyboard_layout(&self, index: usize) -> Result<()> {
-    self.inner.set_keyboard_layout(index)
+  pub fn set_keyboard_layout(&self, which: &str) -> Result<()> {
+    self.inner.set_keyboard_layout(which)
   }
 
   pub fn cursor_position(&self) -> Result<(i32, i32)> {
@@ -248,7 +268,8 @@ pub trait CompositorImpl {
   fn keyboard_layouts(&self) -> Result<Vec<String>> {
     unsupported()
   }
-  fn set_keyboard_layout(&self, _index: usize) -> Result<()> {
+  /// Switches to `next`, `prev` or a layout index
+  fn set_keyboard_layout(&self, _which: &str) -> Result<()> {
     unsupported()
   }
 }
@@ -322,6 +343,7 @@ mod tests {
         focused: true,
         disabled: false,
         mirror_of: "none".into(),
+        reserved: [0; 4],
       })
     }
     fn list_windows(&self) -> Result<Vec<types::Window>> {

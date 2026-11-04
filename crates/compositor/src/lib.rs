@@ -132,7 +132,7 @@ mod tests {
 
     hypr.answer(
       "j/devices",
-      r#"{"keyboards": [{"active_keymap": "French", "main": true}]}"#,
+      r#"{"keyboards": [{"layout": "fr", "active_keymap": "French", "main": true}]}"#,
     );
     hypr.push("activelayout>>kbd,French");
     wait(cx, |cx| {
