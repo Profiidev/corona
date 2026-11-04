@@ -20,10 +20,19 @@ pub fn bytes(n: u64, base: Base) -> String {
     value /= step;
     unit += 1;
   }
-  let digits = match base {
+  let digits = |value: f64, unit: usize| match base {
     Base::Binary => 1,
-    Base::Decimal => usize::from(value < 10. && unit > 0 && value.fract() >= 0.05),
+    Base::Decimal => {
+      usize::from(value < 10. && unit > 0 && value.fract() >= 0.05 && (value * 10.).round() < 100.)
+    }
   };
+  // rounding can reach the step (1023.96 KiB), which belongs to the next unit
+  let scale = 10f64.powi(digits(value, unit) as i32);
+  if (value * scale).round() / scale >= step && unit < units.len() - 1 {
+    value /= step;
+    unit += 1;
+  }
+  let digits = digits(value, unit);
   format!("{} {}", decimal(value, digits), units[unit])
 }
 
@@ -36,6 +45,7 @@ mod tests {
     assert_eq!(bytes(0, Base::Binary), "0.0 B");
     assert_eq!(bytes(1536, Base::Binary), "1.5 KiB");
     assert_eq!(bytes(3 << 30, Base::Binary), "3.0 GiB");
+    assert_eq!(bytes(1_048_575, Base::Binary), "1.0 MiB");
   }
 
   #[test]
@@ -46,5 +56,7 @@ mod tests {
     assert_eq!(bytes(1_200_000_000_000, Base::Decimal), "1.2 TB");
     assert_eq!(bytes(32_000_000_000, Base::Decimal), "32 GB");
     assert_eq!(bytes(0, Base::Decimal), "0 B");
+    assert_eq!(bytes(999_950, Base::Decimal), "1.0 MB");
+    assert_eq!(bytes(9_960_000, Base::Decimal), "10 MB");
   }
 }

@@ -23,9 +23,37 @@ pub fn span(d: Duration) -> String {
   }
 }
 
+/// A remaining or elapsed time, localized and rounded to the minute: "25 min", "1 h 5 min"
+pub fn duration(d: Duration) -> String {
+  let minutes = (d.as_secs() + 30) / 60;
+  match minutes / 60 {
+    0 => t!("app.power.duration.minutes", minutes = minutes).into(),
+    hours => t!(
+      "app.power.duration.hours",
+      hours = hours,
+      minutes = minutes % 60
+    )
+    .into(),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn localized_duration() {
+    let d = |s| duration(Duration::from_secs(s));
+    assert_eq!(d(0), "0 min");
+    assert_eq!(d(25 * 60), "25 min");
+    assert_eq!(d(29), "0 min");
+    assert_eq!(d(30), "1 min");
+    assert_eq!(d(3599), "1 h 0 min");
+    assert_eq!(d(65 * 60), "1 h 5 min");
+    assert_eq!(d(4 * 3600 + 20 * 60), "4 h 20 min");
+    // no day unit, hours keep counting
+    assert_eq!(d(26 * 3600 + 3 * 60), "26 h 3 min");
+  }
 
   #[test]
   fn short() {

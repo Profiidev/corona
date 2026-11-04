@@ -120,26 +120,29 @@ impl StatefulInteractiveElement for WindowIcon {}
 /// then minifies without mipmaps, which is what makes it look coarse. Rasterize
 /// at the size actually drawn instead.
 fn rasterize(path: &Path, pixels: i32, cx: &mut App) -> Option<Arc<RenderImage>> {
-  type Cache = Mutex<HashMap<(PathBuf, i32), Arc<RenderImage>>>;
+  type Cache = Mutex<HashMap<(PathBuf, i32), Option<Arc<RenderImage>>>>;
   static CACHE: OnceLock<Cache> = OnceLock::new();
   let cache = CACHE.get_or_init(Mutex::default);
 
   let key = (path.to_path_buf(), pixels);
   if let Some(image) = cache.lock().ok()?.get(&key) {
-    return Some(image.clone());
+    return image.clone();
   }
 
   let renderer = cx.svg_renderer();
-  let svg = renderer.parse_svg(&std::fs::read(path).ok()?).ok()?;
-  let image = renderer
-    .render_parsed(
-      &svg,
-      SvgSize::Size(size(DevicePixels(pixels), DevicePixels(pixels))),
-    )
-    .ok()?;
+  // failures are kept too, so a broken file is not read and parsed on every draw
+  let image = (|| {
+    let svg = renderer.parse_svg(&std::fs::read(path).ok()?).ok()?;
+    renderer
+      .render_parsed(
+        &svg,
+        SvgSize::Size(size(DevicePixels(pixels), DevicePixels(pixels))),
+      )
+      .ok()
+  })();
 
   cache.lock().ok()?.insert(key, image.clone());
-  Some(image)
+  image
 }
 
 impl RenderOnce for WindowIcon {

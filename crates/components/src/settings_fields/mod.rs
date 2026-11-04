@@ -28,7 +28,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, fmt::Display, sync::LazyLock};
 
 pub mod order;
 mod rows;
@@ -48,19 +48,21 @@ pub fn save(cx: &mut App, edit: impl FnOnce(&mut Config)) {
   let _ = corona_config::update(cx, edit).log_err();
 }
 
+static DEFAULT: LazyLock<Config> = LazyLock::new(Config::default);
+
 fn is_default<T: PartialEq>(get: impl Get<T>) -> impl Fn(&App) -> bool {
-  move |cx| get(cx.config()) != get(&Config::default())
+  move |cx| get(cx.config()) != get(&DEFAULT)
 }
 
 fn reset<T>(get: impl Get<T>, set: impl Set<T>) -> impl Fn(&mut Window, &mut App) {
   move |_, cx| {
-    let value = get(&Config::default());
+    let value = get(&DEFAULT);
     save(cx, |c| set(c, value))
   }
 }
 
 pub fn switch(get: impl Get<bool>, set: impl Set<bool>) -> SettingField<bool> {
-  let default = get(&Config::default());
+  let default = get(&DEFAULT);
   SettingField::switch(
     move |cx| get(cx.config()),
     move |v, cx| save(cx, |c| set(c, v)),
@@ -94,7 +96,7 @@ pub fn choice<T>(
 where
   T: Serialize + DeserializeOwned + 'static,
 {
-  let default = name(&get(&Config::default()));
+  let default = name(&get(&DEFAULT));
   let options: Vec<_> = options
     .iter()
     .map(|(value, label)| (name(value), label.clone().into()))
@@ -119,12 +121,12 @@ struct Field<S, T> {
   _subscription: Subscription,
 }
 
-/// Free text, committed on enter or blur. `key` must be unique in the window.
 /// `Option<String>` settings as text, empty for unset
 pub fn non_empty(value: String) -> Option<String> {
   (!value.trim().is_empty()).then_some(value)
 }
 
+/// Free text, committed on enter or blur. `key` must be unique in the window.
 pub fn text(
   key: impl Display,
   get: impl Get<String>,
@@ -259,13 +261,34 @@ pub fn number(
               InputEvent::Change => !typing,
               InputEvent::Focus => false,
             };
-            let Ok(value) = input.read(cx).value().trim().parse::<f64>() else {
+            let Some(value) = input
+              .read(cx)
+              .value()
+              .trim()
+              .parse::<f64>()
+              .ok()
+              .filter(|v| v.is_finite())
+            else {
+              // text that is no number cannot be committed, so put the value back
+              if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                input.update(cx, |input, cx| {
+                  input.set_value(format_number(field.last), window, cx)
+                });
+              }
               return;
             };
             let value = value.clamp(min, max);
-            if commit && value != field.last {
+            if !commit {
+              return;
+            }
+            if format_number(value) != format_number(field.last) {
               field.last = value;
               save(cx, |c| set(c, value));
+            }
+            // a clamped value leaves `last` unchanged, so the text is not reset elsewhere
+            let shown = format_number(value);
+            if input.read(cx).value().as_ref() != shown {
+              input.update(cx, |input, cx| input.set_value(shown, window, cx));
             }
           },
         );

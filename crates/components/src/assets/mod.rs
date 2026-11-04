@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::Result;
 use gpui_kit::{App, ImageSource};
@@ -21,17 +21,14 @@ pub fn image_source(path: &str) -> ImageSource {
   if path.starts_with("http://") || path.starts_with("https://") {
     return path.into();
   }
-  match (path.strip_prefix("~/"), dirs::home_dir()) {
-    (Some(rest), Some(home)) => home.join(rest).into(),
-    _ => PathBuf::from(path).into(),
-  }
+  corona_config::expand_home(Path::new(path)).into()
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use gpui_kit::Resource;
-  use std::path::Path;
+  use std::path::PathBuf;
 
   fn path(source: ImageSource) -> PathBuf {
     match source {
@@ -58,9 +55,9 @@ mod tests {
       path(image_source("~/walls/a.png")),
       home.path().join("walls/a.png")
     );
-    // only `~/` is expanded
+    assert_eq!(path(image_source("~")), home.path());
+    // only a whole `~` component is expanded
     assert_eq!(path(image_source("~user/a.png")), Path::new("~user/a.png"));
-    assert_eq!(path(image_source("~")), Path::new("~"));
   }
 
   #[test]
