@@ -21,8 +21,6 @@ use crate::ui::page::{DisksRequest, Request, types::size};
 const MOUNT: &str = "mount";
 const UNLOCK: &str = "unlock";
 const OPEN: &str = "open";
-/// Clicking the notification itself
-const DEFAULT: &str = "default";
 
 /// What a notification's buttons act on
 #[derive(Clone, Debug, PartialEq)]
@@ -60,36 +58,48 @@ pub fn init(cx: &mut App) {
   ) else {
     return;
   };
+  // ponytail: grows per unclicked notification, drop on NotificationClosed once notifications
+  // exposes it
   let sent: Rc<RefCell<HashMap<u32, Sent>>> = Rc::default();
-  // None until the first drives arrive: those were there already
+  // None until udisksd runs: its drives were there already
   let seen: Rc<RefCell<Option<HashSet<OwnedObjectPath>>>> = Rc::default();
+  let drives_now = |cx: &App| -> HashSet<OwnedObjectPath> {
+    cx.udisks()
+      .list_drives(cx)
+      .iter()
+      .map(|d| d.path.clone())
+      .collect()
+  };
+  if udisks.running(cx) {
+    *seen.borrow_mut() = Some(drives_now(cx));
+  }
+  {
+    // running is published after the drives and volumes, so this is the baseline
+    let seen = seen.clone();
+    cx.observe(&udisks.running, move |_, cx| {
+      *seen.borrow_mut() = cx.udisks().running(cx).then(|| drives_now(cx));
+    })
+    .detach();
+  }
   {
     let sent = sent.clone();
     cx.observe(&udisks.volumes, move |_, cx| {
       let udisks = cx.udisks();
-      let drives: HashSet<OwnedObjectPath> = udisks
-        .list_drives(cx)
-        .iter()
-        .map(|d| d.path.clone())
-        .collect();
+      let drives = drives_now(cx);
       let mut seen = seen.borrow_mut();
       let Some(known) = seen.as_mut() else {
-        if udisks.running(cx) && !drives.is_empty() {
-          *seen = Some(drives);
-        }
         return;
       };
-      if !udisks.running(cx) {
-        // udisksd went away, its drives come back on restart
-        *seen = None;
-        return;
-      }
+      // a drive is new once it shows a volume: a blank one waits for its first
+      let volumes = udisks.list_volumes(cx);
       let new: Vec<OwnedObjectPath> = drives
         .iter()
         .filter(|d| !known.contains(*d))
+        .filter(|d| volumes.iter().any(|v| v.drive.as_ref() == Some(*d)))
         .cloned()
         .collect();
-      *known = drives;
+      known.retain(|d| drives.contains(d));
+      known.extend(new.iter().cloned());
       for drive in new {
         notify(drive, sent.clone(), cx);
       }
@@ -115,7 +125,7 @@ pub fn init(cx: &mut App) {
             .detach();
         }
         (UNLOCK, Some(volume)) => open(Request::Unlock(volume), cx),
-        (OPEN | DEFAULT, _) | (_, None) => open(Request::Drive(target.drive), cx),
+        // Open, or the notification itself clicked
         _ => open(Request::Drive(target.drive), cx),
       });
     }

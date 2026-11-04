@@ -2,11 +2,11 @@
 
 use std::{
   fs::File,
-  io::{self, BufReader, Read, Write},
-  os::unix::fs::FileExt,
+  io::{self, BufReader, Read, Seek, Write},
+  os::unix::fs::{FileExt, OpenOptionsExt},
   path::Path,
   sync::atomic::{AtomicBool, AtomicU64, Ordering},
-  time::{Duration, Instant},
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const CHUNK: usize = 4 << 20;
@@ -56,8 +56,16 @@ pub fn backup(
   compress: bool,
   progress: &Progress,
 ) -> io::Result<u64> {
+  // written aside and moved in place once whole, so a failure never costs an older image
+  let part = image.with_added_extension("part");
   let write = || -> io::Result<u64> {
-    let file = File::create(image)?;
+    // a stale or planted .part is replaced, never written through
+    let _ = std::fs::remove_file(&part);
+    let file = File::options()
+      .write(true)
+      .create_new(true)
+      .mode(0o600)
+      .open(&part)?;
     match compress {
       true => {
         let mut encoder = zstd::stream::Encoder::new(file, 3)?;
@@ -76,10 +84,10 @@ pub fn backup(
       }
     }
   };
-  let result = write();
+  let result = write().and_then(|copied| std::fs::rename(&part, image).map(|()| copied));
   // a half written image is no backup
   if result.is_err() {
-    let _ = std::fs::remove_file(image);
+    let _ = std::fs::remove_file(&part);
   }
   result
 }
@@ -89,7 +97,7 @@ pub fn restore(image: &Path, device: File, progress: &Progress) -> io::Result<u6
   let mut file = File::open(image)?;
   let mut magic = [0u8; 4];
   let compressed = file.read_exact(&mut magic).is_ok() && magic == ZSTD_MAGIC;
-  let file = File::open(image)?;
+  file.rewind()?;
   let copied = match compressed {
     true => copy(zstd::stream::Decoder::new(file)?, &device, progress)?,
     false => copy(BufReader::new(file), &device, progress)?,
@@ -98,8 +106,8 @@ pub fn restore(image: &Path, device: File, progress: &Progress) -> io::Result<u6
   Ok(copied)
 }
 
-/// The image's size as it lands on the device: a zstd one's frame size when it says
-pub fn image_size(image: &Path) -> io::Result<u64> {
+/// The image's size as it lands on the device: a zstd one's frame size, None when it does not say
+pub fn image_size(image: &Path) -> io::Result<Option<u64>> {
   let len = std::fs::metadata(image)?.len();
   let mut head = vec![0u8; 18];
   let read = File::open(image)?.read(&mut head)?;
@@ -107,11 +115,10 @@ pub fn image_size(image: &Path) -> io::Result<u64> {
     return Ok(
       zstd::zstd_safe::get_frame_content_size(&head[..read])
         .ok()
-        .flatten()
-        .unwrap_or(len),
+        .flatten(),
     );
   }
-  Ok(len)
+  Ok(Some(len))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -195,7 +202,10 @@ pub fn benchmark(device: &File, size: u64, write: bool, progress: &Progress) -> 
     progress.done.store(i as u64 + 1, Ordering::Relaxed);
   }
   let mut small = Aligned::new(ACCESS_SIZE as usize);
-  let mut seed = Instant::now().elapsed().as_nanos() as u64 | 1;
+  let mut seed = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_or(0, |d| d.as_nanos() as u64)
+    | 1;
   let blocks = (size / ACCESS_SIZE).max(1);
   let mut access = Duration::ZERO;
   for _ in 0..SAMPLES {
@@ -243,7 +253,7 @@ mod tests {
       .unwrap();
       assert_eq!(copied, data.len() as u64);
       assert_eq!(progress.done.load(Ordering::Relaxed), data.len() as u64);
-      assert_eq!(image_size(&image).unwrap(), data.len() as u64);
+      assert_eq!(image_size(&image).unwrap(), Some(data.len() as u64));
       let compressed = std::fs::metadata(&image).unwrap().len() < data.len() as u64;
       assert_eq!(compressed, compress);
 
@@ -261,11 +271,14 @@ mod tests {
     let device = dir.path().join("device");
     std::fs::write(&device, [1u8; 100]).unwrap();
     let image = dir.path().join("image");
+    std::fs::write(&image, b"older").unwrap();
     let progress = Progress::default();
     progress.cancel.store(true, Ordering::Relaxed);
     let err = backup(File::open(&device).unwrap(), 100, &image, false, &progress).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Interrupted);
-    assert!(!image.exists());
+    assert!(!image.with_added_extension("part").exists());
+    // the image there before stays
+    assert_eq!(std::fs::read(&image).unwrap(), b"older");
   }
 
   #[test]

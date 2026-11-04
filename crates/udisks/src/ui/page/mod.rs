@@ -41,7 +41,7 @@ mod drive;
 pub(crate) mod fd;
 pub(crate) mod hotplug;
 pub(crate) mod jobs;
-mod model;
+pub(crate) mod model;
 mod partition;
 mod storage;
 pub(crate) mod types;
@@ -79,6 +79,7 @@ pub enum Request {
 pub struct DisksRequest(pub Option<Request>);
 
 impl Global for DisksRequest {}
+impl Global for model::UsageCache {}
 
 /// What udisksd can do with a filesystem type
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -138,10 +139,17 @@ impl ControlCenterPage for DisksPanel {
       };
       if gone {
         this.view = View::List;
-        this.dialog = None;
+        // a powered off drive's own going away is what its Ejected dialog tells
+        if !matches!(
+          this.dialog.as_ref().map(|d| &d.kind),
+          Some(dialogs::DialogKind::Ejected { .. })
+        ) {
+          this.dialog = None;
+        }
       }
       cx.notify();
     }));
+    subscriptions.push(cx.observe(&udisks.blocks, |this, _, cx| this.refresh_usage(cx)));
     let mut this = Self {
       tab: Tab::Devices,
       drive_tab: DriveTab::Overview,
@@ -152,6 +160,7 @@ impl ControlCenterPage for DisksPanel {
       caps: HashMap::new(),
       _subscriptions: subscriptions,
     };
+    this.refresh_usage(cx);
     this.take_request(window, cx);
     this
   }
@@ -174,6 +183,33 @@ impl ControlCenterPage for DisksPanel {
 }
 
 impl DisksPanel {
+  /// Reads the mount points' usage on background threads; the render only reads the cache
+  fn refresh_usage(&mut self, cx: &mut Context<Self>) {
+    let mounts = cx
+      .udisks()
+      .list_blocks(cx)
+      .iter()
+      .filter_map(|b| b.filesystem.as_ref())
+      .flat_map(|f| f.mount_points.iter().cloned())
+      .collect();
+    for mount in cx.default_global::<model::UsageCache>().sync(mounts) {
+      cx.spawn(async move |this, cx| {
+        let read = mount.clone();
+        let value = cx
+          .background_executor()
+          .spawn(async move { model::usage(&read) })
+          .await;
+        this
+          .update(cx, |_, cx| {
+            cx.global_mut::<model::UsageCache>().finish(mount, value);
+            cx.notify();
+          })
+          .ok();
+      })
+      .detach();
+    }
+  }
+
   fn take_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
     // reading first: taking marks the global changed, which would run this again
     if cx
@@ -199,6 +235,7 @@ impl DisksPanel {
     self.view = View::Drive(path);
     self.drive_tab = DriveTab::Overview;
     self.smart = None;
+    self.refreshing = false;
     cx.notify();
   }
 
@@ -291,6 +328,21 @@ impl DisksPanel {
     self.find_part(path, cx).is_some_and(|(_, p)| p.is_system())
   }
 
+  /// A block or drive disk the system uses or that anything on it is mounted, unlocked or active
+  pub(super) fn block_in_use(&self, path: &OwnedObjectPath, cx: &App) -> bool {
+    if self.block_is_system(path, cx) {
+      return true;
+    }
+    if let Some(view) = self
+      .drive_views(cx)
+      .into_iter()
+      .find(|v| v.disk.as_ref().is_some_and(|d| &d.path == path))
+    {
+      return view.parts.iter().any(PartView::is_on);
+    }
+    self.find_part(path, cx).is_some_and(|(_, p)| p.is_on())
+  }
+
   /// The partition view of a block, with its drive
   pub(super) fn find_part(
     &self,
@@ -375,7 +427,7 @@ impl DisksPanel {
             .and_then(|f| f.mount_points.first().cloned());
           let bar = mount
             .as_deref()
-            .and_then(model::usage)
+            .and_then(|m| model::cached_usage(m, cx))
             .zip(mount.clone())
             .map(|((used, total), mount)| {
               let used_percent = model::percent(used, total);

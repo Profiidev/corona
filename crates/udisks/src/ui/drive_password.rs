@@ -61,6 +61,7 @@ pub fn ask(device: String, cx: &mut App) -> oneshot::Receiver<String> {
   let (reply, done) = oneshot::channel();
   let requests = cx.global::<DrivePasswords>().requests.clone();
   requests.update(cx, |requests, cx| {
+    requests.retain(|r| !r.reply.is_canceled());
     requests.push_back(DrivePasswordRequest { id, device, reply });
     cx.notify();
   });
@@ -74,6 +75,8 @@ fn answer(password: Option<String>, cx: &mut App) {
     if let (Some(request), Some(password)) = (requests.pop_front(), password) {
       let _ = request.reply.send(password);
     }
+    // requests whose client is gone are skipped
+    requests.retain(|r| !r.reply.is_canceled());
     cx.notify();
   });
 }

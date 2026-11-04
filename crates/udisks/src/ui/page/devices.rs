@@ -21,7 +21,7 @@ use rust_i18n::t;
 use crate::ui::page::{
   DisksPanel,
   dialogs::Dialog,
-  model::{DriveView, Health, PartView, health, percent, system_block, usage},
+  model::{DriveView, Health, PartView, cached_usage, health, percent, system_block},
   types::{fs_name, size},
   ui::{icon, partition_map},
 };
@@ -220,7 +220,10 @@ impl DisksPanel {
     if let (Some(mount), false) = (&mount, encrypted) {
       sub = format!("{sub} · {mount}");
     }
-    let usage = mount.as_deref().filter(|_| !encrypted).and_then(usage);
+    let usage = mount
+      .as_deref()
+      .filter(|_| !encrypted)
+      .and_then(|m| cached_usage(m, cx));
     let open = shown.path.clone();
     let id = shown
       .path
@@ -344,16 +347,17 @@ impl DisksPanel {
       match (encrypted, swap, on) {
         (true, _, false) => this.dialog = Some(Dialog::unlock(path, window, cx)),
         (true, _, true) => {
-          let cleartext = cleartext.clone();
+          let cleartext = cleartext.as_ref().map(|c| c.path.clone());
           this.act(
             title.clone(),
             objects,
             Rc::new(move |cx| {
               let udisks = cx.udisks().clone();
+              // read per attempt: a retry after the unmount went through must not unmount again
               let unmount = cleartext
                 .as_ref()
-                .filter(|c| c.is_mounted())
-                .map(|c| udisks.unmount(&c.path, UnmountOptions::default()));
+                .filter(|c| udisks.block(c, cx).is_some_and(Block::is_mounted))
+                .map(|c| udisks.unmount(c, UnmountOptions::default()));
               let lock = udisks.lock(&path);
               Box::pin(async move {
                 if let Some(unmount) = unmount {

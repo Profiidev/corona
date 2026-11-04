@@ -1,7 +1,7 @@
 //! Drives over IPC
 
 use crate::{MountOptions, UdisksExt, UnmountOptions};
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
@@ -67,12 +67,19 @@ impl IpcCommand for DriveAction {
 
   fn reply((action, which): Self::Payload, cx: &mut App) -> Reply<Self::Response> {
     let udisks = cx.udisks();
-    let volume = udisks
-      .list_volumes(cx)
+    let volumes = udisks.list_volumes(cx);
+    let by_label: Vec<_> = volumes
       .iter()
-      .find(|v| v.device == which || v.label.eq_ignore_ascii_case(&which))
-      .cloned()
-      .with_context(|| format!("no drive {which}"));
+      .filter(|v| v.label.eq_ignore_ascii_case(&which))
+      .collect();
+    let volume = match volumes.iter().find(|v| v.device == which) {
+      Some(v) => Ok(v.clone()),
+      None => match by_label.as_slice() {
+        [v] => Ok((*v).clone()),
+        [] => Err(anyhow::anyhow!("no drive {which}")),
+        _ => Err(anyhow::anyhow!("{which} is ambiguous, use the device")),
+      },
+    };
     let volume = match volume {
       Ok(volume) => volume,
       Err(e) => return Box::pin(async move { Err(e) }),

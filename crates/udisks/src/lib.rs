@@ -8,7 +8,7 @@ use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 use crate::{
   listener::{listener, subscribe},
   options::{ToOptions, none},
-  proxy::{AtaProxy, DriveProxy, EncryptedProxy, FilesystemProxy, NvmeControllerProxy},
+  proxy::{DriveProxy, EncryptedProxy, FilesystemProxy},
 };
 
 pub use crate::{
@@ -131,12 +131,11 @@ impl Udisks {
         .await?
         .unlock(&passphrase, none())
         .await?;
-      Ok(
-        at::<FilesystemProxy>(&conn, cleartext)
-          .await?
-          .mount(MountOptions::default().options())
-          .await?,
-      )
+      at::<FilesystemProxy>(&conn, cleartext)
+        .await?
+        .mount(MountOptions::default().options())
+        .await
+        .context("unlocked, but mounting failed")
     }
   }
 
@@ -178,12 +177,15 @@ impl Udisks {
     let conn = self.conn.clone();
     let blocks = self.list_blocks(cx);
     let mut steps = Vec::new();
+    let mut system = false;
     for block in blocks.iter().filter(|b| b.drive.as_ref() == Some(drive)) {
       let cleartext = block
         .encrypted
         .as_ref()
         .and_then(|e| e.cleartext_device.as_ref())
         .and_then(|path| blocks.iter().find(|b| &b.path == path));
+      system |= ui::page::model::system_block(block)
+        || cleartext.is_some_and(ui::page::model::system_block);
       if let Some(cleartext) = cleartext {
         if cleartext.is_mounted() {
           steps.push(Step::Unmount(cleartext.path.clone()));
@@ -196,6 +198,7 @@ impl Udisks {
     let path = drive.clone();
     let power_off = self.drive(drive, cx).is_some_and(|d| d.can_power_off);
     async move {
+      anyhow::ensure!(!system, "{} is in use by the system", path.as_str());
       for step in steps {
         match step {
           Step::Unmount(block) => unmount(&conn, block.clone())
@@ -225,20 +228,12 @@ impl Udisks {
   ) -> impl Future<Output = Result<Option<Drive>>> + use<> {
     let (conn, path) = (self.conn.clone(), drive.clone());
     let kind = self.drive(drive, cx).map(SmartKind::of);
+    let ata = self.ata_smart_update(drive);
+    let nvme = self.nvme_smart_update(drive);
     async move {
       match kind {
-        Some(SmartKind::Ata) => {
-          at::<AtaProxy>(&conn, path.clone())
-            .await?
-            .smart_update(none())
-            .await?
-        }
-        Some(SmartKind::Nvme) => {
-          at::<NvmeControllerProxy>(&conn, path.clone())
-            .await?
-            .smart_update(none())
-            .await?
-        }
+        Some(SmartKind::Ata) => ata.await?,
+        Some(SmartKind::Nvme) => nvme.await?,
         Some(SmartKind::None) | None => {}
       }
       snapshot::drive(&conn, path).await

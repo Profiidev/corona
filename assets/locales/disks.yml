@@ -185,6 +185,9 @@ app:
       image_size:
         en: 'Image size'
         de: 'Abbildgröße'
+      image_size_unknown:
+        en: 'The image does not say how large it is unpacked, so it cannot be checked against the target.'
+        de: 'Das Abbild gibt seine entpackte Größe nicht an und lässt sich daher nicht gegen das Ziel prüfen.'
       image_too_big:
         en: 'The image (%{image}) is larger than the target (%{target}).'
         de: 'Das Abbild (%{image}) ist größer als das Ziel (%{target}).'

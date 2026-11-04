@@ -4,7 +4,7 @@ use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::{
   IpcCommandSend,
-  cli::{described, done},
+  cli::{described, done as log_failure},
 };
 
 use crate::commands::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
@@ -47,7 +47,10 @@ impl Commands {
             println!("{}\t{}\t{}", d.device, d.label, d.mount_points.join(","));
           }
         }
-        Err(e) => tracing::error!("Failed to list drives: {}", e),
+        Err(e) => {
+          tracing::error!("Failed to list drives: {}", e);
+          std::process::exit(1);
+        }
       },
       Commands::Mount { drive } => done(DriveAction::send((Drive::Mount, drive)), "mount"),
       Commands::Unmount { drive } => done(DriveAction::send((Drive::Unmount, drive)), "unmount"),
@@ -61,6 +64,14 @@ impl Commands {
         }
       },
     }
+  }
+}
+
+/// Logs a failure like the other commands and exits 1, so scripts see it
+fn done<T, E: std::fmt::Display>(result: Result<T, E>, what: &str) {
+  if result.is_err() {
+    log_failure(result, what);
+    std::process::exit(1);
   }
 }
 

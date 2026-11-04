@@ -35,6 +35,8 @@ use crate::ui::page::{
 const HISTORY: usize = 50;
 /// A failure seen twice, from the call and from its job, within this is one entry
 const SAME_FAILURE: Duration = Duration::from_secs(5);
+/// A failure offers its retry this long; the path may name another device later
+const RETRY_WINDOW: Duration = Duration::from_secs(120);
 
 /// Starts an action again
 pub type Retry = Rc<dyn Fn(&mut App)>;
@@ -95,6 +97,10 @@ pub fn init(cx: &mut App) {
     let Some(done) = completed.read(cx).clone() else {
       return;
     };
+    // a job that was never seen: the call that started it logs its own failure
+    if done.objects.is_empty() {
+      return;
+    }
     let title = job_title(&done.operation, &done.objects, cx.udisks().list_blocks(cx));
     log.push(
       Finished {
@@ -164,6 +170,49 @@ impl DisksLog {
     Self::attempt(cx, title, objects, start, Rc::new(ok));
   }
 
+  /// Like [`Self::run`] without a retry, for calls that carry a passphrase
+  pub fn run_once(
+    cx: &mut App,
+    title: String,
+    objects: Vec<OwnedObjectPath>,
+    task: LocalBoxFuture<'static, Result<()>>,
+  ) {
+    cx.spawn(async move |cx| {
+      if let Err(e) = task.await {
+        cx.update(|cx| log(cx).clone().fail(title, objects, &e, None, cx));
+      }
+    })
+    .detach();
+  }
+
+  /// Logs a failure and puts it in Finished
+  pub fn fail(
+    &self,
+    title: String,
+    objects: Vec<OwnedObjectPath>,
+    e: &anyhow::Error,
+    retry: Option<Retry>,
+    cx: &mut App,
+  ) {
+    tracing::warn!("disks: {title}: {e:#}");
+    let detail = match is_not_authorized(e) {
+      true => t!("app.disks.jobs.not_authorized").to_string(),
+      false => format!("{e:#}"),
+    };
+    self.push(
+      Finished {
+        title,
+        detail,
+        success: false,
+        at: now(),
+        objects,
+        retry,
+        when: Instant::now(),
+      },
+      cx,
+    );
+  }
+
   fn attempt(
     cx: &mut App,
     title: String,
@@ -176,11 +225,6 @@ impl DisksLog {
       let e = match task.await {
         Ok(result) => return cx.update(|cx| ok(result, cx)),
         Err(e) => e,
-      };
-      tracing::warn!("disks: {title}: {e:#}");
-      let detail = match is_not_authorized(&e) {
-        true => t!("app.disks.jobs.not_authorized").to_string(),
-        false => format!("{e:#}"),
       };
       cx.update(|cx| {
         let retry: Retry = {
@@ -196,33 +240,22 @@ impl DisksLog {
             )
           })
         };
-        log(cx).clone().push(
-          Finished {
-            title,
-            detail,
-            success: false,
-            at: now(),
-            objects,
-            retry: Some(retry),
-            when: Instant::now(),
-          },
-          cx,
-        );
+        log(cx).clone().fail(title, objects, &e, Some(retry), cx);
       });
     })
     .detach();
   }
 
   /// Runs `work` on a background thread as a panel job counting to `total`; its `Ok` text is
-  /// the Finished detail
+  /// the Finished detail. Returns the job's id, which `done` gets too
   pub fn spawn(
     cx: &mut App,
     title: String,
     objects: Vec<OwnedObjectPath>,
     total: u64,
     work: impl FnOnce(Arc<Progress>) -> Result<String> + Send + 'static,
-    done: impl FnOnce(&Result<String>, &mut App) + 'static,
-  ) {
+    done: impl FnOnce(u64, &Result<String>, &mut App) + 'static,
+  ) -> u64 {
     let this = log(cx).clone();
     let id = this.next_id.get();
     this.next_id.set(id + 1);
@@ -260,7 +293,7 @@ impl DisksLog {
           running.retain(|j| j.id != id);
           cx.notify();
         });
-        done(&result, cx);
+        done(id, &result, cx);
         let (success, detail) = match &result {
           Ok(detail) => (true, detail.clone()),
           Err(e) => (false, format!("{e:#}")),
@@ -280,6 +313,7 @@ impl DisksLog {
       });
     })
     .detach();
+    id
   }
 
   /// udisks jobs and panel jobs
@@ -358,6 +392,7 @@ impl DisksPanel {
       running.push(empty_note(t!("app.disks.jobs.none_running"), cx));
     }
 
+    let entries = log.finished.clone();
     let finished = log.finished.read(cx);
     let mut done: Vec<AnyElement> = finished
       .iter()
@@ -375,17 +410,32 @@ impl DisksPanel {
           true => when.to_string(),
           false => format!("{when} · {}", f.detail),
         };
-        let retry = f.retry.clone().map(|retry| {
-          Button::new(gpui_kit::ElementId::Name(
-            format!("disks-job-retry-{i}").into(),
-          ))
-          .label(t!("app.disks.jobs.retry"))
-          .small()
-          .primary()
-          .cursor_pointer()
-          .on_click(move |_, _, cx| retry(cx))
-          .into_any_element()
-        });
+        let when = f.when;
+        let entries = entries.clone();
+        let retry = f
+          .retry
+          .clone()
+          .filter(|_| when.elapsed() < RETRY_WINDOW)
+          .map(|retry| {
+            Button::new(gpui_kit::ElementId::Name(
+              format!("disks-job-retry-{i}").into(),
+            ))
+            .label(t!("app.disks.jobs.retry"))
+            .small()
+            .primary()
+            .cursor_pointer()
+            // once: a second click would run it again
+            .on_click(move |_, _, cx| {
+              entries.update(cx, |list, cx| {
+                if let Some(f) = list.iter_mut().find(|f| f.when == when) {
+                  f.retry = None;
+                }
+                cx.notify();
+              });
+              retry(cx)
+            })
+            .into_any_element()
+          });
         div()
           .flex()
           .items_center()

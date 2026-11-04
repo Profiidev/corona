@@ -118,6 +118,18 @@ pub struct AtaAttribute {
   pub pretty_unit: i32,
 }
 
+impl AtaAttribute {
+  /// `pretty` in its unit
+  pub fn pretty_text(&self) -> String {
+    match self.pretty_unit {
+      2 => format!("{} h", self.pretty / 3_600_000),
+      3 => format!("{} sectors", self.pretty),
+      4 => format!("{:.0} °C", self.pretty as f64 / 1000. - 273.15),
+      _ => self.pretty.to_string(),
+    }
+  }
+}
+
 /// An NVMe controller's SMART/Health log page, from `SmartGetAttributes`
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NvmeHealth {
@@ -326,7 +338,13 @@ impl Volume {
 }
 
 pub(crate) fn sort_volumes(volumes: &mut [Volume]) {
-  volumes.sort_by(|a, b| a.device.cmp(&b.device));
+  volumes.sort_by(|a, b| natural_key(&a.device).cmp(&natural_key(&b.device)));
+}
+
+/// the device without its trailing number, then the number: sda2 before sda10
+fn natural_key(device: &str) -> (&str, Option<u64>) {
+  let prefix = device.trim_end_matches(|c: char| c.is_ascii_digit());
+  (prefix, device[prefix.len()..].parse().ok())
 }
 
 #[cfg(test)]
@@ -353,11 +371,33 @@ mod tests {
     let mut volumes = vec![
       volume("/dev/sdb1"),
       volume("/dev/loop0"),
+      volume("/dev/sda10"),
       volume("/dev/sda2"),
     ];
     sort_volumes(&mut volumes);
     let devices: Vec<_> = volumes.iter().map(|v| v.device.as_str()).collect();
-    assert_eq!(devices, ["/dev/loop0", "/dev/sda2", "/dev/sdb1"]);
+    assert_eq!(
+      devices,
+      ["/dev/loop0", "/dev/sda2", "/dev/sda10", "/dev/sdb1"]
+    );
+  }
+
+  #[test]
+  fn attribute_pretty_in_its_unit() {
+    let attr = |pretty, pretty_unit| AtaAttribute {
+      id: 0,
+      name: String::new(),
+      flags: 0,
+      value: 0,
+      worst: 0,
+      threshold: 0,
+      pretty,
+      pretty_unit,
+    };
+    assert_eq!(attr(7_200_000, 2).pretty_text(), "2 h");
+    assert_eq!(attr(313_150, 4).pretty_text(), "40 °C");
+    assert_eq!(attr(8, 3).pretty_text(), "8 sectors");
+    assert_eq!(attr(5, 1).pretty_text(), "5");
   }
 
   #[test]

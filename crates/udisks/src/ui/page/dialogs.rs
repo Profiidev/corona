@@ -2,7 +2,8 @@
 
 use std::{
   collections::HashMap,
-  fs::File,
+  fs::{DirBuilder, File},
+  os::unix::fs::DirBuilderExt,
   path::{Path, PathBuf},
   rc::Rc,
   sync::{Arc, Mutex, atomic::Ordering},
@@ -42,8 +43,8 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::ui::page::{
   DisksPanel,
   fd::{self, Bench},
-  jobs::{DisksLog, Start},
-  model::{free_spaces, usage},
+  jobs::{self, DisksLog, Start},
+  model::{cached_usage, free_spaces},
   types::{FORMATS, default_partition_type, flags_of, fs_name, partition_types, size},
 };
 
@@ -132,12 +133,18 @@ pub struct Dialog {
   slider: Option<Entity<SliderState>>,
   /// MiB, what the slider shows
   slider_value: u64,
+  /// MiB, where the slider started
+  slider_start: u64,
   /// Free gaps for a new partition, (offset, size)
   gaps: Vec<(u64, u64)>,
   path: Option<PathBuf>,
+  /// Bytes in the picked restore image, read once when picked
+  image_size: Option<u64>,
   pub error: Option<String>,
   busy: bool,
   bench: Option<Bench>,
+  /// The panel job the benchmark runs as
+  job: Option<u64>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -175,11 +182,14 @@ impl Dialog {
       selects: HashMap::new(),
       slider: None,
       slider_value: 0,
+      slider_start: 0,
       gaps: Vec::new(),
       path: None,
+      image_size: None,
       error: None,
       busy: false,
       bench: None,
+      job: None,
       _subscriptions: Vec::new(),
     }
   }
@@ -213,7 +223,9 @@ impl Dialog {
   fn slider_for(&mut self, min: u64, max: u64, value: u64, cx: &mut Context<DisksPanel>) {
     // a filesystem fuller than the room it may get: no shrinking, it still slides up to max
     let min = min.min(max);
-    let (min, max) = ((min / MIB) as f32, (max / MIB).max(min / MIB + 1) as f32);
+    // rounded up, so the slider never goes below the bytes in use
+    let min_mib = min.div_ceil(MIB);
+    let (min, max) = (min_mib as f32, (max / MIB).max(min_mib + 1) as f32);
     let value = (value / MIB) as f32;
     let slider = cx.new(|_| {
       SliderState::new()
@@ -223,6 +235,7 @@ impl Dialog {
         .default_value(value.clamp(min, max))
     });
     self.slider_value = value.clamp(min, max) as u64;
+    self.slider_start = self.slider_value;
     self
       ._subscriptions
       .push(cx.subscribe(&slider, |this, _, event: &SliderEvent, cx| {
@@ -306,17 +319,49 @@ impl Dialog {
               .filesystem
               .as_ref()
               .and_then(|f| f.mount_points.first())
-              .and_then(|m| usage(m))
+              .and_then(|m| cached_usage(m, cx))
               .map_or(MIB, |(used, _)| used);
             (used, target.size + after)
           }
-          ResizeTarget::Encrypted => (MIB, target.size),
+          // neither call looks inside: what the contents need is unknown, it may only grow
+          ResizeTarget::Encrypted => {
+            let min = target
+              .encrypted
+              .as_ref()
+              .and_then(|e| e.cleartext_device.as_ref())
+              .and_then(|c| udisks.block(c, cx))
+              .and_then(|c| {
+                c.filesystem
+                  .as_ref()
+                  .map(|f| f.size)
+                  .filter(|s| *s > 0)
+                  .or(Some(c.size).filter(|s| *s > 0))
+              })
+              .unwrap_or(target.size);
+            (min, target.size)
+          }
           ResizeTarget::Partition => {
-            let fs = target.filesystem.as_ref().map_or(0, |f| f.size);
-            (fs.max(MIB), target.size + after)
+            let min = target
+              .filesystem
+              .as_ref()
+              .map(|f| f.size)
+              .filter(|s| *s > 0)
+              .unwrap_or(target.size);
+            (min, target.size + after)
           }
         };
-        this.slider_for(min, max, target.size, cx);
+        // starts at what the contents take up, which may be less than the partition
+        let start = match resize {
+          ResizeTarget::Partition => target.size,
+          ResizeTarget::Filesystem => target
+            .filesystem
+            .as_ref()
+            .map(|f| f.size)
+            .filter(|s| *s > 0)
+            .unwrap_or(target.size),
+          ResizeTarget::Encrypted => min,
+        };
+        this.slider_for(min, max, start, cx);
         this.checks.insert(
           "partition_too",
           target.partition.is_some() && resize == ResizeTarget::Filesystem,
@@ -427,9 +472,11 @@ impl Dialog {
         }
       }
       DialogKind::Backup => {
+        // dated, so a default backup never replaces an older one
         let name = format!(
-          "{}.img",
-          target.device.trim_start_matches("/dev/").replace('/', "-")
+          "{}-{}.img",
+          target.device.trim_start_matches("/dev/").replace('/', "-"),
+          jiff::Zoned::now().strftime("%Y%m%d-%H%M%S")
         );
         this.path = Some(home().join("Backups").join(name));
         this.checks.insert("compress", true);
@@ -546,12 +593,16 @@ impl DisksPanel {
           tear_down: true,
           ..Default::default()
         };
-        self.act(
-          title("app.disks.format"),
-          objects,
-          Rc::new(move |cx| Box::pin(cx.udisks().format(&path, &fs, options.clone()))),
-          cx,
-        );
+        let start: Start =
+          Rc::new(move |cx| Box::pin(cx.udisks().format(&path, &fs, options.clone())));
+        // a retry would keep the passphrase in the history
+        match encrypt {
+          true => {
+            let task = start(cx);
+            DisksLog::run_once(cx, title("app.disks.format"), objects, task)
+          }
+          false => self.act(title("app.disks.format"), objects, start, cx),
+        }
         self.close_dialog(cx);
       }
       DialogKind::Unlock => {
@@ -564,25 +615,21 @@ impl DisksPanel {
         cx.spawn(async move |this, cx| {
           let result = unlock.await;
           this
-            .update(cx, |this, cx| match result {
-              Ok(_) => this.close_dialog(cx),
-              Err(e) if is_not_authorized(&e) => {
-                this.close_dialog(cx);
-                let path = path.clone();
-                let start: Start = Rc::new(move |cx| {
-                  let unlock = cx
-                    .udisks()
-                    .unlock(&path, &passphrase, UnlockOptions::default());
-                  Box::pin(async move { unlock.await.map(drop) })
-                });
-                DisksLog::run(
-                  cx,
-                  format!("{} · {name}", t!("app.disks.unlock")),
-                  objects.clone(),
-                  start,
-                );
+            .update(cx, |this, cx| {
+              // only the dialog that started it, not one opened since
+              if !matches!(&this.dialog, Some(d)
+                if d.kind == DialogKind::Unlock && d.block.as_ref() == Some(&path))
+              {
+                return;
               }
-              Err(e) => this.dialog_error(unlock_error(&e), cx),
+              match result {
+                Ok(_) => this.close_dialog(cx),
+                // pressing Unlock again asks polkit again
+                Err(e) if is_not_authorized(&e) => {
+                  this.dialog_error(t!("app.disks.jobs.not_authorized"), cx)
+                }
+                Err(e) => this.dialog_error(unlock_error(&e), cx),
+              }
             })
             .ok();
         })
@@ -604,10 +651,17 @@ impl DisksPanel {
       }
       DialogKind::Resize(resize) => {
         let Some(target) = target else { return };
+        // unmoved: the floored MiB would resize an unaligned size down
+        if dialog.slider_value == dialog.slider_start {
+          return self.close_dialog(cx);
+        }
         let new = dialog.slider_value * MIB;
         let partition_too = dialog.check("partition_too");
         let passphrase = dialog.text("passphrase", cx);
         let grow = new > target.size;
+        // up to the whole block: 0 lets the filesystem take what the block has
+        let fill = dialog.slider_value >= target.size / MIB;
+        let secret = resize == ResizeTarget::Encrypted && !passphrase.is_empty();
         let start: Start = Rc::new(move |cx| {
           let udisks = cx.udisks().clone();
           let path = path.clone();
@@ -628,6 +682,7 @@ impl DisksPanel {
                   udisks.resize_partition(&path, new).await?;
                   udisks.resize_filesystem(&path, 0).await
                 }
+                _ if fill => udisks.resize_filesystem(&path, 0).await,
                 (true, false) => {
                   udisks.resize_filesystem(&path, new).await?;
                   udisks.resize_partition(&path, new).await
@@ -637,7 +692,13 @@ impl DisksPanel {
             }
           })
         });
-        self.act(title("app.disks.resize"), objects, start, cx);
+        match secret {
+          true => {
+            let task = start(cx);
+            DisksLog::run_once(cx, title("app.disks.resize"), objects, task)
+          }
+          false => self.act(title("app.disks.resize"), objects, start, cx),
+        }
         self.close_dialog(cx);
       }
       DialogKind::CreatePartition => {
@@ -714,12 +775,8 @@ impl DisksPanel {
         if new.is_empty() || new != confirm {
           return self.dialog_error(t!("app.disks.dialog.passphrases_differ"), cx);
         }
-        self.act(
-          title("app.disks.change_passphrase"),
-          objects,
-          Rc::new(move |cx| Box::pin(cx.udisks().change_passphrase(&path, &current, &new))),
-          cx,
-        );
+        let change = Box::pin(cx.udisks().change_passphrase(&path, &current, &new));
+        DisksLog::run_once(cx, title("app.disks.change_passphrase"), objects, change);
         self.close_dialog(cx);
       }
       DialogKind::DeletePartition => {
@@ -755,21 +812,24 @@ impl DisksPanel {
         cx.spawn(async move |_, cx| {
           let fd = open.await;
           cx.update(|cx| match fd {
-            Ok(fd) => DisksLog::spawn(
-              cx,
-              job,
-              objects,
-              total,
-              move |progress| {
-                if let Some(dir) = image.parent() {
-                  std::fs::create_dir_all(dir)?;
-                }
-                fd::backup(File::from(fd), total, &image, compress, &progress)?;
-                Ok(image.display().to_string())
-              },
-              |_, _| {},
-            ),
-            Err(e) => failed(job, objects, e, cx),
+            Ok(fd) => {
+              DisksLog::spawn(
+                cx,
+                job,
+                objects,
+                total,
+                move |progress| {
+                  if let Some(dir) = image.parent() {
+                    // private: the image holds the device's raw data
+                    DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+                  }
+                  fd::backup(File::from(fd), total, &image, compress, &progress)?;
+                  Ok(image.display().to_string())
+                },
+                |_, _, _| {},
+              );
+            }
+            Err(e) => jobs::log(cx).clone().fail(job, objects, &e, None, cx),
           })
         })
         .detach();
@@ -778,7 +838,9 @@ impl DisksPanel {
         let Some(image) = dialog.path.clone() else {
           return self.dialog_error(t!("app.disks.dialog.pick_image"), cx);
         };
-        let image_size = fd::image_size(&image).unwrap_or(0);
+        let Some(image_size) = dialog.image_size else {
+          return self.dialog_error(t!("app.disks.dialog.image_size_unknown"), cx);
+        };
         let target_size = target.as_ref().map_or(0, |t| t.size);
         if image_size > target_size {
           return self.dialog_error(
@@ -796,24 +858,26 @@ impl DisksPanel {
         cx.spawn(async move |_, cx| {
           let fd = open.await;
           cx.update(|cx| match fd {
-            Ok(fd) => DisksLog::spawn(
-              cx,
-              job,
-              objects,
-              image_size,
-              move |progress| {
-                fd::restore(&image, File::from(fd), &progress)?;
-                Ok(image.display().to_string())
-              },
-              |_, _| {},
-            ),
-            Err(e) => failed(job, objects, e, cx),
+            Ok(fd) => {
+              DisksLog::spawn(
+                cx,
+                job,
+                objects,
+                image_size,
+                move |progress| {
+                  fd::restore(&image, File::from(fd), &progress)?;
+                  Ok(image.display().to_string())
+                },
+                |_, _, _| {},
+              );
+            }
+            Err(e) => jobs::log(cx).clone().fail(job, objects, &e, None, cx),
           })
         })
         .detach();
       }
       DialogKind::Benchmark => {
-        let write = dialog.check("write") && !self.block_is_system(&path, cx);
+        let write = dialog.check("write") && !self.block_in_use(&path, cx);
         let total = target.as_ref().map_or(0, |t| t.size);
         let open = udisks.open_for_benchmark(&path, write);
         let job = title("app.disks.benchmark");
@@ -828,42 +892,59 @@ impl DisksPanel {
         cx.spawn(async move |_, cx| {
           let fd = open.await;
           cx.update(|cx| match fd {
-            Ok(fd) => DisksLog::spawn(
-              cx,
-              job,
-              objects,
-              fd::SAMPLES,
-              {
-                let slot = slot.clone();
-                move |progress| {
-                  let bench = fd::benchmark(&File::from(fd), total, write, &progress)?;
-                  let text = bench_text(&bench);
-                  *slot.lock().unwrap() = Some(bench);
-                  Ok(text)
-                }
-              },
-              move |result, cx| {
-                panel
-                  .update(cx, |this, cx| {
-                    if let Some(d) = &mut this.dialog
-                      && d.kind == DialogKind::Benchmark
-                    {
-                      d.busy = false;
-                      d.bench = slot.lock().unwrap().take();
-                      if let Err(e) = result {
-                        d.error = Some(format!("{e:#}"));
-                      }
-                    }
-                    cx.notify();
-                  })
-                  .ok();
-              },
-            ),
+            Ok(fd) => {
+              let id = DisksLog::spawn(
+                cx,
+                job,
+                objects,
+                fd::SAMPLES,
+                {
+                  let slot = slot.clone();
+                  move |progress| {
+                    let bench = fd::benchmark(&File::from(fd), total, write, &progress)?;
+                    let text = bench_text(&bench);
+                    *slot.lock().unwrap() = Some(bench);
+                    Ok(text)
+                  }
+                },
+                {
+                  let panel = panel.clone();
+                  move |id, result, cx| {
+                    panel
+                      .update(cx, |this, cx| {
+                        // only the dialog that started it, not one opened since
+                        if let Some(d) = &mut this.dialog
+                          && d.job == Some(id)
+                        {
+                          d.busy = false;
+                          d.job = None;
+                          d.bench = slot.lock().unwrap().take();
+                          if let Err(e) = result {
+                            d.error = Some(format!("{e:#}"));
+                          }
+                        }
+                        cx.notify();
+                      })
+                      .ok();
+                  }
+                },
+              );
+              panel
+                .update(cx, |this, _| {
+                  if let Some(d) = &mut this.dialog
+                    && d.kind == DialogKind::Benchmark
+                    && d.busy
+                  {
+                    d.job = Some(id);
+                  }
+                })
+                .ok();
+            }
             Err(e) => {
               panel
                 .update(cx, |this, cx| this.dialog_error(format!("{e:#}"), cx))
                 .ok();
-              failed(job, objects, e, cx);
+              jobs::log(cx).clone().fail(job, objects, &e, None, cx);
             }
           })
         })
@@ -895,7 +976,10 @@ impl DisksPanel {
             };
             let device = udisks.loop_setup(file.into(), options).await?;
             if autoclear {
-              udisks.loop_set_autoclear(&device, true).await?;
+              // attached already, a retry would attach the image again
+              if let Err(e) = udisks.loop_set_autoclear(&device, true).await {
+                tracing::warn!("Failed to set autoclear on {device}: {e:#}");
+              }
             }
             Ok(())
           })
@@ -942,9 +1026,17 @@ impl DisksPanel {
     };
     cx.spawn(async move |this, cx| {
       let Some(path) = picked.await else { return };
+      let probe = path.clone();
+      let image_size = cx
+        .background_executor()
+        .spawn(async move { fd::image_size(&probe).ok().flatten() })
+        .await;
       this
         .update(cx, |this, cx| {
           if let Some(dialog) = &mut this.dialog {
+            if dialog.kind == DialogKind::Restore {
+              dialog.image_size = image_size;
+            }
             dialog.path = Some(path);
             dialog.error = None;
           }
@@ -957,7 +1049,7 @@ impl DisksPanel {
 
   pub(super) fn dialog_view(
     &mut self,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<Self>,
   ) -> Option<AnyElement> {
     let dialog = self.dialog.as_ref()?;
@@ -978,10 +1070,11 @@ impl DisksPanel {
       .unwrap_or_default();
     let target_size = target.as_ref().map_or(0, |b| b.size);
     let id = dialog.kind.id();
+    // writing back over what is mounted reverts what is written meanwhile
     let system_target = dialog
       .block
       .as_ref()
-      .is_some_and(|b| self.block_is_system(b, cx));
+      .is_some_and(|b| self.block_in_use(b, cx));
     let field_label = |text: SharedString| {
       div()
         .text_xs()
@@ -1069,9 +1162,8 @@ impl DisksPanel {
         );
       };
 
-    let (icon, _hue, title, description, warning, ok): (
+    let (icon, title, description, warning, ok): (
       IconName,
-      f32,
       String,
       String,
       Option<String>,
@@ -1113,7 +1205,6 @@ impl DisksPanel {
         }
         (
           IconName::HardDrive,
-          22.,
           t!("app.disks.dialog.format_title", name = name.clone()).into(),
           t!("app.disks.dialog.format_desc").into(),
           Some(
@@ -1135,7 +1226,6 @@ impl DisksPanel {
         );
         (
           IconName::LockOpen,
-          30.,
           t!("app.disks.dialog.unlock_title", name = name.clone()).into(),
           t!("app.disks.dialog.unlock_desc", device = device.clone()).into(),
           None,
@@ -1156,7 +1246,6 @@ impl DisksPanel {
         text_field("label", label.into(), &mut fields);
         (
           IconName::Pencil,
-          215.,
           title.into(),
           device.clone(),
           None,
@@ -1212,7 +1301,6 @@ impl DisksPanel {
         }
         (
           IconName::Scaling,
-          215.,
           t!("app.disks.dialog.resize_title", name = name.clone()).into(),
           device.clone(),
           None,
@@ -1243,7 +1331,6 @@ impl DisksPanel {
         text_field("fs_label", t!("app.disks.label").into(), &mut fields);
         (
           IconName::Plus,
-          160.,
           t!("app.disks.create_partition").into(),
           device.clone(),
           None,
@@ -1254,7 +1341,6 @@ impl DisksPanel {
         select_field("type", t!("app.disks.partition_type").into(), &mut fields);
         (
           IconName::Tag,
-          215.,
           t!("app.disks.dialog.type_title").into(),
           device.clone(),
           None,
@@ -1268,7 +1354,6 @@ impl DisksPanel {
         }
         (
           IconName::Tag,
-          215.,
           t!("app.disks.dialog.flags_title").into(),
           device.clone(),
           None,
@@ -1293,7 +1378,6 @@ impl DisksPanel {
         );
         (
           IconName::KeyRound,
-          30.,
           t!("app.disks.change_passphrase").into(),
           device.clone(),
           None,
@@ -1311,7 +1395,6 @@ impl DisksPanel {
         );
         (
           IconName::Download,
-          215.,
           t!("app.disks.dialog.backup_title").into(),
           t!("app.disks.dialog.backup_desc", device = device.clone()).into(),
           None,
@@ -1320,10 +1403,8 @@ impl DisksPanel {
       }
       DialogKind::Restore => {
         path_field(t!("app.disks.dialog.image").into(), false, cx, &mut fields);
-        if let Some(image) = &dialog.path {
-          let image_size = fd::image_size(image)
-            .map(size)
-            .unwrap_or_else(|_| "?".into());
+        if dialog.path.is_some() {
+          let image_size = dialog.image_size.map_or_else(|| "?".into(), size);
           fields.push(kv(t!("app.disks.dialog.image_size"), image_size, None, cx));
         }
         fields.push(kv(
@@ -1334,7 +1415,6 @@ impl DisksPanel {
         ));
         (
           IconName::Upload,
-          22.,
           t!("app.disks.dialog.restore_title").into(),
           t!("app.disks.dialog.restore_desc", device = device.clone()).into(),
           Some(
@@ -1374,7 +1454,6 @@ impl DisksPanel {
         } else if let Some(running) = running {
           fields.push(kv(t!("app.disks.jobs.running"), running, None, cx));
         }
-        // writing back over a disk the system runs from could lose what it writes meanwhile
         if !system_target {
           check_field(
             "write",
@@ -1385,7 +1464,6 @@ impl DisksPanel {
         }
         (
           IconName::Gauge,
-          265.,
           t!("app.disks.dialog.benchmark_title", name = name.clone()).into(),
           t!("app.disks.dialog.benchmark_desc").into(),
           (dialog.check("write") && !system_target)
@@ -1398,7 +1476,6 @@ impl DisksPanel {
         fields.push(kv(t!("app.disks.size"), size(target_size), None, cx));
         (
           IconName::Trash,
-          22.,
           t!("app.disks.dialog.delete_title").into(),
           device.clone(),
           Some(
@@ -1440,14 +1517,7 @@ impl DisksPanel {
           true => t!("app.disks.dialog.clean_title"),
           false => t!("app.disks.dialog.dirty_title"),
         };
-        (
-          IconName::Check,
-          if *clean { 150. } else { 45. },
-          title.into(),
-          device.clone(),
-          None,
-          None,
-        )
+        (IconName::Check, title.into(), device.clone(), None, None)
       }
       DialogKind::LoopSetup => {
         path_field(t!("app.disks.dialog.image").into(), false, cx, &mut fields);
@@ -1465,7 +1535,6 @@ impl DisksPanel {
         );
         (
           IconName::Layers,
-          190.,
           t!("app.disks.dialog.loop_setup_title").into(),
           t!("app.disks.dialog.loop_setup_desc").into(),
           None,
@@ -1481,7 +1550,6 @@ impl DisksPanel {
         ));
         (
           IconName::Eject,
-          160.,
           t!("app.disks.dialog.safe_title").into(),
           t!("app.disks.dialog.safe_desc", name = name.clone()).into(),
           None,
@@ -1496,7 +1564,6 @@ impl DisksPanel {
       Some(_) => t!("app.common.cancel"),
       None => t!("app.disks.dialog.close"),
     };
-    let _ = window;
     Some(
       modal::Dialog::new(
         format!("disks-dialog-{id}"),
@@ -1538,36 +1605,14 @@ impl DisksPanel {
 
 /// The benchmark job's progress, while it runs
 fn log_progress(dialog: &Dialog, cx: &App) -> Option<String> {
-  if !dialog.busy {
-    return None;
-  }
-  let jobs = crate::ui::page::jobs::log(cx).running.read(cx);
-  let job = jobs.iter().find(|j| j.total == fd::SAMPLES)?;
+  let id = dialog.job?;
+  let jobs = jobs::log(cx).running.read(cx);
+  let job = jobs.iter().find(|j| j.id == id)?;
   Some(format!(
     "{} / {}",
     job.progress.done.load(Ordering::Relaxed),
     job.total
   ))
-}
-
-fn failed(title: String, objects: Vec<OwnedObjectPath>, e: anyhow::Error, cx: &mut App) {
-  tracing::warn!("disks: {title}: {e:#}");
-  let detail = match is_not_authorized(&e) {
-    true => t!("app.disks.jobs.not_authorized").to_string(),
-    false => format!("{e:#}"),
-  };
-  crate::ui::page::jobs::log(cx).clone().push(
-    crate::ui::page::jobs::Finished {
-      title,
-      detail,
-      success: false,
-      at: crate::ui::page::jobs::now(),
-      objects,
-      retry: None,
-      when: std::time::Instant::now(),
-    },
-    cx,
-  );
 }
 
 /// udisks' answer to a wrong passphrase, said shorter

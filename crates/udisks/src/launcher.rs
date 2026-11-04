@@ -12,7 +12,7 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::ui::page::types::size;
+use crate::ui::page::{model::system_block, types::size};
 
 fn observe(notify: Notify, cx: &mut App) -> Vec<Subscription> {
   let udisks = cx.udisks().clone();
@@ -174,10 +174,15 @@ fn drives_with_volumes(cx: &App) -> Vec<Drive> {
     .list_drives(cx)
     .iter()
     .filter(|d| {
-      udisks
-        .list_volumes(cx)
-        .iter()
-        .any(|v| v.drive.as_ref() == Some(&d.path))
+      d.is_removable()
+        && !udisks
+          .list_blocks(cx)
+          .iter()
+          .any(|b| b.drive.as_ref() == Some(&d.path) && system_block(b))
+        && udisks
+          .list_volumes(cx)
+          .iter()
+          .any(|v| v.drive.as_ref() == Some(&d.path))
     })
     .cloned()
     .collect()
@@ -261,10 +266,26 @@ fn row(rows: &mut Vec<(SharedString, SharedString)>, key: &str, value: impl Into
   rows.push((t!(key).into(), value.into()));
 }
 
+/// Device-controlled text must not render as markdown
+fn escape(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  for c in text.chars() {
+    match c {
+      '\n' | '\r' => out.push(' '),
+      '\\' | '`' | '*' | '_' | '[' | ']' | '(' | ')' | '<' | '>' | '!' | '|' | '#' => {
+        out.push('\\');
+        out.push(c)
+      }
+      c => out.push(c),
+    }
+  }
+  out
+}
+
 fn health_view(drive: &Drive, attributes: Option<&SmartAttributes>) -> View {
   let smart = drive.smart();
   let mut rows: Vec<(SharedString, SharedString)> = Vec::new();
-  let mut body = format!("# {}\n", drive.name());
+  let mut body = format!("# {}\n", escape(&drive.name()));
   if let Some(smart) = &smart {
     let state = match smart.failing {
       true => t!("app.launcher.drives.failing"),
@@ -328,7 +349,12 @@ fn health_view(drive: &Drive, attributes: Option<&SmartAttributes>) -> View {
       for a in attributes {
         body.push_str(&format!(
           "| {} | {} | {} | {} | {} | {} |\n",
-          a.id, a.name, a.value, a.worst, a.threshold, a.pretty
+          a.id,
+          escape(&a.name),
+          a.value,
+          a.worst,
+          a.threshold,
+          a.pretty_text()
         ));
       }
     }

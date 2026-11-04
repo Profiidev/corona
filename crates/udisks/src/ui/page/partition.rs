@@ -4,10 +4,11 @@ use std::rc::Rc;
 
 use crate::UdisksExt;
 use corona_components::components::list::{kv, section};
+use corona_config::ConfigProvider;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,
-  component::{ActiveTheme, Sizable, button::Button},
+  component::{Sizable, button::Button},
   div,
 };
 use rust_i18n::t;
@@ -21,32 +22,42 @@ use crate::ui::page::{
 };
 
 /// Opens `path` in the default app for `inode/directory`, `xdg-open` when there is none
-fn open_folder(path: &std::path::Path, cx: &mut gpui_kit::App) {
-  let id = std::process::Command::new("xdg-mime")
-    .args(["query", "default", "inode/directory"])
-    .output()
-    .ok()
-    .map(|out| {
-      String::from_utf8_lossy(&out.stdout)
-        .trim()
-        .trim_end_matches(".desktop")
-        .to_string()
-    });
-  let app = id.and_then(|id| {
-    corona_desktop::apps::apps()
-      .iter()
-      .find(|a| a.id == id)
-      .cloned()
+fn open_folder(path: std::path::PathBuf, cx: &mut gpui_kit::App) {
+  // xdg-mime is a shell script, off the UI thread
+  let query = cx.background_executor().spawn(async {
+    std::process::Command::new("xdg-mime")
+      .args(["query", "default", "inode/directory"])
+      .output()
+      .ok()
+      .map(|out| {
+        String::from_utf8_lossy(&out.stdout)
+          .trim()
+          .trim_end_matches(".desktop")
+          .to_string()
+      })
   });
-  let Some(app) = app else {
-    return cx.open_with_system(path);
-  };
-  let mut argv = app.exec.clone();
-  argv.push(path.display().to_string());
-  if let Err(e) = corona_desktop::apps::spawn(&app.id, &argv, None) {
-    tracing::warn!("opening {}: {e:#}", path.display());
-    cx.open_with_system(path);
-  }
+  cx.spawn(async move |cx| {
+    let id = query.await;
+    cx.update(|cx| {
+      let app = id.and_then(|id| {
+        corona_desktop::apps::apps()
+          .iter()
+          .find(|a| a.id == id)
+          .cloned()
+      });
+      let Some(app) = app else {
+        return cx.open_with_system(&path);
+      };
+      let mut argv = app.exec.clone();
+      argv.push(path.display().to_string());
+      let argv = corona_desktop::apps::command_for(&app, &argv, &cx.config().launcher.terminal);
+      if let Err(e) = corona_desktop::apps::spawn(&app.id, &argv, None) {
+        tracing::warn!("opening {}: {e:#}", path.display());
+        cx.open_with_system(&path);
+      }
+    })
+  })
+  .detach();
 }
 
 /// The actions left on a partition the running system uses
@@ -61,7 +72,6 @@ impl DisksPanel {
     let Some((drive, part)) = self.find_part(path, cx) else {
       return Vec::new();
     };
-    let _theme = cx.theme();
     let block = part.block.clone();
     let table_kind = drive
       .as_ref()
@@ -94,7 +104,7 @@ impl DisksPanel {
           .icon(IconName::FolderOpen)
           .small()
           .cursor_pointer()
-          .on_click(move |_, _, cx| open_folder(std::path::Path::new(&mount), cx))
+          .on_click(move |_, _, cx| open_folder(mount.clone().into(), cx))
           .into_any_element(),
       );
     }

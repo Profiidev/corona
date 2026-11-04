@@ -50,7 +50,6 @@ impl DisksPanel {
     else {
       return Vec::new();
     };
-    let _theme = cx.theme();
     let drive = &view.drive;
     let tab_path = path.clone();
     let sub_tabs = segmented(
@@ -283,6 +282,10 @@ impl DisksPanel {
       };
       this
         .update(cx, |this, cx| {
+          // another drive's page is open by now, its own refresh owns the state
+          if !matches!(&this.view, super::View::Drive(shown) if *shown == path) {
+            return;
+          }
           this.refreshing = false;
           this.smart = Some((path, attributes));
           cx.notify();
@@ -477,7 +480,7 @@ impl DisksPanel {
               &a.value.to_string(),
               &a.worst.to_string(),
               &a.threshold.to_string(),
-              &a.pretty.to_string(),
+              &a.pretty_text(),
             ],
             Some(color),
             false,

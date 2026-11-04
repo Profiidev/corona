@@ -165,8 +165,8 @@ impl DisksPanel {
     let label_path = block.path.clone();
     let name = block.name().trim_start_matches("/dev/").to_string();
     let mut sub = vec![size(block.size)];
-    if !block.id_label.is_empty() && block.id_label != name {
-      sub.insert(0, short(block));
+    if !block.id_label.is_empty() {
+      sub.insert(0, id.clone());
     }
     let (state, tone) = match active {
       true => (t!("app.disks.state.active"), Tone::Ok),

@@ -2,6 +2,7 @@
 
 use crate::{Block, Drive, Job};
 use rust_i18n::t;
+use std::collections::{HashMap, HashSet};
 use zbus::zvariant::OwnedObjectPath;
 
 /// Partition colors by position, as in the design
@@ -141,12 +142,62 @@ pub fn health(drive: &Drive) -> Health {
   }
 }
 
-/// Used and total bytes of a mounted filesystem
+/// Mount point usage as last read off the UI thread, statvfs can hang on a dead device
+#[derive(Default)]
+pub struct UsageCache {
+  /// The mount points of the current volumes
+  wanted: HashSet<String>,
+  /// Mount points with a read in flight, never read twice at once
+  pending: HashSet<String>,
+  /// A read's result, None when the stat failed; kept while a fresh read runs
+  values: HashMap<String, Option<(u64, u64)>>,
+}
+
+impl UsageCache {
+  /// Used and total bytes, None while unread or unreadable
+  pub fn get(&self, mount_point: &str) -> Option<(u64, u64)> {
+    self.values.get(mount_point).copied().flatten()
+  }
+
+  /// Follows the volumes: drops unmounted ones, returns the mount points to read now
+  pub fn sync(&mut self, mounts: HashSet<String>) -> Vec<String> {
+    self.values.retain(|m, _| mounts.contains(m));
+    self.wanted = mounts;
+    let todo: Vec<String> = self
+      .wanted
+      .iter()
+      .filter(|m| !self.pending.contains(*m))
+      .cloned()
+      .collect();
+    self.pending.extend(todo.iter().cloned());
+    todo
+  }
+
+  /// Stores a read's result unless the mount point went away meanwhile
+  pub fn finish(&mut self, mount_point: String, value: Option<(u64, u64)>) {
+    self.pending.remove(&mount_point);
+    if self.wanted.contains(&mount_point) {
+      self.values.insert(mount_point, value);
+    }
+  }
+}
+
+/// The cached usage of a mount point
+pub fn cached_usage(mount_point: &str, cx: &gpui_kit::App) -> Option<(u64, u64)> {
+  cx.try_global::<UsageCache>()?.get(mount_point)
+}
+
+/// Used and total bytes of a mounted filesystem, blocks on a hung one: never on the UI thread
 pub fn usage(mount_point: &str) -> Option<(u64, u64)> {
   let stat = rustix::fs::statvfs(mount_point).ok()?;
-  let total = stat.f_blocks * stat.f_frsize;
-  let free = stat.f_bfree * stat.f_frsize;
-  (total > 0).then(|| (total - free, total))
+  used_total(stat.f_blocks, stat.f_bfree, stat.f_frsize)
+}
+
+/// Used and total bytes from statvfs counts, free may exceed total on odd filesystems
+fn used_total(blocks: u64, free_blocks: u64, frsize: u64) -> Option<(u64, u64)> {
+  let total = blocks.saturating_mul(frsize);
+  let free = free_blocks.saturating_mul(frsize);
+  (total > 0).then(|| (total.saturating_sub(free), total))
 }
 
 /// Percent used
@@ -241,6 +292,36 @@ pub(crate) mod tests {
   use crate::{Ata, Encrypted, Filesystem, Partition, PartitionTable, Swapspace};
 
   use super::*;
+
+  #[test]
+  fn usage_cache_reads_once_and_drops_unmounted() {
+    let set = |m: &[&str]| m.iter().map(|m| m.to_string()).collect::<HashSet<_>>();
+    let mut cache = UsageCache::default();
+    assert_eq!(cache.sync(set(&["/a"])), vec!["/a"]);
+    assert_eq!(cache.get("/a"), None);
+    // a read in flight is not stacked, a new mount point starts its own
+    let mut todo = cache.sync(set(&["/a", "/b"]));
+    todo.sort();
+    assert_eq!(todo, vec!["/b"]);
+    cache.finish("/a".into(), Some((1, 2)));
+    assert_eq!(cache.get("/a"), Some((1, 2)));
+    // the old value shows while the refresh runs
+    assert_eq!(cache.sync(set(&["/a"])), vec!["/a"]);
+    assert_eq!(cache.get("/a"), Some((1, 2)));
+    // unmounted: entry dropped, a late result discarded
+    cache.sync(set(&[]));
+    assert_eq!(cache.get("/a"), None);
+    cache.finish("/b".into(), Some((3, 4)));
+    assert_eq!(cache.get("/b"), None);
+  }
+
+  #[test]
+  fn used_total_survives_free_above_total() {
+    assert_eq!(used_total(10, 20, 4096), Some((0, 40960)));
+    assert_eq!(used_total(10, 4, 4096), Some((6 * 4096, 40960)));
+    assert_eq!(used_total(0, 0, 4096), None);
+    assert_eq!(used_total(u64::MAX, 0, 2), Some((u64::MAX, u64::MAX)));
+  }
 
   pub(crate) fn path(p: &str) -> OwnedObjectPath {
     OwnedObjectPath::try_from(p).unwrap()
