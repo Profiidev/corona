@@ -47,6 +47,9 @@ keywords = ["hyprland", "wayland", "compositor", "shell", "desktop"]
 categories = []
 
 [workspace.dependencies]
+greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
+corona-zbus-upower = "0.1.0"
+corona-zbus-mpris2 = "0.1.0"
 corona_compositor = { path = "crates/compositor" }
 corona_pipewire = { path = "crates/pipewire" }
 corona_desktop = { path = "crates/desktop" }
@@ -115,6 +118,8 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 jiff = "0.2.37"
 notify = "8.2.0"
 sysinfo = "0.39.6"
+nvml-wrapper = "0.13.0"
+xkbcommon = "0.8.0"
 wayland-server = "0.31"
 clap = { version = "4.6.7", features = ["derive"] }
 clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
@@ -129,6 +134,7 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 nucleo-matcher = "0.3.1"
 wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+zstd = "0.14.3"
 
 [package]
 name = "corona"
