@@ -16,7 +16,7 @@ pub struct SettingsArgs {
 impl SettingsArgs {
   pub fn run(self) {
     if let Err(e) = SettingsWindow::send((self.action, self.page)) {
-      tracing::error!("Failed to open settings: {}", e);
+      tracing::error!("settings command failed: {}", e);
     }
   }
 }

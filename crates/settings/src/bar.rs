@@ -17,7 +17,7 @@ use gpui_kit::{
   assets::IconName,
   base::ElementExt,
   component::{
-    ActiveTheme, Icon, Sizable,
+    ActiveTheme, Sizable,
     button::{Button, ButtonVariants},
     popover::Popover,
     setting::{SettingGroup, SettingItem, SettingPage},
@@ -211,10 +211,7 @@ pub(crate) fn page(cx: &App) -> SettingPage {
       .title(t!("app.settings.bar.groups.bars"))
       .item(SettingItem::render(|_, window, cx| add_bar(window, cx))),
   );
-  SettingPage::new(t!("app.settings.bar.title"))
-    .icon(Icon::new(IconName::PanelTop))
-    .resettable(true)
-    .groups(groups)
+  crate::page(t!("app.settings.bar.title"), IconName::PanelTop, groups)
 }
 
 /// A bar setting: `field` of the bar called `name`; a bar not in the defaults
@@ -249,8 +246,9 @@ fn bar_group(name: String) -> SettingGroup {
   SettingGroup::new()
     .title(t!("app.settings.bar.groups.bar", name = name))
     .items(vec![
-      SettingItem::new(
+      crate::item(
         t!("app.settings.bar.position.title"),
+        t!("app.settings.bar.position.description"),
         choice(
           &[
             (Placement::Top, t!("app.settings.options.top")),
@@ -261,63 +259,62 @@ fn bar_group(name: String) -> SettingGroup {
           of(&name, |b| b.position),
           set(&name, |b, v| b.position = v),
         ),
-      )
-      .description(t!("app.settings.bar.position.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.thickness.title"),
+        t!("app.settings.bar.thickness.description"),
         number(
           key("thickness"),
           (16., 96., 1.),
           of(&name, |b| b.thickness.into()),
           set(&name, |b, v: f64| b.thickness = v as f32),
         ),
-      )
-      .description(t!("app.settings.bar.thickness.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.background_opacity.title"),
+        t!("app.settings.bar.background_opacity.description"),
         slider(
           key("opacity"),
           (0., 1., 0.05),
           of(&name, |b| b.background_opacity),
           set(&name, |b, v| b.background_opacity = v),
         ),
-      )
-      .description(t!("app.settings.bar.background_opacity.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.capsules.title"),
+        t!("app.settings.bar.capsules.description"),
         switch(of(&name, |b| b.capsule), set(&name, |b, v| b.capsule = v)),
-      )
-      .description(t!("app.settings.bar.capsules.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.widget_spacing.title"),
+        t!("app.settings.bar.widget_spacing.description"),
         number(
           key("spacing"),
           (0., 64., 1.),
           of(&name, |b| b.widget_spacing.into()),
           set(&name, |b, v: f64| b.widget_spacing = v as f32),
         ),
-      )
-      .description(t!("app.settings.bar.widget_spacing.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.padding_start.title"),
+        t!("app.settings.bar.padding_start.description"),
         number(
           key("padding_start"),
           (0., 400., 1.),
           of(&name, |b| b.padding_start.into()),
           set(&name, |b, v: f64| b.padding_start = v as f32),
         ),
-      )
-      .description(t!("app.settings.bar.padding_start.description").into_owned()),
-      SettingItem::new(
+      ),
+      crate::item(
         t!("app.settings.bar.padding_end.title"),
+        t!("app.settings.bar.padding_end.description"),
         number(
           key("padding_end"),
           (0., 400., 1.),
           of(&name, |b| b.padding_end.into()),
           set(&name, |b, v: f64| b.padding_end = v as f32),
         ),
-      )
-      .description(t!("app.settings.bar.padding_end.description").into_owned()),
+      ),
       SettingItem::render(move |_, window, cx| editor(&editor_name, window, cx))
         .keywords(["widgets", "widget"]),
       SettingItem::render(move |_, _, cx| remove_bar(&remove_name, cx)),
@@ -366,7 +363,9 @@ fn remove_bar(name: &str, cx: &App) -> Div {
       .on_click(move |_, _, cx| {
         let name = name.clone();
         save(cx, move |c| {
-          c.bar.remove(&name);
+          if c.bar.len() > 1 {
+            c.bar.remove(&name);
+          }
         })
       }),
   )
@@ -715,22 +714,40 @@ pub fn current_options<T: serde::de::DeserializeOwned + serde::Serialize + Defau
   cx.config().bar.get(name).map(|bar| options(bar, slot))
 }
 
+/// `existing` with the keys of `json` that differ from `default` set and the ones equal to it
+/// removed, so keys the options type does not know stay; none when nothing is left
+fn diff_options(
+  existing: Option<serde_json::Value>,
+  json: Option<serde_json::Value>,
+  default: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+  use serde_json::Value::Object;
+  match (json, default) {
+    (Some(Object(json)), Some(Object(default))) => {
+      let mut merged = match existing {
+        Some(Object(existing)) => existing,
+        _ => Default::default(),
+      };
+      for (k, v) in json {
+        if default.get(&k) == Some(&v) {
+          merged.remove(&k);
+        } else {
+          merged.insert(k, v);
+        }
+      }
+      (!merged.is_empty()).then_some(Object(merged))
+    }
+    (json, _) => json,
+  }
+}
+
 /// Writes the widget's options; ones equal to the defaults are left out
 pub fn set_options<T: serde::Serialize + Default>(cx: &mut App, name: &str, slot: Slot, value: T) {
   let json = serde_json::to_value(&value).ok();
   let default = serde_json::to_value(T::default()).ok();
   edit_bar(cx, name, move |b| {
     if let Some(widget) = widget_at_mut(b, slot) {
-      widget.options = match (json, default) {
-        (Some(serde_json::Value::Object(json)), Some(serde_json::Value::Object(default))) => {
-          let changed: serde_json::Map<_, _> = json
-            .into_iter()
-            .filter(|(k, v)| default.get(k) != Some(v))
-            .collect();
-          (!changed.is_empty()).then_some(serde_json::Value::Object(changed))
-        }
-        (json, _) => json,
-      };
+      widget.options = diff_options(widget.options.take(), json, default);
     }
   });
 }
@@ -835,7 +852,8 @@ pub fn idle_form(
 mod tests {
   use corona_config::bar::{BarConfig, WidgetConfig, WidgetEntry};
 
-  use super::{Section, Slot, Target, move_widget, remove_widget, title};
+  use super::{Section, Slot, Target, diff_options, move_widget, remove_widget, title};
+  use serde_json::json;
 
   #[test]
   fn widget_titles() {
@@ -949,5 +967,29 @@ mod tests {
     assert_eq!(b.start, [w("b"), w("c")]);
     remove_widget(&mut b, at(Start, 1));
     assert_eq!(b.start, [w("b")]);
+  }
+
+  #[test]
+  fn diffs_options() {
+    let default = Some(json!({"a": 1, "b": 2}));
+    // all default: none
+    assert_eq!(
+      diff_options(None, Some(json!({"a": 1, "b": 2})), default.clone()),
+      None
+    );
+    // only the changed keys, the unknown ones kept
+    assert_eq!(
+      diff_options(
+        Some(json!({"a": 5, "x": 9})),
+        Some(json!({"a": 1, "b": 3})),
+        default.clone()
+      ),
+      Some(json!({"b": 3, "x": 9}))
+    );
+    // not an object: as is
+    assert_eq!(
+      diff_options(None, Some(json!(4)), Some(json!(1))),
+      Some(json!(4))
+    );
   }
 }

@@ -50,9 +50,7 @@ pub(crate) fn page(cx: &App) -> SettingPage {
                   window,
                   cx,
                   |name, cx| {
-                    if let Err(e) = set_theme(name.to_string(), cx) {
-                      tracing::error!("Failed to set theme: {e:#}");
-                    }
+                    let _ = set_theme(name.to_string(), cx).log_err();
                   },
                 )
                 .with_size(options.size())

@@ -7,7 +7,7 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 use std::collections::BTreeMap;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use corona_config::bar::BarConfig;
 use corona_surface::{
   bar::Widget,
@@ -17,7 +17,7 @@ use corona_surface::{
 };
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, Focusable, Global,
+  AnyWindowHandle, App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, Global,
   InteractiveElement, IntoElement, ParentElement, Render, SharedString, Styled, TitlebarOptions,
   Window, WindowBounds, WindowDecorations, WindowOptions,
   assets::IconName,
@@ -195,11 +195,12 @@ impl SettingsRegistry {
     self.widget_options.get(widget_type).copied()
   }
 
-  /// Where `page` is in the sidebar, the first page when it is none or unknown
-  fn index(&self, page: Option<&str>) -> usize {
-    page
-      .and_then(|p| self.pages.iter().position(|e| e.id == p))
-      .unwrap_or_default()
+  /// Where `page` is in the sidebar, the first page when it is none, nothing when unknown
+  fn index(&self, page: Option<&str>) -> Option<usize> {
+    match page {
+      None => Some(0),
+      Some(p) => self.pages.iter().position(|e| e.id == p),
+    }
   }
 }
 
@@ -310,13 +311,15 @@ pub fn item(
 }
 
 #[derive(Default)]
-struct OpenSettings(Option<AnyWindowHandle>);
+struct OpenSettings(Option<(AnyWindowHandle, Entity<SettingsWindow>)>);
 
 impl Global for OpenSettings {}
 
 struct SettingsWindow {
   focus: FocusHandle,
   page: usize,
+  /// Bumped when the page changes, as the widget only reads its page when created
+  generation: usize,
 }
 
 impl Focusable for SettingsWindow {
@@ -329,7 +332,7 @@ impl Render for SettingsWindow {
   fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let pages: Vec<_> = cx.settings().pages.iter().map(|p| p.page).collect();
     gpui_kit::div().track_focus(&self.focus).size_full().child(
-      Settings::new("corona-settings")
+      Settings::new(format!("corona-settings-{}", self.generation))
         .with_group_variant(GroupBoxVariant::Outline)
         .default_selected_index(SelectIndex {
           page_ix: self.page,
@@ -342,17 +345,27 @@ impl Render for SettingsWindow {
 
 /// The settings window, while it is open
 pub fn window(cx: &App) -> Option<AnyWindowHandle> {
-  let handle = cx.try_global::<OpenSettings>()?.0?;
+  let (handle, _) = cx.try_global::<OpenSettings>()?.0.clone()?;
   // gone once the user closed it
   cx.windows().contains(&handle).then_some(handle)
 }
 
 /// Shows the settings, on `page` when it opens.
 pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
+  let index =
+    (cx.settings().index(page)).with_context(|| format!("unknown settings page {page:?}"))?;
   if let Some(handle) = window(cx) {
+    if page.is_some()
+      && let Some((_, view)) = cx.global::<OpenSettings>().0.clone()
+    {
+      view.update(cx, |view, cx| {
+        view.page = index;
+        view.generation += 1;
+        cx.notify();
+      });
+    }
     return handle.update(cx, |_, window, _| window.activate_window());
   }
-  let page = cx.settings().index(page);
   if let Some(on_open) = cx.settings().on_open {
     on_open(cx);
   }
@@ -372,17 +385,21 @@ pub fn open(page: Option<&str>, cx: &mut App) -> Result<()> {
     app_id: Some(APP_NAME_SETTINGS.to_string()),
     ..Default::default()
   };
+  let view_out = std::rc::Rc::new(std::cell::RefCell::new(None));
   let handle = cx.open_window(options, |window, cx| {
     let view = cx.new(|cx| SettingsWindow {
       focus: cx.focus_handle(),
-      page,
+      page: index,
+      generation: 0,
     });
+    *view_out.borrow_mut() = Some(view.clone());
     // so tab moves through the fields from the start
     window.focus(&view.read(cx).focus.clone(), cx);
     window.activate_window();
     cx.new(|cx| Root::new(view, window, cx))
   })?;
-  cx.set_global(OpenSettings(Some(handle.into())));
+  let view = view_out.take().expect("the window built its view");
+  cx.set_global(OpenSettings(Some((handle.into(), view))));
   Ok(())
 }
 
@@ -482,10 +499,10 @@ mod tests {
         ]
       );
       let registry = cx.settings();
-      assert_eq!(registry.index(None), 0);
-      assert_eq!(registry.index(Some("nope")), 0);
-      assert_eq!(registry.index(Some("")), 0);
-      assert_eq!(registry.index(Some("bar")), 2);
+      assert_eq!(registry.index(None), Some(0));
+      assert_eq!(registry.index(Some("nope")), None);
+      assert_eq!(registry.index(Some("")), None);
+      assert_eq!(registry.index(Some("bar")), Some(2));
     });
   }
 
@@ -511,6 +528,17 @@ mod tests {
     // opening again keeps the window
     cx.update(|cx| open(Some("bar"), cx)).unwrap();
     assert_eq!(cx.update(|cx| window(cx)), Some(first));
+    // and moves it to the page (second, as no Late page here)
+    let page = cx.update(|cx| {
+      cx.global::<OpenSettings>()
+        .0
+        .clone()
+        .unwrap()
+        .1
+        .read(cx)
+        .page
+    });
+    assert_eq!(page, 1);
     cx.update(|cx| toggle(None, cx)).unwrap();
     cx.run_until_parked();
     assert!(cx.update(|cx| window(cx)).is_none());
