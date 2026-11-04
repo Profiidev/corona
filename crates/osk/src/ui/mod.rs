@@ -3,8 +3,9 @@ mod view;
 
 use anyhow::Result;
 use corona_surface::overlay::open_on_focused;
+use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Global, Pixels, Point,
+  AnyWindowHandle, App, AppContext, Entity, Global, Pixels, Point,
   layer_shell::{KeyboardInteractivity, LayerShellOptions},
   px,
 };
@@ -43,6 +44,21 @@ pub fn open(cx: &mut App) -> Result<()> {
   let handle = open_on_focused(NAMESPACE, tweak, cx, |_, cx| cx.new(Keyboard::new))?;
   cx.set_global(OskWindow(handle));
   Ok(())
+}
+
+/// The compositor can destroy the surface, which must not leave the keyboard
+/// marked as shown
+pub fn watch_closed(visible: Entity<bool>, cx: &mut App) {
+  cx.on_window_closed(move |cx, id| {
+    if cx
+      .try_global::<OskWindow>()
+      .is_some_and(|w| w.0.window_id() == id)
+    {
+      cx.remove_global::<OskWindow>();
+      visible.write_changed(cx, false);
+    }
+  })
+  .detach();
 }
 
 pub fn close(cx: &mut App) {

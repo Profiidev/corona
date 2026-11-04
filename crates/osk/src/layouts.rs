@@ -247,6 +247,15 @@ pub fn rows(layout: Layout, layer: Layer) -> Vec<Vec<Key>> {
   rows
 }
 
+/// Upper-case `c`, or `c` itself when that would not be a single char
+pub fn upper_char(c: char) -> char {
+  let mut u = c.to_uppercase();
+  match (u.next(), u.next()) {
+    (Some(u), None) => u,
+    _ => c,
+  }
+}
+
 /// Long-press alternates of a key's base character; they follow the language,
 /// not the layout
 pub fn alternates(language: Language, base: char) -> &'static str {
@@ -309,6 +318,17 @@ mod tests {
       }
     );
     assert!(rows[2][10].is_letter(), "ö");
+  }
+
+  #[test]
+  fn shifted_alternates_have_no_duplicates() {
+    for l in [Language::De, Language::En] {
+      let up: Vec<char> = alternates(l, 's').chars().map(upper_char).collect();
+      assert!(
+        up.iter()
+          .all(|c| up.iter().filter(|d| *d == c).count() == 1)
+      );
+    }
   }
 
   #[test]

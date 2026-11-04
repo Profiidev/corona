@@ -1,12 +1,13 @@
 //! Prefix completion over a ranked wordlist
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
+#[derive(Clone)]
 pub struct Completer {
   /// (lowercase word, score) sorted by word, for prefix range lookups
-  words: Vec<(String, u32)>,
+  words: Arc<Vec<(String, u32)>>,
   /// How often the user typed each word, lowercase
-  pub(super) learned: HashMap<String, u32>,
+  pub(super) learned: Arc<HashMap<String, u32>>,
 }
 
 impl Completer {
@@ -23,8 +24,8 @@ impl Completer {
     words.sort_by(|a, b| a.0.cmp(&b.0));
     words.dedup_by(|a, b| a.0 == b.0);
     Self {
-      words,
-      learned: HashMap::new(),
+      words: Arc::new(words),
+      learned: Arc::default(),
     }
   }
 
@@ -52,7 +53,7 @@ impl Completer {
       .filter(|(w, _)| *w != p)
       .map(|(w, s)| (w.as_str(), learned(w), *s))
       .collect();
-    for (w, count) in &self.learned {
+    for (w, count) in self.learned.iter() {
       if w.starts_with(&p) && *w != p && !self.contains(w) {
         hits.push((w.as_str(), *count, 0));
       }
@@ -69,7 +70,7 @@ impl Completer {
   pub fn learn(&mut self, word: &str) {
     let w = word.to_lowercase();
     if w.chars().count() >= 2 && w.chars().all(|c| c.is_alphabetic() || c == '\'') {
-      *self.learned.entry(w).or_insert(0) += 1;
+      *Arc::make_mut(&mut self.learned).entry(w).or_insert(0) += 1;
     }
   }
 }
