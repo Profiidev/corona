@@ -44,7 +44,7 @@ impl Hyprland {
         let socket = match UnixStream::connect(&event_path) {
           Ok(socket) => socket,
           Err(e) => {
-            warn!("Failed to hyprland connect to event socket: {}", e);
+            warn!("Failed to connect to the Hyprland event socket: {}", e);
             thread::sleep(RECONNECT);
             continue;
           }
@@ -169,14 +169,13 @@ impl Ipc {
       "workspace" | "createworkspace" | "destroyworkspace" | "renameworkspace"
       | "moveworkspace" => {
         let workspaces = self.list_workspaces()?;
-        let active = self.active_workspace()?;
+        // fails right after the focused monitor goes away
+        let active = self.active_workspace().ok();
         let monitors = self.list_monitors()?;
         let focused = types::focused_monitor(&monitors);
-        let mut events = vec![
-          CompositorEvent::Workspace(workspaces),
-          CompositorEvent::ActiveWorkspace(active),
-          CompositorEvent::Monitor(monitors),
-        ];
+        let mut events = vec![CompositorEvent::Workspace(workspaces)];
+        events.extend(active.map(CompositorEvent::ActiveWorkspace));
+        events.push(CompositorEvent::Monitor(monitors));
         events.extend(focused.map(CompositorEvent::ActiveMonitor));
         // its windows move along, and no window event says so
         if name == "moveworkspace" {
