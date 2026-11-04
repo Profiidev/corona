@@ -183,7 +183,11 @@ pub fn printers(found: &Found) -> Vec<NetworkPrinter> {
       name: s.name.clone(),
       model: s.record("ty").map(String::from),
       address: s.address.clone(),
-      uri: format!("dnssd://{}.{}.local/", corona_utils::uri::percent_encode(&s.name), s.kind),
+      uri: format!(
+        "dnssd://{}.{}.local/",
+        corona_utils::uri::percent_encode(&s.name),
+        s.kind
+      ),
       direct_uri: direct_uri(s),
     })
     .collect()

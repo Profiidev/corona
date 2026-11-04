@@ -6,10 +6,10 @@ pub mod error;
 pub mod level;
 pub mod persist;
 pub mod stream;
-pub mod uri;
 #[cfg(feature = "test-support")]
 pub mod test_bus;
 pub mod ticker;
+pub mod uri;
 
 pub use bus::Buses;
 pub use level::parse_level;

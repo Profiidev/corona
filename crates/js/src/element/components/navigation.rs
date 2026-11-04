@@ -450,8 +450,12 @@ impl Node for NativeTrigger {
   fn into_element(self: Box<Self>) -> AnyElement {
     let items = Rc::new(self.items);
     let button = self.button.on_click(move |e, window, cx| {
-      let action =
-        |a: &str| Box::new(crate::element::events::ScriptAction(a.to_string().into(), 0)) as _;
+      let action = |a: &str| {
+        Box::new(crate::element::events::ScriptAction(
+          a.to_string().into(),
+          0,
+        )) as _
+      };
       let menu = items
         .iter()
         .fold(NativeMenu::new(), |menu, item| match item {
