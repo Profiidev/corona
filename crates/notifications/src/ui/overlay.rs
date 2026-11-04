@@ -31,6 +31,8 @@ use corona_components::filter::filter_regex;
 const NAMESPACE: &str = "corona_notification";
 const STACK_OFFSET: f32 = 12.;
 const SLIDE_SPEED: Duration = Duration::from_millis(250);
+// open popups per window; older ones are hidden but stay in history
+const MAX_OPEN_POPUPS: usize = 5;
 /// the timeout of a popup that stays until clicked
 const NEVER: Duration = Duration::MAX;
 
@@ -281,11 +283,21 @@ impl NotificationPopups {
       .find(|w| w.display == display)
       .map(|w| w.view.clone());
     match existing {
-      Some(view) => view.update(cx, |this, cx| {
-        let slot = this.items.iter().filter(|p| p.open).count();
-        this.items.push(Popup::new(notification, slot, &config));
-        cx.notify();
-      }),
+      Some(view) => {
+        let evict = view.update(cx, |this, cx| {
+          let slot = this.items.iter().filter(|p| p.open).count();
+          // over the cap the oldest popup is hidden, it stays in history
+          let evict = (slot >= MAX_OPEN_POPUPS)
+            .then(|| this.items.iter().find(|p| p.open).map(|p| p.item.id))
+            .flatten();
+          this.items.push(Popup::new(notification, slot, &config));
+          cx.notify();
+          evict
+        });
+        if let Some(id) = evict {
+          Self::hide(id, cx);
+        }
+      }
       None => {
         let view = cx.new(|_| Popups {
           items: vec![Popup::new(notification, 0, &config)],
@@ -300,7 +312,7 @@ impl NotificationPopups {
   fn hide(id: u32, cx: &mut App) {
     let Some(view) = Self::views(cx)
       .into_iter()
-      .find(|v| v.read(cx).items.iter().any(|p| p.item.id == id))
+      .find(|v| v.read(cx).items.iter().any(|p| p.item.id == id && p.open))
     else {
       return;
     };

@@ -88,7 +88,10 @@ fn image(hints: &HashMap<String, OwnedValue>, app_icon: &str) -> Option<Notifica
       Err(e) => tracing::warn!("ignoring notification image data: {e:?}"),
     }
   }
-  hint::<String>(hints, "image-path")
+  // `image_path` is the spec 1.1 name
+  ["image-path", "image_path"]
+    .iter()
+    .find_map(|key| hint::<String>(hints, key))
     .and_then(|path| icon(&path))
     .or_else(|| icon(app_icon))
 }
@@ -111,7 +114,21 @@ const MAX_IMAGE_BYTES: u64 = 8 << 20;
 /// only plain files of sane size, devices and fifos would hang or exhaust the loader
 fn image_file_ok(path: PathBuf) -> Option<NotificationImage> {
   let meta = std::fs::metadata(&path).ok()?;
-  (meta.is_file() && meta.len() <= MAX_IMAGE_BYTES).then_some(NotificationImage::Path(path))
+  if !meta.is_file() || meta.len() > MAX_IMAGE_BYTES {
+    return None;
+  }
+  // a tiny file can declare huge dimensions and decode to gigabytes, svg and unknown formats skip this
+  let reader = image::ImageReader::open(&path)
+    .ok()?
+    .with_guessed_format()
+    .ok()?;
+  if reader.format().is_some() {
+    let (w, h) = reader.into_dimensions().ok()?;
+    if w as usize > MAX_SIDE || h as usize > MAX_SIDE {
+      return None;
+    }
+  }
+  Some(NotificationImage::Path(path))
 }
 
 /// pictures beyond this are ignored, they would only fill the cache
@@ -148,6 +165,9 @@ fn rgba((width, height, rowstride, _, bits, channels, data): ImageData) -> Resul
   RgbaImage::from_raw(width as u32, height as u32, pixels).context("image buffer")
 }
 
+/// stored pictures are shrunk to this, the card draws them far smaller
+const MAX_STORED_SIDE: u32 = 128;
+
 /// saved once per distinct picture, apps resend the same avatar a lot
 fn image_file(image: &RgbaImage) -> Result<PathBuf> {
   let mut hasher = DefaultHasher::new();
@@ -169,15 +189,31 @@ fn image_file(image: &RgbaImage) -> Result<PathBuf> {
       std::process::id(),
       TMP.fetch_add(1, Ordering::Relaxed)
     ));
-    image.save_with_format(&tmp, image::ImageFormat::Png)?;
+    let (w, h) = image.dimensions();
+    let saved = if w.max(h) > MAX_STORED_SIDE {
+      // keeps the aspect ratio
+      let scale = MAX_STORED_SIDE as f32 / w.max(h) as f32;
+      let (w, h) = (
+        ((w as f32 * scale) as u32).max(1),
+        ((h as f32 * scale) as u32).max(1),
+      );
+      image::imageops::thumbnail(image, w, h).save_with_format(&tmp, image::ImageFormat::Png)
+    } else {
+      image.save_with_format(&tmp, image::ImageFormat::Png)
+    };
+    saved.inspect_err(|_| {
+      let _ = std::fs::remove_file(&tmp);
+    })?;
     std::fs::rename(&tmp, &path)?;
     evict_old();
   }
   Ok(path)
 }
 
-/// the cache lives in RAM, so only the newest pictures are kept
-const MAX_CACHED: usize = 64;
+/// the cache lives in RAM, so only the newest pictures are kept. orphans of replaced or dismissed
+/// notifications count too, so the cap is a multiple of the history size, or live entries
+/// would point at deleted files
+const MAX_CACHED: usize = 4 * crate::state::MAX_NOTIFICATIONS;
 
 fn evict_old() {
   let Ok(dir) = std::fs::read_dir(cache_dir()) else {
@@ -328,6 +364,25 @@ mod tests {
       },
       received,
     )
+  }
+
+  #[test]
+  fn image_file_dimensions_are_capped() {
+    let dir = std::env::temp_dir().join(format!("corona-img-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = |name: &str, side: u32| {
+      let path = dir.join(name);
+      RgbaImage::new(side, 1)
+        .save_with_format(&path, image::ImageFormat::Png)
+        .unwrap();
+      path
+    };
+    assert!(image_file_ok(png("ok.png", 16)).is_some());
+    assert!(image_file_ok(png("big.png", MAX_SIDE as u32 + 1)).is_none());
+    let svg = dir.join("a.svg");
+    std::fs::write(&svg, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+    assert!(image_file_ok(svg).is_some());
+    std::fs::remove_dir_all(dir).ok();
   }
 
   fn hints(pairs: Vec<(&str, Value<'_>)>) -> HashMap<String, OwnedValue> {
@@ -557,9 +612,14 @@ mod tests {
     }
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("a b.png");
-    std::fs::write(&file, b"x").unwrap();
+    RgbaImage::new(1, 1).save(&file).unwrap();
     let uri = format!("file://{}", file.to_str().unwrap().replace(' ', "%20"));
-    notify(&server, 0, hints(vec![("image-path", uri.into())]));
+    notify(&server, 0, hints(vec![("image-path", uri.clone().into())]));
+    assert_eq!(
+      received(&rx).image,
+      Some(NotificationImage::Path(file.clone()))
+    );
+    notify(&server, 0, hints(vec![("image_path", uri.into())]));
     assert_eq!(received(&rx).image, Some(NotificationImage::Path(file)));
     notify(
       &server,

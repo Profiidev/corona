@@ -137,7 +137,7 @@ fn unescape(text: &str) -> String {
 }
 
 /// more buttons than this are dropped
-const MAX_ACTIONS: usize = 8;
+pub(crate) const MAX_ACTIONS: usize = 8;
 
 pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
   flat

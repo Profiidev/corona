@@ -325,8 +325,6 @@ pub fn pre_start() {
   };
 }
 
-/// `serve`: be the notification daemon. Without it the state stays empty, for
-/// when another daemon is wanted.
 /// Serves or follows the notifications on the session bus, as `notification.enabled` says,
 /// registers their UI, commands, script modules and the plugin host's and launcher's hooks
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
@@ -354,6 +352,8 @@ pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
     .register::<script::NotificationCenterModule>();
 }
 
+/// With `serve`, be the notification daemon; without it the state stays empty, for when another
+/// daemon is wanted.
 pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let (events_tx, events) = flume::unbounded();
   let dbus = DBusProxy::new(conn).await?;
@@ -427,9 +427,10 @@ pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Res
   .detach();
 
   let active = state.active.clone();
+  let conn_owner = conn.clone();
   cx.spawn(async move |cx| {
     loop {
-      let owned = futures_lite::future::or(
+      let signal = futures_lite::future::or(
         async {
           acquired
             .next()
@@ -444,10 +445,19 @@ pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Res
         },
       )
       .await;
-      let Some((owned, name)) = owned else {
+      let Some((_, name)) = signal else {
         break;
       };
       if name.as_deref() == Some(NAME) {
+        // the two streams are not ordered against each other, so ask the bus who owns the name
+        // instead of trusting which signal was polled first
+        let owned = match (
+          dbus.get_name_owner(NAME.try_into().unwrap()).await,
+          conn_owner.unique_name(),
+        ) {
+          (Ok(owner), Some(me)) => owner.as_str() == me.as_str(),
+          _ => false,
+        };
         active.write(cx, owned);
       }
     }

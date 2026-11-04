@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use std::{collections::HashMap, io::Cursor, mem, pin::pin, time::UNIX_EPOCH};
 
 use anyhow::{bail, ensure};
@@ -14,7 +15,7 @@ use specta::{Type, Types, datatype::DataType, specta};
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate as nt;
-use crate::NotificationsExt;
+use crate::{NotificationsExt, state::MAX_ACTIONS};
 
 #[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -172,13 +173,17 @@ impl NotifyOptions {
     if let Some(reply) = self.reply {
       actions.push(nt::Action {
         key: REPLY.into(),
-        label: "Reply".into(),
+        label: t!("app.notifications.reply").into(),
       });
       if let Some(placeholder) = reply.placeholder {
         let placeholder = Value::from(placeholder).try_to_owned()?;
         hints.insert("x-kde-reply-placeholder-text".into(), placeholder);
       }
     }
+    ensure!(
+      actions.len() <= MAX_ACTIONS,
+      "at most {MAX_ACTIONS} actions including reply"
+    );
     let timeout = self.timeout.unwrap_or(-1);
     ensure!(
       timeout >= -1,
@@ -627,6 +632,19 @@ mod tests {
       .err()
       .unwrap()
       .to_string()
+  }
+
+  #[test]
+  fn actions_are_limited_including_reply() {
+    let with = |n: usize| {
+      let actions: Vec<_> = (0..n)
+        .map(|i| serde_json::json!({ "key": i.to_string(), "label": "l" }))
+        .collect();
+      options(serde_json::json!({ "summary": "s", "actions": actions, "reply": {} }))
+        .into_notify("p".into())
+    };
+    assert!(with(MAX_ACTIONS - 1).is_ok());
+    assert!(with(MAX_ACTIONS).is_err());
   }
 
   #[test]

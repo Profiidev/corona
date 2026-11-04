@@ -66,7 +66,12 @@ impl Command for NotificationRow {
         t!("app.launcher.notifications.open").into(),
       ));
     }
-    for action in self.0.actions.iter().filter(|a| a.key != "default") {
+    for action in self
+      .0
+      .actions
+      .iter()
+      .filter(|a| a.key != "default" && a.key != "inline-reply")
+    {
       actions.push(invoke(action.key.clone(), action.label.clone().into()));
     }
     actions.push(

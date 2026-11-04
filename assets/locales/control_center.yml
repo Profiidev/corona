@@ -503,6 +503,9 @@ app:
     clear_all:
       en: Clear all
       de: Alle löschen
+    reply:
+      en: Reply
+      de: Antworten
     all:
       en: 'All (%{count})'
       de: 'Alle (%{count})'
