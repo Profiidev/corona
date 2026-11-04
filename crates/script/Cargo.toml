@@ -9,10 +9,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-support = ["dep:tempfile", "gpui-kit/test-support"]
+test-support = ["gpui-kit/test-support"]
 
 [dependencies]
-tempfile = { workspace = true, optional = true }
+tempfile.workspace = true
 corona_config.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true
@@ -22,7 +22,6 @@ corona_ipc.workspace = true
 gpui-kit.workspace = true
 corona_js.workspace = true
 specta.workspace = true
-specta-typescript = "=0.0.14"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -40,7 +39,7 @@ zbus.workspace = true
 zbus_xml.workspace = true
 oo7.workspace = true
 futures.workspace = true
-smol.workspace = true
+# only for its jpeg feature: plugin icons
 image = { workspace = true, features = ["jpeg"] }
 clap.workspace = true
 
@@ -49,5 +48,4 @@ corona_compositor.workspace = true
 corona_surface = { workspace = true, features = ["test-support"] }
 corona_desktop.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
-tempfile.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }

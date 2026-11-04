@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Result, anyhow, ensure};
-use corona_config::Config;
+use corona_config::{Config, ConfigProvider};
 use corona_js::{Cx, Data, Json, Listener, ModuleBuilder, Throws, Unsubscribe, host_module, track};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, Subscription};
@@ -52,7 +52,7 @@ impl Settings {
   }
 
   /// Follows the config and the plugin's manifest as it is rescanned
-  fn refresh(&mut self, cx: &mut Context<Self>) {
+  pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
     let manifest = cx
       .try_global::<ScriptManager>()
       .and_then(|m| m.plugins().get(&self.id));
@@ -145,6 +145,16 @@ fn set(mut cx: Cx, declared: Data<Declared>, key: String, value: Json<Value>) ->
     let id = declared.id.clone();
     // the config observers render scripts again, so not from inside one
     cx.defer(move |cx| {
+      // an unchanged value would rewrite the config for nothing
+      if cx
+        .config()
+        .plugin_settings
+        .get(&id)
+        .and_then(|m| m.get(&key))
+        == Some(&value)
+      {
+        return;
+      }
       corona_config::update(cx, |c| {
         c.plugin_settings.entry(id).or_default().insert(key, value);
       })

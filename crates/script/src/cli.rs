@@ -14,14 +14,14 @@ pub struct PluginArgs {
 }
 
 impl PluginArgs {
-  pub fn run(self) {
+  pub fn run(self) -> anyhow::Result<()> {
     let PluginArgs { id, method, args } = self;
     let args = args.map_or(serde_json::Value::Null, |args| {
       serde_json::from_str(&args).unwrap_or(serde_json::Value::String(args))
     });
-    match PluginCall::send(PluginCall { id, method, args }) {
-      Ok(answer) => println!("{answer}"),
-      Err(e) => tracing::error!("Failed to call the plugin: {}", e),
-    }
+    let answer = PluginCall::send(PluginCall { id, method, args })
+      .map_err(|e| anyhow::anyhow!("Failed to call the plugin: {e}"))?;
+    println!("{answer}");
+    Ok(())
   }
 }

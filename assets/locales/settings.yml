@@ -1391,6 +1391,15 @@ app:
         clipboard_write:
           en: 'Write the clipboard'
           de: 'In die Zwischenablage schreiben'
+        printing_print:
+          en: 'Print files it can read'
+          de: 'Dateien drucken, die es lesen kann'
+        printing_manage:
+          en: 'Scan documents, add and pause printers and cancel print jobs'
+          de: 'Dokumente scannen, Drucker hinzufügen und pausieren und Druckaufträge abbrechen'
+        printing_manage_warning:
+          en: 'Warning: it can talk to devices in your local network.'
+          de: 'Achtung: Es kann mit Geräten in deinem lokalen Netz sprechen.'
         storage:
           en: 'Store its own data'
           de: 'Eigene Daten speichern'

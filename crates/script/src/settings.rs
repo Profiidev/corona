@@ -730,6 +730,11 @@ fn permission(
     }
     "clipboard.read" => (t!("app.settings.plugins.approve.clipboard_read"), None),
     "clipboard.write" => (t!("app.settings.plugins.approve.clipboard_write"), None),
+    "printing.print" => (t!("app.settings.plugins.approve.printing_print"), None),
+    "printing.manage" => (
+      t!("app.settings.plugins.approve.printing_manage"),
+      Some(t!("app.settings.plugins.approve.printing_manage_warning")),
+    ),
     "storage" => (t!("app.settings.plugins.approve.storage"), None),
     _ => (format!("{kind}: {values}").into(), None),
   }

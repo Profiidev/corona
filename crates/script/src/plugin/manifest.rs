@@ -52,7 +52,7 @@ impl PluginManifest {
     data_dir: &Path,
     configured: Option<&Map<String, Value>>,
   ) -> Self {
-    let values = settings::resolve(&file.id, &file.settings, configured);
+    let values = user_values(&file.id, &file.settings, configured);
     Self {
       capabilities: file.capabilities.grant(&dir, data_dir, &values),
       host_settings: file
@@ -74,6 +74,29 @@ impl PluginManifest {
       settings: file.settings,
     }
   }
+
+  /// Grants `capabilities`, as written, again for new `configured` values
+  pub fn regrant(
+    &mut self,
+    capabilities: &CapabilitiesFile,
+    data_dir: &Path,
+    configured: Option<&Map<String, Value>>,
+  ) {
+    let values = user_values(&self.id, &self.settings, configured);
+    self.capabilities = capabilities.grant(&self.dir, data_dir, &values);
+  }
+}
+
+/// What `${setting:<key>}` hosts expand from: the values the user set. A default is the
+/// plugin's, which approval does not see, so it grants nothing.
+fn user_values(
+  id: &str,
+  settings: &[Setting],
+  configured: Option<&Map<String, Value>>,
+) -> Map<String, Value> {
+  let mut values = settings::resolve(id, settings, configured);
+  values.retain(|key, value| configured.and_then(|c| c.get(key)) == Some(value));
+  values
 }
 
 /// The plugin API corona runs: 2 is the rquickjs runtime (`corona_js`), 1 was gpui-shell's
@@ -84,7 +107,6 @@ pub const PLUGIN_API: u32 = 2;
 pub struct ManifestFile {
   /// The JSON schema an editor validates this file against.
   #[serde(rename = "$schema", default)]
-  #[allow(dead_code)]
   pub schema: Option<String>,
   /// Reverse-DNS identity, e.g. `com.example.inbox`: letters, digits, `.`,
   /// `_` and `-`. Also the namespace for widgets, panels, storage and
@@ -148,6 +170,14 @@ impl ManifestFile {
         "`{script}` is not a file inside the plugin directory"
       );
     }
+    for (key, panel) in &self.panels {
+      for size in [panel.width, panel.height] {
+        ensure!(
+          size.is_finite() && size > 0. && size <= MAX_PANEL_SIZE,
+          "panel `{key}` size must be between 0 and {MAX_PANEL_SIZE}"
+        );
+      }
+    }
     for host in self.capabilities.hosts() {
       let Some(key) = setting_key(host) else {
         ensure!(
@@ -197,6 +227,9 @@ pub struct PanelFile {
   #[serde(default = "panel_height")]
   pub height: f32,
 }
+
+/// The largest panel width or height a plugin may ask for
+const MAX_PANEL_SIZE: f32 = 8192.;
 
 fn first_api() -> u32 {
   1
@@ -305,6 +338,9 @@ pub struct CapabilitiesFile {
   /// Process-level host requests, separate from filesystem execution.
   #[serde(default)]
   process: Option<ProcessGrantFile>,
+  /// What `corona/printing` may do beyond listing printers and jobs.
+  #[serde(default)]
+  printing: Option<PrintingGrantFile>,
   /// Corona modules the plugin imports, e.g. `["weather"]` for
   /// `corona/weather`. Importing one not listed fails.
   #[serde(default)]
@@ -324,6 +360,7 @@ impl Default for CapabilitiesFile {
       storage: granted(),
       clipboard: None,
       process: None,
+      printing: None,
       corona: BTreeSet::new(),
       dbus: None,
     }
@@ -354,6 +391,7 @@ impl CapabilitiesFile {
     let fs = self.fs.clone().unwrap_or_default();
     let clipboard = self.clipboard.clone().unwrap_or_default();
     let process = self.process.clone().unwrap_or_default();
+    let printing = self.printing.clone().unwrap_or_default();
     let execute = match fs.execute.clone() {
       None => ExecuteGrant::Denied,
       Some(ExecuteFile::Unrestricted(_)) => ExecuteGrant::Unrestricted,
@@ -412,6 +450,8 @@ impl CapabilitiesFile {
       .clipboard_read(clipboard.read)
       .clipboard_write(clipboard.write)
       .exit(process.exit)
+      .print(printing.print)
+      .print_manage(printing.manage)
       .process_env(process.env)
       .asset_root(plugin_dir.to_path_buf())
   }
@@ -719,6 +759,17 @@ struct ClipboardGrantFile {
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct PrintingGrantFile {
+  /// Print files the plugin may read.
+  #[serde(default)]
+  print: bool,
+  /// Scan documents, add and pause printers, cancel jobs.
+  #[serde(default)]
+  manage: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProcessGrantFile {
   #[serde(default)]
   exit: bool,
@@ -822,6 +873,16 @@ mod tests {
 
     let manifest = with(r#"version = "1.2.0""#).unwrap();
     assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
+  }
+
+  #[test]
+  fn panel_sizes_are_checked() {
+    for bad in ["nan", "inf", "-1", "0", "9000"] {
+      let toml = format!("[panels.main]\nview = \"x.js\"\nwidth = {bad}");
+      assert!(with(&toml).unwrap().check().is_err(), "{bad}");
+    }
+    let ok = "[panels.main]\nview = \"x.js\"\nwidth = 300\nheight = 200";
+    assert!(with(ok).unwrap().check().is_ok());
   }
 
   #[test]
@@ -1030,6 +1091,9 @@ process = { exit = true }
     }
     assert!(grant(r#"fs = { write = ["/data/a/cache", "/elsewhere"] }"#).has_write_access());
 
+    let capabilities = grant(r#"printing = { manage = true }"#);
+    assert!(capabilities.may_manage_printing());
+    assert!(!capabilities.may_print());
     let capabilities = grant(r#"clipboard = { read = true }"#);
     assert!(capabilities.is_clipboard_readable());
     assert!(!capabilities.is_clipboard_writable());
@@ -1076,15 +1140,23 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
     assert!(unix.contains("/tailscale/tailscaled.sock"), "{unix}");
     // the plugin could make its data's socket a link to any other
     assert!(!unix.contains("adb.sock"), "{unix}");
-    assert!(!capabilities.may_connect_unix(Path::new("/run/other.sock")));
+    assert!(
+      capabilities
+        .unix_socket(Path::new("/run/other.sock"))
+        .is_none()
+    );
     // never the shell's own socket
     let ipc = corona_ipc::socket_path();
     let body = format!("network = {{ unix = [\"{}\"] }}", ipc.display());
-    assert!(!grant(&body).may_connect_unix(&ipc));
+    assert!(grant(&body).unix_socket(&ipc).is_none());
 
     let none = grant("");
     assert!(!none.may_pass_env("HOME"));
-    assert!(!none.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
+    assert!(
+      none
+        .unix_socket(Path::new("/run/tailscale/tailscaled.sock"))
+        .is_none()
+    );
     assert!(with_capabilities(r#"network = { unix = ["${home}/x.sock"] }"#).is_err());
     for bad in [
       "LD_PRELOAD",

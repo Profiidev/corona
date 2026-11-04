@@ -35,9 +35,10 @@ impl Global for Buses {}
 
 const DBUS: &str = "org.freedesktop.DBus";
 const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
-/// Names, or `prefix.*` patterns, never granted: they would let a plugin run
-/// code, manage units, sessions or disks, read secrets, escalate through
-/// portals, or impersonate the services corona itself owns.
+/// Names, with every name below them, or `prefix.*` patterns, never granted:
+/// they would let a plugin run code, manage units, sessions or disks, read
+/// secrets, escalate through portals, or impersonate the services corona
+/// itself owns.
 const DENIED: [&str; 19] = [
   DBUS,
   "org.freedesktop.systemd1",
@@ -88,7 +89,10 @@ fn overlaps(a: &str, b: &str) -> bool {
 
 /// The denied pattern `pattern` would reach, if any.
 fn denied(pattern: &str) -> Option<&'static str> {
-  DENIED.into_iter().find(|denied| overlaps(pattern, denied))
+  DENIED.into_iter().find(|denied| {
+    overlaps(pattern, denied)
+      || (!denied.ends_with(".*") && overlaps(pattern, &format!("{denied}.*")))
+  })
 }
 
 /// Whether `pattern`, a name or `prefix.*`, covers the name `name`.
@@ -228,11 +232,21 @@ struct Signals {
   _pump: zbus::Task<()>,
   conn: Connection,
   sender: String,
+  _slot: Slot,
+}
+
+/// One of the load's `MAX_SUBSCRIPTIONS`, given back when its subscription ends.
+struct Slot(Arc<Mutex<State>>);
+
+impl Drop for Slot {
+  fn drop(&mut self) {
+    lock(&self.0).made -= 1;
+  }
 }
 
 #[derive(Default)]
 struct State {
-  /// Subscriptions made by this load
+  /// Subscriptions this load holds
   made: u32,
   signatures: HashMap<Key, Vec<Vec<String>>>,
 }
@@ -429,14 +443,15 @@ impl Dbus {
     }
     let match_rule = builder.build().into_owned();
 
-    {
+    let slot = {
       let mut state = lock(&self.state);
       ensure!(
         state.made < MAX_SUBSCRIPTIONS,
         "at most {MAX_SUBSCRIPTIONS} subscriptions per load"
       );
       state.made += 1;
-    }
+      Slot(self.state.clone())
+    };
     Ok(
       async move {
         let stream = MessageStream::for_match_rule(match_rule, &conn, None).await?;
@@ -455,6 +470,7 @@ impl Dbus {
           _pump: pump,
           conn,
           sender: rule.sender,
+          _slot: slot,
         })
       }
       .boxed(),
@@ -489,11 +505,21 @@ impl Dbus {
 impl Signals {
   async fn next(&mut self) -> Result<Option<Signal>> {
     while let Ok(message) = self.signals.recv_async().await {
-      let message = message?;
+      // one bad signal must not end the subscription
+      let message = match message {
+        Ok(message) => message,
+        Err(e) => {
+          tracing::warn!("plugin signal: {e:#}");
+          continue;
+        }
+      };
       // zbus cannot match a well-known sender itself, so every signal on the
       // connection that fits the rest of the rule arrives here
       if self.sent_by_sender(&message).await {
-        return signal(&message).map(Some);
+        match signal(&message) {
+          Ok(signal) => return Ok(Some(signal)),
+          Err(e) => tracing::warn!("plugin signal: {e:#}"),
+        }
       }
     }
     Ok(None)
@@ -869,7 +895,6 @@ mod tests {
     for ok in [
       r#"["org.kde.kdeconnect"]"#,
       r#"["org.mpris.MediaPlayer2.*"]"#,
-      r#"["org.freedesktop.DBus.Foo.*"]"#,
     ] {
       assert!(parse(ok).is_ok(), "{ok}");
     }
@@ -882,6 +907,9 @@ mod tests {
       r#"["org.freedesktop.DBus"]"#,
       r#"["org.freedesktop.systemd1"]"#,
       r#"["org.freedesktop.Flatpak"]"#,
+      r#"["org.freedesktop.Flatpak.SystemHelper"]"#,
+      r#"["org.freedesktop.systemd1.Foo"]"#,
+      r#"["org.freedesktop.DBus.Foo.*"]"#,
       r#"["org.freedesktop.*"]"#,
       r#"["org.*"]"#,
       r#"["org.freedesktop.secrets"]"#,
@@ -1111,18 +1139,28 @@ mod tests {
     block_on(async {
       let buses = buses(&bus).await;
       let dbus = dbus(&["io.corona.Test"]);
+      let mut held = Vec::new();
       for _ in 0..MAX_SUBSCRIPTIONS {
-        dbus
-          .subscribe(&buses, rule("io.corona.Test"))
-          .unwrap()
-          .await
-          .unwrap();
+        held.push(
+          dbus
+            .subscribe(&buses, rule("io.corona.Test"))
+            .unwrap()
+            .await
+            .unwrap(),
+        );
       }
       let error = dbus
         .subscribe(&buses, rule("io.corona.Test"))
         .err()
         .unwrap();
       assert!(error.to_string().contains("at most 32"), "{error}");
+      // an ended subscription gives its slot back
+      held.pop();
+      dbus
+        .subscribe(&buses, rule("io.corona.Test"))
+        .unwrap()
+        .await
+        .unwrap();
     });
   }
 

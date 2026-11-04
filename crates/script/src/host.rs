@@ -15,27 +15,34 @@ use rust_i18n::t;
 use crate::{
   Entry, PluginManager, Script, ScriptManager, Service,
   hooks::{self, Notice},
+  plugin::manifest::PluginManifest,
 };
 
-/// The widget and panel names registered for plugins, and their services
-#[derive(Default)]
-struct Registered {
+/// What is registered for the plugins that run, by id
+type Registered = HashMap<String, Registration>;
+
+/// The widget and panel names registered for a plugin, and its service
+struct Registration {
+  /// The plugin's [`PluginManager::signatures`] entry it was registered for
+  signature: String,
   widgets: Vec<String>,
   panels: Vec<String>,
-  services: Vec<Service>,
+  _service: Option<Service>,
 }
 
 pub(crate) fn init(cx: &mut App) {
   watch_approvals(cx);
-  let mut registered = Registered::default();
+  let mut registered = Registered::new();
   sync(&mut registered, cx);
   let mut revision = cx.global::<PluginManager>().revision();
   cx.observe_global::<PluginManager>(move |cx| {
     let now = cx.global::<PluginManager>().revision();
     if now != revision {
       revision = now;
-      sync(&mut registered, cx);
-      BarState::reopen(cx);
+      // the bar only changes with the widgets
+      if sync(&mut registered, cx) {
+        BarState::reopen(cx);
+      }
     }
   })
   .detach();
@@ -125,76 +132,101 @@ fn ask(id: &str, cx: &mut App) {
   hooks::notify(notice, cx);
 }
 
-fn sync(registered: &mut Registered, cx: &mut App) {
-  // stops them, failing what waits for them
-  registered.services.clear();
-  for name in registered.widgets.drain(..) {
-    cx.bar_mut().unregister(&name);
-  }
-  for name in registered.panels.drain(..) {
-    PanelState::unregister(&name, cx);
-  }
+/// Registers what changed plugins need and drops what plugins that stopped or changed had.
+/// Whether the bar's widgets changed.
+fn sync(registered: &mut Registered, cx: &mut App) -> bool {
+  let now = cx.global::<PluginManager>().signatures().clone();
+  let mut widgets_changed = false;
+  registered.retain(|id, old| {
+    if now.get(id) == Some(&old.signature) {
+      return true;
+    }
+    widgets_changed |= !old.widgets.is_empty();
+    for name in &old.widgets {
+      cx.bar_mut().unregister(name);
+    }
+    for name in &old.panels {
+      PanelState::unregister(name, cx);
+    }
+    // dropping `old` stops its service, failing what waits for it
+    false
+  });
 
   let plugins: Vec<_> = cx
     .global::<PluginManager>()
     .active()
     .values()
+    .filter(|found| !registered.contains_key(&found.manifest.id))
     .map(|found| found.manifest.clone())
     .collect();
   for manifest in plugins {
-    if manifest.service.is_some() {
-      match ScriptManager::start_service(&manifest.id, cx) {
-        Ok(service) => registered.services.push(service),
-        Err(e) => tracing::error!("plugin service `{}`: {e:#}", manifest.id),
-      }
-    }
-    for key in manifest.widgets.keys() {
-      let name = format!("{}:{key}", manifest.id);
-      let (id, key) = (manifest.id.clone(), key.clone());
-      cx.bar_mut().register_data(WidgetData::from_fn(
-        name.clone(),
-        move |window, cx, _, options| match ScriptManager::load(
-          &id,
-          Entry::Widget(&key, options),
-          window,
-          cx,
-        ) {
-          Ok(script) => {
-            let view = cx.new(|_| PluginView {
-              script,
-              fill: false,
-            });
-            // its panels open at it
-            view.read(cx).script.set_opener(view.entity_id());
-            Some(view.into())
-          }
-          Err(e) => {
-            tracing::error!("plugin widget `{id}:{key}`: {e:#}");
-            None
-          }
-        },
-      ));
-      registered.widgets.push(name);
-    }
-    for (key, panel) in &manifest.panels {
-      let name = format!("{}:{key}", manifest.id);
-      let (id, key) = (manifest.id.clone(), key.clone());
-      let data = PanelData::from_fn(
-        name.clone(),
-        panel.width,
-        panel.height,
-        move |window, cx| match ScriptManager::load(&id, Entry::Panel(&key), window, cx) {
-          Ok(script) => cx.new(|_| PluginView { script, fill: true }).into(),
-          Err(e) => {
-            tracing::error!("plugin panel `{id}:{key}`: {e:#}");
-            cx.new(|_| PluginError(format!("{e:#}"))).into()
-          }
-        },
-      );
-      cx.global_mut::<PanelState>().register_data(data);
-      registered.panels.push(name);
+    let registration = register(&manifest, now[&manifest.id].clone(), cx);
+    widgets_changed |= !registration.widgets.is_empty();
+    registered.insert(manifest.id, registration);
+  }
+  widgets_changed
+}
+
+fn register(manifest: &PluginManifest, signature: String, cx: &mut App) -> Registration {
+  let mut registered = Registration {
+    signature,
+    widgets: Vec::new(),
+    panels: Vec::new(),
+    _service: None,
+  };
+  if manifest.service.is_some() {
+    match ScriptManager::start_service(&manifest.id, cx) {
+      Ok(service) => registered._service = Some(service),
+      Err(e) => tracing::error!("plugin service `{}`: {e:#}", manifest.id),
     }
   }
+  for key in manifest.widgets.keys() {
+    let name = format!("{}:{key}", manifest.id);
+    let (id, key) = (manifest.id.clone(), key.clone());
+    cx.bar_mut().register_data(WidgetData::from_fn(
+      name.clone(),
+      move |window, cx, _, options| match ScriptManager::load(
+        &id,
+        Entry::Widget(&key, options),
+        window,
+        cx,
+      ) {
+        Ok(script) => {
+          let view = cx.new(|_| PluginView {
+            script,
+            fill: false,
+          });
+          // its panels open at it
+          view.read(cx).script.set_opener(view.entity_id());
+          Some(view.into())
+        }
+        Err(e) => {
+          tracing::error!("plugin widget `{id}:{key}`: {e:#}");
+          None
+        }
+      },
+    ));
+    registered.widgets.push(name);
+  }
+  for (key, panel) in &manifest.panels {
+    let name = format!("{}:{key}", manifest.id);
+    let (id, key) = (manifest.id.clone(), key.clone());
+    let data = PanelData::from_fn(
+      name.clone(),
+      panel.width,
+      panel.height,
+      move |window, cx| match ScriptManager::load(&id, Entry::Panel(&key), window, cx) {
+        Ok(script) => cx.new(|_| PluginView { script, fill: true }).into(),
+        Err(e) => {
+          tracing::error!("plugin panel `{id}:{key}`: {e:#}");
+          cx.new(|_| PluginError(format!("{e:#}"))).into()
+        }
+      },
+    );
+    cx.global_mut::<PanelState>().register_data(data);
+    registered.panels.push(name);
+  }
+  registered
 }
 
 /// Keeps a plugin's script, and so its watcher and subscriptions, alive as

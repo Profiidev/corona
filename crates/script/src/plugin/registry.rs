@@ -72,6 +72,15 @@ pub struct Found {
   pub capabilities: CapabilitiesFile,
 }
 
+impl Found {
+  /// Grants again after the user changed the plugin's settings
+  pub fn regrant(&mut self, paths: &Paths, settings: &PluginSettings) {
+    let id = &self.manifest.id;
+    let data = paths.data(id);
+    (self.manifest).regrant(&self.capabilities, &data, settings.get(id));
+  }
+}
+
 /// `[plugin_settings]`, by plugin id
 pub type PluginSettings = BTreeMap<String, Map<String, Value>>;
 

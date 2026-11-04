@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result};
 use corona_config::Config;
 use corona_js::ScriptExt;
-use gpui_kit::{App, Window};
+use gpui_kit::App;
 
 pub use manager::{Entry, Script, ScriptManager, Service, call};
 #[cfg(any(test, feature = "test-support"))]
@@ -32,7 +32,7 @@ pub mod settings;
 
 /// Runs the enabled plugins: their services, bar widgets and panels, the plugins settings
 /// page and `plugin:*` IPC commands.
-pub fn init(cx: &mut App) -> Result<()> {
+pub fn init(cx: &mut App) {
   register_modules(cx.script_mut());
   let paths = plugin::paths::Paths::from_config();
   cx.set_global(ScriptManager::new(paths.clone()));
@@ -40,7 +40,6 @@ pub fn init(cx: &mut App) -> Result<()> {
   commands::register(cx);
   settings::register(cx);
   host::init(cx);
-  Ok(())
 }
 
 /// Writes the `corona.d.ts` of the plugins in `dirs` as loading them does, with no shell
@@ -50,9 +49,10 @@ pub fn write_plugin_types(dirs: &[PathBuf], cx: &mut App) -> Result<Vec<PathBuf>
     cx.set_global(Config::default());
   }
   register_modules(cx.script_mut());
+  // nothing is stored, the plugins never run: the throwaway state goes with `tmp`
+  let tmp = tempfile::tempdir()?;
   if !cx.has_global::<ScriptManager>() {
-    // nothing is stored, the plugins never run
-    let state = std::env::temp_dir().join("corona-types");
+    let state = tmp.path().to_path_buf();
     let local = state.join("local");
     cx.set_global(ScriptManager::new(plugin::paths::Paths { state, local }));
   }
@@ -71,16 +71,6 @@ pub fn init_dbus(cx: &mut App, system: &zbus::Connection, session: &zbus::Connec
     session: session.clone(),
     system: system.clone(),
   });
-}
-
-pub trait ScriptManagerExt {
-  fn load_plugin_view(&mut self, id: &str, entry: Entry, window: &mut Window) -> Result<Script>;
-}
-
-impl ScriptManagerExt for App {
-  fn load_plugin_view(&mut self, id: &str, entry: Entry, window: &mut Window) -> Result<Script> {
-    ScriptManager::load(id, entry, window, self)
-  }
 }
 
 #[cfg(test)]
