@@ -88,7 +88,7 @@ fn register_variants(cx: &mut App) {
   corona_surface::control_center::warn_bad_ids(cx);
   corona_surface::dashboard::warn_bad_ids(cx);
   corona_desktop::register_script(cx.script_mut());
-  corona_script::init(cx).expect("Failed to init plugins");
+  corona_script::init(cx);
 }
 
 async fn init_dbus(cx: &mut App) -> Result<()> {
@@ -97,7 +97,9 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
 
   // first: the integrations after it notify
   corona_notifications::init(cx, &buses).await?;
-  corona_pipewire::init(cx, &buses)?;
+  if let Err(err) = corona_pipewire::init(cx, &buses) {
+    tracing::error!("Failed to start pipewire: {err:#}");
+  }
   corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
   corona_osk::init(cx, &buses);
