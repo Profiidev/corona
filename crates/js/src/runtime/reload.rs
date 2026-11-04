@@ -28,7 +28,13 @@ fn is_source(path: &Path) -> bool {
     )
 }
 
-fn stamp(dir: &Path, out: &mut Stamp) {
+/// Deep enough for any plugin tree, shallow enough to end a symlink loop
+const MAX_DEPTH: usize = 32;
+
+fn stamp(dir: &Path, depth: usize, out: &mut Stamp) {
+  if depth > MAX_DEPTH {
+    return;
+  }
   let Ok(entries) = std::fs::read_dir(dir) else {
     return;
   };
@@ -38,11 +44,12 @@ fn stamp(dir: &Path, out: &mut Stamp) {
     if name.to_string_lossy().starts_with('.') || name == "node_modules" {
       continue;
     }
-    let Ok(meta) = entry.metadata() else {
+    // follows symlinks, unlike `entry.metadata()`
+    let Ok(meta) = std::fs::metadata(&path) else {
       continue;
     };
     if meta.is_dir() {
-      stamp(&path, out);
+      stamp(&path, depth + 1, out);
     } else if is_source(&path) {
       out.push((
         path,
@@ -55,7 +62,7 @@ fn stamp(dir: &Path, out: &mut Stamp) {
 
 fn scan(dir: &Path) -> Stamp {
   let mut out = Vec::new();
-  stamp(dir, &mut out);
+  stamp(dir, 0, &mut out);
   out.sort();
   out
 }

@@ -1,5 +1,5 @@
 //! `process`: `run`/`spawn` of granted commands with a cleared environment, bounded IO, and
-//! children killed with their process group when their runtime goes away.
+//! children killed with their process group when their handle is dropped.
 
 use std::{
   os::unix::process::ExitStatusExt,
@@ -33,7 +33,7 @@ use crate::{
 const MAX_OUTPUT: u64 = 8 * 1024 * 1024;
 const MAX_LINE: usize = 1024 * 1024;
 const MAX_WRITE: usize = 1024 * 1024;
-/// Between SIGTERM and SIGKILL when a child's owner goes away
+/// Between SIGTERM and SIGKILL when a child's handle is dropped
 const GRACE: Duration = Duration::from_secs(2);
 
 /// Validated `options`, for `run` (no stream options) or `spawn`
@@ -173,6 +173,17 @@ async fn all(stream: impl AsyncRead + Unpin, name: &str) -> Res<String> {
   Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
+/// SIGKILLs the process group of a `run` child that is dropped before it finished
+struct KillGroup(Option<u32>);
+
+impl Drop for KillGroup {
+  fn drop(&mut self) {
+    if let Some(pid) = self.0 {
+      unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+    }
+  }
+}
+
 fn run<'js>(
   ctx: Ctx<'js>,
   name: String,
@@ -191,6 +202,7 @@ fn run<'js>(
       let mut child = cmd
         .spawn()
         .map_err(|e| Fail::Error(format!("starting `{name}` failed: {e}")))?;
+      let mut group = KillGroup(child.id());
       let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
       let (stdout, stderr) = tokio::try_join!(
         all(stdout.expect("piped"), "stdout"),
@@ -200,6 +212,8 @@ fn run<'js>(
         .wait()
         .await
         .map_err(|e| Fail::Error(format!("waiting for `{name}` failed: {e}")))?;
+      // what a finished run left in the background is meant to stay
+      group.0 = None;
       Ok(Output {
         code: status.code().unwrap_or(-1),
         stdout,
@@ -384,14 +398,17 @@ impl ChildProcess {
 /// SIGTERM to the group, SIGKILL after the grace period if any of it is left
 impl Drop for ChildProcess {
   fn drop(&mut self) {
+    // a reaped child's pid may belong to someone else by now
+    if self.status.borrow().is_some() {
+      return;
+    }
     let group = -(self.pid as i32);
+    let status = self.status.clone();
     unsafe { libc::kill(group, libc::SIGTERM) };
     detach(async move {
       tokio::time::sleep(GRACE).await;
-      unsafe {
-        if libc::kill(group, 0) == 0 {
-          libc::kill(group, libc::SIGKILL);
-        }
+      if status.borrow().is_none() {
+        unsafe { libc::kill(group, libc::SIGKILL) };
       }
     });
   }
@@ -430,7 +447,7 @@ fn spawn<'js>(
   Ok(process)
 }
 
-fn exit(ctx: Ctx<'_>, _code: Opt<i32>) -> Result<()> {
+fn exit(ctx: Ctx<'_>) -> Result<()> {
   if !plugin(&ctx)?.capabilities.may_exit() {
     return Err(Exception::throw_type(
       &ctx,

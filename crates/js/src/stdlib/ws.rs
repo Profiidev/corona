@@ -15,12 +15,12 @@ use rquickjs::{
 use tokio::{net::TcpStream, sync::Mutex, time::timeout};
 use tokio_tungstenite::{
   MaybeTlsStream, WebSocketStream, client_async_tls_with_config,
-  tungstenite::{Message, client::IntoClientRequest},
+  tungstenite::{Message, client::IntoClientRequest, protocol::WebSocketConfig},
 };
 use url::Url;
 
 use super::{
-  fetch::headers,
+  fetch::{MAX_BODY, headers},
   io::{Bytes, Fail, Res, bytes, io, promise},
   net::{TIMEOUT, tcp},
 };
@@ -34,7 +34,13 @@ fn refused(name: &str) -> bool {
   let name = name.to_ascii_lowercase();
   matches!(
     name.as_str(),
-    "authorization" | "proxy-authorization" | "cookie" | "host" | "connection" | "upgrade"
+    "authorization"
+      | "proxy-authorization"
+      | "cookie"
+      | "host"
+      | "connection"
+      | "upgrade"
+      | "origin"
   ) || name.starts_with("sec-websocket-")
 }
 
@@ -132,7 +138,10 @@ async fn connect_ws(url: Url, lan: bool, headers: reqwest::header::HeaderMap) ->
   request.headers_mut().extend(headers);
   let handshake = async {
     let stream = tcp(&host, port, lan).await?;
-    let (ws, _) = client_async_tls_with_config(request, stream, None, None)
+    let config = WebSocketConfig::default()
+      .max_message_size(Some(MAX_BODY))
+      .max_frame_size(Some(MAX_BODY));
+    let (ws, _) = client_async_tls_with_config(request, stream, Some(config), None)
       .await
       .map_err(|e| Fail::Error(format!("connecting to {url} failed: {e}")))?;
     Ok(ws)

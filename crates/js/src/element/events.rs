@@ -12,7 +12,45 @@ use crate::{
   frame,
 };
 
-/// The one gpui action type a script names: its name is the identity.
+/// Separates a plugin id from the action name a plugin wrote; plugins cannot write it.
+const SCOPE: &str = "::";
+
+/// `name` as the keymap sees it: `<plugin>::<name>`
+pub(crate) fn scope_action(plugin: &str, name: &str) -> String {
+  format!("{plugin}{SCOPE}{name}")
+}
+
+/// What the plugin wrote for `scoped`, or `None` if it belongs to another plugin
+pub(crate) fn unscope_action<'a>(plugin: &str, scoped: &'a str) -> Option<&'a str> {
+  scoped.strip_prefix(plugin)?.strip_prefix(SCOPE)
+}
+
+/// Scopes an action name a plugin wrote to the plugin of `ctx`. Throws on a name with `::`,
+/// which could name another plugin's action.
+pub(crate) fn scoped(ctx: &Ctx<'_>, name: &str) -> Result<String> {
+  if name.contains(SCOPE) {
+    let msg = format!("action name `{name}`: `{SCOPE}` is reserved");
+    return Err(Exception::throw_type(ctx, &msg));
+  }
+  Ok(scope_action(&crate::runtime::plugin::plugin(ctx)?.id, name))
+}
+
+/// The key context every window of the plugin `id` sits in, an identifier of a binding
+/// predicate. ponytail: odd characters map to `-`, so two ids can share a context.
+pub(crate) fn plugin_context(id: &str) -> String {
+  let id: String = (id.chars())
+    .map(|c| {
+      if c.is_alphanumeric() || c == '_' {
+        c
+      } else {
+        '-'
+      }
+    })
+    .collect();
+  format!("plugin-{id}")
+}
+
+/// The one gpui action type a script names: its name is `<plugin id>::<name>`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScriptAction(pub SharedString);
 
@@ -301,7 +339,7 @@ fn key_event(k: &gpui_kit::Keystroke, is_held: Option<bool>) -> KeyEvent {
 crate::el_methods! {
   /// `handler(event, cx)` on a click, or keyboard activation.
   fn on_click(handler: On<'js, ClickEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::ClickEvent| ClickEvent::from(e));
+    let l = frame().listener_as(true, handler.0, |e: &gpui_kit::ClickEvent| ClickEvent::from(e));
     interact(c, n, |mut i| {
       i.0.on_click(l);
       i
@@ -317,12 +355,7 @@ crate::el_methods! {
   };
   /// `handler(event, cx)` when `button` is pressed over this element.
   fn on_mouse_down(button: Button, handler: On<'js, MouseButtonEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::MouseDownEvent| MouseButtonEvent {
-      button: button_name(e.button),
-      click_count: e.click_count as u32,
-      position: e.position.into(),
-      modifiers: e.modifiers.into(),
-    });
+    let l = frame().listener_as(true, handler.0, |e: &gpui_kit::MouseDownEvent| MouseButtonEvent::from(e));
     interact(c, n, |mut i| {
       i.0.on_mouse_down(button.0, l);
       i
@@ -330,7 +363,7 @@ crate::el_methods! {
   };
   /// `handler(event, cx)` when `button` is released over this element.
   fn on_mouse_up(button: Button, handler: On<'js, MouseButtonEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::MouseUpEvent| MouseButtonEvent {
+    let l = frame().listener_as(true, handler.0, |e: &gpui_kit::MouseUpEvent| MouseButtonEvent {
       button: button_name(e.button),
       click_count: e.click_count as u32,
       position: e.position.into(),
@@ -343,12 +376,7 @@ crate::el_methods! {
   };
   /// `handler(event, cx)` on a press anywhere outside this element.
   fn on_mouse_down_out(handler: On<'js, MouseButtonEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::MouseDownEvent| MouseButtonEvent {
-      button: button_name(e.button),
-      click_count: e.click_count as u32,
-      position: e.position.into(),
-      modifiers: e.modifiers.into(),
-    });
+    let l = frame().listener(handler.0, |e: &gpui_kit::MouseDownEvent| MouseButtonEvent::from(e));
     interact(c, n, |mut i| {
       i.0.on_mouse_down_out(l);
       i
@@ -392,7 +420,7 @@ crate::el_methods! {
   };
   /// `handler(event, cx)` on a key press while this element or a descendant has focus.
   fn on_key_down(handler: On<'js, KeyEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &gpui_kit::KeyDownEvent| {
+    let l = frame().listener_as(true, handler.0, |e: &gpui_kit::KeyDownEvent| {
       key_event(&e.keystroke, Some(e.is_held))
     });
     interact(c, n, |mut i| {
@@ -421,10 +449,15 @@ crate::el_methods! {
       i
     })
   };
-  /// `handler(event, cx)` when the action named `action` is dispatched to this element or
-  /// inside it, by a key binding (`cx.bind_keys`) or `window.dispatch_action`.
+  /// `handler(event, cx)` when the action named `action` of this plugin is dispatched to this
+  /// element or inside it, by a key binding (`cx.bind_keys`) or `window.dispatch_action`.
+  /// Action names are per plugin; `::` is reserved and throws.
   fn on_action(action: String, handler: On<'js, ActionEvent>) |c, n| {
-    let l = frame().listener(handler.0, |e: &ScriptAction| ActionEvent { action: e.0.to_string() });
+    let action = scoped(c, &action)?;
+    let id = crate::runtime::plugin::plugin(c)?.id.clone();
+    let l = frame().listener(handler.0, move |e: &ScriptAction| ActionEvent {
+      action: unscope_action(&id, &e.0).unwrap_or_default().to_owned(),
+    });
     interact(c, n, |mut i| {
       i.0.on_action(move |a: &ScriptAction, window, cx| match a.0.as_ref() == action {
         true => l(a, window, cx),
@@ -433,4 +466,24 @@ crate::el_methods! {
       i
     })
   };
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn scoping_round_trips_and_isolates_plugins() {
+    let s = scope_action("a.b", "refresh");
+    assert_eq!(s, "a.b::refresh");
+    assert_eq!(unscope_action("a.b", &s), Some("refresh"));
+    assert_eq!(unscope_action("a", &s), None);
+    assert_eq!(unscope_action("a.b::x", &s), None);
+  }
+
+  #[test]
+  fn context_is_an_identifier() {
+    assert_eq!(plugin_context("dev.x/y"), "plugin-dev-x-y");
+    assert!(gpui_kit::KeyContext::parse(&plugin_context("dev.x/y")).is_ok());
+  }
 }

@@ -155,7 +155,7 @@ export default class Main extends View {
         div().child(a);
       }),
       attempt(() => div().role("buton")),
-      attempt(() => svg("/x.svg").child(div())),
+      attempt(() => svg("x.svg").child(div())),
       attempt(() => image(new Uint8Array([1, 2]))),
       attempt(() => div().bg(Background.linear_gradient(90, "primary", "#00ff00").opacity(0.5))),
       attempt(() => PathBuilder.stroke(1).move_to(0, 0).line_to(4, 4).build()),
@@ -186,7 +186,7 @@ fn style_methods_and_values(cx: &mut TestAppContext) {
     "ok",
     "TypeError: element was already used as a child",
     "TypeError: unknown role \"buton\", did you mean \"button\"?",
-    "TypeError: svg takes no children",
+    "TypeError: svg(): relative image paths need a plugin directory",
     "TypeError: image(): not a PNG, JPEG, WebP, GIF, BMP, TIFF or ICO",
     "ok",
     "ok",
@@ -276,6 +276,11 @@ export default class Main extends View {
     this.log = [];
     this.focus = cx.focus_handle();
     this.bound = cx.bind_keys([{ keystroke: "ctrl-s", action: "save" }]);
+    try {
+      cx.bind_keys([{ keystroke: "ctrl-x", action: "other::save" }]);
+    } catch (e) {
+      globalThis.spoof = e instanceof TypeError;
+    }
   }
 
   render(_cx) {
@@ -306,8 +311,10 @@ export default class Main extends View {
 
 #[gpui::test]
 fn events_reach_handlers_with_payloads(cx: &mut TestAppContext) {
-  let (view, cx) = open(cx, EVENTS);
+  // rooted: a binding without a `context` fires inside the plugin's window only
+  let (view, cx) = rooted(cx, EVENTS);
   assert_eq!(text(&view, cx), "1|false|");
+  assert_eq!(eval(&view, cx, "String(globalThis.spoof)"), "true");
 
   cx.simulate_click(point(px(10.), px(10.)), Modifiers::shift());
   cx.run_until_parked();
@@ -369,6 +376,36 @@ export default class Main extends View {
 }
 "##;
 
+const REENTRANT: &str = r##"
+import { View, div } from "corona/kit";
+
+class Child extends View {
+  init(props, _cx) {
+    this.props = props;
+  }
+
+  update(props) {
+    this.props = props;
+    globalThis.updated = props.n;
+  }
+
+  render(_cx) {
+    return div().size_full().on_click(() => this.props.tap()).child(`child:${this.props.n}`);
+  }
+}
+
+export default class Main extends View {
+  init(_props, cx) {
+    const tap = () => this.child.set_props({ n: 2, tap });
+    this.child = cx.new(Child, { n: 1, tap });
+  }
+
+  render(_cx) {
+    return div().size_full().child(this.child);
+  }
+}
+"##;
+
 /// `view` mounted cached in a [`ScriptRoot`]
 fn rooted<'a>(
   cx: &'a mut TestAppContext,
@@ -403,6 +440,14 @@ fn child_views_update_alone(cx: &mut TestAppContext) {
   );
 }
 
+#[gpui::test]
+fn child_handler_may_set_its_own_props(cx: &mut TestAppContext) {
+  let (view, cx) = rooted(cx, REENTRANT);
+  cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+  cx.run_until_parked();
+  assert_eq!(eval(&view, cx, "String(globalThis.updated)"), "2");
+}
+
 const TIMERS: &str = r##"
 import { View, div } from "corona/kit";
 
@@ -414,7 +459,7 @@ export default class Main extends View {
       this.once = true;
       cx.notify();
     });
-    const every = cx.timer.every(3, (cx) => {
+    const every = cx.timer.every(4, (cx) => {
       this.ticks += 1;
       if (this.ticks === 2) every.cancel();
       cx.notify();
@@ -437,8 +482,8 @@ fn timers_and_tasks(cx: &mut TestAppContext) {
   let (view, cx) = open(cx, TIMERS);
   assert_eq!(text(&view, cx), "once:false|ticks:0|slept:false");
   for (ms, expected) in [
-    (3, "once:false|ticks:1|slept:false"),
-    (3, "once:false|ticks:2|slept:false"),
+    (4, "once:false|ticks:1|slept:false"),
+    (4, "once:false|ticks:2|slept:false"),
     (6, "once:true|ticks:2|slept:false"),
     (10, "once:true|ticks:2|slept:true"),
   ] {

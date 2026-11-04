@@ -3,7 +3,7 @@
 //!
 //! A state's JS class holds a [`Retained`], which keeps the gpui entity and the handlers its
 //! `.on` registered. The handlers live in the runtime, not in the JS object, so releasing the
-//! view frees them.
+//! state or dropping the view it was subscribed for frees them.
 
 use std::rc::Weak;
 
@@ -60,6 +60,7 @@ impl<T: 'static> Retained<T> {
     let rt = runtime(ctx)?;
     let handler = Persistent::save(ctx, handler);
     let view = current_view();
+    let owner = view.as_ref().map(|v| v.entity_id());
     let weak = self.rt.clone();
     let sub = crate::app().subscribe(self.entity(ctx)?, move |_, event: &E, cx| {
       let Some((_, payload)) = map(event, cx).filter(|(n, _)| *n == name) else {
@@ -79,7 +80,7 @@ impl<T: 'static> Retained<T> {
         }
       });
     });
-    self.subs.push(rt.keep(sub));
+    self.subs.push(rt.keep(owner, sub));
     Ok(true)
   }
 
@@ -89,6 +90,12 @@ impl<T: 'static> Retained<T> {
       self.subs.drain(..).for_each(|id| rt.unkeep(id));
     }
     self.entity.take().is_some()
+  }
+}
+
+impl<T: 'static> Drop for Retained<T> {
+  fn drop(&mut self) {
+    self.release();
   }
 }
 

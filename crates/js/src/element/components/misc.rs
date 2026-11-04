@@ -11,14 +11,15 @@ use std::{
   collections::HashMap,
   hash::{DefaultHasher, Hash, Hasher},
   marker::PhantomData,
+  sync::Arc,
   time::Duration,
 };
 
 use gpui_fps::FpsOverlay;
 use gpui_kit::{
   Anchor, AnyElement, App, AppContext, Axis, Bounds, Element, ElementId, Global, GlobalElementId,
-  InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Refineable, Style,
-  StyleRefinement, Styled, WeakEntity, Window, WindowId,
+  Image, ImageFormat, ImageSource, InspectorElementId, IntoElement, LayoutId, ParentElement,
+  Pixels, Refineable, Style, StyleRefinement, Styled, WeakEntity, Window, WindowId,
   base::TextView,
   component::{
     Sizable, Size,
@@ -214,7 +215,7 @@ impl<'js> IntoJs<'js> for Url {
 }
 
 /// A finite, non-negative number of milliseconds
-fn millis(ctx: &Ctx<'_>, ms: f64) -> Result<Duration> {
+pub(super) fn millis(ctx: &Ctx<'_>, ms: f64) -> Result<Duration> {
   Duration::try_from_secs_f64(ms / 1000.)
     .map_err(|_| Exception::throw_range(ctx, &format!("invalid duration {ms}ms")))
 }
@@ -1448,10 +1449,51 @@ pub(crate) const FAMILY: Family = Family {
   el_d_ts: methods::d_ts,
 };
 
+/// `view` that loads no image but `data:` ones, and opens only http(s) links, unless a script
+/// handles the click. A `TextView`'s defaults fetch URLs and open any scheme.
+fn sandboxed(view: TextView) -> TextView {
+  let images = std::sync::Mutex::new(std::collections::HashMap::<String, Arc<Image>>::new());
+  view
+    .image_source(move |uri| {
+      let mut images = images.lock().unwrap_or_else(|e| e.into_inner());
+      let image = images
+        .entry(uri.to_string())
+        .or_insert_with(|| data_image(uri));
+      ImageSource::Image(image.clone())
+    })
+    .on_link_click(|url, _, _, cx| {
+      if crate::view::web_url(url) {
+        cx.open_url(url);
+      }
+    })
+}
+
+/// The image a base64 `data:` URL carries; an undecodable one for anything else
+fn data_image(uri: &str) -> Arc<Image> {
+  use base64::Engine as _;
+  let image = uri
+    .strip_prefix("data:")
+    .and_then(|r| r.split_once(','))
+    .and_then(|(head, body)| {
+      let (mime, "base64") = head.rsplit_once(';')? else {
+        return None;
+      };
+      let format = ImageFormat::from_mime_type(mime)?;
+      let bytes = base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .ok()?;
+      Some(Image::from_bytes(format, bytes))
+    })
+    .unwrap_or_else(|| Image::from_bytes(ImageFormat::Png, Vec::new()));
+  Arc::new(image)
+}
+
 fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
   let text_view = Object::new(ctx.clone())?;
-  let html = |ctx: Ctx<'js>, id: String, html: String| new_el(&ctx, TextView::html(id, html));
-  let md = |ctx: Ctx<'js>, id: String, md: String| new_el(&ctx, TextView::markdown(id, md));
+  let html =
+    |ctx: Ctx<'js>, id: String, html: String| new_el(&ctx, sandboxed(TextView::html(id, html)));
+  let md =
+    |ctx: Ctx<'js>, id: String, md: String| new_el(&ctx, sandboxed(TextView::markdown(id, md)));
   text_view.set("html", Function::new(ctx.clone(), html)?)?;
   text_view.set("markdown", Function::new(ctx.clone(), md)?)?;
   Ok(vec![("TextView", text_view.into_value())])

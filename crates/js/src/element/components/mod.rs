@@ -246,12 +246,14 @@ impl<'js> SizeArg<'js> {
 /// A gpui listener taking `P`
 type Listener<P> = Rc<dyn Fn(&P, &mut Window, &mut App)>;
 
-/// The listener the latest render of the view gave
-type Latest<P> = Rc<RefCell<Option<Listener<P>>>>;
+/// The listener the latest render of the view gave, with the slot and frame generation
+/// whose handlers its index points into
+type Latest<P> = Rc<RefCell<Option<(u64, u32, Listener<P>)>>>;
 
 /// `handler(payload, cx)` for the events of `entity` that `pick` maps, as an element method
 /// sets it: subscribed once per entity and `key`, and calling the handler of the latest render.
-/// ponytail: a render that stops setting it keeps the last one; clear it if that matters
+/// A render that stops setting it leaves the last listener, which is ignored once its slot
+/// rendered again.
 pub(crate) fn on_entity<'js, T, E, P>(
   ctx: &Ctx<'js>,
   entity: &Entity<T>,
@@ -270,23 +272,32 @@ where
   let rt = runtime(ctx)?;
   let mut fresh = false;
   let id = format!("{key}:{}", entity.entity_id());
-  let latest: Latest<P> = rt.keyed(view, id, || {
+  let latest: Latest<P> = rt.keyed(view, id.clone(), || {
     fresh = true;
     Rc::default()
   });
-  *latest.borrow_mut() = Some(listener);
+  *latest.borrow_mut() = Some((frame.slot, frame.generation, listener));
   if fresh {
     let window = window_or_throw(ctx)?;
+    let weak = Rc::downgrade(&rt);
     let sub = window.subscribe(entity, crate::app(), move |entity, event, window, cx| {
       let Some(payload) = pick(&entity, event, cx) else {
         return;
       };
-      let listener = latest.borrow().clone();
-      if let Some(listener) = listener {
+      let latest = latest.borrow().clone();
+      let Some((slot, generation, listener)) = latest else {
+        return;
+      };
+      let current = weak.upgrade().is_some_and(|rt| {
+        (rt.slots.borrow())
+          .get(&(view, slot))
+          .is_some_and(|s| s.generation == generation)
+      });
+      if current {
         listener(&payload, window, cx);
       }
     });
-    rt.keep(sub);
+    rt.set_keyed(view, format!("{id}:sub"), sub);
   }
   Ok(())
 }

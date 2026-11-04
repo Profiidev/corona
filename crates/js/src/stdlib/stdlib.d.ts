@@ -141,8 +141,8 @@ declare module "process" {
   /** Runs a granted command; each stream is bounded to 8 MiB. */
   export function run(command: string, args?: string[], options?: ProcessOptions): Promise<CommandOutput>;
   export function spawn(command: string, args?: string[], options?: SpawnOptions): ChildProcess;
-  /** Quits the shell; needs `capabilities.process.exit`. */
-  export function exit(code?: number): void;
+  /** Quits the whole shell; needs `capabilities.process.exit`. */
+  export function exit(): void;
   export function nextTick(callback: (...args: unknown[]) => void, ...args: unknown[]): void;
   export const platform: string;
   export const arch: string;
@@ -176,7 +176,7 @@ declare module "fs/promises" {
   export function unlink(path: string): Promise<void>;
   export function rmdir(path: string): Promise<void>;
   export function mkdir(path: string, options?: MakeDirectoryOptions): Promise<void>;
-  /** An open file, closed by close() or when its runtime goes away. */
+  /** An open file, closed by close() or when its runtime goes away. Await each call before the next: they are not ordered. */
   export interface FileHandle {
     /** Up to maxBytes (64 KiB by default, at most 1 MiB); null at EOF. */
     read(maxBytes?: number): Promise<Uint8Array | null>;
@@ -256,7 +256,7 @@ interface FetchOptions {
   /** Host, Origin, Content-Length and the like are refused. */
   headers?: Record<string, string>;
   body?: string | Uint8Array;
-  /** Milliseconds, 1 to 300000, 30000 by default; bounds connecting and each read. */
+  /** Milliseconds, 1 to 300000, 30000 by default; bounds connecting and, unless `stream`, each read of the body. */
   timeout?: number;
   /** Resolve once the headers arrive and read the body chunk by chunk. */
   stream?: boolean;

@@ -1426,10 +1426,13 @@ mod methods {
       MenuEntry => |t| MenuEntry { checked: value, ..t },
     );
     /// The action a command or native menu item dispatches, for `on_action`.
-    fn action(action: String) |c, n| on!(c, n,
-      CommandItem => |t| t.action(Box::new(crate::element::events::ScriptAction(action.into()))),
-      NativeItem => |t| NativeItem { action, ..t },
-    );
+    fn action(action: String) |c, n| {
+      let action = crate::element::events::scoped(c, &action)?;
+      on!(c, n,
+        CommandItem => |t| t.action(Box::new(crate::element::events::ScriptAction(action.into()))),
+        NativeItem => |t| NativeItem { action, ..t },
+      )
+    };
     /// The outlined look of a `DropdownButton`.
     fn outline() |c, n| on!(c, n, DropButton => |t| DropButton { button: t.button.outline(), ..t });
     /// Where a `DropdownButton`'s menu opens.
@@ -2227,6 +2230,7 @@ fn component_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js
         ctx,
         "NativeMenuItem",
         |ctx: Ctx<'js>, label: String, action: String| {
+          let action = crate::element::events::scoped(&ctx, &action)?;
           new_el(
             &ctx,
             NativeItem {
@@ -2268,6 +2272,7 @@ fn component_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js
         ctx,
         "MenuItem",
         |ctx: Ctx<'js>, label: String, action: String| {
+          let action = crate::element::events::scoped(&ctx, &action)?;
           new_el(
             &ctx,
             MenuEntry {

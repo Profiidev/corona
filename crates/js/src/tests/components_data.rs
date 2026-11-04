@@ -38,7 +38,7 @@ export default class Main extends View {
       attempt(() => div().child("|")),
       attempt(() => base.Progress.new("p").value(40).indeterminate(false).accessibility_label("Load")
         .child(base.ProgressTrack.new().w(100).h(4).child(base.ProgressIndicator.new().w(40).h(4)))),
-      attempt(() => base.Avatar.new().w(40).h(40).image(base.AvatarImage.new("avatars/ada.png").size_full())
+      attempt(() => base.Avatar.new().w(40).h(40)
         .fallback(base.AvatarFallback.new().child("AL"))),
       attempt(() => base.Table.new("t").row_count(2).column_count(1).accessibility_label("T")
         .child(base.TableHeader.new("h").child(base.TableRow.new("r0", 1).child(base.TableHead.new("hd", 1).child("Name"))))
@@ -53,7 +53,6 @@ export default class Main extends View {
         .title(c.EmptyTitle.new().child("Nothing")).description(c.EmptyDescription.new().child("Here")))
         .child(c.EmptyContent.new().child("Add"))),
       attempt(() => c.Icon.new("icons/check.svg").size("small").color("primary").rotate(1.5)),
-      attempt(() => c.Image.new("images/logo.png").w(20).h(20)),
       attempt(() => c.DescriptionList.new().vertical().bordered(true).columns(2).size("small")
         .child(c.DescriptionItem.new("Name").value("Ada").span(2)).child(c.DescriptionItem.new("Age").value(36))),
       attempt(() => c.Progress.new("cp").value(50).loading(false).color("primary").size("small").accessibility_label("x")),

@@ -4,9 +4,13 @@
 use std::{
   cell::{Cell, RefCell},
   collections::{BTreeMap, HashMap},
+  io::Write,
   path::{Path, PathBuf},
   rc::{Rc, Weak},
-  sync::{Arc, Mutex},
+  sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+  },
 };
 
 use rquickjs::{Coerced, Ctx, Exception, JsLifetime, Promise, Result, class::Trace};
@@ -14,11 +18,34 @@ use rquickjs::{Coerced, Ctx, Exception, JsLifetime, Promise, Result, class::Trac
 use super::io::{Fail, Null, Res, blocking, promise};
 use crate::{PluginRef, runtime::caps::CapabilityError};
 
+/// Total bytes of keys and values a store may hold
+const QUOTA: usize = 5 * 1024 * 1024;
+
+/// Revisions are global so stores of one file, made after a reload, still order their writes
+static REVISION: AtomicU64 = AtomicU64::new(0);
+
+/// The revision on disk per file, also the lock that orders its writes, shared by every
+/// store of that file
+static WRITTEN: Mutex<BTreeMap<PathBuf, Arc<Mutex<u64>>>> = Mutex::new(BTreeMap::new());
+
+fn written(file: &Path) -> Arc<Mutex<u64>> {
+  WRITTEN
+    .lock()
+    .unwrap()
+    .entry(file.into())
+    .or_default()
+    .clone()
+}
+
 pub(crate) struct Store {
   map: RefCell<BTreeMap<String, String>>,
+  /// Bytes of keys and values in `map`
+  used: Cell<usize>,
   /// Where it persists; `None` for session storage
   file: Option<PathBuf>,
   revision: Cell<u64>,
+  /// A write of the latest revision is queued for the end of this tick
+  scheduled: Cell<bool>,
   /// The revision on disk, also the lock that orders writes
   written: Arc<Mutex<u64>>,
 }
@@ -31,10 +58,12 @@ thread_local! {
 impl Store {
   fn new(file: Option<PathBuf>, map: BTreeMap<String, String>) -> Rc<Self> {
     Rc::new(Self {
+      used: Cell::new(map.iter().map(|(k, v)| k.len() + v.len()).sum()),
       map: RefCell::new(map),
+      written: file.as_deref().map(written).unwrap_or_default(),
       file,
       revision: Cell::new(0),
-      written: Arc::default(),
+      scheduled: Cell::new(false),
     })
   }
 
@@ -44,6 +73,9 @@ impl Store {
       if let Some(store) = files.get(&file).and_then(Weak::upgrade) {
         return store;
       }
+      // an earlier store's write may still be in flight
+      let settled = written(&file);
+      let _settled = settled.lock().unwrap();
       let map = match std::fs::read(&file) {
         Ok(data) => serde_json::from_slice(&data).unwrap_or_else(|e| {
           tracing::warn!("{} is not storage, starting empty: {e}", file.display());
@@ -69,40 +101,53 @@ impl Store {
   fn persist(&self) -> Option<impl Future<Output = Res<()>> + use<>> {
     let file = self.file.clone()?;
     let revision = self.revision.get();
-    let json = serde_json::to_vec_pretty(&*self.map.borrow()).expect("strings");
+    let json = serde_json::to_vec(&*self.map.borrow()).expect("strings");
     let written = self.written.clone();
     Some(blocking(move || {
       let mut on_disk = written.lock().unwrap();
       if *on_disk >= revision {
         return Ok(());
       }
-      write(&file, &json)
+      write(&file, &json, revision)
         .map_err(|e| Fail::Error(format!("writing {} failed: {e}", file.display())))?;
       *on_disk = revision;
       Ok(())
     }))
   }
 
-  /// After every change. A failed write parks until `flush()` retries it.
-  fn changed(&self) {
-    self.revision.set(self.revision.get() + 1);
-    if let Some(write) = self.persist() {
-      super::io::detach(async move {
-        if let Err(Fail::Error(e)) = write.await {
-          tracing::warn!("storage not saved: {e}");
-        }
-      });
+  /// After every change; the changes of one tick share a write. A failed write parks until
+  /// `flush()` retries it.
+  fn changed(self: &Rc<Self>) {
+    self
+      .revision
+      .set(REVISION.fetch_add(1, Ordering::Relaxed) + 1);
+    if self.file.is_none() || self.scheduled.replace(true) {
+      return;
     }
+    let store = self.clone();
+    let tick = crate::app().foreground_executor().spawn(async move {
+      store.scheduled.set(false);
+      if let Some(write) = store.persist() {
+        super::io::detach(async move {
+          if let Err(Fail::Error(e)) = write.await {
+            tracing::warn!("storage not saved: {e}");
+          }
+        });
+      }
+    });
+    tick.detach();
   }
 }
 
 /// Atomically: a temporary file renamed over the target
-fn write(file: &Path, json: &[u8]) -> std::io::Result<()> {
+fn write(file: &Path, json: &[u8], revision: u64) -> std::io::Result<()> {
   if let Some(dir) = file.parent() {
     std::fs::create_dir_all(dir)?;
   }
-  let tmp = file.with_extension("json.tmp");
-  std::fs::write(&tmp, json)?;
+  let tmp = file.with_extension(format!("json.{revision}.tmp"));
+  let mut f = std::fs::File::create(&tmp)?;
+  f.write_all(json)?;
+  f.sync_all()?;
   std::fs::rename(&tmp, file).inspect_err(|_| {
     let _ = std::fs::remove_file(&tmp);
   })
@@ -169,14 +214,31 @@ impl Storage {
 
   #[qjs(rename = "setItem")]
   pub fn set_item(&self, ctx: Ctx<'_>, key: Coerced<String>, value: Coerced<String>) -> Result<()> {
-    self.map(&ctx)?.borrow_mut().insert(key.0, value.0);
+    let mut map = self.map(&ctx)?.borrow_mut();
+    let size = |k: &str, v: &str| k.len() + v.len();
+    let old = map.get(&key.0).map_or(0, |v| size(&key.0, v));
+    let used = self.store.used.get() - old + size(&key.0, &value.0);
+    if used > QUOTA {
+      return Err(Exception::throw_message(
+        &ctx,
+        "QuotaExceededError: storage is limited to 5 MiB",
+      ));
+    }
+    map.insert(key.0, value.0);
+    self.store.used.set(used);
+    drop(map);
     self.store.changed();
     Ok(())
   }
 
   #[qjs(rename = "removeItem")]
   pub fn remove_item(&self, ctx: Ctx<'_>, key: Coerced<String>) -> Result<()> {
-    if self.map(&ctx)?.borrow_mut().remove(&key.0).is_some() {
+    let removed = self.map(&ctx)?.borrow_mut().remove(&key.0);
+    if let Some(v) = removed {
+      self
+        .store
+        .used
+        .set(self.store.used.get() - key.0.len() - v.len());
       self.store.changed();
     }
     Ok(())
@@ -184,6 +246,7 @@ impl Storage {
 
   pub fn clear(&self, ctx: Ctx<'_>) -> Result<()> {
     self.map(&ctx)?.borrow_mut().clear();
+    self.store.used.set(0);
     self.store.changed();
     Ok(())
   }

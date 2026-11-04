@@ -328,7 +328,7 @@ fn storage_answers_from_memory_and_persists_atomically(cx: &mut TestAppContext) 
   let file = dir.join("data/localStorage.json");
   let written = std::fs::read_to_string(&file).unwrap();
   assert!(
-    written.contains("\"theme\": \"dark\"") && written.contains("Notes"),
+    written.contains("\"theme\":\"dark\"") && written.contains("Notes"),
     "{written}"
   );
   assert!(
@@ -377,7 +377,7 @@ fn a_failed_store_write_parks_until_flush_retries(cx: &mut TestAppContext) {
   std::fs::remove_dir(&file).unwrap();
   settle(cx, |log| log.len() >= 2);
   let written = std::fs::read_to_string(&file).unwrap();
-  assert!(written.contains("\"attempt\": \"1\""), "{written}");
+  assert!(written.contains("\"attempt\":\"1\""), "{written}");
 }
 
 // --- process
@@ -846,6 +846,19 @@ fn main_runs_and_its_sleeps_and_timers_resume(cx: &mut TestAppContext) {
   );
   assert!(seen.contains(&"timeout:arg".to_string()), "{seen:?}");
   assert!(!seen.iter().any(|l| l.contains("ran")), "{seen:?}");
+}
+
+#[gpui::test]
+fn search_params_split_on_the_first_equals_and_survive_bad_escapes(cx: &mut TestAppContext) {
+  let source = main(
+    "",
+    r#"
+    const p = new URLSearchParams("a=b=c&bad=%zz&sp=x+y");
+    p.append("q", "1 2");
+    report(`${p.get("a")}|${p.get("bad")}|${p.get("sp")}|${p.toString()}`);"#,
+  );
+  let (_service, _) = start(cx, "search-params", Capabilities::new(), &source);
+  assert_eq!(first(cx), "b=c|%zz|x y|a=b%3Dc&bad=%25zz&sp=x+y&q=1+2");
 }
 
 #[gpui::test]

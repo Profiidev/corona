@@ -1,7 +1,10 @@
 //! The built-in modules: `corona/kit` (views, elements, `window`), `corona/base` (layout helpers,
 //! theme) and `corona/component`, plus the component families of `components/`.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+  path::{Path, PathBuf},
+  sync::Arc,
+};
 
 use gpui_kit::{Image, ImageFormat, IntoElement, base::StyledExt, div, img, svg, uniform_list};
 use rquickjs::{
@@ -77,13 +80,45 @@ fn func<'js, P, F: rquickjs::function::IntoJsFunc<'js, P> + 'js>(
   Ok(Function::new(ctx.clone(), f)?.into_value())
 }
 
-/// `svg(path)`: an absolute path, or one of the app's assets
+/// `svg(path)`: an absolute path under a read grant, or a path in the plugin's directory
 fn svg_el<'js>(ctx: Ctx<'js>, path: String) -> Result<Class<'js, crate::El>> {
-  let el = match path.starts_with('/') {
-    true => svg().external_path(path),
-    false => svg().path(path),
-  };
-  new_el(&ctx, el)
+  let path = resolve_image_path(&ctx, "svg()", path)?;
+  new_el(
+    &ctx,
+    svg().external_path(path.to_string_lossy().into_owned()),
+  )
+}
+
+/// `path` as a file: an absolute path under a read grant, or one in the plugin's directory.
+/// `what` names the caller in errors.
+pub(crate) fn resolve_image_path(ctx: &Ctx<'_>, what: &str, path: String) -> Result<PathBuf> {
+  if path.contains("://") {
+    return Err(Exception::throw_type(
+      ctx,
+      &format!("{what} takes no URLs: fetch the bytes instead"),
+    ));
+  }
+  let path = PathBuf::from(path);
+  let plugin = plugin(ctx)?;
+  if path.is_absolute() {
+    if let Err(e) = plugin.capabilities.open(&path, Access::Read) {
+      return Err(Exception::throw_type(ctx, &format!("{what}: {e}")));
+    }
+    return Ok(path);
+  }
+  let root = plugin.capabilities.asset_root_path().ok_or_else(|| {
+    Exception::throw_type(
+      ctx,
+      &format!("{what}: relative image paths need a plugin directory"),
+    )
+  })?;
+  asset(root, &path).ok_or_else(|| {
+    let msg = format!(
+      "{what}: {} is no file in the plugin directory",
+      path.display()
+    );
+    Exception::throw_type(ctx, &msg)
+  })
 }
 
 /// The format of image bytes, by their magic number
@@ -114,20 +149,12 @@ fn image_format(bytes: &[u8]) -> Option<ImageFormat> {
   })
 }
 
-/// `image(source)`: a file path under a read grant, or image bytes.
+/// `image(source)`: an absolute path under a read grant, a path relative to the plugin's
+/// directory, or image bytes.
 fn image_el<'js>(ctx: Ctx<'js>, source: Value<'js>) -> Result<Class<'js, crate::El>> {
   if let Some(path) = source.as_string() {
     let path = path.to_string()?;
-    if path.contains("://") {
-      return Err(Exception::throw_type(
-        &ctx,
-        "image() takes no URLs: fetch the bytes instead",
-      ));
-    }
-    let path = PathBuf::from(path);
-    if let Err(e) = plugin(&ctx)?.capabilities.open(&path, Access::Read) {
-      return Err(Exception::throw_type(&ctx, &format!("image(): {e}")));
-    }
+    let path = resolve_image_path(&ctx, "image()", path)?;
     return new_el(&ctx, img(path));
   }
   let bytes = TypedArray::<u8>::from_js(&ctx, source)
@@ -141,6 +168,13 @@ fn image_el<'js>(ctx: Ctx<'js>, source: Value<'js>) -> Result<Class<'js, crate::
     )
   })?;
   new_el(&ctx, img(Arc::new(Image::from_bytes(format, bytes))))
+}
+
+/// `path` under `root`, resolved; `None` when it does not exist or escapes `root`
+fn asset(root: &Path, path: &Path) -> Option<PathBuf> {
+  let root = root.canonicalize().ok()?;
+  let full = root.join(path).canonicalize().ok()?;
+  full.starts_with(&root).then_some(full)
 }
 
 /// `list(id, count, get_key, render(index, cx))`. ponytail: `get_key` is unused until
@@ -411,16 +445,16 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
   export interface KeyBinding {
     /** The chord, e.g. `"cmd-s"`, or a sequence: `"ctrl-k ctrl-s"`. */
     keystroke: string;
-    /** The action it dispatches, handled by `on_action`. */
+    /** The action it dispatches, handled by `on_action`. Names are per plugin; `::` is reserved and throws. */
     action: string;
-    /** A key-context predicate matched against `key_context`; global when left out. */
+    /** A key-context predicate matched against `key_context`; defaults to this plugin's windows, so the binding fires nowhere else. */
     context?: string;
   }
   /** What a view's methods, handlers, timers and tasks get. */
   export interface Context {
     /** Renders the view again, or the retained child `target`. Throws in `render`. */
     notify(target?: Entity): void;
-    /** Installs key bindings, all or none; returns how many. */
+    /** Installs key bindings, all or none; returns how many. They end with the plugin's runtime, so a reload replaces them. */
     bind_keys(bindings: KeyBinding[]): number;
     /** Stops this event reaching the handlers further out. */
     stop_propagation(): void;
@@ -517,8 +551,8 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     title: string;
     description?: string;
     level?: "info" | "success" | "warning" | "error";
-    /** `null` keeps it up until removed. */
-    timeout?: number | null;
+    /** Hides after 5 s; `null` keeps it up until removed. */
+    timeout?: null;
     id?: string;
   }
   /** The window the view draws into, as the `window` global. Overlays open from handlers. */
@@ -561,3 +595,22 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     paint_path(path: Path, fill: Color | Background): Element;
   }
 "#;
+
+#[cfg(test)]
+mod tests {
+  use std::path::Path;
+
+  #[test]
+  fn assets_stay_in_the_plugin_dir() {
+    let base = std::env::temp_dir().join(format!("corona-asset-{}", std::process::id()));
+    let root = base.join("plugin");
+    std::fs::create_dir_all(root.join("img")).unwrap();
+    std::fs::write(root.join("img/a.png"), b"").unwrap();
+    std::fs::write(base.join("secret.png"), b"").unwrap();
+    let found = super::asset(&root, Path::new("img/a.png"));
+    assert_eq!(found, Some(root.join("img/a.png").canonicalize().unwrap()));
+    assert_eq!(super::asset(&root, Path::new("../secret.png")), None);
+    assert_eq!(super::asset(&root, Path::new("missing.png")), None);
+    std::fs::remove_dir_all(base).unwrap();
+  }
+}

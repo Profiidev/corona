@@ -33,7 +33,7 @@ use rquickjs::{
 use super::{Family, SizeArg, ctor, declare};
 use crate::{
   Child, El, Id, Node, On, Opt, ScriptView, TsType, frame, frame_or_throw, new_el,
-  runtime::runtime,
+  runtime::{SlotGuard, runtime},
   view::{current_view, window_or_throw},
   with_node,
 };
@@ -234,10 +234,7 @@ struct Ms(Duration);
 
 impl<'js> FromJs<'js> for Ms {
   fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
-    let ms = f64::from_js(ctx, value)?;
-    Duration::try_from_secs_f64(ms / 1000.)
-      .map(Ms)
-      .map_err(|_| Exception::throw_range(ctx, &format!("invalid delay {ms}ms")))
+    super::misc::millis(ctx, f64::from_js(ctx, value)?).map(Ms)
   }
 }
 
@@ -541,7 +538,13 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
   match kind.as_str() {
     "Dialog" => {
       let content = keep("content")?;
+      let guard = SlotGuard::new(
+        &rt,
+        view.entity_id(),
+        [ok, cancel, close, kept.error, content],
+      );
       window.open_dialog(app, move |mut dialog, window, cx| {
+        let _ = &guard;
         if let Some(title) = title.clone() {
           dialog = dialog.title(title);
         }
@@ -561,7 +564,9 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
     }
     "AlertDialog" => {
       let show_cancel = flag("show_cancel", false)?;
+      let guard = SlotGuard::new(&rt, view.entity_id(), [ok, cancel, close, kept.error]);
       window.open_alert_dialog(app, move |mut alert, _, _| {
+        let _ = &guard;
         if let Some(title) = title.clone() {
           alert = alert.title(title);
         }
@@ -586,7 +591,13 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
       let content = keep("content")?;
       let at = (spec.get::<_, Option<String>>("placement")?)
         .map_or(Placement::Right, |p| Place::named(&p));
+      let guard = SlotGuard::new(
+        &rt,
+        view.entity_id(),
+        [ok, cancel, close, kept.error, content],
+      );
       window.open_sheet_at(at, app, move |mut sheet, window, cx| {
+        let _ = &guard;
         if let Some(title) = title.clone() {
           sheet = sheet.title(title);
         }
@@ -600,6 +611,11 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
       let level = (spec.get::<_, Option<String>>("type")?)
         .map_or(NotificationType::Info, |t| Level::named(&t));
       let click = keep("on_click")?;
+      let guard = SlotGuard::new(
+        &rt,
+        view.entity_id(),
+        [ok, cancel, close, kept.error, click],
+      );
       let id: String = spec.get("id")?;
       let mut note = Notification::new()
         .id1::<Note>(id)
@@ -614,7 +630,10 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
       let k = kept.clone();
       let note = note
         .on_click(move |_, window, cx| k.fire(click, window, cx))
-        .on_close(move |window, cx| kept.fire(close, window, cx));
+        .on_close(move |window, cx| {
+          let _ = &guard;
+          kept.fire(close, window, cx)
+        });
       window.push_notification(note, app);
     }
   }

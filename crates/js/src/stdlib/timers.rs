@@ -16,7 +16,7 @@ use rquickjs::{
 use super::io::promise;
 use crate::app;
 
-fn duration(ms: Option<f64>) -> Duration {
+pub(crate) fn duration(ms: Option<f64>) -> Duration {
   Duration::from_millis(ms.filter(|ms| ms.is_finite() && *ms > 0.).unwrap_or(0.) as u64)
 }
 
@@ -31,6 +31,12 @@ fn schedule<'js>(
   cancelled: Rc<Cell<bool>>,
 ) {
   let ctx2 = ctx.clone();
+  // an interval of 0 would spin the executor
+  let delay = if repeat {
+    delay.max(Duration::from_millis(4))
+  } else {
+    delay
+  };
   ctx.spawn(async move {
     loop {
       app().background_executor().timer(delay).await;

@@ -7,10 +7,7 @@
 //! whole (`AvatarImage`, `EmptyTitle`, `TreeItem`, ..) are passed to its slot method, not to
 //! `child`. `List` and `DataTable` render their rows lazily through view slots, like `list()`.
 
-use std::{
-  any::{Any, TypeId},
-  path::PathBuf,
-};
+use std::any::{Any, TypeId};
 
 use gpui_kit::{
   AnyElement, App, AppContext, Div, Entity, ImageSource, IntoElement, ParentElement, Refineable,
@@ -51,7 +48,9 @@ use rquickjs::{
 use super::{Family, SizeArg, constructor};
 use crate::{
   Child, Color, El, Named, Node, Opt, Retained, ScriptView, TsType, app, frame_or_throw, map,
-  new_el, runtime::runtime, view::window_or_throw,
+  new_el,
+  runtime::runtime,
+  view::{kit::resolve_image_path, window_or_throw},
 };
 
 /// A widget that is not `Styled`, or takes typed children, in a styled, interactive `div`
@@ -488,19 +487,9 @@ impl<'js> FromJs<'js> for Rows<'js> {
   }
 }
 
-/// An image from the app's assets, or a file by absolute path. TODO(capabilities): check fs
-/// read grants.
+/// An image file: an absolute path under a read grant, or a path in the plugin's directory
 fn source(ctx: &Ctx<'_>, path: String) -> Result<ImageSource> {
-  if path.contains("://") {
-    return Err(Exception::throw_type(
-      ctx,
-      "takes no URLs: an asset or an absolute path",
-    ));
-  }
-  Ok(match path.starts_with('/') {
-    true => PathBuf::from(path).into(),
-    false => path.into(),
-  })
+  Ok(resolve_image_path(ctx, "image", path)?.into())
 }
 
 /// One chart datum, `{ label, value }`
@@ -1504,7 +1493,7 @@ mod methods {
     fn loading(value: bool) |c, n| any!(c, n, Progress => |p| p.loading(value));
     /// The name an `Avatar` shows the initials of without an image.
     fn name(name: String) |c, n| any!(c, n, Avatar => |a| a.name(name));
-    /// The image of an `Avatar`: an asset or an absolute path.
+    /// The image of an `Avatar`: an absolute path under a read grant, or a plugin file.
     fn src(path: String) |c, n| {
       let src = source(c, path)?;
       any!(c, n, Avatar => |a| a.src(src))

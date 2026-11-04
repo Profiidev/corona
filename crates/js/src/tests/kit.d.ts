@@ -3395,8 +3395,9 @@ declare module "corona/kit" {
     /** `handler(event, cx)` when a modifier key changes while focused. */
     on_modifiers_changed(handler: (event: ModifiersChangedEvent, cx: Context) => void): Element;
     /**
-     * `handler(event, cx)` when the action named `action` is dispatched to this element or
-     * inside it, by a key binding (`cx.bind_keys`) or `window.dispatch_action`.
+     * `handler(event, cx)` when the action named `action` of this plugin is dispatched to this
+     * element or inside it, by a key binding (`cx.bind_keys`) or `window.dispatch_action`.
+     * Action names are per plugin; `::` is reserved and throws.
      */
     on_action(action: string, handler: (event: ActionEvent, cx: Context) => void): Element;
     /** Passes this element to `transform` and returns what it returns. */
@@ -3863,7 +3864,7 @@ declare module "corona/kit" {
     loading(value: boolean): Element;
     /** The name an `Avatar` shows the initials of without an image. */
     name(name: string): Element;
-    /** The image of an `Avatar`: an asset or an absolute path. */
+    /** The image of an `Avatar`: an absolute path under a read grant, or a plugin file. */
     src(path: string): Element;
     /** Lays a `DescriptionList` out in a column. */
     vertical(): Element;
@@ -4075,16 +4076,16 @@ declare module "corona/kit" {
   export interface KeyBinding {
     /** The chord, e.g. `"cmd-s"`, or a sequence: `"ctrl-k ctrl-s"`. */
     keystroke: string;
-    /** The action it dispatches, handled by `on_action`. */
+    /** The action it dispatches, handled by `on_action`. Names are per plugin; `::` is reserved and throws. */
     action: string;
-    /** A key-context predicate matched against `key_context`; global when left out. */
+    /** A key-context predicate matched against `key_context`; defaults to this plugin's windows, so the binding fires nowhere else. */
     context?: string;
   }
   /** What a view's methods, handlers, timers and tasks get. */
   export interface Context {
     /** Renders the view again, or the retained child `target`. Throws in `render`. */
     notify(target?: Entity): void;
-    /** Installs key bindings, all or none; returns how many. */
+    /** Installs key bindings, all or none; returns how many. They end with the plugin's runtime, so a reload replaces them. */
     bind_keys(bindings: KeyBinding[]): number;
     /** Stops this event reaching the handlers further out. */
     stop_propagation(): void;
@@ -4181,8 +4182,8 @@ declare module "corona/kit" {
     title: string;
     description?: string;
     level?: "info" | "success" | "warning" | "error";
-    /** `null` keeps it up until removed. */
-    timeout?: number | null;
+    /** Hides after 5 s; `null` keeps it up until removed. */
+    timeout?: null;
     id?: string;
   }
   /** The window the view draws into, as the `window` global. Overlays open from handlers. */

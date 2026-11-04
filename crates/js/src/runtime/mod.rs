@@ -46,8 +46,12 @@ pub(crate) enum Main<'a> {
 pub(crate) struct Slot {
   pub(crate) content: Option<Persistent<Function<'static>>>,
   pub(crate) handlers: Vec<Persistent<Function<'static>>>,
-  /// Belongs to the view's last render, dropped by its next
+  /// Belongs to the last render of slot `owner`, dropped by its next
   pub(crate) transient: bool,
+  /// The slot whose render kept it
+  pub(crate) owner: u64,
+  /// The [`Frame`] generation of the render whose `handlers` these are
+  pub(crate) generation: u32,
 }
 
 /// One plugin's JS runtime and what it keeps for its views.
@@ -61,9 +65,11 @@ pub(crate) struct Runtime {
   keyed: RefCell<HashMap<(EntityId, String), Box<dyn Any>>>,
   /// The view classes `DockArea.register_panel` rebuilds panels from, by panel name
   pub(crate) panels: RefCell<HashMap<String, Persistent<Function<'static>>>>,
-  /// What retained states' `.on` subscribed
-  subs: RefCell<HashMap<u32, Subscription>>,
+  /// What retained states' `.on` subscribed, and the view they did it for
+  subs: RefCell<HashMap<u32, (Option<EntityId>, Subscription)>>,
   pub(crate) watches: Watches,
+  /// The id of the plugin it runs
+  pub(crate) plugin_id: String,
   _drive: Task<()>,
   // last: `Persistent` handles must be freed before the runtime
   ctx: AsyncContext,
@@ -106,10 +112,10 @@ impl Runtime {
     self.next_slot.get()
   }
 
-  /// Keeps `sub` until [`Self::unkeep`] or the runtime is freed.
-  pub(crate) fn keep(&self, sub: Subscription) -> u32 {
+  /// Keeps `sub` until [`Self::unkeep`], `view` is dropped or the runtime is freed.
+  pub(crate) fn keep(&self, view: Option<EntityId>, sub: Subscription) -> u32 {
     let id = self.slot_id() as u32;
-    self.subs.borrow_mut().insert(id, sub);
+    self.subs.borrow_mut().insert(id, (view, sub));
     id
   }
 
@@ -126,9 +132,61 @@ impl Runtime {
       content,
       handlers: Vec::new(),
       transient,
+      owner: scope::try_frame().map_or(0, |f| f.slot),
+      generation: 0,
     };
     self.slots.borrow_mut().insert((view, key), slot);
     key
+  }
+
+  /// Drops `view`'s slots that `pick` names, and what their renders kept: per-item
+  /// handlers and the transient slots they made, nested ones too. ponytail: a scan of all
+  /// slots per call; index them by owner if views keep thousands
+  pub(crate) fn drop_slots(&self, view: EntityId, pick: impl Fn(u64, &Slot) -> bool) {
+    let mut prefixes = std::collections::HashSet::new();
+    loop {
+      let gone: Vec<_> = (self.slots.borrow_mut())
+        .extract_if(|&(v, key), s| {
+          v == view
+            && (pick(key, s)
+              || prefixes.contains(&(key >> 32))
+              || (s.transient && prefixes.contains(&(s.owner >> 32))))
+        })
+        .collect();
+      if gone.is_empty() {
+        break;
+      }
+      // the main render, slot 0, has no prefix of its own
+      prefixes.extend(
+        gone
+          .iter()
+          .map(|((_, key), _)| key >> 32)
+          .filter(|p| *p != 0),
+      );
+    }
+  }
+
+  /// Drops `view`'s slots `keys`, with what their renders kept.
+  pub(crate) fn unslot(&self, view: EntityId, keys: &[u64]) {
+    self.drop_slots(view, |key, _| keys.contains(&key));
+  }
+
+  /// Everything kept for `view`, dropped with it
+  pub(crate) fn forget_view(&self, view: EntityId) {
+    let slots: Vec<_> = (self.slots.borrow_mut())
+      .extract_if(|(v, _), _| *v == view)
+      .collect();
+    let lists: Vec<_> = (self.lists.borrow_mut())
+      .extract_if(|(v, _), _| *v == view)
+      .collect();
+    let keyed: Vec<_> = (self.keyed.borrow_mut())
+      .extract_if(|(v, _), _| *v == view)
+      .collect();
+    let subs: Vec<_> = (self.subs.borrow_mut())
+      .extract_if(|_, (v, _)| *v == Some(view))
+      .collect();
+    // freed out of the borrows: a finalizer they run may come back here
+    drop((slots, lists, keyed, subs));
   }
 
   /// What `view` keeps under `id`, made by `make` the first time.
@@ -163,10 +221,44 @@ impl Runtime {
     let state = lists
       .entry((view, id))
       .or_insert_with(|| ListState::new(count, gpui_kit::ListAlignment::Top, gpui_kit::px(200.)));
-    if state.item_count() != count {
-      state.reset(count);
+    // splice keeps the scroll position and measured heights; `reset` drops both
+    let old = state.item_count();
+    if count > old {
+      state.splice(old..old, count - old);
+    } else if count < old {
+      state.splice(count..old, 0);
     }
     state.clone()
+  }
+}
+
+/// Drops `view`'s slots `keys` when it is dropped: an overlay's builder holds it, so they
+/// are freed however the overlay goes away
+pub(crate) struct SlotGuard {
+  rt: Weak<Runtime>,
+  view: EntityId,
+  keys: Vec<u64>,
+}
+
+impl SlotGuard {
+  pub(crate) fn new(
+    rt: &Rc<Runtime>,
+    view: EntityId,
+    keys: impl IntoIterator<Item = Option<u64>>,
+  ) -> Self {
+    Self {
+      rt: Rc::downgrade(rt),
+      view,
+      keys: keys.into_iter().flatten().collect(),
+    }
+  }
+}
+
+impl Drop for SlotGuard {
+  fn drop(&mut self) {
+    if let Some(rt) = self.rt.upgrade() {
+      rt.unslot(self.view, &self.keys);
+    }
   }
 }
 
@@ -200,6 +292,7 @@ pub(crate) fn new(
     panels: Default::default(),
     subs: Default::default(),
     watches,
+    plugin_id: plugin.id.clone(),
     _drive: drive(&rt, cx),
     ctx: ctx.clone(),
   });

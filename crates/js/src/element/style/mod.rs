@@ -149,6 +149,9 @@ fn distance(a: &str, b: &str) -> usize {
 /// `#rgb`, `#rrggbb` or `#rrggbbaa`
 pub(crate) fn hex(text: &str) -> Option<Hsla> {
   let digits = text.strip_prefix('#')?;
+  if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+    return None;
+  }
   let n = u32::from_str_radix(digits, 16).ok()?;
   Some(match digits.len() {
     3 => {
@@ -226,11 +229,15 @@ fn length<'js>(
   tokens: Tokens,
 ) -> Result<Length> {
   if let Some(n) = value.as_number() {
-    return Ok(px(n as f32).into());
+    return match n as f32 {
+      n if n.is_finite() => Ok(px(n).into()),
+      _ => Err(Exception::throw_type(ctx, "expected a finite length")),
+    };
   }
   let text = String::from_js(ctx, value)
     .map_err(|_| Exception::throw_type(ctx, "expected a length: a number or a string"))?;
-  let number = |unit: &str| text.strip_suffix(unit)?.trim().parse::<f32>().ok();
+  let number =
+    |unit: &str| (text.strip_suffix(unit)?.trim().parse::<f32>().ok()).filter(|n| n.is_finite());
   let parsed: Option<Length> = if auto && text == "auto" {
     Some(Length::Auto)
   } else if let Some(n) = number("px") {
@@ -334,13 +341,31 @@ impl TsType for Radius {
   }
 }
 
+/// A finite number: layout takes no NaN or infinity
+pub struct Finite(pub f32);
+
+impl<'js> FromJs<'js> for Finite {
+  fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+    match f32::from_js(ctx, value)? {
+      n if n.is_finite() => Ok(Finite(n)),
+      _ => Err(Exception::throw_type(ctx, "expected a finite number")),
+    }
+  }
+}
+
+impl TsType for Finite {
+  fn ts() -> String {
+    "number".into()
+  }
+}
+
 /// A line height: a bare number is a multiplier, a string a length
 pub struct LineHeight(pub DefiniteLength);
 
 impl<'js> FromJs<'js> for LineHeight {
   fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
     match value.as_number() {
-      Some(n) => Ok(LineHeight(relative(n as f32))),
+      Some(_) => Finite::from_js(ctx, value).map(|n| LineHeight(relative(n.0))),
       None => Def::from_js(ctx, value).map(|d| LineHeight(d.0)),
     }
   }
@@ -355,7 +380,7 @@ impl TsType for LineHeight {
 mod params {
   use gpui_kit::{FontWeight, Styled};
 
-  use super::{Abs, Color, Def, Fill, Len, LineHeight, Radius};
+  use super::{Abs, Color, Def, Fill, Finite, Len, LineHeight, Radius};
   use crate::{Opt, element::restyle};
 
   crate::el_methods! {
@@ -422,13 +447,13 @@ mod params {
     /// Sets the gap between rows.
     fn gap_y(v: Def) |c, n| restyle(c, n, |s| s.gap_y(v.0));
     /// Sets how much of the free space this child takes, 1 when left out.
-    fn flex_grow(v: Opt<f32>) |c, n| restyle(c, n, |mut s| {
-      s.flex_grow = Some(v.0.unwrap_or(1.));
+    fn flex_grow(v: Opt<Finite>) |c, n| restyle(c, n, |mut s| {
+      s.flex_grow = Some(v.0.map_or(1., |f| f.0));
       s
     });
     /// Sets how readily this child gives space back, 1 when left out.
-    fn flex_shrink(v: Opt<f32>) |c, n| restyle(c, n, |mut s| {
-      s.flex_shrink = Some(v.0.unwrap_or(1.));
+    fn flex_shrink(v: Opt<Finite>) |c, n| restyle(c, n, |mut s| {
+      s.flex_shrink = Some(v.0.map_or(1., |f| f.0));
       s
     });
     /// Sets the size this child starts from before growing or shrinking.
@@ -444,11 +469,11 @@ mod params {
     /// Sets the font family.
     fn font_family(v: String) |c, n| restyle(c, n, |s| s.font_family(v));
     /// Sets the font weight, 100 to 900.
-    fn font_weight(v: f32) |c, n| restyle(c, n, |s| s.font_weight(FontWeight(v)));
+    fn font_weight(v: Finite) |c, n| restyle(c, n, |s| s.font_weight(FontWeight(v.0)));
     /// Sets the line height. A bare number is a multiplier (`1.45`), a string a length.
     fn line_height(v: LineHeight) |c, n| restyle(c, n, |s| s.line_height(v.0));
     /// Sets the opacity of the element and everything in it, from 0 to 1.
-    fn opacity(v: f32) |c, n| restyle(c, n, |s| s.opacity(v));
+    fn opacity(v: Finite) |c, n| restyle(c, n, |s| s.opacity(v.0));
     /// Sets the border width on all four sides. Draws nothing without a color.
     fn border(v: Abs) |c, n| restyle(c, n, |s| s.border(v.0));
     /// Sets the border width on the top.

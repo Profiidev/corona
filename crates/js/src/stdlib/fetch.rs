@@ -14,7 +14,7 @@ use rquickjs::{
 use tokio::{
   net::UnixStream,
   sync::{Mutex, watch},
-  time::timeout,
+  time::{Instant, timeout, timeout_at},
 };
 
 use super::{
@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{Capabilities, runtime::plugin::plugin};
 
-const MAX_BODY: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_BODY: usize = 8 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 10;
 const TIMEOUT_MS: f64 = 30_000.;
 const MAX_TIMEOUT_MS: f64 = 300_000.;
@@ -218,7 +218,9 @@ impl reqwest::dns::Resolve for PublicResolver {
     Box::pin(async move {
       let host = name.as_str();
       let addrs = tokio::net::lookup_host((host, 0)).await?;
-      let addrs = reachable(host, lan, addrs.collect()).map_err(|e| format!("{e:?}"))?;
+      let addrs = reachable(host, lan, addrs.collect()).map_err(|e| match e {
+        Fail::Type(m) | Fail::Range(m) | Fail::Error(m) => m,
+      })?;
       Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
     })
   }
@@ -246,7 +248,13 @@ fn head_headers<'a>(headers: impl Iterator<Item = (&'a str, &'a [u8])>) -> Vec<(
   out
 }
 
-async fn send(caps: Capabilities, mut url: Url, o: Options) -> Res<(Head, Body)> {
+/// `deadline` bounds the whole exchange, redirects included
+async fn send(
+  caps: Capabilities,
+  mut url: Url,
+  o: Options,
+  deadline: Instant,
+) -> Res<(Head, Body)> {
   let lan_hosts = caps.lan_hosts().to_vec();
   // ponytail: a client per request, which loads the system roots each time; keep one
   // per LAN host set if fetch gets hot
@@ -264,7 +272,7 @@ async fn send(caps: Capabilities, mut url: Url, o: Options) -> Res<(Head, Body)>
       .headers(headers.clone())
       .body(body.clone())
       .send();
-    let response = timeout(o.timeout, request)
+    let response = timeout_at(deadline, request)
       .await
       .map_err(|_| Fail::Error(format!("fetching {url} timed out")))?
       .map_err(|e| Fail::Error(format!("fetching {url} failed: {e}")))?;
@@ -381,11 +389,11 @@ async fn send_unix(path: std::path::PathBuf, url: Url, o: Options) -> Res<(Head,
   Ok((head, Box::pin(body)))
 }
 
-/// The whole body, within the limit and a timeout per chunk
-async fn collect(head: &Head, mut body: Body, per_read: Duration) -> Res<Vec<u8>> {
+/// The whole body, within the limit and before `deadline`
+async fn collect(head: &Head, mut body: Body, deadline: Instant) -> Res<Vec<u8>> {
   let mut out = Vec::new();
   loop {
-    let chunk = timeout(per_read, body.next())
+    let chunk = timeout_at(deadline, body.next())
       .await
       .map_err(|_| Fail::Error(format!("reading the response from {} timed out", head.url)))?;
     match chunk {
@@ -512,7 +520,7 @@ impl FetchStream {
 
   /// Stops reading and releases the connection.
   pub fn close(&self) {
-    let _ = self.closed.send(true);
+    self.closed.send_replace(true);
     let body = self.body.clone();
     detach(async move {
       body.lock().await.take();
@@ -522,7 +530,7 @@ impl FetchStream {
 
 impl Drop for FetchStream {
   fn drop(&mut self) {
-    let _ = self.closed.send(true);
+    self.closed.send_replace(true);
   }
 }
 
@@ -562,7 +570,7 @@ pub(crate) fn fetch<'js>(
   let url = Url::parse(&url)
     .map_err(|e| Exception::throw_type(&ctx, &format!("invalid fetch URL: {e}")))?;
   let mut o = options(&ctx, opts.0)?;
-  let (stream, per_read) = (o.stream, o.timeout);
+  let (stream, deadline) = (o.stream, Instant::now() + o.timeout);
   let sent = match o.unix.take() {
     Some(path) => {
       let path = super::net::unix_path(&ctx, &path)?;
@@ -571,7 +579,7 @@ pub(crate) fn fetch<'js>(
     None => {
       let caps = plugin(&ctx)?.capabilities.clone();
       authorize(&caps, &o.method, &url).map_err(|f| f.throw(&ctx))?;
-      futures::future::Either::Right(io(send(caps, url, o)))
+      futures::future::Either::Right(io(send(caps, url, o, deadline)))
     }
   };
   promise(&ctx, async move {
@@ -580,11 +588,91 @@ pub(crate) fn fetch<'js>(
       true => Fetched::Stream(Streaming(head, body)),
       false => {
         let read = io(async move {
-          let body = collect(&head, body, per_read).await?;
+          let body = collect(&head, body, deadline).await?;
           Ok(Response(head, body))
         });
         Fetched::Whole(read.await?)
       }
     })
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn url(s: &str) -> Url {
+    Url::parse(s).unwrap()
+  }
+
+  #[test]
+  fn origins_compare_scheme_host_and_effective_port() {
+    let cases = [
+      ("https://a.com/x", "https://A.com:443/y", true),
+      ("https://a.com", "http://a.com", false),
+      ("https://a.com", "https://b.com", false),
+      ("https://a.com", "https://a.com:8443", false),
+      ("http://a.com", "http://a.com:80", true),
+    ];
+    for (a, b, want) in cases {
+      assert_eq!(same_origin(&url(a), &url(b)), want, "{a} {b}");
+    }
+  }
+
+  #[test]
+  fn redirects_are_granted_again_and_keep_to_one_origin() {
+    let caps = Capabilities::new().network_hosts(["a.com".into(), "b.com".into()]);
+    let mut with_header = HeaderMap::new();
+    with_header.insert("x-key", "1".parse().unwrap());
+    let none = HeaderMap::new();
+    let check = |method: &Method, from: &str, to: &str, headers: &HeaderMap| {
+      authorize_redirect(&caps, method, &url(from), &url(to), headers).is_ok()
+    };
+    // same origin: anything the grant allows
+    assert!(check(
+      &Method::POST,
+      "https://a.com/1",
+      "https://a.com/2",
+      &with_header
+    ));
+    // across origins only a bare GET
+    assert!(check(
+      &Method::GET,
+      "https://a.com/",
+      "https://b.com/",
+      &none
+    ));
+    assert!(!check(
+      &Method::GET,
+      "https://a.com/",
+      "https://b.com/",
+      &with_header
+    ));
+    assert!(!check(
+      &Method::POST,
+      "https://a.com/",
+      "https://b.com/",
+      &none
+    ));
+    // not granted on its own
+    assert!(!check(
+      &Method::GET,
+      "https://a.com/",
+      "https://evil.com/",
+      &none
+    ));
+    // never an HTTPS downgrade
+    assert!(!check(
+      &Method::GET,
+      "https://a.com/",
+      "http://a.com/",
+      &none
+    ));
+    assert!(check(
+      &Method::GET,
+      "http://a.com/",
+      "https://a.com/",
+      &none
+    ));
+  }
 }

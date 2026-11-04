@@ -250,7 +250,8 @@ fn open<'js>(ctx: Ctx<'js>, path: String, flags: Opt<String>) -> Result<Promise<
   })
 }
 
-/// An open file, closed by `close()` or when its runtime goes away
+/// An open file, closed by `close()` or when its runtime goes away. Each call is its own
+/// blocking job, so callers await one before the next.
 #[derive(Trace, JsLifetime)]
 #[rquickjs::class]
 pub struct FileHandle {

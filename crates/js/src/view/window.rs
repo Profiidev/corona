@@ -2,6 +2,7 @@
 //! the content view a host mounts a plugin view in. Overlays need the window's root to be
 //! `gpui_component::Root`, which hosts dialogs, sheets and notifications.
 
+use gpui_kit::InteractiveElement as _;
 use gpui_kit::{
   AnyElement, App, Context, Entity, Hsla, IntoElement, ParentElement, Render, StyleRefinement,
   Styled, WeakEntity, Window, WindowAppearance,
@@ -19,18 +20,22 @@ use crate::{
   Child, El, Opt, ScriptView,
   element::{
     background::{JsPath, paint_path},
-    events::{Pt, ScriptAction},
+    events::{Pt, ScriptAction, plugin_context, scoped},
     style::Fill,
   },
-  runtime::runtime,
+  runtime::{SlotGuard, runtime},
   view::{current_view, window_or_throw},
 };
 
 /// Marks the toasts scripts post, for removal by id
 struct ScriptToast;
 
-/// The view of the running call and the key of `content` kept for it
-fn keep<'js>(ctx: &Ctx<'js>, content: Function<'js>) -> Result<(WeakEntity<ScriptView>, u64)> {
+/// The view of the running call, the key of `content` kept for it and the guard that frees
+/// it with the overlay
+fn keep<'js>(
+  ctx: &Ctx<'js>,
+  content: Function<'js>,
+) -> Result<(WeakEntity<ScriptView>, u64, SlotGuard)> {
   let view = current_view()
     .ok_or_else(|| Exception::throw_type(ctx, "no view here: call this from an event handler"))?;
   if crate::runtime::scope::try_frame().is_some() {
@@ -39,8 +44,10 @@ fn keep<'js>(ctx: &Ctx<'js>, content: Function<'js>) -> Result<(WeakEntity<Scrip
       "overlays open from event handlers, not render",
     ));
   }
-  let key = runtime(ctx)?.slot(view.entity_id(), content, false);
-  Ok((view, key))
+  let rt = runtime(ctx)?;
+  let key = rt.slot(view.entity_id(), content, false);
+  let guard = SlotGuard::new(&rt, view.entity_id(), [Some(key)]);
+  Ok((view, key, guard))
 }
 
 /// Renders the content kept as `key` for `view`
@@ -112,7 +119,7 @@ impl ScriptWindow {
     options: Opt<Object<'js>>,
   ) -> Result<()> {
     let window = window_or_throw(&ctx)?;
-    let (view, key) = keep(&ctx, content_fn)?;
+    let (view, key, guard) = keep(&ctx, content_fn)?;
     let get = |name: &str| -> Result<bool> {
       Ok(match &options.0 {
         Some(o) => o.get::<_, Option<bool>>(name)?.unwrap_or(true),
@@ -121,6 +128,7 @@ impl ScriptWindow {
     };
     let (escape, backdrop) = (get("escape_dismissable")?, get("backdrop_dismissable")?);
     window.open_dialog(crate::app(), move |dialog, window, cx| {
+      let _ = &guard;
       dialog
         .keyboard(escape)
         .overlay_closable(backdrop)
@@ -157,8 +165,9 @@ impl ScriptWindow {
   ) -> Result<()> {
     let window = window_or_throw(&ctx)?;
     let at = placement(&ctx, &at)?;
-    let (view, key) = keep(&ctx, content_fn)?;
+    let (view, key, guard) = keep(&ctx, content_fn)?;
     window.open_sheet_at(at, crate::app(), move |sheet, window, cx| {
+      let _ = &guard;
       sheet.child(content(&view, key, window, cx))
     });
     Ok(())
@@ -173,7 +182,7 @@ impl ScriptWindow {
     Ok(window_or_throw(&ctx)?.has_active_sheet(crate::app()))
   }
 
-  /// Posts a toast `{ title, description?, level?, timeout?, id? }`; returns its id.
+  /// Posts a toast `{ title, description?, level?, timeout?: null, id? }`; returns its id.
   pub fn push_toast<'js>(&self, ctx: Ctx<'js>, options: Object<'js>) -> Result<String> {
     let window = window_or_throw(&ctx)?;
     let title: String = options.get("title")?;
@@ -204,7 +213,7 @@ impl ScriptWindow {
     if let Some(description) = options.get::<_, Option<String>>("description")? {
       note = note.message(description);
     }
-    // `timeout: null` keeps it up; gpui-component picks the duration otherwise
+    // `timeout: null` keeps it up; gpui-component hides it after 5 s otherwise
     let keep_up =
       options.contains_key("timeout")? && options.get::<_, rquickjs::Value>("timeout")?.is_null();
     window.push_notification(note.autohide(!keep_up), crate::app());
@@ -221,9 +230,10 @@ impl ScriptWindow {
     Ok(())
   }
 
-  /// Dispatches the action named `action` down the focus path, as its key binding would.
+  /// Dispatches the action named `action` of this plugin down the focus path, as its key
+  /// binding would. `::` in the name throws.
   pub fn dispatch_action(&self, ctx: Ctx<'_>, action: String) -> Result<()> {
-    let action = Box::new(ScriptAction(action.into()));
+    let action = Box::new(ScriptAction(scoped(&ctx, &action)?.into()));
     window_or_throw(&ctx)?.dispatch_action(action, crate::app());
     Ok(())
   }
@@ -380,7 +390,9 @@ impl Render for ScriptRoot {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let view = self.view.clone();
     let hud = crate::element::components::misc::fps_hud(window, cx);
+    let context = plugin_context(&self.view.read(cx).plugin_id());
     div()
+      .key_context(gpui_kit::KeyContext::parse(&context).expect("an identifier"))
       .when_some(self.background, |root, bg| root.bg(bg))
       .when_some(hud, |root, hud| root.relative().child(hud))
       .map(|root| match self.fill {

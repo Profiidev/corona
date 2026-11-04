@@ -65,10 +65,14 @@ impl HttpRequestGrant {
   }
 
   fn allows(&self, scheme: &str, host: &str, port: Option<u16>, method: &str, path: &str) -> bool {
+    // an encoded separator can name another path on a server that decodes it
+    let lower = path.to_ascii_lowercase();
+    let ambiguous = lower.contains("%2f") || lower.contains("%5c") || path.contains('\\');
     let prefix = |p: &String| {
-      path
-        .strip_prefix(p.as_str())
-        .is_some_and(|rest| rest.is_empty() || p.ends_with('/') || rest.starts_with('/'))
+      !ambiguous
+        && path
+          .strip_prefix(p.as_str())
+          .is_some_and(|rest| rest.is_empty() || p.ends_with('/') || rest.starts_with('/'))
     };
     self.scheme.eq_ignore_ascii_case(scheme)
       && self.host.eq_ignore_ascii_case(host)
@@ -102,6 +106,8 @@ pub struct Capabilities {
   clipboard_read: bool,
   clipboard_write: bool,
   exit: bool,
+  print: bool,
+  print_manage: bool,
   /// Resolved picks, and whether each is a directory
   picked: Arc<Mutex<Vec<(PathBuf, bool)>>>,
 }
@@ -123,6 +129,8 @@ impl fmt::Debug for Capabilities {
       .field("clipboard_read", &self.clipboard_read)
       .field("clipboard_write", &self.clipboard_write)
       .field("exit", &self.exit)
+      .field("print", &self.print)
+      .field("print_manage", &self.print_manage)
       .finish()
   }
 }
@@ -205,6 +213,16 @@ impl Capabilities {
     self
   }
 
+  pub fn print(mut self, allowed: bool) -> Self {
+    self.print = allowed;
+    self
+  }
+
+  pub fn print_manage(mut self, allowed: bool) -> Self {
+    self.print_manage = allowed;
+    self
+  }
+
   /// Makes a path the user picked readable: a file alone, a directory as a read root.
   /// ponytail: grows with every pick until the plugin restarts
   pub fn grant_read(&self, path: PathBuf) {
@@ -277,11 +295,6 @@ impl Capabilities {
       || (self.http_requests.iter()).any(|g| g.allows(scheme, host, port, method, path))
   }
 
-  /// Whether `path` is granted as written
-  pub fn may_connect_unix(&self, path: &Path) -> bool {
-    path.is_absolute() && self.network_unix.iter().any(|p| p == path)
-  }
-
   /// The canonical socket `path` names when that is granted; connect to it. A link planted
   /// under a granted name resolves elsewhere and no longer matches.
   pub fn unix_socket(&self, path: &Path) -> Option<PathBuf> {
@@ -307,6 +320,16 @@ impl Capabilities {
 
   pub fn may_exit(&self) -> bool {
     self.exit
+  }
+
+  /// Whether `corona/printing` may print files
+  pub fn may_print(&self) -> bool {
+    self.print
+  }
+
+  /// Whether `corona/printing` may scan, add or pause printers and cancel jobs
+  pub fn may_manage_printing(&self) -> bool {
+    self.print_manage
   }
 
   /// Whether `path` lies under a read grant, for a host handing it out of the sandbox
@@ -462,4 +485,90 @@ fn normalize(path: &Path) -> PathBuf {
     }
   }
   out
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn http_grants_match_scheme_port_method_and_path() {
+    let grant = HttpRequestGrant::new("API.example.com", ["get"], ["/v1/x"], ["/v1/items"]);
+    // (scheme, host, port, method, path)
+    let cases = [
+      ("https", "api.example.com", None, "GET", "/v1/x", true),
+      ("https", "api.example.com", Some(443), "get", "/v1/x", true),
+      (
+        "https",
+        "api.example.com",
+        Some(8443),
+        "GET",
+        "/v1/x",
+        false,
+      ),
+      ("http", "api.example.com", None, "GET", "/v1/x", false),
+      ("https", "api.example.com", None, "POST", "/v1/x", false),
+      ("https", "other.example.com", None, "GET", "/v1/x", false),
+      ("https", "api.example.com", None, "GET", "/v1/x/", false),
+      ("https", "api.example.com", None, "GET", "/v1/items", true),
+      ("https", "api.example.com", None, "GET", "/v1/items/3", true),
+      ("https", "api.example.com", None, "GET", "/v1/itemsx", false),
+      (
+        "https",
+        "api.example.com",
+        None,
+        "GET",
+        "/v1/items/a%2F..%2Fb",
+        false,
+      ),
+      (
+        "https",
+        "api.example.com",
+        None,
+        "GET",
+        "/v1/items/a%5c..",
+        false,
+      ),
+      (
+        "https",
+        "api.example.com",
+        None,
+        "GET",
+        "/v1/items/a\\b",
+        false,
+      ),
+    ];
+    for (scheme, host, port, method, path, want) in cases {
+      assert_eq!(
+        grant.allows(scheme, host, port, method, path),
+        want,
+        "{scheme} {host} {port:?} {method} {path}"
+      );
+    }
+    let slash = HttpRequestGrant::new("h", ["GET"], [] as [&str; 0], ["/a/"]);
+    assert!(slash.allows("https", "h", None, "GET", "/a/b"));
+    assert!(!slash.allows("https", "h", None, "GET", "/a"));
+    let plain = HttpRequestGrant::new("h", ["GET"], ["/"], [] as [&str; 0])
+      .scheme("HTTP")
+      .port(8080);
+    assert!(plain.allows("http", "h", Some(8080), "GET", "/"));
+    assert!(!plain.allows("http", "h", None, "GET", "/"));
+  }
+
+  #[test]
+  fn unix_sockets_are_matched_canonically() {
+    let dir = std::env::temp_dir().join(format!("corona-caps-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let real = dir.canonicalize().unwrap().join("real.sock");
+    std::fs::write(&real, "").unwrap();
+    let link = dir.join("link.sock");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink("/etc/hostname", &link).unwrap();
+    let caps = Capabilities::new().network_unix([real.clone()]);
+    assert_eq!(caps.unix_socket(&real), Some(real.clone()));
+    assert_eq!(caps.unix_socket(&link), None);
+    assert_eq!(caps.unix_socket(Path::new("relative.sock")), None);
+    assert_eq!(caps.unix_socket(&dir.join("missing.sock")), None);
+    let _ = std::fs::remove_dir_all(&dir);
+  }
 }

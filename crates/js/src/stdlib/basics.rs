@@ -361,9 +361,12 @@ const SEARCH_PARAMS: &str = r#"(class URLSearchParams {
   constructor(init) {
     if (typeof init === "string") {
       for (const pair of init.replace(/^\?/, "").split("&").filter(Boolean)) {
-        const [k, v = ""] = pair.split("=");
-        const d = (s) => decodeURIComponent(s.replace(/\+/g, " "));
-        this.#list.push([d(k), d(v)]);
+        const i = pair.indexOf("=");
+        const d = (s) => {
+          s = s.replace(/\+/g, " ");
+          try { return decodeURIComponent(s); } catch { return s; }
+        };
+        this.#list.push(i < 0 ? [d(pair), ""] : [d(pair.slice(0, i)), d(pair.slice(i + 1))]);
       }
     } else if (init) {
       for (const [k, v] of Array.isArray(init) ? init : Object.entries(init)) this.#list.push([String(k), String(v)]);
@@ -378,7 +381,7 @@ const SEARCH_PARAMS: &str = r#"(class URLSearchParams {
   forEach(f) { for (const [k, v] of this.#list) f(v, k, this); }
   entries() { return this.#list[Symbol.iterator](); }
   [Symbol.iterator]() { return this.entries(); }
-  toString() { return this.#list.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&"); }
+  toString() { return this.#list.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`.replace(/%20/g, "+")).join("&"); }
 })"#;
 
 /// Installs the global `URL` and `URLSearchParams`

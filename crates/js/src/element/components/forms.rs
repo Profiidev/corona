@@ -614,10 +614,15 @@ mod methods {
       pick!(c, n, InputGroupButton => |b: InputGroupButton| b.with_variant(variant.0))
     };
     /// The absolute HTTP(S) URL a `Link` opens.
-    fn href(url: String) |c, n| pick!(c, n,
-      Link => |b: Link| b.href(url),
-      base::Link => |b: base::Link| b.href(url),
-    );
+    fn href(url: String) |c, n| {
+      if !crate::view::web_url(&url) {
+        return Err(Exception::throw_type(c, &format!("not an http(s) URL: {url}")));
+      }
+      pick!(c, n,
+        Link => |b: Link| b.href(url),
+        base::Link => |b: base::Link| b.href(url),
+      )
+    };
     /// The checked radio of a `RadioGroup`, by index.
     fn selected_index(index: u32) |c, n| {
       pick!(c, n, RadioGroup => |b: RadioGroup| b.selected_index(Some(index as usize)))

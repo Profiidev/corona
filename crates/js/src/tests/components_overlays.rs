@@ -344,7 +344,7 @@ export default class Main extends View {
     "TypeError: this method is not available on div",
     "TypeError: this method is not available on Popover",
     "TypeError: unknown anchor \"topLeft\", did you mean \"top_left\"?",
-    "RangeError: invalid delay -1ms",
+    "RangeError: invalid duration -1ms",
     "TypeError: this method is not available on Popover",
     "TypeError: this method is not available on Dialog",
     "TypeError: this method is not available on Dialog",

@@ -241,7 +241,7 @@ impl Socket {
   }
 
   pub fn close(&self) {
-    let _ = self.closed.send(true);
+    self.closed.send_replace(true);
     let writer = self.writer.clone();
     super::io::detach(async move {
       if let Some(mut writer) = writer.lock().await.take() {
@@ -253,7 +253,7 @@ impl Socket {
 
 impl Drop for Socket {
   fn drop(&mut self) {
-    let _ = self.closed.send(true);
+    self.closed.send_replace(true);
   }
 }
 
@@ -318,5 +318,127 @@ impl ModuleDef for NetModule {
     exports.export("connect", f)?;
     exports.export("default", all)?;
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn ip(s: &str) -> IpAddr {
+    s.parse().unwrap()
+  }
+
+  #[test]
+  fn public_addresses_exclude_every_special_range() {
+    let cases = [
+      ("8.8.8.8", true),
+      ("1.1.1.1", true),
+      ("10.0.0.1", false),
+      ("172.16.0.1", false),
+      ("192.168.1.1", false),
+      ("127.0.0.1", false),
+      ("169.254.1.1", false),
+      ("0.0.0.0", false),
+      ("240.0.0.1", false),
+      ("100.63.255.255", true),
+      ("100.64.0.0", false),
+      ("100.127.255.255", false),
+      ("100.128.0.0", true),
+      ("198.17.255.255", true),
+      ("198.18.0.0", false),
+      ("198.19.255.255", false),
+      ("198.20.0.0", true),
+      ("192.0.2.1", false),
+      ("198.51.100.1", false),
+      ("203.0.113.1", false),
+      ("::1", false),
+      ("::", false),
+      ("fe80::1", false),
+      ("fc00::1", false),
+      ("2001:4860:4860::8888", true),
+      ("2001:db8::1", false),
+      ("2001:0:4136:e378:8000:63bf:3fff:fdd2", false),
+      ("::ffff:8.8.8.8", true),
+      ("::ffff:10.0.0.1", false),
+      ("::ffff:127.0.0.1", false),
+      ("64:ff9b::808:808", true),
+      ("64:ff9b::a00:1", false),
+      ("64:ff9b:1::1", false),
+      ("2002:808:808::1", true),
+      ("2002:a00:1::1", false),
+      ("2002:7f00:1::1", false),
+    ];
+    for (addr, want) in cases {
+      assert_eq!(is_public(ip(addr)), want, "{addr}");
+    }
+  }
+
+  #[test]
+  fn lan_addresses_are_private_not_loopback_or_link_local() {
+    let cases = [
+      ("10.1.2.3", true),
+      ("172.16.0.1", true),
+      ("172.32.0.1", false),
+      ("192.168.0.1", true),
+      ("100.64.0.1", true),
+      ("127.0.0.1", false),
+      ("169.254.0.1", false),
+      ("8.8.8.8", false),
+      ("fd00::1", true),
+      ("fe80::1", false),
+      ("::1", false),
+      ("::ffff:192.168.0.1", true),
+      ("::ffff:8.8.8.8", false),
+    ];
+    for (addr, want) in cases {
+      assert_eq!(is_lan(ip(addr)), want, "{addr}");
+    }
+  }
+
+  fn at(addr: &str) -> Vec<SocketAddr> {
+    vec![SocketAddr::new(ip(addr), 80)]
+  }
+
+  #[test]
+  fn reachable_filters_names_but_not_literals() {
+    // a name must resolve to public addresses, or LAN ones when it is a LAN host
+    assert!(reachable("example.com", false, at("10.0.0.1")).is_err());
+    assert_eq!(
+      reachable("example.com", false, at("8.8.8.8"))
+        .unwrap()
+        .len(),
+      1
+    );
+    assert_eq!(
+      reachable("nas.home", true, at("192.168.0.2"))
+        .unwrap()
+        .len(),
+      1
+    );
+    assert!(reachable("nas.home", true, at("127.0.0.1")).is_err());
+    assert!(reachable("nas.home", true, at("169.254.0.1")).is_err());
+    // a rebound name keeps only its public address
+    let mixed = [at("10.0.0.1"), at("8.8.8.8")].concat();
+    assert_eq!(
+      reachable("example.com", false, mixed).unwrap(),
+      at("8.8.8.8")
+    );
+    // literals reach what they name
+    assert_eq!(
+      reachable("10.0.0.1", false, at("10.0.0.1")).unwrap().len(),
+      1
+    );
+    assert_eq!(reachable("[::1]", false, at("::1")).unwrap().len(), 1);
+    // localhost reaches loopback only
+    assert_eq!(
+      reachable("LocalHost", false, at("127.0.0.1"))
+        .unwrap()
+        .len(),
+      1
+    );
+    assert!(reachable("localhost", false, at("8.8.8.8")).is_err());
+    // nothing resolved is not a refusal
+    assert!(reachable("example.com", false, vec![]).unwrap().is_empty());
   }
 }

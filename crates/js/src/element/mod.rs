@@ -124,7 +124,7 @@ thread_local! {
 
 /// The elements one render builds, the handlers they hold and the entities it read
 pub struct Frame {
-  generation: u32,
+  pub(crate) generation: u32,
   nodes: Vec<Option<Box<dyn Node>>>,
   pub(crate) handlers: Vec<Persistent<Function<'static>>>,
   pub(crate) reads: HashMap<EntityId, Observe>,
@@ -152,7 +152,10 @@ impl Frame {
   fn push(&mut self, mut node: Box<dyn Node>) -> El {
     // gpui keeps clicks, hovers and scrolling by element id; `id(..)` names it stably
     if let Some(i) = node.interactivity().filter(|i| i.element_id.is_none()) {
-      i.element_id = Some(gpui_kit::ElementId::Integer(self.nodes.len() as u64));
+      i.element_id = Some(gpui_kit::ElementId::NamedInteger(
+        "auto".into(),
+        self.nodes.len() as u64,
+      ));
     }
     self.nodes.push(Some(node));
     El {
@@ -198,6 +201,17 @@ impl Frame {
     handler: Function<'_>,
     payload: impl Fn(&E) -> P + 'static,
   ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+    self.listener_as(false, handler, payload)
+  }
+
+  /// [`listener`](Self::listener); `gesture` handlers run with the user's activation, which
+  /// `openUrl` needs.
+  pub fn listener_as<E: ?Sized + 'static, P: for<'js> IntoJs<'js> + 'static>(
+    &mut self,
+    gesture: bool,
+    handler: Function<'_>,
+    payload: impl Fn(&E) -> P + 'static,
+  ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
     let index = self.handlers.len();
     self
       .handlers
@@ -206,11 +220,37 @@ impl Frame {
     move |event, window, cx| {
       let payload = payload(event);
       if let Some(view) = view.upgrade() {
+        let _activation = Activation::set(gesture);
         view.update(cx, |view, cx| {
           view.dispatch(slot, index, payload, window, cx)
         });
       }
     }
+  }
+}
+
+thread_local! {
+  /// A click, mouse or key handler is running
+  static ACTIVATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the running JS was started by a click, mouse or key handler
+pub(crate) fn activated() -> bool {
+  ACTIVATION.get()
+}
+
+/// Restores the activation of the dispatch it replaced; passive handlers keep an outer one.
+struct Activation(bool);
+
+impl Activation {
+  fn set(gesture: bool) -> Self {
+    Activation(ACTIVATION.replace(gesture || ACTIVATION.get()))
+  }
+}
+
+impl Drop for Activation {
+  fn drop(&mut self) {
+    ACTIVATION.set(self.0);
   }
 }
 
@@ -539,7 +579,13 @@ pub struct Id(gpui_kit::ElementId);
 impl<'js> FromJs<'js> for Id {
   fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
     match value.as_number() {
-      Some(n) => Ok(Id(gpui_kit::ElementId::Integer(n as u64))),
+      Some(n) if n.is_finite() && n >= 0. && n.fract() == 0. => {
+        Ok(Id(gpui_kit::ElementId::Integer(n as u64)))
+      }
+      Some(_) => Err(Exception::throw_type(
+        ctx,
+        "an element id number must be a non-negative integer",
+      )),
       None => Ok(Id(gpui_kit::ElementId::Name(
         String::from_js(ctx, value)?.into(),
       ))),

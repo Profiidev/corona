@@ -5,18 +5,12 @@
 //! the runtime (that would be a cycle QuickJS cannot free): child views, handlers and slot
 //! renderers live in the runtime, JS holds their keys.
 
-use std::{
-  cell::{Cell, RefCell},
-  collections::HashMap,
-  path::Path,
-  rc::Rc,
-  time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 
 use anyhow::anyhow;
 use gpui_kit::{
   AnyElement, AppContext, ClipboardItem, Context, Entity, EntityId, IntoElement, KeyBinding,
-  KeyBindingContextPredicate, Render, Subscription, WeakEntity, Window,
+  KeyBindingContextPredicate, Keymap, Render, Subscription, WeakEntity, Window,
 };
 use rquickjs::{
   CatchResultExt, Class, Ctx, Exception, FromJs, Function, IntoJs, JsLifetime, Object, Persistent,
@@ -27,7 +21,7 @@ use rquickjs::{
 
 use crate::{
   Child, Enter, Frame, ModuleBuilder, Named, Opt, PluginRef, Watches, app,
-  element::events::ScriptAction,
+  element::events::{ScriptAction, plugin_context, scoped, unscope_action},
   runtime::{
     self, Main, Runtime, Slot,
     plugin::plugin,
@@ -45,6 +39,34 @@ pub(crate) mod window;
 thread_local! {
   /// The views JS runs for, innermost last
   static CURRENT: RefCell<Vec<WeakEntity<ScriptView>>> = const { RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+  /// How many root views each plugin id has alive, to drop its bindings with the last
+  static LIVE: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+}
+
+/// The bindings of `keymap` that are not actions of plugin `id`, if it has any to drop
+fn without_plugin(keymap: &Keymap, id: &str) -> Option<Vec<KeyBinding>> {
+  let theirs = |b: &KeyBinding| {
+    (b.action().as_any().downcast_ref::<ScriptAction>())
+      .is_some_and(|a| unscope_action(id, &a.0).is_some())
+  };
+  keymap
+    .bindings()
+    .any(theirs)
+    .then(|| keymap.bindings().filter(|b| !theirs(b)).cloned().collect())
+}
+
+/// Removes the key bindings plugin `id` installed. gpui can only clear the whole keymap, so
+/// the others (the host's, other plugins') are put back.
+fn drop_bindings(cx: &mut gpui_kit::App, id: &str) {
+  let keymap = cx.key_bindings();
+  let kept = without_plugin(&keymap.borrow(), id);
+  if let Some(kept) = kept {
+    cx.clear_key_bindings();
+    cx.bind_keys(kept);
+  }
 }
 
 /// The view whose init, render or handler is running
@@ -119,6 +141,22 @@ impl ScriptView {
     window: &mut Window,
     cx: &mut Context<Self>,
   ) -> anyhow::Result<Self> {
+    // a reload's bindings are the new ones; the old runtime's stop firing
+    let plugin_id = plugin.id.clone();
+    drop_bindings(cx, &plugin_id);
+    LIVE.with(|l| *l.borrow_mut().entry(plugin_id.clone()).or_default() += 1);
+    cx.on_release(move |_, cx| {
+      let last = LIVE.with(|l| {
+        let mut l = l.borrow_mut();
+        let n = l.entry(plugin_id.clone()).or_default();
+        *n -= 1;
+        *n == 0 && l.remove(&plugin_id).is_some()
+      });
+      if last {
+        drop_bindings(cx, &plugin_id);
+      }
+    })
+    .detach();
     let rt = runtime::new(plugin, modules, watches, cx)?;
     let ctx = rt.ctx().clone();
 
@@ -232,13 +270,7 @@ impl ScriptView {
     f: impl for<'js> FnOnce(&Ctx<'js>, Object<'js>, &mut Frame) -> Result<R>,
   ) -> anyhow::Result<R> {
     let id = cx.entity_id();
-    if slot == 0 {
-      self
-        .rt
-        .slots
-        .borrow_mut()
-        .retain(|(v, _), s| *v != id || !s.transient);
-    }
+    (self.rt).drop_slots(id, |_, s| s.transient && s.owner == slot);
     let mut frame = Frame::new(cx.entity().downgrade(), slot);
     let out = self.call(Some(window), Some(&mut frame), cx, |ctx, instance| {
       f(ctx, instance, try_frame().expect("frame set"))
@@ -249,6 +281,7 @@ impl ScriptView {
       self.renders += 1;
     }
     let handlers = std::mem::take(&mut frame.handlers);
+    let generation = frame.generation;
     let transient = slot != 0 && slot & 0xffff_ffff != 0;
     let mut slots = self.rt.slots.borrow_mut();
     let entry = slots.entry((id, slot)).or_insert_with(|| Slot {
@@ -256,6 +289,7 @@ impl ScriptView {
       ..Default::default()
     });
     entry.handlers = handlers;
+    entry.generation = generation;
     drop(slots);
     if slot == 0 {
       self.observed.retain(|id, _| frame.reads.contains_key(id));
@@ -321,11 +355,16 @@ impl Render for ScriptView {
   }
 }
 
+impl ScriptView {
+  /// The id of the plugin this view runs
+  pub(crate) fn plugin_id(&self) -> String {
+    self.rt.plugin_id.clone()
+  }
+}
+
 impl Drop for ScriptView {
   fn drop(&mut self) {
-    let id = self.id;
-    self.rt.slots.borrow_mut().retain(|(v, _), _| *v != id);
-    self.rt.lists.borrow_mut().retain(|(v, _), _| *v != id);
+    self.rt.forget_view(self.id);
     if self.root {
       // breaks the cycle runtime -> child view -> runtime
       let children = std::mem::take(&mut *self.rt.children.borrow_mut());
@@ -372,6 +411,26 @@ impl ViewHandle {
   pub fn set_props<'js>(&self, ctx: Ctx<'js>, props: Opt<Value<'js>>) -> Result<()> {
     let entity = self.entity(&ctx)?;
     let props = props.0.unwrap_or_else(|| Value::new_undefined(ctx.clone()));
+    // the child is mid-handler (child -> parent callback -> here): gpui can't lease it twice
+    let leased = CURRENT.with(|c| (c.borrow().iter()).any(|v| v.entity_id() == entity.entity_id()));
+    if leased {
+      let props = Persistent::save(&ctx, props);
+      app().defer(move |cx| {
+        entity.update(cx, |view, cx| {
+          let call = view.call(None, None, cx, |ctx, instance| {
+            if let Ok(update) = instance.get::<_, Function>("update") {
+              update.call::<_, ()>((This(instance), props.restore(ctx)?))?;
+            }
+            Ok(())
+          });
+          if let Err(e) = call {
+            tracing::warn!("set_props: {e}");
+          }
+          cx.notify();
+        })
+      });
+      return Ok(());
+    }
     entity.update(app(), |view, cx| {
       let _current = Current::new(cx.entity().downgrade());
       let instance = view.instance.clone().restore(&ctx)?;
@@ -486,7 +545,7 @@ impl<'js> FromJs<'js> for Binding {
 }
 
 /// An absolute `http`/`https` URL with a host
-fn web_url(url: &str) -> bool {
+pub(crate) fn web_url(url: &str) -> bool {
   let rest = url
     .strip_prefix("https://")
     .or_else(|| url.strip_prefix("http://"));
@@ -505,40 +564,6 @@ pub struct ViewCx {
 impl ViewCx {
   pub(crate) fn for_view(view: WeakEntity<ScriptView>) -> Self {
     Self { view }
-  }
-
-  /// Runs `cb(cx)` after `ms`, and every `ms` after that when `repeat`. Returns the canceller.
-  fn schedule<'js>(
-    &self,
-    ctx: &Ctx<'js>,
-    ms: f64,
-    cb: Function<'js>,
-    repeat: bool,
-  ) -> Result<Object<'js>> {
-    let stop = Rc::new(Cell::new(false));
-    let executor = app().background_executor().clone();
-    let (cx, stopped, js) = (self.clone(), stop.clone(), ctx.clone());
-    let every = Duration::from_secs_f64(ms.max(0.) / 1000.);
-    ctx.spawn(async move {
-      loop {
-        executor.timer(every).await;
-        if stopped.get() {
-          break;
-        }
-        if let Err(e) = cb.call::<_, ()>((cx.clone(),)).catch(&js) {
-          tracing::warn!("timer callback: {e}");
-        }
-        if !repeat {
-          break;
-        }
-      }
-    });
-    let handle = Object::new(ctx.clone())?;
-    handle.set(
-      "cancel",
-      Function::new(ctx.clone(), move || stop.set(true))?,
-    )?;
-    Ok(handle)
   }
 }
 
@@ -560,18 +585,24 @@ impl ViewCx {
   }
 
   /// Installs key bindings `{ keystroke, action, context? }`, all or none; returns how many.
+  /// The action is this plugin's, and without a `context` the binding fires only inside this
+  /// plugin's windows. They end with the plugin's runtime (a reload replaces them).
   pub fn bind_keys(&self, ctx: Ctx<'_>, bindings: Vec<Binding>) -> Result<u32> {
+    let id = plugin(&ctx)?.id.clone();
     let bindings = bindings
       .into_iter()
       .map(|b| {
         let context = (b.context.as_deref())
-          .map(KeyBindingContextPredicate::parse)
-          .transpose()
+          .unwrap_or(&plugin_context(&id))
+          .to_owned();
+        let context = KeyBindingContextPredicate::parse(&context)
           .map_err(|e| anyhow!("context of {}: {e}", b.keystroke))?;
+        let action = scoped(&ctx, &b.action)
+          .map_err(|_| anyhow!("action name `{}`: `::` is reserved", b.action))?;
         KeyBinding::load(
           &b.keystroke,
-          Box::new(ScriptAction(b.action.into())),
-          context.map(Rc::new),
+          Box::new(ScriptAction(action.into())),
+          Some(Rc::new(context)),
           false,
           None,
           app(),
@@ -609,8 +640,15 @@ impl ViewCx {
     crate::view::theme::theme_object(&ctx)
   }
 
-  /// Opens an absolute `http`/`https` URL with the system's handler.
+  /// Opens an absolute `http`/`https` URL with the system's handler. Only from a click,
+  /// mouse or key handler, so a page can't open browser tabs on its own.
   pub fn open_url(&self, ctx: Ctx<'_>, url: String) -> Result<()> {
+    if !crate::element::activated() {
+      return Err(Exception::throw_type(
+        &ctx,
+        "openUrl is only allowed from a click, mouse or key handler",
+      ));
+    }
     if !web_url(&url) {
       return Err(Exception::throw_type(
         &ctx,
@@ -683,30 +721,45 @@ impl ViewCx {
   pub fn sleep<'js>(&self, ctx: Ctx<'js>, ms: Opt<f64>) -> Result<Promise<'js>> {
     let timer = app()
       .background_executor()
-      .timer(Duration::from_secs_f64(ms.0.unwrap_or(0.).max(0.) / 1000.));
+      .timer(crate::stdlib::timers::duration(ms.0));
     Promise::wrap_future(&ctx, timer)
   }
 
   /// One-shot and repeating callbacks.
   #[qjs(get)]
   pub fn timer<'js>(&self, ctx: Ctx<'js>) -> Result<Object<'js>> {
-    let timer = Object::new(ctx.clone())?;
-    let cx = self.clone();
-    timer.set(
-      "after",
-      Function::new(
-        ctx.clone(),
-        move |ctx: Ctx<'js>, ms: f64, cb: Function<'js>| cx.schedule(&ctx, ms, cb, false),
-      )?,
-    )?;
-    let cx = self.clone();
-    timer.set(
-      "every",
-      Function::new(
-        ctx.clone(),
-        move |ctx: Ctx<'js>, ms: f64, cb: Function<'js>| cx.schedule(&ctx, ms, cb, true),
-      )?,
-    )?;
-    Ok(timer)
+    crate::stdlib::timers::timer(&ctx, self.clone().into_js(&ctx)?)
+  }
+}
+
+#[cfg(test)]
+mod binding_tests {
+  use super::*;
+
+  fn bound(id: &str, name: &str) -> KeyBinding {
+    KeyBinding::new(
+      "ctrl-s",
+      ScriptAction(crate::element::events::scope_action(id, name).into()),
+      None,
+    )
+  }
+
+  #[test]
+  fn reload_drops_only_the_plugins_script_bindings() {
+    let host = KeyBinding::new("ctrl-q", ScriptAction("host".into()), None);
+    let keymap = Keymap::new(vec![
+      bound("a", "x"),
+      host,
+      bound("b", "x"),
+      bound("a", "y"),
+    ]);
+    let kept = without_plugin(&keymap, "a").expect("a has bindings");
+    let names: Vec<_> = kept
+      .iter()
+      .filter_map(|b| b.action().as_any().downcast_ref::<ScriptAction>())
+      .map(|a| a.0.to_string())
+      .collect();
+    assert_eq!(names, ["host", "b::x"]);
+    assert!(without_plugin(&Keymap::new(kept), "a").is_none());
   }
 }

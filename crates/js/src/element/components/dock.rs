@@ -50,28 +50,48 @@ use crate::{
 // ---------------------------------------------------------------------------------------------
 // Panels
 
-/// `name` leaked once and the same pointer after: `Panel::panel_name` is `&'static str`.
-/// ponytail: one leak per distinct panel name, bounded by the panels plugins register
-fn intern(name: &str) -> &'static str {
+/// The longest panel name, in bytes
+const MAX_PANEL_NAME: usize = 128;
+/// The most distinct panel names one plugin can intern
+const MAX_PANEL_NAMES: usize = 256;
+
+/// `name` of plugin `owner` leaked once and the same pointer after: `Panel::panel_name` is
+/// `&'static str`. `None` past [`MAX_PANEL_NAMES`] names of `owner`.
+fn intern(owner: &str, name: &str) -> Option<&'static str> {
   thread_local! {
     static NAMES: RefCell<HashSet<&'static str>> = RefCell::default();
+    static COUNTS: RefCell<std::collections::HashMap<String, usize>> = RefCell::default();
   }
   NAMES.with(|names| {
     let mut names = names.borrow_mut();
-    match names.get(name) {
-      Some(name) => name,
-      None => {
-        let name: &'static str = Box::leak(name.into());
-        names.insert(name);
-        name
-      }
+    if let Some(name) = names.get(name) {
+      return Some(*name);
     }
+    COUNTS.with(|counts| {
+      let mut counts = counts.borrow_mut();
+      let count = counts.entry(owner.to_owned()).or_default();
+      if *count >= MAX_PANEL_NAMES {
+        return None;
+      }
+      *count += 1;
+      let name: &'static str = Box::leak(name.into());
+      names.insert(name);
+      Some(name)
+    })
   })
 }
 
 /// `shell:<plugin>/<panel>`: plugins, and the host's own panels, never collide in a layout
 fn qualified(ctx: &Ctx<'_>, panel: &str) -> Result<&'static str> {
-  Ok(intern(&format!("shell:{}/{panel}", plugin(ctx)?.id)))
+  if panel.len() > MAX_PANEL_NAME {
+    let msg = format!("a panel name takes at most {MAX_PANEL_NAME} bytes");
+    return Err(Exception::throw_range(ctx, &msg));
+  }
+  let id = plugin(ctx)?.id.clone();
+  intern(&id, &format!("shell:{id}/{panel}")).ok_or_else(|| {
+    let msg = format!("a plugin takes at most {MAX_PANEL_NAMES} distinct panel names");
+    Exception::throw_range(ctx, &msg)
+  })
 }
 
 /// A dock panel whose body is a script view
@@ -722,13 +742,18 @@ impl JsDockArea {
         continue;
       };
       let view = panel.read(app()).view.clone();
-      let payload = match call_view(&ctx, &view, "serialize", None)? {
+      let payload = (|| match call_view(&ctx, &view, "serialize", None)? {
         Some(v) if !v.is_undefined() => {
           let json = ctx.json_stringify(v)?.map(|s| s.to_string()).transpose()?;
-          json.and_then(|j| serde_json::from_str(&j).ok())
+          Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
         }
-        _ => None,
-      };
+        _ => Ok(None),
+      })()
+      .catch(&ctx)
+      .unwrap_or_else(|e| {
+        tracing::warn!("a dock panel's serialize(): {e}");
+        None
+      });
       panel.update(app(), |p, _| p.payload = payload);
     }
     let state = area.read(app()).dump(app());
@@ -759,25 +784,29 @@ impl JsDockArea {
       leaves(panel, &mut names);
     }
     let rt = runtime(&ctx)?;
-    for name in names {
-      let class = rt.panels.borrow().get(&name).cloned();
-      let Some(class) = class else {
-        continue;
-      };
-      let class = Constructor::from_js(&ctx, class.restore(&ctx)?.into_value())?;
-      let (handle, view) = new_child(&ctx, class, Value::new_undefined(ctx.clone()))?;
-      let entry = (Rc::downgrade(&rt), handle.id(), view);
-      PREBUILT.with(|p| {
-        p.borrow_mut()
-          .entry(intern(&name))
-          .or_default()
-          .push_back(entry)
-      });
-    }
-    let window = window_or_throw(&ctx)?;
-    let loaded = self
-      .area(&ctx)?
-      .update(app(), |a, cx| a.load(state, window, cx));
+    // the cleanup below runs on every exit of this
+    let built = (|| -> Result<_> {
+      for name in names {
+        let class = rt.panels.borrow().get(&name).cloned();
+        let Some(class) = class else {
+          continue;
+        };
+        // already interned by `qualified` when registered
+        let Some(key) = intern("", &name) else {
+          continue;
+        };
+        let class = Constructor::from_js(&ctx, class.restore(&ctx)?.into_value())?;
+        let (handle, view) = new_child(&ctx, class, Value::new_undefined(ctx.clone()))?;
+        let entry = (Rc::downgrade(&rt), handle.id(), view);
+        PREBUILT.with(|p| p.borrow_mut().entry(key).or_default().push_back(entry));
+      }
+      let window = window_or_throw(&ctx)?;
+      Ok(
+        self
+          .area(&ctx)?
+          .update(app(), |a, cx| a.load(state, window, cx)),
+      )
+    })();
     // views base did not take, and the data of those it did
     let unused: Vec<u32> = PREBUILT.with(|p| {
       p.borrow_mut()
@@ -791,6 +820,7 @@ impl JsDockArea {
       let child = rt.children.borrow_mut().remove(&id);
       drop(child);
     }
+    let loaded = built?;
     loaded.map_err(|e| Exception::throw_type(&ctx, &format!("load(state): {e}")))?;
     for (view, data) in restored {
       let data = ctx.json_parse(data.to_string())?;
