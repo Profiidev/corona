@@ -22,6 +22,14 @@ pub struct DriveInfo {
   pub mount_points: Vec<String>,
 }
 
+/// Labels and mount points come from the medium; control characters would forge columns
+fn printable(text: &str) -> String {
+  text
+    .chars()
+    .map(|c| if c.is_control() { ' ' } else { c })
+    .collect()
+}
+
 pub struct ListDrives;
 
 impl IpcCommand for ListDrives {
@@ -37,8 +45,8 @@ impl IpcCommand for ListDrives {
         .iter()
         .map(|v| DriveInfo {
           device: v.device.clone(),
-          label: v.label.clone(),
-          mount_points: v.mount_points.clone(),
+          label: printable(&v.label),
+          mount_points: v.mount_points.iter().map(|m| printable(m)).collect(),
         })
         .collect(),
     )
@@ -119,5 +127,15 @@ impl IpcCommand for DrivePasswordPrompt {
   fn reply(device: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
     let asked = drive_password::ask(device, cx);
     Box::pin(async move { Ok(asked.await.ok()) })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::printable;
+
+  #[test]
+  fn control_characters_become_spaces() {
+    assert_eq!(printable("x\t/dev/sda1\n/"), "x /dev/sda1 /");
   }
 }

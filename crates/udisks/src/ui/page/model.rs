@@ -134,11 +134,14 @@ pub fn health(drive: &Drive) -> Health {
   if smart.failing {
     return Health::Err;
   }
-  match &drive.ata {
-    Some(ata) if ata.smart_num_attributes_failing > 0 || ata.smart_num_bad_sectors > 0 => {
-      Health::Warn
-    }
-    _ => Health::Ok,
+  if matches!(&drive.ata, Some(ata) if ata.smart_num_attributes_failing > 0 || ata.smart_num_bad_sectors > 0)
+  {
+    return Health::Warn;
+  }
+  // never read or switched off: nothing was measured
+  match smart.enabled && smart.updated > 0 {
+    true => Health::Ok,
+    false => Health::Unknown,
   }
 }
 
@@ -492,9 +495,16 @@ pub(crate) mod tests {
     assert_eq!(health(&d), Health::Unknown);
     d.ata = Some(Ata {
       smart_supported: true,
+      smart_enabled: true,
       ..Default::default()
     });
+    // never polled
+    assert_eq!(health(&d), Health::Unknown);
+    d.ata.as_mut().unwrap().smart_updated = 1;
     assert_eq!(health(&d), Health::Ok);
+    d.ata.as_mut().unwrap().smart_enabled = false;
+    assert_eq!(health(&d), Health::Unknown);
+    d.ata.as_mut().unwrap().smart_enabled = true;
     d.ata.as_mut().unwrap().smart_num_bad_sectors = 8;
     assert_eq!(health(&d), Health::Warn);
     d.ata.as_mut().unwrap().smart_failing = true;

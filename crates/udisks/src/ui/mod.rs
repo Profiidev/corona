@@ -19,11 +19,14 @@ pub(crate) fn register(cx: &mut App) {
   drive_password::init(cx);
 }
 
-/// Busy while a job runs or a removable drive is in
+/// Busy while a job runs or a removable drive with media is in
 impl IdlePage for page::DisksPanel {
   fn busy(cx: &App) -> bool {
     let udisks = cx.udisks();
-    let removable = udisks.list_drives(cx).iter().any(|d| d.is_removable());
+    let removable = udisks
+      .list_drives(cx)
+      .iter()
+      .any(|d| d.is_removable() && d.media_available);
     removable || disks_log(cx).running_count(cx) > 0
   }
 
@@ -50,13 +53,17 @@ mod tests {
   use uuid::Uuid;
 
   fn shown(cx: &mut TestAppContext, hide_when_idle: bool, removable: bool) -> bool {
+    shown_drive(cx, hide_when_idle, disks_test_drive(removable))
+  }
+
+  fn shown_drive(cx: &mut TestAppContext, hide_when_idle: bool, drive: crate::Drive) -> bool {
     cx.executor().allow_parking();
     let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       gpui_kit::init(cx);
       cx.set_global(corona_config::Config::default());
       corona_surface::bar::BarState::init(cx);
-      Udisks::fake(cx, &conn, vec![disks_test_drive(removable)], vec![], vec![]);
+      Udisks::fake(cx, &conn, vec![drive], vec![], vec![]);
       crate::ui::page::init(cx);
     });
     let (window, _) = cx
@@ -92,5 +99,12 @@ mod tests {
   #[gpui::test]
   fn a_usb_stick_shows_it(cx: &mut TestAppContext) {
     assert!(shown(cx, true, true));
+  }
+
+  #[gpui::test]
+  fn an_empty_card_reader_stays_idle(cx: &mut TestAppContext) {
+    let mut drive = disks_test_drive(true);
+    drive.media_available = false;
+    assert!(!shown_drive(cx, true, drive));
   }
 }

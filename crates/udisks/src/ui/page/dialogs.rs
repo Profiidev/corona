@@ -88,6 +88,7 @@ pub enum DialogKind {
   LoopSetup,
   Ejected {
     name: String,
+    powered_off: bool,
   },
 }
 
@@ -135,6 +136,8 @@ pub struct Dialog {
   slider_value: u64,
   /// MiB, where the slider started
   slider_start: u64,
+  /// MiB, the slider's top, f32 rounds above 16 TiB
+  slider_max: u64,
   /// Free gaps for a new partition, (offset, size)
   gaps: Vec<(u64, u64)>,
   path: Option<PathBuf>,
@@ -183,6 +186,7 @@ impl Dialog {
       slider: None,
       slider_value: 0,
       slider_start: 0,
+      slider_max: 0,
       gaps: Vec::new(),
       path: None,
       image_size: None,
@@ -205,8 +209,8 @@ impl Dialog {
     this
   }
 
-  pub fn ejected(name: String, drive: OwnedObjectPath) -> Self {
-    Self::empty(DialogKind::Ejected { name }, Some(drive))
+  pub fn ejected(name: String, powered_off: bool, drive: OwnedObjectPath) -> Self {
+    Self::empty(DialogKind::Ejected { name, powered_off }, Some(drive))
   }
 
   pub fn check_result(block: OwnedObjectPath, repair: bool, clean: bool, took: Duration) -> Self {
@@ -225,16 +229,25 @@ impl Dialog {
     let min = min.min(max);
     // rounded up, so the slider never goes below the bytes in use
     let min_mib = min.div_ceil(MIB);
-    let (min, max) = (min_mib as f32, (max / MIB).max(min_mib + 1) as f32);
+    let max_mib = (max / MIB).max(min_mib);
+    self.slider_max = max_mib;
+    let (min, max) = (min_mib as f32, max_mib as f32);
     let value = (value / MIB) as f32;
+    // nothing to choose: no slider, the one size stands
+    if min_mib == max_mib {
+      self.slider = None;
+      self.slider_value = min_mib;
+      self.slider_start = min_mib;
+      return;
+    }
     let slider = cx.new(|_| {
       SliderState::new()
         .max(max)
         .min(min)
         .step(1.)
-        .default_value(value.clamp(min, max))
+        .default_value(value.clamp(min, max).min(max_mib as f32))
     });
-    self.slider_value = value.clamp(min, max) as u64;
+    self.slider_value = (value.clamp(min, max) as u64).min(max_mib);
     self.slider_start = self.slider_value;
     self
       ._subscriptions
@@ -242,7 +255,7 @@ impl Dialog {
         if let SliderEvent::Change(value) = event
           && let Some(dialog) = &mut this.dialog
         {
-          dialog.slider_value = value.start().round() as u64;
+          dialog.slider_value = (value.start().round() as u64).min(dialog.slider_max);
           cx.notify();
         }
       }));
@@ -282,6 +295,7 @@ impl Dialog {
         this
           .inputs
           .insert("passphrase", input(window, cx, "", true));
+        this.inputs.insert("confirm", input(window, cx, "", true));
         this.checks.insert("encrypt", false);
         this.checks.insert("no_discard", false);
       }
@@ -557,6 +571,21 @@ impl DisksPanel {
     cx.notify();
   }
 
+  /// The row gate ran at render: the target may be mounted or unlocked since.
+  /// Shows the error and returns true when the action must not run
+  fn refuse_in_use(
+    &mut self,
+    path: &OwnedObjectPath,
+    read_only: bool,
+    cx: &mut Context<Self>,
+  ) -> bool {
+    let refuse = read_only || self.block_in_use(path, cx);
+    if refuse {
+      self.dialog_error(t!("app.disks.dialog.in_use"), cx);
+    }
+    refuse
+  }
+
   /// Runs the dialog's action
   pub(super) fn confirm(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
     let Some(dialog) = &self.dialog else {
@@ -578,11 +607,18 @@ impl DisksPanel {
     let path = block.clone().unwrap_or_default();
     match kind {
       DialogKind::Format => {
+        if self.refuse_in_use(&path, target.as_ref().is_some_and(|t| t.read_only), cx) {
+          return;
+        }
+        let Some(dialog) = &self.dialog else { return };
         let fs = dialog.choice("fs", cx);
         let encrypt = dialog.check("encrypt");
         let passphrase = dialog.text("passphrase", cx);
         if encrypt && passphrase.is_empty() {
           return self.dialog_error(t!("app.disks.dialog.need_passphrase"), cx);
+        }
+        if encrypt && passphrase != dialog.text("confirm", cx) {
+          return self.dialog_error(t!("app.disks.dialog.passphrases_differ"), cx);
         }
         let options = FormatOptions {
           label: Some(dialog.text("label", cx)).filter(|l| !l.is_empty()),
@@ -674,7 +710,9 @@ impl DisksPanel {
                   passphrase: Some(passphrase).filter(|p| !p.is_empty()),
                   ..Default::default()
                 };
-                udisks.resize_encrypted(&path, new, options).await
+                udisks
+                  .resize_encrypted(&path, if fill { 0 } else { new }, options)
+                  .await
               }
               // growing makes room first, shrinking frees it after
               ResizeTarget::Filesystem => match (partition_too, grow) {
@@ -780,6 +818,9 @@ impl DisksPanel {
         self.close_dialog(cx);
       }
       DialogKind::DeletePartition => {
+        if self.refuse_in_use(&path, false, cx) {
+          return;
+        }
         self.act(
           title("app.disks.delete"),
           objects,
@@ -802,9 +843,17 @@ impl DisksPanel {
         };
         let compress = dialog.check("compress");
         let image = match compress && image.extension().is_none_or(|e| e != "zst") {
-          true => PathBuf::from(format!("{}.zst", image.display())),
+          true => {
+            let mut name = image.into_os_string();
+            name.push(".zst");
+            PathBuf::from(name)
+          }
           false => image,
         };
+        // fd::backup renames over its target, and the picker only vetted the name without .zst
+        if image.exists() {
+          return self.dialog_error(t!("app.disks.dialog.image_exists"), cx);
+        }
         let total = target.as_ref().map_or(0, |t| t.size);
         let open = udisks.open_for_backup(&path);
         let job = title("app.disks.backup");
@@ -823,7 +872,7 @@ impl DisksPanel {
                     // private: the image holds the device's raw data
                     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
                   }
-                  fd::backup(File::from(fd), total, &image, compress, &progress)?;
+                  fd::backup(File::from(fd), &image, compress, &progress)?;
                   Ok(image.display().to_string())
                 },
                 |_, _, _| {},
@@ -835,6 +884,10 @@ impl DisksPanel {
         .detach();
       }
       DialogKind::Restore => {
+        if self.refuse_in_use(&path, target.as_ref().is_some_and(|t| t.read_only), cx) {
+          return;
+        }
+        let Some(dialog) = &self.dialog else { return };
         let Some(image) = dialog.path.clone() else {
           return self.dialog_error(t!("app.disks.dialog.pick_image"), cx);
         };
@@ -941,8 +994,16 @@ impl DisksPanel {
                 .ok();
             }
             Err(e) => {
+              let path = path.clone();
               panel
-                .update(cx, |this, cx| this.dialog_error(format!("{e:#}"), cx))
+                .update(cx, |this, cx| {
+                  // only the dialog that started it, not one opened since
+                  if matches!(&this.dialog, Some(d) if d.kind == DialogKind::Benchmark
+                    && d.busy && d.block.as_ref() == Some(&path))
+                  {
+                    this.dialog_error(format!("{e:#}"), cx)
+                  }
+                })
                 .ok();
               jobs::log(cx).clone().fail(job, objects, &e, None, cx);
             }
@@ -964,11 +1025,14 @@ impl DisksPanel {
         let start: Start = Rc::new(move |cx| {
           let udisks = cx.udisks().clone();
           let image = image.clone();
+          // a FIFO or stalled mount would block the UI thread
+          let open = cx.background_executor().spawn({
+            let image = image.clone();
+            async move { File::options().read(true).write(!read_only).open(&image) }
+          });
           Box::pin(async move {
-            let file = File::options()
-              .read(true)
-              .write(!read_only)
-              .open(&image)
+            let file = open
+              .await
               .with_context(|| format!("opening {}", image.display()))?;
             let options = LoopSetupOptions {
               read_only,
@@ -1183,6 +1247,11 @@ impl DisksPanel {
           text_field(
             "passphrase",
             t!("app.disks.dialog.passphrase").into(),
+            &mut fields,
+          );
+          text_field(
+            "confirm",
+            t!("app.disks.dialog.confirm_passphrase").into(),
             &mut fields,
           );
         }
@@ -1541,10 +1610,13 @@ impl DisksPanel {
           Some(t!("app.disks.dialog.attach").into()),
         )
       }
-      DialogKind::Ejected { name } => {
+      DialogKind::Ejected { name, powered_off } => {
         fields.push(kv(
           t!("app.disks.dialog.status"),
-          t!("app.disks.dialog.powered_off"),
+          match powered_off {
+            true => t!("app.disks.dialog.powered_off"),
+            false => t!("app.disks.dialog.media_ejected"),
+          },
           Some(cx.theme().colors.success),
           cx,
         ));

@@ -9,10 +9,14 @@ use corona_launcher::{
   kit::{ListSource, Notify, opener, watch},
   registry, simple,
 };
+use corona_utils::display::markdown_escape as escape;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::ui::page::{model::system_block, types::size};
+use crate::ui::page::{
+  model::{Health, health, system_block},
+  types::size,
+};
 
 fn observe(notify: Notify, cx: &mut App) -> Vec<Subscription> {
   let udisks = cx.udisks().clone();
@@ -201,7 +205,7 @@ fn drive_meta(d: &Drive, icon: IconName) -> Meta {
 fn eject_row(drive: &Drive) -> Rc<dyn Command> {
   let (d, path) = (drive.clone(), drive.path.clone());
   simple(
-    format!("drive:{}", drive.id),
+    format!("drive:{}", drive.path.as_str()),
     move |_| drive_meta(&d, IconName::HardDriveUpload),
     move |_| {
       let path = path.clone();
@@ -222,23 +226,25 @@ fn eject_row(drive: &Drive) -> Rc<dyn Command> {
 
 fn health_row(drive: &Drive) -> Rc<dyn Command> {
   let d = drive.clone();
-  let failing = drive.smart().is_some_and(|s| s.failing);
+  let tag = match health(drive) {
+    Health::Err => Some((t!("app.launcher.drives.failing"), Tone::Err)),
+    Health::Warn => Some((t!("app.launcher.drives.warning"), Tone::Warn)),
+    _ => None,
+  };
   let drive = drive.clone();
   simple(
-    format!("drive-health:{}", drive.id),
+    format!("drive-health:{}", drive.path.as_str()),
     move |_| {
       let mut meta = drive_meta(&d, IconName::HeartPulse);
-      if failing {
-        meta.accessories = vec![Accessory::Tag(
-          t!("app.launcher.drives.failing").into(),
-          Tone::Err,
-        )];
+      if let Some((text, tone)) = &tag {
+        meta.accessories = vec![Accessory::Tag(text.to_string().into(), *tone)];
       }
       meta
     },
     move |_| {
       vec![open_health(
         &drive,
+        false,
         "health",
         t!("app.launcher.drives.health").into(),
       )]
@@ -246,16 +252,22 @@ fn health_row(drive: &Drive) -> Rc<dyn Command> {
   )
 }
 
-/// Asks the drive for fresh SMART data and its attributes, then shows them
-fn open_health(drive: &Drive, id: &'static str, title: SharedString) -> Action {
+/// Asks the drive for fresh SMART data and its attributes, then shows them.
+/// `wake` is the explicit refresh: it spins the drive up and reports a failure
+fn open_health(drive: &Drive, wake: bool, id: &'static str, title: SharedString) -> Action {
   let drive = drive.clone();
   Action::spawn(id, title, move |_, cx| {
-    let refresh = cx.udisks().refresh_smart(&drive.path, cx);
+    let refresh = cx.udisks().refresh_smart(&drive.path, wake, cx);
     let attributes = cx.udisks().smart_attributes(&drive.path, cx);
     let known = drive.clone();
     async move {
-      // a refresh it could not do still shows the last data
-      let fresh = refresh.await.ok().flatten().unwrap_or(known);
+      // the passive opener still shows the last data when it could not refresh
+      let fresh = if wake {
+        refresh.await?
+      } else {
+        refresh.await.ok().flatten()
+      }
+      .unwrap_or(known);
       let attributes = attributes.await.ok();
       Ok(Outcome::Push(health_view(&fresh, attributes.as_ref())))
     }
@@ -266,32 +278,20 @@ fn row(rows: &mut Vec<(SharedString, SharedString)>, key: &str, value: impl Into
   rows.push((t!(key).into(), value.into()));
 }
 
-/// Device-controlled text must not render as markdown
-fn escape(text: &str) -> String {
-  let mut out = String::with_capacity(text.len());
-  for c in text.chars() {
-    match c {
-      '\n' | '\r' => out.push(' '),
-      '\\' | '`' | '*' | '_' | '[' | ']' | '(' | ')' | '<' | '>' | '!' | '|' | '#' => {
-        out.push('\\');
-        out.push(c)
-      }
-      c => out.push(c),
-    }
-  }
-  out
-}
-
 fn health_view(drive: &Drive, attributes: Option<&SmartAttributes>) -> View {
   let smart = drive.smart();
   let mut rows: Vec<(SharedString, SharedString)> = Vec::new();
   let mut body = format!("# {}\n", escape(&drive.name()));
   if let Some(smart) = &smart {
-    let state = match smart.failing {
-      true => t!("app.launcher.drives.failing"),
-      false => t!("app.launcher.drives.healthy"),
+    let state = match health(drive) {
+      Health::Err => Some(t!("app.launcher.drives.failing")),
+      Health::Ok => Some(t!("app.launcher.drives.healthy")),
+      Health::Warn => Some(t!("app.launcher.drives.warning")),
+      Health::Unknown => None,
     };
-    body.push_str(&format!("\n**{state}**\n"));
+    if let Some(state) = state {
+      body.push_str(&format!("\n**{state}**\n"));
+    }
     if let Some(celsius) = smart.temperature_celsius {
       row(
         &mut rows,
@@ -418,6 +418,7 @@ fn health_view(drive: &Drive, attributes: Option<&SmartAttributes>) -> View {
     actions: match smart {
       Some(_) => vec![open_health(
         drive,
+        true,
         "refresh",
         t!("app.launcher.drives.refresh").into(),
       )],

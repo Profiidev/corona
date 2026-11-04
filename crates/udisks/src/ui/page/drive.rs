@@ -21,7 +21,7 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::ui::page::{
   DisksPanel, DriveTab,
   dialogs::{Dialog, DialogKind},
-  jobs::DisksLog,
+  jobs::{DisksLog, log},
   model::{Health, free_spaces, health},
   types::{size, table_name},
 };
@@ -69,7 +69,7 @@ impl DisksPanel {
       cx.listener(move |this, tab, _, cx| {
         this.drive_tab = *tab;
         if *tab == DriveTab::Health && this.smart.as_ref().is_none_or(|(p, _)| p != &tab_path) {
-          this.refresh_smart(tab_path.clone(), cx);
+          this.refresh_smart(tab_path.clone(), false, cx);
         }
         cx.notify();
       }),
@@ -214,6 +214,7 @@ impl DisksPanel {
       .any(|v| v.drive.path == drive.path && v.is_system());
     let drive_path = drive.path.clone();
     let drive_path_ok = drive.path.clone();
+    let powered_off = drive.can_power_off;
     let name = drive.name();
     actions.push(match drive.is_removable() {
       true => self.action_row(
@@ -241,7 +242,7 @@ impl DisksPanel {
                 let (name, path) = (name.clone(), path_ok.clone());
                 this
                   .update(cx, |this, cx| {
-                    this.dialog = Some(Dialog::ejected(name, path));
+                    this.dialog = Some(Dialog::ejected(name, powered_off, path));
                     cx.notify();
                   })
                   .ok();
@@ -267,12 +268,27 @@ impl DisksPanel {
     ]
   }
 
-  pub(super) fn refresh_smart(&mut self, path: OwnedObjectPath, cx: &mut Context<Self>) {
+  pub(super) fn refresh_smart(
+    &mut self,
+    path: OwnedObjectPath,
+    wake: bool,
+    cx: &mut Context<Self>,
+  ) {
     self.refreshing = true;
     let udisks = cx.udisks().clone();
-    let refresh = udisks.refresh_smart(&path, cx);
+    let refresh = udisks.refresh_smart(&path, wake, cx);
     cx.spawn(async move |this, cx| {
-      let _ = refresh.await;
+      // the passive call stays silent, an explicit Refresh reports its failure
+      if let Err(e) = refresh.await
+        && wake
+      {
+        let title = t!("app.disks.refresh").to_string();
+        cx.update(|cx| {
+          log(cx)
+            .clone()
+            .fail(title, vec![path.clone()], &e, None, cx)
+        });
+      }
       let attributes = this
         .update(cx, |_, cx| cx.udisks().smart_attributes(&path, cx))
         .ok();
@@ -283,7 +299,7 @@ impl DisksPanel {
       this
         .update(cx, |this, cx| {
           // another drive's page is open by now, its own refresh owns the state
-          if !matches!(&this.view, super::View::Drive(shown) if *shown == path) {
+          if matches!(&this.view, super::View::Drive(shown) if *shown != path) {
             return;
           }
           this.refreshing = false;
@@ -323,7 +339,8 @@ impl DisksPanel {
     let (status, color) = match state {
       Health::Ok => (t!("app.disks.passed"), cx.theme().colors.success),
       Health::Warn => (t!("app.disks.warning"), cx.theme().colors.warning),
-      _ => (t!("app.disks.failing"), theme.colors.danger),
+      Health::Err => (t!("app.disks.failing"), theme.colors.danger),
+      Health::Unknown => (t!("app.common.unknown"), theme.colors.muted_foreground),
     };
     let power_on = smart
       .power_on_hours
@@ -374,7 +391,7 @@ impl DisksPanel {
       .small()
       .loading(self.refreshing)
       .cursor_pointer()
-      .on_click(cx.listener(move |this, _, _, cx| this.refresh_smart(path.clone(), cx)));
+      .on_click(cx.listener(move |this, _, _, cx| this.refresh_smart(path.clone(), true, cx)));
     let mut sections = vec![
       section(
         t!("app.disks.smart"),

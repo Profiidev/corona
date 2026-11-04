@@ -16,6 +16,7 @@ use zbus::zvariant::OwnedObjectPath;
 use corona_surface::{control_center::Standalone, panel::AppPanelExt};
 
 use crate::ui::page::DisksPanel;
+use crate::ui::page::jobs::DisksLog;
 use crate::ui::page::{DisksRequest, Request, types::size};
 
 const MOUNT: &str = "mount";
@@ -46,6 +47,29 @@ fn offer(volumes: &[&Volume]) -> Offer {
   }
 }
 
+/// Drives to announce now, and `known` pruned to the drives still there with media: the ones
+/// without a volume stay known (a format or repartition is no plug-in), a swapped card is new again
+fn announce(
+  known: &mut HashSet<OwnedObjectPath>,
+  with_volume: &HashSet<OwnedObjectPath>,
+  present: &HashSet<OwnedObjectPath>,
+) -> Vec<OwnedObjectPath> {
+  let new: Vec<_> = with_volume.difference(known).cloned().collect();
+  known.extend(new.iter().cloned());
+  known.retain(|d| present.contains(d));
+  new
+}
+
+/// The drives that are there with media
+fn present(cx: &App) -> HashSet<OwnedObjectPath> {
+  cx.udisks()
+    .list_drives(cx)
+    .iter()
+    .filter(|d| d.media_available)
+    .map(|d| d.path.clone())
+    .collect()
+}
+
 fn open(request: Request, cx: &mut App) {
   cx.default_global::<DisksRequest>().0 = Some(request);
   let _ = cx.open_panel::<Standalone<DisksPanel>>().log_err();
@@ -63,43 +87,40 @@ pub fn init(cx: &mut App) {
   let sent: Rc<RefCell<HashMap<u32, Sent>>> = Rc::default();
   // None until udisksd runs: its drives were there already
   let seen: Rc<RefCell<Option<HashSet<OwnedObjectPath>>>> = Rc::default();
+  // the drives showing a volume: a card reader without a card is not there yet
   let drives_now = |cx: &App| -> HashSet<OwnedObjectPath> {
     cx.udisks()
-      .list_drives(cx)
+      .list_volumes(cx)
       .iter()
-      .map(|d| d.path.clone())
+      .filter_map(|v| v.drive.clone())
       .collect()
   };
+  let baseline = move |cx: &App| {
+    let mut known = drives_now(cx);
+    known.retain(|d| present(cx).contains(d));
+    known
+  };
   if udisks.running(cx) {
-    *seen.borrow_mut() = Some(drives_now(cx));
+    *seen.borrow_mut() = Some(baseline(cx));
   }
   {
     // running is published after the drives and volumes, so this is the baseline
     let seen = seen.clone();
     cx.observe(&udisks.running, move |_, cx| {
-      *seen.borrow_mut() = cx.udisks().running(cx).then(|| drives_now(cx));
+      *seen.borrow_mut() = cx.udisks().running(cx).then(|| baseline(cx));
     })
     .detach();
   }
   {
     let sent = sent.clone();
     cx.observe(&udisks.volumes, move |_, cx| {
-      let udisks = cx.udisks();
       let drives = drives_now(cx);
       let mut seen = seen.borrow_mut();
       let Some(known) = seen.as_mut() else {
         return;
       };
-      // a drive is new once it shows a volume: a blank one waits for its first
-      let volumes = udisks.list_volumes(cx);
-      let new: Vec<OwnedObjectPath> = drives
-        .iter()
-        .filter(|d| !known.contains(*d))
-        .filter(|d| volumes.iter().any(|v| v.drive.as_ref() == Some(*d)))
-        .cloned()
-        .collect();
-      known.retain(|d| drives.contains(d));
-      known.extend(new.iter().cloned());
+      // a drive is new once it shows a volume, again after its media was swapped out
+      let new = announce(known, &drives, &present(cx));
       for drive in new {
         notify(drive, sent.clone(), cx);
       }
@@ -119,11 +140,15 @@ pub fn init(cx: &mut App) {
         continue;
       };
       cx.update(|cx| match (key.as_str(), target.volume) {
-        (MOUNT, Some(volume)) => {
-          let mount = cx.udisks().mount(&volume, MountOptions::default());
-          cx.spawn(async move |_| drop(mount.await.log_err()))
-            .detach();
-        }
+        (MOUNT, Some(volume)) => DisksLog::run(
+          cx,
+          t!("app.disks.mount").to_string(),
+          vec![volume.clone()],
+          Rc::new(move |cx| {
+            let mount = cx.udisks().mount(&volume, MountOptions::default());
+            Box::pin(async move { mount.await.map(drop) })
+          }),
+        ),
         (UNLOCK, Some(volume)) => open(Request::Unlock(volume), cx),
         // Open, or the notification itself clicked
         _ => open(Request::Drive(target.drive), cx),
@@ -224,5 +249,29 @@ mod tests {
     assert_eq!(offer(&[&mounted]), Offer::Open);
     assert_eq!(offer(&[&stick, &locked]), Offer::Open);
     assert_eq!(offer(&[]), Offer::Open);
+  }
+
+  #[test]
+  fn announces_once_per_drive_and_media() {
+    let set = |d: &[&str]| {
+      d.iter()
+        .map(|d| OwnedObjectPath::try_from(*d).unwrap())
+        .collect()
+    };
+    let mut known = HashSet::new();
+    let (a, b): (HashSet<_>, HashSet<_>) = (set(&["/a"]), set(&["/b"]));
+    assert_eq!(
+      announce(&mut known, &a, &a),
+      [a.iter().next().unwrap().clone()]
+    );
+    // format: volumes vanish, the drive stays with media, the next volume is no plug-in
+    assert!(announce(&mut known, &set(&[]), &a).is_empty());
+    assert!(announce(&mut known, &a, &a).is_empty());
+    // media pulled from a card reader, a new card is announced again
+    assert!(announce(&mut known, &set(&[]), &set(&[])).is_empty());
+    assert_eq!(announce(&mut known, &a, &a).len(), 1);
+    // unplugged
+    assert!(announce(&mut known, &set(&[]), &b).is_empty());
+    assert_eq!(announce(&mut known, &a, &a).len(), 1);
   }
 }

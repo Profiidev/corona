@@ -5,9 +5,10 @@ use std::{
   collections::VecDeque,
   rc::Rc,
   sync::atomic::{AtomicU64, Ordering},
+  task::Poll,
 };
 
-use futures::channel::oneshot;
+use futures::{channel::oneshot, future::poll_fn};
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Context, Entity, Global, IntoElement, Render, Window,
 };
@@ -65,6 +66,28 @@ pub fn ask(device: String, cx: &mut App) -> oneshot::Receiver<String> {
     requests.push_back(DrivePasswordRequest { id, device, reply });
     cx.notify();
   });
+  // the client going away drops the dialog
+  let queue = requests.clone();
+  cx.spawn(async move |cx| {
+    poll_fn(|task| {
+      let canceled = queue.update(cx, |requests, _| {
+        match requests.iter_mut().find(|r| r.id == id) {
+          Some(r) => r.reply.poll_canceled(task).is_ready(),
+          None => true,
+        }
+      });
+      match canceled {
+        false => Poll::Pending,
+        true => Poll::Ready(()),
+      }
+    })
+    .await;
+    queue.update(cx, |requests, cx| {
+      requests.retain(|r| !r.reply.is_canceled());
+      cx.notify();
+    });
+  })
+  .detach();
   done
 }
 

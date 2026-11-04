@@ -185,6 +185,12 @@ app:
       image_size:
         en: 'Image size'
         de: 'Abbildgröße'
+      in_use:
+        en: 'The target is in use now, unmount or lock it first.'
+        de: 'Das Ziel wird gerade verwendet, zuerst aushängen oder sperren.'
+      image_exists:
+        en: 'A backup with that name already exists, pick another name.'
+        de: 'Ein Backup mit diesem Namen existiert bereits, wähle einen anderen Namen.'
       image_size_unknown:
         en: 'The image does not say how large it is unpacked, so it cannot be checked against the target.'
         de: 'Das Abbild gibt seine entpackte Größe nicht an und lässt sich daher nicht gegen das Ziel prüfen.'
@@ -248,6 +254,9 @@ app:
       passphrases_differ:
         en: 'The new passphrases are empty or differ.'
         de: 'Die neuen Passphrasen sind leer oder verschieden.'
+      media_ejected:
+        en: 'Media ejected'
+        de: 'Medium ausgeworfen'
       pick_image:
         en: 'Choose an image file first.'
         de: 'Wähle zuerst eine Abbilddatei.'

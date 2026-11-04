@@ -44,7 +44,10 @@ impl Commands {
       Commands::List => match ListDrives::send(()) {
         Ok(drives) => {
           for d in drives {
-            println!("{}\t{}\t{}", d.device, d.label, d.mount_points.join(","));
+            // one drive per line, whatever the medium put in its names
+            let flat = |s: &str| s.replace(char::is_control, " ");
+            let mounts: Vec<_> = d.mount_points.iter().map(|m| flat(m)).collect();
+            println!("{}\t{}\t{}", d.device, flat(&d.label), mounts.join(","));
           }
         }
         Err(e) => {

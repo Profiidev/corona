@@ -199,12 +199,9 @@ impl DisksPanel {
           .background_executor()
           .spawn(async move { model::usage(&read) })
           .await;
-        this
-          .update(cx, |_, cx| {
-            cx.global_mut::<model::UsageCache>().finish(mount, value);
-            cx.notify();
-          })
-          .ok();
+        // through the app: a closed panel must still release the mount from pending
+        cx.update(|cx| cx.global_mut::<model::UsageCache>().finish(mount, value));
+        this.update(cx, |_, cx| cx.notify()).ok();
       })
       .detach();
     }
@@ -222,11 +219,17 @@ impl DisksPanel {
       return;
     };
     match request {
-      Request::Drive(path) => self.open_drive(path, cx),
-      Request::Unlock(block) => {
+      // a notification can outlive its device
+      Request::Drive(path) => {
+        if cx.udisks().drive(&path, cx).is_some() {
+          self.open_drive(path, cx);
+        }
+      }
+      Request::Unlock(block) if cx.udisks().block(&block, cx).is_some() => {
         self.view = View::Block(block.clone());
         self.dialog = Some(Dialog::unlock(block, window, cx));
       }
+      Request::Unlock(_) => {}
     }
     cx.notify();
   }
@@ -291,15 +294,23 @@ impl DisksPanel {
     );
     let kind = kind.to_string();
     cx.spawn(async move |this, cx| {
-      let caps = Caps {
-        format: format.await.is_ok_and(|(ok, _)| ok),
-        resize: resize.await.is_ok_and(|(ok, _, _)| ok),
-        check: check.await.is_ok_and(|(ok, _)| ok),
-        repair: repair.await.is_ok_and(|(ok, _)| ok),
-      };
+      // a failed query is unknown, not unsupported: drop the placeholder so the next open retries
+      let caps = async {
+        anyhow::Ok(Caps {
+          format: format.await?.0,
+          resize: resize.await?.0,
+          check: check.await?.0,
+          repair: repair.await?.0,
+        })
+      }
+      .await
+      .ok();
       this
         .update(cx, |this, cx| {
-          this.caps.insert(kind, caps);
+          match caps {
+            Some(caps) => this.caps.insert(kind, caps),
+            None => this.caps.remove(&kind),
+          };
           cx.notify();
         })
         .ok();

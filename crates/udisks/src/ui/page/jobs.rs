@@ -68,6 +68,8 @@ pub struct Finished {
   pub objects: Vec<OwnedObjectPath>,
   pub retry: Option<Retry>,
   pub when: Instant,
+  /// Told by a udisks job's Completed signal, not by the call
+  pub from_job: bool,
 }
 
 #[derive(Clone)]
@@ -111,6 +113,7 @@ pub fn init(cx: &mut App) {
         objects: done.objects,
         retry: None,
         when: Instant::now(),
+        from_job: true,
       },
       cx,
     );
@@ -123,7 +126,8 @@ pub fn log(cx: &App) -> &DisksLog {
 }
 
 impl DisksLog {
-  /// Newest first; a failure already told by the call or the job only adds its retry
+  /// Newest first; a failure already told by the call or the job only adds its retry. Only
+  /// the same action twice, or a call and a job, count as one failure (titles differ there)
   pub fn push(&self, entry: Finished, cx: &mut App) {
     self.finished.update(cx, |list, cx| {
       let twin = (!entry.success)
@@ -131,6 +135,7 @@ impl DisksLog {
           list.iter_mut().find(|f| {
             !f.success
               && f.when.elapsed() < SAME_FAILURE
+              && (f.title == entry.title || f.from_job != entry.from_job)
               && f.objects.iter().any(|o| entry.objects.contains(o))
           })
         })
@@ -208,6 +213,7 @@ impl DisksLog {
         objects,
         retry,
         when: Instant::now(),
+        from_job: false,
       },
       cx,
     );
@@ -307,6 +313,7 @@ impl DisksLog {
             objects,
             retry: None,
             when: Instant::now(),
+            from_job: false,
           },
           cx,
         );

@@ -2,7 +2,7 @@
 
 use std::{
   fs::File,
-  io::{self, BufReader, Read, Seek, Write},
+  io::{self, BufReader, Read, Seek, SeekFrom, Write},
   os::unix::fs::{FileExt, OpenOptionsExt},
   path::Path,
   sync::atomic::{AtomicBool, AtomicU64, Ordering},
@@ -48,10 +48,9 @@ fn copy(mut from: impl Read, mut to: impl Write, progress: &Progress) -> io::Res
   Ok(total)
 }
 
-/// Writes the device of `size` bytes to an image file, zstd compressed when asked
+/// Writes the device to an image file, zstd compressed when asked
 pub fn backup(
-  device: File,
-  size: u64,
+  mut device: File,
   image: &Path,
   compress: bool,
   progress: &Progress,
@@ -59,6 +58,9 @@ pub fn backup(
   // written aside and moved in place once whole, so a failure never costs an older image
   let part = image.with_added_extension("part");
   let write = || -> io::Result<u64> {
+    // the opened fd's own length, the cached size may be stale
+    let size = device.seek(SeekFrom::End(0))?;
+    device.rewind()?;
     // a stale or planted .part is replaced, never written through
     let _ = std::fs::remove_file(&part);
     let file = File::options()
@@ -243,14 +245,7 @@ mod tests {
       std::fs::write(&device, &data).unwrap();
       let image = dir.path().join(format!("image-{compress}"));
       let progress = Progress::default();
-      let copied = backup(
-        File::open(&device).unwrap(),
-        data.len() as u64,
-        &image,
-        compress,
-        &progress,
-      )
-      .unwrap();
+      let copied = backup(File::open(&device).unwrap(), &image, compress, &progress).unwrap();
       assert_eq!(copied, data.len() as u64);
       assert_eq!(progress.done.load(Ordering::Relaxed), data.len() as u64);
       assert_eq!(image_size(&image).unwrap(), Some(data.len() as u64));
@@ -274,7 +269,7 @@ mod tests {
     std::fs::write(&image, b"older").unwrap();
     let progress = Progress::default();
     progress.cancel.store(true, Ordering::Relaxed);
-    let err = backup(File::open(&device).unwrap(), 100, &image, false, &progress).unwrap_err();
+    let err = backup(File::open(&device).unwrap(), &image, false, &progress).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Interrupted);
     assert!(!image.with_added_extension("part").exists());
     // the image there before stays

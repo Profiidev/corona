@@ -5,11 +5,7 @@ use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
-use crate::{
-  listener::{listener, subscribe},
-  options::{ToOptions, none},
-  proxy::{DriveProxy, EncryptedProxy, FilesystemProxy},
-};
+use crate::listener::{listener, subscribe};
 
 pub use crate::{
   options::{
@@ -125,15 +121,12 @@ impl Udisks {
     encrypted: &OwnedObjectPath,
     passphrase: String,
   ) -> impl Future<Output = Result<String>> + use<> {
-    let (conn, path) = (self.conn.clone(), encrypted.clone());
+    let this = self.clone();
+    let unlock = self.unlock(encrypted, &passphrase, UnlockOptions::default());
     async move {
-      let cleartext = at::<EncryptedProxy>(&conn, path)
-        .await?
-        .unlock(&passphrase, none())
-        .await?;
-      at::<FilesystemProxy>(&conn, cleartext)
-        .await?
-        .mount(MountOptions::default().options())
+      let cleartext = unlock.await?;
+      this
+        .mount(&cleartext, MountOptions::default())
         .await
         .context("unlocked, but mounting failed")
     }
@@ -145,7 +138,7 @@ impl Udisks {
     volume: &Volume,
     cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
-    let conn = self.conn.clone();
+    let this = self.clone();
     let encrypted = volume
       .encrypted_block(self.list_blocks(cx))
       .context("not an encrypted volume");
@@ -156,14 +149,9 @@ impl Udisks {
     async move {
       let encrypted = encrypted?;
       if let Some(cleartext) = cleartext {
-        unmount(&conn, cleartext).await?;
+        this.unmount(&cleartext, UnmountOptions::default()).await?;
       }
-      Ok(
-        at::<EncryptedProxy>(&conn, encrypted)
-          .await?
-          .lock(none())
-          .await?,
-      )
+      this.lock(&encrypted).await
     }
   }
 
@@ -174,7 +162,7 @@ impl Udisks {
     drive: &OwnedObjectPath,
     cx: &App,
   ) -> impl Future<Output = Result<()>> + use<> {
-    let conn = self.conn.clone();
+    let this = self.clone();
     let blocks = self.list_blocks(cx);
     let mut steps = Vec::new();
     let mut system = false;
@@ -201,38 +189,40 @@ impl Udisks {
       anyhow::ensure!(!system, "{} is in use by the system", path.as_str());
       for step in steps {
         match step {
-          Step::Unmount(block) => unmount(&conn, block.clone())
+          Step::Unmount(block) => this
+            .unmount(&block, UnmountOptions::default())
             .await
             .with_context(|| format!("unmounting {}", block.as_str()))?,
-          Step::Lock(block) => at::<EncryptedProxy>(&conn, block.clone())
-            .await?
-            .lock(none())
+          Step::Lock(block) => this
+            .lock(&block)
             .await
             .with_context(|| format!("locking {}", block.as_str()))?,
         }
       }
-      let drive = at::<DriveProxy>(&conn, path).await?;
       match power_off {
-        true => drive.power_off(none()).await?,
-        false => drive.eject(none()).await?,
+        true => this.power_off(&path).await,
+        false => this.eject(&path).await,
       }
-      Ok(())
     }
   }
 
-  /// Asks the drive for fresh SMART data and reads the drive again with it
+  /// Asks the drive for fresh SMART data and reads the drive again with it. Without `wake`
+  /// a drive in standby keeps its last data instead of spinning up
   pub fn refresh_smart(
     &self,
     drive: &OwnedObjectPath,
+    wake: bool,
     cx: &App,
   ) -> impl Future<Output = Result<Option<Drive>>> + use<> {
     let (conn, path) = (self.conn.clone(), drive.clone());
     let kind = self.drive(drive, cx).map(SmartKind::of);
-    let ata = self.ata_smart_update(drive);
+    let ata = self.ata_smart_update(drive, wake);
     let nvme = self.nvme_smart_update(drive);
     async move {
       match kind {
-        Some(SmartKind::Ata) => ata.await?,
+        Some(SmartKind::Ata) if wake => ata.await?,
+        // standby fails the call, the cached data stays
+        Some(SmartKind::Ata) => drop(ata.await),
         Some(SmartKind::Nvme) => nvme.await?,
         Some(SmartKind::None) | None => {}
       }
@@ -281,15 +271,6 @@ impl SmartKind {
   }
 }
 
-async fn unmount(conn: &Connection, block: OwnedObjectPath) -> Result<()> {
-  Ok(
-    at::<FilesystemProxy>(conn, block)
-      .await?
-      .unmount(none())
-      .await?,
-  )
-}
-
 impl Udisks {
   /// A state without udisksd behind it, for UI tests: no listener, calls go to `conn` where
   /// nobody answers
@@ -319,7 +300,9 @@ impl Udisks {
 /// Follows UDisks2, registers the disks UI, drive notifications, commands and launcher
 /// commands
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
-  connect(cx, &buses.system).await?;
+  // no method timeout: Format, Check, Repair and Unmount run as long as udisksd needs
+  let actions = zbus::connection::Builder::system()?.build().await?;
+  connect(cx, &buses.system, &actions).await?;
   ui::register(cx);
   commands::register(cx);
   launcher::register(cx);
@@ -327,7 +310,8 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   Ok(())
 }
 
-async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
+/// `conn` follows udisksd, `actions` makes the calls
+async fn connect(cx: &mut App, conn: &Connection, actions: &Connection) -> Result<()> {
   let state = Udisks {
     running: cx.new(|_| false),
     drives: cx.new(|_| Vec::new()),
@@ -335,7 +319,7 @@ async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
     jobs: cx.new(|_| Vec::new()),
     job_completed: cx.new(|_| None),
     volumes: cx.new(|_| Vec::new()),
-    conn: conn.clone(),
+    conn: actions.clone(),
   };
 
   // subscribe before the first snapshot so no change can slip in between
@@ -573,11 +557,12 @@ mod tests {
   }
 
   impl Udisksd {
-    /// A usb stick with a plain and an encrypted partition, mounted and unlocked as asked
-    fn start(bus: &TestBus, mounted: bool, unlocked: bool) -> Self {
+    /// A usb stick with a plain and an encrypted partition, mounted and unlocked as asked.
+    /// The plain and the unlocked partition are mounted under the given dirs
+    fn start_at(bus: &TestBus, mounted: bool, unlocked: bool, dirs: [&str; 2]) -> Self {
       let calls = Calls::default();
-      let mount = |at: &str| match mounted {
-        true => vec![format!("/run/media/me/{at}\0").into_bytes()],
+      let mount = |dir: &str, at: &str| match mounted {
+        true => vec![format!("{dir}/{at}\0").into_bytes()],
         false => Vec::new(),
       };
       let conn = block_on(async {
@@ -602,7 +587,7 @@ mod tests {
         let fs = MockFilesystem {
           calls: calls.clone(),
           name: "sdb1",
-          mount_points: mount("sdb1"),
+          mount_points: mount(dirs[0], "sdb1"),
         };
         server.at(SDB1, fs).await.unwrap();
         let sdc1 = MockBlock {
@@ -618,7 +603,7 @@ mod tests {
         };
         server.at(SDC1, encrypted).await.unwrap();
         if unlocked {
-          add_cleartext(server, &calls, mount("dm_2d0")).await;
+          add_cleartext(server, &calls, mount(dirs[1], "dm_2d0")).await;
         }
         conn.request_name(SERVICE).await.unwrap();
         conn
@@ -632,14 +617,23 @@ mod tests {
   }
 
   fn start(cx: &mut TestAppContext, mounted: bool, unlocked: bool) -> (TestBus, Udisksd) {
+    start_at(cx, mounted, unlocked, ["/run/media/me"; 2])
+  }
+
+  fn start_at(
+    cx: &mut TestAppContext,
+    mounted: bool,
+    unlocked: bool,
+    dirs: [&str; 2],
+  ) -> (TestBus, Udisksd) {
     cx.executor().allow_parking();
     let bus = TestBus::new();
-    let udisksd = Udisksd::start(&bus, mounted, unlocked);
+    let udisksd = Udisksd::start_at(&bus, mounted, unlocked, dirs);
     let conn = block_on(bus.conn());
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(connect(cx, &conn))
+        .block_on(connect(cx, &conn, &conn))
         .unwrap()
     });
     (bus, udisksd)
@@ -758,6 +752,21 @@ mod tests {
         "PowerOff"
       ]
     );
+  }
+
+  #[gpui::test]
+  fn ejecting_refuses_drives_the_system_uses(cx: &mut TestAppContext) {
+    // the unlocked cleartext holds /home, then the plain partition does
+    for dirs in [["/run/media/me", "/home"], ["/boot", "/run/media/me"]] {
+      let (_bus, udisksd) = start_at(cx, true, true, dirs);
+      wait_until(cx, |cx| {
+        volumes(cx).iter().all(Volume::is_mounted) && volumes(cx).len() == 2
+      });
+      let eject = cx.read(|cx| cx.udisks().eject_drive(&path(DRIVE), cx));
+      let err = block_on(eject).unwrap_err();
+      assert!(err.to_string().contains("in use by the system"), "{dirs:?}");
+      assert!(udisksd.calls().is_empty(), "{dirs:?}");
+    }
   }
 
   #[gpui::test]

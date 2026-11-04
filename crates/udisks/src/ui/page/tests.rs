@@ -78,7 +78,7 @@ fn devices_show_drives_partitions_and_their_buttons(cx: &mut TestAppContext) {
       "disks-tab-devices",
       "disks-tab-storage",
       "disks-tab-jobs",
-      "disks-drive-usb",
+      "disks-drive-/org/freedesktop/UDisks2/drives/usb",
       "disks-part-sdb1",
       "disks-primary-sdb1",
       "disks-primary-sdb2",
@@ -205,7 +205,7 @@ fn every_dialog_opens(cx: &mut TestAppContext) {
       true,
       std::time::Duration::from_secs(90),
     ),
-    dialogs::Dialog::ejected("SanDisk".into(), part.clone()),
+    dialogs::Dialog::ejected("SanDisk".into(), true, part.clone()),
   ] {
     let id = dialog.kind.id();
     o.panel.update(cx, |p, cx| {
@@ -313,6 +313,7 @@ fn jobs_running_and_finished_with_retry(cx: &mut TestAppContext) {
         objects: vec![],
         retry: Some(Rc::new(move |_| retried.set(retried.get() + 1))),
         when: Instant::now(),
+        from_job: false,
       },
       cx,
     );
@@ -378,6 +379,18 @@ fn a_notification_opens_the_unlock_dialog(cx: &mut TestAppContext) {
   });
   assert_eq!(view, View::Block(luks));
   assert_eq!(dialog, Some(DialogKind::Unlock));
+}
+
+#[gpui::test]
+fn a_stale_notification_stays_on_the_list(cx: &mut TestAppContext) {
+  let o = stick_panel(cx);
+  cx.update(|cx| {
+    cx.set_global(DisksRequest(Some(Request::Drive(path(
+      "/org/freedesktop/UDisks2/drives/gone",
+    )))));
+  });
+  cx.run_until_parked();
+  assert_eq!(cx.read(|cx| o.panel.read(cx).view.clone()), View::List);
 }
 
 #[gpui::test]

@@ -32,9 +32,11 @@ impl Drive {
     format!("{} {}", self.vendor, self.model).trim().to_string()
   }
 
-  /// Comes out of the machine
+  /// Comes out of the machine. External USB disks often report neither flag but can power off
   pub fn is_removable(&self) -> bool {
-    self.removable || self.ejectable
+    self.removable
+      || self.ejectable
+      || (self.can_power_off && matches!(self.connection_bus.as_str(), "usb" | "ieee1394" | "sdio"))
   }
 
   pub fn smart(&self) -> Option<Smart> {
@@ -122,7 +124,11 @@ impl AtaAttribute {
   /// `pretty` in its unit
   pub fn pretty_text(&self) -> String {
     match self.pretty_unit {
-      2 => format!("{} h", self.pretty / 3_600_000),
+      2 => match self.pretty {
+        3_600_000.. => format!("{} h", self.pretty / 3_600_000),
+        1000.. => format!("{} s", self.pretty / 1000),
+        _ => format!("{} ms", self.pretty),
+      },
       3 => format!("{} sectors", self.pretty),
       4 => format!("{:.0} °C", self.pretty as f64 / 1000. - 273.15),
       _ => self.pretty.to_string(),
@@ -367,6 +373,17 @@ mod tests {
   }
 
   #[test]
+  fn external_usb_disk_is_removable() {
+    let mut drive = crate::ui::page::test_drive(false);
+    drive.connection_bus = "usb".into();
+    assert!(!drive.is_removable());
+    drive.can_power_off = true;
+    assert!(drive.is_removable());
+    drive.connection_bus = "sata".into();
+    assert!(!drive.is_removable());
+  }
+
+  #[test]
   fn volumes_sort_by_device() {
     let mut volumes = vec![
       volume("/dev/sdb1"),
@@ -395,6 +412,9 @@ mod tests {
       pretty_unit,
     };
     assert_eq!(attr(7_200_000, 2).pretty_text(), "2 h");
+    assert_eq!(attr(90_000, 2).pretty_text(), "90 s");
+    assert_eq!(attr(4500, 2).pretty_text(), "4 s");
+    assert_eq!(attr(500, 2).pretty_text(), "500 ms");
     assert_eq!(attr(313_150, 4).pretty_text(), "40 °C");
     assert_eq!(attr(8, 3).pretty_text(), "8 sectors");
     assert_eq!(attr(5, 1).pretty_text(), "5");

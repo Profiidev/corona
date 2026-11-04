@@ -9,22 +9,11 @@ use corona_components::{
 use corona_launcher::{
   Action, Command, DetailView, Icon, Meta, Outcome, View, detail_row, registry, simple,
 };
+use corona_utils::display::markdown_escape as escape;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use crate::{SystemMonitorExt, sampler::unique_disks};
-
-/// backslash-escapes the characters markdown would interpret
-fn escape(text: &str) -> String {
-  let mut out = String::with_capacity(text.len());
-  for c in text.chars() {
-    if "\\`*_{}[]<>#|~".contains(c) {
-      out.push('\\');
-    }
-    out.push(c);
-  }
-  out
-}
 
 fn sysinfo(cx: &App) -> View {
   let monitor = cx.system_monitor();

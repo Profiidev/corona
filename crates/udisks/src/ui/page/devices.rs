@@ -152,7 +152,7 @@ impl DisksPanel {
       .child(
         div()
           .id(gpui_kit::ElementId::Name(
-            format!("disks-drive-{}", drive.id).into(),
+            format!("disks-drive-{}", drive.path.as_str()).into(),
           ))
           .test_support()
           .flex()
