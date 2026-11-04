@@ -74,7 +74,7 @@ fn pairing_request(cx: &App) -> Option<PairingRequest> {
   let request = bluetooth.pairing_request(cx)?;
   Some(describe_pairing(
     &request.device,
-    request.kind,
+    request.kind.clone(),
     bluetooth.list_devices(cx),
   ))
 }
@@ -84,17 +84,21 @@ fn describe_pairing(device: &str, kind: bt::PairingKind, devices: &[bt::Device])
   let path = device;
   let device = devices.iter().find(|d| d.path.as_str() == path);
   let (kind, passkey) = match kind {
-    bt::PairingKind::Confirm { passkey } => (PairingKind::Confirm, Some(passkey)),
+    bt::PairingKind::Confirm { passkey } => (PairingKind::Confirm, Some(format!("{passkey:06}"))),
     bt::PairingKind::Authorize => (PairingKind::Authorize, None),
     bt::PairingKind::PinCode => (PairingKind::PinCode, None),
     bt::PairingKind::Passkey => (PairingKind::Passkey, None),
-    bt::PairingKind::DisplayPasskey { passkey } => (PairingKind::DisplayPasskey, Some(passkey)),
+    bt::PairingKind::DisplayPasskey { passkey } => {
+      (PairingKind::DisplayPasskey, Some(format!("{passkey:06}")))
+    }
+    // a PIN is shown as it is: it has no fixed length and may not be numeric
+    bt::PairingKind::DisplayPinCode { pin } => (PairingKind::DisplayPasskey, Some(pin)),
   };
   PairingRequest {
     address: device.map(|d| d.address.clone()),
     name: device.map_or_else(|| path.to_string(), |d| d.name.clone()),
     kind,
-    passkey: passkey.map(|passkey| format!("{passkey:06}")),
+    passkey,
   }
 }
 
@@ -246,6 +250,11 @@ mod tests {
         bt::PairingKind::DisplayPasskey { passkey: 123_456 },
         "display_passkey",
         Some("123456"),
+      ),
+      (
+        bt::PairingKind::DisplayPinCode { pin: "1234".into() },
+        "display_passkey",
+        Some("1234"),
       ),
     ];
     for (kind, name, passkey) in all {

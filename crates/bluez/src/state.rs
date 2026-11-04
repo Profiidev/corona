@@ -27,8 +27,8 @@ pub(crate) fn sort_devices(devices: &mut [Device]) {
     b.connected
       .cmp(&a.connected)
       .then(b.paired.cmp(&a.paired))
-      .then(b.rssi.cmp(&a.rssi))
       .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+      .then_with(|| a.address.cmp(&b.address))
   });
 }
 
@@ -61,7 +61,7 @@ mod tests {
     ];
     sort_devices(&mut devices);
     let names: Vec<_> = devices.iter().map(|d| d.name.as_str()).collect();
-    assert_eq!(names, ["connected", "A paired", "b paired", "near", "far"]);
+    assert_eq!(names, ["connected", "A paired", "b paired", "far", "near"]);
   }
 
   #[test]
@@ -74,8 +74,8 @@ mod tests {
     ];
     sort_devices(&mut devices);
     let names: Vec<_> = devices.iter().map(|d| d.name.as_str()).collect();
-    // any signal beats none, then by name ignoring case
-    assert_eq!(names, ["weak", "alpha", "Beta", "Zed"]);
+    // by name ignoring case, whatever the signal
+    assert_eq!(names, ["alpha", "Beta", "weak", "Zed"]);
     sort_devices(&mut []);
   }
 
@@ -93,8 +93,8 @@ mod tests {
 
     let mut reversed = vec![devices[1].clone(), devices[0].clone()];
     sort_devices(&mut reversed);
-    // Relative input order is retained without secondary tie-breaker
-    assert_eq!(reversed[0].address, "22:22");
-    assert_eq!(reversed[1].address, "11:11");
+    // address breaks the tie whatever the input order
+    assert_eq!(reversed[0].address, "11:11");
+    assert_eq!(reversed[1].address, "22:22");
   }
 }

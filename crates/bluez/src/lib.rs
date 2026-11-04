@@ -1,3 +1,8 @@
+use std::sync::{
+  Arc,
+  atomic::{AtomicU64, Ordering},
+};
+
 use anyhow::{Context, Result};
 use bluez_zbus::{adapter1::Adapter1Proxy, device1::Device1Proxy};
 use corona_js::ScriptExt;
@@ -8,7 +13,7 @@ use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 use crate::{
   agent::Reply,
-  listener::{agent_listener, listener, subscribe},
+  listener::{agent_listener, keep_registered, listener, owners, subscribe},
 };
 
 pub use crate::{
@@ -33,6 +38,8 @@ pub struct Bluetooth {
   pub adapter: Entity<Option<Adapter>>,
   pub devices: Entity<Vec<Device>>,
   pub pairing_request: Entity<Option<PairingRequest>>,
+  /// Bumped by every discovery start (panel, launcher, IPC), so only the latest one stops it
+  scan: Arc<AtomicU64>,
   conn: Connection,
 }
 
@@ -56,7 +63,10 @@ impl Bluetooth {
   }
 
   pub fn device<'c>(&self, address: &str, cx: &'c App) -> Option<&'c Device> {
-    self.list_devices(cx).iter().find(|d| d.address == address)
+    self
+      .list_devices(cx)
+      .iter()
+      .find(|d| d.address.eq_ignore_ascii_case(address))
   }
 
   pub fn pairing_request<'c>(&self, cx: &'c App) -> Option<&'c PairingRequest> {
@@ -105,8 +115,19 @@ impl Bluetooth {
   }
 
   pub fn start_discovery(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
+    self.scan.fetch_add(1, Ordering::Relaxed);
     let (conn, path) = (self.conn.clone(), self.adapter_path(cx));
-    async move { Ok(adapter(&conn, path?).await?.start_discovery().await?) }
+    async move {
+      match adapter(&conn, path?).await?.start_discovery().await {
+        // already scanning, which is what was asked for
+        Err(zbus::Error::MethodError(name, ..))
+          if name.as_str() == "org.bluez.Error.InProgress" =>
+        {
+          Ok(())
+        }
+        started => Ok(started?),
+      }
+    }
   }
 
   pub fn stop_discovery(&self, cx: &App) -> impl Future<Output = Result<()>> + use<> {
@@ -129,8 +150,10 @@ impl Bluetooth {
     async move {
       let device = device(&conn, path?).await?;
       device.pair().await?;
-      device.set_trusted(true).await?;
-      Ok(device.connect().await?)
+      // paired is paired: a failing follow-up must not report the pairing as failed
+      device.set_trusted(true).await.log_err().ok();
+      device.connect().await.log_err().ok();
+      Ok(())
     }
   }
 
@@ -166,11 +189,16 @@ impl Bluetooth {
     };
     match request.reply {
       Reply::Accept(reply) => _ = reply.send(accept),
-      Reply::PinCode(reply) => _ = reply.send(code.filter(|_| accept)),
-      Reply::Passkey(reply) => _ = reply.send(code.and_then(|code| code.parse().ok())),
+      Reply::PinCode(reply) => _ = reply.send(code.filter(|code| accept && !code.is_empty())),
+      Reply::Passkey(reply) => _ = reply.send(code.and_then(|code| parse_passkey(&code))),
       Reply::None => {}
     }
   }
+}
+
+/// A passkey is at most 6 digits
+fn parse_passkey(code: &str) -> Option<u32> {
+  code.parse().ok().filter(|passkey| *passkey <= 999_999)
 }
 
 async fn adapter(conn: &Connection, path: OwnedObjectPath) -> zbus::Result<Adapter1Proxy<'static>> {
@@ -209,14 +237,18 @@ async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
     adapter: cx.new(|_| None),
     devices: cx.new(|_| Vec::new()),
     pairing_request: cx.new(|_| None),
+    scan: Arc::default(),
     conn: conn.clone(),
   };
 
   // subscribe before the first snapshot so no change can slip in between
   let changes = subscribe(conn).await?;
   listener(cx, conn.clone(), changes, state.clone());
-  if let Ok(messages) = agent::register(conn).await.log_err() {
+  if let Ok(messages) = agent::serve(conn).await.log_err() {
     agent_listener(cx, messages, state.pairing_request.clone());
+    if let Ok(owners) = owners(conn).await.log_err() {
+      keep_registered(cx, conn.clone(), owners, state.pairing_request.clone());
+    }
   }
   cx.set_global(state);
 
@@ -230,9 +262,18 @@ mod tests {
     thread,
   };
 
-  use corona_utils::test_bus::{TestBus, settle, wait_until};
+  use corona_utils::test_bus::{TestBus, settle};
   use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
+  /// `wait_until` that also lets the listener's debounce timer run out
+  fn wait_until(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
+    corona_utils::test_bus::wait_until(cx, |cx| {
+      cx.executor()
+        .advance_clock(std::time::Duration::from_millis(300));
+      done(cx)
+    });
+  }
+
   use zbus::{
     fdo::ObjectManager, interface, message::Header, object_server::SignalEmitter,
     zvariant::ObjectPath,
@@ -551,6 +592,10 @@ mod tests {
         .block_on(connect(cx, &conn))
         .unwrap()
     });
+    // the agent registers in the background
+    if let Some(bluez) = &bluez {
+      wait_until(cx, |_| bluez.agent.lock().unwrap().is_some());
+    }
     (bus, bluez)
   }
 
@@ -682,6 +727,7 @@ mod tests {
     let (_bus, bluez) = start(cx);
     let bluez = bluez.unwrap();
     wait_until(cx, |cx| addresses(cx).len() == 1);
+    wait_until(cx, |_| bluez.calls().len() >= 2);
     let calls = bluez.calls();
     assert_eq!(
       calls[..2],
@@ -700,7 +746,7 @@ mod tests {
     cx.read(|cx| {
       cx.bluetooth()
         .pairing_request(cx)
-        .map(|r| (r.device.clone(), r.kind))
+        .map(|r| (r.device.clone(), r.kind.clone()))
     })
   }
 
@@ -792,13 +838,13 @@ mod tests {
     });
     assert!(reply.join().unwrap().is_err());
 
-    // whitespace-only PIN code is trimmed to "" and sent as Some("")
+    // whitespace-only PIN code is trimmed to "" and sent as none
     let reply = bluez.ask("RequestPinCode", (device(),));
     wait_until(cx, |cx| pending(cx).is_some());
     answer(cx, PairingAnswer::Code("    ".into()));
-    assert_eq!(reply.join().unwrap().unwrap(), "");
+    assert!(reply.join().unwrap().is_err());
 
-    // whitespace-only passkey fails parsing into u32, sending None / error
+    // whitespace-only passkey fails parsing into u32, sending none
     let reply = bluez.ask("RequestPasskey", (device(),));
     wait_until(cx, |cx| pending(cx).is_some());
     answer(cx, PairingAnswer::Code("    ".into()));
@@ -825,7 +871,7 @@ mod tests {
     wait_until(cx, |cx| pending(cx).is_none());
 
     bluez
-      .ask("DisplayPinCode", (device, "000777"))
+      .ask("DisplayPinCode", (device, "777"))
       .join()
       .unwrap()
       .unwrap();
@@ -866,7 +912,7 @@ mod tests {
   }
 
   #[gpui::test]
-  fn bluetoothd_restart_does_not_reregister_agent(cx: &mut TestAppContext) {
+  fn bluetoothd_restart_reregisters_agent(cx: &mut TestAppContext) {
     let (bus, bluez) = start(cx);
     let bluez = bluez.unwrap();
     wait_until(cx, |cx| addresses(cx) == ["AA"]);
@@ -878,8 +924,12 @@ mod tests {
     // Restart bluez daemon
     let bluez2 = Bluez::start(&bus);
     wait_until(cx, |cx| cx.read(|cx| cx.bluetooth().adapter(cx).is_some()));
-    // The restarted bluez never receives RegisterAgent because corona registers agent only in init()
-    let calls2 = bluez2.calls();
-    assert!(!calls2.iter().any(|c| c.starts_with("RegisterAgent")));
+    // the agent is registered again with the restarted bluez
+    wait_until(cx, |_| {
+      bluez2
+        .calls()
+        .iter()
+        .any(|c| c.starts_with("RegisterAgent"))
+    });
   }
 }

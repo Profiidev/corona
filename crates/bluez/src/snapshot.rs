@@ -38,7 +38,12 @@ fn read(objects: &ManagedObjects) -> Snapshot {
     .keys()
     .filter(|path| interface(path, ADAPTER).is_some())
     .collect();
-  adapters.sort_by_key(|path| path.as_str());
+  // hci2 before hci10
+  adapters.sort_by_key(|path| {
+    let path = path.as_str();
+    let name = path.trim_end_matches(|c: char| c.is_ascii_digit());
+    (name, path[name.len()..].parse::<u64>().unwrap_or(0))
+  });
   let adapter = adapters.first().and_then(|path| {
     let props = interface(path, ADAPTER)?;
     Some(Adapter {
@@ -227,7 +232,7 @@ mod tests {
   }
 
   #[test]
-  fn unpowered_first_adapter_discarding_active_second_adapter() {
+  fn first_adapter_wins_even_unpowered() {
     let snapshot = read(&objects(vec![
       (
         "/org/bluez/hci0",
@@ -252,7 +257,7 @@ mod tests {
         device("/org/bluez/hci1", Some("BB:BB"), vec![]),
       ),
     ]));
-    // Unconditionally picks hci0 by lexicographical order, even though it's unpowered
+    // the panel must not jump to another adapter when the selected one is powered off
     let adapter = snapshot.adapter.unwrap();
     assert_eq!(adapter.path.as_str(), "/org/bluez/hci0");
     assert!(!adapter.powered);
@@ -263,6 +268,15 @@ mod tests {
       .map(|d| d.address.as_str())
       .collect();
     assert_eq!(addresses, ["AA:AA"]);
+  }
+
+  #[test]
+  fn adapters_sort_numerically() {
+    let snapshot = read(&objects(vec![
+      ("/org/bluez/hci10", vec![(ADAPTER, vec![])]),
+      ("/org/bluez/hci2", vec![(ADAPTER, vec![])]),
+    ]));
+    assert_eq!(snapshot.adapter.unwrap().path.as_str(), "/org/bluez/hci2");
   }
 
   #[test]

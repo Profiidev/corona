@@ -47,7 +47,7 @@ impl Commands {
               ""
             };
             let battery = d.battery.map(|b| format!(" {b}%")).unwrap_or_default();
-            println!("{} {state:<9} {}{battery}", d.address, d.name);
+            println!("{} {state:<9} {}{battery}", d.address, clean(&d.name));
           }
         }
         Err(e) => tracing::error!("Failed to list Bluetooth devices: {}", e),
@@ -64,11 +64,19 @@ impl Commands {
   }
 }
 
+/// Remote names are attacker-controlled, keep escape sequences out of the terminal
+fn clean(name: &str) -> String {
+  name
+    .chars()
+    .map(|c| if c.is_control() { '?' } else { c })
+    .collect()
+}
+
 fn devices() -> Vec<CompletionCandidate> {
   described(
     ListDevices::send(())
       .unwrap_or_default()
       .into_iter()
-      .map(|d| (d.address, d.name)),
+      .map(|d| (d.address, clean(&d.name))),
   )
 }

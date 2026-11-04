@@ -56,14 +56,23 @@ pub enum Action {
   Forget,
 }
 
-/// The device with this address or name
+/// The device with this address, or the only one with this name
 pub fn find(which: &str, cx: &App) -> Result<Device> {
-  cx.bluetooth()
-    .list_devices(cx)
+  let devices = cx.bluetooth().list_devices(cx);
+  if let Some(d) = devices
     .iter()
-    .find(|d| d.address.eq_ignore_ascii_case(which) || d.name.eq_ignore_ascii_case(which))
-    .cloned()
-    .with_context(|| format!("no Bluetooth device {which}"))
+    .find(|d| d.address.eq_ignore_ascii_case(which))
+  {
+    return Ok(d.clone());
+  }
+  let mut named = devices
+    .iter()
+    .filter(|d| d.name.eq_ignore_ascii_case(which));
+  match (named.next(), named.next()) {
+    (Some(d), None) => Ok(d.clone()),
+    (Some(_), Some(_)) => bail!("ambiguous Bluetooth device {which}, use the address"),
+    _ => bail!("no Bluetooth device {which}"),
+  }
 }
 
 /// Connects, disconnects, pairs or forgets a device by address or name

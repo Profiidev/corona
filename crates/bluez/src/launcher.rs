@@ -1,6 +1,6 @@
 //! Bluetooth devices: connect, disconnect, pair and forget
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc, sync::atomic::Ordering};
 
 use crate::{BluetoothExt, Device};
 use corona_ipc::IpcCommand;
@@ -10,6 +10,7 @@ use corona_launcher::{
   kit::{Group, ListSource, Notify, Toggle, opener, watch},
   registry, simple,
 };
+use corona_utils::error::spawn_logged;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
@@ -138,12 +139,19 @@ impl CommandSource for Paired {
   }
 }
 
-fn discovery(on: bool, cx: &mut App) {
-  let task = Discover::reply(on, cx);
-  cx.spawn(async move |_| {
-    let _ = task.await;
-  })
-  .detach();
+/// Starts discovery and returns its generation
+fn start_discovery(cx: &mut App) -> u64 {
+  let task = Discover::reply(true, cx);
+  spawn_logged(cx, task);
+  cx.bluetooth().scan.load(Ordering::Relaxed)
+}
+
+/// Stops discovery unless a later start, from the panel or IPC, took it over
+fn stop_discovery(started: u64, cx: &mut App) {
+  if cx.bluetooth().scan.load(Ordering::Relaxed) == started {
+    let task = Discover::reply(false, cx);
+    spawn_logged(cx, task);
+  }
 }
 
 pub(crate) fn register(cx: &mut App) {
@@ -156,6 +164,8 @@ pub(crate) fn register(cx: &mut App) {
       Icon::Tile(IconName::BluetoothSearching, 230.),
       &["bluetooth", "pair", "headphones"],
       |_| {
+        let started = Rc::new(Cell::new(0));
+        let on_close = started.clone();
         ListView::new(
           t!("app.launcher.bluetooth.pair_new"),
           t!("app.launcher.bluetooth.search"),
@@ -170,8 +180,8 @@ pub(crate) fn register(cx: &mut App) {
             })
             .observe(observe)
             .loading(|cx| cx.bluetooth().adapter(cx).is_some_and(|a| a.discovering))
-            .on_open(|cx| discovery(true, cx))
-            .on_close(|cx| discovery(false, cx)),
+            .on_open(move |cx| started.set(start_discovery(cx)))
+            .on_close(move |cx| stop_discovery(on_close.get(), cx)),
           ),
         )
         .empty(t!("app.launcher.bluetooth.scanning"))

@@ -1,5 +1,5 @@
 use corona_components::components::card::PageError;
-use std::time::Duration;
+use std::{sync::atomic::Ordering, time::Duration};
 
 use crate::BluetoothExt;
 use anyhow::Result;
@@ -57,13 +57,18 @@ impl ControlCenterPage for BluetoothPanel {
 
 impl BluetoothPanel {
   fn start_scan(cx: &mut Context<Self>) -> impl Future<Output = Result<()>> + use<> {
-    let start = cx.bluetooth().start_discovery(cx);
+    let bluetooth = cx.bluetooth();
+    let start = bluetooth.start_discovery(cx);
+    let scan = bluetooth.scan.clone();
+    let id = scan.load(Ordering::Relaxed);
     cx.spawn(async move |_, cx| {
       cx.background_executor().timer(SCAN).await;
       let stop = cx.update(|cx| {
         let bluetooth = cx.bluetooth();
-        bluetooth
-          .adapter(cx)
+        // a later scan has its own timer
+        (scan.load(Ordering::Relaxed) == id)
+          .then_some(())
+          .and_then(|()| bluetooth.adapter(cx))
           .is_some_and(|a| a.discovering)
           .then(|| bluetooth.stop_discovery(cx))
       });
