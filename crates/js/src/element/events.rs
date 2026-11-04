@@ -50,9 +50,10 @@ pub(crate) fn plugin_context(id: &str) -> String {
   format!("plugin-{id}")
 }
 
-/// The one gpui action type a script names: its name is `<plugin id>::<name>`.
+/// The one gpui action type a script names: its name is `<plugin id>::<name>`. The second
+/// field is the runtime whose `bind_keys` installed the binding, 0 for any other action.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScriptAction(pub SharedString);
+pub struct ScriptAction(pub SharedString, pub u64);
 
 impl Action for ScriptAction {
   fn boxed_clone(&self) -> Box<dyn Action> {
@@ -77,7 +78,7 @@ impl Action for ScriptAction {
   fn build(value: gpui_kit::private::serde_json::Value) -> anyhow::Result<Box<dyn Action>> {
     let name = value.get("name").and_then(|n| n.as_str());
     let name = name.ok_or_else(|| anyhow::anyhow!("a script action needs `{{\"name\": ..}}`"))?;
-    Ok(Box::new(Self(name.to_owned().into())))
+    Ok(Box::new(Self(name.to_owned().into(), 0)))
   }
 }
 

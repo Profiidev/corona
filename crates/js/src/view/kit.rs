@@ -188,7 +188,7 @@ fn list_el<'js>(
 ) -> Result<Class<'js, crate::El>> {
   let view = frame_or_throw(&ctx)?.view.clone();
   let rt = runtime(&ctx)?;
-  let state = rt.list(view.entity_id(), id, count as usize);
+  let state = rt.list(view.entity_id(), id, crate::element::items(&ctx, count)?);
   let key = rt.slot(view.entity_id(), render, true);
   let el = gpui_kit::list(state, move |index, window, cx| {
     let Some(view) = view.upgrade() else {
@@ -216,28 +216,32 @@ fn uniform_list_el<'js>(
 ) -> Result<Class<'js, crate::El>> {
   let view = frame_or_throw(&ctx)?.view.clone();
   let key = runtime(&ctx)?.slot(view.entity_id(), render, true);
-  let el = uniform_list(id, count as usize, move |range, window, cx| {
-    let Some(view) = view.upgrade() else {
-      return Vec::new();
-    };
-    view
-      .update(cx, |view, cx| {
-        let args = |a: &mut Args<'_>| {
-          let r = Object::new(a.ctx().clone())?;
-          r.set("start", range.start)?;
-          r.set("end", range.end)?;
-          a.push_arg(r)
-        };
-        view.render_content(key, None, window, cx, args, |ctx, frame, value| {
-          let items: Vec<Child> = Vec::from_js(ctx, value)?;
-          items.into_iter().map(|c| frame.child(ctx, c)).collect()
+  let el = uniform_list(
+    id,
+    crate::element::items(&ctx, count)?,
+    move |range, window, cx| {
+      let Some(view) = view.upgrade() else {
+        return Vec::new();
+      };
+      view
+        .update(cx, |view, cx| {
+          let args = |a: &mut Args<'_>| {
+            let r = Object::new(a.ctx().clone())?;
+            r.set("start", range.start)?;
+            r.set("end", range.end)?;
+            a.push_arg(r)
+          };
+          view.render_content(key, None, window, cx, args, |ctx, frame, value| {
+            let items: Vec<Child> = Vec::from_js(ctx, value)?;
+            items.into_iter().map(|c| frame.child(ctx, c)).collect()
+          })
         })
-      })
-      .unwrap_or_else(|e| {
-        tracing::warn!("uniform_list render failed: {e}");
-        Vec::new()
-      })
-  });
+        .unwrap_or_else(|e| {
+          tracing::warn!("uniform_list render failed: {e}");
+          Vec::new()
+        })
+    },
+  );
   new_el(&ctx, el)
 }
 

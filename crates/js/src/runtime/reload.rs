@@ -44,13 +44,19 @@ fn stamp(dir: &Path, depth: usize, out: &mut Stamp) {
     if name.to_string_lossy().starts_with('.') || name == "node_modules" {
       continue;
     }
-    // follows symlinks, unlike `entry.metadata()`
+    // directory symlinks are not followed: loops and links out of the plugin would blow up
+    // the walk. Symlinked files still count, `metadata` follows them.
+    let Ok(ty) = entry.file_type() else {
+      continue;
+    };
+    if ty.is_dir() {
+      stamp(&path, depth + 1, out);
+      continue;
+    }
     let Ok(meta) = std::fs::metadata(&path) else {
       continue;
     };
-    if meta.is_dir() {
-      stamp(&path, depth + 1, out);
-    } else if is_source(&path) {
+    if meta.is_file() && is_source(&path) {
       out.push((
         path,
         meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
@@ -110,6 +116,7 @@ pub fn reload_view(
     let _ = window.update(cx, |_, window, cx| {
       view.update(cx, |view, cx| match make(window, cx) {
         Ok(new) => {
+          crate::view::drop_bindings(cx, view.owner());
           *view = new;
           cx.notify();
         }
@@ -117,4 +124,23 @@ pub fn reload_view(
       })
     });
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn scan_skips_directory_symlinks() {
+    let dir = std::env::temp_dir().join(format!("corona-scan-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.js"), "").unwrap();
+    std::os::unix::fs::symlink(".", dir.join("self1")).unwrap();
+    std::os::unix::fs::symlink(".", dir.join("self2")).unwrap();
+    std::os::unix::fs::symlink(dir.join("a.js"), dir.join("b.js")).unwrap();
+    let found = scan(&dir);
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(found.len(), 2);
+  }
 }

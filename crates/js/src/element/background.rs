@@ -232,13 +232,77 @@ impl JsPathBuilder {
     op(this, Op::Close)
   }
 
-  pub fn dash_array<'js>(this: This<Class<'js, Self>>, values: Vec<f32>) -> Class<'js, Self> {
+  /// Dash and gap lengths. Each must be at least 0.5, gpui's dash loop never ends on
+  /// lengths that do not advance it. An empty array means no dashing.
+  pub fn dash_array<'js>(
+    ctx: Ctx<'js>,
+    this: This<Class<'js, Self>>,
+    values: Vec<f32>,
+  ) -> Result<Class<'js, Self>> {
+    if values.iter().any(|v| !(*v >= 0.5 && v.is_finite())) {
+      return Err(Exception::throw_range(
+        &ctx,
+        "dash_array: every length must be finite and at least 0.5",
+      ));
+    }
     this.borrow_mut().dash = values;
-    this.0
+    Ok(this.0)
   }
 
-  pub fn build(&self) -> JsPath {
-    JsPath { path: self.clone() }
+  /// Throws a RangeError on non-finite numbers, and on a dashed path long enough that gpui's
+  /// dash loop would stall the UI thread.
+  pub fn build<'js>(&self, ctx: Ctx<'js>) -> Result<JsPath> {
+    let bad = |msg: &str| Err(Exception::throw_range(&ctx, msg));
+    if self.stroke.is_some_and(|w| !w.is_finite()) {
+      return bad("PathBuilder: stroke width must be finite");
+    }
+    let (mut at, mut length) = ((0f64, 0f64), 0f64);
+    let mut seg = |at: &mut (f64, f64), to: (f32, f32), extra: f64| {
+      let to = (to.0 as f64, to.1 as f64);
+      length += (to.0 - at.0).hypot(to.1 - at.1) + extra;
+      *at = to;
+    };
+    for op in &self.ops {
+      let nums: &[f32] = match op {
+        Op::Move(x, y) | Op::Line(x, y) => &[*x, *y],
+        Op::Curve(p) => p,
+        Op::Cubic(p) => p,
+        Op::Arc(p, ..) => p,
+        Op::Polygon(..) | Op::Close => &[],
+      };
+      let finite = match op {
+        Op::Polygon(points, _) => points.iter().all(|(x, y)| x.is_finite() && y.is_finite()),
+        _ => nums.iter().all(|n| n.is_finite()),
+      };
+      if !finite {
+        return bad("PathBuilder: coordinates, radii and rotation must be finite");
+      }
+      // Control-polygon length bounds a curve's length
+      match op {
+        Op::Move(x, y) => at = (*x as f64, *y as f64),
+        Op::Line(x, y) => seg(&mut at, (*x, *y), 0.),
+        Op::Curve([x, y, cx, cy]) => {
+          seg(&mut at, (*cx, *cy), 0.);
+          seg(&mut at, (*x, *y), 0.);
+        }
+        Op::Cubic([x, y, ax, ay, bx, by]) => {
+          seg(&mut at, (*ax, *ay), 0.);
+          seg(&mut at, (*bx, *by), 0.);
+          seg(&mut at, (*x, *y), 0.);
+        }
+        Op::Arc([rx, ry, _, x, y], ..) => {
+          let r = (rx.abs() + ry.abs()) as f64;
+          seg(&mut at, (*x, *y), std::f64::consts::TAU * r);
+        }
+        Op::Polygon(points, _) => points.iter().for_each(|p| seg(&mut at, *p, 0.)),
+        Op::Close => {}
+      }
+    }
+    let min_dash = self.dash.iter().copied().fold(f32::INFINITY, f32::min) as f64;
+    if !self.dash.is_empty() && length / min_dash > 1e5 {
+      return bad("PathBuilder: path too long for its dash_array");
+    }
+    Ok(JsPath { path: self.clone() })
   }
 }
 

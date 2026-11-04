@@ -21,7 +21,7 @@ use rquickjs::{
 
 use crate::{
   Child, Enter, Frame, ModuleBuilder, Named, Opt, PluginRef, Watches, app,
-  element::events::{ScriptAction, plugin_context, scoped, unscope_action},
+  element::events::{ScriptAction, plugin_context, scoped},
   runtime::{
     self, Main, Runtime, Slot,
     plugin::plugin,
@@ -41,16 +41,10 @@ thread_local! {
   static CURRENT: RefCell<Vec<WeakEntity<ScriptView>>> = const { RefCell::new(Vec::new()) };
 }
 
-thread_local! {
-  /// How many root views each plugin id has alive, to drop its bindings with the last
-  static LIVE: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
-}
-
-/// The bindings of `keymap` that are not actions of plugin `id`, if it has any to drop
-fn without_plugin(keymap: &Keymap, id: &str) -> Option<Vec<KeyBinding>> {
+/// The bindings of `keymap` that are not owned by runtime `owner`, if it has any to drop
+fn without_owner(keymap: &Keymap, owner: u64) -> Option<Vec<KeyBinding>> {
   let theirs = |b: &KeyBinding| {
-    (b.action().as_any().downcast_ref::<ScriptAction>())
-      .is_some_and(|a| unscope_action(id, &a.0).is_some())
+    (b.action().as_any().downcast_ref::<ScriptAction>()).is_some_and(|a| a.1 == owner)
   };
   keymap
     .bindings()
@@ -58,11 +52,11 @@ fn without_plugin(keymap: &Keymap, id: &str) -> Option<Vec<KeyBinding>> {
     .then(|| keymap.bindings().filter(|b| !theirs(b)).cloned().collect())
 }
 
-/// Removes the key bindings plugin `id` installed. gpui can only clear the whole keymap, so
-/// the others (the host's, other plugins') are put back.
-fn drop_bindings(cx: &mut gpui_kit::App, id: &str) {
+/// Removes the key bindings runtime `owner` installed. gpui can only clear the whole keymap,
+/// so the others (the host's, other runtimes') are put back.
+pub(crate) fn drop_bindings(cx: &mut gpui_kit::App, owner: u64) {
   let keymap = cx.key_bindings();
-  let kept = without_plugin(&keymap.borrow(), id);
+  let kept = without_owner(&keymap.borrow(), owner);
   if let Some(kept) = kept {
     cx.clear_key_bindings();
     cx.bind_keys(kept);
@@ -141,40 +135,35 @@ impl ScriptView {
     window: &mut Window,
     cx: &mut Context<Self>,
   ) -> anyhow::Result<Self> {
-    // a reload's bindings are the new ones; the old runtime's stop firing
-    let plugin_id = plugin.id.clone();
-    drop_bindings(cx, &plugin_id);
-    LIVE.with(|l| *l.borrow_mut().entry(plugin_id.clone()).or_default() += 1);
-    cx.on_release(move |_, cx| {
-      let last = LIVE.with(|l| {
-        let mut l = l.borrow_mut();
-        let n = l.entry(plugin_id.clone()).or_default();
-        *n -= 1;
-        *n == 0 && l.remove(&plugin_id).is_some()
-      });
-      if last {
-        drop_bindings(cx, &plugin_id);
-      }
-    })
-    .detach();
     let rt = runtime::new(plugin, modules, watches, cx)?;
+    let owner = rt.owner;
+    cx.on_release(move |_, cx| drop_bindings(cx, owner))
+      .detach();
     let ctx = rt.ctx().clone();
 
     let view = cx.entity().downgrade();
     let id = view.entity_id();
-    let _enter = Enter::new(cx, Some(window), None);
-    let _current = Current::new(view.clone());
-    let instance = with(&ctx, |ctx| {
-      let run = || {
-        let module = runtime::eval(&ctx, main)?;
-        let class: Constructor = module.get("default")?;
-        let props = Value::new_undefined(ctx.clone());
-        construct(&ctx, class, props, view)
-      };
-      run().catch(&ctx).map_err(|e| anyhow!("{e}"))
-    })?;
+    let instance = {
+      let _enter = Enter::new(cx, Some(window), None);
+      let _current = Current::new(view.clone());
+      with(&ctx, |ctx| {
+        let run = || {
+          let module = runtime::eval(&ctx, main)?;
+          let class: Constructor = module.get("default")?;
+          let props = Value::new_undefined(ctx.clone());
+          construct(&ctx, class, props, view)
+        };
+        run().catch(&ctx).map_err(|e| anyhow!("{e}"))
+      })
+    };
+    let instance = instance.inspect_err(|_| drop_bindings(cx, owner))?;
 
     Ok(Self::from_parts(id, instance, rt, true))
+  }
+
+  /// The runtime whose key bindings this view's `init` installed
+  pub(crate) fn owner(&self) -> u64 {
+    self.rt.owner
   }
 
   fn from_parts(
@@ -597,11 +586,12 @@ impl ViewCx {
           .to_owned();
         let context = KeyBindingContextPredicate::parse(&context)
           .map_err(|e| anyhow!("context of {}: {e}", b.keystroke))?;
+        let owner = runtime(&ctx)?.owner;
         let action = scoped(&ctx, &b.action)
           .map_err(|_| anyhow!("action name `{}`: `::` is reserved", b.action))?;
         KeyBinding::load(
           &b.keystroke,
-          Box::new(ScriptAction(action.into())),
+          Box::new(ScriptAction(action.into(), owner)),
           Some(Rc::new(context)),
           false,
           None,
@@ -736,30 +726,26 @@ impl ViewCx {
 mod binding_tests {
   use super::*;
 
-  fn bound(id: &str, name: &str) -> KeyBinding {
-    KeyBinding::new(
-      "ctrl-s",
-      ScriptAction(crate::element::events::scope_action(id, name).into()),
-      None,
-    )
+  fn bound(name: &str, owner: u64) -> KeyBinding {
+    KeyBinding::new("ctrl-s", ScriptAction(name.into(), owner), None)
   }
 
   #[test]
-  fn reload_drops_only_the_plugins_script_bindings() {
-    let host = KeyBinding::new("ctrl-q", ScriptAction("host".into()), None);
+  fn reload_drops_only_the_runtimes_bindings() {
+    let host = KeyBinding::new("ctrl-q", ScriptAction("host".into(), 0), None);
     let keymap = Keymap::new(vec![
-      bound("a", "x"),
+      bound("a::x", 1),
       host,
-      bound("b", "x"),
-      bound("a", "y"),
+      bound("a::x", 2),
+      bound("a::y", 1),
     ]);
-    let kept = without_plugin(&keymap, "a").expect("a has bindings");
+    let kept = without_owner(&keymap, 1).expect("1 has bindings");
     let names: Vec<_> = kept
       .iter()
       .filter_map(|b| b.action().as_any().downcast_ref::<ScriptAction>())
       .map(|a| a.0.to_string())
       .collect();
-    assert_eq!(names, ["host", "b::x"]);
-    assert!(without_plugin(&Keymap::new(kept), "a").is_none());
+    assert_eq!(names, ["host", "a::x"]);
+    assert!(without_owner(&Keymap::new(kept), 1).is_none());
   }
 }

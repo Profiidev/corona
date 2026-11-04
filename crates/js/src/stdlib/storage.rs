@@ -145,10 +145,13 @@ fn write(file: &Path, json: &[u8], revision: u64) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
   }
   let tmp = file.with_extension(format!("json.{revision}.tmp"));
-  let mut f = std::fs::File::create(&tmp)?;
-  f.write_all(json)?;
-  f.sync_all()?;
-  std::fs::rename(&tmp, file).inspect_err(|_| {
+  (|| {
+    let mut f = std::fs::File::create(&tmp)?;
+    f.write_all(json)?;
+    f.sync_all()?;
+    std::fs::rename(&tmp, file)
+  })()
+  .inspect_err(|_| {
     let _ = std::fs::remove_file(&tmp);
   })
 }

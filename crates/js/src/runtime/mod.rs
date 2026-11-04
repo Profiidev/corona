@@ -70,6 +70,8 @@ pub(crate) struct Runtime {
   pub(crate) watches: Watches,
   /// The id of the plugin it runs
   pub(crate) plugin_id: String,
+  /// Unique per runtime, tags the key bindings it installs
+  pub(crate) owner: u64,
   _drive: Task<()>,
   // last: `Persistent` handles must be freed before the runtime
   ctx: AsyncContext,
@@ -84,6 +86,10 @@ impl Drop for Runtime {
     self.subs.get_mut().clear();
     self.watches.clear();
   }
+}
+
+thread_local! {
+  static NEXT_OWNER: Cell<u64> = const { Cell::new(0) };
 }
 
 /// The context's [`Runtime`], in its userdata
@@ -293,6 +299,10 @@ pub(crate) fn new(
     subs: Default::default(),
     watches,
     plugin_id: plugin.id.clone(),
+    owner: NEXT_OWNER.with(|n| {
+      n.set(n.get() + 1);
+      n.get()
+    }),
     _drive: drive(&rt, cx),
     ctx: ctx.clone(),
   });

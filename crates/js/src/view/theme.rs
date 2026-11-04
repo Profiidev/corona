@@ -11,8 +11,8 @@ use rquickjs::{Ctx, Exception, Object, Result};
 use crate::{
   app,
   element::style::{
-    COLOR_TOKENS, RADIUS_TOKENS, SPACING_TOKENS, color_token, hex, radius_token, spacing_token,
-    theme, to_hex,
+    COLOR_TOKENS, Finite, RADIUS_TOKENS, SPACING_TOKENS, color_token, hex, radius_token,
+    spacing_token, theme, to_hex,
   },
 };
 
@@ -83,6 +83,14 @@ pub(crate) fn theme_object<'js>(ctx: &Ctx<'js>) -> Result<Object<'js>> {
   }
   o.set("typography", typography)?;
   Ok(o)
+}
+
+/// A finite, non-negative pixel value: the theme feeds layout of every window
+pub(crate) fn size(ctx: &Ctx<'_>, v: Finite) -> Result<f32> {
+  match v.0 {
+    n if n >= 0.0 => Ok(n),
+    _ => Err(Exception::throw_type(ctx, "expected a non-negative number")),
+  }
 }
 
 /// `set_theme({ appearance, tokens: { colors, spacing, radius, typography? } })`: replaces the
@@ -162,7 +170,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
             SPACING_TOKENS,
           )));
         }
-      } = px(spacing.get(&key)?);
+      } = px(size(&ctx, spacing.get(&key)?)?);
     }
   }
   if let Some(radius) = tokens.get::<_, Option<Object>>("radius")? {
@@ -183,7 +191,7 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
             RADIUS_TOKENS,
           )));
         }
-      } = px(radius.get(&key)?);
+      } = px(size(&ctx, radius.get(&key)?)?);
     }
   }
   if let Some(typography) = tokens.get::<_, Option<Object>>("typography")? {
@@ -198,13 +206,13 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
         continue;
       };
       let token = text_step_mut(&mut theme, name);
-      if let Some(size) = step.get::<_, Option<f32>>("size")? {
-        token.size = px(size);
+      if let Some(v) = step.get::<_, Option<Finite>>("size")? {
+        token.size = px(size(&ctx, v)?);
       }
-      if let Some(height) = step.get::<_, Option<f32>>("line_height")? {
-        token.line_height = px(height);
+      if let Some(v) = step.get::<_, Option<Finite>>("line_height")? {
+        token.line_height = px(size(&ctx, v)?);
       }
-      if let Some(weight) = step.get::<_, Option<f32>>("weight")? {
+      if let Some(Finite(weight)) = step.get::<_, Option<Finite>>("weight")? {
         token.weight = FontWeight(weight);
       }
     }

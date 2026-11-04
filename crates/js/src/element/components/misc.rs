@@ -456,12 +456,14 @@ impl ScrollerState {
 
   /// Replaces every row with `count` new ones.
   pub fn reset(&self, ctx: Ctx<'_>, count: u32) -> Result<()> {
-    self.update(&ctx, |s, cx| s.reset(count as usize, cx))
+    let count = crate::element::items(&ctx, count)?;
+    self.update(&ctx, |s, cx| s.reset(count, cx))
   }
 
   /// Adds `count` rows at the end, following them when at the tail.
   pub fn append(&self, ctx: Ctx<'_>, count: u32) -> Result<bool> {
-    self.update(&ctx, |s, cx| s.append(count as usize, cx))
+    let count = crate::element::items(&ctx, count)?;
+    self.update(&ctx, |s, cx| s.append(count, cx))
   }
 
   pub fn scroll_to_end(&self, ctx: Ctx<'_>) -> Result<()> {
@@ -1197,7 +1199,8 @@ fn exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
     (
       "MessageScrollerState",
       func(ctx, "MessageScrollerState", |ctx: Ctx<'js>, count: u32| {
-        let entity = app().new(|cx| scroller::MessageScrollerState::new(count as usize, cx));
+        let count = crate::element::items(&ctx, count)?;
+        let entity = app().new(|cx| scroller::MessageScrollerState::new(count, cx));
         let state = Retained::new(&ctx, entity)?;
         Class::instance(ctx, ScrollerState { state })
       })?,

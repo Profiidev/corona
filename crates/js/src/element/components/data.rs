@@ -928,7 +928,7 @@ impl JsCarouselState {
     axis: Opt<Axis>,
     looping: Opt<bool>,
   ) -> Result<Self> {
-    let mut state = CarouselState::new(item_count as usize);
+    let mut state = CarouselState::new(crate::element::items(&ctx, item_count)?);
     if let Some(i) = selected_index.0 {
       state = state.with_selected_index(i as usize);
     }
@@ -969,7 +969,8 @@ impl JsCarouselState {
   }
 
   pub fn set_item_count(&self, ctx: Ctx<'_>, count: u32) -> Result<()> {
-    self.update(&ctx, |s, cx| s.set_item_count(count as usize, cx))
+    let count = crate::element::items(&ctx, count)?;
+    self.update(&ctx, |s, cx| s.set_item_count(count, cx))
   }
 
   /// Moves to the next slide, with a `change` event; false at the end.
@@ -1382,7 +1383,10 @@ mod methods {
       any!(c, n, base::Avatar => |a| a.fallback(fallback))
     };
     /// A `Table`'s total number of rows, also those not rendered, as announced.
-    fn row_count(count: u32) |c, n| any!(c, n, base::Table => |t| t.row_count(count as usize));
+    fn row_count(count: u32) |c, n| {
+      let count = crate::element::items(c, count)?;
+      any!(c, n, base::Table => |t| t.row_count(count))
+    };
     /// A `Table`'s total number of columns, also those not rendered.
     fn column_count(count: u32) |c, n| {
       any!(c, n, base::Table => |t| t.column_count(count as usize))

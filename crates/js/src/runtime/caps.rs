@@ -234,6 +234,11 @@ impl Capabilities {
     self.picked.lock().unwrap().push((path, is_dir));
   }
 
+  /// Shares `other`'s picked files with this grant, so a rebuilt grant keeps them
+  pub fn share_picks(&mut self, other: &Self) {
+    self.picked = other.picked.clone();
+  }
+
   /// Whether the manifest grants any directory to read
   pub fn has_read_access(&self) -> bool {
     !self.read_roots.is_empty()

@@ -21,7 +21,7 @@ use crate::{
   element::{
     background::{JsPath, paint_path},
     events::{Pt, ScriptAction, plugin_context, scoped},
-    style::Fill,
+    style::{Fill, Finite},
   },
   runtime::{SlotGuard, runtime},
   view::{current_view, window_or_throw},
@@ -233,7 +233,7 @@ impl ScriptWindow {
   /// Dispatches the action named `action` of this plugin down the focus path, as its key
   /// binding would. `::` in the name throws.
   pub fn dispatch_action(&self, ctx: Ctx<'_>, action: String) -> Result<()> {
-    let action = Box::new(ScriptAction(scoped(&ctx, &action)?.into()));
+    let action = Box::new(ScriptAction(scoped(&ctx, &action)?.into(), 0));
     window_or_throw(&ctx)?.dispatch_action(action, crate::app());
     Ok(())
   }
@@ -291,7 +291,8 @@ impl ScriptWindow {
     Ok(window_or_throw(&ctx)?.is_maximized())
   }
 
-  pub fn set_rem_size(&self, ctx: Ctx<'_>, size: f32) -> Result<()> {
+  pub fn set_rem_size(&self, ctx: Ctx<'_>, size: Finite) -> Result<()> {
+    let size = super::theme::size(&ctx, size)?;
     window_or_throw(&ctx)?.set_rem_size(gpui_kit::px(size));
     Ok(())
   }

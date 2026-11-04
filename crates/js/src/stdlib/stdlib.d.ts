@@ -121,8 +121,9 @@ declare module "process" {
     signal: number | null;
   }
   /**
-   * A running child, leader of its own process group. When its runtime goes away the
-   * group gets SIGTERM, then SIGKILL 2 s later.
+   * A running child, leader of its own process group. When this handle is dropped or
+   * garbage collected the group gets SIGTERM, then SIGKILL 2 s later. Keep the handle
+   * (for example on `globalThis`) while the child should live, or use `run`.
    */
   export interface ChildProcess {
     readonly pid: number;
@@ -256,7 +257,7 @@ interface FetchOptions {
   /** Host, Origin, Content-Length and the like are refused. */
   headers?: Record<string, string>;
   body?: string | Uint8Array;
-  /** Milliseconds, 1 to 300000, 30000 by default; bounds connecting and, unless `stream`, each read of the body. */
+  /** Milliseconds, 1 to 300000, 30000 by default; bounds the whole request including redirects and, unless `stream`, reading the body; a stream has no read timeout. */
   timeout?: number;
   /** Resolve once the headers arrive and read the body chunk by chunk. */
   stream?: boolean;

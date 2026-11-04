@@ -27,6 +27,20 @@ pub(crate) mod components;
 pub(crate) mod events;
 pub(crate) mod style;
 
+/// The most items a list, scroller, carousel or table may hold: more only exhausts memory
+pub(crate) const MAX_ITEMS: u32 = 1_000_000;
+
+/// `count` as a length, or a RangeError above [`MAX_ITEMS`]
+pub(crate) fn items(ctx: &Ctx<'_>, count: u32) -> Result<usize> {
+  if count > MAX_ITEMS {
+    return Err(Exception::throw_range(
+      ctx,
+      &format!("item count {count} exceeds {MAX_ITEMS}"),
+    ));
+  }
+  Ok(count as usize)
+}
+
 /// Observes an entity the render read, see [`track`](crate::track)
 pub(crate) type Observe = Box<dyn FnOnce(&mut Context<ScriptView>) -> Subscription>;
 

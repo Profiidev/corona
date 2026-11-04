@@ -52,6 +52,19 @@ fn hex(bytes: &[u8]) -> String {
   bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Node's leniency: whitespace and padding ignored, both alphabets accepted
+fn normalize_base64(text: &str) -> String {
+  text
+    .chars()
+    .filter(|c| !c.is_ascii_whitespace() && *c != '=')
+    .map(|c| match c {
+      '-' => '+',
+      '_' => '/',
+      c => c,
+    })
+    .collect()
+}
+
 fn encode(ctx: Ctx<'_>, text: String, encoding: Opt<String>) -> Result<ArrayBuffer<'_>> {
   let encoding = encoding
     .0
@@ -64,11 +77,8 @@ fn encode(ctx: Ctx<'_>, text: String, encoding: Opt<String>) -> Result<ArrayBuff
       .map(|i| u8::from_str_radix(text.get(i * 2..i * 2 + 2).unwrap_or("zz"), 16))
       .collect::<std::result::Result<_, _>>()
       .map_err(|_| Exception::throw_type(&ctx, "invalid hex string"))?,
-    "base64" => STANDARD_NO_PAD
-      .decode(text.trim_end_matches('='))
-      .map_err(invalid)?,
-    "base64url" => URL_SAFE_NO_PAD
-      .decode(text.trim_end_matches('='))
+    "base64" | "base64url" => STANDARD_NO_PAD
+      .decode(normalize_base64(&text))
       .map_err(invalid)?,
     "latin1" | "binary" | "ascii" => text.chars().map(|c| c as u32 as u8).collect(),
     other => {
@@ -684,6 +694,13 @@ impl rquickjs::module::ModuleDef for ConsoleModule {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn base64_is_lenient() {
+    let n = normalize_base64("aGk+\nPw==\n");
+    assert_eq!(STANDARD_NO_PAD.decode(n).unwrap(), b"hi>?");
+    assert_eq!(normalize_base64("a-_b"), "a+/b");
+  }
 
   #[test]
   fn paths_normalize_like_posix() {

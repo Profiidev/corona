@@ -451,7 +451,7 @@ impl Node for NativeTrigger {
     let items = Rc::new(self.items);
     let button = self.button.on_click(move |e, window, cx| {
       let action =
-        |a: &str| Box::new(crate::element::events::ScriptAction(a.to_string().into())) as _;
+        |a: &str| Box::new(crate::element::events::ScriptAction(a.to_string().into(), 0)) as _;
       let menu = items
         .iter()
         .fold(NativeMenu::new(), |menu, item| match item {
@@ -495,7 +495,7 @@ impl AppMenu {
     let items = self.entries.iter().map(|e| match e {
       None => gpui_kit::MenuItem::separator(),
       Some(i) => {
-        let action = crate::element::events::ScriptAction(i.action.clone().into());
+        let action = crate::element::events::ScriptAction(i.action.clone().into(), 0);
         (gpui_kit::MenuItem::action(i.label.clone(), action))
           .disabled(i.disabled)
           .checked(i.checked)
@@ -1429,7 +1429,7 @@ mod methods {
     fn action(action: String) |c, n| {
       let action = crate::element::events::scoped(c, &action)?;
       on!(c, n,
-        CommandItem => |t| t.action(Box::new(crate::element::events::ScriptAction(action.into()))),
+        CommandItem => |t| t.action(Box::new(crate::element::events::ScriptAction(action.into(), 0))),
         NativeItem => |t| NativeItem { action, ..t },
       )
     };
@@ -1758,6 +1758,7 @@ fn virtual_list<'js>(
   get_key: Function<'js>,
   render: Function<'js>,
 ) -> Result<Class<'js, El>> {
+  let count = crate::element::items(ctx, count)? as u32;
   let sizes: Vec<f32> = match sizes.as_number() {
     Some(s) => vec![s as f32; count as usize],
     None => Vec::from_js(ctx, sizes)?,
