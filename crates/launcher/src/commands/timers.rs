@@ -49,7 +49,7 @@ pub fn now_ms() -> u64 {
     .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// `1h 05m`, `4:59`
+/// `1:05:00`, `4:59`
 pub fn clock(ms: u64) -> String {
   let s = ms / 1000;
   match s >= 3600 {

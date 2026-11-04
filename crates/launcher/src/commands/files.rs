@@ -180,7 +180,7 @@ fn icon_for(path: &Path) -> IconName {
     .map(|e| e.to_string_lossy().to_lowercase())
     .as_deref()
   {
-    Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp") => IconName::FileImage,
+    _ if is_image(path) => IconName::FileImage,
     Some("mp4" | "mkv" | "webm" | "mov") => IconName::FilePlay,
     Some("mp3" | "flac" | "ogg" | "wav" | "opus") => IconName::FileMusic,
     Some("zip" | "tar" | "gz" | "xz" | "zst" | "7z") => IconName::FileArchive,
@@ -192,8 +192,15 @@ fn icon_for(path: &Path) -> IconName {
   }
 }
 
+/// By extension only, so listing rows costs no stat
 fn is_image(path: &Path) -> bool {
-  matches!(icon_for(path), IconName::FileImage)
+  matches!(
+    path
+      .extension()
+      .map(|e| e.to_string_lossy().to_lowercase())
+      .as_deref(),
+    Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp")
+  )
 }
 
 fn modified(time: SystemTime) -> String {
@@ -243,12 +250,9 @@ pub fn file_actions(path: &Path) -> Vec<Action> {
       "copy_file",
       t!("app.launcher.files.copy_file"),
       move |_, _, _| {
-        let path = uri.to_string_lossy();
-        let path: Vec<_> = path.split('/').map(crate::commands::web::encode).collect();
-        Ok(Outcome::Copy(Clip::Text(format!(
-          "file://{}",
-          path.join("/")
-        ))))
+        Ok(Outcome::Copy(Clip::Text(
+          corona_utils::uri::path_to_file_uri(&uri),
+        )))
       },
     )
     .icon(IconName::Files),
@@ -563,9 +567,9 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
     .filter_map(|tag| {
       let tag = format!(" {}", &tag[..tag.find('>')?]);
       let href = attr(&tag, "href")?;
-      let path = crate::commands::web::decode(href.strip_prefix("file://")?);
+      let path = corona_utils::uri::file_uri_to_path(&href)?;
       let modified = attr(&tag, "modified").unwrap_or_default();
-      Some((modified, PathBuf::from(path)))
+      Some((modified, path))
     })
     .collect();
   found.sort_by(|a, b| b.0.cmp(&a.0));

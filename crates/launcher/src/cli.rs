@@ -11,7 +11,7 @@ use corona_ipc::{
 };
 
 use crate::{
-  commands::{timers::Kind, web::decode},
+  commands::timers::Kind,
   ipc::{
     Close, Dmenu, DmenuRequest, EmptyTrash, Evaluate, ListCommands, ListTimers, Open, OpenRequest,
     StartTimer, StopTimer, TimerRequest, Toggle, TrashCount,
@@ -230,20 +230,38 @@ fn read_lines() -> Vec<String> {
   if stdin.is_terminal() {
     return Vec::new();
   }
-  stdin
-    .lock()
-    .split(b'\n')
-    .map_while(Result::ok)
-    .map(|l| String::from_utf8_lossy(&l).into_owned())
-    .filter(|l| !l.is_empty())
-    .collect()
+  // the ipc server drops requests over 1 MiB, keep headroom for the json envelope
+  const MAX_INPUT: usize = (1 << 20) - 4096;
+  let mut total = 0;
+  let mut lines = Vec::new();
+  for l in stdin.lock().split(b'\n').map_while(Result::ok) {
+    let l = String::from_utf8_lossy(&l).into_owned();
+    if l.is_empty() {
+      continue;
+    }
+    // json-escaped size plus the separating comma
+    total += serde_json::to_string(&l).map_or(l.len() * 6, |j| j.len()) + 1;
+    if total > MAX_INPUT {
+      tracing::error!("Input too large (max 1 MiB)");
+      std::process::exit(1);
+    }
+    lines.push(l);
+  }
+  lines
 }
 
 /// `corona://launcher/<ns>/<command>?arguments=…` as the command `<ns>:<command>`
+fn decode(text: &str) -> String {
+  String::from_utf8_lossy(&corona_utils::uri::percent_decode(text)).into_owned()
+}
+
 fn parse_url(url: &str) -> Result<OpenRequest> {
   let rest = url
     .strip_prefix("corona://launcher")
     .context("not a corona://launcher link")?;
+  if !(rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')) {
+    bail!("not a corona://launcher link");
+  }
   let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
   let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
   let command = match parts.as_slice() {
@@ -301,6 +319,7 @@ mod tests {
     assert_eq!(r.query.as_deref(), Some("hello world"));
     assert!(parse_url("https://example.com").is_err());
     assert!(parse_url("corona://launcher/a/b/c").is_err());
+    assert!(parse_url("corona://launcherx/a/b").is_err());
     let r = parse_url("corona://launcher/a/b?arguments=%zz").unwrap();
     assert_eq!(r.query.as_deref(), Some("%zz"));
   }

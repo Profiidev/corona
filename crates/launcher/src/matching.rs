@@ -171,6 +171,15 @@ pub fn default_match(meta: &Meta, aliases: &[String], query: &Query) -> Option<M
   if query.is_empty() {
     return Some(Match::new(Tier::Fuzzy));
   }
+  // the full title, then the args: `run command ls` for "Run command"
+  if !meta.args.is_empty()
+    && let Some(rest) = title_args(&meta.title, query)
+  {
+    return Some(Match {
+      args: Some(rest.to_string()),
+      ..Match::new(Tier::Exact)
+    });
+  }
   if let Some(m) = match_whole(meta, aliases, &query.text) {
     return Some(m);
   }
@@ -183,6 +192,19 @@ pub fn default_match(meta: &Meta, aliases: &[String], query: &Query) -> Option<M
   let mut m = match_whole(meta, aliases, &head).filter(|m| m.tier <= Tier::Keyword)?;
   m.args = Some(rest.to_string());
   Some(m)
+}
+
+/// The raw query after the lowercased title and whitespace, if the query starts with both
+fn title_args<'q>(title: &str, query: &'q Query) -> Option<&'q str> {
+  let title = title.to_lowercase();
+  let rest = query.text.strip_prefix(&title)?;
+  if !rest.starts_with(char::is_whitespace) {
+    return None;
+  }
+  // lowercasing can change lengths, so count chars of the raw query instead of bytes
+  let raw = query.raw.trim_start();
+  let at = raw.char_indices().nth(title.chars().count())?.0;
+  Some(raw[at..].trim_start())
 }
 
 fn match_whole(meta: &Meta, aliases: &[String], query: &str) -> Option<Match> {
@@ -248,6 +270,19 @@ mod tests {
       tier("Firefox Private Window", "fi pr"),
       Some(Tier::WordPrefix)
     );
+  }
+
+  #[test]
+  fn multi_word_titles_take_args() {
+    let mut m = meta("Run command", &[]);
+    m.args = vec![crate::args::ArgSpec::text("a")];
+    let found = default_match(&m, &[], &Query::new("run command ls -l")).unwrap();
+    assert_eq!(found.tier, Tier::Exact);
+    assert_eq!(found.args.as_deref(), Some("ls -l"));
+    let mut m = meta("Disable Wi-Fi", &[]);
+    m.args = vec![crate::args::ArgSpec::text("a")];
+    let found = default_match(&m, &[], &Query::new("disable wi-fi off")).unwrap();
+    assert_eq!(found.args.as_deref(), Some("off"));
   }
 
   #[test]

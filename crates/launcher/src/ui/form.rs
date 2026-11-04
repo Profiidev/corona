@@ -112,8 +112,12 @@ impl FormPage {
           }
           FieldKind::Checkbox => Control::Checkbox(field.value == "true"),
         };
+        let initial = match field.kind {
+          FieldKind::Checkbox => (field.value == "true").to_string(),
+          _ => field.value.clone(),
+        };
         FieldState {
-          initial: field.value.clone(),
+          initial,
           field,
           control,
           error: None,

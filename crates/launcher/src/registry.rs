@@ -50,13 +50,6 @@ pub fn register_source(source: Rc<dyn CommandSource>, cx: &mut App) {
   registry.scopes.take();
 }
 
-/// Drops the sources with this id, for plugins that unload
-pub fn unregister_source(id: &str, cx: &mut App) {
-  let registry = cx.global_mut::<Registry>();
-  registry.sources.retain(|s| s.id() != id);
-  registry.scopes.take();
-}
-
 impl Registry {
   pub fn sources(&self) -> &[Rc<dyn CommandSource>] {
     &self.sources
@@ -239,12 +232,14 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       SourceKind::Evaluator if !query.is_empty() => results.evaluated.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Exact), registry, cx)),
+          .map(|c| row(c, Match::new(Tier::Exact), registry, cx))
+          .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Fallback if !query.is_empty() => fallbacks.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Fuzzy), registry, cx)),
+          .map(|c| row(c, Match::new(Tier::Fuzzy), registry, cx))
+          .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Root => rows.extend(
         rank_commands(commands, query, source.filters(), cx)
@@ -267,7 +262,7 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       config
         .fallbacks
         .iter()
-        .position(|f| r.id().ends_with(f.as_str()))
+        .position(|f| !f.trim().is_empty() && r.id().ends_with(f.as_str()))
         .unwrap_or(usize::MAX)
     };
     fallbacks.retain(|r| order(r) != usize::MAX);

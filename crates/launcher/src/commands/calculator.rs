@@ -20,7 +20,10 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  command::{Action, Clip, Command, CommandSource, Evaluation, Icon, Meta, Outcome, SourceKind},
+  command::{
+    Action, Clip, Command, CommandSource, Evaluation, Icon, Meta, Outcome, SourceKind, Toast,
+    ToastKind,
+  },
   kit::ListSource,
   matching::Query,
   registry, simple, state,
@@ -100,10 +103,12 @@ fn refresh_rates(force: bool, cx: &mut App) -> Option<gpui_kit::Task<Result<()>>
   }
   let fetching = cx.global::<Calculator>().fetching.clone();
   fetching.store(true, Ordering::Relaxed);
+  // created before the spawn so the flag clears even if the task is dropped unpolled
+  let guard = Fetching(fetching);
   let client = cx.http_client();
   let rates = cx.global::<Calculator>().rates.clone();
   Some(cx.spawn(async move |_| {
-    let _fetching = Fetching(fetching);
+    let _fetching = guard;
     let result = async {
       let mut response = client
         .get(RATES_URL, AsyncBody::empty(), true)
@@ -543,7 +548,17 @@ fn refresh() -> Rc<dyn Command> {
         t!("app.launcher.calculator.refresh_rates"),
         |_, cx| {
           let task = refresh_rates(true, cx);
+          // forced, so None means a fetch is already in flight, not that the rates are fresh
+          let busy = task.is_none();
           async move {
+            if busy {
+              return Ok(Outcome::Toast(Toast {
+                kind: ToastKind::Progress,
+                title: t!("app.launcher.calculator.rates_refreshing").into(),
+                message: None,
+                action: None,
+              }));
+            }
             if let Some(task) = task {
               task.await?;
             }

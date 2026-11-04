@@ -904,6 +904,9 @@ app:
       rates_updated:
         en: 'Exchange rates updated'
         de: 'Wechselkurse aktualisiert'
+      rates_refreshing:
+        en: 'Exchange rates are already refreshing'
+        de: 'Wechselkurse werden bereits aktualisiert'
       refresh_rates:
         en: 'Refresh exchange rates'
         de: 'Wechselkurse aktualisieren'
@@ -1072,8 +1075,8 @@ app:
         en: 'Browse %{path}'
         de: '%{path} durchsuchen'
       copy_file:
-        en: 'Copy file'
-        de: 'Datei kopieren'
+        en: 'Copy file URI'
+        de: 'Datei-URI kopieren'
       copy_path:
         en: 'Copy path'
         de: 'Pfad kopieren'
@@ -1314,6 +1317,9 @@ app:
       healthy:
         en: 'Healthy'
         de: 'In Ordnung'
+      warning:
+        en: 'Warning'
+        de: 'Warnung'
       failing:
         en: 'Failing, back up your data'
         de: 'Fehlerhaft, Daten sichern'

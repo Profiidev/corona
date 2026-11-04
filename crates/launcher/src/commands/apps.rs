@@ -22,22 +22,29 @@ use crate::{
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
 
+/// Scanned apps, shared so a keystroke clones pointers rather than entries
+type AppList = Arc<Vec<Arc<DesktopApp>>>;
+
+fn shared(scanned: Arc<Vec<DesktopApp>>) -> AppList {
+  Arc::new(scanned.iter().cloned().map(Arc::new).collect())
+}
+
 /// The scanned apps; bumped when the application directories change
 struct Apps {
-  list: Entity<Arc<Vec<DesktopApp>>>,
+  list: Entity<AppList>,
 }
 
 impl Global for Apps {}
 
 pub fn init(cx: &mut App) {
-  let list = cx.new(|_| apps::apps());
+  let list = cx.new(|_| shared(apps::apps()));
   cx.set_global(Apps { list: list.clone() });
   watch(list, cx);
   registry::register_source(Rc::new(AppsSource { browse: false }), cx);
   registry::register_all([browse(), refresh()], cx);
 }
 
-fn watch(list: Entity<Arc<Vec<DesktopApp>>>, cx: &mut App) {
+fn watch(list: Entity<AppList>, cx: &mut App) {
   let (tx, rx) = flume::unbounded();
   let watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
     if event.is_ok_and(|e| !e.kind.is_access()) {
@@ -61,7 +68,7 @@ fn watch(list: Entity<Arc<Vec<DesktopApp>>>, cx: &mut App) {
         .spawn(async { apps::refresh() })
         .await;
       list.update(cx, |list, cx| {
-        *list = scanned;
+        *list = shared(scanned);
         cx.notify();
       });
     }
@@ -69,7 +76,7 @@ fn watch(list: Entity<Arc<Vec<DesktopApp>>>, cx: &mut App) {
   .detach();
 }
 
-fn list(cx: &App) -> Arc<Vec<DesktopApp>> {
+fn list(cx: &App) -> AppList {
   cx.global::<Apps>().list.read(cx).clone()
 }
 
@@ -90,7 +97,7 @@ fn launch(app: &DesktopApp, argv: &[String], cx: &App) -> Result<Outcome> {
 }
 
 struct AppCommand {
-  app: DesktopApp,
+  app: Arc<DesktopApp>,
   /// Its first open window, found once when the command is built
   running: Option<String>,
 }
@@ -193,7 +200,7 @@ impl Command for AppCommand {
 
 /// `App › action` as its own result, like "Firefox › New private window"
 struct DesktopActionCommand {
-  app: DesktopApp,
+  app: Arc<DesktopApp>,
   index: usize,
 }
 
@@ -215,7 +222,10 @@ impl Command for DesktopActionCommand {
   }
 
   fn actions(&self, _: &App) -> Vec<Action> {
-    let (app, argv) = (self.app.clone(), self.app.actions[self.index].exec.clone());
+    let (app, argv) = (
+      Arc::clone(&self.app),
+      self.app.actions[self.index].exec.clone(),
+    );
     vec![Action::sync(
       "launch",
       t!("app.launcher.apps.launch"),
@@ -247,14 +257,14 @@ impl CommandSource for AppsSource {
       .collect();
     for app in list(cx).iter().filter(|a| self.browse || !a.no_display) {
       commands.push(Rc::new(AppCommand {
-        app: app.clone(),
+        app: Arc::clone(app),
         running: running_window(app, &windows),
       }));
       // desktop actions only once typing, they would crowd the empty list
       if !self.browse && !query.is_empty() {
         for index in 0..app.actions.len() {
           commands.push(Rc::new(DesktopActionCommand {
-            app: app.clone(),
+            app: Arc::clone(app),
             index,
           }));
         }
@@ -320,7 +330,7 @@ fn refresh() -> Rc<dyn Command> {
             let scanned = scan.await;
             let count = scanned.len();
             list.update(&mut cx.clone(), |list, cx| {
-              *list = scanned;
+              *list = shared(scanned);
               cx.notify();
             });
             Ok(Outcome::Close(Some(Hud::new(t!(

@@ -4,6 +4,7 @@ use std::{rc::Rc, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use corona_config::{ConfigProvider, launcher::TranslateConfig};
+use corona_utils::uri::percent_encode;
 use futures::AsyncReadExt;
 use gpui_kit::{
   App, SharedString,
@@ -16,32 +17,42 @@ use serde::Deserialize;
 use crate::{
   args::{ArgSpec, Args},
   command::{Action, Clip, Command, Icon, Meta, Outcome},
-  commands::web::encode,
   registry,
   view::{DetailView, View},
 };
 
 /// The key from its file, else from the config
 fn deepl_key(config: &TranslateConfig) -> Result<String> {
-  if let Some(file) = &config.deepl_key_file {
-    let key = std::fs::read_to_string(corona_config::expand_home(file))
-      .with_context(|| format!("reading {}", file.display()))?;
-    return Ok(key.trim().to_string());
-  }
-  config
-    .deepl_key
-    .clone()
-    .filter(|k| !k.trim().is_empty())
+  let key = match &config.deepl_key_file {
+    Some(file) => Some(
+      std::fs::read_to_string(corona_config::expand_home(file))
+        .with_context(|| format!("reading {}", file.display()))?,
+    ),
+    None => config.deepl_key.clone(),
+  };
+  key
+    .map(|k| k.trim().to_string())
+    .filter(|k| !k.is_empty())
     .context(t!("app.launcher.lookup.no_key").to_string())
 }
+
+const MAX_BODY: u64 = 2 * 1024 * 1024;
 
 async fn body(client: &Arc<dyn HttpClient>, request: Request<AsyncBody>) -> Result<Vec<u8>> {
   let mut response = client.send(request).await?;
   let status = response.status();
   let mut bytes = Vec::new();
-  response.body_mut().read_to_end(&mut bytes).await?;
+  response
+    .body_mut()
+    .take(MAX_BODY + 1)
+    .read_to_end(&mut bytes)
+    .await?;
   if !status.is_success() {
-    bail!("{status}: {}", String::from_utf8_lossy(&bytes));
+    let text = String::from_utf8_lossy(&bytes);
+    bail!("{status}: {}", text.chars().take(200).collect::<String>());
+  }
+  if bytes.len() as u64 > MAX_BODY {
+    bail!("response too large");
   }
   Ok(bytes)
 }
@@ -70,8 +81,8 @@ async fn translate(
   };
   let form = format!(
     "text={}&target_lang={}",
-    encode(&text),
-    encode(&target.to_uppercase())
+    percent_encode(&text),
+    percent_encode(&target.to_uppercase())
   );
   let request = Request::builder()
     .method(Method::POST)
@@ -153,7 +164,7 @@ pub fn definitions_markdown(word: &str, json: &[u8]) -> Result<String> {
 async fn define(client: Arc<dyn HttpClient>, word: String) -> Result<String> {
   let url = format!(
     "https://en.wiktionary.org/api/rest_v1/page/definition/{}",
-    encode(&word)
+    percent_encode(&word)
   );
   let request = Request::builder()
     .method(Method::GET)
@@ -256,7 +267,7 @@ fn define_command() -> Rc<dyn Command> {
               .unwrap_or_default()
               .to_string();
             let markdown = define(client, word.clone()).await?;
-            let url = format!("https://en.wiktionary.org/wiki/{}", encode(&word));
+            let url = format!("https://en.wiktionary.org/wiki/{}", percent_encode(&word));
             Ok(Outcome::Push(View::Detail(DetailView {
               title: SharedString::from(word),
               markdown: markdown.into(),

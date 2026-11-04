@@ -28,7 +28,13 @@ pub fn copy(clip: &Clip, cx: &mut App) {
         "image/jpeg" => ImageFormat::Jpeg,
         "image/gif" => ImageFormat::Gif,
         "image/webp" => ImageFormat::Webp,
-        _ => ImageFormat::Png,
+        "image/png" => ImageFormat::Png,
+        "image/svg+xml" => ImageFormat::Svg,
+        "image/bmp" => ImageFormat::Bmp,
+        "image/tiff" => ImageFormat::Tiff,
+        "image/x-icon" | "image/vnd.microsoft.icon" => ImageFormat::Ico,
+        // unknown type: writing it as PNG would mislabel the bytes
+        _ => return,
       };
       ClipboardItem::new_image(&Image::from_bytes(format, bytes.to_vec()))
     }

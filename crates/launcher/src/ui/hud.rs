@@ -37,7 +37,7 @@ impl Osd for HudOsd {
   }
 
   fn size(&self, _: &App) -> Size<Pixels> {
-    let extra = (self.0.icon.is_some() || self.0.swatch.is_some()) as u8 as f32 * 24.;
+    let extra = (self.0.icon.is_some()) as u8 as f32 * 24.;
     let width = self.0.text.chars().count() as f32 * CHAR + PADDING * 2. + extra;
     size(px(width.clamp(120., 560.)), px(HEIGHT))
   }
@@ -55,9 +55,6 @@ impl Render for HudOsd {
       .px(px(PADDING))
       .text_size(px(13.5))
       .text_color(theme.foreground)
-      .when_some(self.0.swatch, |el, color| {
-        el.child(div().size(px(14.)).rounded(px(4.)).bg(color))
-      })
       .when_some(self.0.icon, |el, icon| el.child(Icon::new(icon).small()))
       .child(self.0.text.clone())
   }

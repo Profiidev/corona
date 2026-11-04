@@ -1,4 +1,8 @@
-use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::PathBuf};
+use std::{
+  ffi::OsString,
+  os::unix::ffi::{OsStrExt, OsStringExt},
+  path::{Path, PathBuf},
+};
 
 /// The path of a `file://` uri, `None` for any other text
 pub fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
@@ -11,6 +15,33 @@ pub fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
       .filter(|r| r.starts_with('/'))?
   };
   Some(PathBuf::from(OsString::from_vec(percent_decode(path))))
+}
+
+/// The `file://` uri of a path, byte-exact for non-UTF-8 names
+pub fn path_to_file_uri(path: &Path) -> String {
+  let encoded: Vec<_> = path
+    .as_os_str()
+    .as_bytes()
+    .split(|&b| b == b'/')
+    .map(percent_encode_bytes)
+    .collect();
+  format!("file://{}", encoded.join("/"))
+}
+
+/// Everything but unreserved URI characters percent-encoded
+pub fn percent_encode(text: &str) -> String {
+  percent_encode_bytes(text.as_bytes())
+}
+
+fn percent_encode_bytes(bytes: &[u8]) -> String {
+  let mut out = String::with_capacity(bytes.len());
+  for &b in bytes {
+    match b {
+      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(b as char),
+      _ => out.push_str(&format!("%{b:02X}")),
+    }
+  }
+  out
 }
 
 /// `%20` and friends as their bytes; a stray `%` stays as it is
@@ -44,6 +75,19 @@ pub fn percent_decode(text: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn encodes() {
+    assert_eq!(percent_encode("Ä b/c-._~"), "%C3%84%20b%2Fc-._~");
+  }
+
+  #[test]
+  fn path_uri() {
+    use std::os::unix::ffi::OsStrExt;
+    let p = Path::new(std::ffi::OsStr::from_bytes(b"/a b/\xff.png"));
+    assert_eq!(path_to_file_uri(p), "file:///a%20b/%FF.png");
+    assert_eq!(file_uri_to_path(&path_to_file_uri(p)).as_deref(), Some(p));
+  }
 
   #[test]
   fn decodes() {

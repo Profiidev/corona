@@ -298,7 +298,6 @@ pub enum Clip {
 pub struct Hud {
   pub icon: Option<IconName>,
   pub text: SharedString,
-  pub swatch: Option<Hsla>,
 }
 
 impl Hud {
@@ -306,7 +305,6 @@ impl Hud {
     Self {
       icon: None,
       text: text.into(),
-      swatch: None,
     }
   }
 

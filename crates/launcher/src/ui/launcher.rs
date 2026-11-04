@@ -12,7 +12,7 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use super::{
-  Back, Complete, CompleteBack, LauncherState, Open, PageDown, PageUp, Pop, Run, RunKeepOpen,
+  Back, Complete, CompleteBack, LauncherState, Open, PageDown, PageUp, Run, RunKeepOpen,
   RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit, ToggleActions,
   ToggleFilter, TogglePreview, form::FormPage, hud, style, window_size,
 };
@@ -142,6 +142,8 @@ pub(super) struct ArgsRow {
 pub(super) struct Panel {
   pub command: Option<Rc<dyn Command>>,
   pub args: Args,
+  /// False when the inline arguments are invalid; only `common:*` actions may run then
+  pub args_ok: bool,
   pub actions: Vec<Action>,
   pub input: Entity<InputState>,
   pub selected: usize,
@@ -275,6 +277,10 @@ impl Launcher {
     }
     self.panel = None;
     self.confirm = None;
+    self.toast = None;
+    self.toast_timer = None;
+    self.retry = None;
+    self.filter_menu = None;
     self.external = false;
     match open {
       Open::Root { query } => {
@@ -345,8 +351,14 @@ impl Launcher {
       current.query = self.input.read(cx).value().to_string();
     }
     let weak = cx.entity().downgrade();
+    // only the page that owns the subscription refreshes; pop() refreshes the one below
+    let idx = self.pages.len();
     let notify: Rc<dyn Fn(&mut App)> = Rc::new(move |cx| {
-      let _ = weak.update(cx, |this, cx| this.refresh(cx));
+      let _ = weak.update(cx, |this, cx| {
+        if this.pages.len() == idx + 1 {
+          this.refresh(cx)
+        }
+      });
     });
     page._subscriptions = match &page.body {
       Body::Root => {
@@ -711,11 +723,16 @@ impl Launcher {
     window: &mut Window,
     cx: &mut Context<Self>,
   ) {
+    // a second Enter must not rerun a slow action
+    if self.busy > 0 && !(keep_open || action.keep_open) {
+      return;
+    }
     self.panel = None;
     // only root commands rank by use; rows of pushed views and scopes come and go
     if let Some(command) = &command
       && matches!(self.page().body, Body::Root)
       && self.page().scope.is_none()
+      && !action.id.starts_with("common:")
     {
       registry::record_use(&command.id(), cx);
     }
@@ -725,10 +742,19 @@ impl Launcher {
     cx.notify();
     cx.spawn_in(window, async move |this, cx| {
       let result = task.await;
-      let _ = this.update_in(cx, |this, window, cx| {
+      let failure = result.as_ref().err().map(|e| format!("{e:#}"));
+      let id = action.id.clone();
+      let updated = this.update_in(cx, |this, window, cx| {
         this.busy -= 1;
         this.finish(result, command, action, args, keep_open, window, cx);
       });
+      if updated.is_err() {
+        // window already closed, finish() never ran
+        match failure {
+          Some(e) => tracing::warn!("launcher action {id} failed after the window closed: {e}"),
+          None => tracing::debug!("launcher action {id} finished after the window closed"),
+        }
+      }
     })
     .detach();
   }
@@ -816,7 +842,7 @@ impl Launcher {
   }
 
   pub(super) fn show_toast(&mut self, toast: Toast, cx: &mut Context<Self>) {
-    let sticky = toast.kind == ToastKind::Progress || toast.action.is_some();
+    let sticky = toast.action.is_some();
     self.retry = None;
     self.toast = Some(toast);
     self.toast_timer = (!sticky).then(|| {
@@ -831,17 +857,32 @@ impl Launcher {
     cx.notify();
   }
 
+  /// The row's own actions, plus favorite, alias, hide and disable for root commands
+  fn row_actions(&self, row: &Row, cx: &App) -> Vec<Action> {
+    let mut actions = row.command.actions(cx);
+    let page = self.page();
+    if matches!(page.body, Body::Root) && page.scope.is_none() {
+      actions.extend(crate::common::actions(row.id(), cx));
+    }
+    actions
+  }
+
   fn open_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    let (command, args, actions) = match &self.page().body {
-      Body::Detail(detail) => (None, Args::default(), detail.actions.clone()),
+    let (command, args, args_ok, actions) = match &self.page().body {
+      Body::Detail(detail) => (None, Args::default(), true, detail.actions.clone()),
       _ => {
         let Some(row) = self.page().selected_row().cloned() else {
           return;
         };
-        let args = self.inline_args(&row).unwrap_or_default();
-        let mut actions = row.command.actions(cx);
-        actions.extend(crate::common::actions(row.id(), cx));
-        (Some(row.command), args, actions)
+        let parsed = self.inline_args(&row);
+        let args_ok = parsed.is_ok();
+        let actions = self.row_actions(&row, cx);
+        (
+          Some(row.command),
+          parsed.unwrap_or_default(),
+          args_ok,
+          actions,
+        )
       }
     };
     if actions.is_empty() {
@@ -859,6 +900,7 @@ impl Launcher {
     self.panel = Some(Panel {
       command,
       args,
+      args_ok,
       actions,
       input,
       selected: 0,
@@ -878,6 +920,9 @@ impl Launcher {
     else {
       return;
     };
+    if !panel.args_ok && !action.id.starts_with("common:") {
+      return;
+    }
     let (command, args) = (panel.command.clone(), panel.args.clone());
     self.panel = None;
     self.focus(window, cx);
@@ -941,7 +986,7 @@ impl Launcher {
       None => format!("{name} "),
       Some(typed) => {
         // complete the argument being typed, Tab again cycles
-        let spec = row.meta.args.last().expect("not empty");
+        let spec = &row.meta.args[arg_index(typed, row.meta.args.len())];
         let done = typed.rsplit_once(char::is_whitespace);
         let (before, current) = done.map_or(("", typed.as_str()), |(b, c)| (b, c));
         let page = self.page_mut();
@@ -1039,15 +1084,18 @@ impl Launcher {
     let Some(row) = self.page().selected_row().cloned() else {
       return;
     };
-    let mut actions = row.command.actions(cx);
-    actions.extend(crate::common::actions(row.id(), cx));
-    if let Some(action) = actions
+    if let Some(action) = self
+      .row_actions(&row, cx)
       .into_iter()
       .skip(1)
       .find(|a| a.shortcut.as_deref() == Some(keys.as_str()))
     {
+      let args = match self.inline_args(&row) {
+        Ok(args) => args,
+        Err(_) if action.id.starts_with("common:") => Args::default(),
+        Err(_) => return,
+      };
       cx.stop_propagation();
-      let args = self.inline_args(&row).unwrap_or_default();
       self.run(Some(row.command), action, args, false, window, cx);
     }
   }
@@ -1191,10 +1239,6 @@ impl Launcher {
 
   fn on_back(&mut self, _: &Back, window: &mut Window, cx: &mut Context<Self>) {
     self.back(window, cx);
-  }
-
-  fn on_pop(&mut self, _: &Pop, window: &mut Window, cx: &mut Context<Self>) {
-    self.pop(window, cx);
   }
 
   fn on_toggle_actions(&mut self, _: &ToggleActions, window: &mut Window, cx: &mut Context<Self>) {
@@ -1348,6 +1392,17 @@ fn close_page(page: &Page, cx: &mut App) {
   }
 }
 
+/// Index of the argument spec for the word being typed, capped at the last spec
+fn arg_index(typed: &str, specs: usize) -> usize {
+  let words = typed.split_whitespace().count();
+  let idx = if typed.ends_with(char::is_whitespace) {
+    words
+  } else {
+    words.saturating_sub(1)
+  };
+  idx.min(specs.saturating_sub(1))
+}
+
 /// The scope whose prefix `text` starts with, and the text after it
 fn find_scope(scopes: &[Scope], text: &str) -> Option<(Scope, String)> {
   scopes.iter().find_map(|scope| {
@@ -1390,7 +1445,6 @@ impl Render for Launcher {
       .on_action(cx.listener(Self::on_complete))
       .on_action(cx.listener(Self::on_complete_back))
       .on_action(cx.listener(Self::on_back))
-      .on_action(cx.listener(Self::on_pop))
       .on_action(cx.listener(Self::on_toggle_actions))
       .on_action(cx.listener(Self::on_toggle_preview))
       .on_action(cx.listener(Self::on_toggle_filter))
@@ -1439,6 +1493,15 @@ mod tests {
       placeholder: SharedString::default(),
       source: Rc::new(Empty),
     }
+  }
+
+  #[test]
+  fn arg_index_follows_typed_words() {
+    assert_eq!(arg_index("", 2), 0);
+    assert_eq!(arg_index("a", 2), 0);
+    assert_eq!(arg_index("a ", 2), 1);
+    assert_eq!(arg_index("a b", 3), 1);
+    assert_eq!(arg_index("a b c d", 2), 1);
   }
 
   #[test]

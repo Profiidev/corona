@@ -447,16 +447,18 @@ fn records(
         );
         div().flex_1().min_w_0().child(Input::new(&input).small())
       });
-      let (rows, write) = (rows.clone(), write.clone());
+      let (get, write) = (get.clone(), write.clone());
       div().flex().items_center().gap_1().children(fields).child(
         Button::new(SharedString::from(format!("launcher-{key}-{i}-remove")))
           .icon(IconName::Close)
           .ghost()
           .small()
           .on_click(move |_, _, cx| {
-            let mut rows = rows.clone();
-            rows.remove(i);
-            write(rows, cx);
+            let mut rows = get(cx.config());
+            if i < rows.len() {
+              rows.remove(i);
+              write(rows, cx);
+            }
           }),
       )
     })
@@ -477,7 +479,7 @@ fn records(
           .outline()
           .small()
           .on_click(move |_, _, cx| {
-            let mut rows = rows.clone();
+            let mut rows = get(cx.config());
             rows.push(vec![String::new(); width]);
             write(rows, cx);
           }),

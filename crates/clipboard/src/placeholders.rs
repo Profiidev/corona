@@ -243,7 +243,7 @@ fn modify(value: String, modifiers: &[String], url: bool) -> String {
       "uppercase" => value.to_uppercase(),
       "lowercase" => value.to_lowercase(),
       "trim" => value.trim().to_string(),
-      "percent-encode" => corona_launcher::commands::web::encode(&value),
+      "percent-encode" => corona_utils::uri::percent_encode(&value),
       "json-stringify" => serde_json::to_string(&value).unwrap_or(value),
       "raw" => {
         raw = true;
@@ -253,7 +253,7 @@ fn modify(value: String, modifiers: &[String], url: bool) -> String {
     };
   }
   match url && !raw && !modifiers.iter().any(|m| m == "percent-encode") {
-    true => corona_launcher::commands::web::encode(&value),
+    true => corona_utils::uri::percent_encode(&value),
     false => value,
   }
 }

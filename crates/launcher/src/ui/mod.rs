@@ -37,7 +37,6 @@ gpui_kit::actions!(
     Complete,
     CompleteBack,
     Back,
-    Pop,
     ToggleActions,
     TogglePreview,
     ToggleFilter,

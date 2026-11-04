@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use corona_config::{ConfigProvider, launcher::SearchEngine};
+use corona_utils::uri::percent_encode;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
@@ -19,45 +20,8 @@ pub fn init(cx: &mut App) {
   registry::register_source(Rc::new(WebFallback), cx);
 }
 
-/// Percent-encodes everything outside the unreserved set
-pub fn encode(text: &str) -> String {
-  let mut out = String::with_capacity(text.len());
-  for b in text.bytes() {
-    match b {
-      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
-      b => out.push_str(&format!("%{b:02X}")),
-    }
-  }
-  out
-}
-
-/// Percent-decoding; bad escapes stay as they are
-pub fn decode(text: &str) -> String {
-  let bytes = text.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut i = 0;
-  while i < bytes.len() {
-    let hex = (bytes[i] == b'%')
-      .then(|| bytes.get(i + 1..i + 3))
-      .flatten()
-      .filter(|h| h.iter().all(u8::is_ascii_hexdigit))
-      .and_then(|h| u8::from_str_radix(std::str::from_utf8(h).ok()?, 16).ok());
-    match hex {
-      Some(b) => {
-        out.push(b);
-        i += 3;
-      }
-      None => {
-        out.push(bytes[i]);
-        i += 1;
-      }
-    }
-  }
-  String::from_utf8_lossy(&out).into_owned()
-}
-
 pub fn search_url(engine: &SearchEngine, query: &str) -> String {
-  engine.url.replace("{query}", &encode(query))
+  engine.url.replace("{query}", &percent_encode(query))
 }
 
 fn open(engine: &SearchEngine, query: &str, cx: &mut App) -> anyhow::Result<Outcome> {
@@ -65,11 +29,16 @@ fn open(engine: &SearchEngine, query: &str, cx: &mut App) -> anyhow::Result<Outc
   Ok(Outcome::close())
 }
 
+fn valid(engine: &SearchEngine) -> bool {
+  !engine.keyword.trim().is_empty() && !engine.url.trim().is_empty()
+}
+
 fn default_engine(cx: &App) -> Option<SearchEngine> {
   let launcher = &cx.config().launcher;
   launcher
     .engine(&launcher.search_engine)
-    .or(launcher.search_engines.first())
+    .filter(|e| valid(e))
+    .or_else(|| launcher.search_engines.iter().find(|e| valid(e)))
     .cloned()
 }
 
@@ -238,7 +207,9 @@ pub fn as_url(text: &str) -> Option<String> {
     && labels.iter().all(|l| !l.is_empty())
     // file names like main.rs or notes.md are not links
     && (host.starts_with("www.") || KNOWN_TLDS.contains(&tld.to_ascii_lowercase().as_str()));
-  (domain || localhost).then(|| format!("https://{text}"))
+  // local dev servers rarely speak TLS
+  let scheme = if localhost { "http" } else { "https" };
+  (domain || localhost).then(|| format!("{scheme}://{text}"))
 }
 
 /// Opens a typed URL, pinned above the rest
@@ -285,20 +256,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn decodes() {
-    assert_eq!(decode("a%20b%C3%A4"), "a bä");
-    assert_eq!(decode("100%"), "100%");
-    assert_eq!(decode("%zz"), "%zz");
-    assert_eq!(decode("%+5"), "%+5");
-  }
-
-  #[test]
-  fn encodes() {
-    assert_eq!(encode("rust gpui & co"), "rust%20gpui%20%26%20co");
-    assert_eq!(encode("ä"), "%C3%A4");
-  }
-
-  #[test]
   fn urls() {
     assert_eq!(as_url("github.com").as_deref(), Some("https://github.com"));
     assert_eq!(
@@ -307,7 +264,7 @@ mod tests {
     );
     assert_eq!(
       as_url("localhost:8080").as_deref(),
-      Some("https://localhost:8080")
+      Some("http://localhost:8080")
     );
     assert_eq!(
       as_url("example.com/path").as_deref(),
