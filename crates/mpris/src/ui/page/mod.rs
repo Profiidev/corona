@@ -20,6 +20,7 @@ use gpui_kit::{
 use rust_i18n::t;
 
 mod player;
+pub(crate) use player::next_loop;
 
 /// how often the position moves on while playing
 const TICK: Duration = Duration::from_secs(1);
@@ -196,6 +197,7 @@ impl MediaPanel {
   fn seek(&mut self, fraction: f32, cx: &mut Context<Self>) {
     let Some((name, length)) = self
       .shown(cx)
+      .filter(|p| p.can_seek)
       .and_then(|p| Some((p.name.clone(), p.length?)))
     else {
       return;
@@ -233,7 +235,6 @@ mod tests {
     Player {
       name: name.into(),
       identity: identity.into(),
-      desktop_entry: None,
       status: PlaybackStatus::Stopped,
       title: None,
       artists: vec![],

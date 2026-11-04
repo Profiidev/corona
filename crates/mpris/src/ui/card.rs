@@ -5,14 +5,12 @@ use gpui_kit::{
   App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
   assets::IconName,
-  base::StyledExt,
+  base::{Disableable, StyledExt},
   component::{
     ActiveTheme, Icon, Sizable,
     button::{Button, ButtonVariants},
   },
-  div, img,
-  prelude::FluentBuilder,
-  px,
+  div, img, px,
 };
 
 use corona_surface::{
@@ -43,7 +41,7 @@ fn media(cx: &App) -> Option<Stateful<Div>> {
       .ghost()
       .small()
       .cursor_pointer()
-      .when(!enabled, |b| b.opacity(0.5))
+      .disabled(!enabled)
       .on_click(move |_, _, cx| {
         cx.stop_propagation();
         let mpris = cx.mpris();

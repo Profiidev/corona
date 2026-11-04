@@ -18,16 +18,11 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::page::MediaPanel;
+use crate::{state::fmt_time, ui::page::MediaPanel};
 use rust_i18n::t;
 
-fn time(duration: Duration) -> String {
-  let seconds = duration.as_secs();
-  format!("{}:{:02}", seconds / 60, seconds % 60)
-}
-
 /// The repeat button cycles off → playlist → track → off
-fn next_loop(status: Option<LoopStatus>) -> LoopStatus {
+pub(crate) fn next_loop(status: Option<LoopStatus>) -> LoopStatus {
   match status {
     Some(LoopStatus::None) | None => LoopStatus::Playlist,
     Some(LoopStatus::Playlist) => LoopStatus::Track,
@@ -93,7 +88,7 @@ impl MediaPanel {
             let position = self
               .seeking
               .map_or_else(|| player.position(), |fraction| length.mul_f32(fraction));
-            d.child(self.progress(theme, position, length))
+            d.child(self.progress(theme, position, length, player.can_seek))
           })
           .child(self.controls(player, cx))
       })
@@ -145,19 +140,29 @@ impl MediaPanel {
       )
   }
 
-  fn progress(&self, theme: &Theme, position: Duration, length: Duration) -> impl IntoElement {
+  fn progress(
+    &self,
+    theme: &Theme,
+    position: Duration,
+    length: Duration,
+    can_seek: bool,
+  ) -> impl IntoElement {
     div()
       .flex()
       .flex_col()
-      .child(Slider::new(&self.progress).cursor_pointer())
+      .child(
+        Slider::new(&self.progress)
+          .disabled(!can_seek)
+          .cursor_pointer(),
+      )
       .child(
         div()
           .flex()
           .justify_between()
           .text_xs()
           .text_color(theme.colors.muted_foreground)
-          .child(time(position))
-          .child(time(length)),
+          .child(fmt_time(position))
+          .child(fmt_time(length)),
       )
   }
 
@@ -271,13 +276,13 @@ mod tests {
 
   #[test]
   fn time() {
-    let t = |s| super::time(Duration::from_secs(s));
+    let t = |s| fmt_time(Duration::from_secs(s));
     assert_eq!(t(0), "0:00");
     assert_eq!(t(59), "0:59");
     assert_eq!(t(60), "1:00");
     assert_eq!(t(3600), "60:00");
     // sub-second parts are dropped
-    assert_eq!(super::time(Duration::from_millis(1999)), "0:01");
+    assert_eq!(fmt_time(Duration::from_millis(1999)), "0:01");
   }
 
   #[test]

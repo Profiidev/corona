@@ -1,9 +1,7 @@
 use crate::{MprisExt, PlaybackStatus};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
-use corona_ipc::{IpcCommand, IpcExt};
-use corona_utils::error::ErrorLogExt;
-use futures::FutureExt;
+use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
@@ -40,26 +38,35 @@ impl IpcCommand for Media {
   type Payload = Action;
   type Response = ();
 
-  fn handle(action: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+  fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
+    bail!("media:action answers asynchronously")
+  }
+
+  fn reply(action: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
+    match Self::dispatch(action, cx) {
+      Ok(task) => task,
+      Err(e) => Box::pin(async move { Err(e) }),
+    }
+  }
+}
+
+impl Media {
+  /// Start `action` on the active player, the future answers once the player did
+  pub(crate) fn dispatch(action: Action, cx: &mut App) -> Result<Reply<()>> {
     let mpris = cx.mpris().clone();
     let active = mpris
       .active_player(cx)
       .map(|p| (p.name.clone(), p.status == PlaybackStatus::Playing));
     let Some(name) = target(action, active)? else {
-      return Ok(());
+      return Ok(Box::pin(async { Ok(()) }));
     };
-    let task = match action {
-      Action::Previous => mpris.previous(&name).boxed_local(),
-      Action::Next => mpris.next(&name).boxed_local(),
-      Action::Toggle => mpris.play_pause(&name).boxed_local(),
-      Action::Play => mpris.play(&name).boxed_local(),
-      Action::Pause => mpris.pause(&name).boxed_local(),
-    };
-    cx.spawn(async move |_| {
-      let _ = task.await.log_err();
+    Ok(match action {
+      Action::Previous => Box::pin(mpris.previous(&name)),
+      Action::Next => Box::pin(mpris.next(&name)),
+      Action::Toggle => Box::pin(mpris.play_pause(&name)),
+      Action::Play => Box::pin(mpris.play(&name)),
+      Action::Pause => Box::pin(mpris.pause(&name)),
     })
-    .detach();
-    Ok(())
   }
 }
 

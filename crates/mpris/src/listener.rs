@@ -37,15 +37,15 @@ pub fn listener(
   let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     loop {
-      if let Ok(mut players) = snapshot(&conn).await.log_err() {
+      if let Ok(mut players) = snapshot(&conn, cx).await.log_err() {
         let active = cx.update(|cx| {
-          keep_positions(&mut players, state.players.read(cx));
-          state.active.read(cx).clone()
+          let old = state.players.read(cx);
+          keep_positions(&mut players, old);
+          pick_active(&players, state.active.read(cx).as_deref(), old)
         });
-        state
-          .active
-          .write_changed(cx, pick_active(&players, active.as_deref()));
+        // players first, so an observer of the active one finds it
         state.players.write_changed(cx, players);
+        state.active.write_changed(cx, active);
       }
 
       if next_burst(&mut changes).await.is_none() {

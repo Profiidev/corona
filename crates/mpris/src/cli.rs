@@ -9,7 +9,7 @@ use corona_ipc::{
 
 use crate::commands::{
   media::{Action, Media},
-  player::{ListPlayers, Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle},
+  player::{ListPlayers, Loop, LoopMode, Seek, SetPlayer, Shuffle, parse_seek},
 };
 
 #[derive(Subcommand)]
@@ -45,15 +45,6 @@ pub enum Commands {
   List,
 }
 
-fn seek_to(position: &str) -> Option<SeekTo> {
-  let relative = position.starts_with(['+', '-']);
-  let seconds: f64 = position.parse().ok()?;
-  Some(match relative {
-    true => SeekTo::By(seconds),
-    false => SeekTo::At(seconds),
-  })
-}
-
 fn players() -> Vec<CompletionCandidate> {
   plain(ListPlayers::send(()).unwrap_or_default())
 }
@@ -66,7 +57,7 @@ impl Commands {
       Commands::Toggle => media(Action::Toggle),
       Commands::Play => media(Action::Play),
       Commands::Pause => media(Action::Pause),
-      Commands::Seek { position } => match seek_to(&position) {
+      Commands::Seek { position } => match parse_seek(&position) {
         Some(to) => done(Seek::send(to), "seek"),
         None => tracing::error!("expected seconds like 90, +10 or -10"),
       },
@@ -90,12 +81,16 @@ fn media(action: Action) {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::commands::player::SeekTo;
 
   #[test]
   fn seeks() {
-    assert_eq!(seek_to("90"), Some(SeekTo::At(90.)));
-    assert_eq!(seek_to("+10"), Some(SeekTo::By(10.)));
-    assert_eq!(seek_to("-5.5"), Some(SeekTo::By(-5.5)));
-    assert_eq!(seek_to("soon"), None);
+    assert_eq!(parse_seek("90"), Some(SeekTo::At(90.)));
+    assert_eq!(parse_seek("+10"), Some(SeekTo::By(10.)));
+    assert_eq!(parse_seek("-5.5"), Some(SeekTo::By(-5.5)));
+    assert_eq!(parse_seek("soon"), None);
+    for bad in ["nan", "inf", "-inf", "+NaN"] {
+      assert_eq!(parse_seek(bad), None, "{bad}");
+    }
   }
 }

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{LoopStatus, MprisExt};
+use crate::{LoopStatus, MprisExt, seek_target};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
@@ -35,6 +35,15 @@ pub enum SeekTo {
   By(f64),
 }
 
+/// Seconds like `90`, or `+10` / `-10` from now, `None` for anything that is not a finite number
+pub(crate) fn parse_seek(text: &str) -> Option<SeekTo> {
+  let seconds: f64 = text.parse().ok().filter(|s: &f64| s.is_finite())?;
+  Some(match text.starts_with(['+', '-']) {
+    true => SeekTo::By(seconds),
+    false => SeekTo::At(seconds),
+  })
+}
+
 pub struct Seek;
 
 impl IpcCommand for Seek {
@@ -56,8 +65,7 @@ impl IpcCommand for Seek {
       SeekTo::At(s) => s,
       SeekTo::By(s) => player.position().as_secs_f64() + s,
     };
-    let max = player.length.map_or(f64::MAX, |l| l.as_secs_f64());
-    let position = Duration::from_secs_f64(seconds.clamp(0., max));
+    let position = seek_target(seconds).min(player.length.unwrap_or(Duration::MAX));
     Box::pin(cx.mpris().set_position(&player.name, position, cx))
   }
 }
@@ -155,11 +163,17 @@ impl IpcCommand for ListPlayers {
   type Response = Vec<String>;
 
   fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    let players = cx.mpris().list_players(cx);
+    // Instances of one app share an identity, so list their bus name to stay selectable
     Ok(
-      cx.mpris()
-        .list_players(cx)
+      players
         .iter()
-        .map(|p| p.identity.clone())
+        .map(
+          |p| match players.iter().filter(|o| o.identity == p.identity).count() > 1 {
+            true => p.name.clone(),
+            false => p.identity.clone(),
+          },
+        )
         .collect(),
     )
   }

@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use crate as mpris;
-use crate::MprisExt;
+use crate::{MprisExt, seek_target};
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
 };
@@ -103,11 +101,6 @@ impl From<&mpris::Player> for Player {
       can_seek: player.can_seek,
     }
   }
-}
-
-/// A negative position is the track start, one past `Duration::MAX` saturates.
-fn seek_target(seconds: f64) -> Duration {
-  Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Duration::MAX)
 }
 
 type Mprises = Glob<mpris::Mpris>;
@@ -212,7 +205,7 @@ impl ScriptModule for MprisModule {
 
 #[cfg(test)]
 mod tests {
-  use std::time::Instant;
+  use std::time::{Duration, Instant};
 
   use super::*;
 
@@ -220,7 +213,6 @@ mod tests {
     mpris::Player {
       name: "org.mpris.MediaPlayer2.spotify".into(),
       identity: "Spotify".into(),
-      desktop_entry: None,
       status,
       title: Some("Song".into()),
       artists: vec!["A".into(), "B".into()],
@@ -300,6 +292,6 @@ mod tests {
 
   #[test]
   fn seek_to_huge_position_saturates() {
-    assert!(std::panic::catch_unwind(|| seek_target(1e300)).is_ok());
+    assert_eq!(seek_target(1e300), Duration::MAX);
   }
 }

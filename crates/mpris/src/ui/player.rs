@@ -195,7 +195,6 @@ mod tests {
     Player {
       name: "org.mpris.MediaPlayer2.test".into(),
       identity: "Test".into(),
-      desktop_entry: None,
       // paused, so the position does not move on with the wall clock
       status: PlaybackStatus::Paused,
       title: title.map(Into::into),

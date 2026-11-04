@@ -10,7 +10,10 @@ use corona_launcher::{
   kit::{switch_arg, switch_target},
   registry, simple,
 };
-use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
+use corona_utils::{
+  error::{ErrorLogExt, spawn_logged},
+  ticker::TickerExt,
+};
 use gpui_kit::{
   App, AppContext, Context, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, StatefulInteractiveElement, Styled, StyledImage, Subscription, Task, Window,
@@ -22,20 +25,9 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::commands::player::{Loop, LoopMode, Seek, SeekTo, SetPlayer, Shuffle};
-
-fn time(d: Duration) -> String {
-  let s = d.as_secs();
-  format!("{}:{:02}", s / 60, s % 60)
-}
-
-/// Spawns an action's future, logging what fails
-fn spawn(task: impl Future<Output = anyhow::Result<()>> + 'static, cx: &mut App) {
-  cx.spawn(async move |_| {
-    let _ = task.await.log_err();
-  })
-  .detach();
-}
+use crate::commands::player::{Loop, LoopMode, Seek, SetPlayer, Shuffle, parse_seek};
+use crate::state::fmt_time;
+use crate::ui::page::next_loop;
 
 struct NowPlaying {
   _subscriptions: Vec<Subscription>,
@@ -50,8 +42,16 @@ impl NowPlaying {
         cx.observe(&mpris.players, |_, _, cx| cx.notify()),
         cx.observe(&mpris.active, |_, _, cx| cx.notify()),
       ],
-      // the position moves on its own
-      _tick: cx.ticker(Duration::from_millis(500), |_, cx| cx.notify()),
+      // the position moves on its own while playing
+      _tick: cx.ticker(Duration::from_secs(1), |_, cx| {
+        if cx
+          .mpris()
+          .active_player(cx)
+          .is_some_and(|p| p.status == PlaybackStatus::Playing)
+        {
+          cx.notify();
+        }
+      }),
     }
   }
 
@@ -60,6 +60,7 @@ impl NowPlaying {
     id: &'static str,
     icon: IconName,
     active: bool,
+    enabled: bool,
     cx: &mut Context<Self>,
     on_click: impl Fn(&Player, &mut App) + 'static,
   ) -> impl IntoElement {
@@ -71,16 +72,27 @@ impl NowPlaying {
       .items_center()
       .justify_center()
       .rounded_full()
-      .cursor_pointer()
       .when(active, |el| el.text_color(theme.colors.primary))
-      .hover(|s| s.bg(theme.foreground.opacity(0.06)))
+      .when(enabled, |el| {
+        el.cursor_pointer()
+          .hover(|s| s.bg(theme.foreground.opacity(0.06)))
+      })
+      .when(!enabled, |el| el.opacity(0.4))
       .on_click(cx.listener(move |_, _, _, cx| {
+        if !enabled {
+          return;
+        }
         if let Some(player) = cx.mpris().active_player(cx).cloned() {
           on_click(&player, cx);
         }
       }))
       .child(KitIcon::new(icon).with_size(px(18.)))
   }
+}
+
+/// Looping needs a controllable player that reports a loop status at all
+fn loop_enabled(can_control: bool, status: Option<LoopStatus>) -> bool {
+  can_control && status.is_some()
 }
 
 impl Render for NowPlaying {
@@ -105,6 +117,10 @@ impl Render for NowPlaying {
     };
     let playing = player.status == PlaybackStatus::Playing;
     let shuffle = player.shuffle.unwrap_or(false);
+    let play_enabled = match playing {
+      true => player.can_pause,
+      false => player.can_play,
+    };
     let looping = player.loop_status.is_some_and(|l| l != LoopStatus::None);
     let players = mpris.list_players(cx).to_vec();
     let cover = match player.art_source() {
@@ -178,8 +194,8 @@ impl Render for NowPlaying {
               .justify_between()
               .text_size(px(12.))
               .text_color(theme.colors.muted_foreground)
-              .child(time(position))
-              .child(time(length)),
+              .child(fmt_time(position))
+              .child(fmt_time(length)),
           )
           .child(
             div()
@@ -191,18 +207,24 @@ impl Render for NowPlaying {
                 "np-shuffle",
                 IconName::Shuffle,
                 shuffle,
+                player.can_control && player.shuffle.is_some(),
                 cx,
                 move |p, cx| {
                   let task = cx.mpris().set_shuffle(&p.name, !shuffle);
-                  spawn(task, cx);
+                  spawn_logged(cx, task);
                 },
               ))
-              .child(
-                self.control("np-prev", IconName::SkipBack, false, cx, |p, cx| {
+              .child(self.control(
+                "np-prev",
+                IconName::SkipBack,
+                false,
+                player.can_go_previous,
+                cx,
+                |p, cx| {
                   let task = cx.mpris().previous(&p.name);
-                  spawn(task, cx);
-                }),
-              )
+                  spawn_logged(cx, task);
+                },
+              ))
               .child(self.control(
                 "np-play",
                 if playing {
@@ -211,28 +233,37 @@ impl Render for NowPlaying {
                   IconName::Play
                 },
                 false,
+                play_enabled,
                 cx,
                 |p, cx| {
                   let task = cx.mpris().play_pause(&p.name);
-                  spawn(task, cx);
+                  spawn_logged(cx, task);
                 },
               ))
-              .child(
-                self.control("np-next", IconName::SkipForward, false, cx, |p, cx| {
+              .child(self.control(
+                "np-next",
+                IconName::SkipForward,
+                false,
+                player.can_go_next,
+                cx,
+                |p, cx| {
                   let task = cx.mpris().next(&p.name);
-                  spawn(task, cx);
-                }),
-              )
-              .child(
-                self.control("np-loop", IconName::Repeat, looping, cx, move |p, cx| {
-                  let status = match looping {
-                    true => LoopStatus::None,
-                    false => LoopStatus::Playlist,
-                  };
-                  let task = cx.mpris().set_loop_status(&p.name, status);
-                  spawn(task, cx);
-                }),
-              ),
+                  spawn_logged(cx, task);
+                },
+              ))
+              .child(self.control(
+                "np-loop",
+                IconName::Repeat,
+                looping,
+                loop_enabled(player.can_control, player.loop_status),
+                cx,
+                move |p, cx| {
+                  let task = cx
+                    .mpris()
+                    .set_loop_status(&p.name, next_loop(p.loop_status));
+                  spawn_logged(cx, task);
+                },
+              )),
           )
           .when(players.len() > 1, |el| {
             el.child(
@@ -311,12 +342,8 @@ pub(crate) fn register(cx: &mut App) {
             t!("app.launcher.player.seek"),
             |args, cx| {
               let text = args.text(0).unwrap_or_default().to_string();
-              let seconds: Result<f64, _> = text.parse();
-              let to = match (seconds, text.starts_with(['+', '-'])) {
-                (Ok(s), true) => Ok(SeekTo::By(s)),
-                (Ok(s), false) => Ok(SeekTo::At(s)),
-                (Err(_), _) => Err(anyhow::anyhow!("{}", t!("app.launcher.player.seconds"))),
-              };
+              let to = parse_seek(&text)
+                .ok_or_else(|| anyhow::anyhow!("{}", t!("app.launcher.player.seconds")));
               let task = to.map(|to| Seek::reply(to, cx));
               async move {
                 task?.await?;
@@ -389,4 +416,16 @@ pub(crate) fn register(cx: &mut App) {
     ],
     cx,
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn loop_needs_support_and_control() {
+    assert!(loop_enabled(true, Some(LoopStatus::None)));
+    assert!(!loop_enabled(true, None));
+    assert!(!loop_enabled(false, Some(LoopStatus::Track)));
+  }
 }
