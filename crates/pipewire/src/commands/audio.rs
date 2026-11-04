@@ -1,7 +1,4 @@
-use crate::{
-  AudioNode, PipewireExt,
-  volume::{to_linear, to_slider},
-};
+use crate::{AudioNode, PipewireExt, volume::to_slider};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_compositor::CompositorExt;
@@ -9,7 +6,7 @@ use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::commands::volume::Action;
+use crate::commands::volume::{Action, volumes};
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
@@ -33,7 +30,7 @@ pub struct NodeInfo {
   pub name: String,
   pub description: String,
   pub default: bool,
-  /// 0..=1 as the sliders show it
+  /// As the sliders show it, above 1 for amplified nodes
   pub volume: f32,
   pub mute: bool,
 }
@@ -50,14 +47,19 @@ fn nodes(kind: Kind, cx: &App) -> Vec<AudioNode> {
 
 /// The node with this id, `node.name` or description
 fn find(kind: Kind, which: &str, cx: &App) -> Result<AudioNode> {
-  nodes(kind, cx)
-    .into_iter()
-    .find(|n| {
-      n.id.to_string() == which
-        || n.name == which
-        || n.description.eq_ignore_ascii_case(which)
-        || n.app.iter().any(|a| a.eq_ignore_ascii_case(which))
+  let nodes = nodes(kind, cx);
+  // an exact id or name beats a description or app match earlier in the list
+  nodes
+    .iter()
+    .find(|n| n.id.to_string() == which)
+    .or_else(|| nodes.iter().find(|n| n.name == which))
+    .or_else(|| {
+      nodes.iter().find(|n| {
+        n.description.eq_ignore_ascii_case(which)
+          || n.app.iter().any(|a| a.eq_ignore_ascii_case(which))
+      })
     })
+    .cloned()
     .with_context(|| format!("no audio node {which}"))
 }
 
@@ -122,16 +124,9 @@ impl IpcCommand for StreamVolume {
   fn handle((which, action): Self::Payload, cx: &mut App) -> Result<Self::Response> {
     let node = find(Kind::Streams, &which, cx)?;
     let audio = cx.pipewire().audio();
-    let channels = node.volumes.len().max(1);
-    match action {
-      Action::Set(level) => {
-        audio.set_volumes(node.id, vec![to_linear(level.clamp(0., 1.)); channels])
-      }
-      Action::Change(delta) => {
-        let level = (to_slider(node.volume()) + delta).clamp(0., 1.);
-        audio.set_volumes(node.id, vec![to_linear(level); channels])
-      }
-      Action::ToggleMute => audio.set_mute(node.id, !node.mute),
+    match volumes(action, node.volume(), node.volumes.len()) {
+      Some(volumes) => audio.set_volumes(node.id, volumes),
+      None => audio.set_mute(node.id, !node.mute),
     }
   }
 }

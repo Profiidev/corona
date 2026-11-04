@@ -110,11 +110,7 @@ pub fn audio_node(title: impl IntoElement, theme: &Theme, node: &DefaultState, m
 }
 
 pub fn audio_stream(theme: &Theme, node: &StreamState, mic: bool) -> Div {
-  let name = node
-    .node
-    .nickname
-    .clone()
-    .unwrap_or_else(|| node.node.description.clone());
+  let name = node.node.label().to_string();
 
   let label = node
     .node

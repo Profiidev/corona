@@ -26,11 +26,10 @@ fn set_volume(node: Option<&AudioNode>, value: f32, cx: &App) {
   let Some(node) = node else {
     return;
   };
-  let channels = node.volumes.len().max(1);
   let _ = cx
     .pipewire()
     .audio()
-    .set_volumes(node.id, vec![to_linear(value); channels])
+    .set_level(node.id, to_linear(value))
     .log_err();
 }
 

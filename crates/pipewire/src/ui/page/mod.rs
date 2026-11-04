@@ -1,6 +1,5 @@
-use crate::{AudioNode, PipewireAudio, PipewireExt};
+use crate::{AudioNode, PipewireExt};
 use corona_surface::control_center::ControlCenterPage;
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   base::StyledExt,
@@ -9,7 +8,7 @@ use gpui_kit::{
 };
 
 use crate::ui::page::{
-  state::{DEFAULT_SINK_ID, DefaultState, StreamState},
+  state::{DefaultState, StreamState, on_select},
   ui::{audio_node, audio_stream},
 };
 use rust_i18n::t;
@@ -56,15 +55,7 @@ impl ControlCenterPage for AudioPanel {
     let streams = streams
       .into_iter()
       .map(|s| {
-        let stream = s.id;
-        let on_select = move |id, audio: PipewireAudio<'_>| {
-          if id == DEFAULT_SINK_ID {
-            audio.reset_target(stream).log_err().ok();
-            return;
-          }
-          audio.set_target(stream, id).log_err().ok();
-        };
-
+        let on_select = on_select(s.id);
         StreamState::create(s, &sinks, window, cx, on_select)
       })
       .collect::<Vec<_>>();

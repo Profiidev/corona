@@ -78,6 +78,12 @@ impl Handles {
     Ok(())
   }
 
+  pub fn clear(&self) {
+    // take first so proxy drops never run under the borrow
+    let old = std::mem::take(&mut *self.0.borrow_mut());
+    drop(old);
+  }
+
   fn remove(&self, id: u32) {
     let mut proxies = self.0.borrow_mut();
     proxies.nodes.remove(&id);
@@ -125,9 +131,10 @@ fn add_node(
     return;
   };
 
-  let Some(node) = AudioNode::new(obj.id, class, props) else {
+  let Some(mut node) = AudioNode::new(obj.id, class, props) else {
     return;
   };
+  node.ready = false;
   state.audio.nodes.insert(obj.id, node);
 
   let Ok(node) = registry.bind::<Node, &DictRef>(obj) else {
@@ -146,10 +153,6 @@ fn add_node(
     .borrow_mut()
     .nodes
     .insert(obj.id, (node, listener));
-
-  for event in state.audio.node_events(class) {
-    let _ = events.send(event);
-  }
 }
 
 fn add_capture(
@@ -249,6 +252,7 @@ fn metadata_property_listener(
           .set_default(NodeType::Source, value.and_then(metadata_name), &events)
       }
       Some("target.object") => state.audio.set_target(subject, value.map(unquote), &events),
+      None => state.audio.clear_metadata(&events),
       _ => (),
     }
     0
@@ -270,6 +274,9 @@ pub fn global_remove_listener(
   events: flume::Sender<AudioEvent>,
 ) -> impl Fn(u32) {
   move |id| {
+    if handles.0.borrow().metadata.contains_key(&id) {
+      state.audio.clear_metadata(&events);
+    }
     handles.remove(id);
 
     state.audio.targets.remove(&id);
@@ -491,14 +498,22 @@ pub(crate) mod tests {
     listen(111, Some("target.object"), None, None);
     assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.len() == 1));
 
-    // other keys and a cleared everything are ignored
+    // other keys are ignored
     listen(
       0,
       Some("default.configured.audio.sink"),
       None,
       Some(r#"{"name":"x"}"#),
     );
+    assert!(rx.try_recv().is_err());
+
+    // a cleared everything drops defaults and pins
     listen(0, None, None, None);
+    assert!(matches!(
+      rx.try_recv().unwrap(),
+      AudioEvent::DefaultSource(None)
+    ));
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.is_empty()));
     assert!(rx.try_recv().is_err());
   }
 

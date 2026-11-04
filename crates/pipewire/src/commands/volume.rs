@@ -26,13 +26,15 @@ pub enum Action {
 }
 
 /// The linear per-channel volumes `action` sets, none for [`Action::ToggleMute`]
-fn volumes(action: Action, current: f32, channels: usize) -> Option<Vec<f32>> {
-  let level = match action {
-    Action::Set(level) => level,
-    Action::Change(delta) => to_slider(current) + delta,
+pub(super) fn volumes(action: Action, current: f32, channels: usize) -> Option<Vec<f32>> {
+  let slider = to_slider(current);
+  // amplified nodes keep their level as the ceiling, so `up` never lowers them
+  let (level, max) = match action {
+    Action::Set(level) => (level, 1.),
+    Action::Change(delta) => (slider + delta, slider.max(1.)),
     Action::ToggleMute => return None,
   };
-  Some(vec![to_linear(level.clamp(0., 1.)); channels.max(1)])
+  Some(vec![to_linear(level.clamp(0., max)); channels.max(1)])
 }
 
 pub struct Volume;
@@ -83,6 +85,13 @@ mod tests {
     assert_eq!(single(Action::Change(1.), 0.9), 1.);
     assert_eq!(single(Action::Change(-1.), 0.1), 0.);
     assert!((single(Action::Change(0.), 0.3) - 0.3).abs() < 1e-5);
+  }
+
+  #[test]
+  fn change_on_amplified_node_never_lowers_on_up() {
+    let current = to_linear(1.3);
+    assert!((single(Action::Change(0.1), current) - current).abs() < 1e-4);
+    assert!((single(Action::Change(-0.1), current) - to_linear(1.2)).abs() < 1e-4);
   }
 
   #[test]

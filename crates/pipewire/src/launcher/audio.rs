@@ -119,11 +119,7 @@ impl Command for LevelCommand {
     let device = self.0;
     let step = |id: &'static str, title: SharedString, delta: f32, keys: &'static str| {
       Action::sync(id, title, move |_, _, cx| {
-        let (current, _) = level(device, cx).unwrap_or_default();
-        Volume::handle(
-          (device, VolumeAction::Set((current + delta).clamp(0., 1.))),
-          cx,
-        )?;
+        Volume::handle((device, VolumeAction::Change(delta)), cx)?;
         Ok(Outcome::KeepOpen)
       })
       .shortcut(keys)

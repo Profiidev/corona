@@ -31,6 +31,22 @@ impl PipewireState {
   }
 }
 
+impl PipewireState {
+  /// drops everything learned from a lost connection and tells the UI
+  pub fn reset(&self, events: &flume::Sender<AudioEvent>) {
+    self.audio.nodes.clear();
+    self.audio.defaults.clear();
+    self.audio.targets.clear();
+    self.captures.clear();
+    for kind in [NodeType::Sink, NodeType::Source, NodeType::Stream] {
+      for event in self.audio.node_events(kind) {
+        let _ = events.send(event);
+      }
+    }
+    self.captures.send(events);
+  }
+}
+
 #[derive(Clone)]
 pub struct AudioState {
   pub nodes: Arc<DashMap<u32, AudioNode>>,
@@ -75,6 +91,9 @@ pub struct AudioNode {
   pub app: Vec<String>,
   /// `application.process.id` of a stream
   pub pid: Option<u32>,
+  /// false until the first Props param, so placeholder volumes are never published
+  #[serde(skip)]
+  pub ready: bool,
 }
 
 fn app(props: &DictRef) -> Vec<String> {
@@ -101,6 +120,11 @@ impl AudioNode {
     self.volumes.first().copied().unwrap_or(0.)
   }
 
+  /// Nickname if set, description otherwise.
+  pub fn label(&self) -> &str {
+    self.nickname.as_deref().unwrap_or(&self.description)
+  }
+
   pub fn new(id: u32, kind: NodeType, props: &DictRef) -> Option<Self> {
     let name = props.get("node.name")?.to_string();
 
@@ -122,6 +146,7 @@ impl AudioNode {
       pid: props
         .get("application.process.id")
         .and_then(|pid| pid.parse().ok()),
+      ready: true,
     })
   }
 
@@ -142,7 +167,8 @@ impl AudioNode {
   }
 
   fn update_params(&mut self, obj: Object) -> bool {
-    let mut changed = false;
+    let mut changed = !self.ready;
+    self.ready = true;
     for prop in obj.properties {
       match (prop.key, prop.value) {
         (sys::SPA_PROP_channelVolumes, Value::ValueArray(ValueArray::Float(volumes))) => {
@@ -196,11 +222,21 @@ impl AudioState {
     }
   }
 
+  /// the metadata object is gone or was cleared, so its defaults and targets are stale
+  pub fn clear_metadata(&self, events: &flume::Sender<AudioEvent>) {
+    self.set_default(NodeType::Sink, None, events);
+    self.set_default(NodeType::Source, None, events);
+    if !self.targets.is_empty() {
+      self.targets.clear();
+      let _ = events.send(AudioEvent::Targets(self.resolved_targets()));
+    }
+  }
+
   pub fn list(&self, kind: NodeType) -> Vec<AudioNode> {
     let mut nodes: Vec<AudioNode> = self
       .nodes
       .iter()
-      .filter(|node| node.kind == kind)
+      .filter(|node| node.ready && node.kind == kind)
       .map(|node| node.clone())
       .collect();
     nodes.sort_unstable_by_key(|node| node.id);
@@ -212,7 +248,7 @@ impl AudioState {
     self
       .nodes
       .iter()
-      .find(|node| node.kind == kind && node.name == *name)
+      .find(|node| node.ready && node.kind == kind && node.name == *name)
       .map(|node| node.clone())
   }
 

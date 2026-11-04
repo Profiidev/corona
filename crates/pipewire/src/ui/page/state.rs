@@ -15,6 +15,16 @@ use crate::ui::page::utils::{NodeSelectItem, index_of, select_items, target_of};
 
 pub const DEFAULT_SINK_ID: u32 = u32::MAX;
 
+pub fn on_select(stream: u32) -> impl Fn(u32, PipewireAudio<'_>) + 'static {
+  move |id, audio| {
+    if id == DEFAULT_SINK_ID {
+      audio.reset_target(stream).log_err().ok();
+      return;
+    }
+    audio.set_target(stream, id).log_err().ok();
+  }
+}
+
 pub struct NodeState {
   pub slider: Entity<SliderState>,
   pub select: Entity<SelectState<Vec<NodeSelectItem>>>,
@@ -71,11 +81,9 @@ impl NodeState {
         let Some(id) = id.get() else {
           return;
         };
-        let audio = cx.pipewire().audio();
-        let channels = audio.node(id).map_or(1, |node| node.volumes.len().max(1));
-
-        audio
-          .set_volumes(id, vec![to_linear(value.start()); channels])
+        cx.pipewire()
+          .audio()
+          .set_level(id, to_linear(value.start()))
           .log_err()
           .ok();
       }

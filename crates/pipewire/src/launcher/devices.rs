@@ -19,13 +19,6 @@ use crate::commands::{
   volume::Action as VolumeAction,
 };
 
-fn label(node: &AudioNode) -> String {
-  node
-    .nickname
-    .clone()
-    .unwrap_or_else(|| node.description.clone())
-}
-
 fn device_row(node: &AudioNode, kind: Kind, default: bool) -> Rc<dyn Command> {
   let n = node.clone();
   let id = node.id.to_string();
@@ -33,8 +26,8 @@ fn device_row(node: &AudioNode, kind: Kind, default: bool) -> Rc<dyn Command> {
     format!("audio:{}", node.name),
     move |_| Meta {
       title: match kind {
-        Kind::Outputs => t!("app.launcher.devices.output", name = label(&n)),
-        _ => t!("app.launcher.devices.input", name = label(&n)),
+        Kind::Outputs => t!("app.launcher.devices.output", name = n.label()),
+        _ => t!("app.launcher.devices.input", name = n.label()),
       }
       .into(),
       icon: Icon::Tile(
@@ -116,7 +109,6 @@ impl CommandSource for Devices {
 /// An app's name for a stream
 fn app_name(stream: &AudioNode) -> String {
   name_for_names(stream.app.iter().map(String::as_str))
-    .or_else(|| stream.app.get(2).cloned())
     .unwrap_or_else(|| stream.description.clone())
 }
 
@@ -154,7 +146,7 @@ fn stream_row(stream: &AudioNode, sinks: &[AudioNode]) -> Rc<dyn Command> {
               let action = match args.get(0) {
                 Some(value) => match level_target(value, current) {
                   Some(level) => VolumeAction::Set(level),
-                  None => VolumeAction::ToggleMute,
+                  None => anyhow::bail!("Invalid level"),
                 },
                 None => VolumeAction::ToggleMute,
               };
@@ -165,7 +157,7 @@ fn stream_row(stream: &AudioNode, sinks: &[AudioNode]) -> Rc<dyn Command> {
           .keep_open(),
         ];
         for sink in &sinks {
-          let (stream, sink_id, name) = (id.clone(), sink.id.to_string(), label(sink));
+          let (stream, sink_id, name) = (id.clone(), sink.id.to_string(), sink.label().to_string());
           actions.push(Action::sync(
             format!("move:{}", sink.id),
             t!("app.launcher.devices.play_on", name = name),

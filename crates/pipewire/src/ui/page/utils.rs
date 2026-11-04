@@ -30,7 +30,7 @@ pub fn select_items(options: &[AudioNode], default_option: bool) -> Vec<NodeSele
   // every name a node could show, so a fallback can't clash with another entry
   let mut names: HashMap<&str, usize> = HashMap::new();
   for node in options {
-    *nicks.entry(nick_base(node_name(node))).or_default() += 1;
+    *nicks.entry(nick_base(node.label())).or_default() += 1;
     *names.entry(&node.description).or_default() += 1;
     if let Some(nick) = node.nickname.as_deref().filter(|n| *n != node.description) {
       *names.entry(nick).or_default() += 1;
@@ -65,11 +65,6 @@ fn nick_base(nick: &str) -> &str {
   }
 }
 
-/// Nickname if set, description otherwise.
-fn node_name(node: &AudioNode) -> &str {
-  node.nickname.as_deref().unwrap_or(&node.description)
-}
-
 /// Nickname, unless another node shares its base (`X #2`); then the
 /// description, as long as no other node uses that name.
 fn display_name(
@@ -81,7 +76,7 @@ fn display_name(
     Some(nick) if nicks[nick_base(nick)] > 1 && names[node.description.as_str()] == 1 => {
       node.description.clone()
     }
-    _ => node_name(node).to_string(),
+    _ => node.label().to_string(),
   }
 }
 
@@ -117,6 +112,7 @@ mod tests {
       mute: false,
       app: vec![],
       pid: None,
+      ready: true,
     }
   }
 

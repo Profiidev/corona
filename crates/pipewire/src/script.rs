@@ -36,7 +36,7 @@ impl From<&AudioNode> for Node {
       name: node.name.clone(),
       description: node.description.clone(),
       nickname: node.nickname.clone(),
-      volume: node.volumes.first().copied().unwrap_or(0.),
+      volume: node.volume(),
       volumes: node.volumes.clone(),
       mute: node.mute,
       app: node.app.clone(),
@@ -109,16 +109,7 @@ fn reset_target(pipewire: Pw, stream: u32) -> Throws<()> {
 
 #[specta]
 fn set_volume(pipewire: Pw, id: u32, volume: f32) -> Throws<()> {
-  let channels = channels(pipewire.audio().node(id).as_ref());
-  pipewire
-    .audio()
-    .set_volumes(id, vec![volume; channels])
-    .into()
-}
-
-/// One volume per channel, at least one even for an unknown node.
-fn channels(node: Option<&AudioNode>) -> usize {
-  node.map_or(1, |node| node.volumes.len().max(1))
+  pipewire.audio().set_level(id, volume).into()
 }
 
 #[specta]
@@ -138,7 +129,7 @@ pub struct PipewireModule;
 
 impl ScriptModule for PipewireModule {
   const NAME: &str = "pipewire";
-  const DOC: &str = "Audio devices, streams and who records.";
+  const DOC: &str = "Audio devices, streams and who records. Volumes are linear, 1 is 100%.";
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     m.watch(
@@ -215,6 +206,7 @@ mod tests {
       mute: true,
       app: vec!["firefox".into()],
       pid: None,
+      ready: true,
     }
   }
 
@@ -231,14 +223,6 @@ mod tests {
 
     let json = serde_json::to_value(Node::from(&node(vec![]))).unwrap();
     assert_eq!(json["volume"], 0.);
-  }
-
-  #[test]
-  fn channel_counts() {
-    assert_eq!(channels(None), 1);
-    assert_eq!(channels(Some(&node(vec![]))), 1);
-    assert_eq!(channels(Some(&node(vec![0.5]))), 1);
-    assert_eq!(channels(Some(&node(vec![0.5; 6]))), 6);
   }
 
   #[test]

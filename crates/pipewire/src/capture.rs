@@ -203,6 +203,10 @@ impl CaptureState {
     true
   }
 
+  pub(crate) fn clear(&self) {
+    self.nodes.clear();
+  }
+
   pub fn list(&self) -> Vec<Capture> {
     let mut captures: Vec<Capture> = self
       .nodes

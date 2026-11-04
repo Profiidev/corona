@@ -1,10 +1,9 @@
 use crate::{AudioNode, PipewireExt};
-use corona_utils::error::ErrorLogExt;
 use gpui_kit::{Context, Subscription, Window};
 
 use crate::ui::page::{
   AudioPanel,
-  state::{DEFAULT_SINK_ID, StreamState},
+  state::{StreamState, on_select},
 };
 
 pub fn listeners(cx: &mut Context<AudioPanel>, window: &mut Window) -> [Subscription; 6] {
@@ -74,14 +73,7 @@ fn reconcile_streams(
     {
       Some(state) => state.update(node.clone(), window, cx),
       None => {
-        let stream = node.id;
-        let state = StreamState::create(node.clone(), &this.sinks, window, cx, move |id, audio| {
-          if id == DEFAULT_SINK_ID {
-            audio.reset_target(stream).log_err().ok();
-            return;
-          }
-          audio.set_target(stream, id).log_err().ok();
-        });
+        let state = StreamState::create(node.clone(), &this.sinks, window, cx, on_select(node.id));
         this.streams.push(state);
       }
     }
