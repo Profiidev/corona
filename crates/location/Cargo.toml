@@ -16,7 +16,6 @@ gpui-kit.workspace = true
 zbus.workspace = true
 anyhow.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 tracing.workspace = true
 dirs.workspace = true
 flume.workspace = true

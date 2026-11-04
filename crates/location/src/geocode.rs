@@ -1,6 +1,6 @@
 //! Open-Meteo geocoding: free, no API key.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use corona_reqwest::get_json;
 use gpui_kit::http_client::HttpClient;
 use serde::Deserialize;
@@ -29,6 +29,9 @@ pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Locat
     Some((name, region)) => (name.trim(), Some(region.trim()).filter(|r| !r.is_empty())),
     None => (city.trim(), None),
   };
+  if name.is_empty() {
+    bail!("no place named {city}");
+  }
   let count = if region.is_some() { 10 } else { 1 };
   let url = format!(
     "{GEOCODING}?name={}&count={count}&format=json",
@@ -43,7 +46,7 @@ pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Locat
       [&place.admin1, &place.country, &place.country_code]
         .into_iter()
         .flatten()
-        .any(|part| part.eq_ignore_ascii_case(region))
+        .any(|part| part.to_lowercase() == region.to_lowercase())
     })
   };
   let place = match places.iter().position(in_region) {
@@ -52,7 +55,7 @@ pub(crate) async fn geocode(client: &dyn HttpClient, city: &str) -> Result<Locat
   }
   .with_context(|| format!("no place named {city}"))?;
   Ok(Location {
-    name: match place.country {
+    name: match place.country.filter(|c| !c.is_empty()) {
       Some(country) => format!("{}, {country}", place.name),
       None => place.name,
     },
@@ -220,7 +223,8 @@ pub(crate) mod tests {
       error.ends_with("answered 503 Service Unavailable: try later"),
       "{error}"
     );
-    assert!(error.starts_with(GEOCODING), "{error}");
+    // the URL carries the searched place, keep it out of the error
+    assert!(!error.contains(GEOCODING), "{error}");
   }
 
   #[test]
@@ -253,20 +257,19 @@ pub(crate) mod tests {
           .into(),
       )
     });
-    let loc = block_on(geocode(&*client, ", Texas")).unwrap();
-    assert_eq!(loc.name, "Texas City, United States");
-    assert!(urls.lock().unwrap()[0].contains("name=&count=10"));
+    assert!(block_on(geocode(&*client, ", Texas")).is_err());
+    assert!(urls.lock().unwrap().is_empty());
   }
 
   #[test]
   fn geocode_non_ascii_region_case_folding() {
-    // eq_ignore_ascii_case does not fold non-ASCII letters like è/È
+    // non-ASCII letters like è/È must fold too
     let (client, _) = fake(|_| {
       (
         200,
         r#"{"results": [
-          {"name": "Genève", "latitude": 46.20, "longitude": 6.14, "country": "Suisse", "admin1": "Genève"},
-          {"name": "Autre", "latitude": 10.0, "longitude": 20.0, "country": "Suisse", "admin1": "GENÈVE"}
+          {"name": "Autre", "latitude": 10.0, "longitude": 20.0, "country": "Suisse", "admin1": "Vaud"},
+          {"name": "Genève", "latitude": 46.20, "longitude": 6.14, "country": "Suisse", "admin1": "Genève"}
         ]}"#
           .into(),
       )
@@ -274,8 +277,8 @@ pub(crate) mod tests {
     // Exact match matches
     let exact = block_on(geocode(&*client, "Ville, Genève")).unwrap();
     assert_eq!(exact.latitude, 46.20);
-    // Non-ASCII uppercase with different case does not match via eq_ignore_ascii_case, falls back to first place
-    let upper = block_on(geocode(&*client, "Ville, genève")).unwrap();
+    // non-ASCII case differences still match
+    let upper = block_on(geocode(&*client, "Ville, GENÈVE")).unwrap();
     assert_eq!(upper.latitude, 46.20);
   }
 
@@ -291,7 +294,6 @@ pub(crate) mod tests {
       )
     });
     let loc = block_on(geocode(&*client, "Vatican")).unwrap();
-    // Some("") formats as "Vatican, "
-    assert_eq!(loc.name, "Vatican, ");
+    assert_eq!(loc.name, "Vatican");
   }
 }

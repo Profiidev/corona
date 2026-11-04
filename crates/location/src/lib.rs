@@ -81,6 +81,10 @@ async fn resolve(
   timeout: impl Future<Output = ()>,
 ) -> Result<Location> {
   if let (Some(latitude), Some(longitude)) = (config.latitude, config.longitude) {
+    // NaN fails the range check too
+    if !(-90.0..=90.0).contains(&latitude) || !(-180.0..=180.0).contains(&longitude) {
+      bail!("latitude or longitude out of range under [location]");
+    }
     return Ok(Location {
       name: config
         .city
@@ -91,14 +95,21 @@ async fn resolve(
       query: None,
     });
   }
+  let mut geoclue_error = None;
   if config.auto_locate {
     match locate::locate(system, timeout).await {
       Ok(location) => return Ok(location),
-      Err(e) => tracing::warn!("GeoClue: {e:?}, falling back to the configured city"),
+      Err(e) => {
+        tracing::warn!("GeoClue: {e:?}, falling back to the configured city");
+        geoclue_error = Some(e);
+      }
     }
   }
   let Some(city) = &config.city else {
-    bail!("set city or latitude and longitude under [location]");
+    match geoclue_error {
+      Some(e) => bail!("GeoClue: {e}; set city or latitude and longitude under [location]"),
+      None => bail!("set city or latitude and longitude under [location]"),
+    }
   };
   if let Some(previous) = previous.filter(|l| l.query.as_ref() == Some(city)) {
     return Ok(previous.clone());
@@ -363,6 +374,19 @@ mod tests {
   }
 
   #[test]
+  fn the_geoclue_error_is_reported_without_a_city() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let (client, _) = fake(|_| unreachable!());
+      let error = resolve(&*client, &conn, &place(None, None, true), None, ready(()))
+        .await
+        .unwrap_err();
+      assert!(error.to_string().starts_with("GeoClue: "));
+    });
+  }
+
+  #[test]
   fn the_previous_place_is_reused() {
     let bus = TestBus::new();
     block_on(async {
@@ -493,29 +517,17 @@ mod tests {
     block_on(async {
       let conn = bus.conn().await;
       let (client, _) = fake(|_| unreachable!());
-      let nan_loc = resolve(
-        &*client,
-        &conn,
-        &place(None, Some((f64::NAN, f64::INFINITY)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(nan_loc.name, "NaN, inf");
-      assert!(nan_loc.latitude.is_nan());
-      assert_eq!(nan_loc.longitude, f64::INFINITY);
-
-      let extreme = resolve(
-        &*client,
-        &conn,
-        &place(None, Some((999.0, -999.0)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(extreme.name, "999.00, -999.00");
+      for coords in [(f64::NAN, f64::INFINITY), (999.0, -999.0)] {
+        let result = resolve(
+          &*client,
+          &conn,
+          &place(None, Some(coords), false),
+          None,
+          ready(()),
+        )
+        .await;
+        assert!(result.is_err());
+      }
     });
   }
 
