@@ -6,8 +6,8 @@ use crate::{AudioNode, PipewireExt, volume::to_slider};
 use corona_desktop::entry::name_for_names;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
-  Accessory, Action, ArgSpec, Command, CommandSource, Hud, Icon, ListView, Meta, Outcome, Query,
-  Section,
+  Accessory, Action, ArgSpec, ArgValue, Command, CommandSource, Hud, Icon, ListView, Meta, Outcome,
+  Query, Section,
   kit::{ListSource, Notify, level_target, opener, percent, watch},
   registry, simple,
 };
@@ -144,11 +144,11 @@ fn stream_row(stream: &AudioNode, sinks: &[AudioNode]) -> Rc<dyn Command> {
             let id = id.clone();
             move |args, _, cx| {
               let action = match args.get(0) {
+                None | Some(ArgValue::Word(_)) => VolumeAction::ToggleMute,
                 Some(value) => match level_target(value, current) {
                   Some(level) => VolumeAction::Set(level),
                   None => anyhow::bail!("Invalid level"),
                 },
-                None => VolumeAction::ToggleMute,
               };
               StreamVolume::handle((id.clone(), action), cx)?;
               Ok(Outcome::KeepOpen)

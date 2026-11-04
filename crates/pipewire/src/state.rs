@@ -106,6 +106,7 @@ fn app(props: &DictRef) -> Vec<String> {
   .into_iter()
   .filter_map(|key| props.get(key))
   .map(|value| value.to_string())
+  .filter(|value| !value.is_empty())
   .collect()
 }
 
@@ -172,10 +173,12 @@ impl AudioNode {
     for prop in obj.properties {
       match (prop.key, prop.value) {
         (sys::SPA_PROP_channelVolumes, Value::ValueArray(ValueArray::Float(volumes))) => {
-          self.volumes = volumes;
-          changed = true;
+          if self.volumes != volumes {
+            self.volumes = volumes;
+            changed = true;
+          }
         }
-        (sys::SPA_PROP_mute, Value::Bool(mute)) => {
+        (sys::SPA_PROP_mute, Value::Bool(mute)) if self.mute != mute => {
           self.mute = mute;
           changed = true;
         }
@@ -657,6 +660,14 @@ mod tests {
       (node.volumes.as_slice(), node.mute),
       ([0.5, 0.6].as_slice(), true)
     );
+    // identical re-send is no change
+    assert!(!node.update_params(volume_object(vec![
+      Property::new(sys::SPA_PROP_mute, Value::Bool(true)),
+      Property::new(
+        sys::SPA_PROP_channelVolumes,
+        Value::ValueArray(ValueArray::Float(vec![0.5, 0.6]))
+      ),
+    ])));
   }
 
   #[test]

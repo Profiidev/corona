@@ -81,7 +81,8 @@ fn spawn(
 
     let handles = Handles::default();
 
-    // lives across reconnects, commands sent while disconnected hit empty handles and fail cleanly
+    // lives across reconnects; commands sent while disconnected stay queued and run at the start of the next
+    // mainloop.run(), before the new registry globals arrive, so they find empty handles and fail cleanly
     let (command_tx, command_rx) = pipewire::channel::channel();
     let _command_rx = command_rx.attach(mainloop.loop_(), {
       let handles = handles.clone();
