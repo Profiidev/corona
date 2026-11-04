@@ -226,10 +226,10 @@ fn main() {
       });
       corona_components::i18n::apply(config.language.as_deref());
       corona_components::assets::load(cx).expect("Failed to load assets");
-      cx.foreground_executor()
-        .clone()
-        .block_on(init_dbus(cx))
-        .expect("Failed to init dbus");
+      // power actions are optional, login must work without them
+      if let Err(e) = cx.foreground_executor().clone().block_on(init_dbus(cx)) {
+        tracing::error!("greeter: power actions unavailable: {e:#}");
+      }
 
       cx.open_window(
         WindowOptions {
