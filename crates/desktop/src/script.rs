@@ -8,6 +8,7 @@ use std::{
   net::Ipv4Addr,
   os::unix::fs::PermissionsExt as _,
   path::{Path, PathBuf},
+  rc::Rc,
   time::Duration,
 };
 
@@ -312,7 +313,19 @@ fn on_redirect(
   let Some((listener, timeout)) = taken else {
     return Err::<Unsubscribe, _>("no such listener, or it was used").into();
   };
-  let (listener_cb, redirects) = (cb.clone(), redirects.clone());
+  let listener_cb = cb.clone();
+  // Whichever of the finished task and the closed subscription comes first gives the
+  // slot back; the other must not.
+  let released = Rc::new(Cell::new(false));
+  let release = {
+    let redirects = redirects.clone();
+    move || {
+      if !released.replace(true) {
+        redirects.open.set(redirects.open.get() - 1);
+      }
+    }
+  };
+  let done = release.clone();
   let task = cx.spawn(async move |cx| {
     let timed_out = async {
       smol::Timer::after(timeout).await;
@@ -325,10 +338,11 @@ fn on_redirect(
       },
     };
     cx.update(|cx| listener_cb.call(cx, Json(event)));
+    done();
   });
   let close = Subscription::new(move || {
     drop(task);
-    redirects.open.set(redirects.open.get() - 1);
+    release();
   });
   Ok::<_, anyhow::Error>(cb.keep(close)).into()
 }

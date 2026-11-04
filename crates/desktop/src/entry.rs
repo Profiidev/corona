@@ -4,7 +4,7 @@ use std::{
   sync::{Mutex, OnceLock},
 };
 
-use freedesktop_desktop_entry::{DesktopEntry, Iter, default_paths, get_languages_from_env};
+use crate::apps::{self, App};
 
 /// Generic icons to fall back on, best first. Only `application-x-executable`
 /// is in the icon naming spec; the other two are what themes ship it as.
@@ -14,7 +14,7 @@ const FALLBACK_NAMES: [&str; 3] = [
   "application-default-icon",
 ];
 
-/// How many keys [`keys`] produces at most, so the ranking loop covers them.
+/// How many keys [`keys`] has slots for.
 const KEY_RANKS: usize = 5;
 
 /// Nix installs a binary as `.<name>-wrapped`, and a pipewire stream reports
@@ -24,28 +24,32 @@ fn undecorate(name: &str) -> &str {
   name.strip_suffix("-wrapped").unwrap_or(name)
 }
 
-/// The binary an `Exec=` line runs, without its path or its arguments.
-fn exec_binary(exec: &str) -> Option<&str> {
-  let binary = exec.split_whitespace().next()?.rsplit('/').next()?;
+/// The binary an `Exec=` program names, without its path.
+fn exec_binary(program: &str) -> Option<&str> {
+  let binary = program.rsplit('/').next()?;
   (!binary.is_empty()).then(|| undecorate(binary))
 }
 
-/// Everything (lowercased) an entry is known by, weakest key first.
+/// Everything (lowercased) an app is known by, in slots weakest first. A missing
+/// key leaves its slot empty so the others keep their rank.
 ///
 /// Anything short of this misses real applications: spotify reports the app
 /// name `spotify` but the binary `.spotify-wrapped`, and Noctalia reports the
 /// app name `Noctalia` against the appid `dev.noctalia.Noctalia`.
-fn keys(entry: &DesktopEntry, locales: &[String]) -> Vec<String> {
-  let appid = entry.appid.to_lowercase();
-
-  let mut keys = Vec::new();
-  keys.extend(entry.name(locales).map(|name| name.to_lowercase()));
-  keys.extend(entry.exec().and_then(exec_binary).map(str::to_lowercase));
-  // A reverse-DNS appid is named by its last segment everywhere else.
-  keys.extend(appid.rsplit('.').next().map(str::to_string));
-  keys.push(appid);
-  keys.extend(entry.startup_wm_class().map(str::to_lowercase));
-  keys
+fn keys(app: &App) -> [Option<String>; KEY_RANKS] {
+  let appid = app.id.to_lowercase();
+  [
+    Some(app.name.to_lowercase()),
+    app
+      .exec
+      .first()
+      .and_then(|program| exec_binary(program))
+      .map(str::to_lowercase),
+    // A reverse-DNS appid is named by its last segment everywhere else.
+    appid.rsplit('.').next().map(str::to_string),
+    Some(appid),
+    app.startup_wm_class.as_deref().map(str::to_lowercase),
+  ]
 }
 
 /// What an entry is worth looking up: its `Icon=` and its display name.
@@ -53,6 +57,21 @@ fn keys(entry: &DesktopEntry, locales: &[String]) -> Vec<String> {
 struct Entry {
   icon: Option<String>,
   name: Option<String>,
+}
+
+/// Rank by key strength across all entries, not within one: an appid has to
+/// beat another application's display name, not only its own. A later insert
+/// wins, so the strongest key goes in last.
+fn rank(entries: Vec<([Option<String>; KEY_RANKS], Entry)>) -> HashMap<String, Entry> {
+  let mut names = HashMap::new();
+  for rank in 0..KEY_RANKS {
+    for (keys, entry) in &entries {
+      if let Some(key) = &keys[rank] {
+        names.insert(key.clone(), entry.clone());
+      }
+    }
+  }
+  names
 }
 
 /// Every name an application is known by (lowercased) to its desktop entry.
@@ -63,30 +82,18 @@ fn entries() -> &'static HashMap<String, Entry> {
   static NAMES: OnceLock<HashMap<String, Entry>> = OnceLock::new();
 
   NAMES.get_or_init(|| {
-    let locales = get_languages_from_env();
-    let entries: Vec<_> = Iter::new(default_paths())
-      .entries(Some(&locales))
-      .map(|entry| {
-        let found = Entry {
-          icon: entry.icon().map(str::to_string),
-          name: entry.name(&locales).map(|name| name.to_string()),
-        };
-        (keys(&entry, &locales), found)
-      })
-      .collect();
-
-    // Rank by key strength across all entries, not within one: an appid has to
-    // beat another application's display name, not only its own. A later
-    // insert wins, so the strongest key goes in last.
-    let mut names = HashMap::new();
-    for rank in (0..KEY_RANKS).rev() {
-      for (keys, entry) in &entries {
-        if let Some(key) = keys.get(rank) {
-          names.insert(key.clone(), entry.clone());
-        }
-      }
-    }
-    names
+    rank(
+      apps::apps()
+        .iter()
+        .map(|app| {
+          let entry = Entry {
+            icon: app.icon.clone(),
+            name: Some(app.name.clone()),
+          };
+          (keys(app), entry)
+        })
+        .collect(),
+    )
   })
 }
 
@@ -122,13 +129,12 @@ fn gtk_settings_icon_theme() -> Option<String> {
 }
 
 fn parse_icon_theme(settings: &str) -> Option<String> {
-  let value = settings
-    .lines()
-    .find_map(|line| line.trim().strip_prefix("gtk-icon-theme-name"))?
-    .split_once('=')?
-    .1;
+  let value = settings.lines().find_map(|line| {
+    let (key, value) = line.split_once('=')?;
+    (key.trim() == "gtk-icon-theme-name").then_some(value)
+  })?;
 
-  let value = value.trim().trim_matches('"');
+  let value = value.trim().trim_matches(['"', '\'']);
   (!value.is_empty()).then(|| value.to_string())
 }
 
@@ -228,12 +234,10 @@ mod tests {
   }
 
   #[test]
-  fn an_exec_line_names_one_binary() {
-    assert_eq!(exec_binary("spotify %U"), Some("spotify"));
-    assert_eq!(
-      exec_binary("/usr/bin/.noctalia-wrapped --daemon"),
-      Some("noctalia")
-    );
+  fn a_program_names_one_binary() {
+    assert_eq!(exec_binary("spotify"), Some("spotify"));
+    assert_eq!(exec_binary("/usr/bin/.noctalia-wrapped"), Some("noctalia"));
+    assert_eq!(exec_binary("/opt/My App/foo"), Some("foo"));
     assert_eq!(exec_binary(""), None);
   }
 
@@ -275,125 +279,61 @@ mod tests {
     }
   }
 
-  #[test]
-  fn exec_binary_quoted_paths_and_escapes() {
-    // Quoted executable paths with whitespace split prematurely on whitespace
-    assert_eq!(exec_binary(r#""/opt/My App/bin/foo" %U"#), Some("My"));
-    // Backslash escaped paths
-    assert_eq!(
-      exec_binary(r#"/usr/bin/foo\sbar --arg"#),
-      Some(r#"foo\sbar"#)
-    );
-  }
-
-  #[test]
-  fn keys_positional_index_shifting() {
-    let mut full = DesktopEntry {
-      appid: "org.example.app".into(),
-      groups: freedesktop_desktop_entry::Groups::default(),
+  fn app(id: &str, name: &str, exec: &[&str], class: Option<&str>) -> App {
+    App {
+      id: id.into(),
+      name: name.into(),
+      generic_name: None,
+      comment: None,
+      icon: None,
+      exec: exec.iter().map(|e| e.to_string()).collect(),
+      working_dir: None,
+      keywords: Vec::new(),
+      categories: Vec::new(),
+      terminal: false,
+      no_display: false,
+      startup_wm_class: class.map(str::to_string),
       path: PathBuf::new(),
-      ubuntu_gettext_domain: None,
-    };
-    full.add_desktop_entry("Name".into(), "My App".into());
-    full.add_desktop_entry("Exec".into(), "my-bin %U".into());
-    full.add_desktop_entry("StartupWMClass".into(), "MyAppClass".into());
-    let k_full = keys(&full, &[]);
-    assert_eq!(
-      k_full,
-      vec!["my app", "my-bin", "app", "org.example.app", "myappclass"]
-    );
-    assert_eq!(k_full.len(), 5);
-
-    // Missing Name shifts exec to index 0 and startup_wm_class to index 3
-    let mut no_name = DesktopEntry {
-      appid: "org.example.app".into(),
-      groups: freedesktop_desktop_entry::Groups::default(),
-      path: PathBuf::new(),
-      ubuntu_gettext_domain: None,
-    };
-    no_name.add_desktop_entry("Exec".into(), "my-bin %U".into());
-    no_name.add_desktop_entry("StartupWMClass".into(), "MyAppClass".into());
-    let k_no_name = keys(&no_name, &[]);
-    assert_eq!(
-      k_no_name,
-      vec!["my-bin", "app", "org.example.app", "myappclass"]
-    );
-    assert_eq!(k_no_name[0], "my-bin"); // shifted to rank 0!
-    assert_eq!(k_no_name.get(4), None); // rank 4 missing!
-
-    // Missing both Name and Exec shifts appid.rsplit to index 0
-    let no_name_no_exec = DesktopEntry {
-      appid: "org.example.app".into(),
-      groups: freedesktop_desktop_entry::Groups::default(),
-      path: PathBuf::new(),
-      ubuntu_gettext_domain: None,
-    };
-    let k_minimal = keys(&no_name_no_exec, &[]);
-    assert_eq!(k_minimal, vec!["app", "org.example.app"]);
-    assert_eq!(k_minimal.len(), 2);
-  }
-
-  #[test]
-  fn ranking_loop_overwrites_strongest_key_with_weakest() {
-    // Simulate entries ranking loop from lines 81-89:
-    // Entry A has StartupWMClass = "shared" at rank 4 (strongest key)
-    let keys_a = vec![
-      "name_a".to_string(),
-      "bin_a".to_string(),
-      "app_a".to_string(),
-      "org.app.a".to_string(),
-      "shared".to_string(), // rank 4
-    ];
-    let entry_a = Entry {
-      icon: Some("icon_a".into()),
-      name: Some("App A".into()),
-    };
-
-    // Entry B has display Name = "shared" at rank 0 (weakest key)
-    let keys_b = vec![
-      "shared".to_string(), // rank 0
-      "bin_b".to_string(),
-      "app_b".to_string(),
-      "org.app.b".to_string(),
-      "class_b".to_string(),
-    ];
-    let entry_b = Entry {
-      icon: Some("icon_b".into()),
-      name: Some("App B".into()),
-    };
-
-    let entries = vec![(keys_a, entry_a), (keys_b, entry_b)];
-
-    let mut names = HashMap::new();
-    for rank in (0..KEY_RANKS).rev() {
-      for (keys, entry) in &entries {
-        if let Some(key) = keys.get(rank) {
-          names.insert(key.clone(), entry.clone());
-        }
-      }
+      actions: Vec::new(),
     }
-
-    // Because (0..KEY_RANKS).rev() iterates rank 4 down to 0, rank 0 is inserted LAST,
-    // overwriting rank 4! So "shared" maps to App B (the weakest key) instead of App A.
-    assert_eq!(names.get("shared").unwrap().name.as_deref(), Some("App B"));
   }
 
   #[test]
-  fn hidden_and_no_display_entries_not_filtered() {
-    let mut entry = DesktopEntry {
-      appid: "org.example.Hidden".into(),
-      groups: freedesktop_desktop_entry::Groups::default(),
-      path: PathBuf::new(),
-      ubuntu_gettext_domain: None,
+  fn a_missing_key_keeps_the_rank_of_the_others() {
+    let full = keys(&app(
+      "org.example.app",
+      "My App",
+      &["my-bin"],
+      Some("MyAppClass"),
+    ));
+    assert_eq!(
+      full,
+      [
+        Some("my app".into()),
+        Some("my-bin".into()),
+        Some("app".into()),
+        Some("org.example.app".into()),
+        Some("myappclass".into()),
+      ]
+    );
+
+    let bare = keys(&app("org.example.app", "My App", &[], None));
+    assert_eq!(bare[1], None);
+    assert_eq!(bare[3].as_deref(), Some("org.example.app"));
+    assert_eq!(bare[4], None);
+  }
+
+  #[test]
+  fn the_strongest_key_wins() {
+    let a = app("org.app.a", "App A", &["bin_a"], Some("shared"));
+    let b = app("org.app.b", "shared", &["bin_b"], None);
+    let entry = |name: &str| Entry {
+      icon: None,
+      name: Some(name.into()),
     };
-    entry.add_desktop_entry("Name".into(), "Hidden App".into());
-    entry.add_desktop_entry("Hidden".into(), "true".into());
-    entry.add_desktop_entry("NoDisplay".into(), "true".into());
-    assert!(entry.hidden());
-    assert!(entry.no_display());
-    // keys() still produces keys for hidden and no_display entries
-    let k = keys(&entry, &[]);
-    assert_eq!(k[0], "hidden app");
+    let names = rank(vec![(keys(&a), entry("App A")), (keys(&b), entry("App B"))]);
+
+    assert_eq!(names["shared"].name.as_deref(), Some("App A"));
   }
 
   #[test]
@@ -406,17 +346,13 @@ mod tests {
 
   #[test]
   fn parse_icon_theme_edges() {
-    // Prefix collision: gtk-icon-theme-name-backup matched before gtk-icon-theme-name
+    // A key that merely starts with the name is not it
     let backup_settings =
       "[Settings]\ngtk-icon-theme-name-backup=my-other-theme\ngtk-icon-theme-name=kora\n";
-    assert_eq!(
-      parse_icon_theme(backup_settings).as_deref(),
-      Some("my-other-theme")
-    );
+    assert_eq!(parse_icon_theme(backup_settings).as_deref(), Some("kora"));
 
-    // Single-quoted theme name is not stripped of single quotes
     let single_quoted = "[Settings]\ngtk-icon-theme-name='kora'\n";
-    assert_eq!(parse_icon_theme(single_quoted).as_deref(), Some("'kora'"));
+    assert_eq!(parse_icon_theme(single_quoted).as_deref(), Some("kora"));
 
     // Double-quoted theme name is stripped
     let double_quoted = "[Settings]\ngtk-icon-theme-name=\"kora\"\n";
