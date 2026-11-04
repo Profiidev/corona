@@ -99,25 +99,12 @@ fn user() -> Attr {
   Attr::new("requesting-user-name", name(&user))
 }
 
-/// `printer` as one path segment: anything but unreserved characters is percent-encoded,
-/// so a name cannot add path, query or authority parts.
-fn encode_segment(printer: &str) -> String {
-  let mut out = String::with_capacity(printer.len());
-  for b in printer.bytes() {
-    match b {
-      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(b as char),
-      _ => out.push_str(&format!("%{b:02X}")),
-    }
-  }
-  out
-}
-
 fn printer_uri(printer: &str) -> Attr {
   Attr::new(
     "printer-uri",
     uri(&format!(
       "ipp://localhost/printers/{}",
-      encode_segment(printer)
+      corona_utils::uri::percent_encode(printer)
     )),
   )
 }
@@ -248,6 +235,8 @@ pub async fn jobs(sock: &Path, since: i32) -> Result<Vec<Job>> {
   done.sort_by_key(|j| std::cmp::Reverse(j.id));
   done.truncate(RECENT);
   active.sort_by_key(|j| j.id);
+  // a job finishing between the two requests is in both lists
+  done.retain(|j| !active.iter().any(|a| a.id == j.id));
   active.extend(done);
   Ok(active)
 }
@@ -484,9 +473,12 @@ pub async fn unsubscribe(sock: &Path, id: i32) -> Result<()> {
 mod tests {
   #[test]
   fn printer_names_stay_one_path_segment() {
-    assert_eq!(super::encode_segment("Office_1"), "Office_1");
-    assert_eq!(super::encode_segment("a/b?c#d e"), "a%2Fb%3Fc%23d%20e");
-    assert_eq!(super::encode_segment("../x"), "..%2Fx");
+    assert_eq!(corona_utils::uri::percent_encode("Office_1"), "Office_1");
+    assert_eq!(
+      corona_utils::uri::percent_encode("a/b?c#d e"),
+      "a%2Fb%3Fc%23d%20e"
+    );
+    assert_eq!(corona_utils::uri::percent_encode("../x"), "..%2Fx");
   }
 
   use super::*;

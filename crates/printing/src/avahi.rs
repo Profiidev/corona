@@ -183,7 +183,7 @@ pub fn printers(found: &Found) -> Vec<NetworkPrinter> {
       name: s.name.clone(),
       model: s.record("ty").map(String::from),
       address: s.address.clone(),
-      uri: format!("dnssd://{}.{}.local/", encode(&s.name), s.kind),
+      uri: format!("dnssd://{}.{}.local/", corona_utils::uri::percent_encode(&s.name), s.kind),
       direct_uri: direct_uri(s),
     })
     .collect()
@@ -227,19 +227,6 @@ pub async fn resolve_printer(conn: &zbus::Connection, printer: &NetworkPrinter) 
     0,
   );
   Ok(direct_uri(&resolve(&server, &item).await?))
-}
-
-/// Percent-encodes everything but unreserved URI characters.
-fn encode(name: &str) -> String {
-  name
-    .bytes()
-    .map(|b| match b {
-      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-        (b as char).to_string()
-      }
-      _ => format!("%{b:02X}"),
-    })
-    .collect()
 }
 
 // shortcut: a queue is matched to an announcement by its DNS-SD name or its
@@ -438,6 +425,6 @@ mod tests {
 
   #[test]
   fn percent_coding() {
-    assert_eq!(encode("Ä b/c"), "%C3%84%20b%2Fc");
+    assert_eq!(corona_utils::uri::percent_encode("Ä b/c"), "%C3%84%20b%2Fc");
   }
 }

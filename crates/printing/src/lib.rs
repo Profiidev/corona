@@ -486,6 +486,16 @@ fn set_scanners(
   entity.update(cx, |list, cx| {
     next.extend(list.iter().filter(|s| s.sane.is_some() != sane).cloned());
     next.sort_by_key(|s| s.sane.is_some());
+    // names key the selection, a SANE one equal to an eSCL one gets its device
+    let mut seen = std::collections::HashSet::new();
+    for s in &mut next {
+      if !seen.insert(s.name.clone())
+        && let Some(device) = &s.sane
+      {
+        s.name = format!("{} ({device})", s.name);
+        seen.insert(s.name.clone());
+      }
+    }
     if *list != next {
       *list = next;
       cx.notify();

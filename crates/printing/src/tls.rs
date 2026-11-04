@@ -8,7 +8,7 @@ use std::{
   path::{Path, PathBuf},
   pin::Pin,
   sync::Arc,
-  time::Duration,
+  time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
@@ -29,6 +29,8 @@ use crate::ipp::{HttpResponse, MAX_RESPONSE, complete, oversized, parse_response
 const CONNECT: Duration = Duration::from_secs(10);
 /// a high resolution page can take a while before its first byte
 const READ: Duration = Duration::from_secs(120);
+/// one request, slightly under `SCAN_TIMEOUT` since the thread outlives it
+const TOTAL: Duration = Duration::from_secs(14 * 60);
 
 /// Where pinned scanner certificates are kept, one `name<TAB>sha256` a line.
 pub fn pins_file() -> PathBuf {
@@ -69,10 +71,12 @@ impl HttpClient for PinnedClient {
   fn send(&self, req: Request<AsyncBody>) -> BoxFuture<Result<Response<AsyncBody>>> {
     let (key, pins, agent) = (self.key.clone(), self.pins.clone(), self.user_agent.clone());
     Box::pin(async move {
+      let deadline = Instant::now() + TOTAL;
       let (parts, mut body) = req.into_parts();
       let mut bytes = Vec::new();
       body.read_to_end(&mut bytes).await?;
-      let response = smol::unblock(move || fetch(&key, &pins, &agent, &parts, &bytes)).await?;
+      let response =
+        smol::unblock(move || fetch(&key, &pins, &agent, &parts, &bytes, deadline)).await?;
       let mut builder = Response::builder().status(response.status);
       for (name, value) in &response.headers {
         // the body is already decoded
@@ -93,6 +97,7 @@ fn fetch(
   agent: &HeaderValue,
   parts: &Parts,
   body: &[u8],
+  deadline: Instant,
 ) -> Result<HttpResponse> {
   let host = parts.uri.host().context("URL without a host")?;
   let port = parts.uri.port_u16().unwrap_or(443);
@@ -149,6 +154,12 @@ fn fetch(
   let mut raw = Vec::new();
   let mut buf = [0; 16 * 1024];
   loop {
+    // the caller's timeout cannot stop this thread, so bound the total here
+    let left = deadline
+      .checked_duration_since(Instant::now())
+      .filter(|d| !d.is_zero())
+      .with_context(|| format!("{host} took too long to answer"))?;
+    tls.sock.set_read_timeout(Some(left.min(READ)))?;
     match tls.read(&mut buf) {
       Ok(0) => break,
       Ok(n) => {

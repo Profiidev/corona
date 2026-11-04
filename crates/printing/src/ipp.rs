@@ -159,7 +159,15 @@ impl Message {
     self.groups(tag::OPERATION).find_map(|g| g.get(name))
   }
 
+  #[cfg(test)]
   pub fn encode(&self) -> Vec<u8> {
+    let mut out = self.encode_head();
+    out.extend(&self.data);
+    out
+  }
+
+  /// Everything up to and including the end tag, without the document.
+  fn encode_head(&self) -> Vec<u8> {
     let mut out = vec![2, 0];
     out.extend(self.code.to_be_bytes());
     out.extend(self.request_id.to_be_bytes());
@@ -186,7 +194,6 @@ impl Message {
       }
     }
     out.push(tag::END);
-    out.extend(&self.data);
     out
   }
 
@@ -299,14 +306,15 @@ pub async fn send_within(sock: &Path, request: &Message, timeout: Duration) -> R
 }
 
 async fn exchange(sock: &Path, request: &Message) -> Result<Message> {
-  let body = request.encode();
-  let (mut status, mut reply) = http_body(&post(sock, &body, None).await?)?;
+  // the document is written from `request.data`, not copied into the head
+  let head = request.encode_head();
+  let (mut status, mut reply) = http_body(&post(sock, &head, &request.data, None).await?)?;
   // cupsd's socket trusts the uid it sees: an admin user needs no password
   if status == 401
     && let Ok(user) = std::env::var("USER")
   {
     let auth = format!("PeerCred {user}");
-    (status, reply) = http_body(&post(sock, &body, Some(&auth)).await?)?;
+    (status, reply) = http_body(&post(sock, &head, &request.data, Some(&auth)).await?)?;
   }
   let body = reply;
   if status == 401 || status == 403 {
@@ -330,19 +338,20 @@ async fn exchange(sock: &Path, request: &Message) -> Result<Message> {
   }
 }
 
-async fn post(sock: &Path, body: &[u8], auth: Option<&str>) -> Result<Vec<u8>> {
+async fn post(sock: &Path, head: &[u8], data: &[u8], auth: Option<&str>) -> Result<Vec<u8>> {
   let mut stream = smol::net::unix::UnixStream::connect(sock)
     .await
     .with_context(|| format!("connecting to {}", sock.display()))?;
   let auth = auth
     .map(|a| format!("Authorization: {a}\r\n"))
     .unwrap_or_default();
-  let head = format!(
+  let http = format!(
     "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/ipp\r\nContent-Length: {}\r\n{auth}Connection: close\r\n\r\n",
-    body.len()
+    head.len() + data.len()
   );
-  stream.write_all(head.as_bytes()).await?;
-  stream.write_all(body).await?;
+  stream.write_all(http.as_bytes()).await?;
+  stream.write_all(head).await?;
+  stream.write_all(data).await?;
   stream.flush().await?;
   let mut raw = Vec::new();
   let mut buf = [0; 8192];
@@ -402,7 +411,7 @@ pub fn complete(raw: &[u8]) -> bool {
         .parse::<usize>()
         .ok()
     })
-    .is_some_and(|len| raw.len() >= end + 4 + len)
+    .is_some_and(|len| raw.len() - (end + 4) >= len)
 }
 
 /// A whole HTTP/1.1 response, its body decoded.
@@ -555,5 +564,8 @@ mod tests {
     assert!(!complete(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nab"));
     // unframed bodies end with the connection
     assert!(!complete(b"HTTP/1.1 200 OK\r\n\r\nab"));
+    assert!(!complete(
+      b"HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551615\r\n\r\nab"
+    ));
   }
 }
