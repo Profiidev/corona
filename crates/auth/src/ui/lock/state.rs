@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::AuthExt;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use corona_auth_screen::Fingerprint;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
@@ -20,8 +20,9 @@ use futures::{
   future::{Either, FutureExt, Shared, select},
 };
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, DisplayId, Entity, Global, Size, Task,
-  WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+  AnyWindowHandle, App, AppContext, Bounds, DisplayEvent, DisplayId, Entity, Global, Size,
+  Subscription, Task, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowKind,
+  WindowOptions,
   base::Root,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
   point, px,
@@ -59,6 +60,10 @@ pub struct LockState {
   fingerprint: Option<Task<()>>,
   /// What the login shows of the scan
   reader: Option<Entity<Fingerprint>>,
+  /// The configured main display and its window, what displays plugged in later forward to
+  main: Option<(DisplayId, AnyWindowHandle)>,
+  /// Covers displays plugged in while locked, gone with the state
+  displays: Option<Subscription>,
 }
 
 impl Global for LockState {}
@@ -88,28 +93,22 @@ impl LockState {
     let sigma = cx.config().lockscreen.blur;
     let locking = cx
       .spawn(async move |cx| {
-        let capture = cx
-          .background_executor()
-          .spawn(async move { capture_all(names) });
+        // capture and blur share one deadline, the lock must not wait on either
+        let work = cx.background_executor().spawn(async move {
+          let frames = capture_all(names)?;
+          std::thread::scope(|s| {
+            frames
+              .iter()
+              .map(|(name, frame)| s.spawn(move || Ok((name.clone(), background(frame, sigma)?))))
+              .collect::<Vec<_>>()
+              .into_iter()
+              .map(|h| h.join().map_err(|_| anyhow!("background panicked"))?)
+              .collect::<Result<Vec<_>>>()
+          })
+        });
         let timeout = cx.background_executor().timer(CAPTURE_TIMEOUT);
-        let frames = match select(capture, timeout).await {
-          Either::Left((frames, _)) => cx
-            .background_executor()
-            .spawn(async move {
-              let frames = frames?;
-              std::thread::scope(|s| {
-                frames
-                  .iter()
-                  .map(|(name, frame)| {
-                    s.spawn(move || Ok((name.clone(), background(frame, sigma)?)))
-                  })
-                  .collect::<Vec<_>>()
-                  .into_iter()
-                  .map(|h| h.join().expect("lock background panicked"))
-                  .collect::<Result<Vec<_>>>()
-              })
-            })
-            .await
+        let frames = match select(work, timeout).await {
+          Either::Left((frames, _)) => frames
             .inspect_err(|e| tracing::warn!("lock: no screen capture for the background: {e:#}"))
             .unwrap_or_default(),
           Either::Right(_) => {
@@ -164,24 +163,68 @@ impl LockState {
     let main = (cx.config().lockscreen.monitor.as_deref()).and_then(|m| display_id_for(m, cx));
     let locked = cx.lock_session();
 
-    let windows = open_screens(screens, main, |display, background, login| {
-      Self::open(display, background, login, cx)
-    });
-
-    match windows {
-      Ok(windows) => cx.global_mut::<Self>().windows = windows,
-      Err(e) => {
-        tracing::error!("failed to cover the displays: {e:#}");
-        Self::unlock(cx);
-        return None;
+    let mut windows = Vec::new();
+    let mut main_window = None;
+    let opened = open_screens(screens, main, &mut windows, |display, background, login| {
+      let window = Self::open(display, background, login, cx)?;
+      if main == Some(display) {
+        main_window = Some((display, window));
       }
+      Ok(window)
+    });
+    // kept even on failure, so the unlock closes what did open
+    let state = cx.global_mut::<Self>();
+    state.windows = windows;
+    state.main = main_window;
+
+    if let Err(e) = opened {
+      tracing::error!("failed to cover the displays: {e:#}");
+      Self::unlock(cx);
+      return None;
     }
 
+    // a failed unlock above removed the state, so only a live lock watches
+    let subscription = cx.observe_displays(|event, cx| {
+      if let DisplayEvent::Added(display) = event {
+        Self::cover(display, cx);
+      }
+    });
+    cx.global_mut::<Self>().displays = Some(subscription);
     Some(locked)
+  }
+
+  /// A display plugged in while locked gets a lock window like the others. A failure
+  /// leaves that display bare, the session stays locked
+  fn cover(display: DisplayId, cx: &mut App) {
+    let Some(state) = cx.try_global::<Self>() else {
+      return;
+    };
+    let compositor = cx.compositor();
+    let disabled = cx
+      .displays()
+      .iter()
+      .find(|d| d.id() == display)
+      .is_some_and(|d| d.uuid().is_ok_and(|uuid| compositor.is_disabled(uuid, cx)));
+    if disabled || !is_uncovered(&state.screens, display) {
+      return;
+    }
+    let login = state.main.map(|(_, window)| window);
+    match Self::open(display, None, login, cx) {
+      Ok(window) => {
+        let state = cx.global_mut::<Self>();
+        state.screens.push((display, None));
+        state.windows.push(window);
+      }
+      Err(e) => tracing::error!("lock: no window on the new display: {e:#}"),
+    }
   }
 
   /// Starts the clock on the first display to draw
   pub fn animation_start(cx: &mut App) -> Instant {
+    // a window of a failed lock can still draw once the state is gone
+    if !cx.has_global::<Self>() {
+      return Instant::now();
+    }
     *cx
       .global_mut::<Self>()
       .animation_start
@@ -238,6 +281,8 @@ impl LockState {
             logged = false;
             cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Failed));
           }
+          // idle; the claim is released, claim again
+          Err(e) if e.is::<crate::ScanTimeout>() => {}
           // no reader, no prints enrolled or fprintd missing; the password still works
           Err(e) => {
             cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Off));
@@ -373,25 +418,29 @@ impl LockState {
   }
 }
 
+fn is_uncovered<T>(screens: &[(DisplayId, T)], display: DisplayId) -> bool {
+  !screens.iter().any(|(d, _)| *d == display)
+}
+
 /// Opens a window per screen, `main`'s first so the others get its window to
-/// forward their keys to. No `main`, or one not connected: each shows a login
+/// forward their keys to. No `main`, or one not connected: each shows a login.
+/// Every window opened is in `windows`, also when a later one fails
 fn open_screens<T, W: Copy>(
   mut screens: Vec<(DisplayId, T)>,
   main: Option<DisplayId>,
+  windows: &mut Vec<W>,
   mut open: impl FnMut(DisplayId, T, Option<W>) -> Result<W>,
-) -> Result<Vec<W>> {
+) -> Result<()> {
   screens.sort_by_key(|(display, _)| main.is_some_and(|m| m != *display));
   let mut login = None;
-  screens
-    .into_iter()
-    .map(|(display, screen)| {
-      let window = open(display, screen, login)?;
-      if main == Some(display) {
-        login = Some(window);
-      }
-      Ok(window)
-    })
-    .collect()
+  for (display, screen) in screens {
+    let window = open(display, screen, login)?;
+    windows.push(window);
+    if main == Some(display) {
+      login = Some(window);
+    }
+  }
+  Ok(())
 }
 
 /// `frame` sharp, and blurred by `sigma` for behind the lock
@@ -447,10 +496,15 @@ mod tests {
   /// for its own login
   fn opened(displays: &[u64], main: Option<u64>) -> Vec<(u64, u64)> {
     let screens = displays.iter().map(|&d| (DisplayId::new(d), ())).collect();
-    open_screens(screens, main.map(DisplayId::new), |display, (), login| {
-      Ok((u64::from(display), login.map_or(0, |(d, _)| d)))
-    })
-    .unwrap()
+    let mut windows = Vec::new();
+    open_screens(
+      screens,
+      main.map(DisplayId::new),
+      &mut windows,
+      |display, (), login| Ok((u64::from(display), login.map_or(0, |(d, _)| d))),
+    )
+    .unwrap();
+    windows
   }
 
   #[test]
@@ -467,13 +521,26 @@ mod tests {
   #[test]
   fn open_screens_stops_on_failure() {
     let screens = vec![(DisplayId::new(1), ()), (DisplayId::new(2), ())];
+    let mut windows = Vec::new();
     let mut calls = 0;
-    let res = open_screens(screens, None, |_, (), _: Option<()>| {
+    let res = open_screens(screens, None, &mut windows, |_, (), _: Option<()>| {
       calls += 1;
-      anyhow::bail!("no window")
+      match calls {
+        1 => Ok(()),
+        _ => anyhow::bail!("no window"),
+      }
     });
     assert!(res.is_err());
-    assert_eq!(calls, 1);
+    assert_eq!(calls, 2);
+    // the one that opened is still there to close
+    assert_eq!(windows.len(), 1);
+  }
+
+  #[test]
+  fn covered_displays_are_not_covered_twice() {
+    let screens = [(DisplayId::new(1), ())];
+    assert!(!is_uncovered(&screens, DisplayId::new(1)));
+    assert!(is_uncovered(&screens, DisplayId::new(2)));
   }
 
   #[gpui::test]

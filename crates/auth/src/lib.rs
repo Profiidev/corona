@@ -9,7 +9,7 @@ use corona_config::APP_NAME;
 use corona_js::ScriptExt;
 use corona_utils::Buses;
 use futures::channel::oneshot;
-use futures_lite::StreamExt;
+use futures_lite::{FutureExt, StreamExt};
 use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
@@ -24,6 +24,19 @@ pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
+/// A scan nobody touched ran out; not a fault, scan again
+#[derive(Debug)]
+pub struct ScanTimeout;
+
+impl std::fmt::Display for ScanTimeout {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("fingerprint scan timed out")
+  }
+}
+
+impl std::error::Error for ScanTimeout {}
+
+const SCAN_TIMEOUT: Duration = Duration::from_secs(45);
 const FAIL_DELAY: Duration = Duration::from_secs(2);
 const PAM_DIRS: [&str; 2] = ["/etc/pam.d", "/usr/lib/pam.d"];
 const FALLBACK_SERVICE: &str = "login";
@@ -50,8 +63,9 @@ trait Device {
   fn verify_status(&self, result: &str, done: bool) -> zbus::Result<()>;
 }
 
-/// The release of a claim whose scan was dropped half way
-type Releasing = Arc<Mutex<Option<zbus::Task<()>>>>;
+/// Resolves when the release of a claim whose scan was dropped half way is done.
+/// The release itself runs detached, so waiting for it can be dropped safely
+type Releasing = Arc<Mutex<Option<oneshot::Receiver<()>>>>;
 
 #[derive(Clone)]
 pub struct Auth {
@@ -104,12 +118,22 @@ impl Auth {
       }
       let path = ManagerProxy::new(&conn).await?.get_default_device().await?;
       let device = DeviceProxy::builder(&conn).path(path)?.build().await?;
-      device.claim(&user).await?;
+      // before the claim, so a drop mid-call still releases it
       let claim = Claim {
         device: Some(device.clone()),
         releasing,
       };
-      let matched = verify(&device, listening).await;
+      let matched = match device.claim(&user).await {
+        Ok(()) => {
+          // so an untouched scan cannot hold the device and the lock forever
+          let timeout = async {
+            smol::Timer::after(SCAN_TIMEOUT).await;
+            Err(ScanTimeout.into())
+          };
+          verify(&device, listening).or(timeout).await
+        }
+        Err(e) => Err(e.into()),
+      };
       claim.release().await;
       matched
     }
@@ -125,9 +149,11 @@ struct Claim {
 
 impl Claim {
   async fn release(mut self) {
-    if let Some(device) = self.device.take() {
-      let_go(device).await;
+    // taken only afterwards, so a drop mid release still lets go in `Drop`
+    if let Some(device) = &self.device {
+      let_go(device.clone()).await;
     }
+    self.device = None;
   }
 }
 
@@ -135,8 +161,17 @@ impl Drop for Claim {
   fn drop(&mut self) {
     if let Some(device) = self.device.take() {
       let executor = device.inner().connection().executor().clone();
-      let task = executor.spawn(let_go(device), "fprint release");
-      *self.releasing.lock().unwrap() = Some(task);
+      let (done, released) = oneshot::channel();
+      executor
+        .spawn(
+          async move {
+            let_go(device).await;
+            let _ = done.send(());
+          },
+          "fprint release",
+        )
+        .detach();
+      *self.releasing.lock().unwrap() = Some(released);
     }
   }
 }

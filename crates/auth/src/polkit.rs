@@ -8,6 +8,9 @@ use std::{
   os::unix::net::UnixStream,
   path::PathBuf,
   process::{Command, Stdio},
+  sync::mpsc as std_mpsc,
+  thread,
+  time::Duration,
 };
 
 use anyhow::{Context as _, Result, bail};
@@ -15,10 +18,16 @@ use futures::channel::{mpsc, oneshot};
 use futures_lite::StreamExt;
 use gpui_kit::{App, AppContext, Entity, Global, Task};
 use zbus::{
-  Connection, proxy,
+  Connection,
+  message::Header,
+  proxy,
   zvariant::{OwnedValue, Value},
 };
 
+/// A helper that says nothing for this long is wedged
+const HELPER_TIMEOUT: Duration = Duration::from_secs(30);
+/// The bus name of polkitd
+const AUTHORITY: &str = "org.freedesktop.PolicyKit1";
 const AGENT_PATH: &str = "/org/freedesktop/PolicyKit1/AuthenticationAgent";
 /// polkit 126 and newer start a helper per connection here
 const HELPER_SOCKET: &str = "/run/polkit/agent-helper.socket";
@@ -68,6 +77,8 @@ pub struct PolkitRequest {
 enum Event {
   Begin(PolkitRequest),
   Cancel(String),
+  /// polkitd restarted and lost every cookie
+  Reset,
 }
 
 #[derive(Debug, zbus::DBusError)]
@@ -87,12 +98,53 @@ type Identity = (String, HashMap<String, OwnedValue>);
 
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
 impl Agent {
+  // the arguments are polkit's D-Bus signature
+  #[allow(clippy::too_many_arguments)]
   async fn begin_authentication(
     &self,
+    #[zbus(header)] header: Header<'_>,
+    #[zbus(connection)] conn: &Connection,
     _action_id: String,
     message: String,
     _icon_name: String,
     _details: HashMap<String, String>,
+    cookie: String,
+    identities: Vec<Identity>,
+  ) -> Result<(), AgentError> {
+    from_polkitd(&header, conn).await?;
+    self.begin(message, cookie, identities).await
+  }
+
+  async fn cancel_authentication(
+    &self,
+    #[zbus(header)] header: Header<'_>,
+    #[zbus(connection)] conn: &Connection,
+    cookie: String,
+  ) -> Result<(), AgentError> {
+    from_polkitd(&header, conn).await?;
+    self.cancel(cookie);
+    Ok(())
+  }
+}
+
+/// Only polkitd may ask for a password, anyone else on the bus could stage a
+/// prompt
+async fn from_polkitd(header: &Header<'_>, conn: &Connection) -> Result<(), AgentError> {
+  let owner = zbus::fdo::DBusProxy::new(conn)
+    .await?
+    .get_name_owner(AUTHORITY.try_into().map_err(zbus::Error::from)?)
+    .await
+    .map_err(|e| AgentError::Failed(format!("no polkitd: {e}")))?;
+  match header.sender() {
+    Some(sender) if sender.as_str() == owner.as_str() => Ok(()),
+    _ => Err(AgentError::Failed("not polkitd".into())),
+  }
+}
+
+impl Agent {
+  async fn begin(
+    &self,
+    message: String,
     cookie: String,
     identities: Vec<Identity>,
   ) -> Result<(), AgentError> {
@@ -116,7 +168,7 @@ impl Agent {
       .map_err(|_| AgentError::Cancelled("canceled".into()))
   }
 
-  async fn cancel_authentication(&self, cookie: String) {
+  fn cancel(&self, cookie: String) {
     let _ = self.events.unbounded_send(Event::Cancel(cookie));
   }
 }
@@ -136,14 +188,31 @@ fn pick_user(identities: &[Identity], me: u32) -> Option<u32> {
   }
 }
 
+/// The account running corona; $USER can be unset or stale
+pub(crate) fn current_user() -> String {
+  // SAFETY: getuid cannot fail
+  user_name(unsafe { libc::getuid() })
+    .or_else(|| std::env::var("USER").ok())
+    .unwrap_or_default()
+}
+
 fn user_name(uid: u32) -> Option<String> {
   // SAFETY: an all zero passwd is valid, getpwuid_r fills it
   let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
   let mut buf = vec![0 as libc::c_char; 4096];
   let mut found = std::ptr::null_mut();
-  // SAFETY: every pointer outlives the call; reentrant, unlike getpwuid
-  let code = unsafe { libc::getpwuid_r(uid, &mut entry, buf.as_mut_ptr(), buf.len(), &mut found) };
-  if code != 0 || found.is_null() {
+  loop {
+    // SAFETY: every pointer outlives the call; reentrant, unlike getpwuid
+    let code =
+      unsafe { libc::getpwuid_r(uid, &mut entry, buf.as_mut_ptr(), buf.len(), &mut found) };
+    // a long group list or gecos does not fit, ask again with more room
+    match code {
+      libc::ERANGE if buf.len() < 1 << 20 => buf.resize(buf.len() * 2, 0),
+      0 => break,
+      _ => return None,
+    }
+  }
+  if found.is_null() {
     return None;
   }
   // SAFETY: pw_name points into buf, which is still alive
@@ -156,6 +225,8 @@ fn user_name(uid: u32) -> Option<String> {
 fn authenticate(helper: &Helper, user: &str, cookie: &str, password: &str) -> Result<bool> {
   if helper.socket.exists() {
     let socket = UnixStream::connect(&helper.socket)?;
+    socket.set_read_timeout(Some(HELPER_TIMEOUT))?;
+    socket.set_write_timeout(Some(HELPER_TIMEOUT))?;
     writeln!(&socket, "{user}\n{cookie}")?;
     return converse(BufReader::new(&socket), &socket, password);
   }
@@ -172,9 +243,19 @@ fn authenticate(helper: &Helper, user: &str, cookie: &str, password: &str) -> Re
   let mut stdin = child.stdin.take().context("no helper stdin")?;
   writeln!(stdin, "{cookie}")?;
   let stdout = child.stdout.take().context("no helper stdout")?;
+  // kills a wedged helper, which ends the conversation with its closed output
+  let (finished, finishing) = std_mpsc::channel::<()>();
+  let pid = child.id() as libc::pid_t;
+  thread::spawn(move || {
+    if finishing.recv_timeout(HELPER_TIMEOUT) == Err(std_mpsc::RecvTimeoutError::Timeout) {
+      // SAFETY: the child is not reaped before `finished` is dropped
+      unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+  });
   // stdin closes with the conversation, so the helper exits before the wait
   let result = converse(BufReader::new(stdout), stdin, password);
   let _ = child.wait();
+  drop(finished);
   result
 }
 
@@ -260,12 +341,24 @@ impl Polkit {
   }
 }
 
-async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Event>> {
+async fn register(
+  conn: &Connection,
+) -> Result<(mpsc::UnboundedReceiver<Event>, mpsc::UnboundedSender<Event>)> {
   let (events, rx) = mpsc::unbounded();
   conn
     .object_server()
-    .at(AGENT_PATH, Agent { events })
+    .at(
+      AGENT_PATH,
+      Agent {
+        events: events.clone(),
+      },
+    )
     .await?;
+  announce(conn).await?;
+  Ok((rx, events))
+}
+
+async fn announce(conn: &Connection) -> Result<()> {
   // a process subject would only cover our own requests. `auto` is our
   // session, or the user's graphical one when run as a user service
   let session = SessionProxy::new(conn).await?.id().await?;
@@ -278,7 +371,7 @@ async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Event>> {
     .await?
     .register_authentication_agent(&subject, &locale, AGENT_PATH)
     .await?;
-  Ok(rx)
+  Ok(())
 }
 
 pub(crate) fn init(cx: &mut App, conn: &Connection) {
@@ -294,15 +387,37 @@ pub(crate) fn init(cx: &mut App, conn: &Connection) {
 fn serve(requests: Entity<VecDeque<PolkitRequest>>, conn: Connection, cx: &mut App) {
   cx.spawn(async move |cx| {
     // another agent, like polkit-gnome, keeps asking; everything else works
-    let mut events = match register(&conn).await {
+    let (mut events, reset_events) = match register(&conn).await {
       Ok(events) => events,
       Err(e) => return tracing::warn!("Not answering polkit: {e:#}"),
     };
+    // polkitd forgets us when it restarts
+    let conn = conn.clone();
+    let resets = reset_events.clone();
+    cx.background_spawn(async move {
+      let Ok(authority) = AuthorityProxy::new(&conn).await else {
+        return;
+      };
+      let Ok(mut owners) = authority.inner().receive_owner_changed().await else {
+        return;
+      };
+      while let Some(owner) = owners.next().await {
+        // the new polkitd knows none of the queued cookies
+        let _ = resets.unbounded_send(Event::Reset);
+        if owner.is_some()
+          && let Err(e) = announce(&conn).await
+        {
+          tracing::warn!("Not answering polkit anymore: {e:#}");
+        }
+      }
+    })
+    .detach();
     while let Some(event) = events.next().await {
       requests.update(cx, |requests, cx| {
         match event {
           Event::Begin(request) => requests.push_back(request),
           Event::Cancel(cookie) => requests.retain(|r| r.cookie != cookie),
+          Event::Reset => requests.clear(),
         }
         cx.notify();
       });
@@ -311,11 +426,11 @@ fn serve(requests: Entity<VecDeque<PolkitRequest>>, conn: Connection, cx: &mut A
   .detach();
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 impl Polkit {
   /// Without polkitd; `helper` speaks polkit-agent-helper-1's protocol: the
   /// user as its argument, the cookie, then PAM lines
-  pub fn fake(helper: PathBuf, cx: &mut App) -> Self {
+  pub(crate) fn fake(helper: PathBuf, cx: &mut App) -> Self {
     Self {
       requests: cx.new(|_| VecDeque::new()),
       helper: Helper {
@@ -326,7 +441,7 @@ impl Polkit {
   }
 
   /// Asks like polkitd does; the receiver fails when the request is canceled
-  pub fn ask(&self, message: &str, cookie: &str, cx: &mut App) -> oneshot::Receiver<()> {
+  pub(crate) fn ask(&self, message: &str, cookie: &str, cx: &mut App) -> oneshot::Receiver<()> {
     let (reply, done) = oneshot::channel();
     let request = PolkitRequest {
       message: message.into(),
@@ -426,14 +541,7 @@ mod tests {
   }
 
   fn begin(agent: &Agent, identities: Vec<Identity>) -> Result<(), AgentError> {
-    block_on(agent.begin_authentication(
-      "org.example.do".into(),
-      "Do it".into(),
-      String::new(),
-      HashMap::new(),
-      "c1".into(),
-      identities,
-    ))
+    block_on(agent.begin("Do it".into(), "c1".into(), identities))
   }
 
   #[test]
@@ -461,7 +569,7 @@ mod tests {
 
     // nobody to ask for, polkitd never sends that
     assert!(matches!(begin(&agent, vec![]), Err(AgentError::Failed(_))));
-    block_on(agent.cancel_authentication("c1".into()));
+    agent.cancel("c1".into());
     assert!(matches!(received.try_recv(), Ok(Event::Cancel(c)) if c == "c1"));
     drop(received);
     let gone = begin(&agent, vec![identity(uid())]);
@@ -584,7 +692,7 @@ mod tests {
     let bus = TestBus::new();
     let dir = tempfile::tempdir().unwrap();
     let registered = Arc::default();
-    let (_services, agent, caller) = block_on(async {
+    let (caller, agent, stranger) = block_on(async {
       let services = polkitd(&bus, &registered).await;
       (services, bus.conn().await, bus.conn().await)
     });
@@ -601,6 +709,13 @@ mod tests {
     );
 
     // queued in order, the first is shown
+    // not from polkitd
+    let rejected = ask(&stranger, &agent, "evil").join().unwrap().unwrap_err();
+    assert!(
+      matches!(rejected, zbus::Error::MethodError(ref n, ..) if n.as_str() == "org.freedesktop.PolicyKit1.Error.Failed")
+    );
+    assert!(cookies(&polkit, cx).is_empty());
+
     let first = ask(&caller, &agent, "c1");
     wait_until(cx, |cx| cookies(&polkit, cx).len() == 1);
     let second = ask(&caller, &agent, "c2");

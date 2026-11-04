@@ -11,7 +11,7 @@ mod view;
 /// Who is logged in, for the lock screen
 fn user(cx: &App) -> User {
   User {
-    name: std::env::var("USER").unwrap_or_default().into(),
+    name: crate::polkit::current_user().into(),
     avatar: cx
       .config()
       .shell

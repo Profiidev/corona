@@ -8,9 +8,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[features]
-test-support = []
-
 [dependencies]
 corona_auth_screen.workspace = true
 corona_capture.workspace = true
@@ -32,6 +29,7 @@ gpui-kit.workspace = true
 zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
+smol.workspace = true
 futures.workspace = true
 tracing.workspace = true
 libc = "0.2"

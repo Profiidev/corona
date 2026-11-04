@@ -12,7 +12,7 @@ use specta::specta;
 
 /// Only ever the user running corona, a plugin cannot probe other accounts
 fn user() -> String {
-  std::env::var("USER").unwrap_or_default()
+  crate::polkit::current_user()
 }
 
 /// Failed attempts a plugin gets before it has to wait
@@ -87,6 +87,10 @@ impl Drop for Attempt {
 async fn limited<F: Future<Output = Result<bool>>>(started: Result<(Attempt, F)>) -> Result<bool> {
   let (attempt, run) = started?;
   let result = run.await;
+  // a timeout is not a wrong finger; dropping the attempt frees the slot
+  if matches!(&result, Err(e) if e.is::<crate::ScanTimeout>()) {
+    return result;
+  }
   let ok = matches!(result, Ok(true));
   backoff(&attempt.0, |b| b.finish(ok, Instant::now()));
   result
@@ -156,6 +160,16 @@ mod tests {
     assert_eq!(b.until, Some(now + MAX_WAIT));
     b.finish(true, now);
     b.start(now).unwrap();
+  }
+
+  #[test]
+  fn a_timeout_is_not_a_failure() {
+    let plugin = "timeout-test";
+    for _ in 0..=FREE_FAILURES {
+      let started = Attempt::start(plugin).map(|a| (a, async { Err(crate::ScanTimeout.into()) }));
+      assert!(futures::executor::block_on(limited(started)).is_err());
+    }
+    assert!(Attempt::start(plugin).is_ok());
   }
 
   #[gpui::test]

@@ -64,9 +64,14 @@ impl IpcCommand for Session {
     let lock = lock.then(|| LockState::lock(cx));
     let power = power.map(|a| cx.power().session_action(a));
 
-    cx.spawn(async move |_| {
+    cx.spawn(async move |cx| {
       if let Some(lock) = lock {
         lock.await;
+        // a refused lock removes the state; never suspend unlocked
+        if !cx.update(|cx| cx.has_global::<LockState>()) {
+          tracing::warn!("session not locked, skipping the power action");
+          return;
+        }
       }
       if let Some(power) = power {
         let _ = power.await.log_err();
