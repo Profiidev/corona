@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use corona_js::ScriptRegistry;
 
@@ -40,7 +40,9 @@ impl SchemaCommands {
     };
     let text = serde_json::to_string_pretty(&schema)? + "\n";
     match output {
-      Some(path) => fs::write(path, text)?,
+      Some(path) => {
+        fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?
+      }
       None => print!("{text}"),
     }
     Ok(())

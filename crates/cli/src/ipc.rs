@@ -137,7 +137,10 @@ impl IpcCommands {
       IpcCommands::Idle { command } => command.run(),
       IpcCommands::PowerProfile { command } => command.run(),
       IpcCommands::Theme { command } => command.run(),
-      IpcCommands::Plugin(args) => args.run(),
+      IpcCommands::Plugin(args) => args.run().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1)
+      }),
       IpcCommands::Session(args) => args.run(),
       IpcCommands::Settings(args) => args.run(),
     }
@@ -303,8 +306,8 @@ pub(crate) mod tests {
       (&["notification", "dismiss"], json!(null), corona_notifications::commands::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_launcher::ipc::Toggle::COMMAND, json!(null)),
       (&["launcher", "close"], json!(null), corona_launcher::ipc::Close::COMMAND, json!(null)),
-      (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40" })),
-      (&["launcher", "open"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": null, "query": null })),
+      (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40", "prefill": false })),
+      (&["launcher", "open"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": null, "query": null, "prefill": false })),
       (&["osk", "toggle"], json!(null), corona_osk::commands::Toggle::COMMAND, json!(null)),
       (&["osk", "show"], json!(null), corona_osk::commands::Show::COMMAND, json!(null)),
       (&["osk", "tablet", "on"], json!(true), corona_osk::commands::Tablet::COMMAND, json!("On")),
