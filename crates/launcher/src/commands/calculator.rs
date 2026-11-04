@@ -4,7 +4,10 @@
 use std::{
   collections::HashMap,
   rc::Rc,
-  sync::{Arc, RwLock},
+  sync::{
+    Arc, RwLock,
+    atomic::{AtomicBool, Ordering},
+  },
   time::{Duration, Instant},
 };
 
@@ -33,7 +36,8 @@ const HISTORY: usize = 200;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Rates {
   date: String,
-  /// Unix seconds of the fetch
+  /// Unix seconds of the fetch; absent in the API body, set after parsing
+  #[serde(default)]
   fetched: u64,
   rates: HashMap<String, f64>,
 }
@@ -41,7 +45,16 @@ pub struct Rates {
 #[derive(Default)]
 struct Calculator {
   rates: Arc<RwLock<Rates>>,
-  fetching: bool,
+  /// Cleared by [`Fetching`] even when the fetch is dropped halfway
+  fetching: Arc<AtomicBool>,
+}
+
+struct Fetching(Arc<AtomicBool>);
+
+impl Drop for Fetching {
+  fn drop(&mut self) {
+    self.0.store(false, Ordering::Relaxed);
+  }
 }
 
 impl Global for Calculator {}
@@ -57,9 +70,20 @@ pub fn init(cx: &mut App) {
   let rates: Rates = state::load("rates");
   cx.set_global(Calculator {
     rates: Arc::new(RwLock::new(rates)),
-    fetching: false,
+    fetching: Arc::default(),
   });
-  refresh_rates(false, cx);
+  // checked hourly; `refresh_rates` only fetches once the rates are older than the config allows
+  cx.spawn(async move |cx| {
+    loop {
+      if let Some(task) = cx.update(|cx| refresh_rates(false, cx)) {
+        let _ = task.await;
+      }
+      cx.background_executor()
+        .timer(Duration::from_secs(3600))
+        .await;
+    }
+  })
+  .detach();
   registry::register_source(Rc::new(Evaluator), cx);
   registry::register_all([history(), refresh()], cx);
 }
@@ -69,13 +93,17 @@ fn refresh_rates(force: bool, cx: &mut App) -> Option<gpui_kit::Task<Result<()>>
   let max_age = u64::from(cx.config().launcher.currency_refresh_hours.max(1)) * 3600;
   let calculator = cx.global::<Calculator>();
   let fetched = calculator.rates.read().map(|r| r.fetched).unwrap_or(0);
-  if calculator.fetching || (!force && state::now().saturating_sub(fetched) < max_age) {
+  if calculator.fetching.load(Ordering::Relaxed)
+    || (!force && state::now().saturating_sub(fetched) < max_age)
+  {
     return None;
   }
-  cx.global_mut::<Calculator>().fetching = true;
+  let fetching = cx.global::<Calculator>().fetching.clone();
+  fetching.store(true, Ordering::Relaxed);
   let client = cx.http_client();
   let rates = cx.global::<Calculator>().rates.clone();
-  Some(cx.spawn(async move |cx| {
+  Some(cx.spawn(async move |_| {
+    let _fetching = Fetching(fetching);
     let result = async {
       let mut response = client
         .get(RATES_URL, AsyncBody::empty(), true)
@@ -91,7 +119,6 @@ fn refresh_rates(force: bool, cx: &mut App) -> Option<gpui_kit::Task<Result<()>>
       Ok(())
     }
     .await;
-    cx.update(|cx| cx.global_mut::<Calculator>().fetching = false);
     if let Err(e) = &result {
       tracing::warn!("exchange rates: {e:#}");
     }
@@ -443,7 +470,7 @@ impl CommandSource for Evaluator {
         let note = currency.then(|| rates_note(cx)).flatten();
         vec![result_command(input, result, note, false)]
       }
-      None if currency && calculator.fetching => {
+      None if currency && calculator.fetching.load(Ordering::Relaxed) => {
         vec![result_command(input, String::new(), rates_note(cx), true)]
       }
       None => Vec::new(),
@@ -451,7 +478,7 @@ impl CommandSource for Evaluator {
   }
 
   fn loading(&self, cx: &App) -> bool {
-    cx.global::<Calculator>().fetching
+    cx.global::<Calculator>().fetching.load(Ordering::Relaxed)
   }
 }
 
@@ -465,9 +492,10 @@ fn history() -> Rc<dyn Command> {
       ListView::new(
         t!("app.launcher.calculator.history"),
         t!("app.launcher.calculator.search_history"),
-        Rc::new(ListSource::new("calculator:history", |_, _| {
+        Rc::new(ListSource::new("calculator:history", {
+          // read once per opening, not per keystroke
           let history: Vec<Entry> = state::load("calc_history");
-          history
+          let rows: Vec<Rc<dyn Command>> = history
             .into_iter()
             .map(|e| {
               let (title, subtitle, copy) = (e.result.clone(), e.expression.clone(), e.result);
@@ -489,7 +517,8 @@ fn history() -> Rc<dyn Command> {
                 },
               )
             })
-            .collect()
+            .collect();
+          move |_, _| rows.clone()
         })),
       )
       .empty(t!("app.launcher.calculator.no_history"))

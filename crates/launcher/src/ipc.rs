@@ -1,8 +1,10 @@
 //! The launcher's IPC commands: opening it, dmenu, the calculator, trash and timers
 
+use std::time::Duration;
+
 use anyhow::{Context, Result, anyhow, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
-use gpui_kit::App;
+use gpui_kit::{App, AppContext};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -36,6 +38,9 @@ pub struct OpenRequest {
   pub command: Option<String>,
   /// Text the search starts with, or the command's arguments
   pub query: Option<String>,
+  /// Only fill in the search instead of running the command, for links
+  #[serde(default)]
+  pub prefill: bool,
 }
 
 pub struct Open;
@@ -49,7 +54,11 @@ impl IpcCommand for Open {
   fn handle(request: Self::Payload, cx: &mut App) -> Result<Self::Response> {
     let query = request.query.unwrap_or_default();
     let open = match request.command {
-      Some(id) => OpenWith::Command { id, query },
+      Some(id) => OpenWith::Command {
+        id,
+        query,
+        run: !request.prefill,
+      },
       None => OpenWith::Root { query },
     };
     ui::open(open, cx)
@@ -98,8 +107,8 @@ impl IpcCommand for Dmenu {
   const COMMAND: &'static str = "launcher:dmenu";
 
   type Payload = DmenuRequest;
-  /// The chosen lines; an error when cancelled
-  type Response = Vec<String>;
+  /// The chosen lines; `None` when cancelled
+  type Response = Option<Vec<String>>;
 
   fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
     Err(anyhow!("launcher:dmenu answers asynchronously"))
@@ -115,7 +124,7 @@ impl IpcCommand for Dmenu {
     let opened = ui::open(OpenWith::View(view), cx);
     Box::pin(async move {
       opened?;
-      choice.await.map_err(|_| anyhow!("cancelled"))
+      Ok(choice.await.ok())
     })
   }
 }
@@ -165,7 +174,11 @@ impl IpcCommand for TrashCount {
   type Response = usize;
 
   fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    trash_count()
+    Err(anyhow!("trash:count answers asynchronously"))
+  }
+
+  fn reply(_: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
+    Box::pin(cx.background_spawn(async { trash_count() }))
   }
 }
 
@@ -179,7 +192,11 @@ impl IpcCommand for EmptyTrash {
   type Response = usize;
 
   fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    empty_trash()
+    Err(anyhow!("trash:empty answers asynchronously"))
+  }
+
+  fn reply(_: Self::Payload, cx: &mut App) -> Reply<Self::Response> {
+    Box::pin(cx.background_spawn(async { empty_trash() }))
   }
 }
 
@@ -200,16 +217,12 @@ impl IpcCommand for StartTimer {
   type Response = u64;
 
   fn handle(request: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    let now = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)?
-      .as_millis() as u64;
     let kind = match request.seconds {
       Some(0) => bail!("expected at least a second"),
-      Some(s) => Kind::Timer {
-        end: now + s * 1000,
-        total: s * 1000,
+      Some(s) => timers::countdown(Duration::from_secs(s))?,
+      None => Kind::Stopwatch {
+        start: timers::now_ms(),
       },
-      None => Kind::Stopwatch { start: now },
     };
     Ok(timers::start(kind, request.label, cx).id)
   }

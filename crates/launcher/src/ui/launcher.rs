@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
   args::{ArgSpec, Args},
-  command::{Action, Command, Confirm, Hud, Outcome, Scope, Section, Toast, ToastKind},
+  command::{Action, Command, Confirm, Detail, Hud, Outcome, Scope, Section, Toast, ToastKind},
   matching::{Query, match_text},
   paste,
   registry::{self, Registry, Results, Row},
@@ -52,7 +52,12 @@ pub(super) struct Page {
   pub selected: usize,
   pub selected_id: Option<SharedString>,
   pub args: Option<ArgsRow>,
+  /// The selected row's preview and primary action title, computed when the selection moves
+  pub detail: Option<Detail>,
+  pub primary: Option<SharedString>,
   pub list: ListState,
+  /// Until the first rows arrive, so the initial selection does not preview
+  pub fresh: bool,
   /// Which completion Tab showed last
   pub completion: usize,
   _subscriptions: Vec<Subscription>,
@@ -70,7 +75,10 @@ impl Page {
       selected: 0,
       selected_id: None,
       args: None,
+      detail: None,
+      primary: None,
       list: ListState::new(0, ListAlignment::Top, px(200.)),
+      fresh: true,
       completion: 0,
       _subscriptions: Vec::new(),
     }
@@ -215,6 +223,12 @@ impl Launcher {
           close_in(window, cx);
         }
       }),
+      // every close path drops the window and with it this view
+      cx.on_release(|this: &mut Self, cx| {
+        for page in this.pages.drain(..).rev() {
+          close_page(&page, cx);
+        }
+      }),
     ];
     let mut this = Self {
       focus: cx.focus_handle(),
@@ -256,8 +270,8 @@ impl Launcher {
 
   /// Starts over as `open` says
   pub fn reset(&mut self, open: Open, window: &mut Window, cx: &mut Context<Self>) {
-    for page in self.pages.drain(..) {
-      close_source(&page, cx);
+    for page in self.pages.drain(..).rev() {
+      close_page(&page, cx);
     }
     self.panel = None;
     self.confirm = None;
@@ -270,16 +284,35 @@ impl Launcher {
         self.external = true;
         self.push(view, window, cx);
       }
-      Open::Command { id, query } => {
-        self.push_page(Page::new(Body::Root, None, String::new()), window, cx);
+      Open::Command { id, query, run } => {
         let command = cx.global::<Registry>().find(&id, cx);
+        let root_query = match &command {
+          Some(command) if !run => format!("{} {query}", command.meta(cx).title)
+            .trim()
+            .to_string(),
+          _ => String::new(),
+        };
+        self.push_page(Page::new(Body::Root, None, root_query), window, cx);
         match command {
+          Some(_) if !run => {}
           Some(command) => {
             self.external = true;
             let specs = command.meta(cx).args;
-            let args = Args::parse(&specs, &query).unwrap_or_default();
-            if let Some(action) = command.actions(cx).into_iter().next() {
-              self.run(Some(command), action, args, false, window, cx);
+            match Args::parse(&specs, &query) {
+              Ok(args) => {
+                if let Some(action) = command.actions(cx).into_iter().next() {
+                  self.run(Some(command), action, args, false, window, cx);
+                }
+              }
+              Err(e) => self.show_toast(
+                Toast {
+                  kind: ToastKind::Failure,
+                  title: t!("app.launcher.failed").into(),
+                  message: Some(format!("{e:#}").into()),
+                  action: None,
+                },
+                cx,
+              ),
             }
           }
           None => self.show_toast(
@@ -367,12 +400,7 @@ impl Launcher {
       return close_in(window, cx);
     }
     let page = self.pages.pop().expect("more than one page");
-    close_source(&page, cx);
-    if let Body::Form(form) = &page.body
-      && let Some(cancel) = form.read(cx).cancel.clone()
-    {
-      cancel(cx);
-    }
+    close_page(&page, cx);
     let (query, placeholder) = (self.page().query.clone(), self.page().placeholder());
     self.input.update(cx, |input, cx| {
       input.set_value(query, window, cx);
@@ -479,23 +507,50 @@ impl Launcher {
       Layout::Grid { columns, .. } => rows.len().div_ceil(columns.max(1)),
       Layout::List => items.len(),
     };
+    // a tick-only refresh must not reset the list and snap the scroll back
+    let changed = page.rows.len() != rows.len()
+      || page.items.len() != items.len()
+      || page.rows.iter().zip(&rows).any(|(a, b)| a.id() != b.id());
     page.rows = rows;
     page.items = items;
-    page.list.reset(count);
-    self.select(selected, cx);
+    if changed {
+      page.list.reset(count);
+    }
+    self.select_at(selected, changed, cx);
   }
 
   pub(super) fn select(&mut self, index: usize, cx: &mut Context<Self>) {
+    self.select_at(index, true, cx);
+  }
+
+  fn select_at(&mut self, index: usize, reveal: bool, cx: &mut Context<Self>) {
     let page = self.page_mut();
     page.selected = index.min(page.rows.len().saturating_sub(1));
     let before = page.selected_id.take();
     page.selected_id = page.selected_row().map(Row::id);
-    if page.selected_id != before
+    let moved = page.selected_id != before;
+    // the first selection after opening a page is not a user choice
+    let initial = page.fresh && page.selected_id.is_some();
+    page.fresh &= page.selected_id.is_none();
+    if moved
+      && !initial
       && let Some(command) = page.selected_row().map(|r| r.command.clone())
     {
       command.on_select(cx);
     }
+    let row = self.page().selected_row().cloned();
+    let detail = row
+      .as_ref()
+      .filter(|_| self.preview && self.page().previews())
+      .and_then(|r| r.command.detail(cx));
+    let primary = row
+      .as_ref()
+      .filter(|r| self.inline_args(r).is_ok())
+      .and_then(|r| r.command.actions(cx).into_iter().next())
+      .map(|a| a.title);
     let page = self.page_mut();
+    page.detail = detail;
+    page.primary = primary;
     let item = match page.layout() {
       Layout::Grid { columns, .. } => page.selected / columns.max(1),
       Layout::List => page
@@ -505,8 +560,10 @@ impl Launcher {
         .unwrap_or(0),
     };
     // reveal the section header above the first row too
-    let reveal = if page.selected == 0 { 0 } else { item };
-    page.list.scroll_to_reveal_item(reveal);
+    let reveal_item = if page.selected == 0 { 0 } else { item };
+    if reveal || moved {
+      page.list.scroll_to_reveal_item(reveal_item);
+    }
     cx.notify();
   }
 
@@ -655,7 +712,11 @@ impl Launcher {
     cx: &mut Context<Self>,
   ) {
     self.panel = None;
-    if let Some(command) = &command {
+    // only root commands rank by use; rows of pushed views and scopes come and go
+    if let Some(command) = &command
+      && matches!(self.page().body, Body::Root)
+      && self.page().scope.is_none()
+    {
       registry::record_use(&command.id(), cx);
     }
     let task = (action.run)(&args, window, cx);
@@ -691,8 +752,7 @@ impl Launcher {
         let retry = Action::new("retry", t!("app.launcher.retry"), |_, _, _| {
           Task::ready(Ok(Outcome::KeepOpen))
         });
-        self.retry = Some((command, action, args));
-        return self.show_toast(
+        self.show_toast(
           Toast {
             kind: ToastKind::Failure,
             title: t!("app.launcher.failed").into(),
@@ -701,6 +761,8 @@ impl Launcher {
           },
           cx,
         );
+        self.retry = Some((command, action, args));
+        return;
       }
     };
     match outcome {
@@ -755,6 +817,7 @@ impl Launcher {
 
   pub(super) fn show_toast(&mut self, toast: Toast, cx: &mut Context<Self>) {
     let sticky = toast.kind == ToastKind::Progress || toast.action.is_some();
+    self.retry = None;
     self.toast = Some(toast);
     self.toast_timer = (!sticky).then(|| {
       cx.spawn(async move |this, cx| {
@@ -1146,7 +1209,6 @@ impl Launcher {
     self.toggle_filter(cx);
   }
 
-  /// The next option of the view's dropdown
   /// The current view's dropdown
   pub(super) fn filter(&self) -> Option<&crate::view::Filter> {
     match &self.page().body {
@@ -1184,17 +1246,8 @@ impl Launcher {
 
   fn on_toggle_preview(&mut self, _: &TogglePreview, _: &mut Window, cx: &mut Context<Self>) {
     self.preview = !self.preview;
+    self.select(self.page().selected, cx);
     cx.notify();
-  }
-
-  /// Whether the preview pane shows for the current page and selection
-  pub(super) fn shows_preview(&self, cx: &App) -> bool {
-    let page = self.page();
-    self.preview
-      && page.previews()
-      && page
-        .selected_row()
-        .is_some_and(|r| r.command.detail(cx).is_some())
   }
 
   pub(super) fn click(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1223,9 +1276,14 @@ impl Launcher {
   }
 
   pub(super) fn click_toast(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-    self.toast = None;
-    if let Some((command, action, args)) = self.retry.take() {
-      self.execute(command, action, args, false, window, cx);
+    let toast = self.toast.take();
+    match self.retry.take() {
+      Some((command, action, args)) => self.execute(command, action, args, false, window, cx),
+      None => {
+        if let Some(action) = toast.and_then(|t| t.action) {
+          self.execute(None, action, Args::default(), false, window, cx);
+        }
+      }
     }
     cx.notify();
   }
@@ -1277,9 +1335,16 @@ pub(super) fn close_in(window: &mut Window, cx: &mut App) {
   window.remove_window();
 }
 
-fn close_source(page: &Page, cx: &mut App) {
-  if let Body::List(view) = &page.body {
-    view.source.close(cx);
+/// Lets go of what the page holds: its list source, or its form, which is cancelled
+fn close_page(page: &Page, cx: &mut App) {
+  match &page.body {
+    Body::List(view) => view.source.close(cx),
+    Body::Form(form) => {
+      if let Some(cancel) = form.read(cx).cancel.clone() {
+        cancel(cx);
+      }
+    }
+    _ => {}
   }
 }
 
@@ -1287,6 +1352,9 @@ fn close_source(page: &Page, cx: &mut App) {
 fn find_scope(scopes: &[Scope], text: &str) -> Option<(Scope, String)> {
   scopes.iter().find_map(|scope| {
     let prefix = scope.prefix.as_ref();
+    if prefix.is_empty() {
+      return None;
+    }
     let symbolic = prefix.chars().last().is_some_and(|c| !c.is_alphanumeric());
     let rest = match symbolic {
       true => text.strip_prefix(prefix)?,

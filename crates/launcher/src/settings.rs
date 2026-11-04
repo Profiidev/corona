@@ -53,7 +53,8 @@ fn page_of(cx: &App) -> SettingPage {
 }
 
 fn some(value: &str) -> Option<String> {
-  (!value.trim().is_empty()).then(|| value.to_string())
+  let value = value.trim();
+  (!value.is_empty()).then(|| value.to_string())
 }
 
 fn behavior(cx: &App) -> SettingGroup {
@@ -188,17 +189,6 @@ fn commands(cx: &App) -> SettingGroup {
   )
 }
 
-fn command_entry<'c>(c: &'c mut Config, id: &str) -> &'c mut CommandConfig {
-  c.launcher.commands.entry(id.to_string()).or_default()
-}
-
-/// Drops entries back at their defaults, so the settings file keeps only changes
-fn tidy(c: &mut Config) {
-  c.launcher
-    .commands
-    .retain(|_, entry| *entry != CommandConfig::default());
-}
-
 fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
   let entry = cx
     .config()
@@ -212,12 +202,7 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     entry.alias.clone().unwrap_or_default(),
     {
       let id = id.to_string();
-      move |value, cx| {
-        save(cx, |c| {
-          command_entry(c, &id).alias = some(&value);
-          tidy(c);
-        })
-      }
+      move |value, cx| crate::common::update_command(&id, cx, |e| e.alias = some(&value))
     },
     window,
     cx,
@@ -231,10 +216,7 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
         .small()
         .on_click(move |checked: &bool, _, cx| {
           let checked = *checked;
-          save(cx, |c| {
-            set(command_entry(c, &id), checked);
-            tidy(c);
-          })
+          crate::common::update_command(&id, cx, |e| set(e, checked))
         })
     };
   div()
@@ -445,15 +427,18 @@ fn records(
     .enumerate()
     .map(|(i, row)| {
       let fields = (0..width).map(|f| {
-        let (rows, write) = (rows.clone(), write.clone());
+        let (get, write) = (get.clone(), write.clone());
         let input = keyed_input(
           format!("launcher-{key}-{i}-{f}"),
           labels[f].clone(),
           row.get(f).cloned().unwrap_or_default(),
           move |value, cx| {
-            let mut rows = rows.clone();
-            if rows[i][f] != value {
-              rows[i][f] = value;
+            // the closure lives as long as the input, so read the rows as they are now
+            let mut rows = get(cx.config());
+            if let Some(field) = rows.get_mut(i).and_then(|r| r.get_mut(f))
+              && *field != value
+            {
+              *field = value;
               write(rows, cx);
             }
           },

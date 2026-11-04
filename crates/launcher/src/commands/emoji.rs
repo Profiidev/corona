@@ -1,6 +1,6 @@
 //! Emoji grid with recent ones and a remembered skin tone, and Unicode symbol search
 
-use std::{rc::Rc, sync::OnceLock};
+use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 use emojis::{Emoji, SkinTone};
 use gpui_kit::{App, assets::IconName};
@@ -18,7 +18,7 @@ use crate::{
 const RECENT: usize = 16;
 const SYMBOLS: usize = 200;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 struct Remembered {
   recent: Vec<String>,
   /// Index into [`TONES`]
@@ -34,8 +34,19 @@ const TONES: [SkinTone; 6] = [
   SkinTone::Dark,
 ];
 
+thread_local! {
+  /// Read from disk once; every write goes through [`remember`]
+  static REMEMBERED: RefCell<Option<Remembered>> = const { RefCell::new(None) };
+}
+
 fn remembered() -> Remembered {
-  state::load("emoji")
+  REMEMBERED.with_borrow_mut(|r| r.get_or_insert_with(|| state::load("emoji")).clone())
+}
+
+fn remember(r: Remembered) -> anyhow::Result<()> {
+  let saved = state::save("emoji", &r);
+  REMEMBERED.with_borrow_mut(|cached| *cached = Some(r));
+  saved
 }
 
 fn toned(emoji: &'static Emoji, tone: usize) -> &'static Emoji {
@@ -45,11 +56,15 @@ fn toned(emoji: &'static Emoji, tone: usize) -> &'static Emoji {
 }
 
 fn used(text: &str) {
+  // symbols share the grid's recent list but are not shown there
+  if emojis::get(text).is_none() {
+    return;
+  }
   let mut r = remembered();
   r.recent.retain(|e| e != text);
   r.recent.insert(0, text.to_string());
   r.recent.truncate(RECENT);
-  let _ = state::save("emoji", &r);
+  let _ = remember(r);
 }
 
 fn emoji_row(emoji: &'static Emoji) -> Rc<dyn Command> {
@@ -122,7 +137,7 @@ fn tones() -> crate::View {
     apply: Rc::new(|tone, _| {
       let mut r = remembered();
       r.tone = tone.parse().unwrap_or(0);
-      state::save("emoji", &r)
+      remember(r)
     }),
     preview: None,
     icon: Icon::None,
@@ -143,7 +158,10 @@ fn emojis_for(query: &Query) -> Vec<Rc<dyn Command>> {
       .filter_map(|e| emojis::get(e))
       .map(|e| emoji_row(e));
     let rest = emojis::iter()
-      .filter(|e| !r.recent.iter().any(|x| x == e.as_str()))
+      .filter(|e| {
+        let t = toned(e, r.tone).as_str();
+        !r.recent.iter().any(|x| x == t || x == e.as_str())
+      })
       .map(|e| emoji_row(toned(e, r.tone)));
     return recent.chain(rest).collect();
   }

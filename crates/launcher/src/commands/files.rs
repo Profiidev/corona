@@ -2,6 +2,9 @@
 //! recent files and the file actions
 
 use std::{
+  cmp::Reverse,
+  collections::BinaryHeap,
+  io::Read,
   path::{Path, PathBuf},
   rc::Rc,
   sync::{Arc, RwLock},
@@ -14,7 +17,7 @@ use corona_desktop::apps;
 use gpui_kit::{App, AppContext, Entity, Global, SharedString, assets::IconName};
 use nucleo_matcher::{
   Config, Matcher, Utf32Str,
-  pattern::{CaseMatching, Normalization, Pattern},
+  pattern::{AtomKind, CaseMatching, Normalization, Pattern},
 };
 use rust_i18n::t;
 
@@ -113,33 +116,49 @@ fn refresh_index(cx: &mut App) {
 
 /// The best `limit` paths for `query` by their file name, then the whole path
 fn search(files: &[PathBuf], query: &str, limit: usize) -> Vec<PathBuf> {
-  let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+  let pattern = Pattern::new(
+    query,
+    CaseMatching::Ignore,
+    Normalization::Smart,
+    AtomKind::Fuzzy,
+  );
   let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
   let mut buf = Vec::new();
-  let mut scored: Vec<(u32, &PathBuf)> = files
-    .iter()
-    .filter_map(|path| {
-      let name = path.file_name()?.to_string_lossy();
-      let by_name = pattern.score(Utf32Str::new(&name, &mut buf), &mut matcher);
-      let score = match by_name {
-        Some(s) => s + 1000,
-        None => pattern.score(
+  // a min-heap of the best `limit` so far: higher score, then shorter path, is better
+  let mut best = BinaryHeap::with_capacity(limit + 1);
+  for (i, path) in files.iter().enumerate() {
+    let Some(name) = path.file_name() else {
+      continue;
+    };
+    let by_name = pattern.score(
+      Utf32Str::new(&name.to_string_lossy(), &mut buf),
+      &mut matcher,
+    );
+    let score = match by_name {
+      Some(s) => s + 1000,
+      None => {
+        match pattern.score(
           Utf32Str::new(&path.to_string_lossy(), &mut buf),
           &mut matcher,
-        )?,
-      };
-      Some((score, path))
-    })
-    .collect();
-  scored.sort_by(|a, b| {
-    b.0
-      .cmp(&a.0)
-      .then_with(|| a.1.as_os_str().len().cmp(&b.1.as_os_str().len()))
-  });
-  scored
+        ) {
+          Some(s) => s,
+          None => continue,
+        }
+      }
+    };
+    best.push(Reverse((
+      score,
+      Reverse(path.as_os_str().len()),
+      Reverse(i),
+    )));
+    if best.len() > limit {
+      best.pop();
+    }
+  }
+  best
+    .into_sorted_vec()
     .into_iter()
-    .take(limit)
-    .map(|(_, p)| p.clone())
+    .map(|Reverse((_, _, Reverse(i)))| files[i].clone())
     .collect()
 }
 
@@ -224,16 +243,22 @@ pub fn file_actions(path: &Path) -> Vec<Action> {
       "copy_file",
       t!("app.launcher.files.copy_file"),
       move |_, _, _| {
+        let path = uri.to_string_lossy();
+        let path: Vec<_> = path.split('/').map(crate::commands::web::encode).collect();
         Ok(Outcome::Copy(Clip::Text(format!(
           "file://{}",
-          uri.display()
+          path.join("/")
         ))))
       },
     )
     .icon(IconName::Files),
-    Action::sync("trash", t!("app.launcher.files.trash"), move |_, _, _| {
-      trash::delete(&trash)?;
-      Ok(Outcome::hud(t!("app.launcher.files.trashed")))
+    Action::spawn("trash", t!("app.launcher.files.trash"), move |_, cx| {
+      let path = trash.clone();
+      let deleted = cx.background_spawn(async move { trash::delete(&path) });
+      async move {
+        deleted.await?;
+        Ok(Outcome::hud(t!("app.launcher.files.trashed")))
+      }
     })
     .icon(IconName::Trash)
     .destructive(),
@@ -314,10 +339,24 @@ impl Command for FileRow {
     let meta = std::fs::metadata(&self.path).ok()?;
     let body = if is_image(&self.path) {
       DetailBody::Image(self.path.as_path().into())
-    } else if meta.is_file() && meta.len() < 1024 * 1024 {
-      let mut text = std::fs::read(&self.path).ok()?;
-      text.truncate(4096);
-      match String::from_utf8(text) {
+    } else if meta.is_file() {
+      let mut text = Vec::new();
+      std::fs::File::open(&self.path)
+        .ok()?
+        .take(4096)
+        .read_to_end(&mut text)
+        .ok()?;
+      // the cut may split the last character
+      let text = String::from_utf8(text).or_else(|e| match e.utf8_error().error_len() {
+        None => {
+          let valid = e.utf8_error().valid_up_to();
+          let mut bytes = e.into_bytes();
+          bytes.truncate(valid);
+          String::from_utf8(bytes)
+        }
+        Some(_) => Err(e),
+      });
+      match text {
         Ok(text) => DetailBody::Code(text.into()),
         Err(_) => DetailBody::None,
       }
@@ -432,7 +471,11 @@ impl CommandSource for PathSource {
         let name = e.file_name().to_string_lossy().to_string();
         let lower = name.to_lowercase();
         let hidden = name.starts_with('.') && !filter.starts_with('.');
-        (!hidden && lower.starts_with(&filter)).then(|| (!e.path().is_dir(), lower, e.path()))
+        // file_type avoids a stat per entry; only symlinks need to be followed
+        let dir = e
+          .file_type()
+          .is_ok_and(|t| t.is_dir() || (t.is_symlink() && e.path().is_dir()));
+        (!hidden && lower.starts_with(&filter)).then(|| (!dir, lower, e.path()))
       })
       .collect();
     entries.sort();
@@ -503,7 +546,16 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
   let attr = |tag: &str, name: &str| -> Option<String> {
     let start = tag.find(&format!(" {name}=\""))? + name.len() + 3;
     let end = tag[start..].find('"')?;
-    Some(tag[start..start + end].to_string())
+    let value = &tag[start..start + end];
+    Some(
+      value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&"),
+    )
   };
   let mut found: Vec<(String, PathBuf)> = xbel
     .split("<bookmark ")
@@ -521,26 +573,26 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
 }
 
 fn recent_view() -> crate::View {
+  // read once per opening, not per keystroke
+  let text = dirs::data_dir()
+    .map(|d| d.join("recently-used.xbel"))
+    .and_then(|path| std::fs::read_to_string(path).ok())
+    .unwrap_or_default();
+  let rows: Vec<Rc<dyn Command>> = recent(&text)
+    .into_iter()
+    .filter(|p| p.exists())
+    .take(RESULTS)
+    .map(|path| {
+      Rc::new(FileRow {
+        path,
+        completion: None,
+      }) as Rc<dyn Command>
+    })
+    .collect();
   ListView::new(
     t!("app.launcher.files.recent"),
     t!("app.launcher.files.search"),
-    Rc::new(ListSource::new("files:recent", |_, _| {
-      let Some(path) = dirs::data_dir().map(|d| d.join("recently-used.xbel")) else {
-        return Vec::new();
-      };
-      let text = std::fs::read_to_string(path).unwrap_or_default();
-      recent(&text)
-        .into_iter()
-        .filter(|p| p.exists())
-        .take(RESULTS)
-        .map(|path| {
-          Rc::new(FileRow {
-            path,
-            completion: None,
-          }) as Rc<dyn Command>
-        })
-        .collect()
-    })),
+    Rc::new(ListSource::new("files:recent", move |_, _| rows.clone())),
   )
   .preview()
   .empty(t!("app.launcher.files.no_recent"))
@@ -635,12 +687,15 @@ mod tests {
       </bookmark>
       <bookmark href="file:///home/a/new.txt" modified="2026-05-01T00:00:00Z">
       </bookmark>
+      <bookmark href="file:///home/a/a&amp;b&#39;s.txt" modified="2026-03-01T00:00:00Z">
+      </bookmark>
       <bookmark href="https://example.com" modified="2026-06-01T00:00:00Z"></bookmark>
     </xbel>"#;
     assert_eq!(
       recent(xbel),
       [
         PathBuf::from("/home/a/new.txt"),
+        PathBuf::from("/home/a/a&b's.txt"),
         PathBuf::from("/home/a/old file.txt")
       ]
     );

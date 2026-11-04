@@ -10,9 +10,12 @@ use corona_ipc::{
   cli::{described, done},
 };
 
-use crate::ipc::{
-  Close, Dmenu, DmenuRequest, EmptyTrash, Evaluate, ListCommands, ListTimers, Open, OpenRequest,
-  StartTimer, StopTimer, TimerRequest, Toggle, TrashCount,
+use crate::{
+  commands::{timers::Kind, web::decode},
+  ipc::{
+    Close, Dmenu, DmenuRequest, EmptyTrash, Evaluate, ListCommands, ListTimers, Open, OpenRequest,
+    StartTimer, StopTimer, TimerRequest, Toggle, TrashCount,
+  },
 };
 
 #[derive(Subcommand)]
@@ -49,15 +52,21 @@ impl Commands {
   pub fn run(self) {
     let what = "control the launcher";
     match self {
-      Commands::Open { command, query } => done(Open::send(OpenRequest { command, query }), what),
+      Commands::Open { command, query } => done(
+        Open::send(OpenRequest {
+          command,
+          query,
+          prefill: false,
+        }),
+        what,
+      ),
       Commands::Close => done(Close::send(()), what),
       Commands::Toggle => done(Toggle::send(()), what),
       Commands::Trash { command } => command.run(),
       Commands::Timer { command } => command.run(),
-      Commands::Calc { expression } => match Evaluate::send(expression.join(" ")) {
-        Ok(result) => println!("{result}"),
-        Err(e) => tracing::error!("Failed to calculate: {}", e),
-      },
+      Commands::Calc { expression } => {
+        println!("{}", ok(Evaluate::send(expression.join(" ")), "calculate"))
+      }
     }
   }
 }
@@ -76,35 +85,23 @@ impl TrashCommands {
       TrashCommands::Count => TrashCount::send(()),
       TrashCommands::Empty => EmptyTrash::send(()),
     };
-    match result {
-      Ok(n) => println!("{n}"),
-      Err(e) => tracing::error!("Failed to use the trash: {}", e),
-    }
+    println!("{}", ok(result, "use the trash"));
   }
 }
 
+/// The result, or logs the error and exits 1
+fn ok<T>(result: Result<T, impl std::fmt::Display>, what: &str) -> T {
+  result.unwrap_or_else(|e| {
+    tracing::error!("Failed to {what}: {}", e);
+    std::process::exit(1);
+  })
+}
+
 fn seconds(s: &str) -> Result<u64, String> {
-  let total = s
-    .split_inclusive(['h', 'm', 's'])
-    .map(|part| {
-      let (n, unit) = part.split_at(part.len() - 1);
-      let (n, unit) = match unit.parse::<u64>() {
-        Ok(_) => (part, "m"),
-        Err(_) => (n, unit),
-      };
-      let n: u64 = n.parse().map_err(|_| format!("bad duration {s}"))?;
-      Ok(
-        n * match unit {
-          "h" => 3600,
-          "m" => 60,
-          _ => 1,
-        },
-      )
-    })
-    .sum::<Result<u64, String>>()?;
-  (total > 0)
-    .then_some(total)
-    .ok_or_else(|| format!("bad duration {s}"))
+  match crate::args::parse_duration(s) {
+    Ok(d) => Ok(d.as_secs()),
+    Err(e) => Err(e.to_string()),
+  }
 }
 
 #[derive(Subcommand)]
@@ -143,14 +140,15 @@ impl TimerCommands {
         }),
         "start the stopwatch",
       ),
-      TimerCommands::List => match ListTimers::send(()) {
-        Ok(timers) => {
-          for t in timers {
-            println!("{}\t{:?}\t{}", t.id, t.kind, t.label.unwrap_or_default());
-          }
+      TimerCommands::List => {
+        for t in ok(ListTimers::send(()), "list timers") {
+          let kind = match t.kind {
+            Kind::Timer { .. } => "timer",
+            Kind::Stopwatch { .. } => "stopwatch",
+          };
+          println!("{}\t{kind}\t{}", t.id, t.label.unwrap_or_default());
         }
-        Err(e) => tracing::error!("Failed to list timers: {}", e),
-      },
+      }
       TimerCommands::Stop { id } => done(StopTimer::send(id), "stop the timer"),
     }
   }
@@ -204,12 +202,16 @@ impl ToolCommands {
           multi,
         };
         match Dmenu::send(request) {
-          Ok(chosen) => {
+          Ok(Some(chosen)) => {
             for line in chosen {
               println!("{line}");
             }
           }
-          Err(_) => std::process::exit(1),
+          Ok(None) => std::process::exit(1),
+          Err(e) => {
+            tracing::error!("Failed to run dmenu: {e:#}");
+            std::process::exit(1);
+          }
         }
       }
       ToolCommands::OpenUrl { url } => {
@@ -230,11 +232,13 @@ fn read_lines() -> Vec<String> {
   }
   stdin
     .lock()
-    .lines()
+    .split(b'\n')
     .map_while(Result::ok)
+    .map(|l| String::from_utf8_lossy(&l).into_owned())
     .filter(|l| !l.is_empty())
     .collect()
 }
+
 /// `corona://launcher/<ns>/<command>?arguments=…` as the command `<ns>:<command>`
 fn parse_url(url: &str) -> Result<OpenRequest> {
   let rest = url
@@ -244,42 +248,23 @@ fn parse_url(url: &str) -> Result<OpenRequest> {
   let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
   let command = match parts.as_slice() {
     [] => None,
-    [ns, command] => Some(format!("{}:{}", decode(ns)?, decode(command)?)),
+    [ns, command] => Some(format!("{}:{}", decode(ns), decode(command))),
     _ => bail!("expected corona://launcher/<namespace>/<command>"),
   };
   let mut arguments = None;
   for pair in query.split('&').filter(|p| !p.is_empty()) {
     let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
     if matches!(key, "arguments" | "query") {
-      arguments = Some(decode(value)?);
+      // `+` is a space only in the query
+      arguments = Some(decode(&value.replace('+', " ")));
     }
   }
   Ok(OpenRequest {
     command,
     query: arguments,
+    // a link must never run a command on its own
+    prefill: true,
   })
-}
-
-/// Percent-decoding, `+` as a space
-fn decode(s: &str) -> Result<String> {
-  let mut bytes = Vec::with_capacity(s.len());
-  let mut iter = s.bytes();
-  while let Some(b) = iter.next() {
-    match b {
-      b'%' => {
-        let hex = [iter.next(), iter.next()];
-        let [Some(h), Some(l)] = hex else {
-          bail!("bad escape in {s}");
-        };
-        let byte = u8::from_str_radix(std::str::from_utf8(&[h, l])?, 16)
-          .with_context(|| format!("bad escape in {s}"))?;
-        bytes.push(byte);
-      }
-      b'+' => bytes.push(b' '),
-      b => bytes.push(b),
-    }
-  }
-  Ok(String::from_utf8(bytes)?)
 }
 
 #[cfg(test)]
@@ -293,6 +278,10 @@ mod tests {
     assert_eq!(seconds("90s"), Ok(90));
     assert_eq!(seconds("10"), Ok(600));
     assert!(seconds("soon").is_err());
+    assert!(seconds("5é").is_err());
+    assert!(seconds("0").is_err());
+    assert!(seconds("99999999999999999999h").is_err());
+    assert!(seconds(&format!("{}h", u64::MAX / 60)).is_err());
   }
 
   #[test]
@@ -301,11 +290,18 @@ mod tests {
     assert_eq!(r.command.as_deref(), Some("corona:volume"));
     assert_eq!(r.query.as_deref(), Some("40%"));
     let r = parse_url("corona://launcher").unwrap();
-    assert_eq!(r, OpenRequest::default());
+    assert_eq!(
+      r,
+      OpenRequest {
+        prefill: true,
+        ..Default::default()
+      }
+    );
     let r = parse_url("corona://launcher/?query=hello+world").unwrap();
     assert_eq!(r.query.as_deref(), Some("hello world"));
     assert!(parse_url("https://example.com").is_err());
     assert!(parse_url("corona://launcher/a/b/c").is_err());
-    assert!(parse_url("corona://launcher/a/b?arguments=%zz").is_err());
+    let r = parse_url("corona://launcher/a/b?arguments=%zz").unwrap();
+    assert_eq!(r.query.as_deref(), Some("%zz"));
   }
 }

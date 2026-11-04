@@ -133,8 +133,13 @@ pub fn parse_duration(input: &str) -> Result<Duration> {
   if input.is_empty() {
     bail!("expected a duration like 5m or 1h30m");
   }
+  let error = "expected a duration like 5m or 1h30m";
   if let Ok(minutes) = input.parse::<u64>() {
-    return Ok(Duration::from_secs(minutes * 60));
+    let total = minutes.checked_mul(60).context(error)?;
+    if total == 0 {
+      bail!(error);
+    }
+    return Ok(Duration::from_secs(total));
   }
   let mut total = 0u64;
   let mut number = String::new();
@@ -152,7 +157,10 @@ pub fn parse_duration(input: &str) -> Result<Duration> {
     let n: u64 = number
       .parse()
       .context("expected a duration like 5m or 1h30m")?;
-    total += n * unit;
+    total = n
+      .checked_mul(unit)
+      .and_then(|n| total.checked_add(n))
+      .context(error)?;
     number.clear();
   }
   if !number.is_empty() || total == 0 {

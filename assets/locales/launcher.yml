@@ -1237,6 +1237,9 @@ app:
       nothing_listens:
         en: 'Nothing listens on port %{port}'
         de: 'Nichts lauscht auf Port %{port}'
+      not_accessible:
+        en: 'Port %{port} is in use, but its owner is not accessible'
+        de: 'Port %{port} ist belegt, der Besitzer ist nicht zugänglich'
       killed:
         en: 'Stopped %{count} processes'
         de: '%{count} Prozesse beendet'
@@ -1247,15 +1250,12 @@ app:
       open_trash:
         en: 'Open trash'
         de: 'Papierkorb öffnen'
-      items:
-        en: '%{count} items'
-        de: '%{count} Elemente'
       empty:
         en: 'Empty'
         de: 'Leeren'
       empty_message:
-        en: '%{count} items are deleted for good.'
-        de: '%{count} Elemente werden endgültig gelöscht.'
+        en: 'Everything in the trash is deleted for good.'
+        de: 'Alles im Papierkorb wird endgültig gelöscht.'
       emptied:
         en: 'Deleted %{count} items'
         de: '%{count} Elemente gelöscht'

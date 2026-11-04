@@ -114,9 +114,12 @@ fn strip_tags(html: &str) -> String {
   }
   out
     .replace("&nbsp;", " ")
-    .replace("&amp;", "&")
+    .replace("&lt;", "<")
+    .replace("&gt;", ">")
     .replace("&quot;", "\"")
     .replace("&#39;", "'")
+    // last, so `&amp;quot;` ends as `&quot;`
+    .replace("&amp;", "&")
 }
 
 /// The definitions as markdown, English entries first
@@ -157,12 +160,14 @@ async fn define(client: Arc<dyn HttpClient>, word: String) -> Result<String> {
     .uri(url)
     .header("Accept", "application/json")
     .body(AsyncBody::empty())?;
-  definitions_markdown(
-    &word,
-    &body(&client, request)
-      .await
-      .context(t!("app.launcher.lookup.not_found").to_string())?,
-  )
+  let json = match body(&client, request).await {
+    // `body` starts its error with the status
+    Err(e) if e.to_string().starts_with("404") => {
+      return Err(e.context(t!("app.launcher.lookup.not_found").to_string()));
+    }
+    result => result?,
+  };
+  definitions_markdown(&word, &json)
 }
 
 /// The argument, else the selected text, else the clipboard

@@ -9,9 +9,9 @@ use gpui_kit::{
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
   },
-  div, img, list,
+  div, image_cache, img, list,
   prelude::FluentBuilder,
-  px, relative,
+  px, relative, retain_all,
 };
 use rust_i18n::t;
 
@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
   command::{Accessory, Detail, DetailBody, Evaluation, Icon, Section},
-  registry::Row,
+  registry::{Registry, Row},
   view::Layout,
 };
 
@@ -45,7 +45,13 @@ pub(super) fn frame(
     .text_color(theme.foreground)
     .font_family(theme.font_family.clone())
     .child(search_bar(this, page, cx))
-    .child(div().flex_1().min_h_0().child(body(this, page, window, cx)))
+    .child(
+      // dropped with the launcher so decoded images do not outlive it
+      image_cache(retain_all("launcher-images"))
+        .flex_1()
+        .min_h_0()
+        .child(body(this, page, window, cx)),
+    )
     .child(footer(this, page, cx))
     .children(overlays::panel(this, cx))
     .children(overlays::filter_menu(this, cx))
@@ -61,7 +67,10 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
   let loading = this.busy > 0
     || match &page.body {
       Body::List(view) => view.source.loading(cx),
-      Body::Root => page.scope.as_ref().is_some_and(|s| s.source.loading(cx)),
+      Body::Root => match &page.scope {
+        Some(s) => s.source.loading(cx),
+        None => cx.global::<Registry>().loading(cx),
+      },
       _ => false,
     };
   let (chip_fill, chip_border) = style::chip(cx);
@@ -280,13 +289,10 @@ fn results(this: &Launcher, page: &Page, _: &mut Window, cx: &mut Context<Launch
     }
   };
 
-  let preview = this.shows_preview(cx).then(|| {
-    page
-      .selected_row()
-      .and_then(|row| row.command.detail(cx))
-      .map(|detail| preview_pane(detail, cx))
-      .unwrap_or_else(|| div().flex_1().into_any_element())
-  });
+  let preview = (this.preview && page.previews())
+    .then(|| page.detail.clone())
+    .flatten()
+    .map(|detail| preview_pane(detail, cx));
   div()
     .size_full()
     .flex()
@@ -841,11 +847,7 @@ fn footer(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl Into
     }
   };
   let primary: Option<SharedString> = match &page.body {
-    Body::Root | Body::List(_) => page
-      .selected_row()
-      .filter(|r| this.inline_args(r).is_ok())
-      .and_then(|r| r.command.actions(cx).into_iter().next())
-      .map(|a| a.title),
+    Body::Root | Body::List(_) => page.primary.clone(),
     Body::Detail(detail) => detail.actions.first().map(|a| a.title.clone()),
     Body::Form(form) => Some(form.read(cx).submit_label().clone()),
     Body::Custom { .. } => None,

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use nucleo_matcher::{
   Config, Matcher, Utf32Str,
-  pattern::{CaseMatching, Normalization, Pattern},
+  pattern::{AtomKind, CaseMatching, Normalization, Pattern},
 };
 
 use crate::command::Meta;
@@ -73,7 +73,12 @@ thread_local! {
 
 /// Fuzzy score and title char indices of `needle` in `haystack`
 pub fn fuzzy(needle: &str, haystack: &str) -> Option<(u32, Vec<u32>)> {
-  let pattern = Pattern::parse(needle, CaseMatching::Ignore, Normalization::Smart);
+  let pattern = Pattern::new(
+    needle,
+    CaseMatching::Ignore,
+    Normalization::Smart,
+    AtomKind::Fuzzy,
+  );
   MATCHER.with_borrow_mut(|matcher| {
     let mut buf = Vec::new();
     let mut indices = Vec::new();

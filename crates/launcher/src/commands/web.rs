@@ -38,9 +38,10 @@ pub fn decode(text: &str) -> String {
   let mut i = 0;
   while i < bytes.len() {
     let hex = (bytes[i] == b'%')
-      .then(|| std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok())
+      .then(|| bytes.get(i + 1..i + 3))
       .flatten()
-      .and_then(|h| u8::from_str_radix(h, 16).ok());
+      .filter(|h| h.iter().all(u8::is_ascii_hexdigit))
+      .and_then(|h| u8::from_str_radix(std::str::from_utf8(h).ok()?, 16).ok());
     match hex {
       Some(b) => {
         out.push(b);
@@ -179,6 +180,8 @@ impl CommandSource for Engines {
       .launcher
       .search_engines
       .iter()
+      // an engine without a keyword or url would scope the search to nothing
+      .filter(|e| !e.keyword.trim().is_empty() && !e.url.trim().is_empty())
       .map(|e| Rc::new(EngineCommand(e.clone())) as Rc<dyn Command>)
       .collect()
   }
@@ -203,25 +206,38 @@ impl CommandSource for WebFallback {
   }
 }
 
+const KNOWN_TLDS: &[&str] = &[
+  "com", "org", "net", "io", "dev", "app", "edu", "gov", "info", "eu", "de", "uk", "fr", "nl",
+  "ch", "at", "us", "ca", "ai", "co", "me", "tv", "xyz",
+];
+
 /// A URL as typed, `https://` added when it has none
 pub fn as_url(text: &str) -> Option<String> {
   let text = text.trim();
   if text.contains(char::is_whitespace) || text.len() < 4 {
     return None;
   }
-  if let Some((scheme, rest)) = text.split_once("://") {
+  // a `://` further in is part of the path or query, not a scheme
+  if let Some((scheme, rest)) = text.split_once("://")
+    && scheme
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+  {
     let known = matches!(scheme, "http" | "https" | "ftp" | "file");
     return (known && !rest.is_empty()).then(|| text.to_string());
   }
   let host = text.split(['/', '?', '#']).next()?;
+  if host.contains('@') {
+    return None;
+  }
   let host = host.split(':').next()?;
   let localhost = host == "localhost";
   let labels: Vec<&str> = host.split('.').collect();
   let tld = labels.last()?;
   let domain = labels.len() >= 2
     && labels.iter().all(|l| !l.is_empty())
-    && tld.len() >= 2
-    && tld.chars().all(|c| c.is_ascii_alphabetic());
+    // file names like main.rs or notes.md are not links
+    && (host.starts_with("www.") || KNOWN_TLDS.contains(&tld.to_ascii_lowercase().as_str()));
   (domain || localhost).then(|| format!("https://{text}"))
 }
 
@@ -273,6 +289,7 @@ mod tests {
     assert_eq!(decode("a%20b%C3%A4"), "a bä");
     assert_eq!(decode("100%"), "100%");
     assert_eq!(decode("%zz"), "%zz");
+    assert_eq!(decode("%+5"), "%+5");
   }
 
   #[test]
@@ -304,6 +321,9 @@ mod tests {
       "file.",
       "v1.2",
       "javascript:alert",
+      "main.rs",
+      "notes.md",
+      "user@host.com",
     ] {
       assert_eq!(as_url(no), None, "{no}");
     }

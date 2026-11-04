@@ -73,14 +73,13 @@ fn list(cx: &App) -> Arc<Vec<DesktopApp>> {
   cx.global::<Apps>().list.read(cx).clone()
 }
 
-/// The first open window of `app`, by class
-fn running_window(app: &DesktopApp, cx: &App) -> Option<String> {
+/// The first of `windows`, as lowercase class and address, that is an open window of `app`
+fn running_window(app: &DesktopApp, windows: &[(String, String)]) -> Option<String> {
   let classes = app.window_classes();
-  cx.compositor()
-    .list_windows(cx)
+  windows
     .iter()
-    .find(|w| classes.contains(&w.class.to_lowercase()))
-    .map(|w| w.address.clone())
+    .find(|(class, _)| classes.contains(class))
+    .map(|(_, address)| address.clone())
 }
 
 fn launch(app: &DesktopApp, argv: &[String], cx: &App) -> Result<Outcome> {
@@ -92,6 +91,8 @@ fn launch(app: &DesktopApp, argv: &[String], cx: &App) -> Result<Outcome> {
 
 struct AppCommand {
   app: DesktopApp,
+  /// Its first open window, found once when the command is built
+  running: Option<String>,
 }
 
 impl AppCommand {
@@ -105,7 +106,7 @@ impl Command for AppCommand {
     format!("app:{}", self.app.id).into()
   }
 
-  fn meta(&self, cx: &App) -> Meta {
+  fn meta(&self, _: &App) -> Meta {
     let app = &self.app;
     let mut keywords: Vec<SharedString> = app
       .keywords
@@ -115,7 +116,7 @@ impl Command for AppCommand {
       .map(Into::into)
       .collect();
     keywords.extend(app.window_classes().into_iter().map(Into::into));
-    let running = running_window(app, cx).is_some();
+    let running = self.running.is_some();
     Meta {
       title: app.name.clone().into(),
       subtitle: app
@@ -137,10 +138,10 @@ impl Command for AppCommand {
     }
   }
 
-  fn actions(&self, cx: &App) -> Vec<Action> {
+  fn actions(&self, _: &App) -> Vec<Action> {
     let app = self.app.clone();
     let mut actions = Vec::new();
-    if let Some(address) = running_window(&app, cx) {
+    if let Some(address) = self.running.clone() {
       actions.push(
         Action::sync("focus", t!("app.launcher.apps.focus"), move |_, _, cx| {
           cx.compositor().focus_window(&address)?;
@@ -238,8 +239,17 @@ impl CommandSource for AppsSource {
 
   fn commands(&self, query: &Query, cx: &App) -> Vec<Rc<dyn Command>> {
     let mut commands: Vec<Rc<dyn Command>> = Vec::new();
+    let windows: Vec<(String, String)> = cx
+      .compositor()
+      .list_windows(cx)
+      .iter()
+      .map(|w| (w.class.to_lowercase(), w.address.clone()))
+      .collect();
     for app in list(cx).iter().filter(|a| self.browse || !a.no_display) {
-      commands.push(Rc::new(AppCommand { app: app.clone() }));
+      commands.push(Rc::new(AppCommand {
+        app: app.clone(),
+        running: running_window(app, &windows),
+      }));
       // desktop actions only once typing, they would crowd the empty list
       if !self.browse && !query.is_empty() {
         for index in 0..app.actions.len() {

@@ -82,7 +82,12 @@ pub enum Open {
   /// The root search, optionally with a query
   Root { query: String },
   /// Straight into a command, as a per-command keybind does
-  Command { id: String, query: String },
+  Command {
+    id: String,
+    query: String,
+    /// Run its first action; otherwise the root search shows it for the query
+    run: bool,
+  },
   /// Straight into a view, without root search behind it (dmenu)
   View(View),
 }
@@ -100,8 +105,12 @@ pub fn is_open(cx: &App) -> bool {
 
 pub fn toggle(cx: &mut App) -> Result<()> {
   if is_open(cx) {
-    close(cx);
-    return Ok(());
+    // a surface destroyed from outside leaves a dead state behind: open anew then
+    if cx.global::<LauncherState>().view.upgrade().is_some() {
+      close(cx);
+      return Ok(());
+    }
+    cx.remove_global::<LauncherState>();
   }
   open(
     Open::Root {

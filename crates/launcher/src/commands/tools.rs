@@ -166,7 +166,7 @@ impl CommandSource for Panels {
               "toggle",
               t!("app.launcher.tools.toggle_panel"),
               move |_, _, cx| {
-                PanelState::show(&name, true, cx)?;
+                PanelState::show(&name, !open, cx)?;
                 Ok(Outcome::close())
               },
             )]

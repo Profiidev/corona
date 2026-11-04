@@ -14,7 +14,6 @@ corona_components.workspace = true
 corona_compositor.workspace = true
 corona_desktop.workspace = true
 corona_ipc.workspace = true
-zbus.workspace = true
 corona_surface.workspace = true
 corona_settings.workspace = true
 corona_utils.workspace = true
