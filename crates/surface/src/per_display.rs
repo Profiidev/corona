@@ -129,7 +129,9 @@ fn reconcile(this: WeakEntity<PerDisplay>, cx: &mut App) {
   }
   for display in add {
     let windows = open(cx, display);
-    this.update(cx, |this, _| this.windows.insert(display, windows));
+    if !windows.is_empty() {
+      this.update(cx, |this, _| this.windows.insert(display, windows));
+    }
   }
 }
 

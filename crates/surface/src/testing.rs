@@ -29,6 +29,7 @@ pub fn monitor(name: &str) -> types::Monitor {
     focused: true,
     disabled: false,
     mirror_of: "none".into(),
+    reserved: [0; 4],
   }
 }
 

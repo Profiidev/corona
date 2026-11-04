@@ -48,7 +48,7 @@ pub fn open_at<V: Render + Focusable>(
   window: &mut Window,
   cx: &mut App,
   build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static,
-) {
+) -> bool {
   close_open(cx);
   let options = popup_options(
     window.window_handle(),
@@ -64,9 +64,11 @@ pub fn open_at<V: Render + Focusable>(
     window.focus(&focus, cx);
     root(view, window, cx)
   });
-  if let Ok(handle) = opened.log_err() {
-    cx.set_global(OpenPopup(Some(handle.into())));
-  }
+  let Ok(handle) = opened.log_err() else {
+    return false;
+  };
+  cx.set_global(OpenPopup(Some(handle.into())));
+  true
 }
 
 pub fn frame<V: Focusable>(view: &V, cx: &mut Context<V>) -> Div {

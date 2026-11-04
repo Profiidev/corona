@@ -34,7 +34,11 @@ pub fn follow_queue<T: 'static, K: PartialEq + 'static>(
   let mut shown: Option<(K, AnyWindowHandle)> = None;
   cx.observe(&requests, move |requests, cx| {
     let front = requests.read(cx).front().map(&key);
-    if shown.as_ref().map(|(key, _)| key) == front.as_ref() {
+    // A dialog closed by the compositor leaves a dead handle, reopen it.
+    let alive = shown
+      .as_ref()
+      .is_some_and(|(_, handle)| handle.update(cx, |_, _, _| ()).is_ok());
+    if alive && shown.as_ref().map(|(key, _)| key) == front.as_ref() {
       return;
     }
     if let Some((_, handle)) = shown.take() {
@@ -44,6 +48,15 @@ pub fn follow_queue<T: 'static, K: PartialEq + 'static>(
     match open(cx) {
       Ok(handle) => shown = Some((front, handle)),
       Err(e) => tracing::error!("Failed to open the {what} dialog: {e:#}"),
+    }
+  })
+  .detach();
+  // Nothing else notifies when the compositor closes the dialog, so the check above would wait
+  // for the next queue change.
+  let closed = requests.downgrade();
+  cx.on_window_closed(move |cx, _| {
+    if let Some(requests) = closed.upgrade() {
+      requests.update(cx, |_, cx| cx.notify());
     }
   })
   .detach();

@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyElement, App, Context, ElementId, IntoElement, ParentElement, RenderOnce, Styled, WeakEntity,
   Window,
@@ -108,11 +109,10 @@ impl<W: Widget, P: Panel> RenderOnce for Button<W, P> {
           .children(self.suffix),
       )
       .on_click(move |_, window, cx| {
-        self
-          .view
+        let _ = (self.view)
           .update(cx, |_, cx| cx.toggle_panel::<P>(window))
           .flatten()
-          .expect("Failed to toggle control panel");
+          .log_err();
       });
 
     div().relative().child(button).children(dot)

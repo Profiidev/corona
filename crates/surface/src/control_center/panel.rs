@@ -32,7 +32,8 @@ impl ControlCenter {
   pub fn navigate_id(page: &str, window: &mut Window, cx: &mut App) {
     let open = cx
       .try_global::<OpenControlCenter>()
-      .and_then(|open| open.0.upgrade());
+      .and_then(|open| open.0.upgrade())
+      .filter(|_| PanelState::is_open(Self::NAME, cx));
     match open {
       Some(control_center) => control_center.update(cx, |this, cx| this.select(page, window, cx)),
       None => {
@@ -47,6 +48,9 @@ impl ControlCenter {
       return;
     };
     let (id, open) = (entry.id, entry.open);
+    if self.selected == id && self.panel.is_some() {
+      return;
+    }
     self.selected = id;
     self.panel = Some(open(window, cx));
     cx.notify();

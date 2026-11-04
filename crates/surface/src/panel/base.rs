@@ -18,6 +18,7 @@ use gpui_kit::{
 };
 
 use crate::{
+  input_region::InputRegion,
   overlay::layer_options,
   panel::{PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData},
 };
@@ -33,7 +34,7 @@ pub struct BasePanel {
   placement: Placement,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
-  blocks_input: bool,
+  input_region: InputRegion,
   removing: bool,
   anim: SmoothRetarget,
   display: Option<DisplayId>,
@@ -53,6 +54,21 @@ impl BasePanel {
     cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.block(cx)))
       .detach();
 
+    // The compositor can close the surface (output unplugged) without `close` running. Only a
+    // panel still marked open clears the flag, a closed one may already be replaced by a new one.
+    cx.on_release(|this, cx| {
+      if this.open {
+        PanelState::mark_open(&this.name, false, cx);
+      }
+      let blockers = std::mem::take(&mut this.blockers);
+      cx.defer(move |cx| {
+        for handle in blockers {
+          let _ = handle.update(cx, |_, window, _| window.remove_window());
+        }
+      });
+    })
+    .detach();
+
     PanelState::mark_open(&data.name, true, cx);
     Self {
       name: data.name.clone(),
@@ -62,7 +78,7 @@ impl BasePanel {
       width: data.width,
       height: data.height,
       open: true,
-      blocks_input: true,
+      input_region: InputRegion::default(),
       removing: false,
       anim: SmoothRetarget::new(0.),
       align,
@@ -150,12 +166,8 @@ impl Render for BasePanel {
     let h = (self.height + bn) * progress;
 
     if self.open {
-      if !self.blocks_input {
-        self.blocks_input = true;
-        window.set_input_region(None);
-      }
+      self.input_region.clear(window);
     } else {
-      self.blocks_input = false;
       let viewport = window.viewport_size();
       let along = match self.align {
         Align::Left => 0.,
@@ -166,7 +178,7 @@ impl Render for BasePanel {
       let panel = self
         .placement
         .rect(viewport, px(along), px(self.width), px(h - bn));
-      window.set_input_region(Some(&[panel]));
+      self.input_region.set(panel, window);
     }
 
     if !self.open && progress == 0. && !self.removing {
