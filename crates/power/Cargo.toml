@@ -26,7 +26,7 @@ gpui-kit.workspace = true
 zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
-corona-zbus-upower = "0.1.0"
+corona-zbus-upower.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 

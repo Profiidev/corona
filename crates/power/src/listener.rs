@@ -36,14 +36,16 @@ pub fn listener(
   let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     loop {
-      if let Ok(snapshot) = snapshot(&conn).await.log_err() {
-        state.status.write_changed(cx, Some(snapshot.status));
-        state.battery.write_changed(cx, snapshot.battery);
-        state.devices.write_changed(cx, snapshot.devices);
-        state
-          .keyboard_backlight
-          .write_changed(cx, snapshot.keyboard_backlight);
-      }
+      // a failed snapshot clears everything, like profiles, instead of going stale
+      let snapshot = snapshot(&conn).await.log_err().ok();
+      let (status, battery, devices, backlight) = match snapshot {
+        Some(s) => (Some(s.status), s.battery, s.devices, s.keyboard_backlight),
+        None => (None, None, Vec::new(), None),
+      };
+      state.status.write_changed(cx, status);
+      state.battery.write_changed(cx, battery);
+      state.devices.write_changed(cx, devices);
+      state.keyboard_backlight.write_changed(cx, backlight);
       state.profiles.write_changed(cx, profiles(&conn).await);
 
       if next_burst(&mut changes).await.is_none() {

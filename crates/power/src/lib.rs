@@ -218,6 +218,10 @@ pub async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
     conn: conn.clone(),
   };
 
+  // subscribe before the first snapshot so no change can slip in between
+  let changes = subscribe(conn).await?;
+  listener(cx, conn.clone(), changes, state.clone());
+
   let (watch, sleep) = (conn.clone(), state.sleep.clone());
   cx.spawn(async move |cx| {
     loop {
@@ -237,9 +241,6 @@ pub async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   })
   .detach();
 
-  // subscribe before the first snapshot so no change can slip in between
-  let changes = subscribe(conn).await?;
-  listener(cx, conn.clone(), changes, state.clone());
   cx.set_global(state);
 
   Ok(())
@@ -1367,19 +1368,16 @@ mod tests {
   }
 
   #[gpui::test]
-  fn upower_crash_retains_stale_power_state(cx: &mut TestAppContext) {
+  fn upower_crash_clears_power_state(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let services = services(&bus);
     start(cx, &bus);
     wait_until(cx, |cx| cx.read(|cx| cx.power().status(cx).is_some()));
-    let status_before = cx.read(|cx| cx.power().status(cx).cloned()).unwrap();
-    let battery_before = cx.read(|cx| cx.power().battery(cx).cloned()).unwrap();
     drop(services.upower);
     settle(cx);
-    // State is retained rather than cleared to None
     cx.read(|cx| {
-      assert_eq!(cx.power().status(cx), Some(&status_before));
-      assert_eq!(cx.power().battery(cx), Some(&battery_before));
+      assert_eq!(cx.power().status(cx), None);
+      assert_eq!(cx.power().battery(cx), None);
     });
   }
 
@@ -1390,7 +1388,13 @@ mod tests {
     let power = power_on(cx, &bus);
     let err = block_on(power.session_action(SessionAction::RebootToFirmware)).unwrap_err();
     assert!(err.to_string().contains("reboot rejected"));
-    assert_eq!(logind.calls(), ["SetRebootToFirmwareSetup true"]);
+    assert_eq!(
+      logind.calls(),
+      [
+        "SetRebootToFirmwareSetup true",
+        "SetRebootToFirmwareSetup false"
+      ]
+    );
   }
 
   #[gpui::test]
@@ -1400,7 +1404,13 @@ mod tests {
     let power = power_on(cx, &bus);
     let err = block_on(power.reboot_to("auto-windows".into())).unwrap_err();
     assert!(err.to_string().contains("reboot rejected"));
-    assert_eq!(logind.calls(), ["SetRebootToBootLoaderEntry auto-windows"]);
+    assert_eq!(
+      logind.calls(),
+      [
+        "SetRebootToBootLoaderEntry auto-windows",
+        "SetRebootToBootLoaderEntry "
+      ]
+    );
   }
 
   #[gpui::test]

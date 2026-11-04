@@ -9,7 +9,7 @@ use corona_notifications::{Notifications, Notify, Urgency};
 use gpui_kit::App;
 use rust_i18n::t;
 
-use crate::ui::page::battery::duration;
+use corona_components::time::duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
@@ -75,6 +75,13 @@ pub(crate) fn init(cx: &mut App) {
   );
 }
 
+/// Records the new level, handing back the notification to close
+fn apply(warned: &mut Warned, level: Option<Level>) -> (Option<Level>, Option<u32>) {
+  let id = warned.id.take();
+  warned.level = level;
+  (level, id)
+}
+
 fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
   let battery = cx.power().battery(cx);
   let step = step(
@@ -82,19 +89,13 @@ fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
     battery,
     &cx.config().notification.battery,
   );
-  let level = match step {
+  let (level, id) = match step {
     Step::Keep => return,
-    Step::Clear => {
-      *warned.borrow_mut() = Warned::default();
-      None
-    }
-    Step::Warn(level) => {
-      warned.borrow_mut().level = Some(level);
-      Some(level)
-    }
+    Step::Clear => apply(&mut warned.borrow_mut(), None),
+    Step::Warn(level) => apply(&mut warned.borrow_mut(), Some(level)),
   };
   let notifications = cx.global::<Notifications>().clone();
-  if let Some(id) = warned.borrow_mut().id.take() {
+  if let Some(id) = id {
     let close = notifications.close(id);
     cx.spawn(async move |_| {
       if let Err(e) = close.await {
@@ -188,6 +189,17 @@ mod tests {
     // straight to critical, and a bounce back up keeps the warning
     assert_eq!(at(None, 4.), Step::Warn(Level::Critical));
     assert_eq!(at(Some(Level::Critical), 30.), Step::Keep);
+  }
+
+  #[test]
+  fn clear_hands_back_id() {
+    let mut warned = Warned {
+      level: Some(Level::Critical),
+      id: Some(7),
+    };
+    assert_eq!(apply(&mut warned, None), (None, Some(7)));
+    assert_eq!(warned.level, None);
+    assert_eq!(warned.id, None);
   }
 
   #[test]

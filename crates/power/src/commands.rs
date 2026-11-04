@@ -1,7 +1,7 @@
 use crate::PowerExt;
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcExt};
-use corona_utils::error::ErrorLogExt;
+use corona_utils::error::spawn_logged;
 use gpui_kit::App;
 
 pub(crate) fn register(cx: &mut App) {
@@ -12,11 +12,7 @@ pub(crate) fn register(cx: &mut App) {
 }
 
 fn set(name: String, cx: &mut App) {
-  let task = cx.power().set_profile(name);
-  cx.spawn(async move |_| {
-    let _ = task.await.log_err();
-  })
-  .detach();
+  spawn_logged(cx, cx.power().set_profile(name));
 }
 
 fn check(name: &str, available: &[String]) -> Result<()> {

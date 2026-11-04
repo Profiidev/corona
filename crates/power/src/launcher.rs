@@ -1,11 +1,12 @@
 //! The battery as a detail view, picking and cycling power profiles
 
-use corona_components::time::span;
+use corona_components::time::duration;
 use std::rc::Rc;
 
 use crate::{
   PowerExt,
   commands::{CycleProfile, SetProfile},
+  ui::icons::power_profile as profile_label,
 };
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -22,13 +23,13 @@ fn battery(cx: &App) -> View {
     Some(b) => {
       rows.push(detail_row(
         t!("app.launcher.info.state"),
-        format!("{:?}", b.state),
+        crate::ui::page::battery::state(b.state),
       ));
       if let Some(t) = b.time_to_empty.filter(|t| !t.is_zero()) {
-        rows.push(detail_row(t!("app.launcher.info.to_empty"), span(t)));
+        rows.push(detail_row(t!("app.launcher.info.to_empty"), duration(t)));
       }
       if let Some(t) = b.time_to_full.filter(|t| !t.is_zero()) {
-        rows.push(detail_row(t!("app.launcher.info.to_full"), span(t)));
+        rows.push(detail_row(t!("app.launcher.info.to_full"), duration(t)));
       }
       rows.push(detail_row(
         t!("app.launcher.info.health"),
@@ -87,7 +88,7 @@ fn power_profile(cx: &mut App) {
         subtitle: cx
           .power()
           .profiles(cx)
-          .map(|p| SharedString::from(p.active.clone())),
+          .map(|p| SharedString::from(profile_label(&p.active).1.to_string())),
         icon: Icon::Tile(IconName::Gauge, 40.),
         keywords: vec!["power profile".into()],
         ..Default::default()
@@ -121,7 +122,7 @@ fn profiles() -> corona_launcher::View {
         .map(|p| {
           p.available
             .iter()
-            .map(|n| (n.clone().into(), n.clone().into()))
+            .map(|n| (n.clone().into(), profile_label(n).1.to_string().into()))
             .collect()
         })
         .unwrap_or_default()

@@ -5,21 +5,13 @@ use corona_surface::{
   dashboard::{Changed, QuickAction, Tile},
 };
 use corona_utils::error::spawn_logged;
-use gpui_kit::{App, SharedString, Subscription, assets::IconName};
+use gpui_kit::{App, SharedString, Subscription};
 use rust_i18n::t;
 
 use crate::{
   PowerExt,
   ui::{icons::power_profile, page::PowerPanel},
 };
-
-fn profile_icon(active: Option<&str>) -> IconName {
-  match active {
-    Some("performance") => IconName::Gauge,
-    Some("power-saver") => IconName::Leaf,
-    _ => IconName::Scale,
-  }
-}
 
 /// Lit for any profile but the default one
 fn profile_active(active: Option<&str>) -> bool {
@@ -41,7 +33,7 @@ impl QuickAction for PowerProfileToggle {
     // the next one, so a click cycles through them
     let next = profiles.and_then(|p| p.next().cloned());
     Tile {
-      icon: profile_icon(active.as_deref()),
+      icon: power_profile(active.as_deref().unwrap_or("balanced")).0,
       status: match active.as_deref() {
         Some(name) => power_profile(name).1.into(),
         None => t!("app.common.unavailable").into(),
@@ -76,9 +68,5 @@ mod tests {
     assert!(!profile_active(Some("balanced")));
     assert!(profile_active(Some("performance")));
     assert!(profile_active(Some("power-saver")));
-    assert_eq!(profile_icon(Some("performance")), IconName::Gauge);
-    assert_eq!(profile_icon(Some("power-saver")), IconName::Leaf);
-    assert_eq!(profile_icon(Some("balanced")), IconName::Scale);
-    assert_eq!(profile_icon(None), IconName::Scale);
   }
 }

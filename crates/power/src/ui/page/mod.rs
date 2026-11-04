@@ -13,7 +13,7 @@ mod profiles;
 
 pub struct PowerPanel {
   error: PageError,
-  _subscriptions: [Subscription; 4],
+  _subscriptions: [Subscription; 3],
 }
 
 impl ControlCenterPage for PowerPanel {
@@ -31,7 +31,6 @@ impl ControlCenterPage for PowerPanel {
     let power = cx.power().clone();
 
     let subscriptions = [
-      cx.observe(&power.status, |_, _, cx| cx.notify()),
       cx.observe(&power.battery, |_, _, cx| cx.notify()),
       cx.observe(&power.devices, |_, _, cx| cx.notify()),
       cx.observe(&power.profiles, |_, _, cx| cx.notify()),

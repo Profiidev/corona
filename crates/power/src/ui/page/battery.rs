@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::time::Duration;
 
 use crate::{Battery, BatteryState, PowerExt};
 use corona_components::async_listener::AsyncListenerExt;
@@ -13,21 +12,8 @@ use gpui_kit::{
 };
 
 use crate::ui::page::{PowerPanel, card};
-use corona_components::i18n::decimal;
+use corona_components::{i18n::decimal, time::duration};
 use rust_i18n::t;
-
-pub(crate) fn duration(duration: Duration) -> String {
-  let minutes = (duration.as_secs() + 30) / 60;
-  match minutes / 60 {
-    0 => t!("app.power.duration.minutes", minutes = minutes).into(),
-    hours => t!(
-      "app.power.duration.hours",
-      hours = hours,
-      minutes = minutes % 60
-    )
-    .into(),
-  }
-}
 
 pub(crate) fn icon(battery: &Battery) -> IconName {
   match battery.percentage {
@@ -39,7 +25,7 @@ pub(crate) fn icon(battery: &Battery) -> IconName {
   }
 }
 
-fn state(state: BatteryState) -> Cow<'static, str> {
+pub(crate) fn state(state: BatteryState) -> Cow<'static, str> {
   match state {
     BatteryState::Charging => t!("app.power.state.charging"),
     BatteryState::Discharging => t!("app.power.state.discharging"),
@@ -154,18 +140,6 @@ impl PowerPanel {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn duration() {
-    assert_eq!(
-      super::duration(Duration::from_secs(4 * 3600 + 20 * 60)),
-      "4 h 20 min"
-    );
-    assert_eq!(super::duration(Duration::from_secs(25 * 60)), "25 min");
-    // rounded to the nearest minute
-    assert_eq!(super::duration(Duration::from_secs(3599)), "1 h 0 min");
-    assert_eq!(super::duration(Duration::ZERO), "0 min");
-  }
 
   fn battery(percentage: f64, state: BatteryState) -> Battery {
     Battery {

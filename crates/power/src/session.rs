@@ -1,6 +1,7 @@
 use std::env;
 
 use anyhow::{Context, Result};
+use corona_utils::error::ErrorLogExt;
 use futures_lite::StreamExt;
 use gpui_kit::{AsyncApp, SharedString, Task, assets::IconName};
 use rust_i18n::t;
@@ -184,7 +185,15 @@ pub(crate) async fn run(conn: Connection, action: SessionAction) -> Result<()> {
     SessionAction::PowerOff => manager.power_off(true).await?,
     SessionAction::RebootToFirmware => {
       manager.set_reboot_to_firmware_setup(true).await?;
-      manager.reboot(true).await?
+      if let Err(err) = manager.reboot(true).await {
+        // don't leave the one-shot flag armed for a later reboot
+        manager
+          .set_reboot_to_firmware_setup(false)
+          .await
+          .log_err()
+          .ok();
+        return Err(err.into());
+      }
     }
   }
   Ok(())
@@ -193,7 +202,16 @@ pub(crate) async fn run(conn: Connection, action: SessionAction) -> Result<()> {
 pub(crate) async fn reboot_to(conn: Connection, entry: String) -> Result<()> {
   let manager = manager(&conn).await?;
   manager.set_reboot_to_boot_loader_entry(&entry).await?;
-  Ok(manager.reboot(true).await?)
+  if let Err(err) = manager.reboot(true).await {
+    // don't leave the one-shot entry armed for a later reboot
+    manager
+      .set_reboot_to_boot_loader_entry("")
+      .await
+      .log_err()
+      .ok();
+    return Err(err.into());
+  }
+  Ok(())
 }
 
 /// Holds every suspend and hibernate back until `before_sleep`'s task ends.
