@@ -37,7 +37,7 @@ struct Brightness {
 impl Brightness {
   fn target(&self, args: &Args, cx: &App) -> Option<(Option<String>, f32)> {
     let monitor = match &self.display {
-      Some(d) => Some(d.output.clone().unwrap_or_else(|| d.id.clone())),
+      Some(d) => Some(d.id.clone()),
       None => args.text(1).map(str::to_string),
     };
     let current = match &self.display {

@@ -20,13 +20,16 @@ pub enum Action {
   Change(f32),
 }
 
-/// `*` picks every available display, anything else matches output name or id
+/// `*` picks every display, anything else matches output name or id; only available ones
 fn select(displays: &[Display], name: &str) -> Vec<Display> {
   displays
     .iter()
-    .filter(|d| match name {
-      "*" => d.unavailable.is_none(),
-      name => d.output.as_deref() == Some(name) || d.id == name,
+    .filter(|d| {
+      d.unavailable.is_none()
+        && match name {
+          "*" => true,
+          name => d.output.as_deref() == Some(name) || d.id == name,
+        }
     })
     .cloned()
     .collect()
@@ -125,6 +128,7 @@ mod tests {
     ];
     assert_eq!(ids(select(&displays, "*")), ["backlight", "ddc-3"]);
     assert!(select(&[], "*").is_empty());
+    assert!(select(&displays, "DP-2").is_empty());
   }
 
   #[test]

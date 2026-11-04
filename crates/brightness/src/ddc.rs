@@ -15,19 +15,35 @@ use crate::state::{Display, DisplayKind};
 const BRIGHTNESS: &str = "10";
 #[cfg(not(test))]
 const TIMEOUT: Duration = Duration::from_secs(5);
+/// probing every bus takes far longer than one setvcp
+#[cfg(not(test))]
+const DETECT_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(not(test))]
 const QUARANTINE: Duration = Duration::from_secs(5 * 60);
 #[cfg(not(test))]
 const STARTUP_DELAY: Duration = Duration::from_secs(3);
+/// a getvcp right after boot or resume can fail once on a monitor that does support it
+const READ_ATTEMPTS: u32 = 3;
+#[cfg(not(test))]
+const READ_RETRY_DELAY: Duration = Duration::from_millis(500);
 #[cfg(test)]
 const TIMEOUT: Duration = Duration::from_millis(500);
+#[cfg(test)]
+const DETECT_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(test)]
 const QUARANTINE: Duration = Duration::from_millis(400);
 #[cfg(test)]
 const STARTUP_DELAY: Duration = Duration::ZERO;
+#[cfg(test)]
+const READ_RETRY_DELAY: Duration = Duration::from_millis(10);
 
 pub(crate) enum DdcCommand {
-  Set { bus: u32, brightness: u32 },
+  Set {
+    bus: u32,
+    brightness: u32,
+  },
+  /// The connected outputs changed
+  Redetect,
 }
 
 pub(crate) enum Update {
@@ -43,24 +59,41 @@ pub fn available() -> bool {
     .is_some_and(|path| env::split_paths(&path).any(|dir| dir.join("ddcutil").is_file()))
 }
 
+/// Sends what `ddcutil` detects; the time to try again after a failure
+fn announce(updates: &flume::Sender<Update>) -> Result<Option<Instant>, flume::SendError<Update>> {
+  match detect() {
+    Ok(displays) => updates.send(Update::Displays(displays)).map(|_| None),
+    Err(e) => {
+      tracing::warn!("ddcutil detect failed: {e:?}");
+      updates
+        .send(Update::DetectFailed)
+        .map(|_| Some(Instant::now() + QUARANTINE))
+    }
+  }
+}
+
+/// Tells the level the monitor really has, after a set that may not have arrived
+fn report(bus: u32, updates: &flume::Sender<Update>) -> Result<(), flume::SendError<Update>> {
+  match read_brightness(bus) {
+    Ok((brightness, _)) => updates.send(Update::Brightness { bus, brightness }),
+    Err(e) => {
+      tracing::debug!("reading bus {bus} failed: {e:?}");
+      Ok(())
+    }
+  }
+}
+
 pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Sender<Update>) {
   thread::spawn(move || {
     // probing over the NVIDIA I2C bus stalls the GPU setup of the first frame
     thread::sleep(STARTUP_DELAY);
-    let detected = match detect() {
-      Ok(displays) => Update::Displays(displays),
-      Err(e) => {
-        tracing::warn!("ddcutil detect failed: {e:?}");
-        Update::DetectFailed
-      }
-    };
-    if updates.send(detected).is_err() {
+    let Ok(mut retry) = announce(&updates) else {
       return;
-    }
+    };
 
     let mut quarantined: HashMap<u32, Instant> = HashMap::new();
     loop {
-      let next = quarantined.values().min().copied();
+      let next = quarantined.values().copied().chain(retry).min();
       let first = match next {
         Some(until) => commands.recv_deadline(until),
         None => commands
@@ -71,6 +104,12 @@ pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Send
         Ok(first) => first,
         Err(flume::RecvTimeoutError::Timeout) => {
           let now = Instant::now();
+          if retry.is_some_and(|at| at <= now) {
+            let Ok(again) = announce(&updates) else {
+              return;
+            };
+            retry = again;
+          }
           let ended: Vec<u32> = quarantined
             .iter()
             .filter(|(_, until)| **until <= now)
@@ -78,7 +117,7 @@ pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Send
             .collect();
           for bus in ended {
             quarantined.remove(&bus);
-            if updates.send(Update::Recovered { bus }).is_err() {
+            if updates.send(Update::Recovered { bus }).is_err() || report(bus, &updates).is_err() {
               return;
             }
           }
@@ -87,8 +126,18 @@ pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Send
         Err(flume::RecvTimeoutError::Disconnected) => return,
       };
       let mut latest: HashMap<u32, u32> = HashMap::new();
-      for DdcCommand::Set { bus, brightness } in std::iter::once(first).chain(commands.try_iter()) {
-        latest.insert(bus, brightness);
+      let mut redetect = false;
+      for command in std::iter::once(first).chain(commands.try_iter()) {
+        match command {
+          DdcCommand::Set { bus, brightness } => _ = latest.insert(bus, brightness),
+          DdcCommand::Redetect => redetect = true,
+        }
+      }
+      if redetect {
+        let Ok(again) = announce(&updates) else {
+          return;
+        };
+        retry = again;
       }
       for (bus, brightness) in latest {
         if quarantined
@@ -97,27 +146,24 @@ pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Send
         {
           continue;
         }
-        let set = run(&[
-          "--bus",
-          &bus.to_string(),
-          "setvcp",
-          BRIGHTNESS,
-          &brightness.to_string(),
-        ]);
+        let set = run(
+          &[
+            "--bus",
+            &bus.to_string(),
+            "setvcp",
+            BRIGHTNESS,
+            &brightness.to_string(),
+          ],
+          TIMEOUT,
+        );
         match set {
           Ok(_) => {
             quarantined.remove(&bus);
-            if updates
-              .send(Update::Brightness { bus, brightness })
-              .is_err()
-            {
-              return;
-            }
           }
           Err(e) => {
             tracing::warn!("ddcutil setvcp on bus {bus} failed, pausing it: {e:?}");
             quarantined.insert(bus, Instant::now() + QUARANTINE);
-            if updates.send(Update::Failed { bus }).is_err() {
+            if updates.send(Update::Failed { bus }).is_err() || report(bus, &updates).is_err() {
               return;
             }
           }
@@ -127,20 +173,33 @@ pub(crate) fn worker(commands: flume::Receiver<DdcCommand>, updates: flume::Send
   });
 }
 
+fn read_brightness(bus: u32) -> Result<(u32, u32)> {
+  let out = run(
+    &["--bus", &bus.to_string(), "getvcp", BRIGHTNESS, "--brief"],
+    TIMEOUT,
+  )?;
+  parse_getvcp(&out)
+}
+
+fn read_brightness_retrying(bus: u32) -> Result<(u32, u32)> {
+  let mut result = read_brightness(bus);
+  for _ in 1..READ_ATTEMPTS {
+    if result.is_ok() {
+      break;
+    }
+    thread::sleep(READ_RETRY_DELAY);
+    result = read_brightness(bus);
+  }
+  result
+}
+
 fn detect() -> Result<Vec<Display>> {
   let mut displays = Vec::new();
-  for found in parse_detect(&run(&["detect"])?) {
-    match run(&[
-      "--bus",
-      &found.bus.to_string(),
-      "getvcp",
-      BRIGHTNESS,
-      "--brief",
-    ])
-    .and_then(|out| parse_getvcp(&out))
-    {
+  for found in parse_detect(&run(&["detect"], DETECT_TIMEOUT)?) {
+    let Some(bus) = found.bus else { continue };
+    match read_brightness_retrying(bus) {
       Ok((brightness, max)) => displays.push(Display {
-        id: format!("ddc/{}", found.bus),
+        id: format!("ddc/{bus}"),
         output: found.output,
         name: found.model,
         kind: DisplayKind::External,
@@ -149,13 +208,13 @@ fn detect() -> Result<Vec<Display>> {
         unavailable: None,
       }),
       // monitors without DDC/CI or with it turned off in their menu
-      Err(e) => tracing::debug!("bus {} has no brightness: {e:?}", found.bus),
+      Err(e) => tracing::debug!("bus {bus} has no brightness: {e:?}"),
     }
   }
   Ok(displays)
 }
 
-fn run(args: &[&str]) -> Result<String> {
+fn run(args: &[&str], timeout: Duration) -> Result<String> {
   let mut child = Command::new("ddcutil")
     .arg("--noconfig")
     .args(args)
@@ -163,15 +222,18 @@ fn run(args: &[&str]) -> Result<String> {
     .stderr(Stdio::null())
     .spawn()
     .context("running ddcutil")?;
-  let deadline = Instant::now() + TIMEOUT;
+  // read while the child runs: output over the pipe buffer would block it
+  let mut stdout = child.stdout.take().context("ddcutil stdout")?;
+  let (sender, received) = flume::bounded(1);
+  let reader = thread::spawn(move || {
+    let mut out = String::new();
+    let _ = sender.send(stdout.read_to_string(&mut out).map(|_| out));
+  });
+  let deadline = Instant::now() + timeout;
   loop {
     if let Some(status) = child.try_wait()? {
-      let mut out = String::new();
-      child
-        .stdout
-        .take()
-        .context("ddcutil stdout")?
-        .read_to_string(&mut out)?;
+      let out = received.recv().context("ddcutil stdout")??;
+      reader.join().ok();
       if !status.success() {
         bail!("ddcutil {} exited with {status}", args.join(" "));
       }
@@ -180,6 +242,7 @@ fn run(args: &[&str]) -> Result<String> {
     if Instant::now() > deadline {
       child.kill().ok();
       child.wait().ok();
+      reader.join().ok();
       bail!("ddcutil {} timed out", args.join(" "));
     }
     thread::sleep(Duration::from_millis(20));
@@ -188,7 +251,7 @@ fn run(args: &[&str]) -> Result<String> {
 
 #[derive(Debug, PartialEq)]
 struct Detected {
-  bus: u32,
+  bus: Option<u32>,
   output: Option<String>,
   model: Option<String>,
 }
@@ -201,7 +264,7 @@ fn parse_detect(out: &str) -> Vec<Detected> {
       found.extend(current.take());
       if line.starts_with("Display ") {
         current = Some(Detected {
-          bus: 0,
+          bus: None,
           output: None,
           model: None,
         });
@@ -218,7 +281,6 @@ fn parse_detect(out: &str) -> Vec<Detected> {
         display.bus = value
           .strip_prefix("/dev/i2c-")
           .and_then(|bus| bus.parse().ok())
-          .unwrap_or_default()
       }
       // `card1-DP-1`, older versions write `DRM connector`
       "DRM_connector" | "DRM connector" => {
@@ -229,7 +291,7 @@ fn parse_detect(out: &str) -> Vec<Detected> {
     }
   }
   found.extend(current);
-  found.retain(|d| d.bus != 0);
+  found.retain(|d| d.bus.is_some());
   found
 }
 
@@ -273,12 +335,12 @@ Display 2
       parse_detect(DETECT),
       [
         Detected {
-          bus: 5,
+          bus: Some(5),
           output: Some("DP-1".into()),
           model: Some("DELL U2720Q".into()),
         },
         Detected {
-          bus: 6,
+          bus: Some(6),
           output: Some("DP-2".into()),
           model: Some("LG ULTRAGEAR".into()),
         },
@@ -315,12 +377,12 @@ Display 4
       parse_detect(out),
       [
         Detected {
-          bus: 3,
+          bus: Some(3),
           output: Some("eDP-1".into()),
           model: None,
         },
         Detected {
-          bus: 9,
+          bus: Some(9),
           output: None,
           model: Some("Odd: Name".into()),
         },
@@ -368,32 +430,37 @@ Display 4
   #[test]
   fn run_outcomes() {
     let fake = FakeDdcutil::install();
-    assert_eq!(run(&["detect"]).unwrap(), crate::fake_ddcutil::DETECT);
+    assert_eq!(
+      run(&["detect"], TIMEOUT).unwrap(),
+      crate::fake_ddcutil::DETECT
+    );
     assert_eq!(fake.calls(), ["--noconfig detect"]);
-    let error = run(&["--bus", "6", "getvcp", BRIGHTNESS, "--brief"]).unwrap_err();
+    let error = run(&["--bus", "6", "getvcp", BRIGHTNESS, "--brief"], TIMEOUT).unwrap_err();
     assert_eq!(
       error.to_string(),
       "ddcutil --bus 6 getvcp 10 --brief exited with exit status: 1"
     );
     fake.touch("hang");
     let started = Instant::now();
-    let error = run(&["--bus", "5", "setvcp", BRIGHTNESS, "1"]).unwrap_err();
+    let error = run(&["--bus", "5", "setvcp", BRIGHTNESS, "1"], TIMEOUT).unwrap_err();
     assert!(error.to_string().ends_with("timed out"), "{error}");
     assert!(started.elapsed() < TIMEOUT * 4);
   }
 
   #[test]
-  fn run_pipe_buffer_exhaustion_times_out() {
+  fn run_reads_output_over_the_pipe_buffer() {
     let _fake = FakeDdcutil::install();
-    let error = run(&["flood"]).unwrap_err();
-    assert!(error.to_string().ends_with("timed out"), "{error}");
+    assert!(!run(&["flood"], TIMEOUT).unwrap().is_empty());
   }
 
   #[test]
   fn run_without_ddcutil() {
     let empty = tempfile::tempdir().unwrap();
     unsafe { env::set_var("PATH", empty.path()) };
-    assert_eq!(run(&["detect"]).unwrap_err().to_string(), "running ddcutil");
+    assert_eq!(
+      run(&["detect"], TIMEOUT).unwrap_err().to_string(),
+      "running ddcutil"
+    );
   }
 
   #[test]
@@ -419,8 +486,19 @@ Display 4
         "--noconfig detect",
         "--noconfig --bus 5 getvcp 10 --brief",
         "--noconfig --bus 6 getvcp 10 --brief",
+        "--noconfig --bus 6 getvcp 10 --brief",
+        "--noconfig --bus 6 getvcp 10 --brief",
       ]
     );
+  }
+
+  #[test]
+  fn detect_retries_a_failed_read() {
+    let fake = FakeDdcutil::install();
+    fake.touch("getvcp-fails-once-5");
+    let displays = super::detect().unwrap();
+    assert_eq!(displays.len(), 1);
+    assert_eq!(displays[0].brightness, 50);
   }
 
   fn next(updates: &flume::Receiver<Update>) -> Update {
@@ -442,12 +520,11 @@ Display 4
     }
     worker(commands_rx, updates_tx);
     assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));
+    drop(commands);
+    // a finished set is not reported back, the UI already shows it
     assert!(matches!(
-      next(&updates),
-      Update::Brightness {
-        bus: 5,
-        brightness: 30
-      }
+      updates.recv_timeout(Duration::from_secs(10)),
+      Err(flume::RecvTimeoutError::Disconnected)
     ));
     let sets: Vec<_> = fake
       .calls()
@@ -455,17 +532,11 @@ Display 4
       .filter(|c| c.contains("setvcp"))
       .collect();
     assert_eq!(sets, ["--noconfig --bus 5 setvcp 10 30"]);
-
-    drop(commands);
-    assert!(matches!(
-      updates.recv_timeout(Duration::from_secs(10)),
-      Err(flume::RecvTimeoutError::Disconnected)
-    ));
   }
 
   #[test]
   fn worker_coalesces_multiple_buses() {
-    let _fake = FakeDdcutil::install();
+    let fake = FakeDdcutil::install();
     let (commands, commands_rx) = flume::unbounded();
     let (updates_tx, updates) = flume::unbounded();
     // Burst across bus 5 and bus 7 queued during detection delay
@@ -476,14 +547,24 @@ Display 4
     assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));
 
     // Both buses are processed with their latest coalesced value (5 -> 30, 7 -> 40)
-    let mut results = vec![];
-    for _ in 0..2 {
-      if let Update::Brightness { bus, brightness } = next(&updates) {
-        results.push((bus, brightness));
-      }
-    }
-    results.sort_by_key(|(bus, _)| *bus);
-    assert_eq!(results, [(5, 30), (7, 40)]);
+    drop(commands);
+    assert!(matches!(
+      updates.recv_timeout(Duration::from_secs(10)),
+      Err(flume::RecvTimeoutError::Disconnected)
+    ));
+    let mut sets: Vec<_> = fake
+      .calls()
+      .into_iter()
+      .filter(|c| c.contains("setvcp"))
+      .collect();
+    sets.sort();
+    assert_eq!(
+      sets,
+      [
+        "--noconfig --bus 5 setvcp 10 30",
+        "--noconfig --bus 7 setvcp 10 40"
+      ]
+    );
   }
 
   #[test]
@@ -494,6 +575,21 @@ Display 4
     let (updates_tx, updates) = flume::unbounded();
     worker(commands_rx, updates_tx);
     assert!(matches!(next(&updates), Update::DetectFailed));
+
+    // tried again later
+    std::fs::remove_file(fake.file("detect-fails")).unwrap();
+    assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));
+  }
+
+  #[test]
+  fn worker_detects_again_on_request() {
+    let _fake = FakeDdcutil::install();
+    let (commands, commands_rx) = flume::unbounded();
+    let (updates_tx, updates) = flume::unbounded();
+    worker(commands_rx, updates_tx);
+    assert!(matches!(next(&updates), Update::Displays(_)));
+    commands.send(DdcCommand::Redetect).unwrap();
+    assert!(matches!(next(&updates), Update::Displays(d) if d.len() == 1));
   }
 
   #[test]
@@ -511,6 +607,14 @@ Display 4
       })
       .unwrap();
     assert!(matches!(next(&updates), Update::Failed { bus: 5 }));
+    // what the monitor really shows
+    assert!(matches!(
+      next(&updates),
+      Update::Brightness {
+        bus: 5,
+        brightness: 50
+      }
+    ));
 
     // ignored while quarantined, other buses still work
     std::fs::remove_file(fake.file("setvcp-fails-5")).unwrap();
@@ -526,33 +630,29 @@ Display 4
         brightness: 3,
       })
       .unwrap();
+    assert!(matches!(next(&updates), Update::Recovered { bus: 5 }));
     assert!(matches!(
       next(&updates),
       Update::Brightness {
-        bus: 7,
-        brightness: 3
+        bus: 5,
+        brightness: 50
       }
     ));
-    assert!(
-      !fake
-        .calls()
-        .contains(&"--noconfig --bus 5 setvcp 10 2".to_string())
-    );
-
-    assert!(matches!(next(&updates), Update::Recovered { bus: 5 }));
     commands
       .send(DdcCommand::Set {
         bus: 5,
         brightness: 4,
       })
       .unwrap();
+    drop(commands);
     assert!(matches!(
-      next(&updates),
-      Update::Brightness {
-        bus: 5,
-        brightness: 4
-      }
+      updates.recv_timeout(Duration::from_secs(10)),
+      Err(flume::RecvTimeoutError::Disconnected)
     ));
+    let calls = fake.calls();
+    assert!(!calls.contains(&"--noconfig --bus 5 setvcp 10 2".to_string()));
+    assert!(calls.contains(&"--noconfig --bus 7 setvcp 10 3".to_string()));
+    assert!(calls.contains(&"--noconfig --bus 5 setvcp 10 4".to_string()));
   }
 
   #[test]

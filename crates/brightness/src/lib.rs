@@ -112,7 +112,11 @@ impl Brightness {
     let id = id.to_string();
     async move {
       let (kind, max) = display?;
-      let brightness = brightness.min(max);
+      let brightness = match kind {
+        // raw 0 turns some panels off
+        DisplayKind::Backlight => brightness.clamp(1, max.max(1)),
+        _ => brightness.min(max),
+      };
       match (kind, id.split_once('/')) {
         (DisplayKind::Backlight, Some((_, name))) => {
           backlight::set(&conn, name, brightness).await?
@@ -120,7 +124,9 @@ impl Brightness {
         (DisplayKind::External, Some((_, bus))) => {
           let ddc = ddc.context("ddcutil is off")?;
           ddc.send(DdcCommand::Set {
-            bus: bus.parse()?,
+            bus: bus
+              .parse()
+              .with_context(|| format!("malformed display id {id}"))?,
             brightness,
           })?;
         }
@@ -176,9 +182,16 @@ fn merge(
       .any(|b| b.output.as_ref() == Some(&output.name))
   };
 
+  // panels are never external monitors, also when their backlight is not under the connector
+  let internal = |output: &Output| {
+    ["eDP", "LVDS", "DSI"]
+      .iter()
+      .any(|prefix| output.name.starts_with(prefix))
+  };
+
   let monitors: Vec<Display> = outputs
     .iter()
-    .filter(|o| !builtin(o))
+    .filter(|o| !builtin(o) && !internal(o))
     .map(|output| {
       match detected
         .iter()
@@ -252,7 +265,22 @@ pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
     let poll = poll.clone();
     move |config: &BrightnessConfig, _| poll.store(config.poll_seconds, Ordering::Relaxed)
   });
+  let ddc = (ddcutil_enabled && ddcutil_available).then(|| {
+    let (commands_tx, commands) = flume::unbounded();
+    let (updates_tx, updates) = flume::unbounded();
+    ddc::worker(commands, updates_tx);
+    let events = events_tx.clone();
+    thread::spawn(move || {
+      for update in updates.iter() {
+        if events.send(Event::Ddc(update)).is_err() {
+          break;
+        }
+      }
+    });
+    commands_tx
+  });
   let sysfs = events_tx.clone();
+  let redetect = ddc.clone();
   thread::spawn(move || {
     let mut last = None;
     loop {
@@ -262,7 +290,12 @@ pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
         outputs::connected(&drm),
       );
       if last.as_ref() != Some(&current) {
+        // monitors come and go: look for their DDC buses again
+        let replugged = last.as_ref().is_some_and(|(_, o)| *o != current.1);
         last = Some(current.clone());
+        if replugged && let Some(ddc) = &redetect {
+          _ = ddc.send(DdcCommand::Redetect);
+        }
         let (backlights, outputs) = current;
         if sysfs
           .send(Event::Sysfs {
@@ -278,20 +311,6 @@ pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
     }
   });
 
-  let ddc = (ddcutil_enabled && ddcutil_available).then(|| {
-    let (commands_tx, commands) = flume::unbounded();
-    let (updates_tx, updates) = flume::unbounded();
-    ddc::worker(commands, updates_tx);
-    let events = events_tx.clone();
-    thread::spawn(move || {
-      for update in updates.iter() {
-        if events.send(Event::Ddc(update)).is_err() {
-          break;
-        }
-      }
-    });
-    commands_tx
-  });
   if ddcutil_enabled && !ddcutil_available {
     tracing::warn!("enable_ddcutil is set, but ddcutil is not on the PATH");
   }
@@ -324,7 +343,12 @@ pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
           outputs: o,
         } => (backlights, outputs) = (b, o),
         Event::Ddc(Update::Displays(list)) => ddc = Ddc::Detected(list),
-        Event::Ddc(Update::DetectFailed) => ddc = Ddc::DetectFailed,
+        Event::Ddc(Update::DetectFailed) => {
+          // a failed redetect keeps the displays found earlier
+          if !matches!(ddc, Ddc::Detected(_)) {
+            ddc = Ddc::DetectFailed;
+          }
+        }
         Event::Ddc(Update::Brightness { bus, brightness }) => {
           let id = format!("ddc/{bus}");
           if let Ddc::Detected(list) = &mut ddc
@@ -345,7 +369,13 @@ pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
           }
         }
       }
-      displays.write(cx, merge(&backlights, &outputs, &ddc, &failed));
+      let merged = merge(&backlights, &outputs, &ddc, &failed);
+      displays.update(cx, |displays, cx| {
+        if *displays != merged {
+          *displays = merged;
+          cx.notify();
+        }
+      });
     }
   })
   .detach();
@@ -387,6 +417,7 @@ esac
 bus="$3"
 case "$4" in
   getvcp)
+    if [ -f "$dir/getvcp-fails-once-$bus" ]; then rm "$dir/getvcp-fails-once-$bus"; exit 1; fi
     [ -f "$dir/getvcp-$bus" ] || exit 1
     cat "$dir/getvcp-$bus" ;;
   setvcp)
@@ -557,38 +588,13 @@ mod tests {
     assert_eq!(merged.len(), 2);
     assert!(super::merge(&[], &[], &Ddc::Detecting, &none).is_empty());
 
-    // a backlight whose output is None does not match any output name in builtin(output),
-    // causing an unmapped laptop backlight to coexist with its DRM connector as an external unsupported display
+    // a backlight whose output is None still owns the internal connector
     let mut panel_unmapped = display("backlight/intel_backlight", "", DisplayKind::Backlight);
     panel_unmapped.output = None;
     let edp_outputs = [output("eDP-1", Some("Internal Panel"))];
     let merged = super::merge(&[panel_unmapped], &edp_outputs, &Ddc::Detecting, &none);
-    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.len(), 1);
     assert_eq!(merged[0].id, "backlight/intel_backlight");
-    assert_eq!(merged[1].id, "output/eDP-1");
-    assert_eq!(merged[1].unavailable, Some(Unavailable::Detecting));
-  }
-
-  #[test]
-  fn brightness_update_ignored_when_not_detected() {
-    let mut ddc = Ddc::Detecting;
-    let bus = 5;
-    let brightness = 80;
-    let id = format!("ddc/{bus}");
-    if let Ddc::Detected(list) = &mut ddc
-      && let Some(display) = list.iter_mut().find(|d| d.id == id)
-    {
-      display.brightness = brightness;
-    }
-    assert_eq!(ddc, Ddc::Detecting);
-
-    let mut ddc = Ddc::DetectFailed;
-    if let Ddc::Detected(list) = &mut ddc
-      && let Some(display) = list.iter_mut().find(|d| d.id == id)
-    {
-      display.brightness = brightness;
-    }
-    assert_eq!(ddc, Ddc::DetectFailed);
   }
 
   #[test]
@@ -739,7 +745,10 @@ mod global_tests {
     set(cx, "ddc/5", 0).unwrap();
     let sent: Vec<_> = rx
       .try_iter()
-      .map(|DdcCommand::Set { bus, brightness }| (bus, brightness))
+      .filter_map(|command| match command {
+        DdcCommand::Set { bus, brightness } => Some((bus, brightness)),
+        DdcCommand::Redetect => None,
+      })
       .collect();
     assert_eq!(sent, [(5, 100), (5, 30), (5, 0)]);
   }
@@ -777,13 +786,13 @@ mod global_tests {
     let root = sysfs();
     state(cx, &conn, None);
     set(cx, "backlight/intel_backlight", 5000).unwrap();
-    // zero brightness passes through to logind as minimum
+    // zero brightness is raised to 1, raw 0 can turn the panel off
     set(cx, "backlight/intel_backlight", 0).unwrap();
     assert_eq!(
       calls.lock().unwrap().as_slice(),
       [
         ("backlight".to_string(), "intel_backlight".to_string(), 1200),
-        ("backlight".to_string(), "intel_backlight".to_string(), 0),
+        ("backlight".to_string(), "intel_backlight".to_string(), 1),
       ]
     );
     // sysfs untouched

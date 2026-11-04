@@ -80,7 +80,7 @@ pub(crate) async fn set(conn: &Connection, name: &str, brightness: u32) -> Resul
     tracing::debug!("logind refused the brightness ({error}), writing sysfs directly");
     let path = sys(BACKLIGHT).join(name).join("brightness");
     fs::write(&path, brightness.to_string())
-      .with_context(|| format!("writing {}", path.display()))?;
+      .with_context(|| format!("logind: {error}; writing {}", path.display()))?;
   }
   Ok(())
 }
