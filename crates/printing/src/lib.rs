@@ -50,8 +50,8 @@ pub struct Printing {
   /// the running scan, if any
   pub scan: Entity<Option<ScanProgress>>,
   sock: Arc<Path>,
-  /// the system bus, for asking Avahi
-  avahi: Option<Connection>,
+  /// the system bus, for asking Avahi and cups-pk-helper
+  system: Option<Connection>,
   /// pinned certificates of TLS scanners
   pins: Arc<Path>,
   /// asks the listener to read printers and jobs again
@@ -99,7 +99,7 @@ impl Printing {
       .as_ref()
       .ok()
       .map(|p| avahi::queue_name(p, self.list_printers(cx)));
-    let (sock, avahi) = (self.sock.clone(), self.avahi.clone());
+    let (sock, system) = (self.sock.clone(), self.system.clone());
     self.after(async move {
       let (printer, queue) = (printer?, queue.unwrap_or_default());
       let info = printer
@@ -108,15 +108,15 @@ impl Printing {
         .unwrap_or_else(|| printer.name.clone());
       // the address now: one announced earlier may be stale, e.g. from before DHCP
       let direct = async || {
-        match &avahi {
+        match &system {
           Some(conn) => avahi::resolve_printer(conn, &printer).await.log_err().ok(),
           None => None,
         }
         .unwrap_or_else(|| printer.direct_uri.clone())
       };
 
-      // pk-helper's errors are plain text, so anything but a clear refusal
-      // from CUPS is worth another try, unless the password prompt failed
+      // anything but a clear refusal from CUPS is worth another try, unless
+      // the password prompt or pk-helper failed
       let retry = |e: &anyhow::Error| {
         e.downcast_ref::<AdminRefused>().is_none()
           && (cups::device_error(e) || e.downcast_ref::<IppError>().is_none())
@@ -124,9 +124,14 @@ impl Printing {
       let attempt = async |uri: &str, ppd: &str| match cups::add_printer(&sock, &queue, uri, ppd, &info).await {
         Err(e) if unauthorized(&e) => {
           let add = (queue.clone(), uri.to_string(), ppd.to_string(), info.clone(), "");
-          pk_helper("PrinterAdd", &add).await?;
-          pk_helper("PrinterSetEnabled", &(&queue, true)).await?;
-          pk_helper("PrinterSetAcceptJobs", &(&queue, true, "")).await
+          // plain text errors, so never retried: that would ask for the password again
+          async {
+            pk_helper(system.as_ref(), "PrinterAdd", &add).await?;
+            pk_helper(system.as_ref(), "PrinterSetEnabled", &(&queue, true)).await?;
+            pk_helper(system.as_ref(), "PrinterSetAcceptJobs", &(&queue, true, "")).await
+          }
+          .await
+          .map_err(|e| anyhow::Error::new(AdminRefused(format!("{e:#}"))))
         }
         result => result,
       };
@@ -143,8 +148,8 @@ impl Printing {
         && retry(e)
       {
         let model = printer.model.as_deref().unwrap_or(&printer.name);
-        added = match cups::find_driver(&sock, model).await.log_err().ok().flatten() {
-          Some(ppd) => {
+        added = match cups::find_driver(&sock, model).await {
+          Ok(Some(ppd)) => {
             // such printers often fail Create-Job + Send-Document; IPP/1.0
             // has CUPS send the whole job with Print-Job instead
             if uri.starts_with("ipp") && !uri.contains('?') {
@@ -153,9 +158,10 @@ impl Printing {
             tracing::info!("{model} is not driverless, using the driver {ppd} at {uri}");
             attempt(&uri, &ppd).await
           }
-          None => Err(anyhow!(
+          Ok(None) => Err(anyhow!(
             "{e}\n{model} cannot print without a driver, and CUPS has none for it. Install one, then add it again."
           )),
+          Err(fe) => Err(anyhow!("{e}\nlooking for a driver for {model} failed: {fe:#}")),
         };
       }
       added
@@ -193,7 +199,7 @@ impl Printing {
       self.probing.clone(),
     );
     cx.spawn(async move |cx| {
-      let found = sane::scanners().await;
+      let found = within(PROBE_TIMEOUT, sane::scanners()).await;
       probing.store(false, Ordering::Relaxed);
       cx.update(|cx| match found {
         // a scan that started meanwhile keeps its device busy, so unlisted
@@ -220,10 +226,12 @@ impl Printing {
   }
 
   pub fn cancel_job(&self, id: i32) -> impl Future<Output = Result<()>> + use<> {
-    let sock = self.sock.clone();
+    let (sock, system) = (self.sock.clone(), self.system.clone());
     self.after(async move {
       match cups::cancel_job(&sock, id).await {
-        Err(e) if unauthorized(&e) => pk_helper("JobCancelPurge", &(id, false)).await,
+        Err(e) if unauthorized(&e) => {
+          pk_helper(system.as_ref(), "JobCancelPurge", &(id, false)).await
+        }
         result => result,
       }
     })
@@ -234,10 +242,12 @@ impl Printing {
     printer: &str,
     paused: bool,
   ) -> impl Future<Output = Result<()>> + use<> {
-    let (sock, printer) = (self.sock.clone(), printer.to_string());
+    let (sock, system, printer) = (self.sock.clone(), self.system.clone(), printer.to_string());
     self.after(async move {
       match cups::set_paused(&sock, &printer, paused).await {
-        Err(e) if unauthorized(&e) => pk_helper("PrinterSetEnabled", &(printer, !paused)).await,
+        Err(e) if unauthorized(&e) => {
+          pk_helper(system.as_ref(), "PrinterSetEnabled", &(printer, !paused)).await
+        }
         result => result,
       }
     })
@@ -250,6 +260,13 @@ impl Printing {
   ) -> impl Future<Output = Result<()>> + use<> {
     let (sock, printer) = (self.sock.clone(), printer.to_string());
     self.after(async move {
+      let meta = smol::fs::metadata(&path)
+        .await
+        .with_context(|| format!("reading {}", path.display()))?;
+      // a FIFO or device never ends, a huge file would be copied again
+      if !meta.is_file() || meta.len() > MAX_PRINT_FILE {
+        bail!("{} is not a regular file under 256 MiB", path.display());
+      }
       let data = smol::fs::read(&path)
         .await
         .with_context(|| format!("reading {}", path.display()))?;
@@ -286,12 +303,26 @@ impl Printing {
   ) -> impl Future<Output = Result<ScannerCaps>> + use<> {
     let scanner = self.scanner(name, cx);
     let client = scanner.as_ref().ok().map(|s| self.client(s, cx));
+    let scanning = self.scan.read(cx).is_some();
+    let probing = self.probing.clone();
     async move {
       let scanner = scanner?;
-      match &scanner.sane {
-        Some(device) => sane::capabilities(device).await,
-        None => escl::capabilities(&*client.context("no client")?, &scanner).await,
+      // probing a busy SANE device can fail
+      if scanner.sane.is_some() {
+        if scanning {
+          return Err(anyhow!("a scan is running"));
+        }
+        if probing.load(Ordering::Relaxed) {
+          return Err(anyhow!("scanner search running"));
+        }
       }
+      within(PROBE_TIMEOUT, async {
+        match &scanner.sane {
+          Some(device) => sane::capabilities(device).await,
+          None => escl::capabilities(&*client.context("no client")?, &scanner).await,
+        }
+      })
+      .await
     }
   }
 
@@ -306,6 +337,9 @@ impl Printing {
       Ok(scanner) => scanner,
       Err(e) => return Task::ready(Err(e)),
     };
+    if scanner.sane.is_some() && self.probing.load(Ordering::Relaxed) {
+      return Task::ready(Err(anyhow!("scanner search running")));
+    }
     let client = self.client(&scanner, cx);
     let progress = self.scan.clone();
     // claimed right away, so a second call in the same tick is refused
@@ -319,22 +353,24 @@ impl Printing {
         pages: 0,
       }),
     );
+    // made before the task, so dropping it unpolled clears the scan as well
+    let guard = ClearScan {
+      progress: Some(progress.clone()),
+      cx: cx.to_async(),
+    };
     cx.spawn(async move |cx| {
-      let mut guard = ClearScan {
-        progress: Some(progress.clone()),
-        cx: cx.clone(),
-      };
+      let mut guard = guard;
       let result = async {
         // a deleted folder would fail only after the paper is scanned
         smol::fs::create_dir_all(&settings.destination)
           .await
           .with_context(|| format!("making {}", settings.destination.display()))?;
         let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
-        let (pages, mut rx) = futures_channel::mpsc::unbounded();
+        let (pages, rx) = flume::unbounded();
         let on_page = move |n| {
-          pages.unbounded_send(n).ok();
+          pages.send(n).ok();
         };
-        let scan = async {
+        let scan = within(SCAN_TIMEOUT, async {
           match &scanner.sane {
             Some(device) => sane::scan(device, &settings, &stamp, on_page).await,
             None => {
@@ -342,10 +378,9 @@ impl Printing {
               escl::scan(&client, &scanner, &caps, &settings, &stamp, on_page).await
             }
           }
-        };
+        });
         let watch = async {
-          use futures_lite::StreamExt;
-          while let Some(n) = rx.next().await {
+          while let Ok(n) = rx.recv_async().await {
             progress.write(
               cx,
               Some(ScanProgress {
@@ -381,7 +416,7 @@ impl Printing {
       network_printers: cx.new(|_| network_printers),
       scan: cx.new(|_| None),
       sock: Arc::from(Path::new("/nonexistent/cups.sock")),
-      avahi: None,
+      system: None,
       pins: Arc::from(Path::new("/nonexistent/scanner-certs")),
       poke: flume::unbounded().0,
       sane: false,
@@ -411,6 +446,21 @@ impl Drop for ClearScan {
       .spawn(async move { progress.write(&mut cx, None) })
       .detach();
   }
+}
+
+const MAX_PRINT_FILE: u64 = 256 << 20;
+
+/// A hung scanner or `scanimage` must not hold the scan state forever.
+const SCAN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// `work`, or an error once `limit` has passed. Dropping `work` cancels it.
+async fn within<T>(limit: Duration, work: impl Future<Output = Result<T>>) -> Result<T> {
+  futures_lite::future::or(work, async {
+    smol::Timer::after(limit).await;
+    bail!("timed out after {}s", limit.as_secs())
+  })
+  .await
 }
 
 /// cups-pk-helper could not run an action: no rights, no agent, no answer.
@@ -456,7 +506,7 @@ fn unauthorized(e: &anyhow::Error) -> bool {
 
 /// Runs an admin action through cups-pk-helper, which asks polkit, which
 /// asks the shell's polkit agent for a password.
-async fn pk_helper<B>(method: &str, body: &B) -> Result<()>
+async fn pk_helper<B>(conn: Option<&Connection>, method: &str, body: &B) -> Result<()>
 where
   B: serde::Serialize + zbus::zvariant::DynamicType,
 {
@@ -464,8 +514,8 @@ where
   // long enough to type a password, the shell's connection gives up after 5 s
   const PROMPT: Duration = Duration::from_secs(120);
   let call = async {
-    let conn = Connection::system().await?;
-    let proxy = zbus::Proxy::new(&conn, MECHANISM, "/", MECHANISM).await?;
+    let conn = conn.context("no system bus")?;
+    let proxy = zbus::Proxy::new(conn, MECHANISM, "/", MECHANISM).await?;
     let flags = zbus::proxy::MethodFlags::AllowInteractiveAuth.into();
     let reply: Option<String> = proxy
       .call_with_flags(method, flags, body)
@@ -509,7 +559,7 @@ async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {
     network_printers: cx.new(|_| Vec::new()),
     scan: cx.new(|_| None),
     sock: sock.clone(),
-    avahi: Some(conn.clone()),
+    system: Some(conn.clone()),
     pins: Arc::from(tls::pins_file()),
     poke: poke.clone(),
     sane: !cfg!(test),
@@ -862,15 +912,53 @@ mod tests {
     assert!(ok.is_ok());
   }
 
+  /// cups-pk-helper answers every method with a plain string, empty on success.
+  struct FakePkHelper(&'static str);
+
+  #[interface(name = "org.opensuse.CupsPkHelper.Mechanism")]
+  impl FakePkHelper {
+    fn printer_add(
+      &self,
+      _name: String,
+      _uri: String,
+      _ppd: String,
+      _info: String,
+      _location: String,
+    ) -> String {
+      self.0.into()
+    }
+  }
+
+  #[test]
+  fn pk_helper_reads_a_plain_string_reply() {
+    let (bus, helper) = TestBus::with_conn();
+    let client = block_on(bus.conn());
+    block_on(async {
+      helper
+        .object_server()
+        .at("/", FakePkHelper(""))
+        .await
+        .unwrap();
+      helper
+        .request_name("org.opensuse.CupsPkHelper.Mechanism")
+        .await
+        .unwrap();
+    });
+    let add = ("Office", "ipp://x", "", "Office", "");
+    block_on(pk_helper(Some(&client), "PrinterAdd", &add)).unwrap();
+  }
+
   #[gpui::test]
-  fn broken_cupsd_clears_printers(cx: &mut TestAppContext) {
+  fn broken_cupsd_keeps_printers(cx: &mut TestAppContext) {
     let cups = MockCups::start();
     cups.state.lock().unwrap().printers = vec![printer("Office", 3)];
     let (_bus, _conn) = start(cx, &cups);
     wait_until(cx, |cx| names(cx).len() == 1);
     cups.state.lock().unwrap().broken = true;
     cx.update(|cx| cx.printing().refresh());
-    wait_until(cx, |cx| names(cx).is_empty());
+    cx.executor().advance_clock(Duration::from_millis(500));
+    cx.run_until_parked();
+    assert_eq!(names(cx).len(), 1);
   }
 
   /// A fake avahi-daemon that resolves every service to `address`.

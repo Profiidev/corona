@@ -99,10 +99,26 @@ fn user() -> Attr {
   Attr::new("requesting-user-name", name(&user))
 }
 
+/// `printer` as one path segment: anything but unreserved characters is percent-encoded,
+/// so a name cannot add path, query or authority parts.
+fn encode_segment(printer: &str) -> String {
+  let mut out = String::with_capacity(printer.len());
+  for b in printer.bytes() {
+    match b {
+      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(b as char),
+      _ => out.push_str(&format!("%{b:02X}")),
+    }
+  }
+  out
+}
+
 fn printer_uri(printer: &str) -> Attr {
   Attr::new(
     "printer-uri",
-    uri(&format!("ipp://localhost/printers/{printer}")),
+    uri(&format!(
+      "ipp://localhost/printers/{}",
+      encode_segment(printer)
+    )),
   )
 }
 
@@ -222,7 +238,6 @@ fn color(value: &str) -> Option<u32> {
   u32::from_str_radix(hex, 16).ok()
 }
 
-/// Active jobs, then the most recent finished ones.
 /// Unfinished jobs, then the last finished ones created at or after `since`
 /// (unix seconds), so weeks-old history stays out.
 pub async fn jobs(sock: &Path, since: i32) -> Result<Vec<Job>> {
@@ -322,7 +337,8 @@ pub async fn print(sock: &Path, printer: &str, title: &str, data: Vec<u8>) -> Re
     ],
   );
   request.data = data;
-  let response = send(sock, &request).await?;
+  // cupsd spools the document before it answers, a retry would print twice
+  let response = send_within(sock, &request, Duration::from_secs(120)).await?;
   response
     .groups(tag::JOB)
     .find_map(|g| g.get("job-id")?.int())
@@ -466,6 +482,13 @@ pub async fn unsubscribe(sock: &Path, id: i32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn printer_names_stay_one_path_segment() {
+    assert_eq!(super::encode_segment("Office_1"), "Office_1");
+    assert_eq!(super::encode_segment("a/b?c#d e"), "a%2Fb%3Fc%23d%20e");
+    assert_eq!(super::encode_segment("../x"), "..%2Fx");
+  }
+
   use super::*;
 
   #[test]

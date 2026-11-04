@@ -9,7 +9,7 @@ use crate::state::{
 };
 use anyhow::{Context, Result, bail};
 use futures_lite::AsyncReadExt;
-use gpui_kit::http_client::{AsyncBody, HttpClient, Method, Request, Response};
+use gpui_kit::http_client::{AsyncBody, HttpClient, Method, Request, Response, Url};
 use roxmltree::{Document, Node};
 
 /// A scanner from its eSCL announcement.
@@ -19,41 +19,49 @@ pub fn scanner(service: &Service) -> Scanner {
     model: service.record("ty").map(String::from),
     address: service.address.clone(),
     port: service.port,
-    root: service
-      .record("rs")
-      .map(|rs| rs.trim_matches('/').to_string())
-      .unwrap_or_else(|| "eSCL".into()),
+    root: crate::avahi::safe_path(service.record("rs"))
+      .unwrap_or("eSCL")
+      .into(),
     // only announced over TLS, see `tls::PinnedClient`
     tls: service.kind == SCANS,
     sane: None,
   }
 }
 
-async fn read(response: &mut Response<AsyncBody>) -> Result<Vec<u8>> {
+/// Capabilities, status and refusals are small, only pages are big.
+const MAX_TEXT: usize = 1 << 20;
+
+/// The start of a body for an error message.
+fn excerpt(body: &[u8]) -> String {
+  let text = String::from_utf8_lossy(body);
+  text.trim().chars().take(300).collect()
+}
+
+async fn read(response: &mut Response<AsyncBody>, max: usize) -> Result<Vec<u8>> {
   let mut body = Vec::new();
-  let limit = MAX_RESPONSE as u64 + 1;
+  let limit = max as u64 + 1;
   response
     .body_mut()
     .take(limit)
     .read_to_end(&mut body)
     .await?;
-  if body.len() > MAX_RESPONSE {
-    bail!("the scanner answered with more than {MAX_RESPONSE} bytes");
+  if body.len() > max {
+    bail!("the scanner answered with more than {max} bytes");
   }
   Ok(body)
 }
 
-async fn get(client: &dyn HttpClient, url: &str) -> Result<(u16, Vec<u8>)> {
+async fn get(client: &dyn HttpClient, url: &str, max: usize) -> Result<(u16, Vec<u8>)> {
   let mut response = client.get(url, AsyncBody::empty(), false).await?;
-  let body = read(&mut response).await?;
+  let body = read(&mut response, max).await?;
   Ok((response.status().as_u16(), body))
 }
 
 async fn get_text(client: &dyn HttpClient, url: &str) -> Result<String> {
-  let (status, body) = get(client, url).await?;
+  let (status, body) = get(client, url, MAX_TEXT).await?;
   let body = String::from_utf8_lossy(&body).into_owned();
   if status != 200 {
-    bail!("{url} answered {status}: {}", body.trim());
+    bail!("{url} answered {status}: {}", excerpt(body.as_bytes()));
   }
   Ok(body)
 }
@@ -190,12 +198,12 @@ pub async fn scan(
     .header("Content-Type", "text/xml")
     .body(AsyncBody::from(scan_settings(caps, settings)))?;
   let mut response = client.send(request).await?;
-  let body = read(&mut response).await?;
+  let body = read(&mut response, MAX_TEXT).await?;
   if response.status().as_u16() != 201 {
     bail!(
       "scanner refused the job ({}): {}",
       response.status(),
-      String::from_utf8_lossy(&body).trim()
+      excerpt(&body)
     );
   }
   let location = response
@@ -203,12 +211,20 @@ pub async fn scan(
     .get("Location")
     .and_then(|v| v.to_str().ok())
     .context("scan job without a Location")?;
-  let job = if location.starts_with("http") {
-    location.trim_end_matches('/').to_string()
-  } else {
-    let origin = base.trim_end_matches(&scanner.root).trim_end_matches('/');
-    format!("{origin}/{}", location.trim_matches('/'))
-  };
+  // the scanner picks the address, but only on its own host
+  let mut origin = Url::parse(&base)?;
+  origin.set_path("/");
+  let job = origin.join(location)?;
+  if (job.scheme(), job.host_str(), job.port_or_known_default())
+    != (
+      origin.scheme(),
+      origin.host_str(),
+      origin.port_or_known_default(),
+    )
+  {
+    bail!("scanner sent a job address on another host: {job}");
+  }
+  let job = job.as_str().trim_end_matches('/').to_string();
 
   let mut cancel = CancelJob {
     client: Some(client.clone()),
@@ -260,7 +276,7 @@ async fn pages(
   let mut jpegs = Vec::new();
   let mut busy = 0;
   loop {
-    let (status, body) = get(client, &format!("{job}/NextDocument")).await?;
+    let (status, body) = get(client, &format!("{job}/NextDocument"), MAX_RESPONSE).await?;
     match status {
       200 => {
         // named like SANE's pages

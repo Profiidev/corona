@@ -263,27 +263,52 @@ fn readable(capabilities: &Capabilities, path: &str) -> Result<std::path::PathBu
   Ok(path)
 }
 
+/// Printing and managing printers are separate grants, a plugin listing printers needs none.
+fn require(capabilities: &Capabilities, manage: bool) -> Result<()> {
+  let (allowed, key) = match manage {
+    true => (capabilities.may_manage_printing(), "manage"),
+    false => (capabilities.may_print(), "print"),
+  };
+  ensure!(
+    allowed,
+    "printing is not granted; set capabilities.printing.{key} to true"
+  );
+  Ok(())
+}
+
 type Pr = Glob<pr::Printing>;
 
 #[specta]
-async fn cancel_job(pr: Pr, id: i32) -> Throws<()> {
+async fn cancel_job(pr: Pr, plugin: Plugin, id: i32) -> Throws<()> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   pr.cancel_job(id).await.into()
 }
 
 #[specta]
-async fn pause_printer(pr: Pr, printer: String) -> Throws<()> {
+async fn pause_printer(pr: Pr, plugin: Plugin, printer: String) -> Throws<()> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   pr.set_paused(&printer, true).await.into()
 }
 
 #[specta]
-async fn resume_printer(pr: Pr, printer: String) -> Throws<()> {
+async fn resume_printer(pr: Pr, plugin: Plugin, printer: String) -> Throws<()> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   pr.set_paused(&printer, false).await.into()
 }
 
 /// Adds a queue for a printer from `listNetworkPrinters`; CUPS may ask the user for an
 /// administrator password.
 #[specta]
-async fn add_printer(cx: Cx, pr: Pr, name: String) -> Throws<()> {
+async fn add_printer(cx: Cx, pr: Pr, plugin: Plugin, name: String) -> Throws<()> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   let add = pr.add_printer(&name, &cx);
   add.await.into()
 }
@@ -291,7 +316,9 @@ async fn add_printer(cx: Cx, pr: Pr, name: String) -> Throws<()> {
 /// Prints a file the plugin may read, e.g. one from `pickFiles`.
 #[specta]
 async fn print_file(pr: Pr, plugin: Plugin, printer: String, path: String) -> Throws<()> {
-  match readable(&plugin.capabilities, &path) {
+  let path =
+    require(&plugin.capabilities, false).and_then(|()| readable(&plugin.capabilities, &path));
+  match path {
     Ok(path) => pr.print_file(&printer, path).await,
     Err(e) => Err(e),
   }
@@ -302,8 +329,12 @@ async fn print_file(pr: Pr, plugin: Plugin, printer: String, path: String) -> Th
 async fn scanner_capabilities(
   cx: Cx,
   pr: Pr,
+  plugin: Plugin,
   scanner: String,
 ) -> Throws<Json<ScannerCapabilities>> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   let caps = pr.scanner_capabilities(&scanner, &cx);
   caps.await.map(|c| Json(c.into())).into()
 }
@@ -317,6 +348,9 @@ async fn scan(
   scanner: String,
   request: Json<ScanRequest>,
 ) -> Throws<Vec<String>> {
+  if let Err(e) = require(&plugin.capabilities, true) {
+    return Err(e).into();
+  }
   let task = cx
     .printing()
     .clone()
@@ -469,6 +503,19 @@ mod tests {
     assert_eq!(settings.color_mode, pr::ColorMode::Grayscale);
     assert_eq!(settings.source, pr::InputSource::Adf);
     assert_eq!(settings.destination, pr::pictures_dir());
+  }
+
+  #[test]
+  fn printing_needs_its_grants() {
+    let none = Capabilities::default();
+    let err = require(&none, true).unwrap_err().to_string();
+    assert!(err.contains("capabilities.printing.manage"), "{err}");
+    let err = require(&none, false).unwrap_err().to_string();
+    assert!(err.contains("capabilities.printing.print"), "{err}");
+    let manage = Capabilities::new().print_manage(true);
+    assert!(require(&manage, true).is_ok());
+    assert!(require(&manage, false).is_err());
+    assert!(require(&Capabilities::new().print(true), false).is_ok());
   }
 
   #[test]

@@ -24,7 +24,7 @@ use rustls::{
   pki_types::{CertificateDer, ServerName, UnixTime},
 };
 
-use crate::ipp::{HttpResponse, MAX_RESPONSE, complete, parse_response};
+use crate::ipp::{HttpResponse, MAX_RESPONSE, complete, oversized, parse_response};
 
 const CONNECT: Duration = Duration::from_secs(10);
 /// a high resolution page can take a while before its first byte
@@ -156,7 +156,7 @@ fn fetch(
         if complete(&raw) {
           break;
         }
-        if raw.len() > MAX_RESPONSE {
+        if oversized(&raw, MAX_RESPONSE) {
           bail!("{host} answered with more than {MAX_RESPONSE} bytes");
         }
       }

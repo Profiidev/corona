@@ -49,14 +49,25 @@ pub fn listener(
   let since = jiff::Timestamp::now().as_second() as i32;
   cx.spawn(async move |cx| {
     loop {
-      let mut printers = cups::printers(&sock).await.log_err().unwrap_or_default();
-      cups::mark_offline(&mut printers).await;
-      let jobs = match printers.is_empty() {
-        true => Vec::new(),
-        false => cups::jobs(&sock, since).await.log_err().unwrap_or_default(),
-      };
-      state.printers.write_changed(cx, printers);
-      state.jobs.write_changed(cx, jobs);
+      // a failed read keeps what is shown
+      if let Ok(mut printers) = cups::printers(&sock).await.log_err() {
+        // the list has no probe result yet, keep the last one instead of flipping to online
+        let shown = state.printers.read_with(cx, |p, _| p.clone());
+        for printer in &mut printers {
+          if let Some(old) = shown.iter().find(|p| p.name == printer.name) {
+            printer.offline = old.offline;
+          }
+        }
+        state.printers.write_changed(cx, printers.clone());
+        if printers.is_empty() {
+          state.jobs.write_changed(cx, Vec::new());
+        } else if let Ok(jobs) = cups::jobs(&sock, since).await.log_err() {
+          state.jobs.write_changed(cx, jobs);
+        }
+        // probing takes seconds, so the list is out before
+        cups::mark_offline(&mut printers).await;
+        state.printers.write_changed(cx, printers);
+      }
 
       if next_burst(&mut changes).await.is_none() {
         break;
@@ -99,7 +110,12 @@ pub fn subscription(cx: &mut App, sock: Arc<Path>, poke: flume::Sender<()>) {
             poke.send(()).ok();
             RENEW
           }
-          Err(e) if e.downcast_ref::<IppError>().is_some() => {
+          Err(e)
+            if matches!(
+              e.downcast_ref::<IppError>(),
+              Some(IppError::Unauthorized | IppError::Status(0x0400..=0x04ff, _))
+            ) =>
+          {
             tracing::warn!("CUPS refused the event subscription, printers update on open: {e}");
             return;
           }

@@ -16,6 +16,7 @@ const SCANIMAGE: &str = "scanimage";
 async fn run(program: &str, args: &[&str]) -> Result<String> {
   let out = Command::new(program)
     .args(args)
+    .kill_on_drop(true)
     .output()
     .await
     .context("running scanimage, is sane-backends installed?")?;

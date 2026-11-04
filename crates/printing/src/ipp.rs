@@ -356,18 +356,34 @@ async fn post(sock: &Path, body: &[u8], auth: Option<&str>) -> Result<Vec<u8>> {
     if complete(&raw) {
       break;
     }
-    if raw.len() > MAX_RESPONSE {
-      bail!("cupsd answered with more than {MAX_RESPONSE} bytes");
+    if oversized(&raw, MAX_IPP_RESPONSE) {
+      bail!("cupsd answered with more than {MAX_IPP_RESPONSE} bytes or no header");
     }
   }
   Ok(raw)
 }
 
-/// Whether `raw` is a whole response, by its Content-Length or last chunk.
 /// Most bytes an HTTP answer may have, a high resolution multi-page PDF fits.
 pub const MAX_RESPONSE: usize = 512 << 20;
 
-/// Whether `raw` holds a whole response. Cheap, it runs after every read.
+/// Most bytes an IPP answer from cupsd may have.
+const MAX_IPP_RESPONSE: usize = 8 << 20;
+
+/// Most bytes the header of an HTTP answer may have.
+const MAX_HEAD: usize = 64 << 10;
+
+/// Whether `raw` is past `max` or has no header end within `MAX_HEAD`, so a
+/// peer trickling bytes cannot make `complete` rescan a huge buffer.
+pub fn oversized(raw: &[u8], max: usize) -> bool {
+  raw.len() > max
+    || (raw.len() > MAX_HEAD
+      && raw[..raw.len().min(MAX_HEAD + 3)]
+        .windows(4)
+        .all(|w| w != b"\r\n\r\n"))
+}
+
+/// Whether `raw` is a whole response, by its Content-Length or last chunk.
+/// Cheap, it runs after every read.
 pub fn complete(raw: &[u8]) -> bool {
   let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
     return false;
