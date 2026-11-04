@@ -15,7 +15,7 @@ corona_ipc.workspace = true
 corona_utils.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 corona_config.workspace = true
 corona_components.workspace = true
 corona_launcher.workspace = true
@@ -27,13 +27,14 @@ anyhow.workspace = true
 dirs.workspace = true
 flume.workspace = true
 tracing.workspace = true
-rustix = { workspace = true, features = ["fs", "pipe"] }
+rustix = { workspace = true, features = ["fs", "pipe", "event"] }
 wayland-client.workspace = true
 wayland-protocols.workspace = true
 wayland-protocols-wlr.workspace = true
 wayland-protocols-misc.workspace = true
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 clap.workspace = true
+image = { workspace = true, features = ["jpeg"] }
 clap_complete.workspace = true
 
 [dev-dependencies]

@@ -2,7 +2,7 @@
 //! `{clipboard offset=1 | trim | uppercase}`, `{date offset="+2d" format="yyyy-MM-dd"}`,
 //! `{argument name="term" default="nixpkgs"}`, `{snippet name="sig"}` and friends
 
-use std::{collections::HashMap, io::Read};
+use std::collections::HashMap;
 
 use jiff::{Span, Zoned};
 
@@ -115,33 +115,48 @@ fn parse(template: &str) -> Vec<Piece> {
   pieces
 }
 
-/// The `{argument}` fields a template asks for, in order; unnamed ones are numbered
-pub fn arguments(template: &str) -> Vec<Placeholder> {
-  let mut seen = Vec::<String>::new();
-  let mut unnamed = 0;
+/// The `{argument}` fields a template asks for, in order, including those of the
+/// snippets it includes; unnamed ones are numbered
+pub fn arguments(template: &str, snippet: &dyn Fn(&str) -> Option<String>) -> Vec<Placeholder> {
   let mut out = Vec::new();
+  collect(template, snippet, 0, &mut 0, &mut out);
+  out
+}
+
+fn collect(
+  template: &str,
+  snippet: &dyn Fn(&str) -> Option<String>,
+  depth: usize,
+  unnamed: &mut usize,
+  out: &mut Vec<Placeholder>,
+) {
   for piece in parse(template) {
     let Piece::Placeholder(mut p) = piece else {
       continue;
     };
-    if p.name != "argument" {
-      continue;
-    }
-    let name = match p.attrs.get("name") {
-      Some(name) => name.clone(),
-      None => {
-        unnamed += 1;
-        format!("argument {unnamed}")
+    match p.name.as_str() {
+      "argument" => {
+        let name = match p.attrs.get("name") {
+          Some(name) => name.clone(),
+          None => {
+            *unnamed += 1;
+            format!("argument {unnamed}")
+          }
+        };
+        if out.iter().any(|o| o.attrs["name"] == name) {
+          continue;
+        }
+        p.attrs.insert("name".into(), name);
+        out.push(p);
       }
-    };
-    if seen.contains(&name) {
-      continue;
+      "snippet" if depth < 5 => {
+        if let Some(text) = p.attrs.get("name").and_then(|n| snippet(n)) {
+          collect(&text, snippet, depth + 1, unnamed, out);
+        }
+      }
+      _ => {}
     }
-    p.attrs.insert("name".into(), name.clone());
-    seen.push(name);
-    out.push(p);
   }
-  out
 }
 
 /// What placeholders read from
@@ -157,7 +172,8 @@ pub struct Env<'a> {
   pub url: bool,
 }
 
-/// Unicode date patterns like `yyyy-MM-dd HH:mm` as strftime
+/// Unicode date patterns like `yyyy-MM-dd HH:mm` as strftime, a subset: `'text'` is
+/// literal, `''` a quote
 fn strftime(pattern: &str) -> String {
   const TOKENS: [(&str, &str); 17] = [
     ("yyyy", "%Y"),
@@ -181,6 +197,16 @@ fn strftime(pattern: &str) -> String {
   let mut out = String::new();
   let mut rest = pattern;
   'outer: while !rest.is_empty() {
+    if let Some(after) = rest.strip_prefix('\'') {
+      // `''` is one quote, otherwise literal up to the closing quote
+      let (literal, after) = match after.strip_prefix('\'') {
+        Some(after) => ("'", after),
+        None => after.split_once('\'').unwrap_or((after, "")),
+      };
+      out.push_str(&literal.replace('%', "%%"));
+      rest = after;
+      continue;
+    }
     for (token, spec) in TOKENS {
       if let Some(after) = rest.strip_prefix(token) {
         out.push_str(spec);
@@ -209,24 +235,6 @@ fn shifted(now: &Zoned, offset: Option<&String>) -> Option<Zoned> {
   now.checked_add(span).ok()
 }
 
-fn uuid() -> String {
-  let mut bytes = [0u8; 16];
-  if let Ok(mut random) = std::fs::File::open("/dev/urandom") {
-    let _ = random.read_exact(&mut bytes);
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-  format!(
-    "{}-{}-{}-{}-{}",
-    &hex[0..8],
-    &hex[8..12],
-    &hex[12..16],
-    &hex[16..20],
-    &hex[20..32]
-  )
-}
-
 fn modify(value: String, modifiers: &[String], url: bool) -> String {
   let mut value = value;
   let mut raw = false;
@@ -250,7 +258,18 @@ fn modify(value: String, modifiers: &[String], url: bool) -> String {
   }
 }
 
-fn value(p: &Placeholder, env: &Env, depth: usize) -> Option<String> {
+/// Expansion stops past this many bytes of output
+const MAX_OUTPUT: usize = 1024 * 1024;
+/// Expansion stops past this many placeholders
+const MAX_PLACEHOLDERS: usize = 1000;
+
+fn value(
+  p: &Placeholder,
+  env: &Env,
+  depth: usize,
+  budget: &mut usize,
+  unnamed: &mut usize,
+) -> Option<String> {
   let attr = |k: &str| p.attrs.get(k);
   let value = match p.name.as_str() {
     "clipboard" => {
@@ -269,7 +288,7 @@ fn value(p: &Placeholder, env: &Env, depth: usize) -> Option<String> {
       };
       at.strftime(&format).to_string()
     }
-    "uuid" => uuid(),
+    "uuid" => uuid::Uuid::new_v4().to_string(),
     "cursor" => String::new(),
     "argument" => {
       let name = attr("name")?;
@@ -283,7 +302,7 @@ fn value(p: &Placeholder, env: &Env, depth: usize) -> Option<String> {
     }
     "snippet" if depth < 5 => {
       let text = (env.snippet)(attr("name")?)?;
-      expand_at(&text, env, depth + 1)
+      expand_at(&text, env, depth + 1, budget, unnamed)
     }
     "calculator" => (env.calculate)(attr("expression")?).unwrap_or_default(),
     _ => return None,
@@ -291,26 +310,42 @@ fn value(p: &Placeholder, env: &Env, depth: usize) -> Option<String> {
   Some(modify(value, &p.modifiers, env.url && p.name != "snippet"))
 }
 
-fn expand_at(template: &str, env: &Env, depth: usize) -> String {
-  let mut unnamed = 0;
-  parse(template)
-    .into_iter()
-    .map(|piece| match piece {
-      Piece::Text(text) => text,
+/// Snippets can reference each other, so the placeholders expanded and the text produced
+/// are capped for the whole expansion, and `unnamed` arguments are numbered across them
+fn expand_at(
+  template: &str,
+  env: &Env,
+  depth: usize,
+  budget: &mut usize,
+  unnamed: &mut usize,
+) -> String {
+  let mut out = String::new();
+  for piece in parse(template) {
+    if out.len() >= MAX_OUTPUT {
+      break;
+    }
+    match piece {
+      Piece::Text(text) => out.push_str(&text),
       Piece::Placeholder(mut p) => {
+        if *budget == 0 {
+          break;
+        }
+        *budget -= 1;
         if p.name == "argument" && !p.attrs.contains_key("name") {
-          unnamed += 1;
+          *unnamed += 1;
           p.attrs.insert("name".into(), format!("argument {unnamed}"));
         }
-        value(&p, env, depth).unwrap_or_default()
+        out.push_str(&value(&p, env, depth, budget, unnamed).unwrap_or_default());
       }
-    })
-    .collect()
+    }
+  }
+  out
 }
 
 /// The template with every placeholder replaced
 pub fn expand(template: &str, env: &Env) -> String {
-  expand_at(template, env, 0)
+  let mut budget = MAX_PLACEHOLDERS;
+  expand_at(template, env, 0, &mut budget, &mut 0)
 }
 
 #[cfg(test)]
@@ -379,16 +414,35 @@ mod tests {
 
   #[test]
   fn finds_arguments() {
-    let args =
-      arguments("{argument name=\"a\"} {argument} {argument name=\"a\"} {argument default=\"d\"}");
+    let args = arguments(
+      "{argument name=\"a\"} {argument} {argument name=\"a\"} {argument default=\"d\"}",
+      &|_| None,
+    );
     let names: Vec<&str> = args.iter().map(|a| a.attrs["name"].as_str()).collect();
     assert_eq!(names, ["a", "argument 1", "argument 2"]);
     assert_eq!(args[2].attrs.get("default").map(String::as_str), Some("d"));
   }
 
   #[test]
+  fn nested_arguments() {
+    let snippet = |n: &str| (n == "s").then(|| "{argument} {argument name=\"b\"}".to_string());
+    let args = arguments("{argument} {snippet name=\"s\"}", &snippet);
+    let names: Vec<&str> = args.iter().map(|a| a.attrs["name"].as_str()).collect();
+    assert_eq!(names, ["argument 1", "argument 2", "b"]);
+    let clip = |_: usize| None;
+    let e = env(
+      &[("argument 1", "x"), ("argument 2", "y"), ("b", "z")],
+      &clip,
+      &snippet,
+      false,
+    );
+    assert_eq!(expand("{argument} {snippet name=\"s\"}", &e), "x y z");
+  }
+
+  #[test]
   fn date_patterns() {
     assert_eq!(strftime("yyyy-MM-dd HH:mm"), "%Y-%m-%d %H:%M");
     assert_eq!(strftime("EEEE, d MMMM"), "%A, %-d %B");
+    assert_eq!(strftime("d 'at' HH''mm '%'"), "%-d at %H'%M %%");
   }
 }

@@ -49,8 +49,11 @@ fn quicklinks(_: &App) -> Vec<SettingItem> {
         .collect()
     },
     |c, rows| {
+      // names are the identity, the first of a name stays
+      let mut seen = std::collections::HashSet::new();
       c.launcher.quicklinks = rows
         .into_iter()
+        .filter(|r| seen.insert(r[0].clone()))
         .map(|r| Quicklink {
           name: r[0].clone(),
           url: r[1].clone(),
@@ -85,8 +88,10 @@ fn snippets(_: &App) -> Vec<SettingItem> {
         .collect()
     },
     |c, rows| {
+      let mut seen = std::collections::HashSet::new();
       c.launcher.snippets = rows
         .into_iter()
+        .filter(|r| seen.insert(r[0].clone()))
         .map(|r| Snippet {
           name: r[0].clone(),
           keyword: some(&r[1]),
@@ -120,7 +125,7 @@ fn sources(_: &App) -> Vec<SettingItem> {
       t!("app.settings.launcher.clipboard_image_size.description"),
       number(
         "launcher.clipboard.image_max_mb",
-        (1., 100., 1.),
+        (1., 64., 1.),
         |c| c.launcher.clipboard.image_max_mb.into(),
         |c, v| c.launcher.clipboard.image_max_mb = v as f32,
       ),

@@ -25,12 +25,27 @@ use corona_launcher::{
 };
 
 /// Argument values by placeholder name, from inline text or the arguments row
-fn values(template: &str, args: &Args) -> HashMap<String, String> {
-  placeholders::arguments(template)
+fn values(
+  template: &str,
+  args: &Args,
+  snippet: &dyn Fn(&str) -> Option<String>,
+) -> HashMap<String, String> {
+  placeholders::arguments(template, snippet)
     .into_iter()
     .enumerate()
     .filter_map(|(i, p)| Some((p.attrs.get("name")?.clone(), args.text(i)?.to_string())))
     .collect()
+}
+
+/// A snippet's text by name
+fn snippet_lookup(cx: &App) -> impl Fn(&str) -> Option<String> + use<> {
+  let snippets = cx.config().launcher.snippets.clone();
+  move |name: &str| {
+    snippets
+      .iter()
+      .find(|s| s.name.eq_ignore_ascii_case(name))
+      .map(|s| s.text.clone())
+  }
 }
 
 fn expand(template: &str, args: &Args, url: bool, cx: &App) -> String {
@@ -41,13 +56,7 @@ fn expand(template: &str, args: &Args, url: bool, cx: &App) -> String {
       .or_else(|| cx.clipboard_history()?.nth_text(0)),
     n => cx.clipboard_history()?.nth_text(n),
   };
-  let snippets = cx.config().launcher.snippets.clone();
-  let snippet = move |name: &str| {
-    snippets
-      .iter()
-      .find(|s| s.name.eq_ignore_ascii_case(name))
-      .map(|s| s.text.clone())
-  };
+  let snippet = snippet_lookup(cx);
   let calc = |expression: &str| calculate(expression, cx);
   placeholders::expand(
     template,
@@ -55,7 +64,7 @@ fn expand(template: &str, args: &Args, url: bool, cx: &App) -> String {
       now: Zoned::now(),
       clipboard: &clipboard,
       selection: cx.read_from_primary().and_then(|item| item.text()),
-      arguments: values(template, args),
+      arguments: values(template, args, &snippet),
       snippet: &snippet,
       calculate: &calc,
       url,
@@ -64,8 +73,8 @@ fn expand(template: &str, args: &Args, url: bool, cx: &App) -> String {
 }
 
 /// The argument fields a template asks for
-fn specs(template: &str) -> Vec<ArgSpec> {
-  placeholders::arguments(template)
+fn specs(template: &str, cx: &App) -> Vec<ArgSpec> {
+  placeholders::arguments(template, &snippet_lookup(cx))
     .into_iter()
     .map(|p| {
       let name = p.attrs.get("name").cloned().unwrap_or_default();
@@ -94,8 +103,8 @@ impl Command for SnippetCommand {
     format!("snippet:{}", self.0.name).into()
   }
 
-  fn meta(&self, _: &App) -> Meta {
-    let args = specs(&self.0.text);
+  fn meta(&self, cx: &App) -> Meta {
+    let args = specs(&self.0.text, cx);
     Meta {
       title: self.0.name.clone().into(),
       subtitle: Some(
@@ -151,8 +160,8 @@ impl Command for QuicklinkCommand {
     format!("quicklink:{}", self.0.name).into()
   }
 
-  fn meta(&self, _: &App) -> Meta {
-    let args = specs(&self.0.url);
+  fn meta(&self, cx: &App) -> Meta {
+    let args = specs(&self.0.url, cx);
     Meta {
       title: self.0.name.clone().into(),
       subtitle: Some(self.0.url.clone().into()),
@@ -167,13 +176,12 @@ impl Command for QuicklinkCommand {
     let url = self.0.url.clone();
     let open = Action::sync("open", t!("app.launcher.open"), move |args, _, cx| {
       let target = expand(&url, args, url.contains("://"), cx);
-      match target.strip_prefix("~/") {
-        Some(rest) => {
-          let home = dirs::home_dir().unwrap_or_default();
-          cx.open_with_system(&home.join(rest));
-        }
-        None if target.starts_with('/') => cx.open_with_system(std::path::Path::new(&target)),
-        None => cx.open_url(&target),
+      if target.starts_with("~/") {
+        cx.open_with_system(&corona_config::expand_home(std::path::Path::new(&target)));
+      } else if target.starts_with('/') {
+        cx.open_with_system(std::path::Path::new(&target));
+      } else {
+        cx.open_url(&target);
       }
       Ok(Outcome::close())
     });
@@ -267,6 +275,19 @@ fn quicklink_form(existing: Option<Quicklink>) -> View {
         icon: Some(values["icon"].trim().to_string()).filter(|i| !i.is_empty()),
       };
       let old = existing.as_ref().map(|q| q.name.clone());
+      // names are the identity, a second quicklink with one would be edited and deleted along
+      if cx
+        .config()
+        .launcher
+        .quicklinks
+        .iter()
+        .any(|q| q.name == link.name && old.as_ref() != Some(&q.name))
+      {
+        return Task::ready(Err(anyhow::anyhow!(
+          "a quicklink named {:?} already exists",
+          link.name
+        )));
+      }
       Task::ready(
         save(cx, |c| {
           let list = &mut c.launcher.quicklinks;
@@ -325,6 +346,19 @@ fn snippet_form(existing: Option<Snippet>, copy: bool) -> View {
         text: values["text"].clone(),
       };
       let old = existing.as_ref().filter(|_| !copy).map(|s| s.name.clone());
+      // names are the identity, a second snippet with one would be edited and deleted along
+      if cx
+        .config()
+        .launcher
+        .snippets
+        .iter()
+        .any(|s| s.name == snippet.name && old.as_ref() != Some(&s.name))
+      {
+        return Task::ready(Err(anyhow::anyhow!(
+          "a snippet named {:?} already exists",
+          snippet.name
+        )));
+      }
       Task::ready(
         save(cx, |c| {
           let list = &mut c.launcher.snippets;

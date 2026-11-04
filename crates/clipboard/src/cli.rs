@@ -34,7 +34,7 @@ impl Commands {
         Ok(clips) => {
           for c in clips {
             let pin = if c.pinned { "*" } else { " " };
-            let line = c.content.lines().next().unwrap_or_default();
+            let line = first_line(&c.content);
             println!("{}{pin}\t{}\t{line}", c.id, c.kind);
           }
         }
@@ -54,11 +54,27 @@ fn clips() -> Vec<CompletionCandidate> {
     ListClipboard::send((None, 50))
       .unwrap_or_default()
       .into_iter()
-      .map(|c| {
-        (
-          c.id.to_string(),
-          c.content.lines().next().unwrap_or_default().to_string(),
-        )
-      }),
+      .map(|c| (c.id.to_string(), first_line(&c.content))),
   )
+}
+
+/// The first line with control characters replaced, the text is untrusted and the terminal
+/// would act on escape sequences
+fn first_line(text: &str) -> String {
+  let line = text.lines().next().unwrap_or_default();
+  line
+    .chars()
+    .map(|c| if c.is_control() { ' ' } else { c })
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn first_line_sanitises() {
+    assert_eq!(first_line("a\x1b[31mred\nsecond"), "a [31mred");
+    assert_eq!(first_line("\nsecond"), "");
+  }
 }

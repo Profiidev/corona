@@ -3,7 +3,7 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::launcher::{clip, kind_label, swatch};
+use crate::launcher::{clip, kind_label, swatch, title};
 use crate::{ClipboardExt, Entry, Kind};
 use corona_components::components::{card::CardExt, modal::Dialog, segmented};
 use corona_launcher::command::Hud;
@@ -110,34 +110,22 @@ fn copy(id: i64, cx: &mut App) {
   let Some(entry) = history.get(id) else {
     return;
   };
-  if let Ok(clip) = clip(&entry).log_err() {
-    corona_launcher::paste::copy(&clip, cx);
-    corona_launcher::ui::hud::show(Hud::new(t!("app.launcher.hud.copied")), cx);
-    let _ = history.touch(id, cx).log_err();
-  }
+  let clip = clip(entry, cx);
+  cx.spawn(async move |cx| {
+    if let Ok(clip) = clip.await.log_err() {
+      cx.update(|cx| {
+        corona_launcher::paste::copy(&clip, cx);
+        corona_launcher::ui::hud::show(Hud::new(t!("app.launcher.hud.copied")), cx);
+        let _ = history.touch(id, cx).log_err();
+      });
+    }
+  })
+  .detach();
 }
 
 fn used(entry: &Entry) -> String {
-  let used = UNIX_EPOCH + Duration::from_secs(entry.used);
+  let used = UNIX_EPOCH + Duration::from_millis(entry.used);
   ago_short(SystemTime::now().duration_since(used).unwrap_or_default())
-}
-
-fn title(entry: &Entry) -> SharedString {
-  match &entry.text {
-    Some(text) => text
-      .lines()
-      .find(|l| !l.trim().is_empty())
-      .unwrap_or_default()
-      .chars()
-      .take(120)
-      .collect::<String>()
-      .into(),
-    None => t!(
-      "app.launcher.clipboard.image_title",
-      size = entry.size / 1024
-    )
-    .into(),
-  }
 }
 
 fn preview(entry: &Entry) -> AnyElement {
@@ -149,8 +137,13 @@ fn preview(entry: &Entry) -> AnyElement {
     .justify_center()
     .rounded_md()
     .overflow_hidden();
-  match (&entry.path, entry.text.as_deref().and_then(swatch)) {
-    (Some(path), _) => frame.child(img(path.clone()).size_full()),
+  let color = entry
+    .text
+    .as_deref()
+    .filter(|_| entry.kind == Kind::Color)
+    .and_then(swatch);
+  match (&entry.path, color) {
+    (Some(path), _) => frame.child(img(crate::store::display_path(path)).size_full()),
     (None, Some(color)) => frame.child(div().size_6().rounded_md().bg(color)),
     _ => frame.child(
       Icon::new(match entry.kind {

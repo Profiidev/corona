@@ -42,7 +42,7 @@ impl IpcCommand for ListClipboard {
         .into_iter()
         .map(|e| ClipInfo {
           id: e.id,
-          kind: format!("{:?}", e.kind).to_lowercase(),
+          kind: e.kind.as_str().to_string(),
           content: e
             .text
             .or_else(|| e.path.map(|p| p.display().to_string()))
