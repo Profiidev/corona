@@ -29,8 +29,8 @@ pub struct SystemMonitor {
   pub info: Entity<Option<SystemInfo>>,
   pub sample: Entity<Option<Sample>>,
   pub history: Entity<History>,
-  pub interval: Entity<Option<Duration>>,
-  intervals: flume::Sender<Option<Duration>>,
+  pub interval: Entity<Duration>,
+  intervals: flume::Sender<Duration>,
 }
 
 impl Global for SystemMonitor {}
@@ -50,11 +50,11 @@ impl SystemMonitor {
     self.history.read(cx)
   }
 
-  pub fn interval(&self, cx: &App) -> Option<Duration> {
+  pub fn interval(&self, cx: &App) -> Duration {
     *self.interval.read(cx)
   }
 
-  pub fn set_interval(&self, interval: Option<Duration>, cx: &mut App) {
+  pub fn set_interval(&self, interval: Duration, cx: &mut App) {
     self.interval.write(cx, interval);
     let _ = self.intervals.send(interval);
   }
@@ -85,14 +85,15 @@ fn start(cx: &mut App) {
   let (updates_tx, updates) = flume::unbounded();
   sampler::spawn(intervals_rx, updates_tx);
 
+  let every = interval(cx.config());
   let state = SystemMonitor {
     info: cx.new(|_| None),
     sample: cx.new(|_| None),
     history: cx.new(|_| History::default()),
-    interval: cx.new(|_| None),
+    interval: cx.new(|_| every),
     intervals,
   };
-  state.set_interval(Some(interval(cx.config())), cx);
+  state.set_interval(every, cx);
 
   let (info, sample, history) = (
     state.info.clone(),
@@ -123,7 +124,7 @@ fn start(cx: &mut App) {
       let interval = interval(cx.config());
       cx.global::<SystemMonitor>()
         .clone()
-        .set_interval(Some(interval), cx);
+        .set_interval(interval, cx);
     },
   );
 }
@@ -167,12 +168,7 @@ mod tests {
       cx.set_global(config);
       super::start(cx);
     });
-    cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(1))
-      )
-    });
+    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(1)));
     wait(cx, |cx| cx.system_monitor().info(cx).is_some());
     wait(cx, |cx| cx.system_monitor().history(cx).cpu.len() >= 2);
     cx.read(|cx| {
@@ -187,7 +183,7 @@ mod tests {
   }
 
   #[gpui::test]
-  fn config_and_pausing_set_the_interval(cx: &mut TestAppContext) {
+  fn config_sets_the_interval(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
@@ -198,14 +194,7 @@ mod tests {
       config.system.monitor.poll_seconds = 0;
       cx.set_global(config);
     });
-    cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(1))
-      )
-    });
-    cx.update(|cx| cx.system_monitor().clone().set_interval(None, cx));
-    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), None));
+    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(1)));
   }
 
   #[gpui::test]
@@ -224,10 +213,7 @@ mod tests {
     }
     cx.run_until_parked();
     cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(5))
-      );
+      assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(5));
     });
   }
 }

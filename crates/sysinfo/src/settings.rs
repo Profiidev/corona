@@ -108,6 +108,7 @@ fn resource_form(
           .trim()
           .parse::<f32>()
           .ok()
+          .filter(|v| v.is_finite())
           .filter(|v| Some(*v) != default);
         match field {
           "warning" => options.warning = value,

@@ -1,9 +1,6 @@
 //! System info as a launcher detail view
 
-use std::{
-  rc::Rc,
-  time::{Duration, SystemTime},
-};
+use std::{rc::Rc, time::SystemTime};
 
 use corona_components::{
   format::{Base, bytes},
@@ -15,14 +12,30 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::SystemMonitorExt;
+use crate::{SystemMonitorExt, sampler::unique_disks};
+
+/// backslash-escapes the characters markdown would interpret
+fn escape(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  for c in text.chars() {
+    if "\\`*_{}[]<>#|~".contains(c) {
+      out.push('\\');
+    }
+    out.push(c);
+  }
+  out
+}
 
 fn sysinfo(cx: &App) -> View {
   let monitor = cx.system_monitor();
   let mut rows = Vec::new();
   let mut body = String::new();
   if let Some(info) = monitor.info(cx) {
-    body.push_str(&format!("# {}\n\n{}\n", info.hostname, info.os));
+    body.push_str(&format!(
+      "# {}\n\n{}\n",
+      escape(&info.hostname),
+      escape(&info.os)
+    ));
     let uptime = SystemTime::now()
       .duration_since(info.booted)
       .unwrap_or_default();
@@ -58,10 +71,10 @@ fn sysinfo(cx: &App) -> View {
       t!("app.launcher.info.cpu_usage"),
       format!("{:.0}%", sample.cpu),
     ));
-    for disk in &sample.disks {
+    for disk in &unique_disks(sample.disks.clone()) {
       body.push_str(&format!(
         "\n- **{}** {} {} / {}",
-        disk.mount_point,
+        escape(&disk.mount_point),
         t!("app.launcher.info.free"),
         bytes(disk.available, Base::Binary),
         bytes(disk.total, Base::Binary)
@@ -92,27 +105,8 @@ fn sysinfo_command() -> Rc<dyn Command> {
       ..Default::default()
     },
     |_| {
-      vec![Action::spawn("open", t!("app.launcher.open"), |_, cx| {
-        // take a sample first when nothing samples yet
-        let monitor = cx.system_monitor().clone();
-        let idle = monitor.interval(cx).is_none();
-        if idle {
-          monitor.set_interval(Some(Duration::from_millis(500)), cx);
-        }
-        let cx = cx.to_async();
-        async move {
-          if idle {
-            cx.background_executor()
-              .timer(Duration::from_millis(700))
-              .await;
-          }
-          cx.update(|cx| {
-            if idle {
-              monitor.set_interval(None, cx);
-            }
-            Ok(Outcome::Push(sysinfo(cx)))
-          })
-        }
+      vec![Action::sync("open", t!("app.launcher.open"), |_, _, cx| {
+        Ok(Outcome::Push(sysinfo(cx)))
       })]
     },
   )

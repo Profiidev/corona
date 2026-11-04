@@ -113,7 +113,7 @@ impl Stat {
       Stat::Vram => percent(gpu?.vram_used?, gpu?.vram_total?),
       Stat::Disk => {
         let disk = sample.disks.iter().find(|d| d.mount_point == mount)?;
-        percent(disk.total - disk.available, disk.total)
+        percent(disk.total.saturating_sub(disk.available), disk.total)
       }
       Stat::Download => rate(sample.network_rx, &history.network_rx),
       Stat::Upload => rate(sample.network_tx, &history.network_tx),
@@ -315,7 +315,6 @@ mod tests {
   #[test]
   fn values() {
     let sample = Sample {
-      time: std::time::Instant::now(),
       cpu: 42.4,
       cpu_cores: vec![0.; 4],
       cpu_frequency: 0,

@@ -124,24 +124,29 @@ impl SysinfoPanel {
     let sample = monitor.sample(cx);
     let (usage, temperature) = (theme.chart_1, theme.danger);
 
+    let mut values = vec![as_f64(&history.cpu)];
+    let mut series = vec![Series {
+      name: t!("app.sysinfo.usage"),
+      color: usage,
+      unit: Unit::Percent,
+    }];
+    // no sensor, no temperature series
+    if !history.cpu_temperature.is_empty() {
+      values.push(as_f64(&history.cpu_temperature));
+      series.push(Series {
+        name: t!("app.sysinfo.temperature"),
+        color: temperature,
+        unit: Unit::Celsius,
+      });
+    }
+
     card(cx)
       .child(div().text_sm().font_bold().child(t!("app.sysinfo.cpu")))
       .child(graph(
         "system-cpu",
         t!("app.sysinfo.cpu"),
-        points(&[&as_f64(&history.cpu), &as_f64(&history.cpu_temperature)]),
-        &[
-          Series {
-            name: t!("app.sysinfo.usage"),
-            color: usage,
-            unit: Unit::Percent,
-          },
-          Series {
-            name: t!("app.sysinfo.temperature"),
-            color: temperature,
-            unit: Unit::Celsius,
-          },
-        ],
+        points(&values.iter().collect::<Vec<_>>()),
+        &series,
         true,
       ))
       .child(

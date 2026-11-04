@@ -30,7 +30,7 @@ rustix = { workspace = true, features = ["process"] }
 clap.workspace = true
 clap_complete.workspace = true
 sysinfo.workspace = true
-nvml-wrapper = "0.13.0"
+nvml-wrapper.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

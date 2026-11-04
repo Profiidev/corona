@@ -56,13 +56,35 @@ pub fn snapshot() -> Vec<Process> {
 
 /// SIGTERM, or SIGKILL when forced
 pub fn kill(pid: u32, force: bool) -> Result<()> {
-  let pid = rustix::process::Pid::from_raw(pid as i32).context("not a process id")?;
+  if pid == std::process::id() {
+    bail!("refusing to kill the shell");
+  }
+  let pid = i32::try_from(pid)
+    .ok()
+    .and_then(rustix::process::Pid::from_raw)
+    .context("not a process id")?;
   let signal = match force {
     true => rustix::process::Signal::KILL,
     false => rustix::process::Signal::TERM,
   };
   rustix::process::kill_process(pid, signal)?;
   Ok(())
+}
+
+/// SIGTERM to every pid, the ones that got it; fails only when none did
+pub fn kill_all(pids: &[u32]) -> Result<Vec<u32>> {
+  let mut killed = Vec::new();
+  let mut last = None;
+  for pid in pids {
+    match kill(*pid, false) {
+      Ok(()) => killed.push(*pid),
+      Err(e) => last = Some(e),
+    }
+  }
+  match (killed.is_empty(), last) {
+    (true, Some(e)) => Err(e),
+    _ => Ok(killed),
+  }
 }
 
 /// Socket inodes listening on `port` in `/proc/net/tcp`-style text
@@ -79,6 +101,18 @@ fn listening_inodes(table: &str, port: u16) -> HashSet<u64> {
       (*state == "0A" && local_port == port).then_some(inode)
     })
     .collect()
+}
+
+/// Signals everything listening on `port`, failing when nothing does
+pub fn kill_port(port: u16) -> Result<Vec<u32>> {
+  let pids = by_port(port)?;
+  if pids.is_empty() {
+    bail!(
+      "{}",
+      t!("app.launcher.processes.nothing_listens", port = port)
+    );
+  }
+  kill_all(&pids)
 }
 
 /// Processes with a socket listening on `port`
@@ -116,6 +150,12 @@ pub fn by_port(port: u16) -> Result<Vec<u32>> {
     if owns {
       pids.push(pid);
     }
+  }
+  if pids.is_empty() {
+    bail!(
+      "{}",
+      t!("app.launcher.processes.not_accessible", port = port)
+    );
   }
   Ok(pids)
 }
@@ -257,25 +297,16 @@ pub(crate) fn register(cx: &mut App) {
         |_| {
           vec![
             Action::sync("kill", t!("app.launcher.processes.kill"), |args, _, _| {
-              let Some(ArgValue::Number(port)) = args.get(0) else {
-                bail!("{}", t!("app.launcher.processes.port"));
+              let port = match args.get(0) {
+                Some(ArgValue::Number(n)) if n.fract() == 0. && (1. ..=65535.).contains(n) => {
+                  *n as u16
+                }
+                _ => bail!("{}", t!("app.launcher.processes.port")),
               };
-              let pids = by_port(*port as u16)?;
-              if pids.is_empty() {
-                bail!(
-                  "{}",
-                  t!(
-                    "app.launcher.processes.nothing_listens",
-                    port = *port as u16
-                  )
-                );
-              }
-              for pid in &pids {
-                kill(*pid, false)?;
-              }
+              let killed = kill_port(port)?;
               Ok(Outcome::hud(t!(
                 "app.launcher.processes.killed",
-                count = pids.len()
+                count = killed.len()
               )))
             })
             .destructive(),
@@ -290,6 +321,12 @@ pub(crate) fn register(cx: &mut App) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn kill_rejects_invalid_pids() {
+    assert!(kill(u32::MAX, false).is_err());
+    assert!(kill(0, false).is_err());
+  }
 
   #[test]
   fn listening_sockets() {

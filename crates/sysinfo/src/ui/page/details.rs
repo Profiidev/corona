@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime};
 
-use crate::{GpuVendor, SystemMonitorExt};
+use crate::{GpuVendor, SystemMonitorExt, sampler::unique_disks};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -198,7 +198,7 @@ impl SysinfoPanel {
         ),
       ));
 
-    for disk in &sample.disks {
+    for disk in &unique_disks(sample.disks.clone()) {
       let used = disk.total.saturating_sub(disk.available);
       let percent = used as f64 / disk.total.max(1) as f64 * 100.;
       resources = resources.child(value(

@@ -4,7 +4,7 @@ use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
-use crate::processes::{by_port, kill, snapshot};
+use crate::processes::{kill, kill_port, snapshot};
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
@@ -53,10 +53,6 @@ impl IpcCommand for KillPort {
   type Response = Vec<u32>;
 
   fn handle(port: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let pids = by_port(port)?;
-    for pid in &pids {
-      kill(*pid, false)?;
-    }
-    Ok(pids)
+    kill_port(port)
   }
 }

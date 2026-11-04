@@ -237,7 +237,7 @@ impl ScriptModule for SysinfoModule {
 mod tests {
   use std::{
     collections::VecDeque,
-    time::{Duration, Instant, UNIX_EPOCH},
+    time::{Duration, UNIX_EPOCH},
   };
 
   use crate as si;
@@ -292,7 +292,6 @@ mod tests {
   #[test]
   fn converts_samples() {
     let sample = si::Sample {
-      time: Instant::now(),
       cpu: 12.5,
       cpu_cores: vec![10., 15.],
       cpu_frequency: 3200,

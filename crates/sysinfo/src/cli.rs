@@ -26,14 +26,15 @@ impl Commands {
   pub fn run(self) {
     match self {
       Commands::Kill { pid, force } => done(KillProcess::send((pid, force)), "kill"),
-      Commands::KillPort { port } => match KillPort::send(port) {
-        Ok(pids) => {
+      Commands::KillPort { port } => {
+        let result = KillPort::send(port);
+        if let Ok(pids) = &result {
           for pid in pids {
             println!("{pid}");
           }
         }
-        Err(e) => tracing::error!("Failed to kill by port: {}", e),
-      },
+        done(result, "kill by port")
+      }
     }
   }
 }
