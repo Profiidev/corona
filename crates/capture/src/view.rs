@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use gpui_kit::{
   App, Context, Corners, Dmabuf, IntoElement, ParentElement, Pixels, Render, RenderOnce, Size,
   StyleRefinement, Styled, Task, Window, canvas, div, prelude::FluentBuilder,
@@ -78,7 +78,7 @@ impl LiveCapture {
   }
 
   fn from_frames(
-    frames: anyhow::Result<futures::channel::mpsc::Receiver<Arc<Dmabuf>>>,
+    frames: anyhow::Result<impl Stream<Item = Arc<Dmabuf>> + Unpin + 'static>,
     cx: &mut Context<Self>,
   ) -> Self {
     let capture = cx.spawn(async move |this, cx| {
@@ -186,7 +186,12 @@ mod tests {
 
   #[gpui::test]
   fn failed_captures_show_nothing(cx: &mut TestAppContext) {
-    let live = cx.new(|cx| LiveCapture::from_frames(Err(anyhow::anyhow!("no compositor")), cx));
+    let live = cx.new(|cx| {
+      LiveCapture::from_frames(
+        Err::<futures::channel::mpsc::Receiver<_>, _>(anyhow::anyhow!("no compositor")),
+        cx,
+      )
+    });
     cx.run_until_parked();
     live.read_with(cx, |live, _| assert_eq!(live.frame_size(), None));
     // the test scheduler never starts a capture

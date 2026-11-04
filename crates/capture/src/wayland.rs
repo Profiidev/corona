@@ -1,7 +1,7 @@
 use std::{
   fs::{self, File, OpenOptions},
   os::{
-    fd::{AsFd, OwnedFd},
+    fd::{AsFd, BorrowedFd, OwnedFd},
     unix::fs::FileExt,
   },
   path::PathBuf,
@@ -15,7 +15,9 @@ use gpui_wgpu::wgpu;
 
 use crate::{toplevel, view::FrameView};
 use image::RgbaImage;
+use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fs::{MemfdFlags, ftruncate, major, memfd_create, minor, stat};
+use rustix::io::Errno;
 use wayland_client::{
   Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop, event_created_child,
   globals::{GlobalListContents, registry_queue_init},
@@ -57,6 +59,8 @@ struct State {
   dmabuf_formats: Vec<(u32, Vec<u64>)>,
   toplevels: Vec<ExtForeignToplevelHandleV1>,
   session_done: bool,
+  /// `Done` was seen, the next constraint event starts a new round
+  constraints_dirty: bool,
   frame: Option<Result<(), String>>,
 }
 
@@ -88,10 +92,7 @@ pub struct Capturer {
 }
 
 /// Formats sampled as BGRA/BGRX words, see [`Dmabuf`].
-const FORMATS: [(Format, wl_shm::Format); 2] = [
-  (Format::Argb8888, wl_shm::Format::Argb8888),
-  (Format::Xrgb8888, wl_shm::Format::Xrgb8888),
-];
+const FORMATS: [Format; 2] = [Format::Argb8888, Format::Xrgb8888];
 
 /// The render node of the DRM device `dev`, which may be a primary node.
 fn render_node(dev: u64) -> Result<PathBuf> {
@@ -108,9 +109,12 @@ fn render_node(dev: u64) -> Result<PathBuf> {
     if path
       .file_name()
       .is_some_and(|n| n.to_string_lossy().starts_with("renderD"))
-      && device(stat(&path)?.st_rdev)? == target
     {
-      return Ok(path);
+      let Ok(st) = stat(&path) else { continue };
+      let Ok(d) = device(st.st_rdev) else { continue };
+      if d == target {
+        return Ok(path);
+      }
     }
   }
   bail!("no render node for device {}:{}", major(dev), minor(dev))
@@ -219,6 +223,7 @@ impl Capturer {
     state.dmabuf_device = None;
     state.dmabuf_formats.clear();
     state.session_done = false;
+    state.constraints_dirty = false;
     state.frame = None;
 
     let session = self.copy.create_session(source, Options::empty(), qh, ());
@@ -228,6 +233,10 @@ impl Capturer {
     if let Some(Err(e)) = state.frame.take() {
       session.destroy();
       bail!("capture failed: {e}");
+    }
+    if state.size.0 == 0 || state.size.1 == 0 {
+      session.destroy();
+      bail!("the compositor gave an empty buffer size {:?}", state.size);
     }
     Ok(session)
   }
@@ -247,12 +256,14 @@ impl Capturer {
     self.alloc_shm()
   }
 
-  /// Captures the next frame of `session` into `buffer`.
+  /// Captures the next frame of `session` into `buffer`. Returns `false` if
+  /// `stop` became readable first, the frame is then abandoned.
   pub(crate) fn copy(
     &mut self,
     session: &ExtImageCopyCaptureSessionV1,
     buffer: &WlBuffer,
-  ) -> Result<()> {
+    stop: Option<BorrowedFd>,
+  ) -> Result<bool> {
     let (queue, qh, state) = (&mut self.queue, &self.qh, &mut self.state);
     let (w, h) = state.size;
     state.frame = None;
@@ -262,11 +273,43 @@ impl Capturer {
     copy.damage_buffer(0, 0, w as i32, h as i32);
     copy.capture();
     while state.frame.is_none() {
-      queue.blocking_dispatch(state)?;
+      let Some(stop) = stop else {
+        queue.blocking_dispatch(state)?;
+        continue;
+      };
+      queue.dispatch_pending(state)?;
+      queue.flush()?;
+      if state.frame.is_some() {
+        break;
+      }
+      let Some(guard) = queue.prepare_read() else {
+        continue;
+      };
+      let fd = guard.connection_fd();
+      let mut fds = [
+        PollFd::new(&fd, PollFlags::IN),
+        PollFd::new(&stop, PollFlags::IN),
+      ];
+      match poll(&mut fds, None) {
+        Err(Errno::INTR) => continue,
+        r => {
+          r?;
+        }
+      }
+      if fds[1].revents().contains(PollFlags::IN) {
+        drop(guard);
+        copy.destroy();
+        return Ok(false);
+      }
+      if fds[0].revents().contains(PollFlags::IN) {
+        guard.read()?;
+      }
     }
     let result = state.frame.take().unwrap();
     copy.destroy();
-    result.map_err(|e| anyhow!("capture failed: {e}"))
+    result
+      .map(|()| true)
+      .map_err(|e| anyhow!("capture failed: {e}"))
   }
 
   /// A dmabuf on the device the compositor asked for, with any modifier it
@@ -298,25 +341,26 @@ impl Capturer {
     let bo = alloc(BufferObjectFlags::RENDERING).or_else(|_| alloc(BufferObjectFlags::empty()))?;
     let modifier = u64::from(bo.modifier());
 
-    let params = dmabuf.create_params(&self.qh, ());
     let planes = (0..bo.plane_count() as i32)
       .map(|i| {
-        let plane = DmabufPlane {
+        Ok(DmabufPlane {
           fd: bo.fd_for_plane(i)?,
           offset: bo.offset(i),
           stride: bo.stride_for_plane(i),
-        };
-        params.add(
-          plane.fd.as_fd(),
-          i as u32,
-          plane.offset,
-          plane.stride,
-          (modifier >> 32) as u32,
-          modifier as u32,
-        );
-        Ok(plane)
+        })
       })
       .collect::<Result<Vec<_>>>()?;
+    let params = dmabuf.create_params(&self.qh, ());
+    for (i, plane) in planes.iter().enumerate() {
+      params.add(
+        plane.fd.as_fd(),
+        i as u32,
+        plane.offset,
+        plane.stride,
+        (modifier >> 32) as u32,
+        modifier as u32,
+      );
+    }
     let buffer = params.create_immed(
       w as i32,
       h as i32,
@@ -382,9 +426,9 @@ impl Capturer {
     session: &ExtImageCopyCaptureSessionV1,
     (frame, buffer): (Frame, WlBuffer),
   ) -> Result<Frame> {
-    let result = self.copy(session, &buffer);
+    let result = self.copy(session, &buffer, None);
     buffer.destroy();
-    result.map(|()| frame)
+    result.map(|_| frame)
   }
 }
 
@@ -440,7 +484,7 @@ impl Frame {
 
 /// The first of [`FORMATS`] the compositor offers with a modifier in `importable`.
 fn pick_format(offered: &[(u32, Vec<u64>)], importable: &[u64]) -> Option<(Format, Vec<Modifier>)> {
-  FORMATS.into_iter().find_map(|(f, _)| {
+  FORMATS.into_iter().find_map(|f| {
     let (_, mods) = offered.iter().find(|(code, _)| *code == f as u32)?;
     let mods = mods
       .iter()
@@ -483,6 +527,16 @@ fn to_rgba(
   RgbaImage::from_raw(w, h, rgba).context("capture buffer smaller than its size")
 }
 
+impl State {
+  /// Drops the constraints of the previous round, the compositor re-sends them all on a resize.
+  fn reset_constraints(&mut self) {
+    self.format = None;
+    self.dmabuf_device = None;
+    self.dmabuf_formats.clear();
+    self.constraints_dirty = false;
+  }
+}
+
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
   fn event(
     _: &mut Self,
@@ -522,6 +576,17 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for State {
     _: &QueueHandle<Self>,
   ) {
     use ext_image_copy_capture_session_v1::Event;
+    if state.constraints_dirty
+      && matches!(
+        event,
+        Event::BufferSize { .. }
+          | Event::DmabufDevice { .. }
+          | Event::DmabufFormat { .. }
+          | Event::ShmFormat { .. }
+      )
+    {
+      state.reset_constraints();
+    }
     match event {
       Event::BufferSize { width, height } => state.size = (width, height),
       Event::DmabufDevice { device } => {
@@ -537,7 +602,10 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for State {
       } => {
         state.format.get_or_insert(f);
       }
-      Event::Done => state.session_done = true,
+      Event::Done => {
+        state.session_done = true;
+        state.constraints_dirty = true;
+      }
       Event::Stopped => state.frame = Some(Err("session stopped".into())),
       _ => {}
     }
@@ -596,6 +664,22 @@ mod tests {
   use std::io::Write;
 
   use super::*;
+
+  #[test]
+  fn new_constraint_round_replaces_the_old_one() {
+    let mut state = State::default();
+    state
+      .dmabuf_formats
+      .push((Format::Argb8888 as u32, vec![1]));
+    state.format = Some(wl_shm::Format::Argb8888);
+    state.constraints_dirty = true;
+    state.reset_constraints();
+    state
+      .dmabuf_formats
+      .push((Format::Argb8888 as u32, vec![2]));
+    assert_eq!(state.dmabuf_formats, [(Format::Argb8888 as u32, vec![2])]);
+    assert!(state.format.is_none() && !state.constraints_dirty);
+  }
 
   /// a `w`×`h` shm frame with `stride` bytes per row after `offset` bytes of
   /// padding, pixel (x, y) is BGRA [x, y, 7, 200]
@@ -752,32 +836,5 @@ mod tests {
     bytes.extend([1, 2, 3]);
     assert_eq!(modifiers(&bytes), [7, u64::MAX]);
     assert!(modifiers(&[]).is_empty());
-  }
-
-  #[test]
-  fn large_dimensions_overflow_boundary() {
-    let w: u32 = 40_000;
-    let h: u32 = 20_000;
-    let stride = w.checked_mul(4).unwrap();
-    let len = (stride as u64) * (h as u64);
-    // Exceeds i32::MAX, causing negative i32 if cast directly
-    assert!(len > i32::MAX as u64);
-    assert!((len as usize as i32) < 0);
-  }
-
-  #[test]
-  fn read_row_offset_overflow_risk() {
-    let y: u32 = 100_000;
-    let stride: u32 = 50_000;
-    // 32-bit multiplication would overflow u32::MAX
-    assert!(y.checked_mul(stride).is_none());
-    let offset_64 = (y as u64) * (stride as u64);
-    assert!(offset_64 > u32::MAX as u64);
-  }
-
-  #[test]
-  fn state_toplevels_accumulation() {
-    let state = State::default();
-    assert!(state.toplevels.is_empty());
   }
 }

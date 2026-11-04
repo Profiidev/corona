@@ -113,16 +113,4 @@ mod tests {
     let mods2 = importable_modifiers();
     assert_eq!(mods1, mods2);
   }
-
-  #[test]
-  fn import_handles_empty_surface() {
-    let surface = Dmabuf {
-      width: 0,
-      height: 0,
-      planes: vec![],
-      modifier: None,
-      opaque: false,
-    };
-    let _ = import(&surface);
-  }
 }

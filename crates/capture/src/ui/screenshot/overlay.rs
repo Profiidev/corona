@@ -165,7 +165,11 @@ impl Overlay {
           cx.notify();
         }
       }
-      Mode::Monitor => commit_selection(self.geometry.bounds(), cx),
+      Mode::Monitor => {
+        if let Some(area) = state.target() {
+          commit_selection(area, cx);
+        }
+      }
       Mode::Window => {
         if let Some(area) = state.hovered_window {
           commit_selection(area, cx);

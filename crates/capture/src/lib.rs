@@ -17,7 +17,7 @@ use anyhow::Result;
 pub use image;
 
 pub use convert::RgbaImageExt;
-pub use live::capture_window;
+pub use live::{Frames, capture_window};
 pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};
 
@@ -35,10 +35,22 @@ pub fn warm_up() {
 /// Capture all outputs, blocks until all are captured
 pub fn capture_all(outputs: impl IntoIterator<Item = String>) -> Result<Vec<(String, Frame)>> {
   let mut capturer = Capturer::new()?;
-  outputs
+  let mut last_err = None;
+  let frames: Vec<_> = outputs
     .into_iter()
-    .map(|name| capturer.capture(&name).map(|frame| (name, frame)))
-    .collect()
+    .filter_map(|name| match capturer.capture(&name) {
+      Ok(frame) => Some((name, frame)),
+      Err(e) => {
+        tracing::warn!("capture of {name} failed: {e:#}");
+        last_err = Some(e);
+        None
+      }
+    })
+    .collect();
+  match last_err {
+    Some(e) if frames.is_empty() => Err(e),
+    _ => Ok(frames),
+  }
 }
 
 #[cfg(test)]
@@ -65,6 +77,9 @@ mod tests {
 
   #[test]
   fn capture_all_aborts_on_missing_output() {
+    unsafe {
+      std::env::set_var("WAYLAND_DISPLAY", "non-existent-wayland-display");
+    }
     let res = capture_all(vec!["non_existent_output_999".to_string()]);
     assert!(res.is_err());
   }

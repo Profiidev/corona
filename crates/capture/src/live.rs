@@ -1,15 +1,19 @@
 use std::{
+  os::fd::{AsFd, OwnedFd},
+  pin::Pin,
   sync::Arc,
+  task::{Context, Poll},
   thread,
   time::{Duration, Instant},
 };
 
 use anyhow::Result;
 use futures::{
-  SinkExt,
+  SinkExt, Stream,
   channel::mpsc::{Receiver, Sender, channel},
 };
 use gpui_kit::{Dmabuf, DmabufPlane};
+use rustix::event::{EventfdFlags, eventfd};
 
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
@@ -18,26 +22,48 @@ use crate::{Capturer, Frame};
 /// Captures the compositor's window `id` continuously on its own thread,
 /// at most `max_fps` frames a second. The compositor only completes a capture
 /// once the window changed, so idle windows send fewer frames. Drop the
-/// receiver to stop.
+/// receiver to stop, which also wakes a thread waiting on an idle window.
 ///
-/// Frames alternate between two buffers written in place. The thread waits
-/// until the previous frame was taken before capturing into the other one, so
-/// a stalled consumer slows the capture down instead of queueing frames or
-/// overwriting the one on screen.
-pub fn capture_window(id: String, max_fps: u32) -> Result<Receiver<Arc<Dmabuf>>> {
+/// Frames rotate through three buffers written in place: the one on screen,
+/// the one waiting in the channel and the one being captured. A stalled
+/// consumer slows the capture down instead of queueing frames or overwriting
+/// the one on screen.
+pub fn capture_window(id: String, max_fps: u32) -> Result<Frames> {
   // One slot, the sender's own: a send waits until the last frame was taken.
   let (tx, rx) = channel(0);
+  let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC)?);
+  let stop = wake.clone();
   thread::Builder::new()
     .name("live-capture".into())
     .spawn(move || {
-      if let Err(e) = run(&id, max_fps.max(1), tx) {
+      if let Err(e) = run(&id, max_fps.max(1), tx, &stop) {
         tracing::warn!("live capture stopped: {e:#}");
       }
     })?;
-  Ok(rx)
+  Ok(Frames { rx, wake })
 }
 
-fn run(id: &str, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
+/// The frames of [`capture_window`]. Dropping it stops the capture.
+pub struct Frames {
+  rx: Receiver<Arc<Dmabuf>>,
+  wake: Arc<OwnedFd>,
+}
+
+impl Stream for Frames {
+  type Item = Arc<Dmabuf>;
+
+  fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    Pin::new(&mut self.rx).poll_next(cx)
+  }
+}
+
+impl Drop for Frames {
+  fn drop(&mut self) {
+    let _ = rustix::io::write(&*self.wake, &1u64.to_ne_bytes());
+  }
+}
+
+fn run(id: &str, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>, stop: &OwnedFd) -> Result<()> {
   let interval = Duration::from_secs(1) / max_fps;
   let mut capturer = Capturer::new()?;
   let source = capturer.window_source(id)?;
@@ -53,9 +79,9 @@ fn run(id: &str, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
         buffer.destroy();
       }
       size = capturer.size();
-      match (capturer.alloc(), capturer.alloc()) {
-        (Ok(a), Ok(b)) => buffers.extend([a, b]),
-        (Err(e), _) | (_, Err(e)) => break Err(e),
+      match (capturer.alloc(), capturer.alloc(), capturer.alloc()) {
+        (Ok(a), Ok(b), Ok(c)) => buffers.extend([a, b, c]),
+        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => break Err(e),
       }
     }
 
@@ -64,11 +90,16 @@ fn run(id: &str, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
       break Err(anyhow::anyhow!("the compositor gave no buffer size"));
     };
     let started = Instant::now();
-    if let Err(e) = capturer.copy(&session, buffer) {
-      if capturer.size() != size {
-        continue;
+    match capturer.copy(&session, buffer, Some(stop.as_fd())) {
+      Ok(true) => {}
+      // the receiver was dropped
+      Ok(false) => break Ok(()),
+      Err(e) => {
+        if capturer.size() != size {
+          continue;
+        }
+        break Err(e);
       }
-      break Err(e);
     }
 
     let surface = match frame.surface.modifier {
@@ -96,7 +127,7 @@ fn run(id: &str, max_fps: u32, mut tx: Sender<Arc<Dmabuf>>) -> Result<()> {
     if futures::executor::block_on(tx.send(surface)).is_err() {
       break Ok(());
     }
-    next ^= 1;
+    next = (next + 1) % buffers.len();
     thread::sleep(interval.saturating_sub(started.elapsed()));
   };
 
@@ -115,6 +146,9 @@ mod tests {
 
   #[test]
   fn capture_window_ends_when_no_compositor() {
+    unsafe {
+      std::env::set_var("WAYLAND_DISPLAY", "non-existent-wayland-display");
+    }
     let rx = capture_window("0x1234".into(), 0);
     assert!(rx.is_ok());
     let mut rx = rx.unwrap();

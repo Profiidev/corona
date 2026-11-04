@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{Frame, capture_all};
 use anyhow::{Result, bail};
@@ -14,6 +14,17 @@ use crate::ui::screenshot::{mode::Mode, overlay::Overlay};
 use corona_surface::overlay::{OverlayState, fullscreen_options};
 
 const NAMESPACE: &str = "corona_screenshot";
+
+/// How often to look whether the launcher is gone, and how long to wait for that at most
+const LAUNCHER_POLL: Duration = Duration::from_millis(10);
+const LAUNCHER_TIMEOUT: Duration = Duration::from_millis(500);
+/// The launcher state clears before the compositor unmaps its layer: give it a couple of frames
+const LAUNCHER_SETTLE: Duration = Duration::from_millis(40);
+
+/// Whether to stop waiting for the launcher to close
+fn launcher_wait_over(open: bool, waited: Duration) -> bool {
+  !open || waited >= LAUNCHER_TIMEOUT
+}
 
 pub struct ScreenshotState {
   overlays: Vec<AnyWindowHandle>,
@@ -159,7 +170,18 @@ impl ScreenshotState {
       .map(|m| m.name.clone())
       .collect();
 
+    // started from the launcher: its surface must be unmapped before the frames are taken
+    let from_launcher = corona_launcher::ui::is_open(cx);
+
     cx.spawn(async move |cx| {
+      if from_launcher {
+        let mut waited = Duration::ZERO;
+        while !launcher_wait_over(cx.update(|cx| corona_launcher::ui::is_open(cx)), waited) {
+          cx.background_executor().timer(LAUNCHER_POLL).await;
+          waited += LAUNCHER_POLL;
+        }
+        cx.background_executor().timer(LAUNCHER_SETTLE).await;
+      }
       let frozen = cx
         .background_executor()
         .spawn(async move { capture_all(names) })
@@ -199,7 +221,7 @@ impl ScreenshotState {
       let mut visible = all_windows
         .iter()
         .filter(|w| {
-          w.monitor == monitor.id
+          w.monitor == monitor.id as i32
             && (w.workspace == monitor.active_workspace.id
               || monitor
                 .active_scratchpad
@@ -335,6 +357,15 @@ impl ScreenshotState {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn launcher_wait_ends_when_closed_or_timed_out() {
+    use super::{LAUNCHER_TIMEOUT, launcher_wait_over};
+    use std::time::Duration;
+    assert!(launcher_wait_over(false, Duration::ZERO));
+    assert!(!launcher_wait_over(true, Duration::ZERO));
+    assert!(launcher_wait_over(true, LAUNCHER_TIMEOUT));
+  }
+
   use super::*;
 
   fn rect(x: f32, y: f32) -> Bounds<Pixels> {

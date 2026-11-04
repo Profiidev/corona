@@ -42,6 +42,7 @@ fn save(png: &[u8], config: &ScreenshotConfig) -> Result<std::path::PathBuf> {
   let name = jiff::fmt::strtime::format(&config.filename_pattern, &Zoned::now())
     .context("bad screenshot.filename_pattern")?;
   let path = dir.join(name);
+  fs::create_dir_all(path.parent().unwrap_or(&dir))?;
   fs::write(&path, png)?;
   Ok(path)
 }
@@ -172,7 +173,7 @@ mod tests {
     let dir = tempfile::tempdir().unwrap();
     let config = ScreenshotConfig {
       directory: Some(dir.path().into()),
-      filename_pattern: "%Q".into(),
+      filename_pattern: "%".into(),
     };
     assert!(save(b"png", &config).is_err());
   }
