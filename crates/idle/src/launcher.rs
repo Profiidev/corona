@@ -31,7 +31,7 @@ fn caffeine() -> Rc<dyn Command> {
     match args.get(0) {
       Some(ArgValue::Duration(d)) => Request {
         switch: Switch::On,
-        minutes: Some((d.as_secs() / 60).max(1) as u32),
+        minutes: Some(u32::try_from((d.as_secs() / 60).max(1)).unwrap_or(u32::MAX)),
       },
       Some(ArgValue::Word(w)) if w == "on" => Request {
         switch: Switch::On,

@@ -36,7 +36,6 @@ clap.workspace = true
 
 [dev-dependencies]
 corona_surface = { workspace = true, features = ["test-support"] }
-futures.workspace = true
 corona_script = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }

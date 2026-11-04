@@ -78,6 +78,11 @@ pub(crate) async fn serve(conn: Connection, inhibited: flume::Sender<bool>) -> R
     cookies: Default::default(),
     inhibited,
   };
+  // apps that exit or crash without UnInhibit, listened for before the name is up
+  let mut owners = DBusProxy::new(&conn)
+    .await?
+    .receive_name_owner_changed()
+    .await?;
   for path in PATHS {
     conn.object_server().at(path, server.clone()).await?;
   }
@@ -90,11 +95,6 @@ pub(crate) async fn serve(conn: Connection, inhibited: flume::Sender<bool>) -> R
   ) {
     bail!("another app serves {NAME}");
   }
-  // apps that exit or crash without UnInhibit
-  let mut owners = DBusProxy::new(&conn)
-    .await?
-    .receive_name_owner_changed()
-    .await?;
   while let Some(signal) = owners.next().await {
     let Ok(args) = signal.args() else { continue };
     if args.new_owner().is_none() {
@@ -102,6 +102,7 @@ pub(crate) async fn serve(conn: Connection, inhibited: flume::Sender<bool>) -> R
       server.change(|c| c.owners.retain(|_, owner| *owner != gone));
     }
   }
+  tracing::warn!("the D-Bus owner changes ended, dead inhibitors are no longer cleaned up");
   Ok(())
 }
 

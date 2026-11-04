@@ -1,7 +1,7 @@
 //! The `[idle]` behaviors: lock, monitors off, suspend or a command after a
 //! while without input, like hypridle.
 
-use std::{process::Command, time::Duration};
+use std::{cell::RefCell, collections::HashMap, process::Command, time::Duration};
 
 use crate::{Idle, IdleExt};
 use corona_compositor::CompositorExt;
@@ -36,12 +36,23 @@ fn timeouts(config: &IdleConfig) -> Vec<(String, Duration)> {
     .collect()
 }
 
+thread_local! {
+  /// What each idle behavior did, so resuming undoes that even if the config changed meanwhile
+  static FIRED: RefCell<HashMap<String, (IdleAction, String)>> = RefCell::default();
+}
+
 fn changed(name: &str, idle: bool, cx: &mut App) {
-  let Some(behavior) = cx.config().idle.behavior.get(name).cloned() else {
-    return;
-  };
   tracing::debug!("idle behavior {name}: idle {idle}");
   if idle {
+    let Some(behavior) = cx.config().idle.behavior.get(name).cloned() else {
+      return;
+    };
+    FIRED.with_borrow_mut(|f| {
+      f.insert(
+        name.to_string(),
+        (behavior.action, behavior.resume_command.clone()),
+      )
+    });
     match behavior.action {
       IdleAction::Lock => session(Action::Lock, cx),
       IdleAction::ScreenOff => {
@@ -52,12 +63,12 @@ fn changed(name: &str, idle: bool, cx: &mut App) {
       IdleAction::LockAndSuspendThenHibernate => session(Action::LockAndSuspendThenHibernate, cx),
       IdleAction::Command => run(&behavior.command),
     }
-  } else {
-    match behavior.action {
+  } else if let Some((action, resume_command)) = FIRED.with_borrow_mut(|f| f.remove(name)) {
+    match action {
       IdleAction::ScreenOff => {
         let _ = cx.compositor().set_dpms(true).log_err();
       }
-      IdleAction::Command => run(&behavior.resume_command),
+      IdleAction::Command => run(&resume_command),
       _ => {}
     }
   }
