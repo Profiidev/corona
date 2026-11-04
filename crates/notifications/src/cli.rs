@@ -20,6 +20,11 @@ pub enum Commands {
   Dismiss,
 }
 
+fn fail(message: String) {
+  tracing::error!("{message}");
+  std::process::exit(1);
+}
+
 impl Commands {
   pub fn run(self) {
     match self {
@@ -28,21 +33,21 @@ impl Commands {
           println!("{}", if enabled { "on" } else { "off" })
         }
         Ok(_) => {}
-        Err(e) => tracing::error!("Failed to set do not disturb: {}", e),
+        Err(e) => fail(format!("Failed to set do not disturb: {e}")),
       },
       Commands::Show { summary } => {
         if let Err(e) = Show::send(summary) {
-          tracing::error!("Failed to show notification: {}", e);
+          fail(format!("Failed to show notification: {e}"));
         }
       }
       Commands::Dismiss => {
         if let Err(e) = DismissToasts::send(()) {
-          tracing::error!("Failed to dismiss notifications: {}", e);
+          fail(format!("Failed to dismiss notifications: {e}"));
         }
       }
       Commands::ClearHistory => {
         if let Err(e) = ClearHistory::send(()) {
-          tracing::error!("Failed to clear notification history: {}", e);
+          fail(format!("Failed to clear notification history: {e}"));
         }
       }
     }

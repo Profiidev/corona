@@ -59,10 +59,13 @@ impl Command for NotificationRow {
         Ok(Outcome::close())
       })
     };
-    let mut actions = vec![invoke(
-      "default".into(),
-      t!("app.launcher.notifications.open").into(),
-    )];
+    let mut actions = Vec::new();
+    if self.0.actions.iter().any(|a| a.key == "default") {
+      actions.push(invoke(
+        "default".into(),
+        t!("app.launcher.notifications.open").into(),
+      ));
+    }
     for action in self.0.actions.iter().filter(|a| a.key != "default") {
       actions.push(invoke(action.key.clone(), action.label.clone().into()));
     }
@@ -119,7 +122,6 @@ pub(crate) fn register(cx: &mut App) {
                 cx.notifications()
                   .list(cx)
                   .iter()
-                  .rev()
                   .map(|n| Rc::new(NotificationRow(n.clone())) as Rc<dyn Command>)
                   .collect()
               })

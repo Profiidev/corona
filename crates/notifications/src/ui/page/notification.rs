@@ -89,9 +89,14 @@ fn body_html(body: &str) -> String {
         .get(..t.len())
         .is_some_and(|r| r.eq_ignore_ascii_case(t))
     });
-    match rest.find('>') {
-      Some(end) if tag => rest = &rest[end + 1..],
-      _ => {
+    match tag.then(|| rest.find('>')).flatten() {
+      Some(end) => rest = &rest[end + 1..],
+      // an unclosed picture tag ends the search, no later one can close either
+      None if tag => {
+        out.push_str(rest);
+        rest = "";
+      }
+      None => {
         out.push('<');
         rest = &rest[1..];
       }
@@ -318,6 +323,7 @@ mod tests {
       reply_placeholder: None,
       expire_timeout: -1,
       resident: false,
+      suppress_sound: false,
       time: std::time::SystemTime::UNIX_EPOCH,
       read: false,
     }
@@ -345,6 +351,10 @@ mod tests {
       "<b>hi</b> there<br><a href=\"x\">l</a>"
     );
     assert_eq!(super::body_html("a < b <img"), "a < b <img");
+    let many = "<".repeat(100_000);
+    assert_eq!(super::body_html(&many), many);
+    let many = "<img".repeat(100_000);
+    assert_eq!(super::body_html(&many), many);
     assert_eq!(super::body_html("x<Image src=\"http://t/\">y"), "xy");
   }
 

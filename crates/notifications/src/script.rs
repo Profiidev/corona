@@ -260,7 +260,12 @@ fn listen(cx: &mut App) {
   cx.spawn(async move |cx| {
     let (actions, replies) = match streams.await {
       Ok(streams) => streams,
-      Err(e) => return tracing::error!("notification actions: {e:#}"),
+      Err(e) => {
+        tracing::error!("notification actions: {e:#}");
+        // let the next `notify` try again
+        cx.update(|cx| cx.global_mut::<ScriptManager>().listening = false);
+        return;
+      }
     };
     let actions = actions.map(|(id, key)| ActionEvent {
       id,
@@ -496,6 +501,7 @@ mod tests {
       reply_placeholder: None,
       expire_timeout: -1,
       resident: true,
+      suppress_sound: false,
       time,
       read: false,
     }

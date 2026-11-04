@@ -361,6 +361,7 @@ pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Res
   let mut lost = dbus.receive_name_lost().await?;
   let mut owner = false;
   if serve {
+    server::clear_cache();
     conn
       .object_server()
       .at(
@@ -396,21 +397,30 @@ pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Res
   let conn_events = conn.clone();
   cx.spawn(async move |cx| {
     while let Ok(event) = events.recv_async().await {
-      let dropped = notifications.update(cx, |list, cx| {
+      let (dropped, expired) = notifications.update(cx, |list, cx| {
+        let mut expired = Vec::new();
         match event {
           Event::Notify(n) if cx.try_global::<Filter>().is_some_and(|f| (f.0)(&n)) => {
-            return Some(n.id);
+            // a dropped replacement must not leave the old one shown
+            list.retain(|old| old.id != n.id);
+            cx.notify();
+            return (Some(n.id), expired);
           }
-          Event::Notify(notification) => state::insert(list, *notification),
+          Event::Notify(notification) => {
+            expired = state::insert(list, *notification, state::MAX_NOTIFICATIONS)
+          }
           Event::Close(id) => list.retain(|n| n.id != id),
         }
         cx.notify();
-        None
+        (None, expired)
       });
-      if let Some(id) = dropped
-        && let Ok(emitter) = SignalEmitter::new(&conn_events, PATH)
-      {
-        let _ = closed_signals(&emitter, vec![id]).await;
+      if let Ok(emitter) = SignalEmitter::new(&conn_events, PATH) {
+        if let Some(id) = dropped {
+          let _ = closed_signals(&emitter, vec![id]).await;
+        }
+        for id in expired {
+          let _ = Server::notification_closed(&emitter, id, CloseReason::Expired as u32).await;
+        }
       }
     }
   })

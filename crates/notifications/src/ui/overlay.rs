@@ -4,10 +4,10 @@ use std::{
   rc::Rc,
   sync::{OnceLock, mpsc},
   thread::spawn,
-  time::{Duration, Instant},
+  time::{Duration, Instant, SystemTime},
 };
 
-use crate::{Filter, NotificationsExt, Urgency, strip_markup};
+use crate::{Filter, NotificationsExt, Urgency, state::sound_due, strip_markup};
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
@@ -54,15 +54,19 @@ struct Popup {
   hovered: bool,
 }
 
+/// the app's own timeout, or the configured one by urgency
+fn timeout_for(item: &Item, config: &NotificationConfig) -> Duration {
+  match (item.expire_timeout, item.urgency) {
+    (0, _) => NEVER,
+    (ms @ 1.., _) => Duration::from_millis(ms as u64),
+    (_, Urgency::Low | Urgency::Normal) => Duration::from_millis(config.timeout_ms.max(1)),
+    (_, Urgency::Critical) => Duration::from_millis(config.critical_timeout_ms.max(1)),
+  }
+}
+
 impl Popup {
   fn new(item: Item, slot: usize, config: &NotificationConfig) -> Self {
-    // the app's own timeout, or the configured one by urgency
-    let timeout = match (item.expire_timeout, item.urgency) {
-      (0, _) => NEVER,
-      (ms @ 1.., _) => Duration::from_millis(ms as u64),
-      (_, Urgency::Low | Urgency::Normal) => Duration::from_millis(config.timeout_ms),
-      (_, Urgency::Critical) => Duration::from_millis(config.critical_timeout_ms),
-    };
+    let timeout = timeout_for(&item, config);
     Self {
       item,
       open: true,
@@ -112,22 +116,38 @@ pub(crate) fn init(cx: &mut App) {
   );
 
   let notifications = cx.notifications().notifications.clone();
-  let mut old: Vec<u32> = notifications.read(cx).iter().map(|n| n.id).collect();
+  let mut old: std::collections::HashSet<(u32, SystemTime)> = notifications
+    .read(cx)
+    .iter()
+    .map(|n| (n.id, n.time))
+    .collect();
 
   cx.observe(&notifications, move |e, cx| {
     let new = e.read(cx).clone();
     NotificationPopups::sync(&new, cx);
     // suppressed ones count as seen, so turning do not disturb off replays nothing
     let dnd = cx.notifications().do_not_disturb(cx);
-    if !dnd && new.iter().any(|n| !old.contains(&n.id)) {
-      play_sound();
+    // a replacement has a new time, so it pops up again
+    let fresh = |n: &&Item| !dnd && !old.contains(&(n.id, n.time));
+    // an update of a visible popup is no new arrival, it stays quiet
+    let arrivals: Vec<_> = new
+      .iter()
+      .filter(fresh)
+      .filter(|n| !NotificationPopups::is_open(n.id, cx))
+      .collect();
+    if arrivals.iter().any(|n| !n.suppress_sound) {
+      static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+      let due = sound_due(&mut LAST.lock().unwrap(), std::time::Instant::now());
+      if due {
+        play_sound();
+      }
     }
-    for notification in new.iter().filter(|n| !dnd && !old.contains(&n.id)) {
+    for notification in arrivals {
       if let Err(e) = NotificationPopups::show(notification.clone(), cx) {
         tracing::error!("failed to show notification popup: {e:?}");
       }
     }
-    old = new.iter().map(|n| n.id).collect();
+    old = new.iter().map(|n| (n.id, n.time)).collect();
   })
   .detach();
 
@@ -210,11 +230,20 @@ impl NotificationPopups {
 
   fn sync(new: &[Item], cx: &mut App) {
     let mut gone = Vec::new();
+    let config = cx.config().notification.clone();
     for view in Self::views(cx) {
       view.update(cx, |this, cx| {
         for popup in &mut this.items {
           match new.iter().find(|n| n.id == popup.item.id) {
-            Some(n) => popup.item = n.clone(),
+            Some(n) => {
+              // a replacement starts its timeout over
+              if n.time != popup.item.time {
+                popup.timeout = timeout_for(n, &config);
+                popup.remaining = popup.timeout;
+                popup.last_tick = Instant::now();
+              }
+              popup.item = n.clone();
+            }
             None => gone.push(popup.item.id),
           }
         }
@@ -226,7 +255,21 @@ impl NotificationPopups {
     }
   }
 
+  fn is_open(id: u32, cx: &App) -> bool {
+    Self::views(cx).iter().any(|view| {
+      view
+        .read(cx)
+        .items
+        .iter()
+        .any(|p| p.open && p.item.id == id)
+    })
+  }
+
   fn show(notification: Item, cx: &mut App) -> Result<()> {
+    // an update of a visible popup was already swapped in by `sync`
+    if Self::is_open(notification.id, cx) {
+      return Ok(());
+    }
     let monitor = cx.compositor().active_monitor(cx).name.clone();
     let display = display_id_for(&monitor, cx);
     let config = cx.config().notification.clone();
@@ -400,6 +443,7 @@ impl Render for Popups {
             .opacity(progress)
             .child({
               let id = popup.item.id;
+              let clickable = popup.item.actions.iter().any(|a| a.key == "default");
               let left = popup.remaining.as_secs_f32() / popup.timeout.as_secs_f32();
               NotificationsPanel::notification_card(cx, &popup.item, self.replies.get(id))
                 .bg(theme.colors.accent.opacity(config.background_opacity))
@@ -435,6 +479,9 @@ impl Render for Popups {
                 .on_click(move |_, _, cx| {
                   cx.stop_propagation();
                   cx.notifications().clone().mark_read(id, cx);
+                  if clickable {
+                    cx.notifications().clone().invoke_action(id, "default", cx);
+                  }
                   NotificationPopups::hide(id, cx);
                 })
             })
@@ -484,6 +531,7 @@ mod tests {
       reply_placeholder: None,
       expire_timeout: -1,
       resident: false,
+      suppress_sound: false,
       time: SystemTime::UNIX_EPOCH,
       read: false,
     }
@@ -560,6 +608,7 @@ mod tests {
       let popup = Popup::new(item, 0, &config);
       assert_eq!(popup.timeout, timeout, "{urgency:?} {expire_timeout}");
       assert_eq!(popup.remaining, timeout);
+      assert_eq!(timeout_for(&popup.item, &config), timeout);
     }
   }
 }
