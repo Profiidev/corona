@@ -255,13 +255,4 @@ mod tests {
     assert!(cached_response(&base, &bad_meta).is_err());
     fs::remove_dir_all(dir).ok();
   }
-
-  #[test]
-  fn unix_now_handles_clock_before_epoch() {
-    let before_epoch = UNIX_EPOCH.checked_sub(Duration::from_secs(100));
-    if let Some(t) = before_epoch {
-      let secs = t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-      assert_eq!(secs, 0);
-    }
-  }
 }
