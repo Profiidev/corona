@@ -3,7 +3,7 @@ use std::{
   os::unix::net::UnixStream,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
 
 use crate::{command::IpcPayload, util};
@@ -22,7 +22,9 @@ pub(crate) fn send(command: &str, data: Value) -> Result<Value> {
   stream.write_all(&buf)?;
 
   let mut line = String::new();
-  BufReader::new(stream).read_line(&mut line)?;
+  if BufReader::new(stream).read_line(&mut line)? == 0 {
+    bail!("shell closed the connection without a reply");
+  }
   let res: Result<Value, String> = serde_json::from_str(&line)?;
   res.map_err(|e| anyhow!(e))
 }

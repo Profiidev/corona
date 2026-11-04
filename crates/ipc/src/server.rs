@@ -1,9 +1,16 @@
-use std::{collections::HashMap, fs::Permissions, os::unix::fs::PermissionsExt};
+use std::{
+  collections::HashMap,
+  fs::Permissions,
+  os::unix::fs::{FileTypeExt, PermissionsExt},
+  time::Duration,
+};
 
 use anyhow::{Result, anyhow};
 use gpui_kit::{App, AsyncApp, Global};
 use smol::{
-  io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+  Timer,
+  future::or,
+  io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
   net::unix::{UnixListener, UnixStream},
 };
 use tracing::error;
@@ -12,6 +19,11 @@ use crate::{
   command::{Handler, IpcCommand, IpcPayload, erase},
   util,
 };
+
+/// Largest request line a client may send
+const MAX_REQUEST: u64 = 1 << 20;
+/// How long a client may take to send its request line
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The commands the server answers, registered by every crate from its `init`
 #[derive(Default)]
@@ -63,6 +75,15 @@ impl IpcServer {
         if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
           return Ok(None);
         }
+        if !std::fs::symlink_metadata(&socket_path)?
+          .file_type()
+          .is_socket()
+        {
+          return Err(anyhow!(
+            "{} exists and is not a socket",
+            socket_path.display()
+          ));
+        }
         std::fs::remove_file(&socket_path)?;
         UnixListener::bind(&socket_path)?
       }
@@ -73,16 +94,25 @@ impl IpcServer {
     Ok(Some(Self { listener }))
   }
 
-  async fn accept(&self) -> Result<(IpcPayload, UnixStream)> {
-    loop {
-      let (stream, _) = self.listener.accept().await?;
-      let mut line = String::new();
-      // empty connection = liveness probe from a second instance
-      if BufReader::new(stream.clone()).read_line(&mut line).await? == 0 {
-        continue;
-      }
-      return Ok((serde_json::from_str(&line)?, stream));
+  async fn accept(&self) -> Result<UnixStream> {
+    Ok(self.listener.accept().await?.0)
+  }
+
+  /// `None` for an empty connection, the liveness probe from a second instance
+  async fn read_request(stream: &UnixStream) -> Result<Option<IpcPayload>> {
+    let mut line = String::new();
+    let read = async {
+      let mut reader = BufReader::new(stream.clone().take(MAX_REQUEST));
+      Ok(reader.read_line(&mut line).await?)
+    };
+    let timeout = async {
+      Timer::after(REQUEST_TIMEOUT).await;
+      Err(anyhow!("timed out waiting for the request"))
+    };
+    if or(read, timeout).await? == 0 {
+      return Ok(None);
     }
+    Ok(Some(serde_json::from_str(&line)?))
   }
 
   async fn reply(mut stream: UnixStream, res: &impl serde::Serialize) -> Result<()> {
@@ -93,27 +123,35 @@ impl IpcServer {
 
   pub async fn run(self, cx: &AsyncApp) {
     loop {
-      let (payload, stream) = match self.accept().await {
-        Ok((payload, stream)) => (payload, stream),
+      let stream = match self.accept().await {
+        Ok(stream) => stream,
         Err(e) => {
           error!("Error accepting connection: {}", e);
           continue;
         }
       };
 
-      let reply = cx.update(|cx| {
-        let handler = (cx.try_global::<IpcRegistry>())
-          .and_then(|r| r.handlers.get(payload.command.as_str()).cloned());
-        handler.map(|handler| handler(payload.data, cx))
-      });
-      let command = payload.command;
-      // a slow answer must not hold up the next connection
-      cx.spawn(async move |_| {
+      // a slow client or answer must not hold up the next connection
+      cx.spawn(async move |cx| {
+        let payload = match Self::read_request(&stream).await {
+          Ok(Some(payload)) => payload,
+          Ok(None) => return,
+          Err(e) => {
+            error!("Error reading request: {}", e);
+            return;
+          }
+        };
+        let reply = cx.update(|cx| {
+          let handler = (cx.try_global::<IpcRegistry>())
+            .and_then(|r| r.handlers.get(payload.command.as_str()).cloned());
+          handler.map(|handler| handler(payload.data, cx))
+        });
+        let command = payload.command;
         let res = match reply {
           Some(reply) => reply.await,
           None => Err(anyhow!("Unknown command: {command}")),
         }
-        .map_err(|e| e.to_string());
+        .map_err(|e| format!("{e:#}"));
         if let Err(e) = Self::reply(stream, &res).await {
           error!("Error replying to connection: {}", e);
         }
