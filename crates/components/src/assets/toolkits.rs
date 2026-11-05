@@ -160,11 +160,10 @@ mod tests {
   use super::*;
 
   fn colors() -> ThemeColor {
-    ThemeColor {
-      primary: hsla(0., 1., 0.5, 1.),
-      background: hsla(0., 0., 1., 0.5),
-      ..Default::default()
-    }
+    let mut colors = ThemeColor::default();
+    colors.primary = hsla(0., 1., 0.5, 1.);
+    colors.background = hsla(0., 0., 1., 0.5);
+    colors
   }
 
   #[test]

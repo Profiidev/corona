@@ -18,7 +18,7 @@ corona_ipc.workspace = true
 corona_js.workspace = true
 corona_script.workspace = true
 specta.workspace = true
-specta-typescript = "=0.0.14"
+specta-typescript.workspace = true
 rust-i18n.workspace = true
 serde.workspace = true
 uuid.workspace = true
@@ -35,12 +35,9 @@ smol.workspace = true
 tracing.workspace = true
 dirs.workspace = true
 image.workspace = true
-rodio = { version = "0.23.0", default-features = false, features = [
-  "playback",
-  "vorbis"
-] }
+rodio.workspace = true
 # rodio has no released `pipewire` feature yet; this turns on cpal's backend for it
-cpal = { version = "0.18.2", default-features = false, features = ["pipewire"] }
+cpal.workspace = true
 
 [dev-dependencies]
 corona_script = { workspace = true, features = ["test-support"] }

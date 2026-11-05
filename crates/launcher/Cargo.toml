@@ -30,13 +30,13 @@ nucleo-matcher.workspace = true
 flume.workspace = true
 smol.workspace = true
 notify.workspace = true
-fend-core = "1.5.9"
+fend-core.workspace = true
 image = { workspace = true, features = ["jpeg", "gif", "webp", "bmp"] }
 jiff.workspace = true
-ignore = "0.4.33"
-emojis = "0.9.1"
-unicode_names2 = "4.0.0"
-trash = "5.2.9"
+ignore.workspace = true
+emojis.workspace = true
+unicode_names2.workspace = true
+trash.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 

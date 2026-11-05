@@ -31,7 +31,7 @@ dashmap.workspace = true
 flume.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
-pipewire = "0.10.1"
+pipewire.workspace = true
 clap_complete.workspace = true
 
 [dev-dependencies]

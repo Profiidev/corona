@@ -50,8 +50,9 @@ fn sample(system: &mut System) -> Vec<Process> {
 }
 
 /// Every process once, without CPU use (that needs two samples)
-pub fn snapshot() -> Vec<Process> {
-  sample(&mut System::new())
+pub fn snapshot() -> Result<Vec<Process>> {
+  let mut system = System::new()?;
+  Ok(sample(&mut system))
 }
 
 /// SIGTERM, or SIGKILL when forced
@@ -244,13 +245,18 @@ fn processes_view() -> corona_launcher::View {
     let weak = entity.downgrade();
     // samples while the view is open, the entity goes with it
     cx.spawn(async move |cx| {
-      let mut system = System::new();
-      loop {
-        let mut owned = std::mem::take(&mut system);
-        let (list, owned) = cx
+      let mut system = match System::new() {
+        Ok(s) => Some(s),
+        Err(e) => {
+          tracing::error!("failed to initialize sysinfo for process monitor: {e}");
+          return;
+        }
+      };
+      while let Some(mut owned) = system.take() {
+        let (list, returned) = cx
           .background_spawn(async move { (sample(&mut owned), owned) })
           .await;
-        system = owned;
+        system = Some(returned);
         if weak
           .update(cx, |v, cx| {
             *v = list;
@@ -340,9 +346,10 @@ mod tests {
   }
 
   #[test]
-  fn samples_this_process() {
-    let mut system = System::new();
+  fn samples_this_process() -> Result<()> {
+    let mut system = System::new()?;
     let me = std::process::id();
     assert!(sample(&mut system).iter().any(|p| p.pid == me));
+    Ok(())
   }
 }

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use anyhow::Result;
 use corona_config::{Config, ConfigProvider, observe_section};
 use corona_js::ScriptExt;
 use corona_utils::Buses;
@@ -65,14 +66,15 @@ fn interval(config: &Config) -> Duration {
 }
 
 /// Starts sampling, registers its UI, commands and script module
-pub fn init(cx: &mut App, _: &Buses) {
-  start(cx);
+pub fn init(cx: &mut App, _: &Buses) -> Result<()> {
+  start(cx)?;
   ui::register(cx);
   launcher::register(cx);
   processes::register(cx);
   commands::register(cx);
   settings::register(cx);
   register_script(cx.script_mut());
+  Ok(())
 }
 
 /// Registers this integration's script modules, for the shell and the CLI
@@ -80,10 +82,10 @@ pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
   registry.register::<script::SysinfoModule>();
 }
 
-fn start(cx: &mut App) {
+fn start(cx: &mut App) -> Result<()> {
   let (intervals, intervals_rx) = flume::unbounded();
   let (updates_tx, updates) = flume::unbounded();
-  sampler::spawn(intervals_rx, updates_tx);
+  sampler::spawn(intervals_rx, updates_tx)?;
 
   let every = interval(cx.config());
   let state = SystemMonitor {
@@ -127,6 +129,7 @@ fn start(cx: &mut App) {
         .set_interval(interval, cx);
     },
   );
+  Ok(())
 }
 
 #[cfg(test)]
@@ -166,7 +169,7 @@ mod tests {
     config.system.monitor.poll_seconds = 1;
     cx.update(|cx| {
       cx.set_global(config);
-      super::start(cx);
+      super::start(cx).unwrap();
     });
     cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(1)));
     wait(cx, |cx| cx.system_monitor().info(cx).is_some());
@@ -187,7 +190,7 @@ mod tests {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      super::start(cx);
+      super::start(cx).unwrap();
     });
     cx.update(|cx| {
       let mut config = cx.config().clone();
@@ -202,7 +205,7 @@ mod tests {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      super::start(cx);
+      super::start(cx).unwrap();
     });
     for sec in 1..=5 {
       cx.update(|cx| {

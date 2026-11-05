@@ -47,93 +47,199 @@ keywords = ["hyprland", "wayland", "compositor", "shell", "desktop"]
 categories = []
 
 [workspace.dependencies]
-greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
-corona-zbus-upower = "0.1.0"
-corona-zbus-mpris2 = "0.1.0"
-corona_compositor = { path = "crates/compositor" }
-corona_pipewire = { path = "crates/pipewire" }
-corona_desktop = { path = "crates/desktop" }
-corona_config = { path = "crates/config" }
-corona_components = { path = "crates/components" }
-corona_surface = { path = "crates/surface" }
-corona_script = { path = "crates/script" }
-corona_utils = { path = "crates/utils" }
-corona_shell = { path = "crates/shell" }
-corona_network_manager = { path = "crates/network_manager" }
-corona_mpris = { path = "crates/mpris" }
-corona_bluez = { path = "crates/bluez" }
-corona_printing = { path = "crates/printing" }
-corona_power = { path = "crates/power" }
-corona_brightness = { path = "crates/brightness" }
-corona_notifications = { path = "crates/notifications" }
-corona_sysinfo = { path = "crates/sysinfo" }
-corona_weather = { path = "crates/weather" }
-corona_location = { path = "crates/location" }
-corona_reqwest = { path = "crates/reqwest" }
-corona_ipc = { path = "crates/ipc" }
-corona_cli = { path = "crates/cli" }
-corona_capture = { path = "crates/capture" }
-corona_tray = { path = "crates/tray" }
-corona_idle = { path = "crates/idle" }
+# Workspace crates
 corona_auth = { path = "crates/auth" }
 corona_auth_screen = { path = "crates/auth_screen" }
-corona_launcher = { path = "crates/launcher" }
+corona_bluez = { path = "crates/bluez" }
+corona_brightness = { path = "crates/brightness" }
+corona_capture = { path = "crates/capture" }
+corona_cli = { path = "crates/cli" }
 corona_clipboard = { path = "crates/clipboard" }
-corona_udisks = { path = "crates/udisks" }
-corona_osk = { path = "crates/osk" }
-corona_settings = { path = "crates/settings" }
-corona_windows = { path = "crates/windows" }
+corona_components = { path = "crates/components" }
+corona_compositor = { path = "crates/compositor" }
+corona_config = { path = "crates/config" }
+corona_desktop = { path = "crates/desktop" }
+corona_idle = { path = "crates/idle" }
+corona_ipc = { path = "crates/ipc" }
 corona_js = { path = "crates/js" }
-gpui-kit = "0.8.1"
-anyhow = "1.0.104"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
-specta = { version = "=2.0.0-rc.27", features = [
-  "derive",
-  "function",
-  "serde_json"
+corona_launcher = { path = "crates/launcher" }
+corona_location = { path = "crates/location" }
+corona_mpris = { path = "crates/mpris" }
+corona_network_manager = { path = "crates/network_manager" }
+corona_notifications = { path = "crates/notifications" }
+corona_osk = { path = "crates/osk" }
+corona_pipewire = { path = "crates/pipewire" }
+corona_power = { path = "crates/power" }
+corona_printing = { path = "crates/printing" }
+corona_reqwest = { path = "crates/reqwest" }
+corona_script = { path = "crates/script" }
+corona_settings = { path = "crates/settings" }
+corona_shell = { path = "crates/shell" }
+corona_surface = { path = "crates/surface" }
+corona_sysinfo = { path = "crates/sysinfo" }
+corona_tray = { path = "crates/tray" }
+corona_udisks = { path = "crates/udisks" }
+corona_utils = { path = "crates/utils" }
+corona_weather = { path = "crates/weather" }
+corona_windows = { path = "crates/windows" }
+
+# First-party / Corona crates
+corona-freedesktop-icons = "0.1.0"
+corona-zbus-bluez = "0.2.0"
+corona-zbus-geoclue2 = "0.1.0"
+corona-zbus-mpris2 = "0.1.0"
+corona-zbus-networkmanager = "0.1.0"
+corona-zbus-nm-secret-agent-manager = "0.1.0"
+corona-zbus-upower = "0.1.0"
+
+# GPUI ecosystem
+gpui-fps = "0.9.0"
+gpui-kit = "0.9.0"
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.11" }
+http_client = { package = "gpui-pre-http-client", version = "=0.3.11" }
+reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
+  "charset",
+  "http2",
+  "rustls-tls-native-roots",
+  "stream"
 ] }
-bitflags = "2.13.2"
-tracing = "0.1.44"
-dashmap = "6.2.1"
-flume = "0.12.0"
-regex = "1.13.1"
-dirs = "7.0.0"
-toml = "1.1.8"
-tracing-subscriber = "0.3.23"
-freedesktop-desktop-entry = "0.8.3"
-glob = "0.3.4"
-uuid = { version = "1.28.0", features = ["v5"] }
-zbus = "5.19.0"
-zbus_xml = "5.2.1"
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.11" }
+
+# Wayland, display, and input
+gbm = { version = "0.18.0", default-features = false }
+wayland-backend = "0.3.17"
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+wayland-scanner = "0.31.11"
+wayland-server = "0.31"
+xkbcommon = "0.9.0"
+
+# D-Bus, desktop, and Linux system integrations
+cpal = { version = "0.18.2", default-features = false, features = ["pipewire"] }
+freedesktop-desktop-entry = "0.8.4"
+greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
+nvml-wrapper = "0.13.0"
 oo7 = { version = "0.6", default-features = false, features = [
   "async-std",
   "native_crypto"
 ] }
-tempfile = "3.27.0"
-futures-lite = "2.6.1"
+pam-client = { version = "0.5.0", default-features = false }
+pipewire = "0.10.1"
+rodio = { version = "0.23.0", default-features = false, features = [
+  "playback",
+  "vorbis"
+] }
+sysinfo = "0.40.1"
+trash = "5.3.0"
+zbus = "5.19.0"
+zbus_xml = "5.2.1"
+
+# Async, concurrency, and channels
+dashmap = "6.2.1"
+flume = "0.12.0"
 futures = "0.3.34"
 futures-channel = "0.3.34"
-image = { version = "0.25.10", default-features = false, features = ["png"] }
-jiff = "0.2.37"
-notify = "8.2.0"
-sysinfo = "0.39.6"
-nvml-wrapper = "0.13.0"
-xkbcommon = "0.8.0"
-wayland-server = "0.31"
-clap = { version = "4.6.7", features = ["derive"] }
-clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
+futures-lite = "2.6.1"
 smol = "2.0.2"
+tokio = { version = "1.54.1", features = [
+  "rt-multi-thread",
+  "net",
+  "io-util",
+  "process",
+  "time",
+  "sync",
+  "macros"
+] }
+
+# Serialization, configuration, and data formats
+config = { version = "0.15.27", default-features = false, features = ["toml"] }
+roxmltree = "0.21.2"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_ignored = "0.1.14"
+serde_json = "1.0.154"
+toml = "1.2.0"
+
+# JavaScript, TypeScript, and codegen
+rquickjs = { version = "0.14", features = ["futures", "macro", "loader"] }
+specta = { version = "=2.0.0-rc.28", features = [
+  "derive",
+  "function",
+  "serde_json"
+] }
+specta-serde = "0.0.15"
+specta-typescript = "0.0.15"
+swc_common = "27"
+swc_ts_fast_strip = "60.0.0"
+
+# Networking, HTTP, and TLS
+http-body-util = "0.1.5"
+hyper = { version = "1.12", features = ["client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+ring = "0.17.14"
+rustls = { version = "0.23.46", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12"
+] }
+tokio-tungstenite = { version = "0.30", features = [
+  "connect",
+  "rustls-tls-native-roots"
+] }
+url = "2.5"
+
+# Time, internationalization, and localization
+icu_calendar = "2.4"
+icu_datetime = "2.4"
+icu_decimal = "2.4"
+icu_locale = "2.4"
+jiff = "0.2.39"
+jiff-icu = { version = "0.2.3", default-features = false, features = [
+  "std",
+  "time"
+] }
 rust-i18n = "4.2.4"
 rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
-rustix = "1.1.5"
-wayland-client = "0.31.15"
-wayland-backend = "0.3.17"
-wayland-scanner = "0.31.11"
-wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
-wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+
+# CLI, logging, and diagnostics
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+# OS, filesystem, and low-level
+bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
+bitflags = "2.13.2"
+cap-std = "4.0.3"
+dirs = "7.0.0"
+glob = "0.3.4"
+ignore = "0.4.34"
+include_dir = "0.7.4"
+libc = "0.2"
+notify = "8.2.1"
+rustix = "1.1.6"
+tempfile = "3.27.0"
+
+# Media, text, encoding, crypto, and utilities
+base64 = "0.23"
+chardetng = "1.0.0"
+emojis = "0.9.1"
+fend-core = "1.5.9"
+flate2 = "1.1"
+getrandom = "0.4"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+md-5 = "0.11"
 nucleo-matcher = "0.3.1"
-wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+qrcode = { version = "0.14.1", default-features = false }
+regex = "1.13.1"
+sha1 = "0.11"
+sha2 = "0.11"
+unicode_names2 = "4.0.0"
+uuid = { version = "1.29.0", features = ["v5"] }
 zstd = "0.14.3"
 
 [package]

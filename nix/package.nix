@@ -20,7 +20,7 @@
 }:
 
 let
-  gpuiVersion = "0.3.10";
+  gpuiVersion = "0.3.11";
 
   vendorCrate =
     pname: hash:
@@ -92,7 +92,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
         ]
       } $out/bin/$bin
     done
-    wrapProgram $out/bin/corona --suffix PATH : ${lib.makeBinPath [ git dconf ]}
+    wrapProgram $out/bin/corona --suffix PATH : ${
+      lib.makeBinPath [
+        git
+        dconf
+      ]
+    }
   '';
 
   postInstall = ''

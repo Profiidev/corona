@@ -25,8 +25,8 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 image.workspace = true
 futures.workspace = true
-gbm = { version = "0.18.0", default-features = false }
-gpui_wgpu = { package = "gpui-pre-wgpu", version = "0.3.7" }
+gbm.workspace = true
+gpui_wgpu.workspace = true
 tracing.workspace = true
 rustix = { workspace = true, features = ["fs", "event"] }
 wayland-client.workspace = true

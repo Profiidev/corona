@@ -32,7 +32,7 @@ wayland-client.workspace = true
 wayland-protocols.workspace = true
 wayland-protocols-wlr.workspace = true
 wayland-protocols-misc.workspace = true
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite.workspace = true
 clap.workspace = true
 image = { workspace = true, features = ["jpeg"] }
 clap_complete.workspace = true

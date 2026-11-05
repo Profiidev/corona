@@ -10,7 +10,7 @@ categories.workspace = true
 
 [dependencies]
 futures.workspace = true
-qrcode = { version = "0.14.1", default-features = false }
+qrcode.workspace = true
 corona_bluez.workspace = true
 corona_components.workspace = true
 corona_surface.workspace = true
@@ -31,8 +31,8 @@ futures-lite.workspace = true
 flume.workspace = true
 serde.workspace = true
 specta.workspace = true
-corona-zbus-networkmanager = "0.1.0"
-corona-zbus-nm-secret-agent-manager = "0.1.0"
+corona-zbus-networkmanager.workspace = true
+corona-zbus-nm-secret-agent-manager.workspace = true
 clap_complete.workspace = true
 
 [dev-dependencies]
