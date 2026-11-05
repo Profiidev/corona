@@ -231,6 +231,7 @@ emojis = "0.9.1"
 fend-core = "1.5.9"
 flate2 = "1.1"
 getrandom = "0.4"
+hex = "0.4.3"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 md-5 = "0.11"
 nucleo-matcher = "0.3.1"

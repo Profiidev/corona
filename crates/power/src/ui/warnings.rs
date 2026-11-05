@@ -169,15 +169,19 @@ fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
   cx.spawn(async move |_| match send.await {
     // ponytail: charging before the daemon answers leaves this one up, close it then if it shows
     Ok(id) => {
-      let mut warned = warned.borrow_mut();
-      if warned.level.is_none() {
-        let close = notifications.close(id);
-        drop(warned);
+      let close = {
+        let mut warned = warned.borrow_mut();
+        if warned.level.is_none() {
+          Some(notifications.close(id))
+        } else {
+          warned.id = Some(id);
+          None
+        }
+      };
+      if let Some(close) = close {
         if let Err(e) = close.await {
           tracing::warn!("battery notification: {e:#}");
         }
-      } else {
-        warned.id = Some(id);
       }
     }
     Err(e) => tracing::warn!("battery notification: {e:#}"),

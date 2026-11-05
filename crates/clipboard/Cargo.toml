@@ -33,9 +33,11 @@ wayland-protocols.workspace = true
 wayland-protocols-wlr.workspace = true
 wayland-protocols-misc.workspace = true
 rusqlite.workspace = true
+sha2.workspace = true
 clap.workspace = true
 image = { workspace = true, features = ["jpeg"] }
 clap_complete.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

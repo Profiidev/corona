@@ -1,13 +1,13 @@
 //! The history on disk: one SQLite database with a full text index, images beside it
 
 use std::{
-  collections::hash_map::DefaultHasher,
-  hash::{Hash, Hasher},
+  hash::Hash,
   path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
+use sha2::{Digest, Sha256};
 
 /// What an entry holds, for the type filter
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -186,10 +186,7 @@ fn remove_orphan_thumbs(dir: &Path) -> Result<()> {
 }
 
 fn hash(bytes: &[u8]) -> String {
-  let mut hasher = DefaultHasher::new();
-  bytes.hash(&mut hasher);
-  bytes.len().hash(&mut hasher);
-  format!("{:016x}", hasher.finish())
+  hex::encode(Sha256::digest(bytes))
 }
 
 fn now() -> i64 {
@@ -607,5 +604,13 @@ mod tests {
     let store = Store::open(dir.path()).unwrap();
     store.add_text("say \"hi\"", "text/plain").unwrap();
     assert_eq!(store.list("\"hi", None, 10).unwrap().len(), 1);
+  }
+
+  #[test]
+  fn hash_is_stable_sha256() {
+    assert_eq!(
+      hash(b"hello world"),
+      "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    );
   }
 }
