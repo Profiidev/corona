@@ -253,7 +253,8 @@ fn translate_command() -> Rc<dyn Command> {
                 "{}\n\n---\n\n{}",
                 escape_markdown(&translated),
                 escape_markdown(&text)
-              ).into(),
+              )
+              .into(),
               metadata: vec![
                 (t!("app.launcher.lookup.from").into(), source.into()),
                 (t!("app.launcher.lookup.to").into(), target.into()),
@@ -340,7 +341,8 @@ mod tests {
   #[test]
   fn markdown_is_escaped() {
     assert_eq!(escape_markdown("![](http://x)"), "\\!\\[\\]\\(http://x\\)");
-    let json = br#"{"en":[{"partOfSpeech":"Noun","definitions":[{"definition":"![](http://x)"}]}]}"#;
+    let json =
+      br#"{"en":[{"partOfSpeech":"Noun","definitions":[{"definition":"![](http://x)"}]}]}"#;
     assert!(!definitions_markdown("a", json).unwrap().contains("\n1. !["));
   }
 
