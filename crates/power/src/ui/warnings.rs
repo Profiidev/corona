@@ -178,10 +178,10 @@ fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
           None
         }
       };
-      if let Some(close) = close {
-        if let Err(e) = close.await {
-          tracing::warn!("battery notification: {e:#}");
-        }
+      if let Some(close) = close
+        && let Err(e) = close.await
+      {
+        tracing::warn!("battery notification: {e:#}");
       }
     }
     Err(e) => tracing::warn!("battery notification: {e:#}"),
