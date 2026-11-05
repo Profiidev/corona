@@ -2406,7 +2406,7 @@ fn d_ts() -> String {
   out += &declare(
     "A native select over the `{ id, label, disabled? }` rows `rows()` returns.",
     "Select",
-    "id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, \
+    "id: string, rows: () => readonly SelectRow[], render_row: (row: SelectRow) => Element | null, \
      on_select: (value: string, cx: Context) => void",
   );
   out += &declare(

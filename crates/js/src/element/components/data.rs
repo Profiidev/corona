@@ -1591,9 +1591,14 @@ mod methods {
 }
 
 /// A `{ new (..): Element; new: (..) => Element }` declaration
+///
+/// `args` starting with `<T> ` makes the constructor generic in `T`.
 fn ctor(doc: &str, name: &str, args: &str) -> String {
   let doc = crate::jsdoc(&[doc], "  ");
-  format!("{doc}  export const {name}: {{ new ({args}): Element; new: ({args}) => Element }};\n")
+  let (generic, args) = args.strip_prefix("<T> ").map_or(("", args), |a| ("<T>", a));
+  format!(
+    "{doc}  export const {name}: {{ new {generic}({args}): Element; new: {generic}({args}) => Element }};\n"
+  )
 }
 
 fn base_d_ts() -> String {
@@ -1777,12 +1782,12 @@ fn component_d_ts() -> String {
     (
       " A list of rows rendered lazily by `render_row`; its state is kept by `id`.",
       "List",
-      "id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element",
+      "<T> id: string, rows: readonly T[] | (() => readonly T[]), render_row: (row: T, cx: Context) => Element",
     ),
     (
       " A table of rows, its visible cells rendered lazily by `render_cell`.",
       "DataTable",
-      "state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element",
+      "<T> state: DataTableState, rows: readonly T[] | (() => readonly T[]), render_cell: (row: T, column: string, cx: Context) => Element",
     ),
     (
       " A tree of `TreeItem` children; what is expanded is kept by `id`.",

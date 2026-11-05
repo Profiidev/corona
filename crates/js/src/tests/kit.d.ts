@@ -4541,6 +4541,11 @@ declare module "corona/base" {
     zoomable?: boolean;
     visible?: boolean;
   }
+  const dock_state: unique symbol;
+  /** A layout from `dump()`, opaque: keep it, or `JSON.stringify` it and parse it back. */
+  export interface DockState {
+    readonly [dock_state]: true;
+  }
   /** A dockable layout the user rearranges. Make it in `init` or a handler. */
   export interface DockArea {
     /** Docks `view`, a view from `cx.new(Class)`. */
@@ -4548,9 +4553,9 @@ declare module "corona/base" {
     remove_panel(id: number): boolean;
     panels(): DockPanel[];
     /** The layout as plain data, with each panel's `serialize()`. */
-    dump(): any;
+    dump(): DockState;
     /** Restores a `dump()`, rebuilding registered panels and calling their `deserialize(data)`. */
-    load(state: any): void;
+    load(state: DockState): void;
     has_dock(placement: DockPlacement): boolean;
     is_dock_open(placement: DockPlacement): boolean;
     toggle_dock(placement: DockPlacement): void;
@@ -4639,7 +4644,7 @@ declare module "corona/component" {
   /** Muted text inside an `InputGroup`. */
   export const InputGroupText: { new (): Element<"InputGroupText">; new: () => Element<"InputGroupText"> };
   /** A native select over the `{ id, label, disabled? }` rows `rows()` returns. */
-  export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void): Element<"Select">; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void) => Element<"Select"> };
+  export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: SelectRow) => Element | null, on_select: (value: string, cx: Context) => void): Element<"Select">; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: SelectRow) => Element | null, on_select: (value: string, cx: Context) => void) => Element<"Select"> };
   /** A single-select searchable combobox over the rows `rows()` returns. */
   export const Combobox: { new (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void): Element<"Combobox">; new: (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void) => Element<"Combobox"> };
   /** Half-open UTF-16 string offsets, as `slice()` takes them. */
@@ -4961,9 +4966,9 @@ declare module "corona/component" {
   /** The dot of slide `index`. */
   export const CarouselPaginationItem: { new (id: string | number, index: number, state: CarouselState): Element<"CarouselPaginationItem">; new: (id: string | number, index: number, state: CarouselState) => Element<"CarouselPaginationItem"> };
   /** A list of rows rendered lazily by `render_row`; its state is kept by `id`. */
-  export const List: { new (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element): Element<"List">; new: (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element) => Element<"List"> };
+  export const List: { new <T>(id: string, rows: readonly T[] | (() => readonly T[]), render_row: (row: T, cx: Context) => Element): Element; new: <T>(id: string, rows: readonly T[] | (() => readonly T[]), render_row: (row: T, cx: Context) => Element) => Element<"List"> };
   /** A table of rows, its visible cells rendered lazily by `render_cell`. */
-  export const DataTable: { new (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element): Element<"DataTable">; new: (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element) => Element<"DataTable"> };
+  export const DataTable: { new <T>(state: DataTableState, rows: readonly T[] | (() => readonly T[]), render_cell: (row: T, column: string, cx: Context) => Element): Element; new: <T>(state: DataTableState, rows: readonly T[] | (() => readonly T[]), render_cell: (row: T, column: string, cx: Context) => Element) => Element<"DataTable"> };
   /** A tree of `TreeItem` children; what is expanded is kept by `id`. */
   export const Tree: { new (id: string): Element<"Tree">; new: (id: string) => Element<"Tree"> };
   /** One node of a `Tree`; nest more as children. */

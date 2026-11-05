@@ -10,6 +10,7 @@ import {
   Input,
   InputState,
   Label,
+  List,
   RadioGroup,
   Rating,
   Select,
@@ -79,3 +80,11 @@ div().when(true, (e) => e.label("x"));
 row().w(1);
 // @ts-expect-error a Clipboard is not an element taking style
 const styled: ElementOf<"style"> = Clipboard.new("x");
+
+// rows keep their type into the callback
+List.new("l", [{ n: 1 }], (row) => div().child(String(row.n)));
+// @ts-expect-error the row has no such field
+List.new("l", [{ n: 1 }], (row) => div().child(row.m));
+Select.new("s", () => [{ id: "a", label: "A" }], (row) => div().child(row.label), () => {});
+// @ts-expect-error a select row has no such field
+Select.new("s", () => [{ id: "a", label: "A" }], (row) => div().child(row.nope), () => {});

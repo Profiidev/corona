@@ -1321,6 +1321,11 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
     zoomable?: boolean;
     visible?: boolean;
   }
+  const dock_state: unique symbol;
+  /** A layout from `dump()`, opaque: keep it, or `JSON.stringify` it and parse it back. */
+  export interface DockState {
+    readonly [dock_state]: true;
+  }
   /** A dockable layout the user rearranges. Make it in `init` or a handler. */
   export interface DockArea {
     /** Docks `view`, a view from `cx.new(Class)`. */
@@ -1328,9 +1333,9 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
     remove_panel(id: number): boolean;
     panels(): DockPanel[];
     /** The layout as plain data, with each panel's `serialize()`. */
-    dump(): any;
+    dump(): DockState;
     /** Restores a `dump()`, rebuilding registered panels and calling their `deserialize(data)`. */
-    load(state: any): void;
+    load(state: DockState): void;
     has_dock(placement: DockPlacement): boolean;
     is_dock_open(placement: DockPlacement): boolean;
     toggle_dock(placement: DockPlacement): void;
