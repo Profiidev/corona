@@ -10,15 +10,19 @@
 //!    `InteractiveElement`, `ParentElement`). Style, event and child methods then work on it.
 //! 3. Export constructors with [`constructor`]: `new Button(id)` and `Button.new(id)` both
 //!    return an element, made by `crate::new_el(ctx, Button::new(id.into_inner()))`.
-//! 4. Add the widget's own builder methods with an [`el_methods!`](crate::el_methods) table
-//!    headed `kinds: KINDS;`, the kinds the family makes. Bodies reach the concrete type
-//!    through [`map`](crate::map) or `pick!(c, n, Button => |b: Button| b.primary(), ..)`,
-//!    which throw a [`miss`](crate::miss) on other elements. Several families (and the style
-//!    and event tables) may define one name: [`define`](crate::define) tries the latest first
-//!    and hands an element outside its kinds, or a miss, to the one before. So check the kind
-//!    before taking a child out of the frame. Use [`On`](crate::On) for handlers ([`listen`]
-//!    makes the gpui listener), `choice!` for arguments naming one of a few values and the
-//!    value types of `style` (`Color`, `Len`, ..) for the rest.
+//! 4. Add the widget's own builder methods with an [`el_methods!`](crate::el_methods) table.
+//!    Each line names the kinds it works on, `fn label(text: String) for ["Button", "Checkbox"]
+//!    |c, n| ..`, which the d.ts types it on (`this: Element<"Button" | "Checkbox">`) and the
+//!    runtime checks before the arguments. Bodies reach the concrete type through
+//!    [`map`](crate::map) or `pick!(c, n, Button => |b: Button| b.primary(), ..)`, which throw a
+//!    [`miss`](crate::miss) on other elements. Several families (and the style and event
+//!    tables) may define one name: [`define`](crate::define) tries the latest first and hands
+//!    an element outside its kinds, or a miss, to the one before. So check the kind before
+//!    taking a child out of the frame. Use [`On`](crate::On) for handlers ([`listen`] makes
+//!    the gpui listener), `choice!` for arguments naming one of a few values and the value
+//!    types of `style` (`Color`, `Len`, ..) for the rest. Add the kind to `element/caps.rs`
+//!    with what it takes (style, interaction, children), and type its constructor
+//!    `Element<"Kind">` in the d.ts.
 //! 5. Retained states (`InputState`, ..) are rquickjs classes holding a
 //!    [`Retained`](crate::Retained) with `on`/`release` methods; `Named` gives them a TS name.
 //! 6. Fill [`Family`]: the module (`"corona/component"` or `"corona/base"`), the export names,

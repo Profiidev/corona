@@ -3207,836 +3207,848 @@ declare module "corona/kit" {
     | "font_bold"
     | "font_extrabold"
     | "font_black";
-  export type NullaryStyles = { [Method in NullaryStyle]: () => Element };
-  /** An element of the render that built it: chain its methods, pass it to `child`. */
-  export interface Element extends NullaryStyles {
+  export type NullaryStyles<Self> = { [Method in NullaryStyle]: (this: Element<StyledKind>) => Self };
+  /** The kinds of element taking style methods. */
+  export type StyledKind = "canvas" | "Accordion" | "AccordionHeader" | "AccordionItem" | "AccordionPanel" | "AccordionTrigger" | "Alert" | "AlertDialog" | "AreaChart" | "Attachment" | "Avatar" | "AvatarFallback" | "AvatarImage" | "Badge" | "BarChart" | "Breadcrumb" | "Bubble" | "Button" | "Calendar" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Collapsible" | "ColorPicker" | "Combobox" | "Command" | "DataTable" | "DatePicker" | "DescriptionList" | "Dialog" | "Diff" | "DropdownButton" | "DropdownMenu" | "Editor" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyHeader" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "Icon" | "Input" | "InputGroup" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Kbd" | "Label" | "LineChart" | "Link" | "List" | "Marker" | "Message" | "MessageScroller" | "NativeMenuTrigger" | "Notification" | "NumberInput" | "OtpInput" | "Pagination" | "PieChart" | "Popover" | "Popup" | "Progress" | "ProgressIndicator" | "ProgressTrack" | "Questionnaire" | "RadarChart" | "Radio" | "RadioGroup" | "Rating" | "Resizable" | "ResizablePanel" | "Scroll" | "Scrollable" | "Select" | "Separator" | "SettingGroup" | "Sheet" | "ShimmerText" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "Skeleton" | "Slider" | "SliderIndicator" | "SliderThumb" | "SliderTrack" | "Spinner" | "StatusBar" | "Stepper" | "StepperItem" | "Switch" | "Tab" | "TabBar" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableFooter" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Tag" | "TextView" | "Textarea" | "TimeField" | "Toggle" | "ToggleGroup" | "Toolbar" | "Tree" | "VirtualList" | "div" | "dock_area" | "dock_content" | "image" | "list" | "style" | "svg" | "uniform_list";
+  /** The kinds of element taking `id`, `on_click`, .. */
+  export type InteractiveKind = "Accordion" | "AccordionTrigger" | "Alert" | "AlertDialog" | "AreaChart" | "Avatar" | "AvatarImage" | "Badge" | "BarChart" | "Button" | "Checkbox" | "DatePicker" | "DescriptionList" | "Dialog" | "HoverCard" | "InputGroupButton" | "Label" | "LineChart" | "Link" | "Notification" | "Pagination" | "PieChart" | "Popover" | "Popup" | "Progress" | "RadarChart" | "Radio" | "RadioGroup" | "Scroll" | "Scrollable" | "Sheet" | "SidebarFooter" | "SidebarHeader" | "SliderTrack" | "Spinner" | "Switch" | "Tab" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Toggle" | "ToggleGroup" | "div" | "image" | "svg" | "uniform_list";
+  /** The kinds of element taking `child`. */
+  export type ParentKind = "Accordion" | "AccordionHeader" | "AccordionItem" | "AccordionPanel" | "AccordionTrigger" | "Alert" | "AlertDialog" | "Attachment" | "AvatarFallback" | "Badge" | "Bubble" | "Button" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Collapsible" | "Combobox" | "Command" | "CommandGroup" | "DatePicker" | "DescriptionList" | "Dialog" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Link" | "Marker" | "Menu" | "MenuBar" | "Message" | "NativeMenuTrigger" | "Notification" | "NumberInput" | "OtpInput" | "Pagination" | "Popover" | "Popup" | "Progress" | "ProgressIndicator" | "ProgressTrack" | "Questionnaire" | "QuestionnaireItem" | "Radio" | "RadioGroup" | "Resizable" | "ResizablePanel" | "Scroll" | "Scrollable" | "Select" | "SettingGroup" | "SettingPage" | "Settings" | "Sheet" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "SidebarMenu" | "SidebarMenuItem" | "Slider" | "SliderIndicator" | "SliderThumb" | "SliderTrack" | "StatusBar" | "Stepper" | "StepperItem" | "Switch" | "Tab" | "TabBar" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableFooter" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Tag" | "Toggle" | "ToggleGroup" | "Toolbar" | "Tree" | "TreeItem" | "div";
+
+  /** An element of the render that built it: chain its methods, pass it to `child`. `K` is its kind: a component's methods are typed on the kinds having them. */
+  export interface Element<K extends string = string> extends NullaryStyles<Element<K>> {
+    readonly __kind?: K;
     /** Sets the width. */
-    w(v: Length): Element;
+    w(this: Element<StyledKind>, v: Length): this;
     /** Sets the height. */
-    h(v: Length): Element;
+    h(this: Element<StyledKind>, v: Length): this;
     /** Sets the width and the height together. */
-    size(v: Length): Element;
+    size(this: Element<StyledKind>, v: Length): this;
     /** Sets the minimum width. */
-    min_w(v: Length): Element;
+    min_w(this: Element<StyledKind>, v: Length): this;
     /** Sets the minimum height. */
-    min_h(v: Length): Element;
+    min_h(this: Element<StyledKind>, v: Length): this;
     /** Sets the minimum width and height together. */
-    min_size(v: Length): Element;
+    min_size(this: Element<StyledKind>, v: Length): this;
     /** Sets the maximum width. */
-    max_w(v: Length): Element;
+    max_w(this: Element<StyledKind>, v: Length): this;
     /** Sets the maximum height. */
-    max_h(v: Length): Element;
+    max_h(this: Element<StyledKind>, v: Length): this;
     /** Sets the maximum width and height together. */
-    max_size(v: Length): Element;
+    max_size(this: Element<StyledKind>, v: Length): this;
     /** Sets the padding on all four sides. */
-    p(v: DefiniteLength): Element;
+    p(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the left and right. */
-    px(v: DefiniteLength): Element;
+    px(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the top and bottom. */
-    py(v: DefiniteLength): Element;
+    py(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the top. */
-    pt(v: DefiniteLength): Element;
+    pt(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the bottom. */
-    pb(v: DefiniteLength): Element;
+    pb(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the left. */
-    pl(v: DefiniteLength): Element;
+    pl(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the padding on the right. */
-    pr(v: DefiniteLength): Element;
+    pr(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the margin on all four sides. */
-    m(v: Length): Element;
+    m(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the left and right. */
-    mx(v: Length): Element;
+    mx(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the top and bottom. */
-    my(v: Length): Element;
+    my(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the top. */
-    mt(v: Length): Element;
+    mt(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the bottom. */
-    mb(v: Length): Element;
+    mb(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the left. */
-    ml(v: Length): Element;
+    ml(this: Element<StyledKind>, v: Length): this;
     /** Sets the margin on the right. */
-    mr(v: Length): Element;
+    mr(this: Element<StyledKind>, v: Length): this;
     /** Sets all four offsets of a positioned element. */
-    inset(v: Length): Element;
+    inset(this: Element<StyledKind>, v: Length): this;
     /** Sets the top offset of a positioned element. */
-    top(v: Length): Element;
+    top(this: Element<StyledKind>, v: Length): this;
     /** Sets the bottom offset of a positioned element. */
-    bottom(v: Length): Element;
+    bottom(this: Element<StyledKind>, v: Length): this;
     /** Sets the left offset of a positioned element. */
-    left(v: Length): Element;
+    left(this: Element<StyledKind>, v: Length): this;
     /** Sets the right offset of a positioned element. */
-    right(v: Length): Element;
+    right(this: Element<StyledKind>, v: Length): this;
     /** Sets the gap between children on both axes. */
-    gap(v: DefiniteLength): Element;
+    gap(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the gap between columns. */
-    gap_x(v: DefiniteLength): Element;
+    gap_x(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets the gap between rows. */
-    gap_y(v: DefiniteLength): Element;
+    gap_y(this: Element<StyledKind>, v: DefiniteLength): this;
     /** Sets how much of the free space this child takes, 1 when left out. */
-    flex_grow(v?: number): Element;
+    flex_grow(this: Element<StyledKind>, v?: number): this;
     /** Sets how readily this child gives space back, 1 when left out. */
-    flex_shrink(v?: number): Element;
+    flex_shrink(this: Element<StyledKind>, v?: number): this;
     /** Sets the size this child starts from before growing or shrinking. */
-    flex_basis(v: Length): Element;
+    flex_basis(this: Element<StyledKind>, v: Length): this;
     /** Sets the background. */
-    bg(v: Color | Background): Element;
+    bg(this: Element<StyledKind>, v: Color | Background): this;
     /** Sets the text color, which children inherit. */
-    text_color(v: Color): Element;
+    text_color(this: Element<StyledKind>, v: Color): this;
     /** Sets the background painted behind the text itself. */
-    text_bg(v: Color): Element;
+    text_bg(this: Element<StyledKind>, v: Color): this;
     /** Sets the font size. */
-    text_size(v: AbsoluteLength): Element;
+    text_size(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the font family. */
-    font_family(v: string): Element;
+    font_family(this: Element<StyledKind>, v: string): this;
     /** Sets the font weight, 100 to 900. */
-    font_weight(v: number): Element;
+    font_weight(this: Element<StyledKind>, v: number): this;
     /** Sets the line height. A bare number is a multiplier (`1.45`), a string a length. */
-    line_height(v: number | DefiniteLength): Element;
+    line_height(this: Element<StyledKind>, v: number | DefiniteLength): this;
     /** Sets the opacity of the element and everything in it, from 0 to 1. */
-    opacity(v: number): Element;
+    opacity(this: Element<StyledKind>, v: number): this;
     /** Sets the border width on all four sides. Draws nothing without a color. */
-    border(v: AbsoluteLength): Element;
+    border(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the top. */
-    border_t(v: AbsoluteLength): Element;
+    border_t(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the bottom. */
-    border_b(v: AbsoluteLength): Element;
+    border_b(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the left. */
-    border_l(v: AbsoluteLength): Element;
+    border_l(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the right. */
-    border_r(v: AbsoluteLength): Element;
+    border_r(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the left and right. */
-    border_x(v: AbsoluteLength): Element;
+    border_x(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border width on the top and bottom. */
-    border_y(v: AbsoluteLength): Element;
+    border_y(this: Element<StyledKind>, v: AbsoluteLength): this;
     /** Sets the border color. Draws nothing without a width. */
-    border_color(v: Color): Element;
+    border_color(this: Element<StyledKind>, v: Color): this;
     /** Sets the corner radius on all four corners. */
-    rounded(v: AbsoluteLength | RadiusToken): Element;
+    rounded(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the two top corners. */
-    rounded_t(v: AbsoluteLength | RadiusToken): Element;
+    rounded_t(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the two bottom corners. */
-    rounded_b(v: AbsoluteLength | RadiusToken): Element;
+    rounded_b(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the two left corners. */
-    rounded_l(v: AbsoluteLength | RadiusToken): Element;
+    rounded_l(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the two right corners. */
-    rounded_r(v: AbsoluteLength | RadiusToken): Element;
+    rounded_r(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the top-left corner. */
-    rounded_tl(v: AbsoluteLength | RadiusToken): Element;
+    rounded_tl(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the top-right corner. */
-    rounded_tr(v: AbsoluteLength | RadiusToken): Element;
+    rounded_tr(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the bottom-left corner. */
-    rounded_bl(v: AbsoluteLength | RadiusToken): Element;
+    rounded_bl(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Sets the corner radius on the bottom-right corner. */
-    rounded_br(v: AbsoluteLength | RadiusToken): Element;
+    rounded_br(this: Element<StyledKind>, v: AbsoluteLength | RadiusToken): this;
     /** Adds one child. A string is text; an `Entity` from `cx.new` mounts a retained view. */
-    child(child: Element | Entity | string | number | boolean): Element;
+    child(this: Element<ParentKind>, child: Element | Entity | string | number | boolean): this;
     /** Adds several children, in order. */
-    children(children: Array<Element | Entity | string | number | boolean>): Element;
+    children(this: Element<ParentKind>, children: Array<Element | Entity | string | number | boolean>): this;
     /** A stable name for this element, its identity across renders. */
-    id(id: string | number): Element;
+    id(this: Element<InteractiveKind>, id: string | number): this;
     /** The key-binding context this element and its subtree sit in. */
-    key_context(context: string): Element;
+    key_context(this: Element<InteractiveKind>, context: string): this;
     /** Tracks a focus handle from `cx.focus_handle()`, so it can focus this element. */
-    track_focus(handle: FocusHandle): Element;
+    track_focus(this: Element<InteractiveKind>, handle: FocusHandle): this;
     /** Where this element sits in the Tab order; also makes it a tab stop. */
-    tab_index(index: number): Element;
+    tab_index(this: Element<InteractiveKind>, index: number): this;
     /** Whether Tab can land on this element. */
-    tab_stop(value: boolean): Element;
+    tab_stop(this: Element<InteractiveKind>, value: boolean): this;
     /** Lets a `ScrollHandle` read and drive this element's scroll position. */
-    track_scroll(handle: ScrollHandle): Element;
+    track_scroll(this: Element<InteractiveKind>, handle: ScrollHandle): this;
     /** Scrolls both axes for overflowing children. */
-    overflow_scroll(): Element;
+    overflow_scroll(this: Element<InteractiveKind>): this;
     /** Scrolls horizontally for overflowing children. */
-    overflow_x_scroll(): Element;
+    overflow_x_scroll(this: Element<InteractiveKind>): this;
     /** Scrolls vertically for overflowing children. */
-    overflow_y_scroll(): Element;
+    overflow_y_scroll(this: Element<InteractiveKind>): this;
     /** The label a hover shows over this element. */
-    tooltip(text: string): Element;
+    tooltip(this: Element<InteractiveKind>, text: string): this;
     /** What this element announces itself as. */
-    role(name: string): Element;
+    role(this: Element<InteractiveKind>, name: string): this;
     /** What a screen reader announces. */
-    aria_label(label: string): Element;
+    aria_label(this: Element<InteractiveKind>, label: string): this;
     /** Same as `aria_label`. */
-    accessibility_label(label: string): Element;
+    accessibility_label(this: Element<InteractiveKind>, label: string): this;
     /** Supplementary text a screen reader announces after the label. */
-    aria_description(text: string): Element;
+    aria_description(this: Element<InteractiveKind>, text: string): this;
     /** The selected state, announced. */
-    aria_selected(value: boolean): Element;
+    aria_selected(this: Element<InteractiveKind>, value: boolean): this;
     /** The expanded state, announced. */
-    aria_expanded(value: boolean): Element;
+    aria_expanded(this: Element<InteractiveKind>, value: boolean): this;
     /** The heading level, announced. */
-    aria_level(level: number): Element;
+    aria_level(this: Element<InteractiveKind>, level: number): this;
     /** Announces this element as focused while an ancestor holds the keyboard. */
-    aria_active_descendant(): Element;
+    aria_active_descendant(this: Element<InteractiveKind>): this;
     /** Makes the element focusable without tracking a handle. */
-    focusable(value?: boolean): Element;
+    focusable(this: Element<InteractiveKind>, value?: boolean): this;
     /** Blocks the mouse from reaching elements behind this one. */
-    occlude(): Element;
+    occlude(this: Element<InteractiveKind>): this;
     /** Names a group for `group_hover` of descendants. */
-    group(name: string): Element;
+    group(this: Element<InteractiveKind>, name: string): this;
     /** `handler(event, cx)` on a click, or keyboard activation. */
-    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    on_click(this: Element<InteractiveKind>, handler: (event: ClickEvent, cx: Context) => void): this;
     /** `handler(hovered, cx)` when the pointer enters and leaves. */
-    on_hover(handler: (event: boolean, cx: Context) => void): Element;
+    on_hover(this: Element<InteractiveKind>, handler: (event: boolean, cx: Context) => void): this;
     /** `handler(event, cx)` when `button` is pressed over this element. */
-    on_mouse_down(button: MouseButton, handler: (event: MouseButtonEvent, cx: Context) => void): Element;
+    on_mouse_down(this: Element<InteractiveKind>, button: MouseButton, handler: (event: MouseButtonEvent, cx: Context) => void): this;
     /** `handler(event, cx)` when `button` is released over this element. */
-    on_mouse_up(button: MouseButton, handler: (event: MouseButtonEvent, cx: Context) => void): Element;
+    on_mouse_up(this: Element<InteractiveKind>, button: MouseButton, handler: (event: MouseButtonEvent, cx: Context) => void): this;
     /** `handler(event, cx)` on a press anywhere outside this element. */
-    on_mouse_down_out(handler: (event: MouseButtonEvent, cx: Context) => void): Element;
+    on_mouse_down_out(this: Element<InteractiveKind>, handler: (event: MouseButtonEvent, cx: Context) => void): this;
     /** `handler(event, cx)` while the pointer moves over this element. */
-    on_mouse_move(handler: (event: MouseMoveEvent, cx: Context) => void): Element;
+    on_mouse_move(this: Element<InteractiveKind>, handler: (event: MouseMoveEvent, cx: Context) => void): this;
     /** `handler(event, cx)` on wheel and trackpad scrolling over this element. */
-    on_scroll_wheel(handler: (event: ScrollWheelEvent, cx: Context) => void): Element;
+    on_scroll_wheel(this: Element<InteractiveKind>, handler: (event: ScrollWheelEvent, cx: Context) => void): this;
     /** `handler(event, cx)` on a key press while this element or a descendant has focus. */
-    on_key_down(handler: (event: KeyEvent, cx: Context) => void): Element;
+    on_key_down(this: Element<InteractiveKind>, handler: (event: KeyEvent, cx: Context) => void): this;
     /** `handler(event, cx)` on a key release while this element or a descendant has focus. */
-    on_key_up(handler: (event: KeyEvent, cx: Context) => void): Element;
+    on_key_up(this: Element<InteractiveKind>, handler: (event: KeyEvent, cx: Context) => void): this;
     /** `handler(event, cx)` when a modifier key changes while focused. */
-    on_modifiers_changed(handler: (event: ModifiersChangedEvent, cx: Context) => void): Element;
+    on_modifiers_changed(this: Element<InteractiveKind>, handler: (event: ModifiersChangedEvent, cx: Context) => void): this;
     /**
      * `handler(event, cx)` when the action named `action` of this plugin is dispatched to this
      * element or inside it, by a key binding (`cx.bind_keys`) or `window.dispatch_action`.
      * Action names are per plugin; `::` is reserved and throws.
      */
-    on_action(action: string, handler: (event: ActionEvent, cx: Context) => void): Element;
+    on_action(this: Element<InteractiveKind>, action: string, handler: (event: ActionEvent, cx: Context) => void): this;
     /** Passes this element to `transform` and returns what it returns. */
-    map<T>(transform: (element: Element) => T): T;
+    map<T>(transform: (element: this) => T): T;
     /** Applies `branch` only when `condition` is truthy. */
-    when(condition: unknown, branch: (element: Element) => Element): Element;
+    when(condition: unknown, branch: (element: this) => this): this;
     /** Applies `branch` only when `value` is not null or undefined, passing it along. */
-    when_some<T>(value: T | null | undefined, branch: (element: Element, value: T) => Element): Element;
+    when_some<T>(value: T | null | undefined, branch: (element: this, value: T) => this): this;
     /** Styles while hovered. */
-    hover(style: (style: Element) => Element): Element;
+    hover(this: Element<StyledKind>, style: (style: Element<"style">) => Element): this;
     /** Styles while pressed. */
-    active(style: (style: Element) => Element): Element;
+    active(this: Element<StyledKind>, style: (style: Element<"style">) => Element): this;
     /** Styles while focused. */
-    focus(style: (style: Element) => Element): Element;
+    focus(this: Element<StyledKind>, style: (style: Element<"style">) => Element): this;
     /** Styles while something inside is focused. */
-    in_focus(style: (style: Element) => Element): Element;
+    in_focus(this: Element<StyledKind>, style: (style: Element<"style">) => Element): this;
     /** Styles while focused from the keyboard. */
-    focus_visible(style: (style: Element) => Element): Element;
+    focus_visible(this: Element<StyledKind>, style: (style: Element<"style">) => Element): this;
     /** Styles while an ancestor with `group(name)` is hovered. */
-    group_hover(group: string, style: (style: Element) => Element): Element;
+    group_hover(this: Element<StyledKind>, group: string, style: (style: Element<"style">) => Element): this;
     /** Sets the probe's label. */
-    label(text: string): Element;
+    label(text: string): this;
     /** The visible label of a button, check, switch, radio, toggle, color picker or field. */
-    label(text: string): Element;
+    label(this: Element<"Button" | "Checkbox" | "Switch" | "Radio" | "Toggle" | "ColorPicker" | "Field" | "InputGroupButton">, text: string): this;
     /** An icon of an `InputGroupButton`, by asset path. */
-    icon(path: string): Element;
+    icon(this: Element<"InputGroupButton">, path: string): this;
     /** Concise hover help. */
-    tooltip(text: string): Element;
+    tooltip(this: Element<"Button" | "Checkbox" | "Switch" | "Toggle" | "Clipboard" | "InputGroupButton">, text: string): this;
     /** The controlled value of a `Checkbox`, `Switch`, `Radio` or `Toggle`. */
-    checked(value: boolean): Element;
+    checked(this: Element<"Checkbox" | "Switch" | "Radio" | "Toggle">, value: boolean): this;
     /** The controlled state of a `corona/base` `Toggle`: a button that stays down. */
-    pressed(value: boolean): Element;
+    pressed(this: Element<"Toggle">, value: boolean): this;
     /**
      * `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
      * the index of a `RadioGroup`, the stars of a `Rating`. The script owns the value.
      */
-    on_change(handler: (event: any, cx: Context) => void): Element;
+    on_change(this: Element<"Checkbox" | "Switch" | "Radio" | "Toggle" | "RadioGroup" | "Rating" | "Input" | "Textarea">, handler: (event: any, cx: Context) => void): this;
     /** Blocks interaction and draws the control disabled. */
-    disabled(value: boolean): Element;
+    disabled(this: Element<"Button" | "Label" | "Link" | "Checkbox" | "Switch" | "Radio" | "RadioGroup" | "Toggle" | "Rating" | "Input" | "NumberInput" | "Textarea" | "OtpInput" | "Slider" | "DatePicker" | "TimeField" | "Select" | "Combobox" | "InputGroup" | "InputGroupButton" | "SliderTrack" | "SliderThumb">, value: boolean): this;
     /** The selected state of a `Button`. */
-    selected(value: boolean): Element;
+    selected(this: Element<"Button" | "InputGroupButton">, value: boolean): this;
     /** Shows a spinner and blocks clicks. */
-    loading(value: boolean): Element;
+    loading(this: Element<"Button" | "InputGroupButton">, value: boolean): this;
     /** The semantic control size. */
-    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    size(this: Element<"Button" | "Checkbox" | "Switch" | "Radio" | "Toggle" | "Rating" | "Form" | "InputGroup" | "InputGroupButton">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** The outlined look of a button, toggle or keycap. */
-    outline(): Element;
+    outline(this: Element<"Button" | "Toggle" | "Kbd" | "InputGroupButton">): this;
     /** The primary action look. */
-    primary(): Element;
+    primary(this: Element<"Button">): this;
     /** The secondary look of a `Button`, or the muted secondary text of a `Label`. */
-    secondary(text?: string): Element;
+    secondary(this: Element<"Label" | "Button">, text?: string): this;
     /** The destructive action look. */
-    danger(): Element;
+    danger(this: Element<"Button">): this;
     /** The success look. */
-    success(): Element;
+    success(this: Element<"Button">): this;
     /** The warning look. */
-    warning(): Element;
+    warning(this: Element<"Button">): this;
     /** The quiet look of a button. */
-    ghost(): Element;
+    ghost(this: Element<"Button">): this;
     /** The look of a link. */
-    link(): Element;
+    link(this: Element<"Button">): this;
     /** Tighter padding. */
-    compact(): Element;
+    compact(this: Element<"Button">): this;
     /** A native button variant of an `InputGroupButton`. */
-    variant(variant: "default" | "primary" | "secondary" | "danger" | "warning" | "success" | "info" | "ghost" | "link" | "text"): Element;
+    variant(this: Element<"InputGroupButton">, variant: "default" | "primary" | "secondary" | "danger" | "warning" | "success" | "info" | "ghost" | "link" | "text"): this;
     /** The absolute HTTP(S) URL a `Link` opens. */
-    href(url: string): Element;
+    href(this: Element<"Link">, url: string): this;
     /** The checked radio of a `RadioGroup`, by index. */
-    selected_index(index: number): Element;
+    selected_index(this: Element<"RadioGroup">, index: number): this;
     /** The orientation a `corona/base` `RadioGroup` or `ToggleGroup` announces. */
-    axis(axis: "horizontal" | "vertical"): Element;
+    axis(this: Element<"RadioGroup" | "ToggleGroup" | "Slider" | "SliderTrack" | "SliderIndicator" | "SliderThumb">, axis: "horizontal" | "vertical"): this;
     /** This item's one-based position and its collection's size, announced. */
-    set_position(position: number, size: number): Element;
+    set_position(this: Element<"Radio">, position: number, size: number): this;
     /** Draws a `Label`'s text as a password. */
-    masked(value: boolean): Element;
+    masked(this: Element<"Input" | "Label">, value: boolean): this;
     /** Highlights the matches of `text` in a `Label`. */
-    highlights(text: string): Element;
+    highlights(this: Element<"Label">, text: string): this;
     /** Whether a keycap or text area draws its frame. */
-    appearance(value: boolean): Element;
+    appearance(this: Element<"Kbd" | "Textarea">, value: boolean): this;
     /**
      * What a `Clipboard` copies, the stars of a `Rating`, or the row id a `Select` shows as
      * selected; an id without a row selects nothing.
      */
-    value(value: string | number): Element;
+    value(this: Element<"Select" | "Input" | "Textarea" | "Clipboard" | "Rating">, value: string | number): this;
     /** How many stars a `Rating` has. */
-    max(count: number): Element;
+    max(this: Element<"Rating">, count: number): this;
     /** The accent color of a `Rating`. */
-    color(color: Color): Element;
+    color(this: Element<"Rating">, color: Color): this;
     /** Draws a `Textarea`'s border. */
-    bordered(value: boolean): Element;
+    bordered(this: Element<"Textarea">, value: boolean): this;
     /** Allows selecting and copying but no edits. */
-    readonly(value: boolean): Element;
+    readonly(this: Element<"Input" | "Textarea" | "InputGroup">, value: boolean): this;
     /** The prompt shown while empty. */
-    placeholder(text: string): Element;
+    placeholder(this: Element<"Input" | "Textarea" | "NumberInput" | "DatePicker" | "Select" | "Combobox">, text: string): this;
     /** The prompt of a `Combobox`'s search field. */
-    search_placeholder(text: string): Element;
+    search_placeholder(this: Element<"Combobox">, text: string): this;
     /** Shows a search field above a `Combobox`'s items; takes effect from the next frame. */
-    searchable(value: boolean): Element;
+    searchable(this: Element<"Combobox">, value: boolean): this;
     /** The width of a `Select`'s or `Combobox`'s menu, in pixels. */
-    menu_width(width: number): Element;
+    menu_width(this: Element<"Select" | "Combobox">, width: number): this;
     /** Splits an `OtpInput`'s cells into this many groups. */
-    groups(count: number): Element;
+    groups(this: Element<"OtpInput">, count: number): this;
     /** A vertical `Slider`. */
-    vertical(): Element;
+    vertical(this: Element<"Slider" | "SliderIndicator" | "SliderThumb">): this;
     /** Fills a `Slider` from the other end. */
-    reverse(): Element;
+    reverse(this: Element<"Slider" | "SliderIndicator">): this;
     /** Draws an `InputGroup` as invalid. */
-    invalid(value: boolean): Element;
+    invalid(this: Element<"InputGroup">, value: boolean): this;
     /** Draws the focus ring of an `InputGroup`. */
-    focus_ring(value: boolean): Element;
+    focus_ring(this: Element<"InputGroup">, value: boolean): this;
     /** Supporting text under a `Field`'s control. */
-    description(text: string): Element;
+    description(this: Element<"Field">, text: string): this;
     /** Marks a `Field` as required. */
-    required(value: boolean): Element;
+    required(this: Element<"Field">, value: boolean): this;
     /** Indents an unlabeled `Field` of a horizontal form like the labeled ones. */
-    label_indent(value: boolean): Element;
+    label_indent(this: Element<"Field">, value: boolean): this;
     /** How many grid columns a `Field` spans. */
-    col_span(span: number): Element;
+    col_span(this: Element<"Field">, span: number): this;
     /** Where a `Field` aligns its control. */
-    align(to: string | number): Element;
+    align(this: Element<"Field" | "InputGroupAddon">, to: string | number): this;
     /** How many columns a `Form` lays its fields out in. */
-    columns(count: number): Element;
+    columns(this: Element<"Form">, count: number): this;
     /** The label width of a horizontal `Form`, in pixels. */
-    label_width(width: number): Element;
+    label_width(this: Element<"Form">, width: number): this;
     /**
      * The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
      * the editor slot of a `corona/base` `NumberInput`.
      */
-    input(control: Element | Entity | string | number | boolean): Element;
+    input(this: Element<"InputGroup" | "NumberInput">, control: Element | Entity | string | number | boolean): this;
     /** Appends an `InputGroupAddon` to an `InputGroup`. */
-    addon(addon: Element | Entity | string | number | boolean): Element;
+    addon(this: Element<"InputGroup">, addon: Element | Entity | string | number | boolean): this;
     /** Names the control for accessibility. */
-    aria_label(label: string): Element;
+    aria_label(this: Element<"Input" | "Textarea" | "InputGroup" | "InputGroupButton">, label: string): this;
     /** What a screen reader announces. */
-    accessibility_label(label: string): Element;
+    accessibility_label(this: Element<"Radio" | "ColorPicker" | "Button" | "Link" | "Checkbox" | "Switch" | "Toggle" | "Select">, label: string): this;
     /** Whether Tab lands on a `Radio`. */
-    tab_stop(value: boolean): Element;
+    tab_stop(this: Element<"Radio">, value: boolean): this;
     /**
      * Renders each inline token: `render(token, cx)` answers its element, `null` for the
      * default chip.
      */
-    token(render: (...args: any[]) => unknown): Element;
+    token(this: Element<"Input" | "Textarea">, render: (...args: any[]) => unknown): this;
     /** `listener(event, cx)` after a click on a token that nothing consumed. */
-    on_token_click(listener: (event: import("corona/component").InlineTokenClickEvent, cx: Context) => void): Element;
+    on_token_click(this: Element<"Input" | "Textarea">, listener: (event: import("corona/component").InlineTokenClickEvent, cx: Context) => void): this;
     /** `listener(event, cx)` when the pointer enters or leaves a token. */
-    on_token_hover(listener: (event: import("corona/component").InlineTokenHoverEvent, cx: Context) => void): Element;
+    on_token_hover(this: Element<"Input" | "Textarea">, listener: (event: import("corona/component").InlineTokenHoverEvent, cx: Context) => void): this;
     /** The kind of text an `Input` holds, for autofill and keyboards. */
-    content_type(kind: "name" | "name_prefix" | "given_name" | "middle_name" | "family_name" | "name_suffix" | "nickname" | "job_title" | "organization_name" | "location" | "full_street_address" | "street_address_line1" | "street_address_line2" | "address_city" | "address_state" | "address_city_and_state" | "sublocality" | "country_name" | "postal_code" | "telephone_number" | "email_address" | "url" | "credit_card_number" | "credit_card_name" | "credit_card_given_name" | "credit_card_middle_name" | "credit_card_family_name" | "credit_card_security_code" | "credit_card_expiration" | "credit_card_expiration_month" | "credit_card_expiration_year" | "credit_card_type" | "username" | "password" | "new_password" | "one_time_code" | "shipment_tracking_number" | "flight_number" | "date_time" | "birthdate" | "birthdate_day" | "birthdate_month" | "birthdate_year" | "cellular_eid" | "cellular_imei"): Element;
+    content_type(this: Element<"Input">, kind: "name" | "name_prefix" | "given_name" | "middle_name" | "family_name" | "name_suffix" | "nickname" | "job_title" | "organization_name" | "location" | "full_street_address" | "street_address_line1" | "street_address_line2" | "address_city" | "address_state" | "address_city_and_state" | "sublocality" | "country_name" | "postal_code" | "telephone_number" | "email_address" | "url" | "credit_card_number" | "credit_card_name" | "credit_card_given_name" | "credit_card_middle_name" | "credit_card_family_name" | "credit_card_security_code" | "credit_card_expiration" | "credit_card_expiration_month" | "credit_card_expiration_year" | "credit_card_type" | "username" | "password" | "new_password" | "one_time_code" | "shipment_tracking_number" | "flight_number" | "date_time" | "birthdate" | "birthdate_day" | "birthdate_month" | "birthdate_year" | "cellular_eid" | "cellular_imei"): this;
     /** A developer-assigned accessibility identifier. */
-    accessibility_id(id: string): Element;
+    accessibility_id(this: Element<"Input" | "Textarea">, id: string): this;
     /** The number of rows a `Textarea` shows, on its state. */
-    rows(rows: number): Element;
+    rows(this: Element<"Textarea">, rows: number): this;
     /** Grows a `Textarea` between two row counts, on its state. */
-    auto_grow(min_rows: number, max_rows: number): Element;
+    auto_grow(this: Element<"Textarea">, min_rows: number, max_rows: number): this;
     /** `handler(event, cx)` on activation. */
-    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    on_click(this: Element<"Button" | "Link" | "InputGroupButton">, handler: (event: ClickEvent, cx: Context) => void): this;
     /** Whether a `corona/base` `Select`, `Combobox` or `DatePicker` is showing its list. */
-    open(value: boolean): Element;
+    open(this: Element<"Select" | "Combobox" | "DatePicker">, value: boolean): this;
     /** `handler(open, cx)` when something other than the script opened or closed it. */
-    on_open_change(handler: (event: boolean, cx: Context) => void): Element;
+    on_open_change(this: Element<"Select" | "Combobox" | "DatePicker">, handler: (event: boolean, cx: Context) => void): this;
     /** `handler(_, cx)` on Enter in an open `corona/base` `Select` or `Combobox`. */
-    on_confirm(handler: (event: {}, cx: Context) => void): Element;
+    on_confirm(this: Element<"Select" | "Combobox">, handler: (event: {}, cx: Context) => void): this;
     /** `handler(_, cx)` on Escape in an open `corona/base` `Select` or `Combobox`. */
-    on_dismiss(handler: (event: {}, cx: Context) => void): Element;
+    on_dismiss(this: Element<"Select" | "Combobox">, handler: (event: {}, cx: Context) => void): this;
     /** The handle a `corona/base` `Select` or `Combobox` moves the keyboard to when it opens. */
-    content_focus_handle(handle: FocusHandle): Element;
+    content_focus_handle(this: Element<"Select" | "Combobox">, handle: FocusHandle): this;
     /** Which thumb of a range slider a `SliderThumb` is. */
-    start(value: boolean): Element;
+    start(this: Element<"SliderThumb">, value: boolean): this;
     /** How the filled part of a `SliderIndicator` looks: `declare(el)` styles it. */
-    range_style(declare: (...args: any[]) => unknown): Element;
+    range_style(this: Element<"SliderIndicator">, declare: (...args: any[]) => unknown): this;
     /** How every cell of a `corona/base` `OtpInput` looks. */
-    cell_style(declare: (...args: any[]) => unknown): Element;
+    cell_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
     /** What the cell the next digit lands in adds to `cell_style`. */
-    cell_active_style(declare: (...args: any[]) => unknown): Element;
+    cell_active_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
     /** The blinking mark in that cell while it is empty. */
-    caret_style(declare: (...args: any[]) => unknown): Element;
+    caret_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
     /** The look of a `corona/base` `NumberInput`'s decrement button. */
-    decrement_button(look: Element | Entity | string | number | boolean): Element;
+    decrement_button(this: Element<"NumberInput">, look: Element | Entity | string | number | boolean): this;
     /** The look of a `corona/base` `NumberInput`'s increment button. */
-    increment_button(look: Element | Entity | string | number | boolean): Element;
+    increment_button(this: Element<"NumberInput">, look: Element | Entity | string | number | boolean): this;
     /** Stacks both step buttons to the right of the text. */
-    controls_right(): Element;
+    controls_right(this: Element<"NumberInput">): this;
     /** `handler(action, cx)` on a step; replaces the built-in stepping. */
-    on_step(handler: (event: "increment" | "decrement", cx: Context) => void): Element;
+    on_step(this: Element<"NumberInput">, handler: (event: "increment" | "decrement", cx: Context) => void): this;
     /** Whether a `Tab`, sidebar row, header or footer shows as selected. */
-    selected(value: boolean): Element;
+    selected(this: Element<"Tab" | "SidebarHeader" | "SidebarFooter" | "SidebarMenuItem" | "DropdownButton">, value: boolean): this;
     /** Disables a tab, accordion part, step, pagination, menu or command item. */
-    disabled(value: boolean): Element;
+    disabled(this: Element<"Tab" | "AccordionItem" | "Accordion" | "Pagination" | "Stepper" | "StepperItem" | "Toolbar" | "SidebarMenuItem" | "CommandItem" | "NativeMenuItem" | "MenuItem" | "Menu" | "DropdownButton" | "NativeMenuTrigger">, value: boolean): this;
     /** A `Tab`'s one-based place among `size` tabs, announced as "tab 2 of 5". */
-    set_position(position: number, size: number): Element;
+    set_position(this: Element<"Tab">, position: number, size: number): this;
     /** Whether an accordion item or a collapsible is open. */
-    open(value: boolean): Element;
+    open(this: Element<"AccordionItem" | "Collapsible">, value: boolean): this;
     /** An `AccordionItem`'s `AccordionHeader`, or a `Sidebar`'s header. */
-    header(el: Element | Entity | string | number | boolean): Element;
+    header(this: Element<"AccordionItem" | "Sidebar">, el: Element | Entity | string | number | boolean): this;
     /** A `Sidebar`'s footer. */
-    footer(el: Element | Entity | string | number | boolean): Element;
+    footer(this: Element<"Sidebar">, el: Element | Entity | string | number | boolean): this;
     /** An `AccordionItem`'s `AccordionPanel`. */
-    panel(element: Element | Entity | string | number | boolean): Element;
+    panel(this: Element<"AccordionItem">, element: Element | Entity | string | number | boolean): this;
     /** What revealing a collapsible shows. */
-    content(el: Element | Entity | string | number | boolean): Element;
+    content(this: Element<"Collapsible">, el: Element | Entity | string | number | boolean): this;
     /** A stable identity for a collapsible's reveal motion. */
-    motion_id(id: string | number): Element;
+    motion_id(this: Element<"Collapsible">, id: string | number): this;
     /** An `AccordionHeader`'s announced heading level, 3 by default. */
-    aria_level(level: number): Element;
+    aria_level(this: Element<"AccordionHeader">, level: number): this;
     /** Keeps a shut `AccordionPanel` in the tree, with its scroll position and focus. */
-    keep_mounted(value?: boolean): Element;
+    keep_mounted(this: Element<"AccordionPanel">, value?: boolean): this;
     /**
      * `handler(value, cx)`: an `AccordionTrigger`'s requested open state, or the index a
      * `TabBar` or `Stepper`, or the page a `Pagination`, asks for.
      */
-    on_change(handler: (event: any, cx: Context) => void): Element;
+    on_change(this: Element<"AccordionTrigger" | "TabBar" | "Stepper" | "Pagination">, handler: (event: any, cx: Context) => void): this;
     /** A resizable panel's initial size in pixels, or a component's semantic size. */
-    size(size: number | "xsmall" | "small" | "medium" | "large"): Element;
+    size(this: Element<"ResizablePanel" | "TabBar" | "Accordion" | "Pagination" | "Stepper" | "DropdownButton">, size: number | "xsmall" | "small" | "medium" | "large"): this;
     /** Whether a `resizable_panel()` is drawn; hidden, it keeps its place. Default `true`. */
-    visible(value?: boolean): Element;
+    visible(this: Element<"ResizablePanel">, value?: boolean): this;
     /** How far a resizable panel may be dragged, in pixels. */
-    size_range(min: number, max?: number): Element;
+    size_range(this: Element<"ResizablePanel">, min: number, max?: number): this;
     /** `handler(sizes, cx)` after a drag resized the panels of a resizable group. */
-    on_resize(handler: (event: number[], cx: Context) => void): Element;
+    on_resize(this: Element<"Resizable">, handler: (event: number[], cx: Context) => void): this;
     /** A `Resizable`'s direction: `"horizontal"` or `"vertical"`. */
-    axis(value: string): Element;
+    axis(this: Element<"Resizable">, value: string): this;
     /** A `Resizable`'s size across its axis, in pixels. */
-    cross_size(pixels: number): Element;
+    cross_size(this: Element<"Resizable">, pixels: number): this;
     /** When a `Scrollbar` shows: `"scrolling"`, `"hover"` or `"always"`. */
-    mode(value: string): Element;
+    mode(this: Element<"Scrollbar">, value: string): this;
     /** The content size a `Scrollbar` measures its thumb against, in pixels. */
-    scroll_size(width: number, height: number): Element;
+    scroll_size(this: Element<"Scrollbar">, width: number, height: number): this;
     /** Makes a `Scrollbar` take its viewport from its own bounds. */
-    viewport_from_layout(enabled?: boolean): Element;
+    viewport_from_layout(this: Element<"Scrollbar">, enabled?: boolean): this;
     /** Which axes a `Scrollbar` or `Scroll` covers: `"vertical"`, `"horizontal"` or `"both"`. */
-    scroll_axis(axis: string): Element;
+    scroll_axis(this: Element<"Scrollbar" | "Scroll">, axis: string): this;
     /** Lets a `VirtualListScrollHandle` drive a virtual list. */
-    track_scroll(handle: import("corona/base").VirtualListScrollHandle): Element;
+    track_scroll(this: Element<"VirtualList">, handle: import("corona/base").VirtualListScrollHandle): this;
     /** Which item a virtual list measures for its cross-axis size. */
-    with_item_to_measure_index(index: number): Element;
+    with_item_to_measure_index(this: Element<"VirtualList">, index: number): this;
     /** A `Tab`'s text, or a `Separator`'s. */
-    label(label: string): Element;
+    label(this: Element<"Tab" | "Separator">, label: string): this;
     /** What a `Tab` announces. */
-    aria_label(label: string): Element;
+    aria_label(this: Element<"Tab">, label: string): this;
     /** `handler(key, cx)` when a row of a virtual list is clicked, `key` what `get_key` gave. */
-    on_item_click(handler: (event: string, cx: Context) => void): Element;
+    on_item_click(this: Element<"VirtualList">, handler: (event: string, cx: Context) => void): this;
     /** `handler(key, event, cx)` on a secondary press over a row of a virtual list. */
-    on_item_secondary_click(handler: (...args: any[]) => unknown): Element;
+    on_item_secondary_click(this: Element<"VirtualList">, handler: (...args: any[]) => unknown): this;
     /** The zero-based selected tab or current step. */
-    selected_index(index: number): Element;
+    selected_index(this: Element<"TabBar" | "Stepper">, index: number): this;
     /**
      * A `TabBar`'s look (`"tab"`, `"outline"`, `"pill"`, `"segmented"`, `"underline"`) or a
      * `GroupBox`'s (`"normal"`, `"fill"`, `"outline"`).
      */
-    variant(variant: string): Element;
+    variant(this: Element<"DropdownButton" | "GroupBox" | "TabBar">, variant: string): this;
     /** Whether a `TabBar` lists tabs that do not fit in a menu. */
-    menu(value: boolean): Element;
+    menu(this: Element<"TabBar">, value: boolean): this;
     /** Whether an `Accordion` keeps several items open. */
-    multiple(value: boolean): Element;
+    multiple(this: Element<"Accordion">, value: boolean): this;
     /** Whether an `Accordion` or `Command` draws its border. */
-    bordered(value: boolean): Element;
+    bordered(this: Element<"Accordion" | "Command">, value: boolean): this;
     /** `handler(open_indices, cx)` after an `Accordion` item was toggled. */
-    on_toggle(handler: (event: number[], cx: Context) => void): Element;
+    on_toggle(this: Element<"Accordion">, handler: (event: number[], cx: Context) => void): this;
     /** An `AccordionItem`'s title row or a `GroupBox`'s title. */
-    title(title: Element | Entity | string | number | boolean): Element;
+    title(this: Element<"AccordionItem" | "GroupBox">, title: Element | Entity | string | number | boolean): this;
     /** The current one-based page. */
-    current_page(page: number): Element;
+    current_page(this: Element<"Pagination">, page: number): this;
     /** How many pages there are. */
-    total_pages(pages: number): Element;
+    total_pages(this: Element<"Pagination">, pages: number): this;
     /** How many page buttons show at most. */
-    visible_pages(pages: number): Element;
+    visible_pages(this: Element<"Pagination">, pages: number): this;
     /** Shows only the previous and next buttons. */
-    compact(): Element;
+    compact(this: Element<"Pagination">): this;
     /** Lays a `Stepper` out top to bottom. */
-    vertical(value?: boolean): Element;
+    vertical(this: Element<"Stepper">, value?: boolean): this;
     /** Centers each step's text in a horizontal `Stepper`. */
-    text_center(value?: boolean): Element;
+    text_center(this: Element<"Stepper">, value?: boolean): this;
     /** A `Separator`'s line color. */
-    color(color: Color): Element;
+    color(this: Element<"Separator">, color: Color): this;
     /** Draws a `Separator` dashed. */
-    dashed(): Element;
+    dashed(this: Element<"Separator">): this;
     /** Adds to a `StatusBar`'s leading side. */
-    left_content(el: Element | Entity | string | number | boolean): Element;
+    left_content(this: Element<"StatusBar">, el: Element | Entity | string | number | boolean): this;
     /** Adds to a `StatusBar`'s trailing side. */
-    right_content(el: Element | Entity | string | number | boolean): Element;
+    right_content(this: Element<"StatusBar">, el: Element | Entity | string | number | boolean): this;
     /** The side a `Sidebar` or `SidebarToggleButton` sits on: `"left"` or `"right"`. */
-    side(side: string): Element;
+    side(this: Element<"Sidebar" | "SidebarToggleButton">, side: string): this;
     /** How a `Sidebar` collapses: `"icon"`, `"offcanvas"` or `"none"`. */
-    collapsible(mode: string): Element;
+    collapsible(this: Element<"Sidebar">, mode: string): this;
     /** Whether a `Sidebar` is collapsed, and which icon its toggle shows. */
-    collapsed(value: boolean): Element;
+    collapsed(this: Element<"Sidebar" | "SidebarToggleButton">, value: boolean): this;
     /** `handler(event, cx)` when a sidebar row or toggle is pressed. */
-    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    on_click(this: Element<"SidebarMenuItem" | "SidebarToggleButton" | "DropdownButton">, handler: (event: ClickEvent, cx: Context) => void): this;
     /** Whether a sidebar row's submenu starts open. */
-    default_open(value: boolean): Element;
+    default_open(this: Element<"SidebarMenuItem">, value: boolean): this;
     /** Lets a press on a sidebar row open its submenu. */
-    click_to_open(value: boolean): Element;
+    click_to_open(this: Element<"SidebarMenuItem">, value: boolean): this;
     /** Lets a press on a sidebar row toggle its submenu. */
-    click_to_toggle(value: boolean): Element;
+    click_to_toggle(this: Element<"SidebarMenuItem">, value: boolean): this;
     /** A sidebar row's icon: `"home"`, `"components"`, `"settings"`, `"archive"` or `"account"`. */
-    icon(icon: string): Element;
+    icon(this: Element<"SidebarMenuItem">, icon: string): this;
     /** Whether a `Command` shows its search field. */
-    searchable(value: boolean): Element;
+    searchable(this: Element<"Command">, value: boolean): this;
     /** Whether a `Command` filters its items by the query. */
-    filterable(value: boolean): Element;
+    filterable(this: Element<"Command">, value: boolean): this;
     /** A `Command`'s search placeholder. */
-    placeholder(text: string): Element;
+    placeholder(this: Element<"Command">, text: string): this;
     /** How tall a `Command`'s results grow, in pixels. */
-    max_height(pixels: number): Element;
+    max_height(this: Element<"Command">, pixels: number): this;
     /** `handler(query, cx)` after a `Command`'s query changed. */
-    on_query(handler: (event: string, cx: Context) => void): Element;
+    on_query(this: Element<"Command">, handler: (event: string, cx: Context) => void): this;
     /** `handler({ section, row }, cx)` after a `Command`'s highlight moved. */
-    on_select(handler: (event: { section: number; row: number }, cx: Context) => void): Element;
+    on_select(this: Element<"Command">, handler: (event: { section: number; row: number }, cx: Context) => void): this;
     /** `handler({ section, row }, cx)` after a `Command` item was confirmed. */
-    on_confirm(handler: (event: { section: number; row: number }, cx: Context) => void): Element;
+    on_confirm(this: Element<"Command">, handler: (event: { section: number; row: number }, cx: Context) => void): this;
     /** `handler(cx)` when Escape is pressed on a `Command` with an empty query. */
-    on_cancel(handler: (cx: Context) => void): Element;
+    on_cancel(this: Element<"Command">, handler: (cx: Context) => void): this;
     /** Another word a `CommandItem` is found by. */
-    keyword(keyword: string): Element;
+    keyword(this: Element<"CommandItem">, keyword: string): this;
     /** Whether a command or native menu item shows a check. */
-    checked(value: boolean): Element;
+    checked(this: Element<"CommandItem" | "NativeMenuItem" | "MenuItem">, value: boolean): this;
     /** The action a command or native menu item dispatches, for `on_action`. */
-    action(action: string): Element;
+    action(this: Element<"CommandItem" | "NativeMenuItem">, action: string): this;
     /** The outlined look of a `DropdownButton`. */
-    outline(): Element;
+    outline(this: Element<"DropdownButton">): this;
     /** Where a `DropdownButton`'s menu opens. */
-    menu_anchor(anchor: string): Element;
+    menu_anchor(this: Element<"DropdownButton">, anchor: string): this;
     /** Adds a `DropdownButton` menu item calling `handler(cx)`. */
-    menu_item(label: string, handler: (cx: Context) => void): Element;
+    menu_item(this: Element<"DropdownButton">, label: string, handler: (cx: Context) => void): this;
     /**
      * `handler(message, cx)` when the native menu cannot be shown. Showing one cannot fail
      * on this platform layer, so it is kept and never called.
      */
-    on_effect_error(handler: (event: string, cx: Context) => void): Element;
+    on_effect_error(this: Element<"NativeMenuTrigger">, handler: (event: string, cx: Context) => void): this;
     /** Adds a `DropdownMenu` item calling `handler(cx)`. */
-    item(label: string, handler: (cx: Context) => void): Element;
+    item(this: Element<"DropdownMenu">, label: string, handler: (cx: Context) => void): this;
     /**
      * A stable name for this element; a scrolling one is what a `Scrollbar` of that name
      * drives.
      */
-    id(id: string | number): Element;
+    id(this: Element<"div">, id: string | number): this;
     /** Scrolls both axes for overflowing children. */
-    overflow_scroll(): Element;
+    overflow_scroll(this: Element<"div">): this;
     /** Scrolls horizontally for overflowing children. */
-    overflow_x_scroll(): Element;
+    overflow_x_scroll(this: Element<"div">): this;
     /** Scrolls vertically for overflowing children. */
-    overflow_y_scroll(): Element;
+    overflow_y_scroll(this: Element<"div">): this;
     /** Lets a `ScrollHandle` drive this element; a `Scrollbar` of its name drives it too. */
-    track_scroll(handle: ScrollHandle): Element;
+    track_scroll(this: Element<"div">, handle: ScrollHandle): this;
     /** Scrolls both axes and paints base-layer scrollbars. */
-    overflow_scrollbar(): Element;
+    overflow_scrollbar(this: Element<"div">): this;
     /** Scrolls horizontally and paints a base-layer scrollbar. */
-    overflow_x_scrollbar(): Element;
+    overflow_x_scrollbar(this: Element<"div">): this;
     /** Scrolls vertically and paints a base-layer scrollbar. */
-    overflow_y_scrollbar(): Element;
+    overflow_y_scrollbar(this: Element<"div">): this;
     /** The element a `corona/base` `Popover` or `HoverCard` draws while closed, and that opens it. */
-    trigger(element: Element | Entity | string | number | boolean): Element;
+    trigger(this: Element<"Popover" | "HoverCard">, element: Element | Entity | string | number | boolean): this;
     /** The element that opens a `corona/component` `HoverCard` when hovered. */
-    trigger_element(element: Element | Entity | string | number | boolean): Element;
+    trigger_element(this: Element<"HoverCard">, element: Element | Entity | string | number | boolean): this;
     /**
      * What a surface shows while open: an element of this render. A `Dialog` or `Sheet`
      * outlives the render, so it takes a fn rendering its content instead.
      */
-    content(content: Element | (() => Element)): Element;
+    content(this: Element<"Popover" | "HoverCard" | "Popup" | "Dialog" | "Sheet">, content: Element | (() => Element)): this;
     /** Whether a `Popover` is open; set, the script holds the state through `on_open_change`. */
-    open(value: boolean): Element;
+    open(this: Element<"Popover">, value: boolean): this;
     /** Whether an uncontrolled `Popover` starts open. */
-    default_open(value: boolean): Element;
+    default_open(this: Element<"Popover">, value: boolean): this;
     /** Whether a press outside an open `Popover` closes it. Default `true`. */
-    overlay_closable(value: boolean): Element;
+    overlay_closable(this: Element<"Popover">, value: boolean): this;
     /** Which pointer button opens a `Popover`. Default `"left"`. */
-    mouse_button(button: "left" | "right" | "middle"): Element;
+    mouse_button(this: Element<"Popover">, button: "left" | "right" | "middle"): this;
     /** Which corner of a `Popover`, `HoverCard` or `Popup` is pinned to its trigger. */
-    anchor(anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): Element;
+    anchor(this: Element<"Popover" | "HoverCard" | "Popup">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
     /** Same as `anchor`. */
-    card_anchor(anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): Element;
+    card_anchor(this: Element<"Popover" | "HoverCard" | "Popup">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
     /** How long the pointer rests on a `HoverCard`'s trigger before it opens. Default 600. */
-    open_delay(ms: number): Element;
+    open_delay(this: Element<"HoverCard">, ms: number): this;
     /** How long a `HoverCard` stays open after the pointer left it and its trigger. Default 300. */
-    close_delay(ms: number): Element;
+    close_delay(this: Element<"HoverCard">, ms: number): this;
     /** Whether a `corona/component` `Popover` or `HoverCard` draws its surface. Default `true`. */
-    appearance(value: boolean): Element;
+    appearance(this: Element<"Popover" | "HoverCard">, value: boolean): this;
     /** `handler(open, cx)` when a `Popover` or `HoverCard` opens or closes by itself. */
-    on_open_change(handler: (event: boolean, cx: Context) => void): Element;
+    on_open_change(this: Element<"Popover" | "HoverCard">, handler: (event: boolean, cx: Context) => void): this;
     /** The title of a window effect or an `Alert`. */
-    title(text: string): Element;
+    title(this: Element<"Dialog" | "AlertDialog" | "Sheet" | "Notification" | "Alert">, text: string): this;
     /** The text under an `AlertDialog`'s title. */
-    description(text: string): Element;
+    description(this: Element<"AlertDialog">, text: string): this;
     /** The text under a `Notification`'s title. */
-    message(text: string): Element;
+    message(this: Element<"Notification">, text: string): this;
     /** Whether an `AlertDialog` has a cancel button. Default `false`. */
-    show_cancel(value: boolean): Element;
+    show_cancel(this: Element<"AlertDialog">, value: boolean): this;
     /** The window edge a `Sheet` slides in from. Default `"right"`. */
-    placement(at: "top" | "right" | "bottom" | "left"): Element;
+    placement(this: Element<"Sheet">, at: "top" | "right" | "bottom" | "left"): this;
     /** Whether a `Notification` hides by itself. Default `true`. */
-    autohide(value: boolean): Element;
+    autohide(this: Element<"Notification">, value: boolean): this;
     /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s OK button; the dialog closes after. */
-    on_ok(handler: (cx: Context) => void): Element;
+    on_ok(this: Element<"Dialog" | "AlertDialog">, handler: (cx: Context) => void): this;
     /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s cancel button; the dialog closes after. */
-    on_cancel(handler: (cx: Context) => void): Element;
+    on_cancel(this: Element<"Dialog" | "AlertDialog">, handler: (cx: Context) => void): this;
     /** `handler(cx)` once a window effect closed, however it was closed. */
-    on_close(handler: (cx: Context) => void): Element;
+    on_close(this: Element<"Dialog" | "AlertDialog" | "Sheet" | "Notification">, handler: (cx: Context) => void): this;
     /** `handler(cx)` on a click on a `Notification`. */
-    on_click(handler: (cx: Context) => void): Element;
+    on_click(this: Element<"Notification">, handler: (cx: Context) => void): this;
     /** Draws an `Alert` full width, without border, radius or title. */
-    banner(): Element;
+    banner(this: Element<"Alert">): this;
     /** Whether an `Alert` is drawn. Default `true`. */
-    visible(value?: boolean): Element;
+    visible(this: Element<"Alert">, value?: boolean): this;
     /** An `Alert`'s semantic size. */
-    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    size(this: Element<"Alert">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** The kind of a `Notification`. Default `"info"`. */
-    type(level: "info" | "success" | "warning" | "error"): Element;
+    type(this: Element<"Notification">, level: "info" | "success" | "warning" | "error"): this;
     /**
      * The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
      * it, `0..=100`), or the text of a `DescriptionItem`.
      */
-    value(value: number | string): Element;
+    value(this: Element<"Progress" | "DescriptionItem">, value: number | string): this;
     /** Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far". */
-    indeterminate(value: boolean): Element;
+    indeterminate(this: Element<"Progress">, value: boolean): this;
     /** Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback. */
-    image(image: Element): Element;
+    image(this: Element<"Avatar">, image: Element): this;
     /** Fills an `Avatar`'s fallback slot with an `AvatarFallback`, shown without an image. */
-    fallback(fallback: Element): Element;
+    fallback(this: Element<"Avatar">, fallback: Element): this;
     /** A `Table`'s total number of rows, also those not rendered, as announced. */
-    row_count(count: number): Element;
+    row_count(this: Element<"Table">, count: number): this;
     /** A `Table`'s total number of columns, also those not rendered. */
-    column_count(count: number): Element;
+    column_count(this: Element<"Table">, count: number): this;
     /** The semantic size of a styled widget. */
-    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    size(this: Element<"Badge" | "Spinner" | "DescriptionList" | "Progress" | "Avatar" | "Icon" | "Tag" | "Calendar" | "CarouselPrevious" | "CarouselNext" | "CarouselPaginationItem" | "Table">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** What a screen reader announces. */
-    accessibility_label(label: string): Element;
+    accessibility_label(this: Element<"Progress" | "Table" | "Carousel" | "CarouselItem" | "CarouselPrevious" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem">, label: string): this;
     /** How many columns a table cell spans. */
-    col_span(span: number): Element;
+    col_span(this: Element<"TableHead" | "TableCell">, span: number): this;
     /** Centers a table cell's text. */
-    text_center(): Element;
+    text_center(this: Element<"TableHead" | "TableCell">): this;
     /** Right-aligns a table cell's text. */
-    text_right(): Element;
+    text_right(this: Element<"TableHead" | "TableCell">): this;
     /** The color of a `Badge`, `Spinner`, `Icon` or `Progress`. */
-    color(color: Color): Element;
+    color(this: Element<"Badge" | "Spinner" | "Icon" | "Progress">, color: Color): this;
     /** A `Badge` as a dot; a `LineChart` or `RadarChart` with dots on its points. */
-    dot(): Element;
+    dot(this: Element<"Badge" | "LineChart" | "RadarChart">): this;
     /** The number a `Badge` shows. */
-    count(count: number): Element;
+    count(this: Element<"Badge">, count: number): this;
     /** The largest number a `Badge` shows, `max+` above. */
-    max(max: number): Element;
+    max(this: Element<"Badge">, max: number): this;
     /** The look of a `Tag` or an `EmptyMedia`. */
-    variant(variant: "primary" | "secondary" | "danger" | "success" | "warning" | "info" | "default" | "icon"): Element;
+    variant(this: Element<"Tag" | "EmptyMedia">, variant: "primary" | "secondary" | "danger" | "success" | "warning" | "info" | "default" | "icon"): this;
     /** Draws a `Tag` outlined. */
-    outline(): Element;
+    outline(this: Element<"Tag">): this;
     /** The quieter color of a `Skeleton`. */
-    secondary(): Element;
+    secondary(this: Element<"Skeleton">): this;
     /** The icon a `Spinner` turns. */
-    icon(icon: "loader" | "loader_circle"): Element;
+    icon(this: Element<"Spinner">, icon: "loader" | "loader_circle"): this;
     /** How a `Spinner` turns. */
-    ease(ease: "linear" | "ease_in_out" | "ease_out_quint"): Element;
+    ease(this: Element<"Spinner">, ease: "linear" | "ease_in_out" | "ease_out_quint"): this;
     /** Fills an `Empty`'s header with an `EmptyHeader`. */
-    header(header: Element): Element;
+    header(this: Element<"Empty">, header: Element): this;
     /** Fills an `Empty`'s content with an `EmptyContent`. */
-    content(content: Element): Element;
+    content(this: Element<"Empty">, content: Element): this;
     /** Fills an `EmptyHeader`'s media with an `EmptyMedia`. */
-    media(media: Element): Element;
+    media(this: Element<"EmptyHeader">, media: Element): this;
     /** Fills an `EmptyHeader`'s title with an `EmptyTitle`. */
-    title(title: Element): Element;
+    title(this: Element<"EmptyHeader">, title: Element): this;
     /** Fills an `EmptyHeader`'s description with an `EmptyDescription`. */
-    description(description: Element): Element;
+    description(this: Element<"EmptyHeader">, description: Element): this;
     /** Rotates an `Icon`. */
-    rotate(radians: number): Element;
+    rotate(this: Element<"Icon">, radians: number): this;
     /** Animates a `corona/component` `Progress` as busy. */
-    loading(value: boolean): Element;
+    loading(this: Element<"Progress">, value: boolean): this;
     /** The name an `Avatar` shows the initials of without an image. */
-    name(name: string): Element;
+    name(this: Element<"Avatar">, name: string): this;
     /** The image of an `Avatar`: an absolute path under a read grant, or a plugin file. */
-    src(path: string): Element;
+    src(this: Element<"Avatar">, path: string): this;
     /** Lays a `DescriptionList` out in a column. */
-    vertical(): Element;
+    vertical(this: Element<"DescriptionList">): this;
     /** Draws a `DescriptionList` or `DataTable` with borders. */
-    bordered(value: boolean): Element;
+    bordered(this: Element<"DescriptionList" | "DataTable">, value: boolean): this;
     /** How many columns a `DescriptionList` has. */
-    columns(columns: number): Element;
+    columns(this: Element<"DescriptionList">, columns: number): this;
     /** Adds `DescriptionItem`s to a `DescriptionList`, or `TreeItem`s to a `Tree` or `TreeItem`. */
-    items(items: Element[]): Element;
+    items(this: Element<"DescriptionList" | "Tree" | "TreeItem">, items: Element[]): this;
     /** Adds a separator row to a `DescriptionList`. */
-    separator(): Element;
+    separator(this: Element<"DescriptionList">): this;
     /** How many columns a `DescriptionItem` spans. */
-    span(span: number): Element;
+    span(this: Element<"DescriptionItem">, span: number): this;
     /** Whether a `TreeItem` starts expanded. */
-    expanded(value: boolean): Element;
+    expanded(this: Element<"TreeItem">, value: boolean): this;
     /** Whether a `TreeItem` is disabled. */
-    disabled(value: boolean): Element;
+    disabled(this: Element<"TreeItem">, value: boolean): this;
     /** Draws a chart's grid lines. */
-    grid(value?: boolean): Element;
+    grid(this: Element<"BarChart" | "LineChart" | "AreaChart" | "RadarChart">, value?: boolean): this;
     /** Draws a `BarChart`'s label axis. */
-    label_axis(value: boolean): Element;
+    label_axis(this: Element<"BarChart">, value: boolean): this;
     /** Draws a `BarChart`'s value axis. */
-    value_axis(value: boolean): Element;
+    value_axis(this: Element<"BarChart">, value: boolean): this;
     /** Draws a `LineChart`'s or `AreaChart`'s x axis. */
-    x_axis(value: boolean): Element;
+    x_axis(this: Element<"LineChart" | "AreaChart">, value: boolean): this;
     /** Labels every `margin`th tick of a chart's axis. */
-    tick_margin(margin: number): Element;
+    tick_margin(this: Element<"BarChart" | "LineChart" | "AreaChart">, margin: number): this;
     /** Draws a smooth curve. */
-    natural(): Element;
+    natural(this: Element<"LineChart" | "AreaChart">): this;
     /** Draws straight segments. */
-    linear(): Element;
+    linear(this: Element<"LineChart" | "AreaChart">): this;
     /** Draws steps. */
-    step_after(): Element;
+    step_after(this: Element<"LineChart" | "AreaChart">): this;
     /** A `PieChart`'s hole, in pixels: a donut. */
-    inner_radius(radius: number): Element;
+    inner_radius(this: Element<"PieChart">, radius: number): this;
     /** The gap between a `PieChart`'s slices, in radians. */
-    pad_angle(angle: number): Element;
+    pad_angle(this: Element<"PieChart">, angle: number): this;
     /** Labels a `PieChart`'s slices. */
-    labels(value: boolean): Element;
+    labels(this: Element<"PieChart">, value: boolean): this;
     /** How many rings a `RadarChart`'s grid has. */
-    grid_levels(levels: number): Element;
+    grid_levels(this: Element<"RadarChart">, levels: number): this;
     /** How many months a `Calendar` shows side by side. */
-    number_of_months(count: number): Element;
+    number_of_months(this: Element<"Calendar">, count: number): this;
     /** Stripes a `DataTable`'s rows. */
-    stripe(value: boolean): Element;
+    stripe(this: Element<"DataTable">, value: boolean): this;
     /** When a `DataTable` shows its scrollbars. */
-    scrollbar_visible(vertical: boolean, horizontal: boolean): Element;
+    scrollbar_visible(this: Element<"DataTable">, vertical: boolean, horizontal: boolean): this;
     /** Whether a `DataTable`'s rows can be selected. */
-    row_selectable(value: boolean): Element;
+    row_selectable(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable`'s columns can be selected. */
-    column_selectable(value: boolean): Element;
+    column_selectable(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable`'s cells can be selected. */
-    cell_selectable(value: boolean): Element;
+    cell_selectable(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable` has a row header column. */
-    row_header(value: boolean): Element;
+    row_header(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable`'s columns sort. */
-    sortable(value: boolean): Element;
+    sortable(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable`'s columns resize. */
-    column_resizable(value: boolean): Element;
+    column_resizable(this: Element<"DataTable">, value: boolean): this;
     /** Whether a `DataTable`'s columns move. */
-    column_movable(value: boolean): Element;
+    column_movable(this: Element<"DataTable">, value: boolean): this;
     /** The semantic size of an `Attachment` or `Settings`. */
-    size(size: "xsmall" | "small" | "medium" | "large"): Element;
+    size(this: Element<"Attachment" | "Settings">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** The attachment's lifecycle status. */
-    status(status: "pending" | "uploading" | "processing" | "failed" | "complete"): Element;
+    status(this: Element<"Attachment">, status: "pending" | "uploading" | "processing" | "failed" | "complete"): this;
     /** The attachment's layout axis. */
-    axis(axis: "horizontal" | "vertical"): Element;
+    axis(this: Element<"Attachment">, axis: "horizontal" | "vertical"): this;
     /** The sender edge a `Message` or `Bubble` sits on. */
-    alignment(alignment: "start" | "end"): Element;
+    alignment(this: Element<"Bubble" | "Message">, alignment: "start" | "end"): this;
     /** The treatment of a `Bubble` or `Marker`. */
-    variant(variant: "filled" | "secondary" | "muted" | "tinted" | "outline" | "ghost" | "destructive" | "plain" | "separator" | "border"): Element;
+    variant(this: Element<"Bubble" | "Marker">, variant: "filled" | "secondary" | "muted" | "tinted" | "outline" | "ghost" | "destructive" | "plain" | "separator" | "border"): this;
     /** Whether the marker shows its loading treatment. */
-    loading(loading: boolean): Element;
+    loading(this: Element<"Marker">, loading: boolean): this;
     /** The marker's loading treatment. */
-    loading_style(loading_style: "spinner" | "shimmer"): Element;
+    loading_style(this: Element<"Marker">, loading_style: "spinner" | "shimmer"): this;
     /** A stable identity for a `ShimmerText`'s animation. */
-    id(id: string | number): Element;
+    id(this: Element<"ShimmerText">, id: string | number): this;
     /** How long one shimmer sweep takes. */
-    duration_ms(duration_ms: number): Element;
+    duration_ms(this: Element<"ShimmerText">, duration_ms: number): this;
     /** The highlight's half-width, relative to the text. */
-    spread(spread: number): Element;
+    spread(this: Element<"ShimmerText">, spread: number): this;
     /** Sweeps right to left. */
-    reverse(reverse: boolean): Element;
+    reverse(this: Element<"ShimmerText">, reverse: boolean): this;
     /** Sweeps once instead of looping. */
-    once(once: boolean): Element;
+    once(this: Element<"ShimmerText">, once: boolean): this;
     /** Shows the transcript's scrollbar. */
-    scrollbar(scrollbar: boolean): Element;
+    scrollbar(this: Element<"MessageScroller">, scrollbar: boolean): this;
     /** Shows the jump-to-latest button. */
-    jump_button(jump_button: boolean): Element;
+    jump_button(this: Element<"MessageScroller">, jump_button: boolean): this;
     /** The jump-to-latest button's label. */
-    jump_button_label(label: string): Element;
+    jump_button_label(this: Element<"MessageScroller">, label: string): this;
     /** Disables an `Editor`, a `SettingItem`'s field, a questionnaire choice or question. */
-    disabled(disabled: boolean): Element;
+    disabled(this: Element<"Editor" | "SettingItem" | "QuestionnaireChoice" | "QuestionnaireItem" | "QuestionnaireInput">, disabled: boolean): this;
     /** Draws the editor's own background and border. */
-    appearance(appearance: boolean): Element;
-    bordered(bordered: boolean): Element;
-    readonly(readonly: boolean): Element;
+    appearance(this: Element<"Editor">, appearance: boolean): this;
+    bordered(this: Element<"Editor">, bordered: boolean): this;
+    readonly(this: Element<"Editor">, readonly: boolean): this;
     /** What a screen reader announces. */
-    aria_label(label: string): Element;
+    aria_label(this: Element<"Editor">, label: string): this;
     /** Shows line numbers. */
-    line_number(value: boolean): Element;
-    syntax_highlight(value: boolean): Element;
+    line_number(this: Element<"Diff">, value: boolean): this;
+    syntax_highlight(this: Element<"Diff">, value: boolean): this;
     /** Shows a header above each file. */
-    header_visible(value: boolean): Element;
+    header_visible(this: Element<"Diff">, value: boolean): this;
     /** Tints changed lines. */
-    change_background(value: boolean): Element;
+    change_background(this: Element<"Diff">, value: boolean): this;
     /** Wraps long lines. */
-    soft_wrap(value: boolean): Element;
+    soft_wrap(this: Element<"Diff">, value: boolean): this;
     /** How the start of each hunk is marked. */
-    hunk_separator(separator: "metadata" | "line_info" | "simple"): Element;
+    hunk_separator(this: Element<"Diff">, separator: "metadata" | "line_info" | "simple"): this;
     /** How changed lines are marked beside the code. */
-    change_indicator(indicator: "signs" | "bars" | "none"): Element;
+    change_indicator(this: Element<"Diff">, indicator: "signs" | "bars" | "none"): this;
     /** The text under a setting's or question's title. */
-    description(text: string): Element;
+    description(this: Element<"SettingItem" | "SettingGroup" | "SettingPage" | "QuestionnaireChoice" | "QuestionnaireItem">, text: string): this;
     /** The axis a setting's label and field are laid out along. */
-    layout(axis: "horizontal" | "vertical"): Element;
+    layout(this: Element<"SettingItem">, axis: "horizontal" | "vertical"): this;
     /** Search keywords matching the setting. */
-    keywords(keywords: string[]): Element;
+    keywords(this: Element<"SettingItem">, keywords: string[]): this;
     /** The setting group's title. */
-    title(text: string): Element;
+    title(this: Element<"SettingGroup">, text: string): this;
     /** Renders a `SettingItem`'s field, or what follows a `SettingPage`'s title, lazily. */
-    content(render: (...args: any[]) => unknown): Element;
+    content(this: Element<"SettingItem" | "SettingPage">, render: (...args: any[]) => unknown): this;
     /** Opens the page's groups. */
-    default_open(default_open: boolean): Element;
+    default_open(this: Element<"SettingPage">, default_open: boolean): this;
     /** Shows the reset control. */
-    resettable(resettable: boolean): Element;
+    resettable(this: Element<"SettingPage">, resettable: boolean): this;
     /** The sidebar's width in pixels. */
-    sidebar_width(pixels: number): Element;
+    sidebar_width(this: Element<"Settings">, pixels: number): this;
     /** How far the sidebar can be resized, in pixels. */
-    sidebar_size_range(minimum: number, maximum: number): Element;
+    sidebar_size_range(this: Element<"Settings">, minimum: number, maximum: number): this;
     /** The page shown first. */
-    default_selected_page(index: number): Element;
+    default_selected_page(this: Element<"Settings">, index: number): this;
     /** Selects the choice at first. */
-    default_selected(value: boolean): Element;
+    default_selected(this: Element<"QuestionnaireChoice">, value: boolean): this;
     /** Requires an answer; hides Skip. */
-    required(value: boolean): Element;
+    required(this: Element<"QuestionnaireItem">, value: boolean): this;
     /** Accepts several choices. */
-    multiple(value: boolean): Element;
+    multiple(this: Element<"QuestionnaireItem">, value: boolean): this;
     /** Gives each choice of the active question a letter or number shortcut. */
-    shortcuts(mode: "letters" | "numbers"): Element;
+    shortcuts(this: Element<"Questionnaire">, mode: "letters" | "numbers"): this;
     /** `handler(url, cx)` on a link click, instead of opening it. */
-    on_link_click(handler: (event: string, cx: Context) => void): Element;
+    on_link_click(this: Element<"TextView">, handler: (event: string, cx: Context) => void): this;
     /** Whether the text can be selected; on when left out. */
-    selectable(value?: boolean): Element;
+    selectable(this: Element<"TextView">, value?: boolean): this;
     /** Whether the view scrolls its content; on when left out. */
-    scrollable(value?: boolean): Element;
+    scrollable(this: Element<"TextView">, value?: boolean): this;
     /** Where in its `relative()` parent the HUD sits. */
-    anchor(anchor: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center"): Element;
+    anchor(this: Element<"fps_monitor">, anchor: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center"): this;
     /** The frame budget in milliseconds the HUD grades against. */
-    frame_budget(ms: number): Element;
+    frame_budget(this: Element<"fps_monitor">, ms: number): this;
     /** The tab bar above a group's displayed panel. */
-    tab_bar(handler: (group: import("corona/base").DockGroup, cx: Context) => Element): Element;
+    tab_bar(this: Element<"dock_area">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element): this;
     /** What a group with no displayed panel shows. */
-    empty_group(handler: (group: import("corona/base").DockGroup, cx: Context) => Element | null): Element;
+    empty_group(this: Element<"dock_area">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element | null): this;
     /** The hint where a dragged panel would land. */
-    drop_indicator(handler: (drop: import("corona/base").DockDrop, cx: Context) => Element | null): Element;
+    drop_indicator(this: Element<"dock_area">, handler: (drop: import("corona/base").DockDrop, cx: Context) => Element | null): this;
     /** One dock's chrome around its content; put `dock_content()` where its panels go. */
-    dock(handler: (dock: import("corona/base").DockRegion, cx: Context) => Element | null): Element;
+    dock(this: Element<"dock_area">, handler: (dock: import("corona/base").DockRegion, cx: Context) => Element | null): this;
     /** Displays tab `index` of `group` on a click. */
-    select_tab(group: import("corona/base").DockGroup, index: number): Element;
+    select_tab(this: Element<InteractiveKind>, group: import("corona/base").DockGroup, index: number): this;
     /** Closes `panel` (an id) of `group` on a click, if the group allows it. */
-    close_panel(group: import("corona/base").DockGroup, panel: number): Element;
+    close_panel(this: Element<InteractiveKind>, group: import("corona/base").DockGroup, panel: number): this;
     /** Zooms `group` in, or back out, on a click. */
-    toggle_zoom(group: import("corona/base").DockGroup): Element;
+    toggle_zoom(this: Element<InteractiveKind>, group: import("corona/base").DockGroup): this;
     /** Makes this element the drag source of tab `index` of `group`. */
-    drag_tab(group: import("corona/base").DockGroup, index: number): Element;
+    drag_tab(this: Element<InteractiveKind>, group: import("corona/base").DockGroup, index: number): this;
     /** Accepts a dragged panel into `group`, at slot `index` or appended. */
-    drop_tab(group: import("corona/base").DockGroup, index?: number): Element;
+    drop_tab(this: Element<InteractiveKind>, group: import("corona/base").DockGroup, index?: number): this;
     /** Opens or closes `dock` on a click. */
-    toggle_dock(dock: import("corona/base").DockRegion): Element;
+    toggle_dock(this: Element<InteractiveKind>, dock: import("corona/base").DockRegion): this;
     /** Drags `dock`'s edge. */
-    resize_dock(dock: import("corona/base").DockRegion): Element;
+    resize_dock(this: Element<InteractiveKind>, dock: import("corona/base").DockRegion): this;
+    grid(this: Element<StyledKind>): this;
+    text_center(this: Element<StyledKind>): this;
+    text_right(this: Element<StyledKind>): this;
+    visible(this: Element<StyledKind>): this;
   }
   export type NativeElement = Element;
   /** A retained child view from `cx.new`; a child wherever a child is taken. */
@@ -4121,11 +4133,11 @@ declare module "corona/kit" {
     abstract render(cx: Context): Element | Entity | string;
   }
   export type ViewClass = new (props?: Props) => View;
-  export function div(): Element;
+  export function div(): Element<"div">;
   /** A vector icon tinted with the text color: an absolute path or an asset. */
-  export function svg(path: string): Element;
+  export function svg(path: string): Element<"svg">;
   /** A full-color image: a file path or PNG, JPEG, WebP, GIF, BMP, TIFF or ICO bytes. */
-  export function image(source: string | Uint8Array): Element;
+  export function image(source: string | Uint8Array): Element<"image">;
   /** The visible items, `[start, end)`. */
   export interface ItemRange {
     start: number;
@@ -4137,14 +4149,14 @@ declare module "corona/kit" {
     item_count: number,
     get_key: (index: number) => string,
     render: (index: number, cx: Context) => Element,
-  ): Element;
+  ): Element<"list">;
   /** gpui's list of rows of one height, rendered a range at a time. */
   export function uniform_list(
     id: string,
     item_count: number,
     get_key: (index: number) => string,
     render: (range: ItemRange, cx: Context) => Element[],
-  ): Element;
+  ): Element<"uniform_list">;
   /** Geometry from `PathBuilder.build()`, for `window.paint_path`. */
   export interface Path {}
   export interface PathBuilder {
@@ -4223,16 +4235,16 @@ declare module "corona/kit" {
     zoom_window(): void;
     toggle_fullscreen(): void;
     /** An element painting `path` with `fill`, in its own coordinates. */
-    paint_path(path: Path, fill: Color | Background): Element;
+    paint_path(path: Path, fill: Color | Background): Element<"canvas">;
   }
 }
 declare var window: import("corona/kit").Window;
 declare module "corona/base" {
   import { ClickEvent, Context, Element, FocusHandle } from "corona/kit";
   /** A row, centered on the cross axis. */
-  export function h_flex(): Element;
+  export function h_flex(): Element<"div">;
   /** A column. */
-  export function v_flex(): Element;
+  export function v_flex(): Element<"div">;
   export type ColorTokens = { readonly [Role in import("corona/kit").ColorToken]: import("corona/kit").Color };
   export type SpacingTokens = { readonly [Step in "xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl"]: number };
   export type RadiusTokens = { readonly [Step in "none" | "sm" | "md" | "lg" | "xl" | "full"]: number };
@@ -4269,62 +4281,62 @@ declare module "corona/base" {
     };
   }): void;
   /** Activation, focus, disabled and selected state. No styling. */
-  export const Button: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Button: { new (id: string | number): Element<"Button">; new: (id: string | number) => Element<"Button"> };
   /** An external HTTP(S) resource opened through the system browser. */
-  export const Link: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Link: { new (id: string | number): Element<"Link">; new: (id: string | number) => Element<"Link"> };
   /** A controlled toggle. No styling: draw the indicator yourself. */
-  export const Checkbox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Checkbox: { new (id: string | number): Element<"Checkbox">; new: (id: string | number) => Element<"Checkbox"> };
   /** A controlled switch. No styling. */
-  export const Switch: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Switch: { new (id: string | number): Element<"Switch">; new: (id: string | number) => Element<"Switch"> };
   /** One option in a radio group. No styling. */
-  export const Radio: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Radio: { new (id: string | number): Element<"Radio">; new: (id: string | number) => Element<"Radio"> };
   /** A button that stays down: `pressed(..)` in, `on_change(..)` out. */
-  export const Toggle: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Toggle: { new (id: string | number): Element<"Toggle">; new: (id: string | number) => Element<"Toggle"> };
   /** A set of radios, announced as one group. */
-  export const RadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const RadioGroup: { new (id: string | number): Element<"RadioGroup">; new: (id: string | number) => Element<"RadioGroup"> };
   /** A set of toggles, announced as a toolbar. */
-  export const ToggleGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const ToggleGroup: { new (id: string | number): Element<"ToggleGroup">; new: (id: string | number) => Element<"ToggleGroup"> };
   /** A select root: the semantics and the keyboard, none of the picture. */
-  export const Select: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Select: { new (id: string | number): Element<"Select">; new: (id: string | number) => Element<"Select"> };
   /** A combobox root whose trigger is an editable field. */
-  export const Combobox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Combobox: { new (id: string | number): Element<"Combobox">; new: (id: string | number) => Element<"Combobox"> };
   /** A date-picker root; it holds no date. */
-  export const DatePicker: { new (id: string | number, focus_handle: FocusHandle): Element; new: (id: string | number, focus_handle: FocusHandle) => Element };
+  export const DatePicker: { new (id: string | number, focus_handle: FocusHandle): Element<"DatePicker">; new: (id: string | number, focus_handle: FocusHandle) => Element<"DatePicker"> };
   /** The bare editor of retained text. */
-  export const Input: { new (state: InputState): Element; new: (state: InputState) => Element };
+  export const Input: { new (state: InputState): Element<"Input">; new: (state: InputState) => Element<"Input"> };
   /** A spinbutton; give it `decrement_button`/`increment_button`. */
-  export const NumberInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  export const NumberInput: { new (state: InputState): Element<"NumberInput">; new: (state: InputState) => Element<"NumberInput"> };
   /** The bare editor of retained multi-line text. */
-  export const Textarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  export const Textarea: { new (state: TextareaState): Element<"Textarea">; new: (state: TextareaState) => Element<"Textarea"> };
   /** A code drawn cell by cell: `cell_style(..)`, `caret_style(..)`. */
-  export const OtpInput: { new (state: OtpState): Element; new: (state: OtpState) => Element };
+  export const OtpInput: { new (state: OtpState): Element<"OtpInput">; new: (state: OtpState) => Element<"OtpInput"> };
   /** The slider root: announces the value. */
-  export const Slider: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  export const Slider: { new (state: SliderState): Element<"Slider">; new: (state: SliderState) => Element<"Slider"> };
   /** The press and drag surface. */
-  export const SliderTrack: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  export const SliderTrack: { new (state: SliderState): Element<"SliderTrack">; new: (state: SliderState) => Element<"SliderTrack"> };
   /** The groove; `range_style(..)` draws the fill. */
-  export const SliderIndicator: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  export const SliderIndicator: { new (state: SliderState): Element<"SliderIndicator">; new: (state: SliderState) => Element<"SliderIndicator"> };
   /** The knob; `start(true)` is a range's lower one. */
-  export const SliderThumb: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  export const SliderThumb: { new (state: SliderState): Element<"SliderThumb">; new: (state: SliderState) => Element<"SliderThumb"> };
   import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "corona/component";
   export { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent };
-  type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };
+  type Ctor<K extends string, A extends any[]> = { new (...args: A): Element<K>; new: (...args: A) => Element<K> };
   /** A tab list; each `Tab` is told whether it is selected and reports clicks. */
-  export const Tabs: Ctor<[id: string | number]>;
+  export const Tabs: Ctor<"Tabs", [id: string | number]>;
   /** One tab: `selected(..)` in, `on_click(..)` out. */
-  export const Tab: Ctor<[id: string | number]>;
+  export const Tab: Ctor<"Tab", [id: string | number]>;
   /** An accordion: items, each with an `AccordionHeader` and an `AccordionPanel`. Draws nothing. */
-  export const Accordion: Ctor<[id: string | number]>;
+  export const Accordion: Ctor<"Accordion", [id: string | number]>;
   /** One item: `open(..)`, `header(..)`, `panel(..)`. */
-  export const AccordionItem: Ctor<[]>;
+  export const AccordionItem: Ctor<"AccordionItem", []>;
   /** The heading owning an item's trigger. */
-  export const AccordionHeader: Ctor<[trigger: Element]>;
+  export const AccordionHeader: Ctor<"AccordionHeader", [trigger: Element]>;
   /** The region an item reveals; gone while shut unless `keep_mounted()`. */
-  export const AccordionPanel: Ctor<[]>;
+  export const AccordionPanel: Ctor<"AccordionPanel", []>;
   /** The button: `on_change(open => ..)` asks for the other state. */
-  export const AccordionTrigger: Ctor<[id: string | number]>;
+  export const AccordionTrigger: Ctor<"AccordionTrigger", [id: string | number]>;
   /** A pagination landmark; draw the pages from `pagination_items`. */
-  export const Pagination: Ctor<[id: string | number]>;
+  export const Pagination: Ctor<"Pagination", [id: string | number]>;
   /** One entry of a page layout: a page, or a gap standing for the pages `[first, last]`. */
   export type PaginationEntry =
     | { page: number; ellipsis?: undefined }
@@ -4332,20 +4344,20 @@ declare module "corona/base" {
   /** Which pages to draw around `current_page`, and where the gaps fall. */
   export function pagination_items(current_page: number, total_pages: number, visible_pages?: number): PaginationEntry[];
   /** Renders its `content` only while `open`; children always. */
-  export const Collapsible: Ctor<[]>;
+  export const Collapsible: Ctor<"Collapsible", []>;
   /** A row of `resizable_panel()`s with draggable dividers; sizes persist under `id`. */
-  export function h_resizable(id: string | number): Element;
+  export function h_resizable(id: string | number): Element<"Resizable">;
   /** A column of `resizable_panel()`s. */
-  export function v_resizable(id: string | number): Element;
+  export function v_resizable(id: string | number): Element<"Resizable">;
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
-  export function resizable_panel(): Element;
+  export function resizable_panel(): Element<"ResizablePanel">;
   /** A scroll area's or virtual list's name, or its handle. */
   type ScrollTarget = string | number | import("corona/kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
-    new: (handle: ScrollTarget) => Element;
-    horizontal: (handle: ScrollTarget) => Element;
-    vertical: (handle: ScrollTarget) => Element;
+    new: (handle: ScrollTarget) => Element<"Scrollbar">;
+    horizontal: (handle: ScrollTarget) => Element<"Scrollbar">;
+    vertical: (handle: ScrollTarget) => Element<"Scrollbar">;
   };
   /** A list of rows of the given heights that renders only the visible ones. */
   export function v_virtual_list(
@@ -4354,7 +4366,7 @@ declare module "corona/base" {
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
-  ): Element;
+  ): Element<"VirtualList">;
   /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
   export function h_virtual_list(
     id: string | number,
@@ -4362,7 +4374,7 @@ declare module "corona/base" {
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
-  ): Element;
+  ): Element<"VirtualList">;
   /** A virtual list's scroll position; `track_scroll(handle)` on the list. */
   export class VirtualListScrollHandle {
     constructor();
@@ -4372,37 +4384,37 @@ declare module "corona/base" {
     scroll_to_bottom(): void;
   }
   /** An unstyled surface anchored to `trigger(..)`, opened by a press: `content(..)`, `open(..)`, `on_open_change(..)`. */
-  export const Popover: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Popover: { new (id: string | number): Element<"Popover">; new: (id: string | number) => Element<"Popover"> };
   /** An unstyled surface anchored to `trigger(..)`, opened by resting the pointer on it. */
-  export const HoverCard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const HoverCard: { new (id: string | number): Element<"HoverCard">; new: (id: string | number) => Element<"HoverCard"> };
   /** The bare anchored surface: shows `content(..)` while it is set, anchored to `trigger`. */
-  export const Popup: { new (id: string | number, trigger: Element): Element; new: (id: string | number, trigger: Element) => Element };
+  export const Popup: { new (id: string | number, trigger: Element): Element<"Popup">; new: (id: string | number, trigger: Element) => Element<"Popup"> };
   /** The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it. */
-  export const Progress: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Progress: { new (id: string | number): Element<"Progress">; new: (id: string | number) => Element<"Progress"> };
   /** The groove, a plain element. */
-  export const ProgressTrack: { new (): Element; new: () => Element };
+  export const ProgressTrack: { new (): Element<"ProgressTrack">; new: () => Element<"ProgressTrack"> };
   /** The filled part, a plain element: size it from the value. */
-  export const ProgressIndicator: { new (): Element; new: () => Element };
+  export const ProgressIndicator: { new (): Element<"ProgressIndicator">; new: () => Element<"ProgressIndicator"> };
   /** Renders its `image` slot, or its `fallback` without one; draws nothing else. */
-  export const Avatar: { new (): Element; new: () => Element };
+  export const Avatar: { new (): Element<"Avatar">; new: () => Element<"Avatar"> };
   /** The image slot of an `Avatar`: an asset or an absolute path. */
-  export const AvatarImage: { new (source: string): Element; new: (source: string) => Element };
+  export const AvatarImage: { new (source: string): Element<"AvatarImage">; new: (source: string) => Element<"AvatarImage"> };
   /** The fallback slot of an `Avatar`. */
-  export const AvatarFallback: { new (): Element; new: () => Element };
+  export const AvatarFallback: { new (): Element<"AvatarFallback">; new: () => Element<"AvatarFallback"> };
   /** An unstyled semantic table: nest the parts below. */
-  export const Table: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Table: { new (id: string | number): Element<"Table">; new: (id: string | number) => Element<"Table"> };
   /** The header row group. */
-  export const TableHeader: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const TableHeader: { new (id: string | number): Element<"TableHeader">; new: (id: string | number) => Element<"TableHeader"> };
   /** The body row group. */
-  export const TableBody: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const TableBody: { new (id: string | number): Element<"TableBody">; new: (id: string | number) => Element<"TableBody"> };
   /** One row, `row_index` one-based. */
-  export const TableRow: { new (id: string | number, row_index: number): Element; new: (id: string | number, row_index: number) => Element };
+  export const TableRow: { new (id: string | number, row_index: number): Element<"TableRow">; new: (id: string | number, row_index: number) => Element<"TableRow"> };
   /** One column header, `column_index` one-based. */
-  export const TableHead: { new (id: string | number, column_index: number): Element; new: (id: string | number, column_index: number) => Element };
+  export const TableHead: { new (id: string | number, column_index: number): Element<"TableHead">; new: (id: string | number, column_index: number) => Element<"TableHead"> };
   /** One data cell, `column_index` one-based. */
-  export const TableCell: { new (id: string | number, column_index: number): Element; new: (id: string | number, column_index: number) => Element };
+  export const TableCell: { new (id: string | number, column_index: number): Element<"TableCell">; new: (id: string | number, column_index: number) => Element<"TableCell"> };
   /** A caption slot. */
-  export const TableCaption: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const TableCaption: { new (id: string | number): Element<"TableCaption">; new: (id: string | number) => Element<"TableCaption"> };
   /** A selected date: a day, a `[start, end]` range, or nothing. Days are `"YYYY-MM-DD"`. */
   export type CalendarDate = string | [string | null, string | null] | null;
   /** A calendar month and its selected date. Retained: create it in `init`. */
@@ -4425,8 +4437,8 @@ declare module "corona/base" {
   }
   /** Rich HTML or Markdown text. */
   export const TextView: {
-    html(id: string, html: string): Element;
-    markdown(id: string, markdown: string): Element;
+    html(id: string, html: string): Element<"TextView">;
+    markdown(id: string, markdown: string): Element<"TextView">;
   };
   /** Where a region sits relative to the center of a dock area. */
   export type DockPlacement = "center" | "left" | "right" | "bottom";
@@ -4521,77 +4533,77 @@ declare module "corona/base" {
     register_panel: (name: string, Class: import("corona/kit").ViewClass) => string;
   };
   /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
-  export function dock_area(area: DockArea): Element;
+  export function dock_area(area: DockArea): Element<"dock_area">;
   /** Where a dock's panels go inside its chrome handler. */
-  export const dock_content: { new (): Element; new: () => Element };
+  export const dock_content: { new (): Element<"dock_content">; new: () => Element<"dock_content"> };
 }
 declare module "corona/component" {
   import { ClickEvent, Context, Element, FocusHandle } from "corona/kit";
-  export const Probe: { new (): Element; new: () => Element };
+  export const Probe: { new (): Element<"Probe">; new: () => Element<"Probe"> };
   /** A styled command button. */
-  export const Button: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Button: { new (id: string | number): Element<"Button">; new: (id: string | number) => Element<"Button"> };
   /** An external-resource link. */
-  export const Link: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Link: { new (id: string | number): Element<"Link">; new: (id: string | number) => Element<"Link"> };
   /** A controlled check box: `checked(..)` in, `on_change(..)` out. */
-  export const Checkbox: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Checkbox: { new (id: string | number): Element<"Checkbox">; new: (id: string | number) => Element<"Checkbox"> };
   /** A controlled switch: `checked(..)` in, `on_change(..)` out. */
-  export const Switch: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Switch: { new (id: string | number): Element<"Switch">; new: (id: string | number) => Element<"Switch"> };
   /** One option of a radio group. */
-  export const Radio: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Radio: { new (id: string | number): Element<"Radio">; new: (id: string | number) => Element<"Radio"> };
   /** A column of `Radio`s; `on_change(index => ..)`. */
-  export const RadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const RadioGroup: { new (id: string | number): Element<"RadioGroup">; new: (id: string | number) => Element<"RadioGroup"> };
   /** A row of `Radio`s; `on_change(index => ..)`. */
-  export const HorizontalRadioGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const HorizontalRadioGroup: { new (id: string | number): Element<"RadioGroup">; new: (id: string | number) => Element<"RadioGroup"> };
   /** A button that stays down: `checked(..)` in, `on_change(..)` out. */
-  export const Toggle: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Toggle: { new (id: string | number): Element<"Toggle">; new: (id: string | number) => Element<"Toggle"> };
   /** A button copying `value(..)`. */
-  export const Clipboard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Clipboard: { new (id: string | number): Element<"Clipboard">; new: (id: string | number) => Element<"Clipboard"> };
   /** Stars: `value(..)`, `max(..)`, `on_change(stars => ..)`. */
-  export const Rating: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Rating: { new (id: string | number): Element<"Rating">; new: (id: string | number) => Element<"Rating"> };
   /** A frame around `input(..)` and its `addon(..)`s. */
-  export const InputGroup: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const InputGroup: { new (id: string | number): Element<"InputGroup">; new: (id: string | number) => Element<"InputGroup"> };
   /** An addon of an `InputGroup`, at `align(..)`. */
-  export const InputGroupAddon: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const InputGroupAddon: { new (id: string | number): Element<"InputGroupAddon">; new: (id: string | number) => Element<"InputGroupAddon"> };
   /** A compact button inside an `InputGroup`. */
-  export const InputGroupButton: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const InputGroupButton: { new (id: string | number): Element<"InputGroupButton">; new: (id: string | number) => Element<"InputGroupButton"> };
   /** The frame around retained text. */
-  export const Input: { new (state: InputState): Element; new: (state: InputState) => Element };
+  export const Input: { new (state: InputState): Element<"Input">; new: (state: InputState) => Element<"Input"> };
   /** A spinbutton over an `InputState`. */
-  export const NumberInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  export const NumberInput: { new (state: InputState): Element<"NumberInput">; new: (state: InputState) => Element<"NumberInput"> };
   /** The single-line control of an `InputGroup`. */
-  export const InputGroupInput: { new (state: InputState): Element; new: (state: InputState) => Element };
+  export const InputGroupInput: { new (state: InputState): Element<"Input">; new: (state: InputState) => Element<"Input"> };
   /** The frame around retained multi-line text. */
-  export const Textarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  export const Textarea: { new (state: TextareaState): Element<"Textarea">; new: (state: TextareaState) => Element<"Textarea"> };
   /** The multi-line control of an `InputGroup`. */
-  export const InputGroupTextarea: { new (state: TextareaState): Element; new: (state: TextareaState) => Element };
+  export const InputGroupTextarea: { new (state: TextareaState): Element<"Textarea">; new: (state: TextareaState) => Element<"Textarea"> };
   /** A fixed-length code. */
-  export const OtpInput: { new (state: OtpState): Element; new: (state: OtpState) => Element };
+  export const OtpInput: { new (state: OtpState): Element<"OtpInput">; new: (state: OtpState) => Element<"OtpInput"> };
   /** A slider over a retained `SliderState`. */
-  export const Slider: { new (state: SliderState): Element; new: (state: SliderState) => Element };
+  export const Slider: { new (state: SliderState): Element<"Slider">; new: (state: SliderState) => Element<"Slider"> };
   /** A color picker. */
-  export const ColorPicker: { new (state: ColorPickerState): Element; new: (state: ColorPickerState) => Element };
+  export const ColorPicker: { new (state: ColorPickerState): Element<"ColorPicker">; new: (state: ColorPickerState) => Element<"ColorPicker"> };
   /** A date picker. */
-  export const DatePicker: { new (state: DatePickerState): Element; new: (state: DatePickerState) => Element };
+  export const DatePicker: { new (state: DatePickerState): Element<"DatePicker">; new: (state: DatePickerState) => Element<"DatePicker"> };
   /** A time of day field. */
-  export const TimeField: { new (state: TimeFieldState): Element; new: (state: TimeFieldState) => Element };
+  export const TimeField: { new (state: TimeFieldState): Element<"TimeField">; new: (state: TimeFieldState) => Element<"TimeField"> };
   /** A text label. */
-  export const Label: { new (text: string): Element; new: (text: string) => Element };
+  export const Label: { new (text: string): Element<"Label">; new: (text: string) => Element<"Label"> };
   /** A keyboard shortcut keycap, e.g. `"ctrl-s"`. */
-  export const Kbd: { new (keystroke: string): Element; new: (keystroke: string) => Element };
+  export const Kbd: { new (keystroke: string): Element<"Kbd">; new: (keystroke: string) => Element<"Kbd"> };
   /** A labeled form field. */
-  export const Field: { new (): Element; new: () => Element };
+  export const Field: { new (): Element<"Field">; new: () => Element<"Field"> };
   /** A form of `Field`s. */
-  export const Form: { new (): Element; new: () => Element };
+  export const Form: { new (): Element<"Form">; new: () => Element<"Form"> };
   /** A form laying out its labels above. */
-  export const VForm: { new (): Element; new: () => Element };
+  export const VForm: { new (): Element<"Form">; new: () => Element<"Form"> };
   /** A form laying out its labels beside. */
-  export const HForm: { new (): Element; new: () => Element };
+  export const HForm: { new (): Element<"Form">; new: () => Element<"Form"> };
   /** Muted text inside an `InputGroup`. */
-  export const InputGroupText: { new (): Element; new: () => Element };
+  export const InputGroupText: { new (): Element<"InputGroupText">; new: () => Element<"InputGroupText"> };
   /** A native select over the `{ id, label, disabled? }` rows `rows()` returns. */
-  export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void) => Element };
+  export const Select: { new (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void): Element<"Select">; new: (id: string, rows: () => readonly SelectRow[], render_row: (row: any) => Element | null, on_select: (value: string, cx: Context) => void) => Element<"Select"> };
   /** A single-select searchable combobox over the rows `rows()` returns. */
-  export const Combobox: { new (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void): Element; new: (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void) => Element };
+  export const Combobox: { new (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void): Element<"Combobox">; new: (id: string, rows: () => readonly SelectRow[], on_change: (value: string, cx: Context) => void, on_confirm: (value: string, cx: Context) => void) => Element<"Combobox"> };
   /** Half-open UTF-16 string offsets, as `slice()` takes them. */
   export interface InputRange { start: number; end: number }
   export interface InlineToken { id: string; text: string; label?: string }
@@ -4721,60 +4733,60 @@ declare module "corona/component" {
     release(): boolean;
   }
   export function TimeFieldState(): TimeFieldState;
-  type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };
+  type Ctor<K extends string, A extends any[]> = { new (...args: A): Element<K>; new: (...args: A) => Element<K> };
   /** A styled tab bar taking `Tab` children. */
-  export const TabBar: Ctor<[id: string | number]>;
+  export const TabBar: Ctor<"TabBar", [id: string | number]>;
   /** @deprecated Use `TabBar`. */
-  export const Tabs: Ctor<[id: string | number]>;
+  export const Tabs: Ctor<"Tabs", [id: string | number]>;
   /** One tab of a `TabBar`. */
-  export const Tab: Ctor<[]>;
+  export const Tab: Ctor<"Tab", []>;
   /** An accordion taking `AccordionItem` children. */
-  export const Accordion: Ctor<[id: string | number]>;
+  export const Accordion: Ctor<"Accordion", [id: string | number]>;
   /** One item: `title(..)`, `open(..)`, children as its content. */
-  export const AccordionItem: Ctor<[]>;
+  export const AccordionItem: Ctor<"AccordionItem", []>;
   /** Renders its `content` only while `open`. */
-  export const Collapsible: Ctor<[]>;
+  export const Collapsible: Ctor<"Collapsible", []>;
   /** Page buttons: `current_page`, `total_pages`, `on_change(page => ..)`. */
-  export const Pagination: Ctor<[id: string | number]>;
+  export const Pagination: Ctor<"Pagination", [id: string | number]>;
   /** Steps taking `StepperItem` children. */
-  export const Stepper: Ctor<[id: string | number]>;
-  export const StepperItem: Ctor<[]>;
+  export const Stepper: Ctor<"Stepper", [id: string | number]>;
+  export const StepperItem: Ctor<"StepperItem", []>;
   /** A trail of labels. */
-  export const Breadcrumb: Ctor<[labels: string[]]>;
+  export const Breadcrumb: Ctor<"Breadcrumb", [labels: string[]]>;
   /** A titled container. */
-  export const GroupBox: Ctor<[]>;
+  export const GroupBox: Ctor<"GroupBox", []>;
   /** A bar: children in the middle, `left_content`/`right_content` at the edges. */
-  export const StatusBar: Ctor<[]>;
-  export const Toolbar: Ctor<[id: string | number]>;
-  export const Separator: Ctor<[]>;
-  export const VerticalSeparator: Ctor<[]>;
-  export const DashedSeparator: Ctor<[]>;
-  export const VerticalDashedSeparator: Ctor<[]>;
+  export const StatusBar: Ctor<"StatusBar", []>;
+  export const Toolbar: Ctor<"Toolbar", [id: string | number]>;
+  export const Separator: Ctor<"Separator", []>;
+  export const VerticalSeparator: Ctor<"VerticalSeparator", []>;
+  export const DashedSeparator: Ctor<"DashedSeparator", []>;
+  export const VerticalDashedSeparator: Ctor<"VerticalDashedSeparator", []>;
   /** Panes with draggable dividers, horizontal unless `axis("vertical")`; takes `ResizablePanel`s. */
-  export const Resizable: Ctor<[id: string | number]>;
-  export const ResizablePanel: Ctor<[]>;
+  export const Resizable: Ctor<"Resizable", [id: string | number]>;
+  export const ResizablePanel: Ctor<"ResizablePanel", []>;
   /** A vertically scrolling area tracking `handle`; `scroll_axis(..)` changes the axes. */
-  export const Scroll: Ctor<[handle: ScrollbarHandle]>;
+  export const Scroll: Ctor<"Scroll", [handle: ScrollbarHandle]>;
   /** A scrollbar driving the area that tracks `handle`. */
-  export const Scrollbar: Ctor<[id: string | number, handle: string | number | ScrollbarHandle | import("corona/base").VirtualListScrollHandle]>;
+  export const Scrollbar: Ctor<"Scrollbar", [id: string | number, handle: string | number | ScrollbarHandle | import("corona/base").VirtualListScrollHandle]>;
   export type ScrollbarHandle = import("corona/kit").ScrollHandle;
   export const ScrollbarHandle: { (): ScrollbarHandle; new: () => ScrollbarHandle };
   /** A collapsible sidebar taking `SidebarMenu` children, `header(..)` and `footer(..)`. */
-  export const Sidebar: Ctor<[id: string | number]>;
-  export const SidebarHeader: Ctor<[]>;
-  export const SidebarFooter: Ctor<[]>;
+  export const Sidebar: Ctor<"Sidebar", [id: string | number]>;
+  export const SidebarHeader: Ctor<"SidebarHeader", []>;
+  export const SidebarFooter: Ctor<"SidebarFooter", []>;
   /** Rows: `SidebarMenuItem` children. */
-  export const SidebarMenu: Ctor<[]>;
+  export const SidebarMenu: Ctor<"SidebarMenu", []>;
   /** A row; `SidebarMenuItem` children make its submenu. */
-  export const SidebarMenuItem: Ctor<[label: string]>;
-  export const SidebarToggleButton: Ctor<[]>;
+  export const SidebarMenuItem: Ctor<"SidebarMenuItem", [label: string]>;
+  export const SidebarToggleButton: Ctor<"SidebarToggleButton", []>;
   /** A button opening a menu of `item(label, cx => ..)`s. */
-  export const DropdownMenu: Ctor<[id: string | number, label: string]>;
+  export const DropdownMenu: Ctor<"DropdownMenu", [id: string | number, label: string]>;
   /** A button popping up the OS menu of its `NativeMenuItem` children. */
-  export const NativeMenuTrigger: Ctor<[id: string | number, label: string]>;
+  export const NativeMenuTrigger: Ctor<"NativeMenuTrigger", [id: string | number, label: string]>;
   /** An item dispatching `action`, for `on_action`. */
-  export const NativeMenuItem: Ctor<[label: string, action: string]>;
-  export const NativeMenuSeparator: Ctor<[]>;
+  export const NativeMenuItem: Ctor<"NativeMenuItem", [label: string, action: string]>;
+  export const NativeMenuSeparator: Ctor<"NativeMenuSeparator", []>;
   /** A command palette's query and selection; make it in `init`. */
   export interface CommandState {
     /** The search text. */
@@ -4783,44 +4795,44 @@ declare module "corona/component" {
   }
   export const CommandState: { (): CommandState; new: () => CommandState };
   /** A searchable command palette taking `CommandItem`, `CommandGroup` and `CommandSeparator`. */
-  export const Command: Ctor<[state: CommandState]>;
-  export const CommandItem: Ctor<[label: string]>;
+  export const Command: Ctor<"Command", [state: CommandState]>;
+  export const CommandItem: Ctor<"CommandItem", [label: string]>;
   /** A labelled section taking `CommandItem` children. */
-  export const CommandGroup: Ctor<[label: string]>;
-  export const CommandSeparator: Ctor<[]>;
+  export const CommandGroup: Ctor<"CommandGroup", [label: string]>;
+  export const CommandSeparator: Ctor<"CommandSeparator", []>;
   /** An application menu of `MenuItem`s and `MenuSeparator`s, for a `MenuBar`. */
-  export const Menu: Ctor<[label: string]>;
+  export const Menu: Ctor<"Menu", [label: string]>;
   /** A menu item dispatching `action`, for `on_action`. */
-  export const MenuItem: Ctor<[label: string, action: string]>;
-  export const MenuSeparator: Ctor<[]>;
+  export const MenuItem: Ctor<"MenuItem", [label: string, action: string]>;
+  export const MenuSeparator: Ctor<"MenuSeparator", []>;
   /** Installs its `Menu` children as the application menus and draws them in the window. */
-  export const MenuBar: Ctor<[id: string]>;
+  export const MenuBar: Ctor<"MenuBar", [id: string]>;
   /** A labelled button with a menu of `menu_item(label, cx => ..)`s. */
-  export const DropdownButton: Ctor<[id: string | number, label: string]>;
+  export const DropdownButton: Ctor<"DropdownButton", [id: string | number, label: string]>;
   /** A ghost button labelled `label` opening a styled surface: `content(..)`, `open(..)`, `on_open_change(..)`. */
-  export const Popover: { new (id: string, label: string): Element; new: (id: string, label: string) => Element };
+  export const Popover: { new (id: string, label: string): Element<"Popover">; new: (id: string, label: string) => Element<"Popover"> };
   /** A styled surface opened by hovering `trigger_element(..)`. */
-  export const HoverCard: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const HoverCard: { new (id: string | number): Element<"HoverCard">; new: (id: string | number) => Element<"HoverCard"> };
   /** A button `label` showing `text` on hover. */
-  export const Tooltip: { new (id: string, label: string, text: string): Element; new: (id: string, label: string, text: string) => Element };
+  export const Tooltip: { new (id: string, label: string, text: string): Element<"Button">; new: (id: string, label: string, text: string) => Element<"Button"> };
   /** A button `label` opening a dialog of `title(..)` and `content(() => ..)`. */
-  export const Dialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  export const Dialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element<"Dialog">; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element<"Dialog"> };
   /** A button `label` opening an alert of `title(..)` and `description(..)`. */
-  export const AlertDialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  export const AlertDialog: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element<"AlertDialog">; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element<"AlertDialog"> };
   /** A button `label` opening a sheet of `content(() => ..)` at `placement(..)`. */
-  export const Sheet: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  export const Sheet: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element<"Sheet">; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element<"Sheet"> };
   /** A button `label` opening a toast of `title(..)` and `message(..)`. */
-  export const Notification: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element };
+  export const Notification: { new (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void): Element<"Notification">; new: (id: string, label: string, on_effect_error?: (message: string, cx: Context) => void) => Element<"Notification"> };
   /** An inline message. */
-  export const Alert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  export const Alert: { new (id: string | number, message: string): Element<"Alert">; new: (id: string | number, message: string) => Element<"Alert"> };
   /** An inline message. */
-  export const InfoAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  export const InfoAlert: { new (id: string | number, message: string): Element<"Alert">; new: (id: string | number, message: string) => Element<"Alert"> };
   /** An inline message. */
-  export const SuccessAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  export const SuccessAlert: { new (id: string | number, message: string): Element<"Alert">; new: (id: string | number, message: string) => Element<"Alert"> };
   /** An inline message. */
-  export const WarningAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  export const WarningAlert: { new (id: string | number, message: string): Element<"Alert">; new: (id: string | number, message: string) => Element<"Alert"> };
   /** An inline message. */
-  export const ErrorAlert: { new (id: string | number, message: string): Element; new: (id: string | number, message: string) => Element };
+  export const ErrorAlert: { new (id: string | number, message: string): Element<"Alert">; new: (id: string | number, message: string) => Element<"Alert"> };
   import { CalendarState, CalendarDate } from "corona/base";
   export { CalendarState, CalendarDate };
   export interface ChartRow {
@@ -4853,98 +4865,98 @@ declare module "corona/component" {
     release(): boolean;
   }
   /** A count or dot over its children. */
-  export const Badge: { new (): Element; new: () => Element };
+  export const Badge: { new (): Element<"Badge">; new: () => Element<"Badge"> };
   /** A small label. */
-  export const Tag: { new (): Element; new: () => Element };
+  export const Tag: { new (): Element<"Tag">; new: () => Element<"Tag"> };
   /** A loading placeholder; size it. */
-  export const Skeleton: { new (): Element; new: () => Element };
+  export const Skeleton: { new (): Element<"Skeleton">; new: () => Element<"Skeleton"> };
   /** A turning loading icon. */
-  export const Spinner: { new (): Element; new: () => Element };
+  export const Spinner: { new (): Element<"Spinner">; new: () => Element<"Spinner"> };
   /** An empty state: `header`, `content` and children. */
-  export const Empty: { new (): Element; new: () => Element };
+  export const Empty: { new (): Element<"Empty">; new: () => Element<"Empty"> };
   /** The header of an `Empty`: `media`, `title`, `description`. */
-  export const EmptyHeader: { new (): Element; new: () => Element };
+  export const EmptyHeader: { new (): Element<"EmptyHeader">; new: () => Element<"EmptyHeader"> };
   /** The media of an `EmptyHeader`. */
-  export const EmptyMedia: { new (): Element; new: () => Element };
+  export const EmptyMedia: { new (): Element<"EmptyMedia">; new: () => Element<"EmptyMedia"> };
   /** The title of an `EmptyHeader`. */
-  export const EmptyTitle: { new (): Element; new: () => Element };
+  export const EmptyTitle: { new (): Element<"EmptyTitle">; new: () => Element<"EmptyTitle"> };
   /** The description of an `EmptyHeader`. */
-  export const EmptyDescription: { new (): Element; new: () => Element };
+  export const EmptyDescription: { new (): Element<"EmptyDescription">; new: () => Element<"EmptyDescription"> };
   /** The actions of an `Empty`. */
-  export const EmptyContent: { new (): Element; new: () => Element };
+  export const EmptyContent: { new (): Element<"EmptyContent">; new: () => Element<"EmptyContent"> };
   /** An icon from the app's assets. */
-  export const Icon: { new (path: string): Element; new: (path: string) => Element };
+  export const Icon: { new (path: string): Element<"Icon">; new: (path: string) => Element<"Icon"> };
   /** An image from the app's assets, or a file by absolute path. */
-  export const Image: { new (path: string): Element; new: (path: string) => Element };
+  export const Image: { new (path: string): Element<"image">; new: (path: string) => Element<"image"> };
   /** Labelled values: add `DescriptionItem`s with `items`. */
-  export const DescriptionList: { new (): Element; new: () => Element };
+  export const DescriptionList: { new (): Element<"DescriptionList">; new: () => Element<"DescriptionList"> };
   /** One labelled value of a `DescriptionList`. */
-  export const DescriptionItem: { new (label: string): Element; new: (label: string) => Element };
+  export const DescriptionItem: { new (label: string): Element<"DescriptionItem">; new: (label: string) => Element<"DescriptionItem"> };
   /** A progress bar, `value` 0–100. */
-  export const Progress: { new (id: string | number): Element; new: (id: string | number) => Element };
+  export const Progress: { new (id: string | number): Element<"Progress">; new: (id: string | number) => Element<"Progress"> };
   /** A round picture, or the initials of `name`. */
-  export const Avatar: { new (): Element; new: () => Element };
+  export const Avatar: { new (): Element<"Avatar">; new: () => Element<"Avatar"> };
   /** Bars of `{ label, value }` rows, or a function returning them; fills its size. */
-  export const BarChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  export const BarChart: { new (rows: ChartRows): Element<"BarChart">; new: (rows: ChartRows) => Element<"BarChart"> };
   /** A line through the rows. */
-  export const LineChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  export const LineChart: { new (rows: ChartRows): Element<"LineChart">; new: (rows: ChartRows) => Element<"LineChart"> };
   /** A filled line through the rows. */
-  export const AreaChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  export const AreaChart: { new (rows: ChartRows): Element<"AreaChart">; new: (rows: ChartRows) => Element<"AreaChart"> };
   /** Slices of the rows. */
-  export const PieChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  export const PieChart: { new (rows: ChartRows): Element<"PieChart">; new: (rows: ChartRows) => Element<"PieChart"> };
   /** A radar of the rows. */
-  export const RadarChart: { new (rows: ChartRows): Element; new: (rows: ChartRows) => Element };
+  export const RadarChart: { new (rows: ChartRows): Element<"RadarChart">; new: (rows: ChartRows) => Element<"RadarChart"> };
   /** A month grid of a `CalendarState`, picking dates. */
-  export const Calendar: { new (state: CalendarState): Element; new: (state: CalendarState) => Element };
+  export const Calendar: { new (state: CalendarState): Element<"Calendar">; new: (state: CalendarState) => Element<"Calendar"> };
   /** Slides: `CarouselContent` with `CarouselItem`s, and the controls. */
-  export const Carousel: { new (id: string | number, state: CarouselState): Element; new: (id: string | number, state: CarouselState) => Element };
+  export const Carousel: { new (id: string | number, state: CarouselState): Element<"Carousel">; new: (id: string | number, state: CarouselState) => Element<"Carousel"> };
   /** The clipped viewport of a `Carousel`. */
-  export const CarouselContent: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  export const CarouselContent: { new (state: CarouselState): Element<"CarouselContent">; new: (state: CarouselState) => Element<"CarouselContent"> };
   /** Slide `index`. */
-  export const CarouselItem: { new (id: string | number, index: number, state: CarouselState): Element; new: (id: string | number, index: number, state: CarouselState) => Element };
+  export const CarouselItem: { new (id: string | number, index: number, state: CarouselState): Element<"CarouselItem">; new: (id: string | number, index: number, state: CarouselState) => Element<"CarouselItem"> };
   /** The previous-slide button. */
-  export const CarouselPrevious: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  export const CarouselPrevious: { new (state: CarouselState): Element<"CarouselPrevious">; new: (state: CarouselState) => Element<"CarouselPrevious"> };
   /** The next-slide button. */
-  export const CarouselNext: { new (state: CarouselState): Element; new: (state: CarouselState) => Element };
+  export const CarouselNext: { new (state: CarouselState): Element<"CarouselNext">; new: (state: CarouselState) => Element<"CarouselNext"> };
   /** The row of `CarouselPaginationItem`s. */
-  export const CarouselPagination: { new (): Element; new: () => Element };
+  export const CarouselPagination: { new (): Element<"CarouselPagination">; new: () => Element<"CarouselPagination"> };
   /** The dot of slide `index`. */
-  export const CarouselPaginationItem: { new (id: string | number, index: number, state: CarouselState): Element; new: (id: string | number, index: number, state: CarouselState) => Element };
+  export const CarouselPaginationItem: { new (id: string | number, index: number, state: CarouselState): Element<"CarouselPaginationItem">; new: (id: string | number, index: number, state: CarouselState) => Element<"CarouselPaginationItem"> };
   /** A list of rows rendered lazily by `render_row`; its state is kept by `id`. */
-  export const List: { new (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element): Element; new: (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element) => Element };
+  export const List: { new (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element): Element<"List">; new: (id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element) => Element<"List"> };
   /** A table of rows, its visible cells rendered lazily by `render_cell`. */
-  export const DataTable: { new (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element): Element; new: (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element) => Element };
+  export const DataTable: { new (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element): Element<"DataTable">; new: (state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element) => Element<"DataTable"> };
   /** A tree of `TreeItem` children; what is expanded is kept by `id`. */
-  export const Tree: { new (id: string): Element; new: (id: string) => Element };
+  export const Tree: { new (id: string): Element<"Tree">; new: (id: string) => Element<"Tree"> };
   /** One node of a `Tree`; nest more as children. */
-  export const TreeItem: { new (id: string, label: string): Element; new: (id: string, label: string) => Element };
+  export const TreeItem: { new (id: string, label: string): Element<"TreeItem">; new: (id: string, label: string) => Element<"TreeItem"> };
   /** A styled table of `TableHeader`, `TableBody`, `TableFooter` and `TableCaption`. */
-  export const Table: { new (): Element; new: () => Element };
+  export const Table: { new (): Element<"Table">; new: () => Element<"Table"> };
   /** The header rows of a `Table`. */
-  export const TableHeader: { new (): Element; new: () => Element };
+  export const TableHeader: { new (): Element<"TableHeader">; new: () => Element<"TableHeader"> };
   /** The body rows of a `Table`. */
-  export const TableBody: { new (): Element; new: () => Element };
+  export const TableBody: { new (): Element<"TableBody">; new: () => Element<"TableBody"> };
   /** The footer rows of a `Table`. */
-  export const TableFooter: { new (): Element; new: () => Element };
+  export const TableFooter: { new (): Element<"TableFooter">; new: () => Element<"TableFooter"> };
   /** A row of `TableHead`s or `TableCell`s. */
-  export const TableRow: { new (): Element; new: () => Element };
+  export const TableRow: { new (): Element<"TableRow">; new: () => Element<"TableRow"> };
   /** A column header cell. */
-  export const TableHead: { new (): Element; new: () => Element };
+  export const TableHead: { new (): Element<"TableHead">; new: () => Element<"TableHead"> };
   /** A data cell. */
-  export const TableCell: { new (): Element; new: () => Element };
+  export const TableCell: { new (): Element<"TableCell">; new: () => Element<"TableCell"> };
   /** A caption under a `Table`. */
-  export const TableCaption: { new (): Element; new: () => Element };
+  export const TableCaption: { new (): Element<"TableCaption">; new: () => Element<"TableCaption"> };
   export type ComponentSize = "xsmall" | "small" | "medium" | "large";
   /** A file or image attachment; its children fill its content. */
-  export const Attachment: { new (id: string): Element; new: (id: string) => Element };
+  export const Attachment: { new (id: string): Element<"Attachment">; new: (id: string) => Element<"Attachment"> };
   /** A message bubble; its children are its content. */
-  export const Bubble: { new (): Element; new: () => Element };
+  export const Bubble: { new (): Element<"Bubble">; new: () => Element<"Bubble"> };
   /** A compact conversation status marker. */
-  export const Marker: { new (id: string): Element; new: (id: string) => Element };
+  export const Marker: { new (id: string): Element<"Marker">; new: (id: string) => Element<"Marker"> };
   /** A message row; its children fill its content. */
-  export const Message: { new (): Element; new: () => Element };
+  export const Message: { new (): Element<"Message">; new: () => Element<"Message"> };
   /** Animated loading text. */
-  export const ShimmerText: { new (text: string): Element; new: (text: string) => Element };
+  export const ShimmerText: { new (text: string): Element<"ShimmerText">; new: (text: string) => Element<"ShimmerText"> };
   /** Retained virtual-list and tail-following state for a message transcript. */
   export interface MessageScrollerState {
     item_count(): number;
@@ -4963,8 +4975,8 @@ declare module "corona/component" {
   };
   /** A virtualized message transcript; `render_item(index)` renders a row. */
   export const MessageScroller: {
-    new (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null): Element;
-    new: (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null) => Element;
+    new (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null): Element<"MessageScroller">;
+    new: (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null) => Element<"MessageScroller">;
   };
   /** Retained source-editor state. Made in `init` or a handler: it needs the window. */
   export interface EditorState {
@@ -4981,7 +4993,7 @@ declare module "corona/component" {
     new: (initial_value: string, language?: "rust" | "json") => EditorState;
   };
   /** A source editor; takes no children. */
-  export const Editor: { new (state: EditorState): Element; new: (state: EditorState) => Element };
+  export const Editor: { new (state: EditorState): Element<"Editor">; new: (state: EditorState) => Element<"Editor"> };
   /** Retained readonly patch state, from unified or Git diff text. */
   export interface DiffState {
     /** Shows another patch. */
@@ -4994,31 +5006,31 @@ declare module "corona/component" {
     new: (patch: string, mode?: "unified" | "split") => DiffState;
   };
   /** A readonly patch viewer; takes no children. */
-  export const Diff: { new (state: DiffState): Element; new: (state: DiffState) => Element };
+  export const Diff: { new (state: DiffState): Element<"Diff">; new: (state: DiffState) => Element<"Diff"> };
   /** Plain text in a styleable wrapper. */
-  export const Text: { new (value: string): Element; new: (value: string) => Element };
+  export const Text: { new (value: string): Element<"div">; new: (value: string) => Element<"div"> };
   /** A settings surface; takes `SettingPage` children. */
-  export const Settings: { new (id: string): Element; new: (id: string) => Element };
+  export const Settings: { new (id: string): Element<"Settings">; new: (id: string) => Element<"Settings"> };
   /** A settings page; takes `SettingGroup` children. */
-  export const SettingPage: { new (title: string): Element; new: (title: string) => Element };
+  export const SettingPage: { new (title: string): Element<"SettingPage">; new: (title: string) => Element<"SettingPage"> };
   /** A settings group; takes `SettingItem` children. */
-  export const SettingGroup: { new (): Element; new: () => Element };
+  export const SettingGroup: { new (): Element<"SettingGroup">; new: () => Element<"SettingGroup"> };
   /** One setting; `content(() => field)` renders its field. */
-  export const SettingItem: { new (title: string): Element; new: (title: string) => Element };
+  export const SettingItem: { new (title: string): Element<"SettingItem">; new: (title: string) => Element<"SettingItem"> };
   /** A questionnaire keyed by `id`; takes `QuestionnaireItem` children, rebuilt when they change. */
-  export const Questionnaire: { new (id: string): Element; new: (id: string) => Element };
+  export const Questionnaire: { new (id: string): Element<"Questionnaire">; new: (id: string) => Element<"Questionnaire"> };
   /** One question; takes `QuestionnaireChoice` children. */
-  export const QuestionnaireItem: { new (name: string, label: string): Element; new: (name: string, label: string) => Element };
+  export const QuestionnaireItem: { new (name: string, label: string): Element<"QuestionnaireItem">; new: (name: string, label: string) => Element<"QuestionnaireItem"> };
   /** A free-form answer of a question, typed into `state`. */
-  export const QuestionnaireInput: { new (state: InputState, label: string): Element; new: (state: InputState, label: string) => Element };
+  export const QuestionnaireInput: { new (state: InputState, label: string): Element<"QuestionnaireInput">; new: (state: InputState, label: string) => Element<"QuestionnaireInput"> };
   /** One answer of a question. */
-  export const QuestionnaireChoice: { new (value: string, label: string): Element; new: (value: string, label: string) => Element };
+  export const QuestionnaireChoice: { new (value: string, label: string): Element<"QuestionnaireChoice">; new: (value: string, label: string) => Element<"QuestionnaireChoice"> };
 }
 declare module "corona/fps" {
   import { Element } from "corona/kit";
   export type Anchor = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center";
   /** The performance HUD as an element; its parent must be `relative()`. */
-  export function fps_monitor(): Element;
+  export function fps_monitor(): Element<"fps_monitor">;
   export interface FpsMonitorOptions {
     /** Default `top_right`. */
     anchor?: Anchor;

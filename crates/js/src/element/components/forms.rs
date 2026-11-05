@@ -176,41 +176,6 @@ fn text_state<T: 'static, S: Clone>(n: &dyn Node, f: impl FnOnce(&T) -> &S) -> O
     .map(|t| f(t).clone())
 }
 
-/// Every kind this family makes
-const KINDS: &[&str] = &[
-  "Button",
-  "Link",
-  "Checkbox",
-  "Switch",
-  "Radio",
-  "RadioGroup",
-  "Toggle",
-  "ToggleGroup",
-  "Label",
-  "Kbd",
-  "Clipboard",
-  "Rating",
-  "Input",
-  "NumberInput",
-  "Textarea",
-  "OtpInput",
-  "Slider",
-  "SliderTrack",
-  "SliderIndicator",
-  "SliderThumb",
-  "ColorPicker",
-  "DatePicker",
-  "TimeField",
-  "Select",
-  "Combobox",
-  "Form",
-  "Field",
-  "InputGroup",
-  "InputGroupAddon",
-  "InputGroupButton",
-  "InputGroupText",
-];
-
 choice! {
   ContentType("content type"): InputContentType {
     "name" => InputContentType::Name,
@@ -457,9 +422,8 @@ mod methods {
   use super::*;
 
   crate::el_methods! {
-    kinds: KINDS;
     /// The visible label of a button, check, switch, radio, toggle, color picker or field.
-    fn label(text: String) |c, n| pick!(c, n,
+    fn label(text: String) for ["Button", "Checkbox", "Switch", "Radio", "Toggle", "ColorPicker", "Field", "InputGroupButton"] |c, n| pick!(c, n,
       Button => |b: Button| b.label(text),
       Checkbox => |b: Checkbox| b.label(text),
       Switch => |b: Switch| b.label(text),
@@ -470,12 +434,12 @@ mod methods {
       InputGroupButton => |b: InputGroupButton| b.label(text),
     );
     /// An icon of an `InputGroupButton`, by asset path.
-    fn icon(path: String) |c, n| {
+    fn icon(path: String) for ["InputGroupButton"] |c, n| {
       let icon = gpui_kit::component::Icon::empty().path(path);
       pick!(c, n, InputGroupButton => |b: InputGroupButton| b.icon(icon))
     };
     /// Concise hover help.
-    fn tooltip(text: String) |c, n| pick!(c, n,
+    fn tooltip(text: String) for ["Button", "Checkbox", "Switch", "Toggle", "Clipboard", "InputGroupButton"] |c, n| pick!(c, n,
       Button => |b: Button| b.tooltip(text),
       Checkbox => |b: Checkbox| b.tooltip(text),
       Switch => |b: Switch| b.tooltip(text),
@@ -484,7 +448,7 @@ mod methods {
       InputGroupButton => |b: InputGroupButton| b.tooltip(text),
     );
     /// The controlled value of a `Checkbox`, `Switch`, `Radio` or `Toggle`.
-    fn checked(value: bool) |c, n| pick!(c, n,
+    fn checked(value: bool) for ["Checkbox", "Switch", "Radio", "Toggle"] |c, n| pick!(c, n,
       Checkbox => |b: Checkbox| b.checked(value),
       Switch => |b: Switch| b.checked(value),
       Radio => |b: Radio| b.checked(value),
@@ -494,10 +458,10 @@ mod methods {
       base::Radio => |b: base::Radio| b.checked(value),
     );
     /// The controlled state of a `corona/base` `Toggle`: a button that stays down.
-    fn pressed(value: bool) |c, n| pick!(c, n, base::Toggle => |b: base::Toggle| b.pressed(value));
+    fn pressed(value: bool) for ["Toggle"] |c, n| pick!(c, n, base::Toggle => |b: base::Toggle| b.pressed(value));
     /// `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
     /// the index of a `RadioGroup`, the stars of a `Rating`. The script owns the value.
-    fn on_change(handler: On<'js, Changed>) |c, n| {
+    fn on_change(handler: On<'js, Changed>) for ["Checkbox", "Switch", "Radio", "Toggle", "RadioGroup", "Rating", "Input", "Textarea"] |c, n| {
       let h = handler.0;
       if is::<TextIn>(&**n) || is::<TextArea>(&**n) {
         return text_on_change(c, n, h);
@@ -523,7 +487,7 @@ mod methods {
       )
     };
     /// Blocks interaction and draws the control disabled.
-    fn disabled(value: bool) |c, n| pick!(c, n,
+    fn disabled(value: bool) for ["Button", "Label", "Link", "Checkbox", "Switch", "Radio", "RadioGroup", "Toggle", "Rating", "Input", "NumberInput", "Textarea", "OtpInput", "Slider", "DatePicker", "TimeField", "Select", "Combobox", "InputGroup", "InputGroupButton", "SliderTrack", "SliderThumb"] |c, n| pick!(c, n,
       Button => |b: Button| b.disabled(value),
       LabelEl => |b: LabelEl| LabelEl { disabled: value, ..b },
       Link => |b: Link| b.disabled(value),
@@ -566,18 +530,18 @@ mod methods {
       },
     );
     /// The selected state of a `Button`.
-    fn selected(value: bool) |c, n| pick!(c, n,
+    fn selected(value: bool) for ["Button", "InputGroupButton"] |c, n| pick!(c, n,
       Button => |b: Button| b.selected(value),
       InputGroupButton => |b: InputGroupButton| b.selected(value),
       base::Button => |b: base::Button| b.selected(value),
     );
     /// Shows a spinner and blocks clicks.
-    fn loading(value: bool) |c, n| pick!(c, n,
+    fn loading(value: bool) for ["Button", "InputGroupButton"] |c, n| pick!(c, n,
       Button => |b: Button| b.loading(value),
       InputGroupButton => |b: InputGroupButton| b.loading(value),
     );
     /// The semantic control size.
-    fn size(size: SizeArg<'js>) |c, n| {
+    fn size(size: SizeArg<'js>) for ["Button", "Checkbox", "Switch", "Radio", "Toggle", "Rating", "Form", "InputGroup", "InputGroupButton"] |c, n| {
       let s = size.get(c, &**n)?;
       pick!(c, n,
         Button => |b: Button| b.with_size(s),
@@ -592,37 +556,37 @@ mod methods {
       )
     };
     /// The outlined look of a button, toggle or keycap.
-    fn outline() |c, n| pick!(c, n,
+    fn outline() for ["Button", "Toggle", "Kbd", "InputGroupButton"] |c, n| pick!(c, n,
       Button => |b: Button| b.outline(),
       Toggle => |b: Toggle| b.outline(),
       Kbd => |b: Kbd| b.outline(),
       InputGroupButton => |b: InputGroupButton| b.outline(),
     );
     /// The primary action look.
-    fn primary() |c, n| pick!(c, n, Button => |b: Button| b.primary());
+    fn primary() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.primary());
     /// The secondary look of a `Button`, or the muted secondary text of a `Label`.
-    fn secondary(text: Opt<String>) |c, n| match text.0 {
+    fn secondary(text: Opt<String>) for ["Label", "Button"] |c, n| match text.0 {
       Some(text) => pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.secondary(text))),
       None => pick!(c, n, Button => |b: Button| b.secondary()),
     };
     /// The destructive action look.
-    fn danger() |c, n| pick!(c, n, Button => |b: Button| b.danger());
+    fn danger() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.danger());
     /// The success look.
-    fn success() |c, n| pick!(c, n, Button => |b: Button| b.success());
+    fn success() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.success());
     /// The warning look.
-    fn warning() |c, n| pick!(c, n, Button => |b: Button| b.warning());
+    fn warning() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.warning());
     /// The quiet look of a button.
-    fn ghost() |c, n| pick!(c, n, Button => |b: Button| b.ghost());
+    fn ghost() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.ghost());
     /// The look of a link.
-    fn link() |c, n| pick!(c, n, Button => |b: Button| b.link());
+    fn link() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.link());
     /// Tighter padding.
-    fn compact() |c, n| pick!(c, n, Button => |b: Button| b.compact());
+    fn compact() for ["Button"] |c, n| pick!(c, n, Button => |b: Button| b.compact());
     /// A native button variant of an `InputGroupButton`.
-    fn variant(variant: Variant) |c, n| {
+    fn variant(variant: Variant) for ["InputGroupButton"] |c, n| {
       pick!(c, n, InputGroupButton => |b: InputGroupButton| b.with_variant(variant.0))
     };
     /// The absolute HTTP(S) URL a `Link` opens.
-    fn href(url: String) |c, n| {
+    fn href(url: String) for ["Link"] |c, n| {
       if !crate::view::web_url(&url) {
         return Err(Exception::throw_type(c, &format!("not an http(s) URL: {url}")));
       }
@@ -632,11 +596,11 @@ mod methods {
       )
     };
     /// The checked radio of a `RadioGroup`, by index.
-    fn selected_index(index: u32) |c, n| {
+    fn selected_index(index: u32) for ["RadioGroup"] |c, n| {
       pick!(c, n, RadioGroup => |b: RadioGroup| b.selected_index(Some(index as usize)))
     };
     /// The orientation a `corona/base` `RadioGroup` or `ToggleGroup` announces.
-    fn axis(axis: AxisArg) |c, n| pick!(c, n,
+    fn axis(axis: AxisArg) for ["RadioGroup", "ToggleGroup", "Slider", "SliderTrack", "SliderIndicator", "SliderThumb"] |c, n| pick!(c, n,
       base::RadioGroup => |b: base::RadioGroup| b.axis(axis.0),
       base::ToggleGroup => |b: base::ToggleGroup| b.axis(axis.0),
       base::Slider => |b: base::Slider| b.axis(axis.0),
@@ -651,12 +615,12 @@ mod methods {
       },
     );
     /// This item's one-based position and its collection's size, announced.
-    fn set_position(position: u32, size: u32) |c, n| {
+    fn set_position(position: u32, size: u32) for ["Radio"] |c, n| {
       let (p, s) = (position as usize, size as usize);
       pick!(c, n, base::Radio => |b: base::Radio| b.set_position(p, s))
     };
     /// Draws a `Label`'s text as a password.
-    fn masked(value: bool) |c, n| {
+    fn masked(value: bool) for ["Input", "Label"] |c, n| {
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
         let window = window_or_throw(c)?;
         st.update(app(), |s, cx| s.set_masked(value, window, cx));
@@ -665,17 +629,17 @@ mod methods {
       pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.masked(value)))
     };
     /// Highlights the matches of `text` in a `Label`.
-    fn highlights(text: String) |c, n| {
+    fn highlights(text: String) for ["Label"] |c, n| {
       pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.highlights(text)))
     };
     /// Whether a keycap or text area draws its frame.
-    fn appearance(value: bool) |c, n| pick!(c, n,
+    fn appearance(value: bool) for ["Kbd", "Textarea"] |c, n| pick!(c, n,
       Kbd => |b: Kbd| b.appearance(value),
       TextArea => |b: TextArea| b.with(|b| b.appearance(value)),
     );
     /// What a `Clipboard` copies, the stars of a `Rating`, or the row id a `Select` shows as
     /// selected; an id without a row selects nothing.
-    fn value(value: Scalar<'js>) |c, n| {
+    fn value(value: Scalar<'js>) for ["Select", "Input", "Textarea", "Clipboard", "Rating"] |c, n| {
       if let Some(st) = text_state::<Sel, _>(&**n, |t| &t.state) {
         let id = SharedString::from(Coerced::<String>::from_js(c, value.0)?.0);
         if st.read(app()).selected_value() != Some(&id) {
@@ -708,19 +672,19 @@ mod methods {
       pick!(c, n, Rating => |b: Rating| b.value(stars))
     };
     /// How many stars a `Rating` has.
-    fn max(count: u32) |c, n| pick!(c, n, Rating => |b: Rating| b.max(count as usize));
+    fn max(count: u32) for ["Rating"] |c, n| pick!(c, n, Rating => |b: Rating| b.max(count as usize));
     /// The accent color of a `Rating`.
-    fn color(color: Color) |c, n| pick!(c, n, Rating => |b: Rating| b.color(color.0));
+    fn color(color: Color) for ["Rating"] |c, n| pick!(c, n, Rating => |b: Rating| b.color(color.0));
     /// Draws a `Textarea`'s border.
-    fn bordered(value: bool) |c, n| pick!(c, n, TextArea => |b: TextArea| b.with(|b| b.bordered(value)));
+    fn bordered(value: bool) for ["Textarea"] |c, n| pick!(c, n, TextArea => |b: TextArea| b.with(|b| b.bordered(value)));
     /// Allows selecting and copying but no edits.
-    fn readonly(value: bool) |c, n| pick!(c, n,
+    fn readonly(value: bool) for ["Input", "Textarea", "InputGroup"] |c, n| pick!(c, n,
       TextIn => |b: TextIn| b.with(|b| b.readonly(value)),
       TextArea => |b: TextArea| b.with(|b| b.readonly(value)),
       InputGroup => |b: InputGroup| b.readonly(value),
     );
     /// The prompt shown while empty.
-    fn placeholder(text: String) |c, n| {
+    fn placeholder(text: String) for ["Input", "Textarea", "NumberInput", "DatePicker", "Select", "Combobox"] |c, n| {
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
         let window = window_or_throw(c)?;
         st.update(app(), |s, cx| s.set_placeholder(text, window, cx));
@@ -738,11 +702,11 @@ mod methods {
       Combo => |b: Combo| b.with(|b| b.placeholder(text)),
     )};
     /// The prompt of a `Combobox`'s search field.
-    fn search_placeholder(text: String) |c, n| {
+    fn search_placeholder(text: String) for ["Combobox"] |c, n| {
       pick!(c, n, Combo => |b: Combo| b.with(|b| b.search_placeholder(text)))
     };
     /// Shows a search field above a `Combobox`'s items; takes effect from the next frame.
-    fn searchable(value: bool) |c, n| {
+    fn searchable(value: bool) for ["Combobox"] |c, n| {
       let cell = (&**n as &dyn std::any::Any).downcast_ref::<Combo>().and_then(|b| b.searchable.clone());
       let cell = cell.ok_or_else(|| miss(c, n.kind()))?;
       if cell.replace(value) != value {
@@ -752,14 +716,14 @@ mod methods {
       Ok(())
     };
     /// The width of a `Select`'s or `Combobox`'s menu, in pixels.
-    fn menu_width(width: f32) |c, n| pick!(c, n,
+    fn menu_width(width: f32) for ["Select", "Combobox"] |c, n| pick!(c, n,
       Sel => |b: Sel| b.with(|b| b.menu_width(px(width))),
       Combo => |b: Combo| b.with(|b| b.menu_width(px(width))),
     );
     /// Splits an `OtpInput`'s cells into this many groups.
-    fn groups(count: u32) |c, n| pick!(c, n, OtpInput => |b: OtpInput| b.groups(count as usize));
+    fn groups(count: u32) for ["OtpInput"] |c, n| pick!(c, n, OtpInput => |b: OtpInput| b.groups(count as usize));
     /// A vertical `Slider`.
-    fn vertical() |c, n| pick!(c, n,
+    fn vertical() for ["Slider", "SliderIndicator", "SliderThumb"] |c, n| pick!(c, n,
       Slider => |b: Slider| b.vertical(),
       Indicator => |mut b: Indicator| {
         b.axis = Axis::Vertical;
@@ -771,7 +735,7 @@ mod methods {
       },
     );
     /// Fills a `Slider` from the other end.
-    fn reverse() |c, n| pick!(c, n,
+    fn reverse() for ["Slider", "SliderIndicator"] |c, n| pick!(c, n,
       Slider => |b: Slider| b.reverse(),
       Indicator => |mut b: Indicator| {
         b.reverse = true;
@@ -779,21 +743,21 @@ mod methods {
       },
     );
     /// Draws an `InputGroup` as invalid.
-    fn invalid(value: bool) |c, n| pick!(c, n, InputGroup => |b: InputGroup| b.invalid(value));
+    fn invalid(value: bool) for ["InputGroup"] |c, n| pick!(c, n, InputGroup => |b: InputGroup| b.invalid(value));
     /// Draws the focus ring of an `InputGroup`.
-    fn focus_ring(value: bool) |c, n| {
+    fn focus_ring(value: bool) for ["InputGroup"] |c, n| {
       pick!(c, n, InputGroup => |b: InputGroup| b.focus_ring(value))
     };
     /// Supporting text under a `Field`'s control.
-    fn description(text: String) |c, n| pick!(c, n, Field => |b: Field| b.description(text));
+    fn description(text: String) for ["Field"] |c, n| pick!(c, n, Field => |b: Field| b.description(text));
     /// Marks a `Field` as required.
-    fn required(value: bool) |c, n| pick!(c, n, Field => |b: Field| b.required(value));
+    fn required(value: bool) for ["Field"] |c, n| pick!(c, n, Field => |b: Field| b.required(value));
     /// Indents an unlabeled `Field` of a horizontal form like the labeled ones.
-    fn label_indent(value: bool) |c, n| pick!(c, n, Field => |b: Field| b.label_indent(value));
+    fn label_indent(value: bool) for ["Field"] |c, n| pick!(c, n, Field => |b: Field| b.label_indent(value));
     /// How many grid columns a `Field` spans.
-    fn col_span(span: u32) |c, n| pick!(c, n, Field => |b: Field| b.col_span(span as u16));
+    fn col_span(span: u32) for ["Field"] |c, n| pick!(c, n, Field => |b: Field| b.col_span(span as u16));
     /// Where a `Field` aligns its control.
-    fn align(to: Scalar<'js>) |c, n| {
+    fn align(to: Scalar<'js>) for ["Field", "InputGroupAddon"] |c, n| {
       if is::<InputGroupAddon>(&**n) {
         let side = AddonAlign::from_js(c, to.0)?.0;
         return map(c, n, |b: InputGroupAddon| b.align(side));
@@ -806,12 +770,12 @@ mod methods {
       })
     };
     /// How many columns a `Form` lays its fields out in.
-    fn columns(count: u32) |c, n| pick!(c, n, Form => |b: Form| b.columns(count as usize));
+    fn columns(count: u32) for ["Form"] |c, n| pick!(c, n, Form => |b: Form| b.columns(count as usize));
     /// The label width of a horizontal `Form`, in pixels.
-    fn label_width(width: f32) |c, n| pick!(c, n, Form => |b: Form| b.label_width(px(width)));
+    fn label_width(width: f32) for ["Form"] |c, n| pick!(c, n, Form => |b: Form| b.label_width(px(width)));
     /// The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
     /// the editor slot of a `corona/base` `NumberInput`.
-    fn input(control: Child<'js>) |c, n| {
+    fn input(control: Child<'js>) for ["InputGroup", "NumberInput"] |c, n| {
       if is::<base::NumberInput>(&**n) {
         let el = frame().child(c, control)?;
         return map(c, n, |b: base::NumberInput| b.input(el));
@@ -833,7 +797,7 @@ mod methods {
       }
     };
     /// Appends an `InputGroupAddon` to an `InputGroup`.
-    fn addon(addon: Child<'js>) |c, n| {
+    fn addon(addon: Child<'js>) for ["InputGroup"] |c, n| {
       if !is::<InputGroup>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -841,14 +805,14 @@ mod methods {
       map(c, n, |g: InputGroup| g.addon(addon))
     };
     /// Names the control for accessibility.
-    fn aria_label(label: String) |c, n| pick!(c, n,
+    fn aria_label(label: String) for ["Input", "Textarea", "InputGroup", "InputGroupButton"] |c, n| pick!(c, n,
       TextIn => |b: TextIn| b.with(|b| b.aria_label(label)),
       TextArea => |b: TextArea| b.with(|b| b.aria_label(label)),
       InputGroup => |b: InputGroup| b.aria_label(label),
       InputGroupButton => |b: InputGroupButton| b.accessibility_label(label),
     );
     /// What a screen reader announces.
-    fn accessibility_label(label: String) |c, n| pick!(c, n,
+    fn accessibility_label(label: String) for ["Radio", "ColorPicker", "Button", "Link", "Checkbox", "Switch", "Toggle", "Select"] |c, n| pick!(c, n,
       Radio => |b: Radio| b.accessibility_label(label),
       ColorPicker => |b: ColorPicker| b.accessibility_label(label),
       base::Button => |b: base::Button| b.accessibility_label(label),
@@ -860,13 +824,13 @@ mod methods {
       base::Select => |b: base::Select| b.accessibility_label(label),
     );
     /// Whether Tab lands on a `Radio`.
-    fn tab_stop(value: bool) |c, n| pick!(c, n,
+    fn tab_stop(value: bool) for ["Radio"] |c, n| pick!(c, n,
       Radio => |b: Radio| b.tab_stop(value),
       base::Radio => |b: base::Radio| b.tab_stop(value),
     );
     /// Renders each inline token: `render(token, cx)` answers its element, `null` for the
     /// default chip.
-    fn token(render: Function<'js>) |c, n| {
+    fn token(render: Function<'js>) for ["Input", "Textarea"] |c, n| {
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
         let r = token_renderer(c, st, render)?;
         return map(c, n, |b: TextIn| b.with(|b| b.token(r)));
@@ -880,7 +844,7 @@ mod methods {
       }
     };
     /// `listener(event, cx)` after a click on a token that nothing consumed.
-    fn on_token_click(listener: On<'js, TokenClick>) |c, n| {
+    fn on_token_click(listener: On<'js, TokenClick>) for ["Input", "Textarea"] |c, n| {
       let l = listen(listener.0, |p: &JsonOut| p.clone());
       let click = move |text: String| {
         move |e: &gpui_kit::component::input::InlineTokenClickEvent, w: &mut Window, cx: &mut App| {
@@ -909,7 +873,7 @@ mod methods {
       }
     };
     /// `listener(event, cx)` when the pointer enters or leaves a token.
-    fn on_token_hover(listener: On<'js, TokenHover>) |c, n| {
+    fn on_token_hover(listener: On<'js, TokenHover>) for ["Input", "Textarea"] |c, n| {
       let l = listen(listener.0, |p: &JsonOut| p.clone());
       let hover = move |text: String| {
         move |e: &gpui_kit::component::input::InlineTokenHoverEvent, w: &mut Window, cx: &mut App| {
@@ -936,28 +900,28 @@ mod methods {
       }
     };
     /// The kind of text an `Input` holds, for autofill and keyboards.
-    fn content_type(kind: ContentType) |c, n| {
+    fn content_type(kind: ContentType) for ["Input"] |c, n| {
       pick!(c, n, TextIn => |b: TextIn| b.with(|b| b.content_type(kind.0)))
     };
     /// A developer-assigned accessibility identifier.
-    fn accessibility_id(id: String) |c, n| pick!(c, n,
+    fn accessibility_id(id: String) for ["Input", "Textarea"] |c, n| pick!(c, n,
       TextIn => |b: TextIn| b.with(|b| b.accessibility_id(id)),
       TextArea => |b: TextArea| b.with(|b| b.accessibility_id(id)),
     );
     /// The number of rows a `Textarea` shows, on its state.
-    fn rows(rows: u32) |c, n| {
+    fn rows(rows: u32) for ["Textarea"] |c, n| {
       let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
       st.update(app(), |s, cx| s.set_rows(rows as usize, cx));
       Ok(())
     };
     /// Grows a `Textarea` between two row counts, on its state.
-    fn auto_grow(min_rows: u32, max_rows: u32) |c, n| {
+    fn auto_grow(min_rows: u32, max_rows: u32) for ["Textarea"] |c, n| {
       let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
       st.update(app(), |s, cx| s.set_auto_grow(min_rows as usize, max_rows as usize, cx));
       Ok(())
     };
     /// `handler(event, cx)` on activation.
-    fn on_click(handler: On<'js, ClickEvent>) |c, n| {
+    fn on_click(handler: On<'js, ClickEvent>) for ["Button", "Link", "InputGroupButton"] |c, n| {
       let h = handler.0;
       let l = || listen(h, |e: &gpui_kit::ClickEvent| ClickEvent::from(e));
       pick!(c, n,
@@ -968,13 +932,13 @@ mod methods {
       )
     };
     /// Whether a `corona/base` `Select`, `Combobox` or `DatePicker` is showing its list.
-    fn open(value: bool) |c, n| pick!(c, n,
+    fn open(value: bool) for ["Select", "Combobox", "DatePicker"] |c, n| pick!(c, n,
       base::Select => |b: base::Select| b.open(value),
       base::Combobox => |b: base::Combobox| b.open(value),
       base::DatePicker => |b: base::DatePicker| b.open(value),
     );
     /// `handler(open, cx)` when something other than the script opened or closed it.
-    fn on_open_change(handler: On<'js, bool>) |c, n| {
+    fn on_open_change(handler: On<'js, bool>) for ["Select", "Combobox", "DatePicker"] |c, n| {
       let h = handler.0;
       let l = || {
         let l = listen(h, |v: &bool| *v);
@@ -987,7 +951,7 @@ mod methods {
       )
     };
     /// `handler(_, cx)` on Enter in an open `corona/base` `Select` or `Combobox`.
-    fn on_confirm(handler: On<'js, Nothing>) |c, n| {
+    fn on_confirm(handler: On<'js, Nothing>) for ["Select", "Combobox"] |c, n| {
       let h = handler.0;
       let l = || {
         let l = listen(h, |_: &()| Empty {});
@@ -999,7 +963,7 @@ mod methods {
       )
     };
     /// `handler(_, cx)` on Escape in an open `corona/base` `Select` or `Combobox`.
-    fn on_dismiss(handler: On<'js, Nothing>) |c, n| {
+    fn on_dismiss(handler: On<'js, Nothing>) for ["Select", "Combobox"] |c, n| {
       let h = handler.0;
       let l = || {
         let l = listen(h, |_: &()| Empty {});
@@ -1011,7 +975,7 @@ mod methods {
       )
     };
     /// The handle a `corona/base` `Select` or `Combobox` moves the keyboard to when it opens.
-    fn content_focus_handle(handle: Class<'js, crate::FocusHandle>) |c, n| {
+    fn content_focus_handle(handle: Class<'js, crate::FocusHandle>) for ["Select", "Combobox"] |c, n| {
       let h = handle.borrow().handle(c)?;
       pick!(c, n,
         base::Select => |b: base::Select| b.content_focus_handle(&h),
@@ -1019,12 +983,12 @@ mod methods {
       )
     };
     /// Which thumb of a range slider a `SliderThumb` is.
-    fn start(value: bool) |c, n| pick!(c, n, Thumb => |mut b: Thumb| {
+    fn start(value: bool) for ["SliderThumb"] |c, n| pick!(c, n, Thumb => |mut b: Thumb| {
       b.start = value;
       b
     });
     /// How the filled part of a `SliderIndicator` looks: `declare(el)` styles it.
-    fn range_style(declare: Function<'js>) |c, n| {
+    fn range_style(declare: Function<'js>) for ["SliderIndicator"] |c, n| {
       if !is::<Indicator>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1035,7 +999,7 @@ mod methods {
       })
     };
     /// How every cell of a `corona/base` `OtpInput` looks.
-    fn cell_style(declare: Function<'js>) |c, n| {
+    fn cell_style(declare: Function<'js>) for ["OtpInput"] |c, n| {
       if !is::<Cells>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1046,7 +1010,7 @@ mod methods {
       })
     };
     /// What the cell the next digit lands in adds to `cell_style`.
-    fn cell_active_style(declare: Function<'js>) |c, n| {
+    fn cell_active_style(declare: Function<'js>) for ["OtpInput"] |c, n| {
       if !is::<Cells>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1057,7 +1021,7 @@ mod methods {
       })
     };
     /// The blinking mark in that cell while it is empty.
-    fn caret_style(declare: Function<'js>) |c, n| {
+    fn caret_style(declare: Function<'js>) for ["OtpInput"] |c, n| {
       if !is::<Cells>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1068,7 +1032,7 @@ mod methods {
       })
     };
     /// The look of a `corona/base` `NumberInput`'s decrement button.
-    fn decrement_button(look: Child<'js>) |c, n| {
+    fn decrement_button(look: Child<'js>) for ["NumberInput"] |c, n| {
       if !is::<base::NumberInput>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1076,7 +1040,7 @@ mod methods {
       map(c, n, |b: base::NumberInput| b.decrement_button(step_button(look)))
     };
     /// The look of a `corona/base` `NumberInput`'s increment button.
-    fn increment_button(look: Child<'js>) |c, n| {
+    fn increment_button(look: Child<'js>) for ["NumberInput"] |c, n| {
       if !is::<base::NumberInput>(&**n) {
         return Err(miss(c, n.kind()));
       }
@@ -1084,11 +1048,11 @@ mod methods {
       map(c, n, |b: base::NumberInput| b.increment_button(step_button(look)))
     };
     /// Stacks both step buttons to the right of the text.
-    fn controls_right() |c, n| {
+    fn controls_right() for ["NumberInput"] |c, n| {
       pick!(c, n, base::NumberInput => |b: base::NumberInput| b.controls_right())
     };
     /// `handler(action, cx)` on a step; replaces the built-in stepping.
-    fn on_step(handler: On<'js, Step>) |c, n| {
+    fn on_step(handler: On<'js, Step>) for ["NumberInput"] |c, n| {
       let h = handler.0;
       pick!(c, n, base::NumberInput => |b: base::NumberInput| {
         let l = listen(h, |a: &StepAction| match a {
@@ -1134,9 +1098,8 @@ mod children {
   use super::*;
 
   crate::el_methods! {
-    kinds: &["RadioGroup", "Form"];
     fn child(child: Child<'js>) |c, n| typed_child(c, n, child);
-    fn children(children: Vec<Child<'js>>) |c, n| {
+    fn children(children: Vec<Child<'js>>) for ["RadioGroup", "Form"] |c, n| {
       children.into_iter().try_for_each(|child| typed_child(c, n, child))
     };
   }
