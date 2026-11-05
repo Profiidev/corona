@@ -13,6 +13,17 @@ impl<T, E: std::fmt::Debug> ErrorLogExt for Result<T, E> {
   }
 }
 
+/// Runs `task` on the foreground, logging how it failed
+pub fn spawn_logged(
+  cx: &mut gpui_kit::App,
+  task: impl Future<Output = anyhow::Result<()>> + 'static,
+) {
+  cx.spawn(async move |_| {
+    let _ = task.await.log_err();
+  })
+  .detach();
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

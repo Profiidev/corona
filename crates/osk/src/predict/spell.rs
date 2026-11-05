@@ -1,18 +1,19 @@
 //! Spell correction: the dictionary words one or two edits away from the
 //! typed one, ranked by frequency. Slow at two edits, so only on word ends.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use super::completer::apply_case;
 
 /// Longer words skip distance two, its edits grow too many
-const MAX_DISTANCE_TWO: usize = 12;
+const MAX_DISTANCE_TWO: usize = 8;
 
+#[derive(Clone)]
 pub struct Speller {
   /// lowercase word -> score, higher is more frequent
-  dict: HashMap<String, u32>,
+  dict: Arc<HashMap<String, u32>>,
   /// Every letter in the list, so umlauts and ß come with a German one
-  alphabet: Vec<char>,
+  alphabet: Arc<Vec<char>>,
 }
 
 impl Speller {
@@ -35,7 +36,10 @@ impl Speller {
       .collect();
     alphabet.sort_unstable();
     alphabet.dedup();
-    Self { dict, alphabet }
+    Self {
+      dict: Arc::new(dict),
+      alphabet: Arc::new(alphabet),
+    }
   }
 
   pub fn is_known(&self, word: &str) -> bool {
@@ -52,7 +56,11 @@ impl Speller {
     let e1 = self.edits1(&w);
     let mut out = self.known_sorted(&e1);
     if out.len() < limit && w.chars().count() <= MAX_DISTANCE_TWO {
-      let e2: Vec<String> = e1.iter().flat_map(|e| self.edits1(e)).collect();
+      // only from edits that keep the first letter, typos rarely change it
+      let first = w.chars().next();
+      let e2: Vec<String> = (e1.iter().filter(|e| e.chars().next() == first))
+        .flat_map(|e| self.edits1(e))
+        .collect();
       for c in self.known_sorted(&e2) {
         if !out.contains(&c) {
           out.push(c);
@@ -89,7 +97,7 @@ impl Speller {
         t.swap(i, i + 1);
         out.push(t.into_iter().collect());
       }
-      for &a in &self.alphabet {
+      for &a in self.alphabet.iter() {
         if i < n {
           let mut r = ch.clone();
           r[i] = a;

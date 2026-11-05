@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, types};
+use crate::{hyprland::command::hypr_data_cmd, types};
 
 impl crate::hyprland::command::Ipc {
   /// Changes one setting of monitor `name`; Hyprland keeps the others
@@ -36,7 +36,12 @@ hypr_data_cmd!(
   Vec<types::Monitor>,
   |monitors: Vec<Monitor>| {
     let mut monitors: Vec<types::Monitor> = monitors.into_iter().map(|m| m.into()).collect();
-    monitors.sort_unstable_by(|a, b| a.x.cmp(&b.x).then_with(|| a.y.cmp(&b.y)));
+    monitors.sort_unstable_by(|a, b| {
+      a.x
+        .cmp(&b.x)
+        .then_with(|| a.y.cmp(&b.y))
+        .then_with(|| a.id.cmp(&b.id))
+    });
     monitors
   }
 );
@@ -60,6 +65,8 @@ pub struct Monitor {
   pub disabled: bool,
   #[serde(rename = "mirrorOf")]
   pub mirror_of: String,
+  #[serde(default)]
+  pub reserved: [i32; 4],
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,18 +89,19 @@ impl From<Monitor> for types::Monitor {
         id: m.special_workspace.address,
         name: m.special_workspace.name,
         monitor: m.name.clone(),
-        monitor_id: m.id,
+        monitor_id: m.id as i32,
       }),
       active_workspace: types::Workspace {
         id: m.active_workspace.address,
         name: m.active_workspace.name,
         monitor: m.name,
-        monitor_id: m.id,
+        monitor_id: m.id as i32,
       },
       scale: m.scale,
       focused: m.focused,
       disabled: m.disabled,
       mirror_of: m.mirror_of,
+      reserved: m.reserved,
     }
   }
 }

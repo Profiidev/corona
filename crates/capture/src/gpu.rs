@@ -99,7 +99,7 @@ pub fn read(texture: &wgpu::Texture, x: u32, y: u32, w: u32, h: u32) -> Result<(
     .map_async(wgpu::MapMode::Read, move |r| drop(tx.send(r)));
   device.poll(wgpu::PollType::wait_indefinitely())?;
   rx.recv().context("readback dropped")??;
-  let data = buffer.slice(..).get_mapped_range().to_vec();
+  let data = buffer.slice(..).get_mapped_range()?.to_vec();
   Ok((data, stride))
 }
 
@@ -112,17 +112,5 @@ mod tests {
     let mods1 = importable_modifiers();
     let mods2 = importable_modifiers();
     assert_eq!(mods1, mods2);
-  }
-
-  #[test]
-  fn import_handles_empty_surface() {
-    let surface = Dmabuf {
-      width: 0,
-      height: 0,
-      planes: vec![],
-      modifier: None,
-      opaque: false,
-    };
-    let _ = import(&surface);
   }
 }

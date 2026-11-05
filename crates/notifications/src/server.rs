@@ -1,8 +1,7 @@
 use std::{
   collections::HashMap,
-  ffi::OsString,
+  fs::File,
   hash::{DefaultHasher, Hash, Hasher},
-  os::unix::ffi::OsStringExt,
   path::PathBuf,
   sync::atomic::{AtomicU32, Ordering},
   time::SystemTime,
@@ -20,6 +19,7 @@ pub(crate) const NAME: &str = "org.freedesktop.Notifications";
 #[derive(Clone, Copy)]
 #[repr(u32)]
 pub(crate) enum CloseReason {
+  Expired = 1,
   Dismissed = 2,
   Closed = 3,
 }
@@ -43,6 +43,18 @@ impl Server {
       .try_update(Ordering::Relaxed, Ordering::Relaxed, next)
       .unwrap_or(1)
   }
+}
+
+/// text beyond this is cut, it only costs time to parse and lay out
+const MAX_TEXT: usize = 16 * 1024;
+/// the cap of the short fields: names, icons, action keys and labels
+pub(crate) const MAX_SHORT: usize = 256;
+
+pub(crate) fn truncate(mut text: String, cap: usize) -> String {
+  if text.len() > cap {
+    text.truncate(text.floor_char_boundary(cap));
+  }
+  text
 }
 
 /// The spec says byte, plenty of clients send another integer type
@@ -76,25 +88,51 @@ fn image(hints: &HashMap<String, OwnedValue>, app_icon: &str) -> Option<Notifica
       Err(e) => tracing::warn!("ignoring notification image data: {e:?}"),
     }
   }
-  hint::<String>(hints, "image-path")
+  // `image_path` is the spec 1.1 name
+  ["image-path", "image_path"]
+    .iter()
+    .find_map(|key| hint::<String>(hints, key))
     .and_then(|path| icon(&path))
     .or_else(|| icon(app_icon))
 }
 
 /// a `file://` uri, an absolute path or a theme icon name
 fn icon(text: &str) -> Option<NotificationImage> {
-  if let Some(path) = text.strip_prefix("file://") {
-    let path = path.strip_prefix("localhost").unwrap_or(path);
-    return Some(NotificationImage::Path(PathBuf::from(OsString::from_vec(
-      percent_decode(path),
-    ))));
+  if let Some(path) = corona_utils::uri::file_uri_to_path(text) {
+    return image_file_ok(path);
   }
   match text {
     "" => None,
-    path if path.starts_with('/') => Some(NotificationImage::Path(path.into())),
+    path if path.starts_with('/') => image_file_ok(path.into()),
     name => Some(NotificationImage::Name(name.into())),
   }
 }
+
+/// image files beyond this are ignored, the loader reads them whole
+const MAX_IMAGE_BYTES: u64 = 8 << 20;
+
+/// only plain files of sane size, devices and fifos would hang or exhaust the loader
+fn image_file_ok(path: PathBuf) -> Option<NotificationImage> {
+  let meta = std::fs::metadata(&path).ok()?;
+  if !meta.is_file() || meta.len() > MAX_IMAGE_BYTES {
+    return None;
+  }
+  // a tiny file can declare huge dimensions and decode to gigabytes, svg and unknown formats skip this
+  let reader = image::ImageReader::open(&path)
+    .ok()?
+    .with_guessed_format()
+    .ok()?;
+  if reader.format().is_some() {
+    let (w, h) = reader.into_dimensions().ok()?;
+    if w as usize > MAX_SIDE || h as usize > MAX_SIDE {
+      return None;
+    }
+  }
+  Some(NotificationImage::Path(path))
+}
+
+/// pictures beyond this are ignored, they would only fill the cache
+const MAX_SIDE: usize = 1024;
 
 fn rgba((width, height, rowstride, _, bits, channels, data): ImageData) -> Result<RgbaImage> {
   ensure!(bits == 8, "{bits} bits per sample");
@@ -105,7 +143,11 @@ fn rgba((width, height, rowstride, _, bits, channels, data): ImageData) -> Resul
     usize::try_from(rowstride)?,
     channels as usize,
   );
-  ensure!(w > 0 && h > 0 && stride >= w * channels, "bad image size");
+  ensure!(
+    w > 0 && h > 0 && w <= MAX_SIDE && h <= MAX_SIDE,
+    "bad image size"
+  );
+  ensure!(stride >= w * channels, "bad image size");
   // the last row may be cut down to its pixels
   let needed = stride * (h - 1) + w * channels;
   ensure!(
@@ -123,17 +165,75 @@ fn rgba((width, height, rowstride, _, bits, channels, data): ImageData) -> Resul
   RgbaImage::from_raw(width as u32, height as u32, pixels).context("image buffer")
 }
 
+/// stored pictures are shrunk to this, the card draws them far smaller
+const MAX_STORED_SIDE: u32 = 128;
+
 /// saved once per distinct picture, apps resend the same avatar a lot
 fn image_file(image: &RgbaImage) -> Result<PathBuf> {
   let mut hasher = DefaultHasher::new();
   image.dimensions().hash(&mut hasher);
   image.as_raw().hash(&mut hasher);
   let path = cache_dir().join(format!("{:016x}.png", hasher.finish()));
-  if !path.exists() {
+  if path.exists() {
+    // keeps a picture in use out of `evict_old`
+    let _ = File::options()
+      .write(true)
+      .open(&path)
+      .and_then(|f| f.set_modified(SystemTime::now()));
+  } else {
     std::fs::create_dir_all(cache_dir())?;
-    image.save(&path)?;
+    // a concurrent call must never see a half-written picture
+    static TMP: AtomicU32 = AtomicU32::new(0);
+    let tmp = path.with_extension(format!(
+      "{}.{}.tmp",
+      std::process::id(),
+      TMP.fetch_add(1, Ordering::Relaxed)
+    ));
+    let (w, h) = image.dimensions();
+    let saved = if w.max(h) > MAX_STORED_SIDE {
+      // keeps the aspect ratio
+      let scale = MAX_STORED_SIDE as f32 / w.max(h) as f32;
+      let (w, h) = (
+        ((w as f32 * scale) as u32).max(1),
+        ((h as f32 * scale) as u32).max(1),
+      );
+      image::imageops::thumbnail(image, w, h).save_with_format(&tmp, image::ImageFormat::Png)
+    } else {
+      image.save_with_format(&tmp, image::ImageFormat::Png)
+    };
+    saved.inspect_err(|_| {
+      let _ = std::fs::remove_file(&tmp);
+    })?;
+    std::fs::rename(&tmp, &path)?;
+    evict_old();
   }
   Ok(path)
+}
+
+/// the cache lives in RAM, so only the newest pictures are kept. orphans of replaced or dismissed
+/// notifications count too, so the cap is a multiple of the history size, or live entries
+/// would point at deleted files
+const MAX_CACHED: usize = 4 * crate::state::MAX_NOTIFICATIONS;
+
+fn evict_old() {
+  let Ok(dir) = std::fs::read_dir(cache_dir()) else {
+    return;
+  };
+  let mut files: Vec<_> = dir
+    .flatten()
+    .filter(|e| e.path().extension().is_some_and(|ext| ext == "png"))
+    .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+    .collect();
+  files.sort();
+  let extra = files.len().saturating_sub(MAX_CACHED);
+  for (_, path) in files.drain(..extra) {
+    let _ = std::fs::remove_file(path);
+  }
+}
+
+/// the saved pictures of an earlier run
+pub(crate) fn clear_cache() {
+  let _ = std::fs::remove_dir_all(cache_dir());
 }
 
 fn cache_dir() -> PathBuf {
@@ -141,30 +241,6 @@ fn cache_dir() -> PathBuf {
     .unwrap_or_else(std::env::temp_dir)
     .join("corona")
     .join("notifications")
-}
-
-/// `%20` and friends as their bytes; a stray `%` stays as it is
-fn percent_decode(text: &str) -> Vec<u8> {
-  let bytes = text.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut i = 0;
-  while i < bytes.len() {
-    let hex = bytes
-      .get(i + 1..i + 3)
-      .and_then(|h| std::str::from_utf8(h).ok())
-      .and_then(|h| u8::from_str_radix(h, 16).ok());
-    match (bytes[i], hex) {
-      (b'%', Some(byte)) => {
-        out.push(byte);
-        i += 3;
-      }
-      (byte, _) => {
-        out.push(byte);
-        i += 1;
-      }
-    }
-  }
-  out
 }
 
 #[interface(name = "org.freedesktop.Notifications")]
@@ -182,7 +258,7 @@ impl Server {
   }
 
   #[allow(clippy::too_many_arguments)]
-  fn notify(
+  async fn notify(
     &self,
     app_name: String,
     replaces_id: u32,
@@ -204,18 +280,31 @@ impl Server {
       Some(2) => Urgency::Critical,
       _ => Urgency::Normal,
     };
+    // decoding and saving a picture is slow, off the connection's executor; any
+    // other case stays inline so notifications reach the channel in arrival order
+    let raw = ["image-data", "image_data", "icon_data"]
+      .iter()
+      .any(|key| hints.contains_key(*key));
+    let image = if raw {
+      let (hints, app_icon) = (hints.clone(), app_icon.clone());
+      smol::unblock(move || image(&hints, &app_icon)).await
+    } else {
+      image(&hints, &app_icon)
+    };
     let notification = Notification {
       id,
-      app_name,
-      image: image(&hints, &app_icon),
-      app_icon,
-      summary,
-      body,
+      app_name: truncate(app_name, MAX_SHORT),
+      image,
+      app_icon: truncate(app_icon, MAX_SHORT),
+      summary: truncate(summary, MAX_TEXT),
+      body: truncate(body, MAX_TEXT),
       actions: state::actions(actions),
       urgency,
-      desktop_entry: hint(&hints, "desktop-entry"),
-      reply_placeholder: hint(&hints, "x-kde-reply-placeholder-text"),
+      desktop_entry: hint(&hints, "desktop-entry").map(|s| truncate(s, MAX_SHORT)),
+      reply_placeholder: hint(&hints, "x-kde-reply-placeholder-text")
+        .map(|s| truncate(s, MAX_SHORT)),
       resident: hint(&hints, "resident").unwrap_or(false),
+      suppress_sound: hint(&hints, "suppress-sound").unwrap_or(false),
       expire_timeout,
       time: SystemTime::now(),
       read: false,
@@ -277,6 +366,25 @@ mod tests {
     )
   }
 
+  #[test]
+  fn image_file_dimensions_are_capped() {
+    let dir = std::env::temp_dir().join(format!("corona-img-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = |name: &str, side: u32| {
+      let path = dir.join(name);
+      RgbaImage::new(side, 1)
+        .save_with_format(&path, image::ImageFormat::Png)
+        .unwrap();
+      path
+    };
+    assert!(image_file_ok(png("ok.png", 16)).is_some());
+    assert!(image_file_ok(png("big.png", MAX_SIDE as u32 + 1)).is_none());
+    let svg = dir.join("a.svg");
+    std::fs::write(&svg, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+    assert!(image_file_ok(svg).is_some());
+    std::fs::remove_dir_all(dir).ok();
+  }
+
   fn hints(pairs: Vec<(&str, Value<'_>)>) -> HashMap<String, OwnedValue> {
     pairs
       .into_iter()
@@ -285,7 +393,7 @@ mod tests {
   }
 
   fn notify(server: &Server, replaces_id: u32, hints: HashMap<String, OwnedValue>) -> u32 {
-    server.notify(
+    smol::block_on(server.notify(
       "app".into(),
       replaces_id,
       "icon".into(),
@@ -294,7 +402,7 @@ mod tests {
       vec!["default".into(), "Open".into()],
       hints,
       -1,
-    )
+    ))
   }
 
   fn received(rx: &flume::Receiver<Event>) -> Notification {
@@ -443,7 +551,7 @@ mod tests {
   fn expire_timeout_is_stored() {
     let (server, rx) = server(1);
     for timeout in [-1, 0, 1000, i32::MAX, i32::MIN] {
-      let id = server.notify(
+      let id = smol::block_on(server.notify(
         "app".into(),
         0,
         "".into(),
@@ -452,7 +560,7 @@ mod tests {
         vec![],
         HashMap::new(),
         timeout,
-      );
+      ));
       assert!(id > 0);
       let n = received(&rx);
       assert_eq!((n.id, n.expire_timeout), (id, timeout));
@@ -502,15 +610,17 @@ mod tests {
         &[1, 2, 3, 4]
       );
     }
-    notify(
-      &server,
-      0,
-      hints(vec![("image-path", "file:///a%20b.png".into())]),
-    );
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("a b.png");
+    RgbaImage::new(1, 1).save(&file).unwrap();
+    let uri = format!("file://{}", file.to_str().unwrap().replace(' ', "%20"));
+    notify(&server, 0, hints(vec![("image-path", uri.clone().into())]));
     assert_eq!(
       received(&rx).image,
-      Some(NotificationImage::Path("/a b.png".into()))
+      Some(NotificationImage::Path(file.clone()))
     );
+    notify(&server, 0, hints(vec![("image_path", uri.into())]));
+    assert_eq!(received(&rx).image, Some(NotificationImage::Path(file)));
     notify(
       &server,
       0,
@@ -534,9 +644,15 @@ mod tests {
       Some(NotificationImage::Name("icon".into()))
     );
     assert_eq!(icon(""), None);
+    // devices, directories and missing files are not loaded
+    assert_eq!(icon("/dev/null"), None);
+    assert_eq!(icon("/tmp"), None);
+    assert_eq!(icon("/nonexistent/a.svg"), None);
+    let svg = dir.path().join("a.svg");
+    std::fs::write(&svg, b"x").unwrap();
     assert_eq!(
-      icon("/usr/a.svg"),
-      Some(NotificationImage::Path("/usr/a.svg".into()))
+      icon(svg.to_str().unwrap()),
+      Some(NotificationImage::Path(svg))
     );
   }
 
@@ -554,6 +670,24 @@ mod tests {
     assert!(rgba((0, 1, 4, true, 8, 4, vec![])).is_err());
     assert!(rgba((-1, 1, 4, true, 8, 4, vec![0; 4])).is_err());
     assert!(rgba((1, 1, 4, true, 8, 2, vec![0; 4])).is_err());
+  }
+
+  #[test]
+  fn long_text_is_cut() {
+    let (server, rx) = server(1);
+    let long = "é".repeat(MAX_TEXT);
+    smol::block_on(server.notify(
+      "app".into(),
+      0,
+      "".into(),
+      long.clone(),
+      long,
+      vec![],
+      HashMap::new(),
+      -1,
+    ));
+    let n = received(&rx);
+    assert!(n.summary.len() <= MAX_TEXT && n.body.len() <= MAX_TEXT);
   }
 
   #[test]

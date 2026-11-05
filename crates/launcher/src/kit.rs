@@ -7,6 +7,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Result, anyhow};
+use clap::ValueEnum;
+use corona_ipc::Switch;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
@@ -187,11 +189,10 @@ pub fn tag(on: bool) -> Accessory {
 
 /// The state an `on`, `off` or `toggle` argument asks for, from `current`
 pub fn switch_target(args: &Args, current: bool) -> bool {
-  match args.text(0) {
-    Some("on") => true,
-    Some("off") => false,
-    _ => !current,
-  }
+  (args.text(0))
+    .and_then(|s| Switch::from_str(s, false).ok())
+    .and_then(|switch| switch.target(current))
+    .unwrap_or(!current)
 }
 
 pub fn switch_arg() -> ArgSpec {
@@ -455,6 +456,41 @@ pub fn opener(
         t!("app.launcher.open"),
         move |_, _, cx| Ok(Outcome::Push(view(cx))),
       )]
+    },
+  )
+}
+
+/// A list to pick from, or with the name typed after it (`theme nord`) the pick itself
+pub fn pick_or_list(
+  id: &'static str,
+  title: SharedString,
+  icon: Icon,
+  keywords: &'static [&'static str],
+  names: fn(&App) -> Vec<String>,
+  apply: fn(&str, &mut App) -> Result<()>,
+  list: fn() -> crate::View,
+) -> Rc<dyn Command> {
+  let label = title.clone();
+  simple(
+    id,
+    move |cx| Meta {
+      title: title.clone(),
+      icon: icon.clone(),
+      keywords: keywords.iter().map(|k| SharedString::from(*k)).collect(),
+      args: vec![ArgSpec::choice(t!("app.launcher.system.name"), names(cx)).optional()],
+      ..Default::default()
+    },
+    move |_| {
+      let label = label.clone();
+      vec![Action::sync("open", label, move |args, _, cx| {
+        match args.text(0) {
+          Some(name) => {
+            apply(name, cx)?;
+            Ok(Outcome::Close(Some(Hud::new(name.to_string()))))
+          }
+          None => Ok(Outcome::Push(list())),
+        }
+      })]
     },
   )
 }

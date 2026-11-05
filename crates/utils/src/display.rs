@@ -13,9 +13,32 @@ pub fn display_id_for(monitor: &str, cx: &App) -> Option<DisplayId> {
     .map(|d| d.id())
 }
 
+/// Device-controlled text must not render as markdown: backslash-escapes the characters
+/// markdown would interpret and turns line breaks into spaces
+pub fn markdown_escape(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  for c in text.chars() {
+    match c {
+      '\n' | '\r' => out.push(' '),
+      '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' | '<' | '>' | '!' | '|' | '#'
+      | '~' => {
+        out.push('\\');
+        out.push(c)
+      }
+      c => out.push(c),
+    }
+  }
+  out
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn markdown_is_escaped() {
+    assert_eq!(markdown_escape("~~a~~\n{b}"), "\\~\\~a\\~\\~ \\{b\\}");
+  }
 
   #[test]
   fn uuids_are_stable_per_name() {

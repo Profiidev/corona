@@ -8,7 +8,12 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = ["dep:tempfile", "gpui-kit/test-support"]
+
 [dependencies]
+clap.workspace = true
+tempfile = { workspace = true, optional = true }
 corona_config.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
@@ -18,9 +23,11 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 uuid.workspace = true
 tracing.workspace = true
+rust-i18n.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+clap_complete.workspace = true
 
 [dev-dependencies]
-gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
+gpui-kit = { workspace = true, features = ["test-support"] }

@@ -108,9 +108,13 @@ impl Worker {
         let cloned = repo.exists();
         self.ensure_repo(source)?;
         if fetch && cloned && self.fetch_due(&source.name) {
-          git::fetch(&repo)?;
+          // offline: browse the clone as it is, and retry next time
+          match git::fetch(&repo) {
+            Ok(()) => self.fetched(&source.name),
+            Err(e) => tracing::warn!("fetching plugin source `{}`: {e:#}", source.name),
+          }
         }
-        let (revision, entries) = catalog::read_git(&source.name, &repo, false)?;
+        let (revision, entries) = catalog::read_git(&source.name, &repo)?;
         Ok(SourceCatalog {
           kind: SourceKind::Git,
           revision: Some(revision),
@@ -123,42 +127,61 @@ impl Worker {
     }
   }
 
+  /// What a Path or Dev `source` offers according to its directory, empty when
+  /// there is none
+  pub fn stored_catalog(&self, source: &SourceConfig) -> Vec<CatalogEntry> {
+    dir_catalog(source.kind, &expand_user(&source.location)).entries
+  }
+
   /// The local directory's plugins
   pub fn local_catalog(&self) -> SourceCatalog {
     dir_catalog(SourceKind::Path, &self.paths.local)
   }
 
   fn fetch_due(&self, source: &str) -> bool {
-    let mut last = self
+    let last = self
       .last_fetch
       .lock()
       .unwrap_or_else(PoisonError::into_inner);
-    let due = last
+    last
       .get(source)
-      .is_none_or(|at| at.elapsed() >= BROWSE_FETCH_INTERVAL);
-    if due {
-      last.insert(source.to_string(), Instant::now());
-    }
-    due
+      .is_none_or(|at| at.elapsed() >= BROWSE_FETCH_INTERVAL)
+  }
+
+  /// Records a successful fetch of `source`; a failed one is tried again on the next read
+  fn fetched(&self, source: &str) {
+    self
+      .last_fetch
+      .lock()
+      .unwrap_or_else(PoisonError::into_inner)
+      .insert(source.to_string(), Instant::now());
   }
 
   /// Makes plugin `id` ready to run from the source that offers it, without
-  /// enabling it: dev sources first, then the others latest first, then the
-  /// local directory. Returns the source's name.
+  /// enabling it: dev sources first, then the local directory, then the others
+  /// latest first. Returns the source's name.
   pub fn install(&self, sources: &[SourceConfig], id: &str) -> Result<String> {
     let enabled = || sources.iter().filter(|s| s.enabled);
     let dev = enabled().filter(|s| s.kind == SourceKind::Dev);
     let others = enabled().filter(|s| s.kind != SourceKind::Dev).rev();
     let mut errors = Vec::new();
-    for source in dev.chain(others) {
+    let local = || self.local_catalog().entries.iter().any(|e| e.id == id);
+    for source in dev {
       match self.install_from(source, id) {
         Ok(true) => return Ok(source.name.clone()),
         Ok(false) => {}
         Err(e) => errors.push(format!("{}: {e:#}", source.name)),
       }
     }
-    if self.local_catalog().entries.iter().any(|e| e.id == id) {
+    if local() {
       return Ok(LOCAL_SOURCE.to_string());
+    }
+    for source in others {
+      match self.install_from(source, id) {
+        Ok(true) => return Ok(source.name.clone()),
+        Ok(false) => {}
+        Err(e) => errors.push(format!("{}: {e:#}", source.name)),
+      }
     }
     let mut message = format!("no plugin `{id}` found in any source");
     if !errors.is_empty() {
@@ -208,29 +231,27 @@ impl Worker {
     self.locks.with(&source.name, || {
       let repo = self.paths.repo(&source.name);
       self.ensure_repo(source)?;
-      git::fetch(&repo)?;
-      self
-        .last_fetch
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(source.name.clone(), Instant::now());
+      if let Err(e) = git::fetch(&repo) {
+        // the clone has what the enabled plugins need, so export them offline too
+        if let Err(heal) = self.heal_locked(source, enabled) {
+          tracing::warn!("healing plugin source `{}`: {heal:#}", source.name);
+        }
+        return Err(e);
+      }
+      self.fetched(&source.name);
       let new = git::remote_head(&repo)?;
       let changed = new != git::head(&repo)?;
       let entries = catalog::parse_catalog(
         &source.name,
-        &String::from_utf8(git::show_file(
-          &repo,
-          &new,
-          catalog::CATALOG_FILENAME,
-          false,
-        )?)?,
+        &String::from_utf8(git::show_file(&repo, &new, catalog::CATALOG_FILENAME)?)?,
       )?;
       let mut report = UpdateReport {
         changed,
         ..Default::default()
       };
       self.export_enabled(source, &new, &entries, enabled, !changed, &mut report);
-      if changed {
+      // a failed export keeps HEAD, so the next update sees the change again
+      if changed && report.failed.is_empty() {
         git::set_head(&repo, &new)?;
         // cached READMEs and icons are of the old revision
         remove_tree_under(&self.paths.state, &self.paths.cache(&source.name)).ok();
@@ -246,25 +267,38 @@ impl Worker {
 
   /// Exports the enabled plugins of a git source that are missing, so a wiped
   /// state directory or a restored config heals at startup. Reads the applied
-  /// revision; the source is cloned when it is not.
+  /// revision; the source is cloned when it is not. A copy that exists stays,
+  /// it may be of a newer fetched revision.
   pub fn heal(&self, source: &SourceConfig, enabled: &[String]) -> Result<UpdateReport> {
-    self.locks.with(&source.name, || {
+    self
+      .locks
+      .with(&source.name, || self.heal_locked(source, enabled))
+  }
+
+  /// [`heal`](Self::heal) with the source's lock held
+  fn heal_locked(&self, source: &SourceConfig, enabled: &[String]) -> Result<UpdateReport> {
+    {
       let repo = self.paths.repo(&source.name);
       self.ensure_repo(source)?;
       let head = git::head(&repo)?;
       let entries = catalog::parse_catalog(
         &source.name,
-        &String::from_utf8(git::show_file(
-          &repo,
-          &head,
-          catalog::CATALOG_FILENAME,
-          false,
-        )?)?,
+        &String::from_utf8(git::show_file(&repo, &head, catalog::CATALOG_FILENAME)?)?,
       )?;
+      let root = self.paths.materialized(&source.name);
+      let missing: Vec<_> = entries
+        .into_iter()
+        .filter(|e| {
+          !root
+            .join(e.subdir())
+            .join(PLUGIN_MANIFEST_FILENAME)
+            .is_file()
+        })
+        .collect();
       let mut report = UpdateReport::default();
-      self.export_enabled(source, &head, &entries, enabled, true, &mut report);
+      self.export_enabled(source, &head, &missing, enabled, false, &mut report);
       Ok(report)
-    })
+    }
   }
 
   fn export_enabled(
@@ -333,7 +367,8 @@ impl Worker {
       .find(|path| fs::symlink_metadata(path).is_ok_and(|m| m.is_file()))
   }
 
-  /// Fetches a file of a plugin at the applied revision into the cache
+  /// Fetches a file of a plugin into the cache at the newest fetched revision, as the
+  /// catalog is read, or at the applied one where it is not there
   pub fn fetch_asset(&self, source: &SourceConfig, subdir: &str, file: &str) -> Result<PathBuf> {
     if source.kind != SourceKind::Git || !is_relative_file(file) {
       bail!("`{file}` cannot be fetched from `{}`", source.name);
@@ -344,12 +379,13 @@ impl Worker {
       if !path_is_inside(&cache, &target) {
         bail!("`{file}` is outside the cache");
       }
-      let bytes = git::show_file(
-        &self.paths.repo(&source.name),
-        "HEAD",
-        &format!("{subdir}/{file}"),
-        false,
-      )?;
+      let repo = self.paths.repo(&source.name);
+      let path = format!("{subdir}/{file}");
+      let newest = git::remote_head(&repo).and_then(|rev| git::show_file(&repo, &rev, &path));
+      let bytes = match newest {
+        Ok(bytes) => bytes,
+        Err(_) => git::show_file(&repo, "HEAD", &path)?,
+      };
       fs::create_dir_all(target.parent().context("no parent")?)?;
       fs::write(&target, bytes)?;
       Ok(target)
@@ -358,7 +394,7 @@ impl Worker {
 }
 
 /// A directory source's plugins, or a git source's exported ones
-fn dir_catalog(kind: SourceKind, dir: &std::path::Path) -> SourceCatalog {
+pub(super) fn dir_catalog(kind: SourceKind, dir: &std::path::Path) -> SourceCatalog {
   SourceCatalog {
     kind,
     revision: None,
@@ -382,7 +418,7 @@ mod tests {
   use crate::plugin::git::fixture::Remote;
 
   fn manifest(id: &str, version: &str) -> String {
-    format!("id = \"{id}\"\nname = \"N\"\nversion = \"{version}\"\n")
+    format!("id = \"{id}\"\nname = \"N\"\napi = 2\nversion = \"{version}\"\n")
   }
 
   fn row(id: &str, version: &str, path: &str) -> String {
@@ -485,6 +521,17 @@ mod tests {
   }
 
   #[test]
+  fn install_prefers_local_over_other_sources() {
+    let Setup {
+      worker, base, _tmp, ..
+    } = setup();
+    plugin(&base.join("dir/x"), "com.x", "1");
+    plugin(&worker.paths.local.join("x"), "com.x", "2");
+    let sources = [dir_source("d", SourceKind::Path, &base.join("dir"))];
+    assert_eq!(worker.install(&sources, "com.x").unwrap(), LOCAL_SOURCE);
+  }
+
+  #[test]
   fn browsing_fetches_at_most_every_interval() {
     let Setup {
       worker,
@@ -509,6 +556,22 @@ mod tests {
     worker.last_fetch.lock().unwrap().clear();
     let catalog = worker.read_catalog(&source, true).unwrap();
     assert_eq!(catalog.entries[0].id, "com.newer");
+  }
+
+  #[test]
+  fn browses_the_clone_when_the_fetch_fails() {
+    let Setup {
+      worker,
+      remote,
+      _tmp,
+      ..
+    } = setup();
+    let source = git_source("s", &remote);
+    worker.read_catalog(&source, true).unwrap();
+    worker.last_fetch.lock().unwrap().clear();
+    std::fs::remove_dir_all(&remote.path).unwrap();
+    let catalog = worker.read_catalog(&source, true).unwrap();
+    assert_eq!(catalog.entries.len(), 2);
   }
 
   #[test]
@@ -627,17 +690,16 @@ mod tests {
       Some(new_head.as_str())
     );
     assert_ne!(old_head, new_head);
-    // applied even though one plugin failed
-    assert_eq!(git::head(&repo).unwrap(), new_head);
+    // not applied while one plugin failed, so the next update exports again
+    assert_eq!(git::head(&repo).unwrap(), old_head);
     assert_eq!(version(&worker.paths.materialized("git").join("a")), "2");
     // the broken one keeps its old copy
     assert_eq!(version(&worker.paths.materialized("git").join("b")), "1");
-    // the cache was of the old revision
-    assert!(!worker.paths.cache("git").exists());
+    assert!(worker.paths.cache("git").exists());
 
-    // the revision is applied, but the copy that differs is tried again
+    // the revision is still pending: everything is exported again
     let report = worker.update(&git, &enabled).unwrap();
-    assert!(!report.changed && report.exported.is_empty());
+    assert!(report.changed);
     assert_eq!(report.failed[0].0, "com.b");
 
     // fixed upstream: the tip moved, so everything is exported again
@@ -668,6 +730,18 @@ mod tests {
     assert!(!worker.paths.materialized("git").join("b").exists());
     let report = worker.heal(&git, &["com.a".to_string()]).unwrap();
     assert!(report.exported.is_empty());
+
+    // installed at a newer fetched revision than the applied one: heal keeps it
+    remote
+      .write("catalog.toml", &row("com.a", "2", "a"))
+      .write("a/plugin.toml", &manifest("com.a", "2"));
+    remote.commit();
+    worker.read_catalog(&git, true).unwrap();
+    worker.install(std::slice::from_ref(&git), "com.a").unwrap();
+    assert_eq!(version(&worker.paths.materialized("git").join("a")), "2");
+    let report = worker.heal(&git, &["com.a".to_string()]).unwrap();
+    assert!(report.exported.is_empty());
+    assert_eq!(version(&worker.paths.materialized("git").join("a")), "2");
   }
 
   #[test]

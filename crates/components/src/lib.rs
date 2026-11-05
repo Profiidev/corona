@@ -1,7 +1,14 @@
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
+
 pub mod animation;
 pub mod assets;
 pub mod async_listener;
 pub mod components;
+pub mod filter;
+pub mod format;
+pub mod i18n;
+pub mod settings_fields;
+pub mod time;
 
 #[cfg(test)]
 pub(crate) mod test_view {

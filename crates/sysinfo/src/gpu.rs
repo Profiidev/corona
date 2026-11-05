@@ -1,8 +1,4 @@
-use std::{
-  collections::HashMap,
-  fs,
-  path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::Path};
 
 use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
 
@@ -40,7 +36,10 @@ pub(crate) fn list(pci_dir: &Path, nvml: Option<&Nvml>) -> Vec<Gpu> {
         .ok()
         .and_then(|driver| Some(driver.file_name()?.to_str()?.to_string()));
       let model = match vendor {
-        GpuVendor::Nvidia => nvml.and_then(|nvml| nvidia_device(nvml, &pci)?.name().ok()),
+        // asking NVML about a suspended GPU would wake it
+        GpuVendor::Nvidia if !suspended(&path) => {
+          nvml.and_then(|nvml| nvml.device_by_pci_bus_id(pci.as_str()).ok()?.name().ok())
+        }
         // amdgpu names some cards, most only have the generic id
         GpuVendor::Amd => read(path.join("product_name")).filter(|name| !name.is_empty()),
         _ => None,
@@ -55,7 +54,7 @@ pub(crate) fn list(pci_dir: &Path, nvml: Option<&Nvml>) -> Vec<Gpu> {
         .into()
       });
       let measurable = match vendor {
-        GpuVendor::Nvidia => nvml.is_some_and(|nvml| nvidia_device(nvml, &pci).is_some()),
+        GpuVendor::Nvidia => nvml.is_some(),
         GpuVendor::Amd => path.join("gpu_busy_percent").exists(),
         GpuVendor::Intel => matches!(driver.as_deref(), Some("xe" | "i915")),
         GpuVendor::Other => false,
@@ -73,29 +72,8 @@ pub(crate) fn list(pci_dir: &Path, nvml: Option<&Nvml>) -> Vec<Gpu> {
   gpus
 }
 
-/// NVML spells the domain with 8 digits, sysfs with 4: compare from the bus on
-fn same_pci(nvml: &str, sysfs: &str) -> bool {
-  let tail = |address: &str| {
-    address.rsplit_once(':').map(|(head, function)| {
-      let bus = head.rsplit_once(':').map_or(head, |(_, bus)| bus);
-      format!("{bus}:{function}").to_lowercase()
-    })
-  };
-  tail(nvml).is_some() && tail(nvml) == tail(sysfs)
-}
-
-fn nvidia_device<'n>(nvml: &'n Nvml, pci: &str) -> Option<nvml_wrapper::Device<'n>> {
-  (0..nvml.device_count().ok()?)
-    .filter_map(|index| nvml.device_by_index(index).ok())
-    .find(|device| {
-      device
-        .pci_info()
-        .is_ok_and(|info| same_pci(&info.bus_id, pci))
-    })
-}
-
 /// asking a runtime suspended GPU for anything wakes it up, and keeps it awake while sampled
-fn suspended(device: &Path) -> bool {
+pub(crate) fn suspended(device: &Path) -> bool {
   read(device.join("power/runtime_status")).is_some_and(|status| status == "suspended")
 }
 
@@ -105,11 +83,18 @@ pub(crate) fn engines(proc_dir: &Path, now: u64) -> Engines {
     .into_iter()
     .flatten()
     .flatten()
-    .filter_map(|process| fs::read_dir(process.path().join("fdinfo")).ok())
-    .flatten()
-    .flatten();
+    .filter_map(|process| {
+      let path = process.path();
+      Some((fs::read_dir(path.join("fd")).ok()?, path))
+    })
+    .flat_map(|(fds, path)| {
+      fds
+        .flatten()
+        .filter(|fd| fs::read_link(fd.path()).is_ok_and(|link| link.starts_with("/dev/dri")))
+        .map(move |fd| path.join("fdinfo").join(fd.file_name()))
+    });
   for fdinfo in fdinfos {
-    let Some(text) = read(fdinfo.path()) else {
+    let Some(text) = read(fdinfo) else {
       continue;
     };
     let fields: HashMap<&str, &str> = text
@@ -142,7 +127,7 @@ pub(crate) fn engines(proc_dir: &Path, now: u64) -> Engines {
       let capacity = number(&format!("drm-engine-capacity-{engine}")).unwrap_or(1);
       engines.insert(
         (pdev.to_string(), client.to_string(), engine.to_string()),
-        (busy, total * capacity),
+        (busy, total.saturating_mul(capacity)),
       );
     }
   }
@@ -185,7 +170,7 @@ pub(crate) fn sample(
   }
   match gpu.vendor {
     GpuVendor::Nvidia => {
-      if let Some(device) = nvml.and_then(|nvml| nvidia_device(nvml, &gpu.pci)) {
+      if let Some(device) = nvml.and_then(|nvml| nvml.device_by_pci_bus_id(gpu.pci.as_str()).ok()) {
         sample.usage = device.utilization_rates().ok().map(|u| u.gpu as f32);
         sample.temperature = device
           .temperature(TemperatureSensor::Gpu)
@@ -211,7 +196,7 @@ pub(crate) fn sample(
 }
 
 /// `temp1_input` of the device's hwmon, in millidegrees
-fn hwmon_temperature(hwmon: &PathBuf) -> Option<f32> {
+fn hwmon_temperature(hwmon: &Path) -> Option<f32> {
   fs::read_dir(hwmon)
     .ok()?
     .flatten()
@@ -224,15 +209,9 @@ mod tests {
   use super::*;
 
   #[test]
-  fn pci_addresses() {
-    assert!(same_pci("00000000:01:00.0", "0000:01:00.0"));
-    assert!(!same_pci("00000000:02:00.0", "0000:01:00.0"));
-  }
-
-  #[test]
   fn amd() {
-    let root = std::env::temp_dir().join(format!("corona-gpu-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
     let device = root.join("0000:03:00.0");
     fs::create_dir_all(device.join("hwmon/hwmon7")).unwrap();
     for (file, value) in [
@@ -249,27 +228,33 @@ mod tests {
     fs::create_dir_all(root.join("0000:00:14.0")).unwrap();
     fs::write(root.join("0000:00:14.0/class"), "0x0c0330").unwrap();
 
-    let gpus = list(&root, None);
+    let gpus = list(root, None);
     assert_eq!(gpus.len(), 1);
     assert_eq!(
       (gpus[0].name.as_str(), gpus[0].vendor),
       ("AMD GPU", GpuVendor::Amd)
     );
     assert!(gpus[0].measurable);
-    let sample = sample(&root, &gpus[0], None, (&Engines::new(), &Engines::new()));
+    let sample = sample(root, &gpus[0], None, (&Engines::new(), &Engines::new()));
     assert_eq!(sample.usage, Some(37.));
     assert_eq!(sample.temperature, Some(52.));
     assert_eq!(sample.vram_total, Some(8589934592));
-    fs::remove_dir_all(root).ok();
   }
 
   #[test]
   fn intel() {
-    let root = std::env::temp_dir().join(format!("corona-drm-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
     let fdinfo = |pid: &str, fd: &str, text: &str| {
       fs::create_dir_all(root.join(pid).join("fdinfo")).unwrap();
       fs::write(root.join(pid).join("fdinfo").join(fd), text).unwrap();
+      let target = if text.contains("drm-") {
+        "/dev/dri/renderD128"
+      } else {
+        "/dev/null"
+      };
+      fs::create_dir_all(root.join(pid).join("fd")).unwrap();
+      std::os::unix::fs::symlink(target, root.join(pid).join("fd").join(fd)).ok();
     };
     let xe = |cycles: u64, total: u64| {
       format!(
@@ -289,16 +274,24 @@ mod tests {
     fdinfo("100", "63", &xe(1000, 10_000));
     fdinfo("100", "0", "pos:\t0\nflags:\t02\n");
     fdinfo("200", "5", &i915(0));
-    let previous = engines(&root, 1_000);
+    let previous = engines(root, 1_000);
 
     fdinfo("100", "62", &xe(3500, 20_000));
     fdinfo("100", "63", &xe(3500, 20_000));
     fdinfo("200", "5", &i915(1_500));
-    let current = engines(&root, 2_000);
+    let current = engines(root, 2_000);
     // rcs: 2500 of 10000 cycles, video: 1500 ns of 2 × 1000 ns
     assert_eq!(drm_usage("0000:00:02.0", &previous, &current), 75.);
     assert_eq!(drm_usage("0000:03:00.0", &previous, &current), 0.);
-    fs::remove_dir_all(root).ok();
+  }
+
+  /// open DRM fds of the given pids, for `engines`
+  fn drm_fds(root: &Path, fds: &[&str]) {
+    for fd in fds {
+      let path = root.join(fd.replace("fdinfo", "fd"));
+      fs::create_dir_all(path.parent().unwrap()).unwrap();
+      std::os::unix::fs::symlink("/dev/dri/card0", path).unwrap();
+    }
   }
 
   fn write(root: &Path, files: &[(&str, &str)]) {
@@ -329,19 +322,6 @@ mod tests {
         )
       })
       .collect()
-  }
-
-  #[test]
-  fn pci_address_edges() {
-    assert!(same_pci("00000000:01:00.0", "0000:01:00.0"));
-    assert!(same_pci("00000000:0A:00.1", "0000:0a:00.1"));
-    assert!(!same_pci("00000000:01:00.1", "0000:01:00.0"));
-    // only bus and function count, the domain does not
-    assert!(same_pci("00000001:01:00.0", "0000:01:00.0"));
-    assert!(same_pci("01:00.0", "0000:01:00.0"));
-    assert!(!same_pci("x", "x"));
-    assert!(!same_pci("", ""));
-    assert!(!same_pci("0000:01:00.0", "garbage"));
   }
 
   #[test]
@@ -546,6 +526,10 @@ mod tests {
         ("not-a-pid", ""),
       ],
     );
+    drm_fds(
+      root,
+      &["1/fdinfo/3", "2/fdinfo/3", "3/fdinfo/3", "4/fdinfo/3"],
+    );
     fs::create_dir_all(root.join("5/fdinfo/7")).unwrap();
     assert_eq!(engines(root, 100), engine(&[("B", "4", "render", 7, 300)]));
     assert!(engines(&root.join("missing"), 1).is_empty());
@@ -594,6 +578,7 @@ mod tests {
         "drm-pdev:\tB\ndrm-client-id:\t1\ndrm-engine-render:\t10 ns\ndrm-engine-capacity-render:\t5\n",
       )],
     );
+    drm_fds(root, &["1/fdinfo/3"]);
     // 100 ns now, capacity 5 -> total = 100 * 5 = 500
     assert_eq!(engines(root, 100), engine(&[("B", "1", "render", 10, 500)]));
   }

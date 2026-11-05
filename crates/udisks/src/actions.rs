@@ -295,11 +295,17 @@ impl Udisks {
 
   // Drive.Ata, NVMe.Controller: SMART, read only
 
+  /// Without `wake`, a drive in standby fails the call instead of spinning up
   pub fn ata_smart_update(
     &self,
     drive: &OwnedObjectPath,
+    wake: bool,
   ) -> impl Future<Output = Result<()>> + use<> {
-    call!(self, AtaProxy, drive; |p| p.smart_update(none()))
+    call!(self, AtaProxy, drive; |p| p.smart_update({
+      let mut options = none();
+      options.insert("nowakeup", Value::from(!wake));
+      options
+    }))
   }
 
   pub fn ata_smart_attributes(

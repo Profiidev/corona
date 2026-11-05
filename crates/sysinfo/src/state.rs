@@ -1,7 +1,4 @@
-use std::{
-  collections::VecDeque,
-  time::{Instant, SystemTime},
-};
+use std::{collections::VecDeque, time::SystemTime};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuVendor {
@@ -53,7 +50,6 @@ pub struct GpuSample {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sample {
-  pub time: Instant,
   pub cpu: f32,
   pub cpu_cores: Vec<f32>,
   pub cpu_frequency: u64,
@@ -126,7 +122,6 @@ pub(crate) mod tests {
 
   pub(crate) fn sample() -> Sample {
     Sample {
-      time: Instant::now(),
       cpu: 10.,
       cpu_cores: vec![10.],
       cpu_frequency: 1000,

@@ -1,0 +1,1248 @@
+use std::borrow::Cow;
+
+use corona_config::{
+  Config, ConfigProvider,
+  plugins::{Approval, AutoUpdate, OFFICIAL_SOURCE, SourceConfig, SourceKind},
+};
+use corona_js::ScriptRegistry;
+use corona_settings::{SettingsExt, settings_page};
+use gpui_kit::{
+  App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
+  SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
+  assets::IconName,
+  base::Disableable,
+  component::{
+    ActiveTheme, Icon, Sizable, WindowExt,
+    button::{Button, ButtonVariants},
+    dialog::DialogFooter,
+    input::{Input, InputEvent, InputState},
+    setting::{SettingField, SettingGroup, SettingItem, SettingPage},
+    spinner::Spinner,
+    switch::Switch,
+    tag::{Tag, TagVariant},
+    text::TextView,
+  },
+  div, img,
+  prelude::FluentBuilder,
+  px,
+};
+use rust_i18n::t;
+use serde_json::Value;
+
+use corona_components::settings_fields::{
+  Choice, choice, number, save, searchable, slider, switch, text,
+};
+
+use crate::{
+  PluginManager, PluginStatus, ScriptManager,
+  plugin::{
+    manifest::PluginManifest,
+    registry::{self, Change},
+    settings::{DynamicOptions, Setting, SettingKind, number as json_number},
+  },
+  secrets,
+};
+
+settings_page!(
+  /// The plugins page: sources, plugins, their approval and their settings
+  PluginSettings,
+  "plugins",
+  150,
+  |cx| page(cx)
+);
+
+/// Registers the plugins page, which lists what the sources offer as the window opens
+pub(crate) fn register(cx: &mut App) {
+  cx.settings_mut()
+    .register::<PluginSettings>()
+    .on_open(|cx| {
+      if cx.has_global::<PluginManager>() {
+        PluginManager::refresh_catalogs(cx);
+      }
+    });
+}
+
+/// Asks about plugin `id`, which waits for approval, in the settings window. False when that
+/// is not open.
+pub fn review_plugin(id: &str, cx: &mut App) -> bool {
+  corona_settings::window(cx).is_some_and(|handle| {
+    handle
+      .update(cx, |_, window, cx| review(id, window, cx))
+      .is_ok()
+  })
+}
+
+fn page(cx: &App) -> SettingPage {
+  let mut groups = vec![sources_group(cx), plugins_group(cx)];
+  if let Some(manager) = cx.try_global::<PluginManager>() {
+    let mut running: Vec<PluginManifest> = manager
+      .active()
+      .values()
+      .map(|found| found.manifest.clone())
+      .filter(|m| !m.settings.is_empty())
+      .collect();
+    running.sort_by(|a, b| a.name.cmp(&b.name));
+    groups.extend(running.iter().map(|m| settings_group(m, cx)));
+  }
+  SettingPage::new(t!("app.settings.plugins.title"))
+    .icon(Icon::new(IconName::LayoutDashboard))
+    .resettable(true)
+    .groups(groups)
+}
+
+fn sources_group(cx: &App) -> SettingGroup {
+  let mut items: Vec<SettingItem> = cx
+    .config()
+    .plugins
+    .source
+    .iter()
+    .map(|source| {
+      let name = source.name.clone();
+      SettingItem::render(move |_, _, cx| source_row(&name, cx))
+    })
+    .collect();
+  items.push(SettingItem::render(|_, window, cx| add_source(window, cx)));
+  items.push(
+    SettingItem::new(
+      t!("app.settings.plugins.auto_update.title"),
+      choice(
+        &[
+          (AutoUpdate::All, t!("app.settings.plugins.auto_update.all")),
+          (
+            AutoUpdate::Official,
+            t!("app.settings.plugins.auto_update.official"),
+          ),
+          (
+            AutoUpdate::None,
+            t!("app.settings.plugins.auto_update.none"),
+          ),
+        ],
+        |c| c.plugins.auto_update,
+        |c, v| c.plugins.auto_update = v,
+      ),
+    )
+    .description(t!("app.settings.plugins.auto_update.description").into_owned()),
+  );
+  SettingGroup::new()
+    .title(t!("app.settings.plugins.groups.sources"))
+    .items(items)
+}
+
+fn kind_label(kind: SourceKind) -> Cow<'static, str> {
+  match kind {
+    SourceKind::Git => t!("app.settings.plugins.kind.git"),
+    SourceKind::Path => t!("app.settings.plugins.kind.path"),
+    SourceKind::Dev => t!("app.settings.plugins.kind.dev"),
+  }
+}
+
+fn muted(text: impl Into<SharedString>, cx: &App) -> Div {
+  div()
+    .text_xs()
+    .text_color(cx.theme().muted_foreground)
+    .child(text.into())
+}
+
+/// The slider's f32 as the f64 it displays (`0.3`, not `0.30000001192`), within `[min, max]`
+fn slider_value(v: f32, min: f64, max: f64) -> f64 {
+  let v = format!("{v}")
+    .parse::<f64>()
+    .unwrap_or_else(|_| f64::from(v));
+  v.clamp(min, max)
+}
+
+fn error_text(error: Option<&str>, cx: &App) -> Option<Div> {
+  error.map(|e| {
+    div()
+      .text_xs()
+      .text_color(cx.theme().danger)
+      .child(e.to_string())
+  })
+}
+
+fn source_row(name: &str, cx: &App) -> Div {
+  let Some(source) = cx
+    .config()
+    .plugins
+    .source
+    .iter()
+    .find(|s| s.name == name)
+    .cloned()
+  else {
+    return div();
+  };
+  let manager = cx.try_global::<PluginManager>();
+  let busy = manager.is_some_and(|m| m.is_busy(name));
+  let error = manager
+    .and_then(|m| m.source_error(name))
+    .map(str::to_string);
+  let (toggle, update, remove) = (name.to_string(), name.to_string(), name.to_string());
+  div()
+    .flex()
+    .items_center()
+    .gap_2()
+    .child(
+      div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .child(
+          div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(div().text_sm().child(source.name.clone()))
+            .child(
+              Tag::new()
+                .small()
+                .with_variant(TagVariant::Secondary)
+                .child(kind_label(source.kind)),
+            ),
+        )
+        .child(muted(source.location.clone(), cx).truncate())
+        .children(error_text(error.as_deref(), cx)),
+    )
+    .when(busy, |d| d.child(Spinner::new()))
+    .when(source.kind == SourceKind::Git, |d| {
+      d.child(
+        Button::new(format!("source-update-{name}"))
+          .label(t!("app.settings.plugins.update"))
+          .icon(IconName::RotateCw)
+          .cursor_pointer()
+          .outline()
+          .disabled(busy || !source.enabled)
+          .on_click(move |_, _, cx| PluginManager::update_source(&update, cx)),
+      )
+    })
+    .child(
+      Switch::new(format!("source-enabled-{name}"))
+        .checked(source.enabled)
+        .on_click(move |checked: &bool, _, cx| {
+          PluginManager::set_source_enabled(&toggle, *checked, cx)
+        }),
+    )
+    .child(
+      Button::new(format!("source-remove-{name}"))
+        .icon(IconName::Delete)
+        .cursor_pointer()
+        .ghost()
+        .danger()
+        .disabled(name == OFFICIAL_SOURCE)
+        .on_click(move |_, _, cx| {
+          if let Err(e) = PluginManager::remove_source(&remove, cx) {
+            tracing::error!("removing plugin source `{remove}`: {e:#}");
+          }
+        }),
+    )
+}
+
+/// The kind picked for a new source
+struct NewKind(SourceKind);
+
+/// Why the last add failed
+struct AddError(Option<String>);
+
+fn add_source(window: &mut Window, cx: &mut App) -> Div {
+  let name = window.use_keyed_state("plugins-source-name", cx, |window, cx| {
+    InputState::new(window, cx).placeholder(t!("app.settings.plugins.add.name"))
+  });
+  let location = window.use_keyed_state("plugins-source-location", cx, |window, cx| {
+    InputState::new(window, cx).placeholder(t!("app.settings.plugins.add.location"))
+  });
+  let kind: Entity<NewKind> =
+    window.use_keyed_state("plugins-source-kind", cx, |_, _| NewKind(SourceKind::Git));
+  let error: Entity<AddError> =
+    window.use_keyed_state("plugins-source-error", cx, |_, _| AddError(None));
+  let shown = error.read(cx).0.clone();
+  let current = kind.read(cx).0;
+  let kinds = [SourceKind::Git, SourceKind::Path, SourceKind::Dev]
+    .into_iter()
+    .map(|k| Choice {
+      value: kind_name(k).to_string(),
+      label: kind_label(k).into_owned(),
+    })
+    .collect();
+  let pick = kind.clone();
+  let select = searchable(
+    "plugins-source-kind",
+    kinds,
+    Some(kind_name(current).to_string()),
+    t!("app.settings.plugins.add.kind"),
+    window,
+    cx,
+    move |value, cx| {
+      let picked = match value.as_str() {
+        "path" => SourceKind::Path,
+        "dev" => SourceKind::Dev,
+        _ => SourceKind::Git,
+      };
+      pick.update(cx, |kind, cx| {
+        kind.0 = picked;
+        cx.notify();
+      });
+    },
+  );
+  let row = div()
+    .flex()
+    .items_center()
+    .gap_2()
+    .child(div().w(px(140.)).child(Input::new(&name)))
+    .child(div().w(px(140.)).child(select))
+    .child(div().flex_1().child(Input::new(&location)))
+    .child(
+      Button::new("plugins-source-add")
+        .label(t!("app.settings.plugins.add.button"))
+        .icon(IconName::Plus)
+        .cursor_pointer()
+        .on_click(move |_, window, cx| {
+          let source = SourceConfig {
+            name: name.read(cx).value().trim().to_string(),
+            kind: kind.read(cx).0,
+            location: location.read(cx).value().trim().to_string(),
+            enabled: true,
+          };
+          match PluginManager::add_source(source, cx) {
+            Ok(()) => {
+              name.update(cx, |input, cx| input.set_value("", window, cx));
+              location.update(cx, |input, cx| input.set_value("", window, cx));
+              error.update(cx, |e, cx| {
+                e.0 = None;
+                cx.notify();
+              });
+            }
+            Err(e) => {
+              tracing::error!("adding a plugin source: {e:#}");
+              error.update(cx, |slot, cx| {
+                slot.0 = Some(format!("{e:#}"));
+                cx.notify();
+              });
+            }
+          }
+        }),
+    );
+  div()
+    .flex()
+    .flex_col()
+    .gap_1()
+    .child(row)
+    .children(error_text(shown.as_deref(), cx))
+}
+
+fn kind_name(kind: SourceKind) -> &'static str {
+  match kind {
+    SourceKind::Git => "git",
+    SourceKind::Path => "path",
+    SourceKind::Dev => "dev",
+  }
+}
+
+fn plugins_group(cx: &App) -> SettingGroup {
+  let rows = match cx.try_global::<PluginManager>() {
+    Some(_) => PluginManager::list(cx),
+    None => Vec::new(),
+  };
+  let mut items: Vec<SettingItem> = rows
+    .into_iter()
+    .map(|row| SettingItem::render(move |_, _, cx| plugin_row(&row, cx)))
+    .collect();
+  if items.is_empty() {
+    items.push(SettingItem::render(|_, _, cx| {
+      muted(t!("app.settings.plugins.none"), cx)
+    }));
+  }
+  items.push(SettingItem::render(|_, _, _| {
+    div().flex().justify_end().gap_2().child(
+      Button::new("plugins-refresh")
+        .label(t!("app.settings.plugins.refresh"))
+        .icon(IconName::RefreshCw)
+        .cursor_pointer()
+        .outline()
+        .on_click(|_, _, cx| PluginManager::refresh_catalogs(cx)),
+    )
+  }));
+  SettingGroup::new()
+    .title(t!("app.settings.plugins.groups.plugins"))
+    .items(items)
+}
+
+fn plugin_row(row: &PluginStatus, cx: &mut App) -> Div {
+  let id = row.entry.id.clone();
+  let manager = cx.global::<PluginManager>();
+  let enabling = manager.is_enabling(&id);
+  let needs_approval = manager.needs_approval(&id);
+  let error = manager.plugin_error(&id).map(str::to_string);
+  let icon = row
+    .entry
+    .icon
+    .as_ref()
+    .and_then(|file| PluginManager::asset(row, file, cx));
+
+  let mut title = div()
+    .flex()
+    .items_center()
+    .gap_2()
+    .child(div().text_sm().child(row.entry.name.clone()))
+    .child(muted(row.entry.version.clone(), cx))
+    .child(
+      Tag::new()
+        .small()
+        .with_variant(match row.kind {
+          SourceKind::Dev => TagVariant::Warning,
+          _ => TagVariant::Secondary,
+        })
+        .child(row.source.clone()),
+    );
+  if row.update_available {
+    title = title.child(
+      Tag::new()
+        .small()
+        .with_variant(TagVariant::Info)
+        .child(t!("app.settings.plugins.update_available")),
+    );
+  }
+  if needs_approval {
+    title = title.child(
+      Tag::new()
+        .small()
+        .with_variant(TagVariant::Danger)
+        .child(t!("app.settings.plugins.approve.needed")),
+    );
+  }
+  if row.kind == SourceKind::Dev && !row.shadows.is_empty() {
+    title = title.child(
+      Tag::new()
+        .small()
+        .with_variant(TagVariant::Warning)
+        .child(t!("app.settings.plugins.dev_override")),
+    );
+  }
+
+  let details = div()
+    .flex()
+    .flex_col()
+    .flex_1()
+    .min_w_0()
+    .child(title)
+    .when_some(row.entry.description.clone(), |d, text| {
+      d.child(muted(text, cx))
+    })
+    .when(!row.shadows.is_empty(), |d| {
+      d.child(muted(
+        t!(
+          "app.settings.plugins.shadows",
+          sources = row.shadows.join(", ")
+        ),
+        cx,
+      ))
+    })
+    .children(error_text(error.as_deref(), cx));
+
+  let (enable_id, remove_id, review_id) = (id.clone(), id.clone(), id.clone());
+  let name: SharedString = row.entry.name.clone().into();
+  div()
+    .flex()
+    .items_center()
+    .gap_2()
+    .child(match icon {
+      Some(path) => img(path).size(px(32.)).rounded_md().into_any_element(),
+      None => Icon::new(IconName::LayoutDashboard)
+        .size(px(32.))
+        .into_any_element(),
+    })
+    .child(details)
+    .when_some(row.entry.readme.clone(), |d, file| {
+      d.child(readme(row.clone(), file))
+    })
+    .when(needs_approval, |d| {
+      d.child(
+        Button::new(format!("plugin-approve-{id}"))
+          .label(t!("app.settings.plugins.approve.review"))
+          .cursor_pointer()
+          .outline()
+          .on_click(move |_, window, cx| review(&review_id, window, cx)),
+      )
+    })
+    .when(row.kind == SourceKind::Git && row.installed, |d| {
+      d.child(
+        Button::new(format!("plugin-remove-{id}"))
+          .icon(IconName::Delete)
+          .cursor_pointer()
+          .ghost()
+          .danger()
+          .on_click(move |_, _, cx| PluginManager::remove(&remove_id, cx)),
+      )
+    })
+    .child(match enabling {
+      true => Spinner::new().into_any_element(),
+      false => Switch::new(format!("plugin-enabled-{id}"))
+        .checked(row.enabled)
+        .on_click(move |checked: &bool, window, cx| match checked {
+          true => PluginManager::enable(&enable_id, ask(name.clone(), window), cx),
+          false => PluginManager::disable(&enable_id, cx),
+        })
+        .into_any_element(),
+    })
+}
+
+/// A button showing plugin `row`'s README `file` in a dialog, fetched once it
+/// opens
+fn readme(row: PluginStatus, file: String) -> Button {
+  let id = row.entry.id.clone();
+  Button::new(format!("plugin-readme-{id}"))
+    .icon(IconName::Info)
+    .cursor_pointer()
+    .ghost()
+    .on_click(move |_, window, cx| {
+      let (row, file, id) = (row.clone(), file.clone(), id.clone());
+      window.open_dialog(cx, move |dialog, window, cx| {
+        let text =
+          PluginManager::asset(&row, &file, cx).and_then(|path| std::fs::read_to_string(path).ok());
+        dialog
+          .title(row.entry.name.clone())
+          .w(window.viewport_size().width * 0.7)
+          .child(
+            div()
+              .id(format!("plugin-readme-text-{id}"))
+              .max_h(window.viewport_size().height * 0.7)
+              .overflow_y_scroll()
+              .child(match text {
+                Some(text) => {
+                  TextView::markdown(format!("plugin-readme-md-{id}"), text).into_any_element()
+                }
+                None => Spinner::new().into_any_element(),
+              }),
+          )
+      });
+    })
+}
+
+/// Shows plugin `name`'s grants in `window` once installed; enables it when
+/// the user agrees
+fn ask(name: SharedString, window: &Window) -> impl FnOnce(&str, Approval, &mut App) + 'static {
+  let handle = window.window_handle();
+  move |id, approval, cx| {
+    let id = id.to_string();
+    let shown = handle.update(cx, |_, window, cx| confirm(id, name, approval, window, cx));
+    if let Err(e) = shown {
+      tracing::warn!("asking to approve a plugin: {e:#}");
+    }
+  }
+}
+
+/// Asks again about enabled plugin `id`, whose source, grants or files changed
+/// since the user approved it
+pub(crate) fn review(id: &str, window: &mut Window, cx: &mut App) {
+  let Some(name) = cx
+    .global::<PluginManager>()
+    .unapproved()
+    .get(id)
+    .map(|found| SharedString::from(found.manifest.name.clone()))
+  else {
+    return;
+  };
+  if let Some(approval) = PluginManager::review(id, cx) {
+    confirm(id.to_string(), name, approval, window, cx);
+  }
+}
+
+/// Asks whether plugin `id` may do what `approval` grants, showing what
+/// changed since the last approval. Denying disables it.
+fn confirm(id: String, name: SharedString, approval: Approval, window: &mut Window, cx: &mut App) {
+  let previous = cx.config().plugins.approved.get(&id).cloned();
+  let cancel = match cx.config().plugins.is_enabled(&id) {
+    true => t!("app.settings.plugins.approve.deny_disable"),
+    false => t!("app.settings.plugins.approve.deny"),
+  };
+  window.open_alert_dialog(cx, move |alert, _, cx| {
+    let (ok_id, ok_approval, deny_id) = (id.clone(), approval.clone(), id.clone());
+    let description = match &previous {
+      Some(previous) => changes(previous, &approval, cx),
+      None => permissions(&approval.capabilities, cx),
+    };
+    alert
+      .title(match previous {
+        Some(_) => t!("app.settings.plugins.approve.changed_title", name = name),
+        None => t!("app.settings.plugins.approve.title", name = name),
+      })
+      .description(description)
+      // so escape does not disable it
+      .keyboard(false)
+      // its own buttons, for their cursor
+      .footer(
+        DialogFooter::new()
+          .child(
+            Button::new("plugin-deny")
+              .label(cancel.clone())
+              .cursor_pointer()
+              .on_click(move |_, window, cx| {
+                PluginManager::disable(&deny_id, cx);
+                window.close_dialog(cx);
+              }),
+          )
+          .child(
+            Button::new("plugin-allow")
+              .label(t!("app.settings.plugins.approve.ok"))
+              .primary()
+              .cursor_pointer()
+              .on_click(move |_, window, cx| {
+                PluginManager::approve(&ok_id, ok_approval.clone(), cx);
+                window.close_dialog(cx);
+              }),
+          ),
+      )
+  });
+}
+
+/// The grants of `approval` against `previous`: new ones, dropped ones, and
+/// a note when only the source or code changed
+fn changes(previous: &Approval, approval: &Approval, cx: &App) -> Div {
+  let rows = registry::permission_changes(&previous.capabilities, &approval.capabilities);
+  let same = rows.iter().all(|(change, ..)| *change == Change::Kept);
+  div()
+    .flex()
+    .flex_col()
+    .gap_2()
+    .when(previous.source != approval.source, |d| {
+      d.child(muted(
+        t!(
+          "app.settings.plugins.approve.source_changed",
+          old = previous.source,
+          new = approval.source
+        ),
+        cx,
+      ))
+    })
+    .when(same, |d| {
+      d.child(muted(
+        t!("app.settings.plugins.approve.same_permissions"),
+        cx,
+      ))
+    })
+    .when(rows.is_empty(), |d| {
+      d.child(muted(t!("app.settings.plugins.approve.nothing"), cx))
+    })
+    .children(rows.into_iter().map(|(change, kind, values)| {
+      let (text, warning) = permission(&kind, &values, cx);
+      let tag = match change {
+        Change::Added => Some((
+          TagVariant::Success,
+          t!("app.settings.plugins.approve.added"),
+        )),
+        Change::Removed => Some((
+          TagVariant::Secondary,
+          t!("app.settings.plugins.approve.removed"),
+        )),
+        Change::Kept => None,
+      };
+      div()
+        .flex()
+        .flex_col()
+        .child(
+          div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .when_some(tag, |d, (variant, label)| {
+              d.child(Tag::new().small().with_variant(variant).child(label))
+            })
+            .child(
+              div()
+                .text_sm()
+                .when(change == Change::Kept, |d| {
+                  d.text_color(cx.theme().muted_foreground)
+                })
+                .when(change == Change::Removed, |d| d.line_through())
+                .child(text),
+            ),
+        )
+        .when(change == Change::Added, |d| {
+          d.when_some(warning, |d, warning| {
+            d.child(div().text_xs().text_color(cx.theme().danger).child(warning))
+          })
+        })
+    }))
+}
+
+fn permissions(capabilities: &str, cx: &App) -> Div {
+  let rows = registry::permissions(capabilities);
+  if rows.is_empty() {
+    return muted(t!("app.settings.plugins.approve.nothing"), cx);
+  }
+  div()
+    .flex()
+    .flex_col()
+    .gap_2()
+    .children(rows.into_iter().map(|(kind, values)| {
+      let (text, warning) = permission(&kind, &values, cx);
+      div()
+        .flex()
+        .flex_col()
+        .child(div().text_sm().child(text))
+        .when_some(warning, |d, warning| {
+          d.child(div().text_xs().text_color(cx.theme().danger).child(warning))
+        })
+    }))
+}
+
+/// A grant in plain words, and a warning when it reaches far
+fn permission(
+  kind: &str,
+  values: &str,
+  cx: &App,
+) -> (Cow<'static, str>, Option<Cow<'static, str>>) {
+  match kind {
+    "fs.read" => (
+      t!("app.settings.plugins.approve.fs_read", values = values),
+      None,
+    ),
+    "fs.write" => (
+      t!("app.settings.plugins.approve.fs_write", values = values),
+      None,
+    ),
+    "fs.execute" => (
+      t!("app.settings.plugins.approve.fs_execute", values = values),
+      Some(t!("app.settings.plugins.approve.execute_warning")),
+    ),
+    "process.env" => (
+      t!("app.settings.plugins.approve.process_env", values = values),
+      Some(t!("app.settings.plugins.approve.execute_warning")),
+    ),
+    "process.exit" => (t!("app.settings.plugins.approve.process_exit"), None),
+    "network.hosts" => (
+      t!(
+        "app.settings.plugins.approve.network_hosts",
+        values = values
+      ),
+      None,
+    ),
+    "network.lan_hosts" => (
+      t!(
+        "app.settings.plugins.approve.network_lan_hosts",
+        values = values
+      ),
+      Some(t!("app.settings.plugins.approve.lan_warning")),
+    ),
+    "network.http" => (
+      t!("app.settings.plugins.approve.network_http", values = values),
+      None,
+    ),
+    "network.unix" => (
+      t!("app.settings.plugins.approve.network_unix", values = values),
+      None,
+    ),
+    "dbus.session" => (
+      t!("app.settings.plugins.approve.dbus_session", values = values),
+      Some(t!("app.settings.plugins.approve.dbus_warning")),
+    ),
+    "dbus.system" => (
+      t!("app.settings.plugins.approve.dbus_system", values = values),
+      Some(t!("app.settings.plugins.approve.dbus_warning")),
+    ),
+    "corona" => {
+      let privileged: Vec<&str> = values
+        .split(", ")
+        .filter(|m| {
+          (cx.try_global::<ScriptRegistry>())
+            .and_then(|r| r.get(m))
+            .is_some_and(|r| r.privileged)
+        })
+        .collect();
+      (
+        t!("app.settings.plugins.approve.corona", values = values),
+        (!privileged.is_empty()).then(|| {
+          t!(
+            "app.settings.plugins.approve.privileged_warning",
+            modules = privileged.join(", ")
+          )
+        }),
+      )
+    }
+    "clipboard.read" => (t!("app.settings.plugins.approve.clipboard_read"), None),
+    "clipboard.write" => (t!("app.settings.plugins.approve.clipboard_write"), None),
+    "printing.print" => (t!("app.settings.plugins.approve.printing_print"), None),
+    "printing.manage" => (
+      t!("app.settings.plugins.approve.printing_manage"),
+      Some(t!("app.settings.plugins.approve.printing_manage_warning")),
+    ),
+    "storage" => (t!("app.settings.plugins.approve.storage"), None),
+    _ => (format!("{kind}: {values}").into(), None),
+  }
+}
+
+fn settings_group(manifest: &PluginManifest, cx: &App) -> SettingGroup {
+  let items: Vec<SettingItem> = manifest
+    .settings
+    .iter()
+    .map(|setting| setting_item(&manifest.id, setting, cx))
+    .collect();
+  SettingGroup::new()
+    .title(manifest.name.clone())
+    .items(items)
+}
+
+/// The value of `setting` of plugin `id`: the configured one when it fits,
+/// else the default; so `Config::default()` gives the default
+fn value(id: &str, setting: &Setting) -> impl Fn(&Config) -> Value + Clone + 'static {
+  let (id, setting) = (id.to_string(), setting.clone());
+  move |c: &Config| {
+    c.plugin_settings
+      .get(&id)
+      .and_then(|values| values.get(&setting.key))
+      .filter(|v| setting.accepts(v))
+      .cloned()
+      .unwrap_or_else(|| setting.default_value())
+  }
+}
+
+fn put(id: &str, key: &str) -> impl Fn(&mut Config, Value) + Clone + 'static {
+  let (id, key) = (id.to_string(), key.to_string());
+  move |c: &mut Config, value: Value| {
+    c.plugin_settings
+      .entry(id.clone())
+      .or_default()
+      .insert(key.clone(), value);
+  }
+}
+
+fn setting_item(id: &str, setting: &Setting, cx: &App) -> SettingItem {
+  let get = value(id, setting);
+  let set = put(id, &setting.key);
+  let key = format!("plugin.{id}.{}", setting.key);
+  let label = setting.label.clone();
+  let item = match &setting.kind {
+    SettingKind::Toggle { .. } => SettingItem::new(
+      label,
+      switch(
+        move |c| get(c).as_bool().unwrap_or_default(),
+        move |c, v| set(c, Value::Bool(v)),
+      ),
+    ),
+    SettingKind::Text { .. } => SettingItem::new(
+      label,
+      text(
+        key,
+        move |c| get(c).as_str().unwrap_or_default().to_string(),
+        move |c, v| set(c, Value::String(v)),
+      ),
+    ),
+    SettingKind::Number { min, max, step, .. } => SettingItem::new(
+      label,
+      number(
+        key,
+        (
+          min.unwrap_or(f64::MIN),
+          max.unwrap_or(f64::MAX),
+          step.unwrap_or(1.),
+        ),
+        move |c| get(c).as_f64().unwrap_or_default(),
+        move |c, v| set(c, json_number(v)),
+      ),
+    ),
+    SettingKind::Slider { min, max, step, .. } => SettingItem::new(
+      label,
+      slider(
+        key,
+        (*min as f32, *max as f32, *step as f32),
+        move |c| get(c).as_f64().unwrap_or_default() as f32,
+        {
+          let (min, max) = (*min, *max);
+          move |c, v| set(c, json_number(slider_value(v, min, max)))
+        },
+      ),
+    ),
+    SettingKind::Select { .. } => {
+      let options: Vec<(SharedString, SharedString)> = DynamicOptions::of(id, setting, cx)
+        .iter()
+        .map(|o| (o.value.clone().into(), o.label.clone().into()))
+        .collect();
+      let default: SharedString = get(&Config::default())
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+        .into();
+      let read = get.clone();
+      SettingItem::new(
+        label,
+        SettingField::dropdown(
+          options,
+          move |cx| {
+            read(cx.config())
+              .as_str()
+              .unwrap_or_default()
+              .to_string()
+              .into()
+          },
+          move |v: SharedString, cx| save(cx, |c| set(c, Value::String(v.to_string()))),
+        )
+        .default_value(default),
+      )
+    }
+    SettingKind::List { .. } => {
+      let (id, setting) = (id.to_string(), setting.clone());
+      SettingItem::new(
+        label,
+        SettingField::render(move |_, window, cx| list_field(&id, &setting, window, cx)),
+      )
+    }
+    SettingKind::Secret { placeholder } => {
+      let (id, key, placeholder) = (id.to_string(), setting.key.clone(), placeholder.clone());
+      SettingItem::new(
+        label,
+        SettingField::render(move |_, window, cx| {
+          secret_field(&id, &key, placeholder.clone(), window, cx)
+        }),
+      )
+    }
+  };
+  match &setting.description {
+    Some(description) => item.description(description.clone()),
+    None => item,
+  }
+}
+
+/// A list of strings, one input per row, rows added and removed
+fn list_field(id: &str, setting: &Setting, window: &mut Window, cx: &mut App) -> Div {
+  let get = value(id, setting);
+  let items: Vec<String> = get(cx.config())
+    .as_array()
+    .map(|items| {
+      items
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect()
+    })
+    .unwrap_or_default();
+  let write = {
+    let set = put(id, &setting.key);
+    move |items: Vec<String>, cx: &mut App| {
+      let value = Value::Array(items.into_iter().map(Value::String).collect());
+      save(cx, |c| set(c, value));
+    }
+  };
+  let prefix = format!("plugin.{id}.{}", setting.key);
+
+  let rows: Vec<Div> = items
+    .iter()
+    .enumerate()
+    .map(|(i, item)| {
+      let input = window.use_keyed_state(format!("{prefix}.{i}"), cx, |window, cx| {
+        InputState::new(window, cx).default_value(item.clone())
+      });
+      if input.read(cx).value() != item.as_str()
+        && !input.read(cx).focus_handle(cx).is_focused(window)
+      {
+        input.update(cx, |input, cx| input.set_value(item.clone(), window, cx));
+      }
+      let (save_items, remove_items) = (items.clone(), items.clone());
+      let (save_write, remove_write) = (write.clone(), write.clone());
+      let saved = input.clone();
+      div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(div().flex_1().child(Input::new(&input)))
+        .child(
+          Button::new(format!("{prefix}.{i}.save"))
+            .icon(IconName::Check)
+            .cursor_pointer()
+            .ghost()
+            .on_click(move |_, _, cx| {
+              let mut items = save_items.clone();
+              items[i] = saved.read(cx).value().to_string();
+              save_write(items, cx);
+            }),
+        )
+        .child(
+          Button::new(format!("{prefix}.{i}.remove"))
+            .icon(IconName::Close)
+            .cursor_pointer()
+            .ghost()
+            .on_click(move |_, _, cx| {
+              let mut items = remove_items.clone();
+              items.remove(i);
+              remove_write(items, cx);
+            }),
+        )
+    })
+    .collect();
+
+  div()
+    .flex()
+    .flex_col()
+    .gap_1()
+    .w(px(320.))
+    .children(rows)
+    .child(
+      div().child(
+        Button::new(format!("{prefix}.add"))
+          .label(t!("app.settings.plugins.list_add"))
+          .icon(IconName::Plus)
+          .cursor_pointer()
+          .outline()
+          .on_click(move |_, _, cx| {
+            let mut items = items.clone();
+            items.push(String::new());
+            write(items, cx);
+          }),
+      ),
+    )
+}
+
+/// A masked input for a secret setting and how storing it went. What is
+/// stored is never read back.
+struct SecretInput {
+  input: Entity<InputState>,
+  /// `Ok` once stored from here, the error when that failed
+  status: Option<Result<(), String>>,
+  _enter: Subscription,
+}
+
+impl SecretInput {
+  /// Stores (`Some`) or removes (`None`) the secret, showing how it went
+  fn write(&mut self, id: String, key: String, value: Option<String>, cx: &mut Context<Self>) {
+    cx.spawn(async move |this, cx| {
+      let result = match value {
+        Some(value) => secrets::store(&id, &key, value).await.map(|()| true),
+        None => secrets::remove(&id, &key).await.map(|()| false),
+      };
+      if result.is_ok() {
+        cx.update(|cx| ScriptManager::secret_changed(&id, &key, cx));
+      }
+      this
+        .update(cx, |this, cx| {
+          this.status = match result {
+            Ok(true) => Some(Ok(())),
+            Ok(false) => None,
+            Err(e) => Some(Err(format!("{e:#}"))),
+          };
+          cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+  }
+}
+
+fn secret_field(
+  id: &str,
+  key: &str,
+  placeholder: Option<String>,
+  window: &mut Window,
+  cx: &mut App,
+) -> Div {
+  let prefix = format!("plugin.{id}.{key}");
+  let (store_id, store_key) = (id.to_string(), key.to_string());
+  let field = window.use_keyed_state(prefix.clone(), cx, |window, cx| {
+    let input = cx.new(|cx| {
+      InputState::new(window, cx)
+        .masked(true)
+        .placeholder(placeholder.unwrap_or_default())
+    });
+    let _enter = cx.subscribe_in(
+      &input,
+      window,
+      move |field: &mut SecretInput, input, event: &InputEvent, window, cx| {
+        if !matches!(event, InputEvent::PressEnter { .. }) {
+          return;
+        }
+        let value = input.read(cx).value().to_string();
+        if value.is_empty() {
+          return;
+        }
+        input.update(cx, |input, cx| input.set_value("", window, cx));
+        field.write(store_id.clone(), store_key.clone(), Some(value), cx);
+      },
+    );
+    SecretInput {
+      input,
+      status: None,
+      _enter,
+    }
+  });
+  let (input, status) = {
+    let field = field.read(cx);
+    (field.input.clone(), field.status.clone())
+  };
+  let (clear_id, clear_key) = (id.to_string(), key.to_string());
+  div()
+    .flex()
+    .flex_col()
+    .gap_1()
+    .w(px(320.))
+    .child(
+      div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(div().flex_1().child(Input::new(&input)))
+        .child(
+          Button::new(format!("{prefix}.clear"))
+            .icon(IconName::Delete)
+            .cursor_pointer()
+            .ghost()
+            .on_click(move |_, _, cx| {
+              field.update(cx, |field, cx| {
+                field.write(clear_id.clone(), clear_key.clone(), None, cx)
+              })
+            }),
+        ),
+    )
+    .when(matches!(status, Some(Ok(()))), |d| {
+      d.child(muted(t!("app.settings.plugins.secret_stored"), cx))
+    })
+    .children(error_text(status.and_then(Result::err).as_deref(), cx))
+}
+
+#[cfg(test)]
+mod tests {
+  use gpui_kit::{self as gpui, TestAppContext, test::TestWindowExt};
+  use serde_json::json;
+
+  use super::*;
+  use crate::plugin::settings::SelectOption;
+
+  #[test]
+  fn slider_value_stays_inside_declared_bounds() {
+    assert_eq!(slider_value(0.3_f32, 0., 0.3), 0.3);
+    assert_eq!(slider_value(0.7_f32, 0.7, 1.), 0.7);
+    assert_eq!(slider_value(0.1_f32, 0., 1.), 0.1);
+    assert_eq!(slider_value(5., 0., 1.), 1.);
+  }
+
+  fn setting(kind: SettingKind) -> Setting {
+    Setting {
+      key: "k".into(),
+      label: "K".into(),
+      description: None,
+      kind,
+    }
+  }
+
+  #[test]
+  fn values_fall_back_to_the_default() {
+    let setting = setting(SettingKind::Select {
+      dynamic: false,
+      default: "a".into(),
+      options: vec![
+        SelectOption {
+          value: "a".into(),
+          label: "A".into(),
+        },
+        SelectOption {
+          value: "b".into(),
+          label: "B".into(),
+        },
+      ],
+    });
+    let get = value("p", &setting);
+    let set = put("p", "k");
+    let mut config = Config::default();
+    assert_eq!(get(&config), json!("a"));
+    set(&mut config, json!("b"));
+    assert_eq!(get(&config), json!("b"));
+    assert_eq!(config.plugin_settings["p"]["k"], json!("b"));
+    // not one of the options
+    set(&mut config, json!("c"));
+    assert_eq!(get(&config), json!("a"));
+    // another plugin's value is not this one's
+    assert_eq!(value("q", &setting)(&config), json!("a"));
+  }
+
+  #[gpui::test]
+  fn plugins_page_renders_every_control(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      gpui_kit::init(cx);
+      cx.set_global(Config::default());
+      corona_surface::bar::BarState::init(cx);
+      corona_settings::init(cx);
+      register(cx);
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = crate::plugin::paths::Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("README.md"), "# Hello").unwrap();
+    std::fs::write(
+      dir.join("plugin.toml"),
+      r#"
+id = "com.p"
+name = "P"
+api = 2
+version = "1"
+description = "Every setting"
+[widgets.w]
+view = "main.js"
+[[settings]]
+key = "on"
+label = "On"
+type = "toggle"
+default = true
+[[settings]]
+key = "name"
+label = "Name"
+type = "text"
+default = "x"
+[[settings]]
+key = "count"
+label = "Count"
+type = "number"
+default = 1
+[[settings]]
+key = "opacity"
+label = "Opacity"
+type = "slider"
+default = 0.5
+min = 0
+max = 1
+step = 0.1
+[[settings]]
+key = "units"
+label = "Units"
+type = "select"
+default = "a"
+options = [{ value = "a", label = "A" }]
+[[settings]]
+key = "hosts"
+label = "Hosts"
+type = "list"
+default = ["h"]
+"#,
+    )
+    .unwrap();
+    cx.update(|cx| {
+      let mut config = corona_config::Config::default();
+      config.plugins.enabled = vec!["com.p".into()];
+      config.plugins.approved.insert(
+        "com.p".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          ..Default::default()
+        },
+      );
+      config.plugins.source.clear();
+      cx.set_global(config);
+      crate::PluginManager::init(paths, cx);
+      assert!(
+        cx.global::<crate::PluginManager>()
+          .active()
+          .contains_key("com.p")
+      );
+    });
+    cx.update(|cx| corona_settings::open(Some("plugins"), cx))
+      .unwrap();
+    cx.run_until_parked();
+    let rows = cx.update(|cx| crate::PluginManager::list(cx));
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].enabled && rows[0].running);
+    let handle = cx
+      .update(|cx| corona_settings::window(cx))
+      .expect("settings open");
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+      .unwrap();
+    cx.update(corona_settings::close);
+  }
+}

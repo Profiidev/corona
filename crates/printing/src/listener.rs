@@ -1,8 +1,13 @@
 use std::{cell::Cell, collections::HashSet, path::Path, rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
-use futures_lite::{Stream, StreamExt, future::poll_once};
+use corona_utils::{
+  dbus::{owner_changed, subscribe as subscribe_to},
+  entity::WriteChangedExt,
+  error::ErrorLogExt,
+  stream::{next_burst, pump},
+};
+use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, Entity};
 use zbus::{Connection, MatchRule, Message, MessageStream, message::Type};
 
@@ -21,18 +26,6 @@ const RENEW: Duration = Duration::from_secs(cups::LEASE_SECONDS as u64 / 2);
 // subscription is retried on a timer. Upgrade if cupsd ever claims a name.
 const RETRY: Duration = Duration::from_secs(60);
 
-fn owner_changed(name: &str) -> Result<MatchRule<'static>> {
-  Ok(
-    MatchRule::builder()
-      .msg_type(Type::Signal)
-      .sender("org.freedesktop.DBus")?
-      .interface("org.freedesktop.DBus")?
-      .member("NameOwnerChanged")?
-      .arg(0, name.to_string())?
-      .build(),
-  )
-}
-
 /// Fires on the CUPS notifier's signals. The notifier is a short-lived helper
 /// cupsd starts per event, so match the interface, not a sender.
 pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unpin + use<>> {
@@ -40,11 +33,7 @@ pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = ()> + Unp
     .msg_type(Type::Signal)
     .interface(NOTIFIER)?
     .build();
-  Ok(
-    MessageStream::for_match_rule(rule, conn, None)
-      .await?
-      .map(|_| ()),
-  )
+  Ok(subscribe_to(conn, [rule]).await?)
 }
 
 /// Re-reads printers and jobs on every change burst and on `pokes`.
@@ -60,20 +49,29 @@ pub fn listener(
   let since = jiff::Timestamp::now().as_second() as i32;
   cx.spawn(async move |cx| {
     loop {
-      let mut printers = cups::printers(&sock).await.log_err().unwrap_or_default();
-      cups::mark_offline(&mut printers).await;
-      let jobs = match printers.is_empty() {
-        true => Vec::new(),
-        false => cups::jobs(&sock, since).await.log_err().unwrap_or_default(),
-      };
-      state.printers.write_changed(cx, printers);
-      state.jobs.write_changed(cx, jobs);
+      // a failed read keeps what is shown
+      if let Ok(mut printers) = cups::printers(&sock).await.log_err() {
+        // the list has no probe result yet, keep the last one instead of flipping to online
+        let shown = state.printers.read_with(cx, |p, _| p.clone());
+        for printer in &mut printers {
+          if let Some(old) = shown.iter().find(|p| p.name == printer.name) {
+            printer.offline = old.offline;
+          }
+        }
+        state.printers.write_changed(cx, printers.clone());
+        if printers.is_empty() {
+          state.jobs.write_changed(cx, Vec::new());
+        } else if let Ok(jobs) = cups::jobs(&sock, since).await.log_err() {
+          state.jobs.write_changed(cx, jobs);
+        }
+        // probing takes seconds, so the list is out before
+        cups::mark_offline(&mut printers).await;
+        state.printers.write_changed(cx, printers);
+      }
 
-      if changes.next().await.is_none() {
+      if next_burst(&mut changes).await.is_none() {
         break;
       }
-      // drain the rest of the burst already queued, one snapshot covers it
-      while let Some(Some(_)) = poll_once(changes.next()).await {}
     }
   })
   .detach();
@@ -112,7 +110,12 @@ pub fn subscription(cx: &mut App, sock: Arc<Path>, poke: flume::Sender<()>) {
             poke.send(()).ok();
             RENEW
           }
-          Err(e) if e.downcast_ref::<IppError>().is_some() => {
+          Err(e)
+            if matches!(
+              e.downcast_ref::<IppError>(),
+              Some(IppError::Unauthorized | IppError::Status(0x0400..=0x04ff, _))
+            ) =>
+          {
             tracing::warn!("CUPS refused the event subscription, printers update on open: {e}");
             return;
           }

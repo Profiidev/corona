@@ -13,11 +13,11 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::bar::state::BarExt;
+use crate::{bar::state::BarExt, input_region::InputRegion};
 use corona_components::components::tracked::Tracked;
 use corona_config::{
   bar::{BarConfig, WidgetConfig, WidgetEntry},
-  placement::{Placement, PlacementStyle, PlacmentBounds},
+  placement::{Placement, PlacementBounds, PlacementStyle},
 };
 
 pub struct Bar {
@@ -36,6 +36,7 @@ pub struct Bar {
   center_widgets: Vec<Entry>,
   end_widgets: Vec<Entry>,
   grouped: HashSet<EntityId>,
+  input_region: InputRegion,
 }
 
 #[derive(Clone)]
@@ -54,7 +55,10 @@ impl Bar {
   ) -> Self {
     let mut grouped = HashSet::new();
     let init = |entry: &WidgetEntry, window: &mut Window, cx: &mut Context<Bar>| {
-      let data = cx.bar().widget(&entry.widget_type).cloned()?;
+      let Some(data) = cx.bar().widget(&entry.widget_type).cloned() else {
+        tracing::warn!("bar: unknown widget {}", entry.widget_type);
+        return None;
+      };
       data.init(window, cx, display_id, entry.options.as_ref())
     };
     let mut init_widgets =
@@ -90,6 +94,7 @@ impl Bar {
       center_widgets,
       end_widgets,
       grouped,
+      input_region: InputRegion::default(),
     }
   }
 }
@@ -183,12 +188,8 @@ impl Render for Bar {
 
     let viewport = window.viewport_size();
     let len = self.placement.len(viewport);
-    window.set_input_region(Some(&[self.placement.rect(
-      viewport,
-      px(0.),
-      len,
-      px(self.height),
-    )]));
+    let rect = self.placement.rect(viewport, px(0.), len, px(self.height));
+    self.input_region.set(rect, window);
 
     div()
       .size_full()

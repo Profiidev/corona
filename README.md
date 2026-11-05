@@ -21,8 +21,8 @@ Bind the window switcher. It stays open while SUPER is held, Tab moves the selec
 releasing SUPER focuses the selected window:
 
 ```lua
-hl.bind("SUPER + TAB", hl.dsp.exec_cmd("corona ipc switcher"))
-hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc switcher --mode workspace"))
+hl.bind("SUPER + TAB", hl.dsp.exec_cmd("corona ipc window switcher"))
+hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("corona ipc window switcher --mode workspace"))
 ```
 
 ### On-screen keyboard

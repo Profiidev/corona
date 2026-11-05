@@ -1,7 +1,9 @@
 use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
 use anyhow::{Context, Result};
-use corona_config::APP_NAME;
+use corona_config::{APP_NAME, ConfigProvider, observe_section};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{
@@ -16,8 +18,17 @@ use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
 pub use crate::state::{Action, Notification, NotificationImage, Urgency, strip_markup};
 
+pub mod cli;
+pub mod commands;
+mod hooks;
+mod launcher;
+pub mod script;
 mod server;
+pub mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Notifications {
@@ -48,15 +59,7 @@ pub struct Filter(pub Box<dyn Fn(&Notification) -> bool>);
 
 impl Global for Filter {}
 
-pub trait NotificationsExt {
-  fn notifications(&self) -> &Notifications;
-}
-
-impl NotificationsExt for App {
-  fn notifications(&self) -> &Notifications {
-    self.global::<Notifications>()
-  }
-}
+corona_utils::global_ext!(NotificationsExt, notifications, Notifications);
 
 impl Notifications {
   pub fn list<'c>(&self, cx: &'c App) -> &'c [Notification] {
@@ -310,15 +313,55 @@ async fn object_server_listening(conn: &Connection) -> Result<()> {
   }
 }
 
-/// `serve`: be the notification daemon. Without it the state stays empty, for
-/// when another daemon is wanted.
-pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
+/// Names the notification sound's pipewire stream
+pub fn pre_start() {
+  // cpal names its pipewire streams `cpal-playback-<pid>` with no way to change it,
+  // so the notification sound shows as corona this way. Set before any thread starts.
+  unsafe {
+    std::env::set_var(
+      "PIPEWIRE_PROPS",
+      r#"{ node.description = "corona" application.icon-name = "corona-settings" }"#,
+    )
+  };
+}
+
+/// Serves or follows the notifications on the session bus, as `notification.enabled` says,
+/// registers their UI, commands, script modules and the plugin host's and launcher's hooks
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  // read once at startup
+  observe_section(
+    cx,
+    |c| &c.notification.enabled,
+    |_, _| tracing::warn!("notification.enabled applies after a restart"),
+  );
+  let serve = cx.config().notification.enabled;
+  connect(cx, &buses.session, serve).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  hooks::init(cx);
+  register_script(cx.script_mut());
+  Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry
+    .register::<script::NotificationsModule>()
+    .register::<script::NotificationCenterModule>();
+}
+
+/// With `serve`, be the notification daemon; without it the state stays empty, for when another
+/// daemon is wanted.
+pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let (events_tx, events) = flume::unbounded();
   let dbus = DBusProxy::new(conn).await?;
   let mut acquired = dbus.receive_name_acquired().await?;
   let mut lost = dbus.receive_name_lost().await?;
   let mut owner = false;
   if serve {
+    server::clear_cache();
     conn
       .object_server()
       .at(
@@ -354,30 +397,40 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let conn_events = conn.clone();
   cx.spawn(async move |cx| {
     while let Ok(event) = events.recv_async().await {
-      let dropped = notifications.update(cx, |list, cx| {
+      let (dropped, expired) = notifications.update(cx, |list, cx| {
+        let mut expired = Vec::new();
         match event {
           Event::Notify(n) if cx.try_global::<Filter>().is_some_and(|f| (f.0)(&n)) => {
-            return Some(n.id);
+            // a dropped replacement must not leave the old one shown
+            list.retain(|old| old.id != n.id);
+            cx.notify();
+            return (Some(n.id), expired);
           }
-          Event::Notify(notification) => state::insert(list, *notification),
+          Event::Notify(notification) => {
+            expired = state::insert(list, *notification, state::MAX_NOTIFICATIONS)
+          }
           Event::Close(id) => list.retain(|n| n.id != id),
         }
         cx.notify();
-        None
+        (None, expired)
       });
-      if let Some(id) = dropped
-        && let Ok(emitter) = SignalEmitter::new(&conn_events, PATH)
-      {
-        let _ = closed_signals(&emitter, vec![id]).await;
+      if let Ok(emitter) = SignalEmitter::new(&conn_events, PATH) {
+        if let Some(id) = dropped {
+          let _ = closed_signals(&emitter, vec![id]).await;
+        }
+        for id in expired {
+          let _ = Server::notification_closed(&emitter, id, CloseReason::Expired as u32).await;
+        }
       }
     }
   })
   .detach();
 
   let active = state.active.clone();
+  let conn_owner = conn.clone();
   cx.spawn(async move |cx| {
     loop {
-      let owned = futures_lite::future::or(
+      let signal = futures_lite::future::or(
         async {
           acquired
             .next()
@@ -392,10 +445,19 @@ pub async fn init(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
         },
       )
       .await;
-      let Some((owned, name)) = owned else {
+      let Some((_, name)) = signal else {
         break;
       };
       if name.as_deref() == Some(NAME) {
+        // the two streams are not ordered against each other, so ask the bus who owns the name
+        // instead of trusting which signal was polled first
+        let owned = match (
+          dbus.get_name_owner(NAME.try_into().unwrap()).await,
+          conn_owner.unique_name(),
+        ) {
+          (Ok(owner), Some(me)) => owner.as_str() == me.as_str(),
+          _ => false,
+        };
         active.write(cx, owned);
       }
     }
@@ -435,7 +497,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn, serve))
+        .block_on(connect(cx, &conn, serve))
         .unwrap()
     });
     Running {
@@ -793,7 +855,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn, true))
+        .block_on(connect(cx, &conn, true))
         .unwrap()
     });
     cx.read(|cx| assert!(!cx.notifications().active(cx)));

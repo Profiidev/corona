@@ -1,9 +1,4 @@
-use std::{
-  ffi::OsString,
-  os::unix::ffi::OsStringExt,
-  path::PathBuf,
-  time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use gpui_kit::ImageSource;
 
@@ -16,7 +11,6 @@ pub struct Player {
   pub name: String,
   /// a human readable name, like "Spotify"
   pub identity: String,
-  pub desktop_entry: Option<String>,
   pub status: PlaybackStatus,
   pub title: Option<String>,
   pub artists: Vec<String>,
@@ -43,9 +37,8 @@ pub struct Player {
 impl Player {
   pub fn art_source(&self) -> Option<ImageSource> {
     let url = self.art_url.as_deref()?;
-    if let Some(path) = url.strip_prefix("file://") {
-      let path = path.strip_prefix("localhost").unwrap_or(path);
-      Some(PathBuf::from(OsString::from_vec(percent_decode(path))).into())
+    if let Some(path) = corona_utils::uri::file_uri_to_path(url) {
+      Some(path.into())
     } else if url.starts_with("https://") || url.starts_with("http://") {
       Some(url.into())
     } else {
@@ -62,37 +55,13 @@ impl Player {
     if self.status != PlaybackStatus::Playing {
       return self.position;
     }
-    let position = self.position + elapsed.mul_f64(self.rate.max(0.0));
+    let moved = Duration::try_from_secs_f64(elapsed.as_secs_f64() * self.rate.max(0.0))
+      .unwrap_or(Duration::MAX);
+    let position = self.position.saturating_add(moved);
     self.length.map_or(position, |length| position.min(length))
   }
 }
 
-/// `%20` and friends as their bytes; a stray `%` stays as it is
-fn percent_decode(text: &str) -> Vec<u8> {
-  let bytes = text.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut i = 0;
-  while i < bytes.len() {
-    let hex = bytes
-      .get(i + 1..i + 3)
-      .and_then(|h| std::str::from_utf8(h).ok())
-      .and_then(|h| u8::from_str_radix(h, 16).ok());
-    match (bytes[i], hex) {
-      (b'%', Some(byte)) => {
-        out.push(byte);
-        i += 3;
-      }
-      (byte, _) => {
-        out.push(byte);
-        i += 1;
-      }
-    }
-  }
-  out
-}
-
-/// keeps the current player unless another one started playing, so pausing does not jump away
-/// Playing beats paused beats stopped, the current player stays on a tie.
 /// Keeps a player's old position stamp when the fresh read is where the old one predicts, so a
 /// snapshot of a player that only moved on with playback compares equal and notifies nobody.
 pub(crate) fn keep_positions(fresh: &mut [Player], old: &[Player]) {
@@ -112,18 +81,45 @@ pub(crate) fn keep_positions(fresh: &mut [Player], old: &[Player]) {
   }
 }
 
-pub(crate) fn pick_active(players: &[Player], current: Option<&str>) -> Option<String> {
+/// Keeps the current player, also a paused one chosen by hand, unless another one started playing
+/// since `old` or the current one is stopped while another has a track.
+/// Playing beats paused beats stopped otherwise, the first one wins a tie.
+pub(crate) fn pick_active(
+  players: &[Player],
+  current: Option<&str>,
+  old: &[Player],
+) -> Option<String> {
   let rank = |p: &Player| match p.status {
     PlaybackStatus::Playing => 2,
     PlaybackStatus::Paused => 1,
     PlaybackStatus::Stopped => 0,
   };
   let best = players.iter().map(rank).max()?;
+  let started = players.iter().find(|p| {
+    p.status == PlaybackStatus::Playing
+      && old
+        .iter()
+        .find(|o| o.name == p.name)
+        .is_none_or(|o| o.status != PlaybackStatus::Playing)
+  });
   players
     .iter()
-    .find(|p| Some(p.name.as_str()) == current && rank(p) == best)
+    .find(|p| {
+      Some(p.name.as_str()) == current
+        && match rank(p) {
+          2 => true,
+          1 => started.is_none(),
+          _ => best == 0,
+        }
+    })
+    .or(started)
     .or_else(|| players.iter().find(|p| rank(p) == best))
     .map(|p| p.name.clone())
+}
+
+pub(crate) fn fmt_time(d: Duration) -> String {
+  let s = d.as_secs();
+  format!("{}:{:02}", s / 60, s % 60)
 }
 
 #[cfg(test)]
@@ -134,7 +130,6 @@ mod tests {
     Player {
       name: name.into(),
       identity: name.into(),
-      desktop_entry: None,
       status,
       title: None,
       artists: Vec::new(),
@@ -195,17 +190,20 @@ mod tests {
   fn active() {
     use PlaybackStatus::*;
     let players = [player("a", Paused), player("b", Playing)];
-    assert_eq!(pick_active(&players, None).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, None, &[]).as_deref(), Some("b"));
     // another player playing takes over from a paused one
-    assert_eq!(pick_active(&players, Some("a")).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, Some("a"), &[]).as_deref(), Some("b"));
     let players = [player("a", Paused), player("b", Paused)];
-    assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
-    assert_eq!(pick_active(&players, Some("gone")).as_deref(), Some("a"));
-    assert_eq!(pick_active(&[], Some("a")), None);
+    assert_eq!(pick_active(&players, Some("b"), &[]).as_deref(), Some("b"));
+    assert_eq!(
+      pick_active(&players, Some("gone"), &[]).as_deref(),
+      Some("a")
+    );
+    assert_eq!(pick_active(&[], Some("a"), &[]), None);
     // a paused player with a track beats a stopped one, even the current
     let players = [player("a", Stopped), player("b", Paused)];
-    assert_eq!(pick_active(&players, None).as_deref(), Some("b"));
-    assert_eq!(pick_active(&players, Some("a")).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, None, &[]).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, Some("a"), &[]).as_deref(), Some("b"));
   }
 
   fn with_art(url: Option<&str>) -> Player {
@@ -266,7 +264,6 @@ mod tests {
       art(with_art(Some("file:///100%/%zz%2"))).as_deref(),
       Some("path /100%/%zz%2")
     );
-    assert_eq!(percent_decode("%ff"), [0xff]);
   }
 
   #[test]
@@ -346,31 +343,47 @@ mod tests {
   fn active_without_a_current_choice() {
     use PlaybackStatus::*;
     let players = [player("a", Stopped), player("b", Stopped)];
-    assert_eq!(pick_active(&players, None).as_deref(), Some("a"));
-    assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, None, &[]).as_deref(), Some("a"));
+    assert_eq!(pick_active(&players, Some("b"), &[]).as_deref(), Some("b"));
     let players = [player("a", Playing), player("b", Playing)];
-    assert_eq!(pick_active(&players, Some("b")).as_deref(), Some("b"));
+    assert_eq!(pick_active(&players, Some("b"), &[]).as_deref(), Some("b"));
   }
 
   #[test]
-  fn infinite_rate_in_position_after_panics() {
+  fn hostile_rate_does_not_panic() {
     let mut p = player("a", PlaybackStatus::Playing);
     p.rate = f64::INFINITY;
-    let res = std::panic::catch_unwind(|| {
-      p.position_after(Duration::from_secs(1));
-    });
-    assert!(res.is_err());
+    assert_eq!(
+      p.position_after(Duration::from_secs(1)),
+      Duration::from_secs(100)
+    );
+    p.rate = f64::NAN;
+    assert_eq!(
+      p.position_after(Duration::from_secs(1)),
+      Duration::from_secs(10)
+    );
   }
 
   #[test]
-  fn position_addition_overflow_panics_without_length() {
+  fn position_addition_saturates_without_length() {
     let mut p = player("a", PlaybackStatus::Playing);
     p.length = None;
     p.position = Duration::MAX - Duration::from_secs(10);
-    let res = std::panic::catch_unwind(|| {
-      p.position_after(Duration::from_secs(20));
-    });
-    assert!(res.is_err());
+    assert_eq!(p.position_after(Duration::from_secs(20)), Duration::MAX);
+  }
+
+  #[test]
+  fn manual_choice_survives_snapshots() {
+    use PlaybackStatus::*;
+    let players = [player("a", Paused), player("b", Playing)];
+    // b was already playing: the paused choice stays
+    assert_eq!(
+      pick_active(&players, Some("a"), &players).as_deref(),
+      Some("a")
+    );
+    // b just started
+    let old = [player("a", Paused), player("b", Paused)];
+    assert_eq!(pick_active(&players, Some("a"), &old).as_deref(), Some("b"));
   }
 
   #[test]

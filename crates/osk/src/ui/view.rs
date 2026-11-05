@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use corona_config::ConfigProvider;
 use gpui_kit::{
@@ -55,6 +55,8 @@ pub struct Keyboard {
   drag: Option<Point<Pixels>>,
   chips: Chips,
   predicting: Option<Task<()>>,
+  /// What the last prediction ran on, to skip repeating it
+  predicted: Option<(String, bool, bool, usize)>,
   /// What this keyboard typed since the field changed, for apps that do not
   /// say what is before the cursor
   typed: String,
@@ -84,6 +86,7 @@ impl Keyboard {
       drag: None,
       chips: Chips::default(),
       predicting: None,
+      predicted: None,
       typed: String::new(),
       input_region: InputRegion::default(),
       _field,
@@ -141,12 +144,24 @@ impl Keyboard {
     let Some(predictor) = predictor else {
       self.chips = Chips::default();
       self.predicting = None;
+      self.predicted = None;
       cx.notify();
       return;
     };
     let before = self.context(cx);
-    let chips = cx
-      .background_spawn(async move { predictor.lock().unwrap().predict(&before, complete, spell) });
+    let key = (
+      before.clone(),
+      complete,
+      spell,
+      Arc::as_ptr(&predictor) as usize,
+    );
+    if self.predicted.as_ref() == Some(&key) {
+      return;
+    }
+    self.predicted = Some(key);
+    // copied, so the search holds no lock the UI thread needs
+    let predictor = predictor.lock().unwrap().clone();
+    let chips = cx.background_spawn(async move { predictor.predict(&before, complete, spell) });
     // a newer prediction drops this one
     self.predicting = Some(cx.spawn(async move |this, cx| {
       let chips = chips.await;
@@ -159,11 +174,14 @@ impl Keyboard {
 
   /// Learns the word that ends before the cursor, when it is a real word
   fn learn_ended(&self, cx: &mut Context<Self>) {
-    if !cx.config().osk.learn_words || self.private(cx) {
+    // without a known field a passphrase cannot be told apart
+    let known = cx.osk().field.read(cx).as_ref().is_some_and(|f| !f.private);
+    if !cx.config().osk.learn_words || !known {
       return;
     }
     let context = self.context(cx);
     let (_, word) = current_word(&context);
+    let word = word.trim_end_matches('\'');
     let Some(predictor) = cx.osk().predictor() else {
       return;
     };
@@ -186,7 +204,9 @@ impl Keyboard {
       if !c.is_alphabetic() && c != '\'' {
         self.learn_ended(cx);
       }
-      self.typed.push(c);
+      if !self.private(cx) {
+        self.typed.push(c);
+      }
     } else {
       self.typed.clear();
     }
@@ -274,9 +294,10 @@ impl Keyboard {
         let upper = self.upper();
         let alternates: Vec<char> = alternates
           .chars()
-          .flat_map(|a| match upper {
-            true => a.to_uppercase().collect::<Vec<_>>(),
-            false => vec![a],
+          .map(|a| match upper {
+            // keep chars whose upper case is multi-char (ß -> SS)
+            true => layouts::upper_char(a),
+            false => a,
           })
           .collect();
         self.pending = Some(at);
@@ -342,10 +363,13 @@ impl Keyboard {
     } else {
       self.typed.clear();
     }
-    if cx.config().osk.learn_words && !self.private(cx) {
+    // without a known field a passphrase cannot be told apart
+    let known = cx.osk().field.read(cx).as_ref().is_some_and(|f| !f.private);
+    if cx.config().osk.learn_words && known {
       cx.update_global::<Osk, _>(|osk, cx| osk.learn(chip.word, cx));
     }
     self.chips = Chips::default();
+    self.predicted = None;
     self.predict(cx);
     cx.notify();
   }

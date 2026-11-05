@@ -1,5 +1,5 @@
 //! When the nightlight is on and how warm: by hand, or from sunset to sunrise or a schedule,
-//! waking only at the next start or end and once a minute while fading.
+//! re-planning at the next start or end, and once a minute in timed modes to catch up after suspend.
 
 use std::time::Duration;
 
@@ -55,10 +55,7 @@ pub(crate) struct Plan {
 }
 
 fn parse_time(text: &str, default: &str) -> Time {
-  text.parse().unwrap_or_else(|_| {
-    tracing::warn!("nightlight: {text:?} is no HH:MM time, using {default}");
-    default.parse().unwrap()
-  })
+  text.parse().unwrap_or_else(|_| default.parse().unwrap())
 }
 
 /// The nights around `now` for the timed modes, oldest first. None: the mode is manual, or
@@ -98,6 +95,9 @@ pub(crate) fn nights(
     }
     NightlightMode::Solar => {
       let (latitude, longitude) = coordinates?;
+      if !(latitude.abs() <= 90. && longitude.abs() <= 180.) {
+        return None;
+      }
       let today = now.to_zoned(TimeZone::UTC).date();
       let suns: Vec<Day> = (-3..=3)
         .filter_map(|offset| today.checked_add(jiff::Span::new().days(offset)).ok())
@@ -216,6 +216,7 @@ pub(crate) fn decide(
   }
   let Some(nights) = nights else {
     // solar without a place
+    manual.until = None;
     return by_hand(false, None);
   };
   let transition = SignedDuration::from_mins(config.transition_minutes.into());
@@ -245,7 +246,7 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
   cx.spawn({
     let state = state.clone();
     async move |cx| {
-      if let Ok(available) = available.recv_async().await {
+      while let Ok(available) = available.recv_async().await {
         state.update(cx, |state, cx| {
           state.available = available;
           cx.notify();
@@ -283,11 +284,18 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
           .then(|| cx.location().current(cx))
           .flatten()
           .map(|l| (l.latitude, l.longitude));
-        if config.mode == NightlightMode::Solar && coordinates.is_none() && !warned {
-          tracing::warn!("nightlight: sunset is unknown without a [location], staying off");
+        let nights = nights(now, &config, coordinates, &TimeZone::system());
+        if config.mode == NightlightMode::Solar && nights.is_none() && !warned {
+          tracing::warn!("nightlight: sunset is unknown without a valid [location], staying off");
           warned = true;
         }
-        let nights = nights(now, &config, coordinates, &TimeZone::system());
+        if config.mode == NightlightMode::Schedule
+          && !warned
+          && (config.start.parse::<Time>().is_err() || config.end.parse::<Time>().is_err())
+        {
+          tracing::warn!("nightlight: start or end is no HH:MM time, using the defaults");
+          warned = true;
+        }
         decide(now, &config, nights.as_deref(), temperature, &mut manual)
       });
       let kelvin = plan.on.then_some(plan.kelvin);
@@ -304,7 +312,12 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
 
       let wait = plan
         .next
-        .map(|next| Duration::try_from(next.duration_since(now)).unwrap_or_default());
+        // the timer does not count suspend: look again soon after a resume
+        .map(|next| {
+          Duration::try_from(next.duration_since(now))
+            .unwrap_or_default()
+            .min(STEP.unsigned_abs())
+        });
       let change = futures_lite::future::or(
         async {
           match wait {

@@ -102,7 +102,10 @@ fn user() -> Attr {
 fn printer_uri(printer: &str) -> Attr {
   Attr::new(
     "printer-uri",
-    uri(&format!("ipp://localhost/printers/{printer}")),
+    uri(&format!(
+      "ipp://localhost/printers/{}",
+      corona_utils::uri::percent_encode(printer)
+    )),
   )
 }
 
@@ -222,7 +225,6 @@ fn color(value: &str) -> Option<u32> {
   u32::from_str_radix(hex, 16).ok()
 }
 
-/// Active jobs, then the most recent finished ones.
 /// Unfinished jobs, then the last finished ones created at or after `since`
 /// (unix seconds), so weeks-old history stays out.
 pub async fn jobs(sock: &Path, since: i32) -> Result<Vec<Job>> {
@@ -233,6 +235,8 @@ pub async fn jobs(sock: &Path, since: i32) -> Result<Vec<Job>> {
   done.sort_by_key(|j| std::cmp::Reverse(j.id));
   done.truncate(RECENT);
   active.sort_by_key(|j| j.id);
+  // a job finishing between the two requests is in both lists
+  done.retain(|j| !active.iter().any(|a| a.id == j.id));
   active.extend(done);
   Ok(active)
 }
@@ -322,7 +326,8 @@ pub async fn print(sock: &Path, printer: &str, title: &str, data: Vec<u8>) -> Re
     ],
   );
   request.data = data;
-  let response = send(sock, &request).await?;
+  // cupsd spools the document before it answers, a retry would print twice
+  let response = send_within(sock, &request, Duration::from_secs(120)).await?;
   response
     .groups(tag::JOB)
     .find_map(|g| g.get("job-id")?.int())
@@ -466,6 +471,16 @@ pub async fn unsubscribe(sock: &Path, id: i32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn printer_names_stay_one_path_segment() {
+    assert_eq!(corona_utils::uri::percent_encode("Office_1"), "Office_1");
+    assert_eq!(
+      corona_utils::uri::percent_encode("a/b?c#d e"),
+      "a%2Fb%3Fc%23d%20e"
+    );
+    assert_eq!(corona_utils::uri::percent_encode("../x"), "..%2Fx");
+  }
+
   use super::*;
 
   #[test]

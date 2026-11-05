@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use futures_lite::{AsyncBufReadExt, StreamExt, io::BufReader};
+use futures_lite::{AsyncBufReadExt, AsyncReadExt, StreamExt, future::zip, io::BufReader};
 use smol::process::{Command, Stdio};
 
 use crate::state::{
@@ -16,6 +16,7 @@ const SCANIMAGE: &str = "scanimage";
 async fn run(program: &str, args: &[&str]) -> Result<String> {
   let out = Command::new(program)
     .args(args)
+    .kill_on_drop(true)
     .output()
     .await
     .context("running scanimage, is sane-backends installed?")?;
@@ -239,14 +240,22 @@ async fn scan_with(
   let mut files = Vec::new();
   // `--batch-print` names each page's file once it is written
   let mut lines = BufReader::new(child.stdout.take().context("no scanimage output")?).lines();
-  while let Some(line) = lines.next().await {
-    files.push(PathBuf::from(line?));
-    on_page(files.len() as u32);
-  }
-  let out = child.output().await?;
-  let stderr = String::from_utf8_lossy(&out.stderr);
+  let mut err = child.stderr.take().context("no scanimage output")?;
+  // stderr drains alongside stdout, a full pipe would stall scanimage
+  let pages = async {
+    while let Some(line) = lines.next().await {
+      files.push(PathBuf::from(line?));
+      on_page(files.len() as u32);
+    }
+    anyhow::Ok(())
+  };
+  let mut raw = Vec::new();
+  let (pages, _) = zip(pages, err.read_to_end(&mut raw)).await;
+  pages?;
+  let status = child.status().await?;
+  let stderr = String::from_utf8_lossy(&raw);
   // the feeder running empty after some pages ends the job, it is no failure
-  if !out.status.success() && (files.is_empty() || !stderr.contains("out of documents")) {
+  if !status.success() && (files.is_empty() || !stderr.contains("out of documents")) {
     match files.len() {
       0 => bail!("scanimage failed: {}", stderr.trim()),
       n => bail!(

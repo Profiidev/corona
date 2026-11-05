@@ -64,8 +64,8 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
  };
 @@ -106,6 +109,7 @@
      PlatformFrameSignal, PlatformInput, PlatformKeyboardLayout, PlatformWindow, Point, ScrollDelta,
-     ScrollWheelEvent, SharedString, Size, TouchPhase, WindowButtonLayout, WindowKind, WindowParams,
-     point, px, size,
+     ScrollEvent, ScrollSource, SharedString, Size, TouchPhase, WindowButtonLayout, WindowKind,
+     WindowParams, point, px, size,
 +    session_lock::{SessionLockNotSupportedError, SessionLockRefusedError},
  };
  use gpui_wgpu::{CompositorGpuHint, GpuContext};

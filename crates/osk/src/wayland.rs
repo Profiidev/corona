@@ -12,9 +12,12 @@ use anyhow::{Context, Result};
 use rustix::{
   event::{EventfdFlags, PollFd, PollFlags, eventfd, poll},
   fs::{MemfdFlags, memfd_create},
+  io::Errno,
 };
 use wayland_client::{
-  Connection, Dispatch, QueueHandle, delegate_noop,
+  Connection, Dispatch, QueueHandle, WEnum,
+  backend::WaylandError,
+  delegate_noop,
   globals::{GlobalListContents, registry_queue_init},
   protocol::{wl_keyboard::KeymapFormat, wl_registry, wl_seat::WlSeat},
 };
@@ -67,17 +70,19 @@ pub enum Event {
   Field(Option<Field>),
   /// Another input method holds the seat; typing still works, focus is unknown
   Unavailable,
+  /// The thread ended, so commands go nowhere
+  Stopped,
 }
 
 /// Sends to the thread and wakes it, so it never polls
 pub struct Commands {
-  tx: flume::Sender<Command>,
+  tx: Option<flume::Sender<Command>>,
   wake: Arc<OwnedFd>,
 }
 
 impl Commands {
   pub fn send(&self, command: Command) {
-    if self.tx.send(command).is_ok() {
+    if self.tx.as_ref().is_some_and(|tx| tx.send(command).is_ok()) {
       let _ = rustix::io::write(&*self.wake, &1u64.to_ne_bytes());
     }
   }
@@ -85,7 +90,8 @@ impl Commands {
 
 impl Drop for Commands {
   fn drop(&mut self) {
-    // the thread sees the closed channel when it wakes
+    // closed before the wake, so the thread sees it when it wakes
+    self.tx = None;
     let _ = rustix::io::write(&*self.wake, &1u64.to_ne_bytes());
   }
 }
@@ -95,7 +101,7 @@ impl Drop for Commands {
 pub(crate) fn channel() -> (Commands, flume::Receiver<Command>) {
   let (tx, rx) = flume::unbounded();
   let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC).unwrap());
-  (Commands { tx, wake }, rx)
+  (Commands { tx: Some(tx), wake }, rx)
 }
 
 /// Connects on a new thread; `input_method` asks for the seat's input method too
@@ -103,14 +109,17 @@ pub fn spawn(input_method: bool, events: flume::Sender<Event>) -> Result<Command
   let (tx, rx) = flume::unbounded();
   let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)?);
   let woken = wake.clone();
+  let failed = events.clone();
   std::thread::Builder::new()
     .name("wayland-osk".into())
     .spawn(move || {
       if let Err(e) = run(input_method, rx, &woken, events) {
         tracing::error!("on-screen keyboard stopped: {e:#}");
+        // commands are dropped from here on, so the UI is told
+        let _ = failed.send(Event::Stopped);
       }
     })?;
-  Ok(Commands { tx, wake })
+  Ok(Commands { tx: Some(tx), wake })
 }
 
 /// The input method's double-buffered state, applied on `done`
@@ -304,10 +313,20 @@ fn run(
       PollFd::new(&fd, PollFlags::IN),
       PollFd::new(wake, PollFlags::IN),
     ];
-    poll(&mut fds, None)?;
+    match poll(&mut fds, None) {
+      // a handled signal interrupts poll, which is no reason to stop
+      Err(Errno::INTR) => continue,
+      result => result?,
+    };
     let (wayland, woken) = (fds[0].revents(), fds[1].revents());
     if wayland.contains(PollFlags::IN) {
-      guard.read()?;
+      match guard.read() {
+        // a wakeup with nothing to read
+        Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        result => {
+          result?;
+        }
+      }
     } else {
       drop(guard);
     }
@@ -339,8 +358,13 @@ impl Dispatch<ZwpInputMethodV2, ()> for State {
       E::Deactivate => state.pending.active = false,
       E::SurroundingText { text, cursor, .. } => state.pending.surrounding = Some((text, cursor)),
       E::ContentType { hint, purpose } => {
-        state.pending.hint = hint.into_result().ok();
-        state.pending.purpose = purpose.into_result().ok();
+        state.pending.hint = Some(match hint {
+          WEnum::Value(hint) => hint,
+          // keeps the bits it knows, so a sensitive field stays one
+          WEnum::Unknown(raw) => ContentHint::from_bits_truncate(raw),
+        });
+        // a purpose it does not know is treated as private
+        state.pending.purpose = Some(purpose.into_result().unwrap_or(ContentPurpose::Password));
       }
       E::Done => {
         state.serial += 1;

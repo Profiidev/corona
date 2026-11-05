@@ -1,0 +1,116 @@
+use crate::NetworkManagerExt;
+use corona_components::components::card::PageError;
+use corona_surface::control_center::ControlCenterPage;
+use gpui_kit::{
+  Context, ElementId, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+  assets::IconName,
+  component::{
+    ActiveTheme, Sizable,
+    button::{Button, ButtonVariant, ButtonVariants},
+  },
+  div,
+  prelude::FluentBuilder,
+};
+
+use crate::ui::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
+
+mod hidden_network;
+mod interface;
+mod secret_prompt;
+mod status;
+mod utils;
+mod vpn;
+mod wifi;
+
+#[derive(Debug, PartialEq, Eq)]
+enum LoadingState {
+  Idle,
+  Loading,
+  Error,
+}
+
+impl<T, E> From<Result<T, E>> for LoadingState {
+  fn from(result: Result<T, E>) -> Self {
+    if result.is_ok() {
+      Self::Idle
+    } else {
+      Self::Error
+    }
+  }
+}
+
+/// A small refresh button showing `state`: spinning while loading, a red retry after a failure
+fn refresh_button(id: impl Into<ElementId>, state: &LoadingState) -> Button {
+  Button::new(id)
+    .small()
+    .cursor_pointer()
+    .loading(*state == LoadingState::Loading)
+    .when_else(
+      *state == LoadingState::Error,
+      |b| {
+        b.with_variant(ButtonVariant::Danger)
+          .icon(IconName::RotateCw)
+      },
+      |b| b.icon(IconName::RefreshCw),
+    )
+}
+
+pub struct NetworkPanel {
+  connectivity_checking: LoadingState,
+  wifi_scanning: LoadingState,
+  error: PageError,
+  secret_prompt: Option<SecretPrompt>,
+  hidden_prompt: Option<HiddenPrompt>,
+  _secret_request: Subscription,
+}
+
+impl ControlCenterPage for NetworkPanel {
+  const ID: &'static str = "network";
+
+  fn icon() -> gpui_kit::assets::IconName {
+    gpui_kit::assets::IconName::Wifi
+  }
+
+  fn title() -> gpui_kit::SharedString {
+    rust_i18n::t!("app.control_center.network").into()
+  }
+
+  fn init(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
+    let secret_request = cx.network_manager().secret_request.clone();
+    let subscription = cx.observe_in(&secret_request, window, |this, _, window, cx| {
+      this.sync_secret_prompt(window, cx)
+    });
+    cx.defer_in(window, |this, window, cx| {
+      this.sync_secret_prompt(window, cx)
+    });
+
+    Self {
+      connectivity_checking: LoadingState::Idle,
+      wifi_scanning: LoadingState::Idle,
+      error: PageError::default(),
+      secret_prompt: None,
+      hidden_prompt: None,
+      _secret_request: subscription,
+    }
+  }
+}
+
+impl Render for NetworkPanel {
+  fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let theme = cx.theme();
+
+    div()
+      .relative()
+      .flex()
+      .flex_col()
+      .size_full()
+      .gap_2()
+      .child(self.status(theme, cx))
+      .when_some(self.error(cx), |d, error| d.child(error))
+      .child(self.wifi(theme, cx))
+      .when_some(self.vpns(theme, cx), |d, vpns| d.child(vpns))
+      .child(self.interfaces(theme, cx))
+      .when_some(self.hidden_prompt(cx), |d, prompt| d.child(prompt))
+      .when_some(self.secret_prompt(theme, cx), |d, prompt| d.child(prompt))
+  }
+}

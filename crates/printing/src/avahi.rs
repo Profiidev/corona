@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::state::{NetworkPrinter, Printer, Scanner};
@@ -123,7 +123,22 @@ pub async fn resolve(server: &ServerProxy<'_>, item: &Item) -> Result<Service> {
       .await;
   }
   let (.., address, port, txt, _) = resolved?;
+  // an announcer on the LAN could point the shell at local services
+  if local_address(&address) {
+    bail!("{name} announced the address {address}");
+  }
+  if address.to_ascii_lowercase().starts_with("fe80:") {
+    bail!("{name} only has a link-local IPv6 address");
+  }
   Ok(Service::new(name, kind, &address, port, &txt))
+}
+
+fn local_address(address: &str) -> bool {
+  // canonical form unmaps ::ffff:127.0.0.1 so it is tested as IPv4
+  address
+    .parse::<std::net::IpAddr>()
+    .map(|ip| ip.to_canonical())
+    .is_ok_and(|ip| ip.is_loopback() || ip.is_unspecified() || ip.is_multicast())
 }
 
 /// One entry per name, kind, interface and protocol a service was announced on.
@@ -168,10 +183,25 @@ pub fn printers(found: &Found) -> Vec<NetworkPrinter> {
       name: s.name.clone(),
       model: s.record("ty").map(String::from),
       address: s.address.clone(),
-      uri: format!("dnssd://{}.{}.local/", encode(&s.name), s.kind),
+      uri: format!(
+        "dnssd://{}.{}.local/",
+        corona_utils::uri::percent_encode(&s.name),
+        s.kind
+      ),
       direct_uri: direct_uri(s),
     })
     .collect()
+}
+
+/// An announced `rp` or `rs` that is fit for a URL path, slashes trimmed.
+pub fn safe_path(record: Option<&str>) -> Option<&str> {
+  let path = record?.trim_matches('/');
+  let ok = !path.is_empty()
+    && path.split('/').all(|seg| seg != ".." && seg != ".")
+    && path
+      .bytes()
+      .all(|b| b.is_ascii_alphanumeric() || b"-._~/".contains(&b));
+  ok.then_some(path)
 }
 
 /// The printer at its address, e.g. `ipp://10.0.0.7:631/ipp/print`.
@@ -181,7 +211,7 @@ fn direct_uri(s: &Service) -> String {
     true => format!("[{}]", s.address),
     false => s.address.clone(),
   };
-  let path = s.record("rp").unwrap_or("ipp/print").trim_matches('/');
+  let path = safe_path(s.record("rp")).unwrap_or("ipp/print");
   format!("{scheme}://{host}:{}/{path}", s.port)
 }
 
@@ -203,48 +233,14 @@ pub async fn resolve_printer(conn: &zbus::Connection, printer: &NetworkPrinter) 
   Ok(direct_uri(&resolve(&server, &item).await?))
 }
 
-/// Percent-encodes everything but unreserved URI characters.
-fn encode(name: &str) -> String {
-  name
-    .bytes()
-    .map(|b| match b {
-      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-        (b as char).to_string()
-      }
-      _ => format!("%{b:02X}"),
-    })
-    .collect()
-}
-
-fn decode(uri: &str) -> String {
-  let bytes = uri.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut i = 0;
-  while i < bytes.len() {
-    let hex = bytes
-      .get(i + 1..i + 3)
-      .and_then(|h| std::str::from_utf8(h).ok());
-    match (bytes[i], hex.and_then(|h| u8::from_str_radix(h, 16).ok())) {
-      (b'%', Some(b)) => {
-        out.push(b);
-        i += 3;
-      }
-      (b, _) => {
-        out.push(b);
-        i += 1;
-      }
-    }
-  }
-  String::from_utf8_lossy(&out).into_owned()
-}
-
 // shortcut: a queue is matched to an announcement by its DNS-SD name or its
 // address in the device URI, so a queue made with a host name is not
 // recognized. Upgrade by comparing printer-uuid if that shows up.
 /// Whether CUPS already has a queue for `printer`.
 pub fn configured(printer: &NetworkPrinter, queues: &[Printer]) -> bool {
   queues.iter().any(|q| {
-    let uri = decode(&q.device_uri);
+    let uri =
+      String::from_utf8_lossy(&corona_utils::uri::percent_decode(&q.device_uri)).into_owned();
     let host = uri
       .split_once("://")
       .map(|(_, rest)| rest.split(['/', '?']).next().unwrap_or(""))
@@ -260,7 +256,7 @@ pub fn configured(printer: &NetworkPrinter, queues: &[Printer]) -> bool {
     host.trim_matches(['[', ']']) == printer.address
       || uri.contains(&format!("//{}._ipp", printer.name))
       // added by us at an address that has changed since
-      || q.name.eq_ignore_ascii_case(&base_name(printer))
+      || (!uri.starts_with("usb:") && q.name.eq_ignore_ascii_case(&base_name(printer)))
   })
 }
 
@@ -323,6 +319,20 @@ mod tests {
       markers: vec![],
       offline: false,
     }
+  }
+
+  #[test]
+  fn rejects_local_addresses() {
+    for a in [
+      "127.0.0.1",
+      "::1",
+      "0.0.0.0",
+      "224.0.0.1",
+      "::ffff:127.0.0.1",
+    ] {
+      assert!(local_address(a), "{a}");
+    }
+    assert!(!local_address("10.0.0.5"));
   }
 
   #[test]
@@ -419,8 +429,6 @@ mod tests {
 
   #[test]
   fn percent_coding() {
-    assert_eq!(encode("Ä b/c"), "%C3%84%20b%2Fc");
-    assert_eq!(decode("%C3%84%20b%2Fc"), "Ä b/c");
-    assert_eq!(decode("100%"), "100%");
+    assert_eq!(corona_utils::uri::percent_encode("Ä b/c"), "%C3%84%20b%2Fc");
   }
 }

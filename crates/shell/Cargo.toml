@@ -1,6 +1,6 @@
 [package]
 name = "corona_shell"
-description = "The Corona shell: bar, panels, overlays and settings"
+description = "Starts the Corona shell: init order and config reloads"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
@@ -9,13 +9,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-regex.workspace = true
-clap.workspace = true
 corona_surface.workspace = true
+corona_settings.workspace = true
 corona_components.workspace = true
 corona_compositor.workspace = true
 corona_pipewire.workspace = true
-corona_desktop.workspace = true
 corona_network_manager.workspace = true
 corona_mpris.workspace = true
 corona_bluez.workspace = true
@@ -27,53 +25,26 @@ corona_notifications.workspace = true
 corona_tray.workspace = true
 corona_idle.workspace = true
 corona_auth.workspace = true
-corona_auth_screen.workspace = true
 corona_sysinfo.workspace = true
 corona_weather.workspace = true
 corona_location.workspace = true
 corona_script.workspace = true
+corona_desktop.workspace = true
+corona_js.workspace = true
 corona_utils.workspace = true
 corona_config.workspace = true
 corona_ipc.workspace = true
 corona_capture.workspace = true
 corona_launcher.workspace = true
 corona_osk.workspace = true
+corona_windows.workspace = true
 corona_clipboard.workspace = true
 gpui-kit.workspace = true
-uuid.workspace = true
 anyhow.workspace = true
-dirs.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-zbus.workspace = true
-futures.workspace = true
 tracing.workspace = true
-jiff.workspace = true
-zstd = "0.14.3"
-rustix = { workspace = true, features = ["fs"] }
 rust-i18n.workspace = true
-jiff-icu = { version = "0.2.2", default-features = false, features = [
-  "std",
-  "time"
-] }
-icu_calendar = "2.3"
-icu_datetime = "2.3"
-icu_decimal = "2.3"
-icu_locale = "2.3"
-qrcode = { version = "0.14.1", default-features = false }
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
-  "playback",
-  "vorbis",
-  "pipewire"
-] }
 
 [dev-dependencies]
 corona_udisks = { workspace = true, features = ["test-support"] }
-corona_auth = { workspace = true, features = ["test-support"] }
-corona_network_manager = { workspace = true, features = ["test-support"] }
-corona_printing = { workspace = true, features = ["test-support"] }
-corona_utils = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
-gpui-shell.workspace = true
-gpui-component-shell.workspace = true
-tempfile.workspace = true
+regex.workspace = true

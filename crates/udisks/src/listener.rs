@@ -1,12 +1,18 @@
 use anyhow::Result;
-use corona_utils::{entity::WriteChangedExt, error::ErrorLogExt, stream::pump};
-use futures_lite::{Stream, StreamExt, future::poll_once};
-use gpui_kit::{App, AsyncApp};
-use zbus::{
-  Connection, MatchRule, Message, MessageStream, message::Type, zvariant::OwnedObjectPath,
+use corona_utils::{
+  dbus::{owner_changed, sender_signals},
+  entity::WriteChangedExt,
+  stream::{next_burst, pump},
 };
+use futures_lite::{Stream, StreamExt};
+use gpui_kit::{App, AsyncApp};
+use zbus::{Connection, Message, MessageStream, zvariant::OwnedObjectPath};
 
-use crate::{SERVICE, Udisks, snapshot::snapshot, state::JobCompleted};
+use crate::{
+  SERVICE, Udisks,
+  snapshot::{Snapshot, snapshot},
+  state::JobCompleted,
+};
 
 const JOB: &str = "org.freedesktop.UDisks2.Job";
 
@@ -36,17 +42,8 @@ fn change(message: zbus::Result<Message>) -> Change {
 /// fires on udisksd's signals (objects added and removed, properties, jobs) and on it starting
 /// or quitting
 pub async fn subscribe(conn: &Connection) -> Result<impl Stream<Item = Change> + Unpin + use<>> {
-  let signals = MatchRule::builder()
-    .msg_type(Type::Signal)
-    .sender(SERVICE)?
-    .build();
-  let owner = MatchRule::builder()
-    .msg_type(Type::Signal)
-    .sender("org.freedesktop.DBus")?
-    .interface("org.freedesktop.DBus")?
-    .member("NameOwnerChanged")?
-    .arg(0, SERVICE)?
-    .build();
+  let signals = sender_signals(SERVICE)?;
+  let owner = owner_changed(SERVICE)?;
   let signals = MessageStream::for_match_rule(signals, conn, None).await?;
   let owner = MessageStream::for_match_rule(owner, conn, None).await?;
   Ok(signals.map(change).or(owner.map(|_| Change::Other)))
@@ -76,6 +73,24 @@ fn completed(change: Change, state: &Udisks, cx: &mut AsyncApp) {
   });
 }
 
+/// udisksd is not on the bus, as opposed to a call failing
+fn gone(e: &anyhow::Error) -> bool {
+  use zbus::fdo::Error as Fdo;
+  match e.downcast_ref::<Fdo>() {
+    Some(fdo) => matches!(fdo, Fdo::ServiceUnknown(_) | Fdo::NameHasNoOwner(_)),
+    None => false,
+  }
+}
+
+fn publish(state: &Udisks, snapshot: Snapshot, cx: &mut AsyncApp) {
+  state.drives.write_changed(cx, snapshot.drives);
+  state.blocks.write_changed(cx, snapshot.blocks);
+  state.jobs.write_changed(cx, snapshot.jobs);
+  state.volumes.write_changed(cx, snapshot.volumes);
+  // last: observers of running find the rest in place
+  state.running.write_changed(cx, snapshot.running);
+}
+
 pub fn listener(
   cx: &mut App,
   conn: Connection,
@@ -85,20 +100,19 @@ pub fn listener(
   let mut changes = pump(cx, changes);
   cx.spawn(async move |cx| {
     loop {
-      let snapshot = snapshot(&conn).await.log_err().unwrap_or_default();
-      state.running.write_changed(cx, snapshot.running);
-      state.drives.write_changed(cx, snapshot.drives);
-      state.blocks.write_changed(cx, snapshot.blocks);
-      state.jobs.write_changed(cx, snapshot.jobs);
-      state.volumes.write_changed(cx, snapshot.volumes);
+      match snapshot(&conn).await {
+        Ok(snapshot) => publish(&state, snapshot, cx),
+        // udisksd is not there
+        Err(e) if gone(&e) => publish(&state, Snapshot::default(), cx),
+        // a transient error keeps what is known
+        Err(e) => tracing::error!("udisks snapshot failed: {e:#}"),
+      }
 
-      let Some(next) = changes.next().await else {
+      let Some(burst) = next_burst(&mut changes).await else {
         break;
       };
-      completed(next, &state, cx);
-      // drain the rest of the burst already queued, one snapshot covers it
-      while let Some(Some(next)) = poll_once(changes.next()).await {
-        completed(next, &state, cx);
+      for change in burst {
+        completed(change, &state, cx);
       }
     }
   })

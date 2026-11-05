@@ -1,69 +1,57 @@
-use std::{
-  cell::RefCell,
-  collections::{HashMap, VecDeque},
-  rc::Rc,
-  time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
 
-use anyhow::{Context as _, Result, anyhow, bail};
-use corona_macros::named;
-use gpui_kit::{App, AppContext, Entity, EventEmitter};
-use gpui_shell::HostModule;
+use anyhow::{Result, anyhow, bail};
+use corona_js::{
+  Cx, Data, Json, Listener, ModuleBuilder, Opt, Throws, Unsubscribe, host_module, track,
+};
+use gpui_kit::{App, AppContext, Entity, EventEmitter, Subscription};
 use serde::Serialize;
 use serde_json::{Map, Value};
-use ts_rs::TS;
+use specta::{Type, specta};
 
 use crate::{
-  host_fn::{Cx, Module},
-  module::{Subscribe, Subscriptions, Updates, watch},
+  module::settings::{Change, Settings},
+  plugin::settings::Setting,
 };
 
 /// How long `call` waits for the service to answer
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
-/// Notification actions kept for a plugin that is not waiting for one
-const ACTION_BUFFER: usize = 16;
 
 /// A `call` for the service to answer with `reply` or `fail`.
-#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Type)]
 pub struct Call {
-  pub id: u64,
+  pub id: u32,
   pub method: String,
   pub args: Value,
 }
 
 /// An action the user picked on one of the plugin's notifications.
-#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Type)]
 pub struct ActionEvent {
   /// The notification's id, as `notify` returned it.
   pub id: u32,
   pub key: String,
   /// The text typed, for key `inline-reply`.
   #[serde(skip_serializing_if = "Option::is_none")]
-  #[ts(optional)]
   pub text: Option<String>,
 }
 
-/// That secret `0` of the plugin was stored or removed
-pub struct SecretChanged(pub String);
+/// Emits the actions picked on the plugin's notifications
+pub struct Actions;
 
-/// Tells the plugin's scripts of its secrets changing, see [`SecretChanged`]
-pub struct Secrets;
-
-impl EventEmitter<SecretChanged> for Secrets {}
+impl EventEmitter<ActionEvent> for Actions {}
 
 type Answer = Result<Value, String>;
 
-/// Calls into the plugin's service, and the notification actions for it
+/// Calls into the plugin's service
 #[derive(Default)]
 pub struct Calls {
-  /// To the running service's `nextCall`, made anew as it starts
+  /// To the running service's `onCall`, made anew as it starts
   service: Option<flume::Sender<Call>>,
-  next_id: u64,
-  pending: HashMap<u64, flume::Sender<Answer>>,
-  actions: VecDeque<ActionEvent>,
-  /// The `nextAction`s waiting, by the load that made them
-  action_waiters: Vec<(u64, flume::Sender<ActionEvent>)>,
-  next_load: u64,
+  /// Counts the starts, so a stopped run cannot stop a later one
+  run: u32,
+  next_id: u32,
+  pending: HashMap<u32, flume::Sender<Answer>>,
 }
 
 impl Calls {
@@ -74,7 +62,7 @@ impl Calls {
     if !matches!(sent, Some(Ok(()))) {
       bail!("plugin has no running service");
     }
-    self.next_id += 1;
+    self.next_id = self.next_id.wrapping_add(1);
     // callers that gave up
     self.pending.retain(|_, tx| !tx.is_disconnected());
     let (tx, rx) = flume::bounded(1);
@@ -82,7 +70,7 @@ impl Calls {
     Ok(rx)
   }
 
-  fn answer(&mut self, id: u64, answer: Answer) -> Result<()> {
+  fn answer(&mut self, id: u32, answer: Answer) -> Result<()> {
     let tx = self
       .pending
       .remove(&id)
@@ -92,75 +80,56 @@ impl Calls {
     Ok(())
   }
 
-  /// The calls for a service that starts; the last one's `nextCall`s end
-  fn start_service(&mut self) -> flume::Receiver<Call> {
+  /// The calls for a service that starts, and its run; the last run's end and fail
+  fn start_service(&mut self) -> (flume::Receiver<Call>, u32) {
+    self.stop_service(self.run);
+    self.run += 1;
     let (tx, rx) = flume::unbounded();
     self.service = Some(tx);
-    rx
+    (rx, self.run)
   }
 
-  fn stop_service(&mut self) {
+  /// Fails the calls waiting for `run`, if it is the last one
+  fn stop_service(&mut self, run: u32) {
+    if run != self.run {
+      return;
+    }
     self.service = None;
     for (_, tx) in self.pending.drain() {
       tx.send(Err("service stopped".into())).ok();
     }
   }
-
-  fn next_action(&mut self, load: u64) -> flume::Receiver<ActionEvent> {
-    let (tx, rx) = flume::bounded(1);
-    match self.actions.pop_front() {
-      Some(action) => drop(tx.send(action)),
-      None => self.action_waiters.push((load, tx)),
-    }
-    rx
-  }
-
-  /// To every instance waiting; kept for the next one when none is.
-  fn push_action(&mut self, action: ActionEvent) {
-    let delivered = self
-      .action_waiters
-      .drain(..)
-      .filter(|(_, tx)| tx.send(action.clone()).is_ok())
-      .count();
-    if delivered == 0 {
-      self.actions.push_back(action);
-      if self.actions.len() > ACTION_BUFFER {
-        self.actions.pop_front();
-      }
-    }
-  }
 }
 
-/// What all instances of one plugin share: its state and the calls into its
-/// service
+/// What all instances of one plugin share: its state, settings, notification actions and
+/// the calls into its service
 #[derive(Clone)]
 pub struct Hub {
   state: Entity<Map<String, Value>>,
   calls: Rc<RefCell<Calls>>,
-  pub secrets: Entity<Secrets>,
+  pub settings: Entity<Settings>,
+  pub actions: Entity<Actions>,
 }
 
 impl Hub {
-  pub fn new(cx: &mut App) -> Self {
+  pub fn new(id: &str, settings: &[Setting], cx: &mut App) -> Self {
     Self {
       state: cx.new(|_| Map::new()),
       calls: Rc::default(),
-      secrets: cx.new(|_| Secrets),
+      settings: Settings::new(id, settings, cx),
+      actions: cx.new(|_| Actions),
     }
   }
 
   pub fn secret_changed(&self, key: String, cx: &mut App) {
-    self.secrets.update(cx, |_, cx| cx.emit(SecretChanged(key)));
+    self
+      .settings
+      .update(cx, |_, cx| cx.emit(Change::secret(key)));
   }
 
-  /// The calls for the service that starts, for the service's [`module`]
-  pub fn start_service(&self) -> flume::Receiver<Call> {
+  /// The calls for the service that starts, and its run
+  pub fn start_service(&self) -> (flume::Receiver<Call>, u32) {
     self.calls.borrow_mut().start_service()
-  }
-
-  /// Fails every call still waiting for the service
-  pub fn stop_service(&self) {
-    self.calls.borrow_mut().stop_service();
   }
 
   /// Asks the service, answers within [`CALL_TIMEOUT`]
@@ -186,109 +155,113 @@ impl Hub {
     ))
   }
 
-  /// An id for [`Self::next_action`] and [`Self::stop_actions`]
-  pub fn load(&self) -> u64 {
-    let mut calls = self.calls.borrow_mut();
-    calls.next_load += 1;
-    calls.next_load
-  }
-
-  pub fn next_action(&self, load: u64) -> flume::Receiver<ActionEvent> {
-    self.calls.borrow_mut().next_action(load)
-  }
-
-  /// Wakes the `nextAction`s of a load that is gone: gpui-shell never drops
-  /// their futures, and a dead waiter would swallow the next action
-  pub fn stop_actions(&self, load: u64) {
-    (self.calls.borrow_mut().action_waiters).retain(|(l, _)| *l != load);
-  }
-
-  pub fn push_action(&self, action: ActionEvent) {
-    self.calls.borrow_mut().push_action(action);
+  pub fn push_action(&self, action: ActionEvent, cx: &mut App) {
+    self.actions.update(cx, |_, cx| cx.emit(action));
   }
 }
 
-/// `corona/plugin`: state shared by all of the plugin's views and its
-/// service, and calls from the views into the service. Every plugin has it;
-/// `calls` is the service's, `None` in a view. Only views have `call`, only
-/// the service `nextCall`, `reply` and `fail`, but both are typed with all of
-/// them: they share the plugin's `gpui-kit.d.ts`.
-pub fn module(
-  hub: &Hub,
-  calls: Option<flume::Receiver<Call>>,
-  subs: &mut Vec<Subscribe>,
-) -> HostModule {
-  let reads = Subscriptions::default();
-  let shared = hub.state.clone();
-  subs.push(watch(&reads, Updates::Plugin, move |_| shared));
-  let service = calls.is_some();
-  let (call, reply, fail) = (hub.clone(), hub.calls.clone(), hub.calls.clone());
+/// Fails the calls still waiting for a run of the service once its runtime is gone
+struct StopGuard(Hub, u32);
 
-  let call = named!(
-    "call",
-    /// Views only: calls `method` of the plugin's service, which answers
-    /// with `reply` or `fail`. Fails when there is no service, or after 30
-    /// seconds.
-    move |cx: &mut App, method: String, args: Option<Value>| {
-      call.call(method, args.unwrap_or_default(), cx)
-    }
-  );
-  let next = named!(
-    "nextCall",
-    /// The service only: the next call to answer, once one comes.
-    move || -> Result<_> {
-      let calls = (calls.clone()).context("only the plugin's service takes calls")?;
-      Ok(async move { calls.recv_async().await.map_err(|_| anyhow!("service stopped")) })
-    }
-  );
-  let reply = named!(
-    "reply",
-    /// The service only: answers call `id` with `value`.
-    move |id: u64, value: Value| reply.borrow_mut().answer(id, Ok(value)).err()
-  );
-  let fail = named!(
-    "fail",
-    /// The service only: answers call `id` with an error.
-    move |id: u64, message: String| fail.borrow_mut().answer(id, Err(message)).err()
-  );
+impl Drop for StopGuard {
+  fn drop(&mut self) {
+    self.0.calls.borrow_mut().stop_service(self.1);
+  }
+}
 
-  let module = state(hub, reads);
+/// What the service's runtime keeps: the calls it takes
+struct Service {
+  calls: flume::Receiver<Call>,
+  _stop: StopGuard,
+}
+
+/// Views only: calls `method` of the plugin's service, which answers with `reply` or
+/// `fail`. Fails when there is no service, or after 30 seconds.
+#[specta]
+async fn call(
+  cx: Cx,
+  hub: Data<Hub>,
+  method: String,
+  args: Opt<Json<Value>>,
+) -> Throws<Json<Value>> {
+  let args = args.0.map(|a| a.0).unwrap_or_default();
+  let answer = match hub.call(method, args, &cx) {
+    Ok(answer) => answer.await,
+    Err(e) => Err(e),
+  };
+  answer.map(Json).into()
+}
+
+/// The service only: calls `cb` with each call to answer.
+#[specta]
+fn on_call(cx: Cx, service: Data<Service>, cb: Listener<Json<Call>>) -> Unsubscribe {
+  let calls = service.calls.clone();
+  let listener = cb.clone();
+  let task = cx.spawn(async move |cx| {
+    while let Ok(call) = calls.recv_async().await {
+      cx.update(|cx| listener.call(cx, Json(call)));
+    }
+  });
+  cb.keep(Subscription::new(move || drop(task)))
+}
+
+/// The service only: answers call `id` with `value`.
+#[specta]
+fn reply(hub: Data<Hub>, id: u32, value: Json<Value>) -> Throws<()> {
+  hub.calls.borrow_mut().answer(id, Ok(value.0)).into()
+}
+
+/// The service only: answers call `id` with an error.
+#[specta]
+fn fail(hub: Data<Hub>, id: u32, message: String) -> Throws<()> {
+  hub.calls.borrow_mut().answer(id, Err(message)).into()
+}
+
+/// The state under `key`, null when unset. A view that reads it renders again as it
+/// changes, in every view of the plugin.
+#[specta]
+fn get_state(cx: Cx, hub: Data<Hub>, key: String) -> Json<Value> {
+  let state = &hub.state;
+  track(state);
+  Json(state.read(&cx).get(&key).cloned().unwrap_or_default())
+}
+
+/// Sets the state under `key` for all of the plugin's views; null removes it.
+#[specta]
+fn set_state(mut cx: Cx, hub: Data<Hub>, key: String, value: Json<Value>) {
+  hub.state.update(&mut *cx, |state, cx| {
+    let changed = match value.0 {
+      Value::Null => state.remove(&key).is_some(),
+      value => state.insert(key, value.clone()) != Some(value),
+    };
+    if changed {
+      cx.notify();
+    }
+  })
+}
+
+/// `corona/plugin`: state shared by all of the plugin's views and its service, and calls
+/// from the views into the service. Every plugin has it; a `service` takes the calls. Only views have `call`, only the service `onCall`, `reply` and `fail`, but
+/// both are typed with all of them: they share the plugin's `corona.d.ts`.
+pub fn module(hub: &Hub, service: bool, m: &mut ModuleBuilder) {
+  m.provide(hub.clone());
   match service {
-    true => module.declare(call).func(next).func(reply).func(fail),
-    false => module.func(call).declare(next).declare(reply).declare(fail),
+    true => {
+      let (calls, run) = hub.start_service();
+      m.provide(Service {
+        calls,
+        _stop: StopGuard(hub.clone(), run),
+      });
+      // in the view's order, so both write the same types
+      host_module!(m, { sync: [get_state, set_state], declare: [call] });
+      host_module!(m, { sync: [on_call, reply, fail] });
+    }
+    false => host_module!(m, {
+      sync: [get_state, set_state],
+      async: [call],
+      declare: [on_call, reply, fail],
+    }),
   }
-  .into()
-}
-
-/// `getState` and `setState`; `reads` records what a view read
-fn state(hub: &Hub, reads: Subscriptions) -> Module {
-  let (get, set) = (hub.state.clone(), hub.state.clone());
-
-  Module::new("corona/plugin")
-    .func(named!(
-      "getState",
-      /// The state under `key`, null when unset. A view that reads it renders
-      /// again as it changes, in every view of the plugin.
-      move |cx: Cx, key: String| {
-        reads.record(Updates::Plugin);
-        get.read(&cx).get(&key).cloned().unwrap_or(Value::Null)
-      }
-    ))
-    .func(named!(
-      "setState",
-      /// Sets the state under `key` for all of the plugin's views; null removes it.
-      move |cx: &mut App, key: String, value: Value| {
-        set.update(cx, |state, cx| {
-          let changed = match value {
-            Value::Null => state.remove(&key).is_some(),
-            value => state.insert(key, value.clone()) != Some(value),
-          };
-          if changed {
-            cx.notify();
-          }
-        })
-      }
-    ))
 }
 
 #[cfg(test)]
@@ -303,7 +276,7 @@ mod tests {
     let error = calls.call("a".into(), json!(1)).unwrap_err();
     assert_eq!(error.to_string(), "plugin has no running service");
 
-    let service = calls.start_service();
+    let (service, _) = calls.start_service();
     let first = calls.call("a".into(), json!(1)).unwrap();
     let second = calls.call("b".into(), Value::Null).unwrap();
     assert_eq!(service.try_recv().unwrap().method, "a");
@@ -324,57 +297,33 @@ mod tests {
   #[test]
   fn a_restart_ends_the_old_calls() {
     let mut calls = Calls::default();
-    let old = calls.start_service();
-    let new = calls.start_service();
-    assert!(old.is_disconnected() && old.recv().is_err());
-    calls.call("a".into(), Value::Null).unwrap();
-    assert_eq!(new.try_recv().unwrap().method, "a");
+    let (old, old_run) = calls.start_service();
+    let waiting = calls.call("a".into(), Value::Null).unwrap();
+    let (new, _) = calls.start_service();
+    assert!(old.recv().is_ok() && old.is_disconnected() && old.recv().is_err());
+    assert_eq!(waiting.try_recv().unwrap(), Err("service stopped".into()));
+    // the old run stopping late leaves the new one
+    calls.stop_service(old_run);
+    calls.call("b".into(), Value::Null).unwrap();
+    assert_eq!(new.try_recv().unwrap().method, "b");
   }
 
   #[test]
   fn stopping_fails_what_waits() {
     let mut calls = Calls::default();
-    let service = calls.start_service();
+    let (service, run) = calls.start_service();
     let waiting = calls.call("a".into(), Value::Null).unwrap();
     // a caller that gave up is forgotten
     drop(calls.call("b".into(), Value::Null).unwrap());
     calls.call("c".into(), Value::Null).unwrap();
     assert_eq!(calls.pending.len(), 2);
 
-    calls.stop_service();
+    calls.stop_service(run);
     assert_eq!(waiting.try_recv().unwrap(), Err("service stopped".into()));
     assert!(calls.pending.is_empty());
-    // its `nextCall` ends once the queue is read
+    // its calls end once the queue is read
     assert_eq!(service.drain().count(), 3);
     assert!(service.is_disconnected());
     assert!(calls.call("d".into(), Value::Null).is_err());
-  }
-
-  #[test]
-  fn actions_go_to_every_waiter_or_are_kept() {
-    let mut calls = Calls::default();
-    let action = |id| ActionEvent {
-      id,
-      key: "default".into(),
-      text: None,
-    };
-    let (a, b) = (calls.next_action(1), calls.next_action(2));
-    calls.push_action(action(1));
-    assert_eq!(a.try_recv().unwrap().id, 1);
-    assert_eq!(b.try_recv().unwrap().id, 1);
-
-    for id in 0..20 {
-      calls.push_action(action(id));
-    }
-    assert_eq!(calls.actions.len(), ACTION_BUFFER);
-    assert_eq!(calls.next_action(1).try_recv().unwrap().id, 4);
-
-    // a gone load's waiter is woken, the action kept
-    calls.actions.clear();
-    let gone = calls.next_action(3);
-    calls.action_waiters.retain(|(l, _)| *l != 3);
-    assert!(gone.try_recv().is_err() && gone.is_disconnected());
-    calls.push_action(action(30));
-    assert_eq!(calls.actions.back().unwrap().id, 30);
   }
 }

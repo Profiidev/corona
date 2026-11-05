@@ -148,13 +148,7 @@ fn run_in_terminal() -> Rc<dyn Command> {
       vec![Action::sync(
         "open",
         t!("app.launcher.run.terminal"),
-        |args, _, cx| {
-          let program = args.text(0).unwrap_or_default();
-          let mut argv = apps::terminal(&cx.config().launcher.terminal);
-          argv.extend(program.split_whitespace().map(String::from));
-          apps::spawn("terminal", &argv, None)?;
-          Ok(Outcome::close())
-        },
+        |args, _, cx| in_terminal(args.text(0).unwrap_or_default(), cx),
       )]
     },
   )

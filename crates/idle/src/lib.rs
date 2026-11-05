@@ -1,9 +1,12 @@
-use std::{collections::HashMap, thread, time::Duration};
+use std::{collections::HashMap, os::fd::OwnedFd, sync::Arc, thread, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
-use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::{
+  event::{EventfdFlags, PollFd, PollFlags, eventfd, poll},
+  io::Errno,
+};
 use wayland_client::{
   Connection, Dispatch, QueueHandle, delegate_noop,
   globals::{GlobalListContents, registry_queue_init},
@@ -14,13 +17,77 @@ use wayland_protocols::ext::idle_notify::v1::client::{
   ext_idle_notifier_v1::ExtIdleNotifierV1,
 };
 
+mod behavior;
+pub mod cli;
+pub mod commands;
+mod launcher;
 mod screensaver;
+pub mod script;
+pub mod settings;
+pub mod ui;
 
-/// How often the watcher looks for new timeouts while the compositor is quiet
-#[cfg(not(test))]
-const COMMAND_POLL: Duration = Duration::from_millis(250);
-#[cfg(test)]
-const COMMAND_POLL: Duration = Duration::from_millis(10);
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
+
+/// Watches input and runs the `[idle]` behaviors, serves the D-Bus idle inhibits, and
+/// registers stay awake's OSD, tile, commands, the idle settings page and the script module
+pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
+  behavior::init(cx, &buses.session);
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  register_script(corona_js::ScriptExt::script_mut(cx));
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::IdleModule>();
+}
+
+/// Wakes the watcher's poll when dropped, so it sees the sender gone
+struct Wake(Arc<OwnedFd>);
+
+impl Wake {
+  fn ring(&self) {
+    let _ = rustix::io::write(&*self.0, &1u64.to_ne_bytes());
+  }
+}
+
+impl Drop for Wake {
+  fn drop(&mut self) {
+    self.ring();
+  }
+}
+
+/// The sending end of the watcher's timeouts; each send wakes it
+pub(crate) struct Timeouts {
+  // declared first: the sender is gone before the final wake
+  tx: flume::Sender<Vec<(String, Duration)>>,
+  wake: Wake,
+}
+
+impl Timeouts {
+  fn send(&self, timeouts: Vec<(String, Duration)>) {
+    let _ = self.tx.send(timeouts);
+    self.wake.ring();
+  }
+}
+
+/// The watcher's end of [`Timeouts`]
+pub(crate) struct Inbox {
+  rx: flume::Receiver<Vec<(String, Duration)>>,
+  wake: Arc<OwnedFd>,
+}
+
+pub(crate) fn channel() -> Result<(Timeouts, Inbox)> {
+  let (tx, rx) = flume::unbounded();
+  let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)?);
+  let timeouts = Timeouts {
+    tx,
+    wake: Wake(wake.clone()),
+  };
+  Ok((timeouts, Inbox { rx, wake }))
+}
 
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
@@ -29,7 +96,9 @@ pub struct Idle {
   /// Nothing is watched: staying awake, or an app holds an
   /// `org.freedesktop.ScreenSaver` inhibit
   pub inhibited: Entity<bool>,
-  timeouts: flume::Sender<Vec<(String, Duration)>>,
+  timeouts: Timeouts,
+  /// what the watcher was last told, sorted
+  last_sent: Vec<(String, Duration)>,
   wanted: Vec<(String, Duration)>,
   /// an app holds an `org.freedesktop.ScreenSaver` inhibit
   screensaver: bool,
@@ -42,15 +111,15 @@ impl Global for Idle {}
 /// Starts watching, `on_change(name, idle)` runs when the time named `name`
 /// passes without input (`true`) and when input follows (`false`).
 /// `session` serves the D-Bus idle inhibits.
-pub fn init(
+pub(crate) fn start(
   cx: &mut App,
   session: &zbus::Connection,
   on_change: impl Fn(&str, bool, &mut App) + 'static,
 ) {
-  let (timeouts, timeouts_rx) = flume::unbounded();
+  let (timeouts, inbox) = channel().expect("an eventfd");
   let (events, events_rx) = flume::unbounded();
   thread::spawn(move || {
-    if let Err(e) = watch(timeouts_rx, events) {
+    if let Err(e) = watch(inbox, events) {
       tracing::error!("idle watcher stopped: {e:#}");
     }
   });
@@ -83,6 +152,7 @@ pub fn init(
     stay_awake: cx.new(|_| false),
     inhibited: cx.new(|_| false),
     timeouts,
+    last_sent: Vec::new(),
     wanted: Vec::new(),
     screensaver: false,
     expiry: None,
@@ -122,27 +192,29 @@ impl Idle {
   }
 
   /// Nothing is watched while inhibited, the timeouts start over after
-  fn send(&self, cx: &mut App) {
+  fn send(&mut self, cx: &mut App) {
     let inhibited = self.screensaver || self.stay_awake(cx);
     self.inhibited.write_changed(cx, inhibited);
-    let timeouts = match inhibited {
+    let mut timeouts = match inhibited {
       true => Vec::new(),
       false => self.wanted.clone(),
     };
-    let _ = self.timeouts.send(timeouts);
+    timeouts.sort();
+    // the watcher restarts everything it is sent, an unchanged list would re-fire idle
+    if timeouts == self.last_sent {
+      return;
+    }
+    self.last_sent.clone_from(&timeouts);
+    self.timeouts.send(timeouts);
   }
 }
 
-/// Reads the watcher; changes go through `cx.update_global::<Idle, _>`
-pub trait IdleExt {
-  fn idle(&self) -> &Idle;
-}
-
-impl IdleExt for App {
-  fn idle(&self) -> &Idle {
-    self.global::<Idle>()
-  }
-}
+corona_utils::global_ext!(
+  /// Reads the watcher; changes go through `cx.update_global::<Idle, _>`
+  IdleExt,
+  idle,
+  Idle
+);
 
 struct State {
   events: flume::Sender<(String, bool)>,
@@ -150,10 +222,8 @@ struct State {
   notifications: HashMap<String, (ExtIdleNotificationV1, bool)>,
 }
 
-fn watch(
-  timeouts: flume::Receiver<Vec<(String, Duration)>>,
-  events: flume::Sender<(String, bool)>,
-) -> Result<()> {
+fn watch(inbox: Inbox, events: flume::Sender<(String, bool)>) -> Result<()> {
+  let Inbox { rx: timeouts, wake } = inbox;
   let conn = Connection::connect_to_env()?;
   let (globals, mut queue) = registry_queue_init::<State>(&conn)?;
   let qh = queue.handle();
@@ -175,7 +245,10 @@ fn watch(
         }
       }
       for (name, timeout) in next.into_iter().filter(|(_, t)| !t.is_zero()) {
-        let millis = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
+        // under 1ms would be 0, an immediate idle
+        let millis = u32::try_from(timeout.as_millis())
+          .unwrap_or(u32::MAX)
+          .max(1);
         let notification = notifier.get_idle_notification(millis, &seat, &qh, name.clone());
         // a name given twice: the later timeout wins, the earlier one must not leak
         if let Some((earlier, _)) = state.notifications.insert(name, (notification, false)) {
@@ -190,9 +263,19 @@ fn watch(
       continue;
     };
     let fd = guard.connection_fd();
-    let mut fds = [PollFd::new(&fd, PollFlags::IN)];
-    let timeout = Timespec::try_from(COMMAND_POLL)?;
-    let ready = poll(&mut fds, Some(&timeout))? > 0;
+    let mut fds = [
+      PollFd::new(&fd, PollFlags::IN),
+      PollFd::new(&*wake, PollFlags::IN),
+    ];
+    match poll(&mut fds, None) {
+      Ok(_) => {}
+      Err(Errno::INTR) => continue,
+      Err(e) => return Err(e.into()),
+    }
+    let (ready, woken) = (!fds[0].revents().is_empty(), !fds[1].revents().is_empty());
+    if woken {
+      let _ = rustix::io::read(&*wake, &mut [0u8; 8]);
+    }
     if ready {
       guard.read()?;
     }
@@ -454,12 +537,11 @@ mod tests {
   /// the events, and the session bus to keep alive
   fn start(cx: &mut TestAppContext) -> (Events, TestBus) {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let session = futures_lite::future::block_on(bus.conn());
+    let (bus, session) = TestBus::with_conn();
     let events = Events::default();
     let seen = events.clone();
     cx.update(|cx| {
-      init(cx, &session, move |name, idle, _| {
+      super::start(cx, &session, move |name, idle, _| {
         seen.borrow_mut().push((name.into(), idle))
       })
     });
@@ -629,12 +711,10 @@ mod tests {
   #[test]
   fn the_watcher_ends_with_its_sender() {
     let compositor = Compositor::start(true);
-    let (timeouts, timeouts_rx) = flume::unbounded();
+    let (timeouts, inbox) = channel().unwrap();
     let (events, _events_rx) = flume::unbounded();
-    let watcher = thread::spawn(move || watch(timeouts_rx, events));
-    timeouts
-      .send(vec![("lock".into(), Duration::from_secs(1))])
-      .unwrap();
+    let watcher = thread::spawn(move || watch(inbox, events));
+    timeouts.send(vec![("lock".into(), Duration::from_secs(1))]);
     let deadline = Instant::now() + Duration::from_secs(10);
     while compositor.live().is_empty() {
       assert!(Instant::now() < deadline);
@@ -647,9 +727,9 @@ mod tests {
   #[test]
   fn the_watcher_reports_a_missing_notifier() {
     let _compositor = Compositor::start(false);
-    let (_timeouts, timeouts_rx) = flume::unbounded();
+    let (_timeouts, inbox) = channel().unwrap();
     let (events, _events_rx) = flume::unbounded();
-    let error = watch(timeouts_rx, events).unwrap_err();
+    let error = watch(inbox, events).unwrap_err();
     assert_eq!(
       error.to_string(),
       "the compositor has no ext_idle_notifier_v1"
@@ -659,9 +739,9 @@ mod tests {
   #[test]
   fn the_watcher_reports_a_missing_seat() {
     let _compositor = Compositor::start_with_config(true, 0);
-    let (_timeouts, timeouts_rx) = flume::unbounded();
+    let (_timeouts, inbox) = channel().unwrap();
     let (events, _events_rx) = flume::unbounded();
-    let error = watch(timeouts_rx, events).unwrap_err();
+    let error = watch(inbox, events).unwrap_err();
     assert!(!error.to_string().is_empty());
   }
 
@@ -801,12 +881,10 @@ mod tests {
   #[test]
   fn abrupt_connection_drop_terminates_watcher() {
     let compositor = Compositor::start(true);
-    let (timeouts, timeouts_rx) = flume::unbounded();
+    let (timeouts, inbox) = channel().unwrap();
     let (events, _events_rx) = flume::unbounded();
-    let watcher = thread::spawn(move || watch(timeouts_rx, events));
-    timeouts
-      .send(vec![("lock".into(), Duration::from_millis(500))])
-      .unwrap();
+    let watcher = thread::spawn(move || watch(inbox, events));
+    timeouts.send(vec![("lock".into(), Duration::from_millis(500))]);
     let deadline = Instant::now() + Duration::from_secs(10);
     while compositor.live().is_empty() {
       assert!(Instant::now() < deadline);

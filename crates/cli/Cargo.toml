@@ -10,19 +10,38 @@ categories.workspace = true
 
 [dependencies]
 corona_surface.workspace = true
-corona_ipc.workspace = true
+corona_settings.workspace = true
+corona_idle.workspace = true
+corona_windows.workspace = true
+corona_auth.workspace = true
+corona_osk.workspace = true
+corona_udisks.workspace = true
+corona_brightness.workspace = true
+corona_power.workspace = true
+corona_clipboard.workspace = true
+corona_capture.workspace = true
+corona_notifications.workspace = true
+corona_pipewire.workspace = true
+corona_bluez.workspace = true
+corona_launcher.workspace = true
 corona_config.workspace = true
 corona_script.workspace = true
+corona_desktop.workspace = true
+corona_js.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-corona_shell.workspace = true
 corona_network_manager.workspace = true
-tracing.workspace = true
+corona_mpris.workspace = true
+corona_printing.workspace = true
+corona_sysinfo.workspace = true
+corona_tray.workspace = true
+corona_weather.workspace = true
 clap.workspace = true
 gpui-kit.workspace = true
-clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
+clap_complete.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }
+corona_ipc = { workspace = true, features = ["test-support"] }

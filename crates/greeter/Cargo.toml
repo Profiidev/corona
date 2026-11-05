@@ -23,7 +23,7 @@ tracing.workspace = true
 rust-i18n.workspace = true
 zbus.workspace = true
 tracing-subscriber.workspace = true
-greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
+greetd_ipc.workspace = true
 freedesktop-desktop-entry.workspace = true
 wayland-client.workspace = true
 wayland-protocols = { workspace = true, features = ["unstable"] }

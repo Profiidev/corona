@@ -3,7 +3,7 @@
 //! `ip_forward` (older) or manages it per interface (`ipv4.forwarding`, newer). NM may leave it on
 //! after a hotspot, so only the first value seen while none runs counts.
 
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 
 fn read(interface: &str) -> Option<bool> {
   let path = format!("/proc/sys/net/ipv4/conf/{interface}/forwarding");
@@ -15,10 +15,7 @@ fn store() -> Option<PathBuf> {
   if cfg!(test) {
     return None;
   }
-  let state = std::env::var_os("XDG_STATE_HOME")
-    .map(PathBuf::from)
-    .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".local/state")))?;
-  Some(state.join("corona/forwarding"))
+  Some(dirs::state_dir()?.join("corona/forwarding"))
 }
 
 fn boot_id() -> Option<String> {
@@ -56,6 +53,9 @@ const DEFAULT: &str = "default";
 
 /// records the interfaces not seen yet this boot; call only while no hotspot runs
 pub(crate) fn observe<'a>(interfaces: impl Iterator<Item = &'a str>) {
+  // overlapping calls would each rewrite the file from what they loaded, dropping the other's
+  static LOCK: Mutex<()> = Mutex::new(());
+  let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
   let mut known = load();
   let (Some(path), Some(boot)) = (store(), boot_id()) else {
     return;
@@ -70,7 +70,11 @@ pub(crate) fn observe<'a>(interfaces: impl Iterator<Item = &'a str>) {
   if let Some(dir) = path.parent() {
     fs::create_dir_all(dir).ok();
   }
-  fs::write(path, format!("{boot}\n{body}")).ok();
+  // renamed into place: a read never sees it half written, and a concurrent call has its own file
+  let tmp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+  if fs::write(&tmp, format!("{boot}\n{body}")).is_ok() {
+    fs::rename(tmp, path).ok();
+  }
 }
 
 /// adds the interfaces missing from `known`, true if any. One created after the first observation
@@ -100,9 +104,15 @@ fn record<'a>(
   changed
 }
 
-/// the uplink needs closing: it did not route before, or nobody knows
-pub(crate) fn lock_needed(uplink: &str) -> bool {
-  needs_lock(&load(), uplink)
+/// the uplinks among `names` that need closing: they did not route before, or nobody knows.
+/// Reads the state once
+pub(crate) fn lock_set(names: &[&str]) -> Vec<String> {
+  let known = load();
+  names
+    .iter()
+    .filter(|n| needs_lock(&known, n))
+    .map(|n| (*n).to_owned())
+    .collect()
 }
 
 /// one unseen inherits `default`, the value it would have started with before any hotspot
@@ -123,7 +133,7 @@ mod tests {
     );
     assert!(parse(text, "boot-b").is_empty());
     // unknown in tests: always locked
-    assert!(lock_needed("eth0"));
+    assert_eq!(lock_set(&["eth0"]), ["eth0"]);
   }
 
   #[test]

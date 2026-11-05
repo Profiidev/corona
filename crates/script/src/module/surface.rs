@@ -2,31 +2,14 @@ use std::{cell::Cell, rc::Rc};
 
 use anyhow::{Result, bail};
 use corona_config::placement::Placement;
-use corona_macros::named;
+use corona_js::{Cx, Data, Json, ModuleBuilder, Throws, host_module, track};
 use corona_surface::{bar::BarState, panel::PanelState};
 use gpui_kit::{App, EntityId};
-use gpui_shell::HostModule;
 use serde::Serialize;
-use ts_rs::TS;
-
-use crate::{
-  host_fn::{Cx, Module},
-  module::{Subscribe, Subscriptions, watch},
-};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Updates {
-  OpenPanels,
-}
-
-impl From<Updates> for super::Updates {
-  fn from(value: Updates) -> Self {
-    super::Updates::Surface(value)
-  }
-}
+use specta::{Type, specta};
 
 /// The side of the screen a bar is on.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 enum Side {
   Top,
@@ -36,7 +19,7 @@ enum Side {
 }
 
 /// The bar a widget is shown in.
-#[derive(Serialize, TS)]
+#[derive(Serialize, Type)]
 struct Bar {
   side: Side,
   /// Left or right: widgets stack top to bottom.
@@ -63,11 +46,13 @@ impl Bar {
 
 /// The plugin's place in the shell's surfaces: its panels, by the names its
 /// manifest gives them, and the bar its widget is in
-struct Own {
-  id: String,
-  panels: Vec<String>,
+pub struct Own {
+  pub id: String,
+  pub panels: Vec<String>,
   /// The bar widget the script is shown as, once it is one
-  opener: Rc<Cell<Option<EntityId>>>,
+  pub opener: Rc<Cell<Option<EntityId>>>,
+  /// A widget's options from the bar config
+  pub options: Option<serde_json::Value>,
 }
 
 impl Own {
@@ -90,94 +75,73 @@ impl Own {
   }
 }
 
-/// `corona/surface`: the plugin's panels and the bar its widget is in. Every
-/// plugin has it, for its own panels only.
-pub fn module(
-  id: &str,
-  panels: Vec<String>,
-  opener: Rc<Cell<Option<EntityId>>>,
-  options: Option<serde_json::Value>,
-  reads: &Subscriptions,
-  subs: &mut Vec<Subscribe>,
-  cx: &mut App,
-) -> HostModule {
-  let own = Rc::new(Own {
-    id: id.to_string(),
-    panels,
-    opener,
-  });
-  if cx.has_global::<PanelState>() {
-    subs.push(watch(
-      reads,
-      Updates::OpenPanels.into(),
-      PanelState::open_panels,
-    ));
-  }
-  let reads = reads.clone();
-  let (list, toggle, open, close, is_open, bar) = (
-    own.clone(),
-    own.clone(),
-    own.clone(),
-    own.clone(),
-    own.clone(),
-    own,
-  );
+/// The names of this plugin's panels.
+#[specta]
+fn panels(own: Data<Own>) -> Vec<String> {
+  own.panels.clone()
+}
 
-  Module::new("corona/surface")
-    .func(named!(
-      "panels",
-      /// The names of this plugin's panels.
-      move || list.panels.clone()
-    ))
-    .func(named!(
-      "togglePanel",
-      /// Opens panel `name`, at this widget when called from one, or closes
-      /// it when it is open there.
-      move |cx: &mut App, name: String| toggle.show(&name, true, cx)
-    ))
-    .func(named!(
-      "openPanel",
-      /// Opens panel `name`, at this widget when called from one; an open
-      /// one stays open.
-      move |cx: &mut App, name: String| open.show(&name, false, cx)
-    ))
-    .func(named!(
-      "closePanel",
-      /// Closes panel `name` when it is open.
-      move |cx: &mut App, name: String| -> Result<()> {
-        let full = close.panel(&name)?;
-        cx.defer(move |cx| {
-          PanelState::close(&full, cx).ok();
-        });
-        Ok(())
-      }
-    ))
-    .func(named!(
-      "isPanelOpen",
-      /// Whether panel `name` is open or opening. A view that asks renders
-      /// again as it opens and closes.
-      move |cx: Cx, name: String| -> Result<bool> {
-        let full = is_open.panel(&name)?;
-        reads.record(Updates::OpenPanels.into());
-        Ok(cx.has_global::<PanelState>() && PanelState::is_open(&full, &cx))
-      }
-    ))
-    .func(named!(
-      "options",
-      /// This widget's options from the bar config; null in a panel or
-      /// service, or when the config gives none.
-      move || options.clone()
-    ))
-    .func(named!(
-      "bar",
-      /// The bar this widget is in; null outside of one, like in a panel.
-      move |cx: Cx| {
-        let widget = bar.opener.get()?;
-        let (placement, bare) = BarState::widget_place(widget, &cx)?;
-        Some(Bar::new(placement, bare))
-      }
-    ))
+/// Opens panel `name`, at this widget when called from one, or closes it when it is open
+/// there.
+#[specta]
+fn toggle_panel(mut cx: Cx, own: Data<Own>, name: String) -> Throws<()> {
+  own.show(&name, true, &mut cx).into()
+}
+
+/// Opens panel `name`, at this widget when called from one; an open one stays open.
+#[specta]
+fn open_panel(mut cx: Cx, own: Data<Own>, name: String) -> Throws<()> {
+  own.show(&name, false, &mut cx).into()
+}
+
+/// Closes panel `name` when it is open.
+#[specta]
+fn close_panel(mut cx: Cx, own: Data<Own>, name: String) -> Throws<()> {
+  own
+    .panel(&name)
+    .map(|full| {
+      cx.defer(move |cx| {
+        PanelState::close(&full, cx).ok();
+      })
+    })
     .into()
+}
+
+/// Whether panel `name` is open or opening. A view that asks renders again as it opens
+/// and closes.
+#[specta]
+fn is_panel_open(cx: Cx, own: Data<Own>, name: String) -> Throws<bool> {
+  let open = |full: String| {
+    if !cx.has_global::<PanelState>() {
+      return false;
+    }
+    track(&PanelState::open_panels(&cx));
+    PanelState::is_open(&full, &cx)
+  };
+  own.panel(&name).map(open).into()
+}
+
+/// This widget's options from the bar config; null in a panel or service, or when the
+/// config gives none.
+#[specta]
+fn options(own: Data<Own>) -> Json<Option<serde_json::Value>> {
+  Json(own.options.clone())
+}
+
+/// The bar this widget is in; null outside of one, like in a panel.
+#[specta]
+fn bar(cx: Cx, own: Data<Own>) -> Json<Option<Bar>> {
+  let place = (own.opener.get()).and_then(|widget| BarState::widget_place(widget, &cx));
+  Json(place.map(|(placement, bare)| Bar::new(placement, bare)))
+}
+
+/// `corona/surface`: the plugin's panels and the bar its widget is in. Every plugin has
+/// it, for its own panels only.
+pub fn module(own: Own, m: &mut ModuleBuilder) {
+  m.provide(own);
+  host_module!(m, {
+    sync: [panels, toggle_panel, open_panel, close_panel, is_panel_open, options, bar],
+  });
 }
 
 #[cfg(test)]
@@ -207,6 +171,7 @@ mod tests {
       id: "a".into(),
       panels: vec!["p".into()],
       opener: Rc::default(),
+      options: None,
     };
     assert_eq!(own.panel("p").unwrap(), "a:p");
     // not another plugin's, named in full

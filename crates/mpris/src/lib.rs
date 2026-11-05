@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, names::OwnedBusName, zvariant::OwnedObjectPath};
 
@@ -11,9 +13,16 @@ use crate::{
 
 pub use crate::state::{LoopStatus, PlaybackStatus, Player};
 
+pub mod cli;
+pub mod commands;
+mod launcher;
 mod listener;
+pub mod script;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Mpris {
@@ -24,14 +33,11 @@ pub struct Mpris {
 
 impl Global for Mpris {}
 
-pub trait MprisExt {
-  fn mpris(&self) -> &Mpris;
-}
+corona_utils::global_ext!(MprisExt, mpris, Mpris);
 
-impl MprisExt for App {
-  fn mpris(&self) -> &Mpris {
-    self.global::<Mpris>()
-  }
+/// A negative or NaN position is the track start, one past `Duration::MAX` saturates.
+pub(crate) fn seek_target(seconds: f64) -> Duration {
+  Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Duration::MAX)
 }
 
 impl Mpris {
@@ -149,7 +155,22 @@ fn bus_name(name: &str) -> Result<OwnedBusName> {
   Ok(OwnedBusName::try_from(name.to_string())?)
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows the players on the session bus, registers their UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.session).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  register_script(cx.script_mut());
+  Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::MprisModule>();
+}
+
+async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Mpris {
     players: cx.new(|_| Vec::new()),
     active: cx.new(|_| None),
@@ -192,11 +213,6 @@ mod tests {
     #[zbus(property)]
     fn identity(&self) -> String {
       self.identity.clone()
-    }
-
-    #[zbus(property)]
-    fn desktop_entry(&self) -> String {
-      self.identity.to_lowercase()
     }
   }
 
@@ -394,12 +410,11 @@ mod tests {
 
   fn start(cx: &mut TestAppContext) -> TestBus {
     cx.executor().allow_parking();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
     bus
@@ -437,10 +452,7 @@ mod tests {
     cx.read(|cx| {
       let player = cx.mpris().active_player(cx).unwrap();
       assert_eq!(player.name, "org.mpris.MediaPlayer2.Spotify");
-      assert_eq!(
-        (player.identity.as_str(), player.desktop_entry.as_deref()),
-        ("Spotify", Some("spotify"))
-      );
+      assert_eq!(player.identity, "Spotify");
       assert_eq!(player.status, PlaybackStatus::Paused);
       assert_eq!(player.title.as_deref(), Some("Song"));
       assert_eq!(player.artists, ["A", "B"]);
@@ -591,7 +603,7 @@ mod tests {
     let mock = spawn_player(&bus, "Spotify", "Playing");
     wait_until(cx, |cx| names(cx).len() == 1);
     let mpris = cx.read(|cx| cx.mpris().clone());
-    block_on(mpris.set_volume("org.mpris.MediaPlayer2.Spotify", f64::NAN)).ok();
+    assert!(block_on(mpris.set_volume("org.mpris.MediaPlayer2.Spotify", f64::NAN)).is_err());
     assert!(!mock.calls.lock().unwrap().iter().any(|c| c.contains("NaN")));
   }
 
@@ -661,19 +673,19 @@ mod tests {
   }
 
   #[gpui::test]
-  fn unvalidated_dbus_volume_stored_as_is(cx: &mut TestAppContext) {
+  fn out_of_range_dbus_volume_clamped(cx: &mut TestAppContext) {
     let bus = start(cx);
-    // Player reporting out-of-range volume -0.5
+    // Player reporting out-of-range volume -0.5, clamped to 0
     let _p1 = spawn_custom_player(&bus, "NegativeVol", "Playing", -0.5, false, false);
     wait_until(cx, |cx| names(cx).len() == 1);
     cx.read(|cx| {
       let p = cx.mpris().active_player(cx).unwrap();
-      assert_eq!(p.volume, Some(-0.5));
+      assert_eq!(p.volume, Some(0.0));
     });
   }
 
   #[gpui::test]
-  fn active_observer_before_players_update(cx: &mut TestAppContext) {
+  fn active_observer_after_players_update(cx: &mut TestAppContext) {
     let bus = start(cx);
     let observed_active = Arc::new(Mutex::new(Vec::new()));
     let obs = observed_active.clone();
@@ -692,10 +704,8 @@ mod tests {
     wait_until(cx, |cx| names(cx).len() == 1);
     settle(cx);
     let list = observed_active.lock().unwrap().clone();
-    // Because state.active is written before state.players in listener,
-    // the observer runs before players is updated, seeing None:
-    assert_eq!(list, [None]);
-    // After settle, active_player is resolved properly:
+    // players are written before active, so the observer finds the new player
+    assert_eq!(list, [Some("org.mpris.MediaPlayer2.Spotify".to_string())]);
     cx.read(|cx| {
       assert_eq!(
         cx.mpris().active_player(cx).map(|p| p.name.as_str()),

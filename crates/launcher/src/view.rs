@@ -111,12 +111,6 @@ pub struct Filter {
   pub selected: Rc<Cell<usize>>,
 }
 
-impl Filter {
-  pub fn selected_id(&self) -> Option<&SharedString> {
-    self.options.get(self.selected.get()).map(|(id, _)| id)
-  }
-}
-
 pub type FormValues = HashMap<SharedString, String>;
 pub type Submit = Rc<dyn Fn(FormValues, &mut Window, &mut App) -> Task<Result<Outcome>>>;
 pub type Validate = Rc<dyn Fn(&str) -> Option<SharedString>>;
@@ -195,8 +189,6 @@ pub enum FieldKind {
   TextArea,
   /// Values by id
   Dropdown(Vec<(SharedString, SharedString)>),
-  /// `true` or `false`
-  Checkbox,
 }
 
 pub struct DetailView {
@@ -205,6 +197,14 @@ pub struct DetailView {
   /// The sidebar
   pub metadata: Vec<(SharedString, SharedString)>,
   pub actions: Vec<Action>,
+}
+
+/// A row of [`DetailView::metadata`]
+pub fn detail_row(
+  key: impl Into<SharedString>,
+  value: impl Into<SharedString>,
+) -> (SharedString, SharedString) {
+  (key.into(), value.into())
 }
 
 /// A view that draws itself, like Now Playing; the host keeps Esc and back

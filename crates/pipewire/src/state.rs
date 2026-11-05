@@ -8,7 +8,7 @@ use pipewire::spa::{
   utils::dict::DictRef,
 };
 use serde::Serialize;
-use ts_rs::TS;
+use specta::Type;
 
 use crate::{capture::CaptureState, event::AudioEvent};
 
@@ -31,6 +31,22 @@ impl PipewireState {
   }
 }
 
+impl PipewireState {
+  /// drops everything learned from a lost connection and tells the UI
+  pub fn reset(&self, events: &flume::Sender<AudioEvent>) {
+    self.audio.nodes.clear();
+    self.audio.defaults.clear();
+    self.audio.targets.clear();
+    self.captures.clear();
+    for kind in [NodeType::Sink, NodeType::Source, NodeType::Stream] {
+      for event in self.audio.node_events(kind) {
+        let _ = events.send(event);
+      }
+    }
+    self.captures.send(events);
+  }
+}
+
 #[derive(Clone)]
 pub struct AudioState {
   pub nodes: Arc<DashMap<u32, AudioNode>>,
@@ -38,9 +54,9 @@ pub struct AudioState {
   pub targets: Arc<DashMap<u32, String>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
-#[ts(rename = "NodeKind")]
+#[serde(rename = "NodeKind")]
 pub enum NodeType {
   Sink,
   Source,
@@ -75,6 +91,9 @@ pub struct AudioNode {
   pub app: Vec<String>,
   /// `application.process.id` of a stream
   pub pid: Option<u32>,
+  /// false until the first Props param, so placeholder volumes are never published
+  #[serde(skip)]
+  pub ready: bool,
 }
 
 fn app(props: &DictRef) -> Vec<String> {
@@ -87,6 +106,7 @@ fn app(props: &DictRef) -> Vec<String> {
   .into_iter()
   .filter_map(|key| props.get(key))
   .map(|value| value.to_string())
+  .filter(|value| !value.is_empty())
   .collect()
 }
 
@@ -99,6 +119,11 @@ fn label(props: &DictRef) -> Option<&str> {
 impl AudioNode {
   pub fn volume(&self) -> f32 {
     self.volumes.first().copied().unwrap_or(0.)
+  }
+
+  /// Nickname if set, description otherwise.
+  pub fn label(&self) -> &str {
+    self.nickname.as_deref().unwrap_or(&self.description)
   }
 
   pub fn new(id: u32, kind: NodeType, props: &DictRef) -> Option<Self> {
@@ -122,6 +147,7 @@ impl AudioNode {
       pid: props
         .get("application.process.id")
         .and_then(|pid| pid.parse().ok()),
+      ready: true,
     })
   }
 
@@ -142,14 +168,17 @@ impl AudioNode {
   }
 
   fn update_params(&mut self, obj: Object) -> bool {
-    let mut changed = false;
+    let mut changed = !self.ready;
+    self.ready = true;
     for prop in obj.properties {
       match (prop.key, prop.value) {
         (sys::SPA_PROP_channelVolumes, Value::ValueArray(ValueArray::Float(volumes))) => {
-          self.volumes = volumes;
-          changed = true;
+          if self.volumes != volumes {
+            self.volumes = volumes;
+            changed = true;
+          }
         }
-        (sys::SPA_PROP_mute, Value::Bool(mute)) => {
+        (sys::SPA_PROP_mute, Value::Bool(mute)) if self.mute != mute => {
           self.mute = mute;
           changed = true;
         }
@@ -196,11 +225,21 @@ impl AudioState {
     }
   }
 
+  /// the metadata object is gone or was cleared, so its defaults and targets are stale
+  pub fn clear_metadata(&self, events: &flume::Sender<AudioEvent>) {
+    self.set_default(NodeType::Sink, None, events);
+    self.set_default(NodeType::Source, None, events);
+    if !self.targets.is_empty() {
+      self.targets.clear();
+      let _ = events.send(AudioEvent::Targets(self.resolved_targets()));
+    }
+  }
+
   pub fn list(&self, kind: NodeType) -> Vec<AudioNode> {
     let mut nodes: Vec<AudioNode> = self
       .nodes
       .iter()
-      .filter(|node| node.kind == kind)
+      .filter(|node| node.ready && node.kind == kind)
       .map(|node| node.clone())
       .collect();
     nodes.sort_unstable_by_key(|node| node.id);
@@ -212,7 +251,7 @@ impl AudioState {
     self
       .nodes
       .iter()
-      .find(|node| node.kind == kind && node.name == *name)
+      .find(|node| node.ready && node.kind == kind && node.name == *name)
       .map(|node| node.clone())
   }
 
@@ -621,6 +660,14 @@ mod tests {
       (node.volumes.as_slice(), node.mute),
       ([0.5, 0.6].as_slice(), true)
     );
+    // identical re-send is no change
+    assert!(!node.update_params(volume_object(vec![
+      Property::new(sys::SPA_PROP_mute, Value::Bool(true)),
+      Property::new(
+        sys::SPA_PROP_channelVolumes,
+        Value::ValueArray(ValueArray::Float(vec![0.5, 0.6]))
+      ),
+    ])));
   }
 
   #[test]

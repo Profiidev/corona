@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::hypr_data_cmd;
+use crate::hyprland::command::hypr_data_cmd;
 
 #[derive(Debug, Deserialize)]
 pub struct CursorPosition {

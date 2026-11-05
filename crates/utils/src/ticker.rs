@@ -1,6 +1,22 @@
 use std::time::Duration;
 
-use gpui_kit::{Context, Task, Window};
+use gpui_kit::{AsyncApp, Context, Task, Window};
+
+/// Sleeps `wait` or until a refresh is requested, `false` once `requests` closes
+pub async fn wait_or_refresh(
+  cx: &AsyncApp,
+  requests: &flume::Receiver<()>,
+  wait: Duration,
+) -> bool {
+  futures_lite::future::or(
+    async {
+      cx.background_executor().timer(wait).await;
+      true
+    },
+    async { requests.recv_async().await.is_ok() },
+  )
+  .await
+}
 
 pub trait TickerExt<T> {
   fn ticker(&mut self, every: Duration, f: impl Fn(&mut T, &mut Context<T>) + 'static) -> Task<()>;

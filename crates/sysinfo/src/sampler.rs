@@ -39,36 +39,29 @@ struct Sampler {
   last: Instant,
 }
 
-pub(crate) fn spawn(intervals: flume::Receiver<Option<Duration>>, updates: flume::Sender<Update>) {
+pub(crate) fn spawn(intervals: flume::Receiver<Duration>, updates: flume::Sender<Update>) {
   thread::spawn(move || {
     let mut sampler = Sampler::new();
     if updates.send(Update::Info(sampler.info())).is_err() {
       return;
     }
 
-    let mut interval: Option<Duration> = None;
+    let Ok(first) = intervals.recv() else {
+      return;
+    };
+    let mut every = first.max(MINIMUM_CPU_UPDATE_INTERVAL);
+    sampler.baseline();
     loop {
-      let next = match interval {
-        Some(every) => intervals.recv_timeout(every),
-        None => intervals
-          .recv()
-          .map_err(|_| flume::RecvTimeoutError::Disconnected),
-      };
-      match next {
-        Ok(new) => {
-          let resumed = interval.is_none() && new.is_some();
-          interval = new.map(|every| every.max(MINIMUM_CPU_UPDATE_INTERVAL));
-          if resumed {
-            sampler.baseline();
-          } else {
-            continue;
-          }
-        }
-        Err(flume::RecvTimeoutError::Timeout) => {}
-        Err(flume::RecvTimeoutError::Disconnected) => return,
-      }
       if updates.send(Update::Sample(sampler.sample())).is_err() {
         return;
+      }
+      // a new interval restarts the wait, only a timeout takes a sample
+      loop {
+        match intervals.recv_timeout(every) {
+          Ok(new) => every = new.max(MINIMUM_CPU_UPDATE_INTERVAL),
+          Err(flume::RecvTimeoutError::Timeout) => break,
+          Err(flume::RecvTimeoutError::Disconnected) => return,
+        }
       }
     }
   });
@@ -131,11 +124,11 @@ impl Sampler {
   }
 
   fn engines(&self) -> Engines {
-    match self
-      .gpus
-      .iter()
-      .any(|gpu| gpu.measurable && gpu.vendor == GpuVendor::Intel)
-    {
+    match self.gpus.iter().any(|gpu| {
+      gpu.measurable
+        && gpu.vendor == GpuVendor::Intel
+        && !gpu::suspended(&Path::new(PCI).join(&gpu.pci))
+    }) {
       true => gpu::engines(Path::new(PROC), self.started.elapsed().as_nanos() as u64),
       false => Engines::new(),
     }
@@ -160,7 +153,7 @@ impl Sampler {
     let (rx, tx) = self
       .networks
       .iter()
-      .filter(|(name, _)| *name != "lo")
+      .filter(|(name, _)| is_physical(name))
       .fold((0, 0), |(rx, tx), (_, data)| {
         (rx + data.received(), tx + data.transmitted())
       });
@@ -175,13 +168,9 @@ impl Sampler {
     self.drm = drm;
 
     Sample {
-      time: now,
       cpu: self.system.global_cpu_usage(),
       cpu_cores: cpus.iter().map(|cpu| cpu.cpu_usage()).collect(),
-      cpu_frequency: match cpus.len() as u64 {
-        0 => 0,
-        count => cpus.iter().map(|cpu| cpu.frequency()).sum::<u64>() / count,
-      },
+      cpu_frequency: average_frequency(cpus.iter().map(|cpu| cpu.frequency())),
       cpu_temperature: cpu_temperature(&self.components),
       memory_used: self.system.used_memory(),
       memory_total: self.system.total_memory(),
@@ -196,31 +185,52 @@ impl Sampler {
   }
 }
 
+/// virtual interfaces carry traffic that the physical NIC already counts
+fn is_physical(name: &str) -> bool {
+  const VIRTUAL: [&str; 10] = [
+    "lo",
+    "veth",
+    "br-",
+    "docker",
+    "virbr",
+    "tun",
+    "tap",
+    "wg",
+    "tailscale",
+    "vmnet",
+  ];
+  !VIRTUAL.iter().any(|prefix| name.starts_with(prefix))
+}
+
+/// mean of the core frequencies, 0 without cores
+fn average_frequency(frequencies: impl ExactSizeIterator<Item = u64>) -> u64 {
+  let count = frequencies.len() as u64;
+  frequencies.sum::<u64>().checked_div(count).unwrap_or(0)
+}
+
 fn pretty_name(os_release: &str) -> Option<String> {
   os_release
     .lines()
     .find_map(|line| line.strip_prefix("PRETTY_NAME="))
-    .map(|value| value.trim_matches('"').to_string())
+    .map(|value| value.trim_matches(['"', '\'']).to_string())
     .filter(|name| !name.is_empty())
 }
 
 fn disks(disks: &Disks) -> Vec<Disk> {
-  unique_disks(
-    disks
-      .iter()
-      .map(|disk| Disk {
-        device: disk.name().to_string_lossy().into(),
-        mount_point: disk.mount_point().to_string_lossy().into(),
-        file_system: disk.file_system().to_string_lossy().into(),
-        total: disk.total_space(),
-        available: disk.available_space(),
-      })
-      .collect(),
-  )
+  disks
+    .iter()
+    .map(|disk| Disk {
+      device: disk.name().to_string_lossy().into(),
+      mount_point: disk.mount_point().to_string_lossy().into(),
+      file_system: disk.file_system().to_string_lossy().into(),
+      total: disk.total_space(),
+      available: disk.available_space(),
+    })
+    .collect()
 }
 
-/// one entry per device, at its shortest mount point
-fn unique_disks(mut all: Vec<Disk>) -> Vec<Disk> {
+/// one entry per device, at its shortest mount point, for listing
+pub(crate) fn unique_disks(mut all: Vec<Disk>) -> Vec<Disk> {
   all.sort_by_key(|disk| disk.mount_point.len());
   let mut seen = std::collections::HashSet::new();
   all.retain(|disk| seen.insert(disk.device.clone()));
@@ -254,6 +264,15 @@ mod tests {
   use super::*;
 
   #[test]
+  fn physical_interfaces() {
+    assert!(is_physical("eth0"));
+    assert!(is_physical("wlp3s0"));
+    assert!(!is_physical("lo"));
+    assert!(!is_physical("veth1a2b"));
+    assert!(!is_physical("tailscale0"));
+  }
+
+  #[test]
   fn os_release() {
     let file = "NAME=NixOS\nPRETTY_NAME=\"NixOS 26.11 (Zokor)\"\nVERSION_ID=\"26.11\"\n";
     assert_eq!(pretty_name(file).as_deref(), Some("NixOS 26.11 (Zokor)"));
@@ -269,6 +288,7 @@ mod tests {
     assert_eq!(pretty_name("PRETTY_NAME=\"\""), None);
     assert_eq!(pretty_name("PRETTY_NAME="), None);
     assert_eq!(pretty_name(""), None);
+    assert_eq!(pretty_name("PRETTY_NAME='Void'").as_deref(), Some("Void"));
     // the first one wins, indented lines are not keys
     assert_eq!(
       pretty_name(" PRETTY_NAME=x\nPRETTY_NAME=a\nPRETTY_NAME=b").as_deref(),
@@ -359,10 +379,10 @@ mod tests {
     };
     assert!(info.cpu_cores > 0);
     assert!(!info.os.is_empty());
-    // paused until told otherwise
+    // no samples before the first interval
     assert!(updates.recv_timeout(Duration::from_millis(300)).is_err());
 
-    intervals.send(Some(Duration::ZERO)).unwrap();
+    intervals.send(Duration::ZERO).unwrap();
     // a zero interval is raised to sysinfo's minimum, and samples keep coming
     for _ in 0..2 {
       let Update::Sample(sample) = updates.recv_timeout(wait).unwrap() else {
@@ -372,13 +392,9 @@ mod tests {
       assert_eq!(sample.cpu_cores.len(), info.cpu_cores);
     }
 
-    intervals.send(None).unwrap();
-    // drain what was in flight, then nothing
-    while updates.recv_timeout(Duration::from_millis(600)).is_ok() {}
-    assert!(updates.recv_timeout(Duration::from_millis(600)).is_err());
-
     // dropping the sender ends the thread, which closes the updates
     drop(intervals);
+    while updates.recv_timeout(wait).is_ok() {}
     assert!(matches!(
       updates.recv_timeout(wait),
       Err(flume::RecvTimeoutError::Disconnected)
@@ -393,48 +409,10 @@ mod tests {
     spawn(intervals_rx, updates_tx);
     // the thread is gone once the receiving end is: sends fail
     let deadline = Instant::now() + Duration::from_secs(10);
-    while intervals.send(Some(Duration::ZERO)).is_ok() {
+    while intervals.send(Duration::ZERO).is_ok() {
       assert!(Instant::now() < deadline, "sampler kept running");
       thread::sleep(Duration::from_millis(10));
     }
-  }
-
-  #[test]
-  fn sampler_thread_resumes_from_pause() {
-    let (intervals, intervals_rx) = flume::unbounded();
-    let (updates_tx, updates) = flume::unbounded();
-    spawn(intervals_rx, updates_tx);
-    let wait = Duration::from_secs(10);
-    let _info = updates.recv_timeout(wait).unwrap();
-
-    // Start sampling
-    intervals.send(Some(Duration::from_millis(200))).unwrap();
-    assert!(matches!(
-      updates.recv_timeout(wait).unwrap(),
-      Update::Sample(_)
-    ));
-
-    // Pause sampling
-    intervals.send(None).unwrap();
-    while updates.recv_timeout(Duration::from_millis(400)).is_ok() {}
-    assert!(updates.recv_timeout(Duration::from_millis(400)).is_err());
-
-    // Resume sampling (triggers sampler.baseline())
-    intervals.send(Some(Duration::from_millis(200))).unwrap();
-    assert!(matches!(
-      updates.recv_timeout(wait).unwrap(),
-      Update::Sample(_)
-    ));
-
-    drop(intervals);
-  }
-
-  #[test]
-  fn os_release_fallback_edges() {
-    assert_eq!(pretty_name(""), None);
-    assert_eq!(pretty_name("NAME=Test\nVERSION=1.0"), None);
-    assert_eq!(pretty_name("PRETTY_NAME="), None);
-    assert_eq!(pretty_name("PRETTY_NAME=\"\""), None);
   }
 
   #[test]
@@ -446,16 +424,13 @@ mod tests {
     ];
     let unique = unique_disks(all);
     assert_eq!(unique.len(), 1);
-    assert!(unique[0].mount_point == "/run" || unique[0].mount_point == "/tmp");
+    // the shortest mount point wins, ties keep the first
+    assert_eq!(unique[0].mount_point, "/tmp");
   }
 
   #[test]
-  fn zero_cpu_cores_zero_frequency() {
-    let count: u64 = 0;
-    let freq = match count {
-      0 => 0,
-      c => 1000 / c,
-    };
-    assert_eq!(freq, 0);
+  fn average_frequency_without_cores_is_zero() {
+    assert_eq!(average_frequency([].into_iter()), 0);
+    assert_eq!(average_frequency([1000, 3000].into_iter()), 2000);
   }
 }

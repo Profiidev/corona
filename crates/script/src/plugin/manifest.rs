@@ -5,14 +5,14 @@ use std::{
 
 use anyhow::{Context as _, Result, ensure};
 use corona_config::plugins::is_flat_name;
-use gpui_shell::{Capabilities, ExecuteGrant, HttpRequestGrant};
+use corona_js::{Capabilities, ExecuteGrant, HttpRequestGrant, ScriptModule};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
 use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  module::{CoronaModule, dbus::DbusGrant},
+  module::{dbus::DbusGrant, secrets::Secrets},
   plugin::{
     catalog::is_relative_file,
     settings::{self, Setting, SettingKind},
@@ -37,8 +37,8 @@ pub struct PluginManifest {
   /// never the plugin's
   pub host_settings: BTreeSet<String>,
   pub capabilities: Capabilities,
-  /// The corona modules it may import
-  pub modules: BTreeSet<CoronaModule>,
+  /// The corona modules it may import, by name; checked against the registry as it loads
+  pub modules: BTreeSet<String>,
   /// The bus names `corona/dbus` may reach, which it needs to be importable
   pub dbus: Option<DbusGrant>,
 }
@@ -52,7 +52,7 @@ impl PluginManifest {
     data_dir: &Path,
     configured: Option<&Map<String, Value>>,
   ) -> Self {
-    let values = settings::resolve(&file.id, &file.settings, configured);
+    let values = user_values(&file.id, &file.settings, configured);
     Self {
       capabilities: file.capabilities.grant(&dir, data_dir, &values),
       host_settings: file
@@ -74,14 +74,41 @@ impl PluginManifest {
       settings: file.settings,
     }
   }
+
+  /// Grants `capabilities`, as written, again for new `configured` values
+  pub fn regrant(
+    &mut self,
+    capabilities: &CapabilitiesFile,
+    data_dir: &Path,
+    configured: Option<&Map<String, Value>>,
+  ) {
+    let values = user_values(&self.id, &self.settings, configured);
+    let mut grant = capabilities.grant(&self.dir, data_dir, &values);
+    grant.share_picks(&self.capabilities);
+    self.capabilities = grant;
+  }
 }
+
+/// What `${setting:<key>}` hosts expand from: the values the user set. A default is the
+/// plugin's, which approval does not see, so it grants nothing.
+fn user_values(
+  id: &str,
+  settings: &[Setting],
+  configured: Option<&Map<String, Value>>,
+) -> Map<String, Value> {
+  let mut values = settings::resolve(id, settings, configured);
+  values.retain(|key, value| configured.and_then(|c| c.get(key)) == Some(value));
+  values
+}
+
+/// The plugin API corona runs: 2 is the rquickjs runtime (`corona_js`), 1 was gpui-shell's
+pub const PLUGIN_API: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestFile {
   /// The JSON schema an editor validates this file against.
   #[serde(rename = "$schema", default)]
-  #[allow(dead_code)]
   pub schema: Option<String>,
   /// Reverse-DNS identity, e.g. `com.example.inbox`: letters, digits, `.`,
   /// `_` and `-`. Also the namespace for widgets, panels, storage and
@@ -90,6 +117,9 @@ pub struct ManifestFile {
   pub id: String,
   /// Human-readable name, shown in menus and in the permission prompt.
   pub name: String,
+  /// The plugin API it is written for; corona loads only its own, `2`. Left out, it is `1`.
+  #[serde(default = "first_api")]
+  pub api: u32,
   /// Optional plugin semantic version, e.g. `1.2.0`.
   #[serde(default)]
   pub version: Option<String>,
@@ -125,10 +155,15 @@ impl ManifestFile {
     Ok(file)
   }
 
-  /// What one table cannot tell alone: a secret setting is read through
+  /// What one table cannot tell alone: the API it is written for, a secret setting is read through
   /// `corona/secrets`, so the plugin must be granted it, and a
   /// `${setting:<key>}` host needs a text setting `key`
   fn check(&self) -> Result<()> {
+    ensure!(
+      self.api == PLUGIN_API,
+      "written for plugin API {}, corona runs API {PLUGIN_API}",
+      self.api
+    );
     let views = self.widgets.values().map(|w| &w.view);
     let views = views.chain(self.panels.values().map(|p| &p.view));
     for script in views.chain(&self.service) {
@@ -136,6 +171,14 @@ impl ManifestFile {
         is_relative_file(script),
         "`{script}` is not a file inside the plugin directory"
       );
+    }
+    for (key, panel) in &self.panels {
+      for size in [panel.width, panel.height] {
+        ensure!(
+          size.is_finite() && size > 0. && size <= MAX_PANEL_SIZE,
+          "panel `{key}` size must be between 0 and {MAX_PANEL_SIZE}"
+        );
+      }
     }
     for host in self.capabilities.hosts() {
       let Some(key) = setting_key(host) else {
@@ -155,7 +198,7 @@ impl ManifestFile {
     }
     if let Some(secret) = self.settings.iter().find(|s| s.is_secret()) {
       ensure!(
-        self.capabilities.corona.contains(&CoronaModule::Secrets),
+        self.capabilities.corona.contains(Secrets::NAME),
         "setting `{}` is a secret, which needs `corona = [\"secrets\"]`",
         secret.key
       );
@@ -185,6 +228,13 @@ pub struct PanelFile {
   pub width: f32,
   #[serde(default = "panel_height")]
   pub height: f32,
+}
+
+/// The largest panel width or height a plugin may ask for
+const MAX_PANEL_SIZE: f32 = 8192.;
+
+fn first_api() -> u32 {
+  1
 }
 
 fn panel_width() -> f32 {
@@ -290,10 +340,13 @@ pub struct CapabilitiesFile {
   /// Process-level host requests, separate from filesystem execution.
   #[serde(default)]
   process: Option<ProcessGrantFile>,
+  /// What `corona/printing` may do beyond listing printers and jobs.
+  #[serde(default)]
+  printing: Option<PrintingGrantFile>,
   /// Corona modules the plugin imports, e.g. `["weather"]` for
   /// `corona/weather`. Importing one not listed fails.
   #[serde(default)]
-  corona: BTreeSet<CoronaModule>,
+  corona: BTreeSet<String>,
   /// Bus names `corona/dbus` may call, read and receive signals from. The
   /// module is only there with this table.
   #[serde(default)]
@@ -309,6 +362,7 @@ impl Default for CapabilitiesFile {
       storage: granted(),
       clipboard: None,
       process: None,
+      printing: None,
       corona: BTreeSet::new(),
       dbus: None,
     }
@@ -316,7 +370,7 @@ impl Default for CapabilitiesFile {
 }
 
 impl CapabilitiesFile {
-  pub fn modules(&self) -> BTreeSet<CoronaModule> {
+  pub fn modules(&self) -> BTreeSet<String> {
     self.corona.clone()
   }
 
@@ -339,6 +393,7 @@ impl CapabilitiesFile {
     let fs = self.fs.clone().unwrap_or_default();
     let clipboard = self.clipboard.clone().unwrap_or_default();
     let process = self.process.clone().unwrap_or_default();
+    let printing = self.printing.clone().unwrap_or_default();
     let execute = match fs.execute.clone() {
       None => ExecuteGrant::Denied,
       Some(ExecuteFile::Unrestricted(_)) => ExecuteGrant::Unrestricted,
@@ -397,6 +452,8 @@ impl CapabilitiesFile {
       .clipboard_read(clipboard.read)
       .clipboard_write(clipboard.write)
       .exit(process.exit)
+      .print(printing.print)
+      .print_manage(printing.manage)
       .process_env(process.env)
       .asset_root(plugin_dir.to_path_buf())
   }
@@ -704,6 +761,17 @@ struct ClipboardGrantFile {
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct PrintingGrantFile {
+  /// Print files the plugin may read.
+  #[serde(default)]
+  print: bool,
+  /// Scan documents, add and pause printers, cancel jobs.
+  #[serde(default)]
+  manage: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProcessGrantFile {
   #[serde(default)]
   exit: bool,
@@ -732,11 +800,31 @@ const DENIED_ENV: &[&str] = &[
   "IFS",
   "JAVA_TOOL_OPTIONS",
   "_JAVA_OPTIONS",
+  "HOME",
+  "XDG_CONFIG",
+  "XDG_DATA",
+  "XDG_CACHE",
+  "XDG_STATE",
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "MANPAGER",
+  "LESSOPEN",
+  "SHELL",
+  "BROWSER",
+  "OPENSSL_CONF",
+  "SSL_CERT_",
+  "CC",
+  "CXX",
+  "MAKEFLAGS",
+  "CARGO_",
+  "RUSTC_WRAPPER",
+  "npm_config_",
 ];
 
 /// Loader and interpreter variables would run the plugin's own code in any
 /// granted command, the plugin sets their values. `PATH` passes the host's
-/// only, gpui-shell refuses one a script sets.
+/// only, the runtime refuses one a script sets.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
   let denied = |name: &&String| {
@@ -763,11 +851,10 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use gpui_shell::{Capabilities, ExecuteGrant};
+  use corona_js::{Capabilities, ExecuteGrant};
   use serde_json::{Map, json};
 
   use super::{ManifestFile, PluginManifest, expand};
-  use crate::module::CoronaModule;
 
   fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
     toml::from_str(toml)
@@ -775,7 +862,7 @@ mod tests {
 
   /// A manifest with id `a`, name `A` and `rest`.
   fn with(rest: &str) -> Result<ManifestFile, toml::de::Error> {
-    parse(&format!("id = \"a\"\nname = \"A\"\n{rest}"))
+    parse(&format!("id = \"a\"\nname = \"A\"\napi = 2\n{rest}"))
   }
 
   /// A manifest with this `[capabilities]` table body.
@@ -808,6 +895,16 @@ mod tests {
 
     let manifest = with(r#"version = "1.2.0""#).unwrap();
     assert_eq!(manifest.version.as_deref(), Some("1.2.0"));
+  }
+
+  #[test]
+  fn panel_sizes_are_checked() {
+    for bad in ["nan", "inf", "-1", "0", "9000"] {
+      let toml = format!("[panels.main]\nview = \"x.js\"\nwidth = {bad}");
+      assert!(with(&toml).unwrap().check().is_err(), "{bad}");
+    }
+    let ok = "[panels.main]\nview = \"x.js\"\nwidth = 300\nheight = 200";
+    assert!(with(ok).unwrap().check().is_ok());
   }
 
   #[test]
@@ -885,11 +982,24 @@ default = false
   fn reads_from_a_directory() {
     let tmp = tempfile::tempdir().unwrap();
     assert!(ManifestFile::read(tmp.path()).is_err());
-    std::fs::write(tmp.path().join("plugin.toml"), "id = \"a\"\nname = \"A\"").unwrap();
+    std::fs::write(
+      tmp.path().join("plugin.toml"),
+      "id = \"a\"\nname = \"A\"\napi = 2",
+    )
+    .unwrap();
     assert_eq!(ManifestFile::read(tmp.path()).unwrap().id, "a");
     std::fs::write(tmp.path().join("plugin.toml"), "id = 1").unwrap();
     let e = ManifestFile::read(tmp.path()).unwrap_err();
     assert!(format!("{e:#}").contains("plugin.toml"), "{e:#}");
+  }
+
+  #[test]
+  fn only_this_plugin_api_loads() {
+    assert!(with("").unwrap().check().is_ok());
+    // gpui-shell's plugins name none
+    let old = parse("id = \"a\"\nname = \"A\"").unwrap();
+    let error = old.check().unwrap_err().to_string();
+    assert!(error.contains("plugin API 1, corona runs API 2"), "{error}");
   }
 
   #[test]
@@ -901,7 +1011,7 @@ default = false
     assert!(granted.unwrap().check().is_ok());
     // and `read` checks it
     let tmp = tempfile::tempdir().unwrap();
-    let toml = format!("id = \"a\"\nname = \"A\"\n{secret}");
+    let toml = format!("id = \"a\"\nname = \"A\"\napi = 2\n{secret}");
     std::fs::write(tmp.path().join("plugin.toml"), toml).unwrap();
     assert!(ManifestFile::read(tmp.path()).is_err());
   }
@@ -1003,6 +1113,9 @@ process = { exit = true }
     }
     assert!(grant(r#"fs = { write = ["/data/a/cache", "/elsewhere"] }"#).has_write_access());
 
+    let capabilities = grant(r#"printing = { manage = true }"#);
+    assert!(capabilities.may_manage_printing());
+    assert!(!capabilities.may_print());
     let capabilities = grant(r#"clipboard = { read = true }"#);
     assert!(capabilities.is_clipboard_readable());
     assert!(!capabilities.is_clipboard_writable());
@@ -1037,27 +1150,35 @@ process = { exit = true }
   fn process_env_and_unix_sockets() {
     let capabilities = grant(
       r#"
-process = { env = ["HOME", "XDG_RUNTIME_DIR", "PATH"] }
+process = { env = ["LANG", "XDG_RUNTIME_DIR", "PATH"] }
 network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
 "#,
     );
-    assert!(capabilities.may_pass_env("HOME"));
-    // the host's; gpui-shell refuses a script's own
+    assert!(capabilities.may_pass_env("LANG"));
+    // the host's; the runtime refuses a script's own
     assert!(capabilities.may_pass_env("PATH"));
     assert!(!capabilities.may_pass_env("LD_PRELOAD"));
     let unix = format!("{capabilities:?}");
     assert!(unix.contains("/tailscale/tailscaled.sock"), "{unix}");
     // the plugin could make its data's socket a link to any other
     assert!(!unix.contains("adb.sock"), "{unix}");
-    assert!(!capabilities.may_connect_unix(Path::new("/run/other.sock")));
+    assert!(
+      capabilities
+        .unix_socket(Path::new("/run/other.sock"))
+        .is_none()
+    );
     // never the shell's own socket
     let ipc = corona_ipc::socket_path();
     let body = format!("network = {{ unix = [\"{}\"] }}", ipc.display());
-    assert!(!grant(&body).may_connect_unix(&ipc));
+    assert!(grant(&body).unix_socket(&ipc).is_none());
 
     let none = grant("");
-    assert!(!none.may_pass_env("HOME"));
-    assert!(!none.may_connect_unix(Path::new("/run/tailscale/tailscaled.sock")));
+    assert!(!none.may_pass_env("LANG"));
+    assert!(
+      none
+        .unix_socket(Path::new("/run/tailscale/tailscaled.sock"))
+        .is_none()
+    );
     assert!(with_capabilities(r#"network = { unix = ["${home}/x.sock"] }"#).is_err());
     for bad in [
       "LD_PRELOAD",
@@ -1071,6 +1192,14 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       "BASH_ENV",
       "PERL5OPT",
       "DYLD_INSERT_LIBRARIES",
+      "HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_DIRS",
+      "EDITOR",
+      "OPENSSL_CONF",
+      "SSL_CERT_FILE",
+      "RUSTC_WRAPPER",
+      "npm_config_prefix",
     ] {
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");
@@ -1336,10 +1465,10 @@ methods = ["POST"]
     let manifest = with_capabilities(r#"corona = ["weather", "sysinfo", "weather"]"#).unwrap();
     assert_eq!(
       manifest.capabilities.modules(),
-      BTreeSet::from([CoronaModule::Sysinfo, CoronaModule::Weather])
+      BTreeSet::from(["sysinfo".into(), "weather".into()])
     );
-
-    assert!(with_capabilities(r#"corona = ["camera"]"#).is_err());
+    // unknown ones fail as the plugin loads, the registry knows them
+    assert!(with_capabilities(r#"corona = ["camera"]"#).is_ok());
   }
 
   #[test]

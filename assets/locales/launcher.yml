@@ -63,6 +63,9 @@ app:
       copied_only:
         en: 'Copied to clipboard, paste unavailable'
         de: 'Kopiert, Einfügen nicht möglich'
+      copy_failed:
+        en: 'Unsupported clipboard format'
+        de: 'Nicht unterstütztes Zwischenablage-Format'
     section:
       favorites:
         en: 'Favorites'
@@ -904,6 +907,9 @@ app:
       rates_updated:
         en: 'Exchange rates updated'
         de: 'Wechselkurse aktualisiert'
+      rates_refreshing:
+        en: 'Exchange rates are already refreshing'
+        de: 'Wechselkurse werden bereits aktualisiert'
       refresh_rates:
         en: 'Refresh exchange rates'
         de: 'Wechselkurse aktualisieren'
@@ -932,9 +938,6 @@ app:
       copied:
         en: 'Copied'
         de: 'Kopiert'
-      now:
-        en: 'now'
-        de: 'jetzt'
       image_title:
         en: 'Image, %{size} KiB'
         de: 'Bild, %{size} KiB'
@@ -1075,8 +1078,8 @@ app:
         en: 'Browse %{path}'
         de: '%{path} durchsuchen'
       copy_file:
-        en: 'Copy file'
-        de: 'Datei kopieren'
+        en: 'Copy file URI'
+        de: 'Datei-URI kopieren'
       copy_path:
         en: 'Copy path'
         de: 'Pfad kopieren'
@@ -1240,6 +1243,9 @@ app:
       nothing_listens:
         en: 'Nothing listens on port %{port}'
         de: 'Nichts lauscht auf Port %{port}'
+      not_accessible:
+        en: 'Port %{port} is in use, but its owner is not accessible'
+        de: 'Port %{port} ist belegt, der Besitzer ist nicht zugänglich'
       killed:
         en: 'Stopped %{count} processes'
         de: '%{count} Prozesse beendet'
@@ -1250,15 +1256,12 @@ app:
       open_trash:
         en: 'Open trash'
         de: 'Papierkorb öffnen'
-      items:
-        en: '%{count} items'
-        de: '%{count} Elemente'
       empty:
         en: 'Empty'
         de: 'Leeren'
       empty_message:
-        en: '%{count} items are deleted for good.'
-        de: '%{count} Elemente werden endgültig gelöscht.'
+        en: 'Everything in the trash is deleted for good.'
+        de: 'Alles im Papierkorb wird endgültig gelöscht.'
       emptied:
         en: 'Deleted %{count} items'
         de: '%{count} Elemente gelöscht'
@@ -1317,6 +1320,9 @@ app:
       healthy:
         en: 'Healthy'
         de: 'In Ordnung'
+      warning:
+        en: 'Warning'
+        de: 'Warnung'
       failing:
         en: 'Failing, back up your data'
         de: 'Fehlerhaft, Daten sichern'

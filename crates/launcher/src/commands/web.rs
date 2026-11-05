@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use corona_config::{ConfigProvider, launcher::SearchEngine};
+use corona_utils::uri::percent_encode;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
@@ -19,44 +20,8 @@ pub fn init(cx: &mut App) {
   registry::register_source(Rc::new(WebFallback), cx);
 }
 
-/// Percent-encodes everything outside the unreserved set
-pub fn encode(text: &str) -> String {
-  let mut out = String::with_capacity(text.len());
-  for b in text.bytes() {
-    match b {
-      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
-      b => out.push_str(&format!("%{b:02X}")),
-    }
-  }
-  out
-}
-
-/// Percent-decoding; bad escapes stay as they are
-pub fn decode(text: &str) -> String {
-  let bytes = text.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut i = 0;
-  while i < bytes.len() {
-    let hex = (bytes[i] == b'%')
-      .then(|| std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok())
-      .flatten()
-      .and_then(|h| u8::from_str_radix(h, 16).ok());
-    match hex {
-      Some(b) => {
-        out.push(b);
-        i += 3;
-      }
-      None => {
-        out.push(bytes[i]);
-        i += 1;
-      }
-    }
-  }
-  String::from_utf8_lossy(&out).into_owned()
-}
-
 pub fn search_url(engine: &SearchEngine, query: &str) -> String {
-  engine.url.replace("{query}", &encode(query))
+  engine.url.replace("{query}", &percent_encode(query))
 }
 
 fn open(engine: &SearchEngine, query: &str, cx: &mut App) -> anyhow::Result<Outcome> {
@@ -64,11 +29,16 @@ fn open(engine: &SearchEngine, query: &str, cx: &mut App) -> anyhow::Result<Outc
   Ok(Outcome::close())
 }
 
+fn valid(engine: &SearchEngine) -> bool {
+  !engine.keyword.trim().is_empty() && !engine.url.trim().is_empty()
+}
+
 fn default_engine(cx: &App) -> Option<SearchEngine> {
   let launcher = &cx.config().launcher;
   launcher
     .engine(&launcher.search_engine)
-    .or(launcher.search_engines.first())
+    .filter(|e| valid(e))
+    .or_else(|| launcher.search_engines.iter().find(|e| valid(e)))
     .cloned()
 }
 
@@ -179,6 +149,8 @@ impl CommandSource for Engines {
       .launcher
       .search_engines
       .iter()
+      // an engine without a keyword or url would scope the search to nothing
+      .filter(|e| !e.keyword.trim().is_empty() && !e.url.trim().is_empty())
       .map(|e| Rc::new(EngineCommand(e.clone())) as Rc<dyn Command>)
       .collect()
   }
@@ -203,26 +175,41 @@ impl CommandSource for WebFallback {
   }
 }
 
+const KNOWN_TLDS: &[&str] = &[
+  "com", "org", "net", "io", "dev", "app", "edu", "gov", "info", "eu", "de", "uk", "fr", "nl",
+  "ch", "at", "us", "ca", "ai", "co", "me", "tv", "xyz",
+];
+
 /// A URL as typed, `https://` added when it has none
 pub fn as_url(text: &str) -> Option<String> {
   let text = text.trim();
   if text.contains(char::is_whitespace) || text.len() < 4 {
     return None;
   }
-  if let Some((scheme, rest)) = text.split_once("://") {
+  // a `://` further in is part of the path or query, not a scheme
+  if let Some((scheme, rest)) = text.split_once("://")
+    && scheme
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+  {
     let known = matches!(scheme, "http" | "https" | "ftp" | "file");
     return (known && !rest.is_empty()).then(|| text.to_string());
   }
   let host = text.split(['/', '?', '#']).next()?;
+  if host.contains('@') {
+    return None;
+  }
   let host = host.split(':').next()?;
   let localhost = host == "localhost";
   let labels: Vec<&str> = host.split('.').collect();
   let tld = labels.last()?;
   let domain = labels.len() >= 2
     && labels.iter().all(|l| !l.is_empty())
-    && tld.len() >= 2
-    && tld.chars().all(|c| c.is_ascii_alphabetic());
-  (domain || localhost).then(|| format!("https://{text}"))
+    // file names like main.rs or notes.md are not links
+    && (host.starts_with("www.") || KNOWN_TLDS.contains(&tld.to_ascii_lowercase().as_str()));
+  // local dev servers rarely speak TLS
+  let scheme = if localhost { "http" } else { "https" };
+  (domain || localhost).then(|| format!("{scheme}://{text}"))
 }
 
 /// Opens a typed URL, pinned above the rest
@@ -269,19 +256,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn decodes() {
-    assert_eq!(decode("a%20b%C3%A4"), "a bä");
-    assert_eq!(decode("100%"), "100%");
-    assert_eq!(decode("%zz"), "%zz");
-  }
-
-  #[test]
-  fn encodes() {
-    assert_eq!(encode("rust gpui & co"), "rust%20gpui%20%26%20co");
-    assert_eq!(encode("ä"), "%C3%A4");
-  }
-
-  #[test]
   fn urls() {
     assert_eq!(as_url("github.com").as_deref(), Some("https://github.com"));
     assert_eq!(
@@ -290,7 +264,7 @@ mod tests {
     );
     assert_eq!(
       as_url("localhost:8080").as_deref(),
-      Some("https://localhost:8080")
+      Some("http://localhost:8080")
     );
     assert_eq!(
       as_url("example.com/path").as_deref(),
@@ -304,6 +278,9 @@ mod tests {
       "file.",
       "v1.2",
       "javascript:alert",
+      "main.rs",
+      "notes.md",
+      "user@host.com",
     ] {
       assert_eq!(as_url(no), None, "{no}");
     }

@@ -4,8 +4,6 @@ use gpui_kit::{
   Animation, AnimationExt, AnyElement, App, Axis, IntoElement, Styled, ease_out_quint, px,
 };
 
-use corona_config::ConfigProvider;
-
 pub struct SizeAnimation {
   current_target: f32,
   from: Option<(f32, Instant)>,
@@ -29,7 +27,7 @@ impl SizeAnimation {
   }
 
   fn duration(&self, cx: &App) -> Duration {
-    cx.config().shell.animation.duration(self.duration)
+    crate::animation::animation_duration(self.duration, cx)
   }
 
   pub fn reset(&mut self) {
@@ -49,7 +47,16 @@ impl SizeAnimation {
     E: Styled + IntoElement + 'static,
   {
     if (self.current_target - target).abs() > f32::EPSILON {
-      self.from = Some((self.current_target, Instant::now()));
+      // retarget from what is on screen, not from the target it never reached
+      let duration = self.duration(cx);
+      let shown = match self.from {
+        Some((from, at)) if at.elapsed() < duration => {
+          let t = at.elapsed().as_secs_f32() / duration.as_secs_f32();
+          from + (self.current_target - from) * ease_out_quint()(t)
+        }
+        _ => self.current_target,
+      };
+      self.from = Some((shown, Instant::now()));
       self.current_target = target;
       self.generation = self.generation.wrapping_add(1);
     }

@@ -1,18 +1,22 @@
 pub mod args;
+pub mod cli;
 pub mod command;
 pub mod commands;
 pub mod common;
 pub mod dmenu;
 pub mod hooks;
+pub mod ipc;
 pub mod kit;
 pub mod matching;
 pub mod paste;
-pub mod placeholders;
 pub mod registry;
+pub mod settings;
 pub mod state;
 pub mod ui;
 pub mod view;
 
+use corona_settings::SettingsExt;
+use corona_surface::osd::OsdExt;
 use gpui_kit::App;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
@@ -24,10 +28,13 @@ pub use command::{
 };
 pub use matching::{Match, Query, Tier};
 pub use view::{
-  CustomView, DetailView, Field, FieldKind, Filter, FormView, Layout, ListView, View,
+  CustomView, DetailView, Field, FieldKind, Filter, FormView, Layout, ListView, View, detail_row,
 };
 
 pub fn init(cx: &mut App) {
   registry::init(cx);
+  ipc::register(cx);
   ui::bind_keys(cx);
+  cx.osd_mut().register::<ui::hud::HudOsd>();
+  cx.settings_mut().register::<settings::LauncherSettings>();
 }

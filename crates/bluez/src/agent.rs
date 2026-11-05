@@ -3,6 +3,8 @@ use bluez_zbus::{
   agent_manager1::AgentManager1Proxy,
   agent1::{Capability, Message},
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use futures_channel::{mpsc, oneshot};
 use zbus::{
   Connection,
@@ -11,16 +13,26 @@ use zbus::{
 
 const AGENT_PATH: &str = "/io/corona/bluez/agent";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PairingKind {
-  Confirm { passkey: u32 },
+  Confirm {
+    passkey: u32,
+  },
   Authorize,
   PinCode,
   Passkey,
-  DisplayPasskey { passkey: u32 },
+  DisplayPasskey {
+    passkey: u32,
+  },
+  /// Shown as BlueZ sends it: a legacy PIN has no fixed length and may not be numeric
+  DisplayPinCode {
+    pin: String,
+  },
 }
 
 pub struct PairingRequest {
+  /// Tells a retried request from the one before it
+  pub(crate) id: u64,
   pub device: String,
   pub kind: PairingKind,
   pub(crate) reply: Reply,
@@ -150,24 +162,38 @@ impl Agent {
   }
 }
 
-pub async fn register(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Message>> {
+/// Exports the agent object, once: its sender lives as long as the object server keeps it
+pub async fn serve(conn: &Connection) -> Result<mpsc::UnboundedReceiver<Message>> {
   let (sender, messages) = mpsc::unbounded();
   conn
     .object_server()
     .at(AGENT_PATH, Agent { messages: sender })
     .await?;
+  Ok(messages)
+}
+
+/// Makes bluetoothd use the exported agent, again whenever bluetoothd restarts
+pub async fn register(conn: &Connection) -> Result<()> {
   let path = ObjectPath::try_from(AGENT_PATH)?;
   let manager = AgentManager1Proxy::new(conn).await?;
-  manager
+  // A retry after a failed default request finds the agent already registered
+  match manager
     .register_agent(&path, Capability::KeyboardDisplay.into())
-    .await?;
+    .await
+  {
+    Err(zbus::Error::MethodError(name, ..)) if name.as_str() == "org.bluez.Error.AlreadyExists" => {
+    }
+    result => result?,
+  }
   manager.request_default_agent(&path).await?;
-  Ok(messages)
+  Ok(())
 }
 
 pub(crate) fn event(message: Message) -> Option<AgentEvent> {
   let request = |device: zbus::zvariant::OwnedObjectPath, kind, reply| {
+    static IDS: AtomicU64 = AtomicU64::new(0);
     Some(AgentEvent::Request(PairingRequest {
+      id: IDS.fetch_add(1, Ordering::Relaxed),
       device: device.to_string(),
       kind,
       reply,
@@ -195,10 +221,11 @@ pub(crate) fn event(message: Message) -> Option<AgentEvent> {
     Message::DisplayPasskey {
       device, passkey, ..
     } => request(device, PairingKind::DisplayPasskey { passkey }, Reply::None),
-    Message::DisplayPinCode { device, pincode } => pincode
-      .parse()
-      .ok()
-      .and_then(|passkey| request(device, PairingKind::DisplayPasskey { passkey }, Reply::None)),
+    Message::DisplayPinCode { device, pincode } => request(
+      device,
+      PairingKind::DisplayPinCode { pin: pincode },
+      Reply::None,
+    ),
     Message::Cancel | Message::Release => Some(AgentEvent::Cancel),
     Message::AuthorizeService { .. } => None,
   }
@@ -275,14 +302,28 @@ mod tests {
     });
     assert_eq!(
       pin_shown.kind,
-      PairingKind::DisplayPasskey { passkey: 1234 }
+      PairingKind::DisplayPinCode {
+        pin: "001234".into()
+      }
     );
 
     let pin_zeros = request(Message::DisplayPinCode {
       device: dev(),
       pincode: "0000".into(),
     });
-    assert_eq!(pin_zeros.kind, PairingKind::DisplayPasskey { passkey: 0 });
+    assert_eq!(
+      pin_zeros.kind,
+      PairingKind::DisplayPinCode { pin: "0000".into() }
+    );
+
+    let pin_short = request(Message::DisplayPinCode {
+      device: dev(),
+      pincode: "1234".into(),
+    });
+    assert_eq!(
+      pin_short.kind,
+      PairingKind::DisplayPinCode { pin: "1234".into() }
+    );
   }
 
   #[test]
@@ -296,20 +337,13 @@ mod tests {
       })
       .is_none()
     );
-    // not a number: alphanumeric PIN code fails to parse into u32, dropping message so pairing hangs
-    assert!(
+    // an alphanumeric PIN is shown too
+    assert!(matches!(
       event(Message::DisplayPinCode {
         device: dev(),
         pincode: "abcd".into(),
-      })
-      .is_none()
-    );
-    assert!(
-      event(Message::DisplayPinCode {
-        device: dev(),
-        pincode: "ABCD".into(),
-      })
-      .is_none()
-    );
+      }),
+      Some(AgentEvent::Request(_))
+    ));
   }
 }

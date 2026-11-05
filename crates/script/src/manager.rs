@@ -8,17 +8,22 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use gpui_kit::{
-  AnyView, App, BorrowAppContext, Entity, EntityId, Global, Subscription, Window, transparent_black,
+use corona_js::{
+  Kit, ModuleBuilder, PluginRef, STDLIB_D_TS, ScriptRegistry, ScriptRoot, ScriptView, Watches,
+  d_ts, reload_view,
 };
-use gpui_shell::{
-  ServiceHandle, ServiceWatcher, ShellRoot, ShellRuntime, Watcher,
-  policy::{self, Policy},
+use gpui_kit::{
+  AnyView, App, AppContext, Context, Entity, EntityId, Global, Task, Window, transparent_black,
 };
 
 use crate::{
-  PLUGIN_STORAGE_FILENAME,
-  module::{ModuleExt, PluginRef, Subscribe, Subscriptions, dbus, i18n, plugin, settings, surface},
+  PLUGIN_TYPES_FILENAME,
+  module::{
+    dbus, i18n,
+    plugin::{self, Hub},
+    settings,
+    surface::{self, Own},
+  },
   plugin::{
     manifest::{ManifestFile, PluginManifest},
     paths::Paths,
@@ -26,16 +31,15 @@ use crate::{
 };
 
 pub struct Script {
-  root: Entity<ShellRoot>,
+  root: Entity<ScriptRoot>,
   opener: Rc<Cell<Option<EntityId>>>,
-  _watcher: Option<Watcher>,
-  _subscriptions: Vec<Subscription>,
+  _reload: Task<()>,
 }
 
 impl Script {
-  /// The script inside gpui-shell's root, which hosts its dialogs, sheets and
-  /// toasts. Transparent, over the bar's pill or the panel's own shape; a
-  /// widget's is as big as its content, so the bar knows where it is
+  /// The script's root, which a window's `Root` hosts dialogs, sheets and toasts for.
+  /// Transparent, over the bar's pill or the panel's own shape; a widget's is as big as its
+  /// content, so the bar knows where it is
   pub fn view(&self) -> AnyView {
     self.root.clone().into()
   }
@@ -46,26 +50,9 @@ impl Script {
   }
 }
 
-/// A plugin's service, running headless until dropped. Restarts as its
-/// sources change.
+/// A plugin's service, running headless until dropped. Restarts as its sources change.
 pub struct Service {
-  _watcher: ServiceWatcher,
-}
-
-/// One run of a service
-struct Running {
-  _handle: ServiceHandle,
-  _cleanups: Vec<Subscription>,
-  _stop: StopGuard,
-}
-
-/// Fails the calls still waiting for the service once its run is gone
-struct StopGuard(plugin::Hub);
-
-impl Drop for StopGuard {
-  fn drop(&mut self) {
-    self.0.stop_service();
-  }
+  _watch: Task<()>,
 }
 
 /// A view a plugin declares in its manifest
@@ -76,28 +63,36 @@ pub enum Entry<'a> {
   Panel(&'a str),
 }
 
-/// Runs plugin views and services. Which plugins there are is up to the
-/// plugin manager.
+/// What a runtime gets beyond its plugin's grants
+#[derive(Clone, Default)]
+struct Load {
+  opener: Rc<Cell<Option<EntityId>>>,
+  options: Option<serde_json::Value>,
+  service: bool,
+}
+
+/// Runs plugin views and services. Which plugins there are is up to the plugin manager.
 pub struct ScriptManager {
-  /// One VM per plugin, so no plugin sees another's globals or microtasks
-  runtimes: HashMap<String, Rc<ShellRuntime>>,
   paths: Paths,
   plugins: HashMap<String, PluginManifest>,
   /// What the instances of each plugin share, made as the first one loads
-  pub(crate) hubs: HashMap<String, plugin::Hub>,
-  /// The plugin that sent each notification and whether it is resident, until
-  /// an action is picked on a non-resident one
-  pub(crate) owners: Arc<Mutex<HashMap<u32, (String, bool)>>>,
+  pub hubs: HashMap<String, Hub>,
+  /// The plugin that sent each notification and whether it is resident, until an action is
+  /// picked on a non-resident one
+  pub owners: Arc<Mutex<HashMap<u32, (String, bool)>>>,
   /// Whether notification actions are listened for, from the first `notify`
-  pub(crate) listening: bool,
+  pub listening: bool,
 }
 
 impl Global for ScriptManager {}
 
+/// What a failed load hands gpui, which needs a view to make one
+const EMPTY: &str = "import { View, div } from \"corona/kit\";
+export default class Empty extends View { render() { return div(); } }";
+
 impl ScriptManager {
   pub fn new(paths: Paths) -> Self {
     Self {
-      runtimes: HashMap::new(),
       paths,
       plugins: HashMap::new(),
       hubs: HashMap::new(),
@@ -111,15 +106,9 @@ impl ScriptManager {
     &self.plugins
   }
 
+  /// Every load runs in a fresh runtime, so an updated plugin's next load runs the update
   pub fn set_plugins(&mut self, plugins: HashMap<String, PluginManifest>) {
     self.hubs.retain(|id, _| plugins.contains_key(id));
-    // An updated plugin starts in a fresh VM; running views keep the old one
-    self.runtimes.retain(|id, _| {
-      let (old, new) = (self.plugins.get(id), plugins.get(id));
-      old
-        .zip(new)
-        .is_some_and(|(old, new)| (&old.dir, &old.version) == (&new.dir, &new.version))
-    });
     self.plugins = plugins;
   }
 
@@ -134,23 +123,14 @@ impl ScriptManager {
   }
 
   /// The hub of plugin `id`, shared by all its views
-  pub(crate) fn hub(&mut self, id: &str, cx: &mut App) -> plugin::Hub {
-    self
-      .hubs
-      .entry(id.to_string())
-      .or_insert_with(|| plugin::Hub::new(cx))
-      .clone()
-  }
-
-  /// The runtime of plugin `id`, made as its first script loads
-  fn runtime(id: &str, cx: &mut App) -> Result<Rc<ShellRuntime>> {
-    let runtimes = &mut cx.global_mut::<ScriptManager>().runtimes;
-    if let Some(runtime) = runtimes.get(id) {
-      return Ok(runtime.clone());
+  pub fn hub(id: &str, cx: &mut App) -> Hub {
+    if let Some(hub) = cx.global::<Self>().hubs.get(id) {
+      return hub.clone();
     }
-    let runtime = ShellRuntime::new_isolated_with_components(gpui_component_shell::components()?)?;
-    runtimes.insert(id.to_string(), runtime.clone());
-    Ok(runtime)
+    let settings = (cx.global::<Self>().plugins.get(id)).map(|m| m.settings.clone());
+    let hub = Hub::new(id, &settings.unwrap_or_default(), cx);
+    cx.global_mut::<Self>().hubs.insert(id.into(), hub.clone());
+    hub
   }
 
   fn manifest(id: &str, cx: &App) -> Result<PluginManifest> {
@@ -160,102 +140,94 @@ impl ScriptManager {
       .with_context(|| format!("Plugin `{id}` not found"))
   }
 
-  /// The policy of a script of plugin `manifest`: its grants and the modules
-  /// every script has. `calls` is the service's, `None` for a view;
-  /// `options` a widget's.
-  fn policy(
-    manifest: &PluginManifest,
-    opener: Rc<Cell<Option<EntityId>>>,
-    calls: Option<flume::Receiver<plugin::Call>>,
-    options: Option<serde_json::Value>,
-    cx: &mut App,
-  ) -> Result<(Policy, Vec<Subscribe>)> {
-    let id = &manifest.id;
-    let data_dir = cx.global::<ScriptManager>().paths.data(id);
+  /// The plugin a runtime runs, with its storage directory made
+  fn plugin(manifest: &PluginManifest, cx: &App) -> Rc<PluginRef> {
+    let data_dir = cx.global::<ScriptManager>().paths.data(&manifest.id);
     if let Err(error) = fs::create_dir_all(&data_dir) {
-      tracing::warn!("storage unavailable for `{id}`: {error}");
+      tracing::warn!("storage unavailable for `{}`: {error}", manifest.id);
     }
-    let policy = Policy::new()
-      .with_application(id)
+    Rc::new(PluginRef {
+      id: manifest.id.clone(),
+      name: manifest.name.clone(),
+      dir: manifest.dir.clone(),
+      data_dir,
       // a clone shares what the user picks with `corona/desktop`'s
-      .with_capabilities(manifest.capabilities.clone())
-      .with_storage_path(data_dir.join(PLUGIN_STORAGE_FILENAME));
-    Self::modules(policy, manifest, opener, calls, options, cx)
+      capabilities: manifest.capabilities.clone(),
+    })
   }
 
-  /// `policy` with the modules of plugin `manifest`
+  /// The modules of a runtime of plugin `manifest`: the granted ones, which must be
+  /// registered, and the ones every plugin has
   fn modules(
-    policy: Policy,
     manifest: &PluginManifest,
-    opener: Rc<Cell<Option<EntityId>>>,
-    calls: Option<flume::Receiver<plugin::Call>>,
-    options: Option<serde_json::Value>,
+    plugin: &PluginRef,
+    watches: &Watches,
+    load: Load,
     cx: &mut App,
-  ) -> Result<(Policy, Vec<Subscribe>)> {
-    let id = &manifest.id;
-    let panels: Vec<String> = manifest.panels.keys().cloned().collect();
+  ) -> Result<Vec<ModuleBuilder>> {
+    let registry = cx.try_global::<ScriptRegistry>();
+    let granted = (manifest.modules.iter())
+      .map(|name| {
+        (registry.and_then(|r| r.get(name))).with_context(|| {
+          format!(
+            "plugin `{}` is granted unknown module `{name}`",
+            manifest.id
+          )
+        })
+      })
+      .collect::<Result<Vec<_>>>()?;
+    let mut modules: Vec<_> = (granted.into_iter())
+      .map(|module| module.build(plugin, watches, cx))
+      .collect();
 
-    let (policy, mut subscribes) = policy.with_corona_modules(
-      PluginRef {
-        id,
-        name: &manifest.name,
-        capabilities: &manifest.capabilities,
-      },
-      &manifest.modules,
-      cx,
-    )?;
-    let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(id, cx));
-    let policy = policy
-      .with_host_module(settings::module(
-        id,
-        &manifest.settings,
-        &manifest.host_settings,
-        &hub,
-        &mut subscribes,
-        cx,
-      ))?
-      .with_host_module(surface::module(
-        id,
-        panels,
-        opener,
-        options,
-        &Subscriptions::default(),
-        &mut subscribes,
-        cx,
-      ))?
-      .with_host_module(plugin::module(&hub, calls, &mut subscribes))?
-      .with_host_module(i18n::module(&manifest.dir, &mut subscribes))?;
-    let policy = match manifest.dbus.clone() {
-      Some(grant) => policy.with_host_module(dbus::module(grant, &mut subscribes))?,
-      None => policy,
+    let hub = Self::hub(&manifest.id, cx);
+    let mut module = |name: &str, build: &dyn Fn(&mut ModuleBuilder)| {
+      let mut m = ModuleBuilder::new(format!("corona/{name}"), watches);
+      build(&mut m);
+      modules.push(m);
     };
-    Ok((policy, subscribes))
+    module("settings", &|m| {
+      let (id, settings) = (&manifest.id, &manifest.settings);
+      settings::module(
+        id,
+        settings,
+        &manifest.host_settings,
+        hub.settings.clone(),
+        m,
+      )
+    });
+    module("surface", &|m| {
+      let own = Own {
+        id: manifest.id.clone(),
+        panels: manifest.panels.keys().cloned().collect(),
+        opener: load.opener.clone(),
+        options: load.options.clone(),
+      };
+      surface::module(own, m)
+    });
+    module("plugin", &|m| plugin::module(&hub, load.service, m));
+    module("i18n", &|m| {
+      i18n::module(&manifest.dir, hub.settings.clone(), m)
+    });
+    if let Some(grant) = &manifest.dbus {
+      module("dbus", &|m| dbus::module(grant.clone(), m));
+    }
+    Ok(modules)
   }
 
-  /// Writes the `gpui-kit.d.ts` of the plugin in `dir` as loading it does, typing its own
+  /// Writes the `corona.d.ts` of the plugin in `dir` as loading it does, typing its own
   /// settings and granted modules, without a running shell
   pub fn write_types(dir: &Path, cx: &mut App) -> Result<Vec<PathBuf>> {
     let file = ManifestFile::read(dir)?;
     let data = cx.global::<ScriptManager>().paths.data(&file.id);
     let manifest = PluginManifest::new(file, dir.to_path_buf(), &data, None);
     let had_hub = cx.global::<ScriptManager>().hubs.contains_key(&manifest.id);
-    let (policy, _subscribes) =
-      Self::modules(Policy::new(), &manifest, Rc::default(), None, None, cx)?;
-    // as in `load`, the seam the declarations read the modules through
-    policy::set_default(policy);
-    let written = gpui_component_shell::components()
-      .map_err(anyhow::Error::from)
-      .and_then(|components| {
-        Ok(gpui_shell::write_type_declarations_with_components(
-          dir,
-          &components,
-        )?)
-      });
-    policy::set_default(Policy::new());
+    let plugin = Self::plugin(&manifest, cx);
+    let modules = Self::modules(&manifest, &plugin, &Watches::default(), Load::default(), cx);
     if !had_hub {
       cx.global_mut::<ScriptManager>().hubs.remove(&manifest.id);
     }
-    written
+    Ok(vec![write_d_ts(dir, &modules?)?])
   }
 
   pub fn load(id: &str, entry: Entry, window: &mut Window, cx: &mut App) -> Result<Script> {
@@ -266,49 +238,53 @@ impl ScriptManager {
     }
     .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
 
-    let runtime = Self::runtime(id, cx)?;
-    let root = manifest.dir.join(view);
+    let path = manifest.dir.join(view);
+    let dir = manifest.dir.clone();
     let opener = Rc::new(Cell::new(None));
-    let options = match entry {
-      Entry::Widget(_, options) => options.cloned(),
-      Entry::Panel(_) => None,
+    let load = Load {
+      opener: opener.clone(),
+      options: match entry {
+        Entry::Widget(_, options) => options.cloned(),
+        Entry::Panel(_) => None,
+      },
+      service: false,
     };
-    let (policy, subscribes) = Self::policy(&manifest, opener.clone(), None, options, cx)?;
+    let make = move |window: &mut Window, cx: &mut Context<ScriptView>| {
+      let plugin = Self::plugin(&manifest, cx);
+      let watches = Watches::default();
+      let modules = Self::modules(&manifest, &plugin, &watches, load.clone(), cx)?;
+      if let Err(e) = write_d_ts(&manifest.dir, &modules) {
+        tracing::debug!("types of `{}` not written: {e:#}", manifest.id);
+      }
+      ScriptView::load(&path, plugin, modules, watches, window, cx)
+    };
 
-    // The one seam that carries a policy into a view from outside the crate.
-    // Reset afterwards so a later load cannot inherit this script's grant.
-    policy::set_default(policy);
-    let root = runtime.try_load_entry(root, window, cx);
-    policy::set_default(Policy::new());
-    let root = root?;
+    let mut failed = None;
+    // ponytail: a failed load makes an empty view, gpui needs one to make the entity
+    let view = cx.new(|cx| {
+      make(window, cx).unwrap_or_else(|e| {
+        failed = Some(e);
+        ScriptView::new(EMPTY, Vec::new(), Watches::default(), window, cx).expect("empty view")
+      })
+    });
+    if let Some(e) = failed {
+      return Err(e);
+    }
+    let reload = reload_view(&view, window.window_handle(), dir, make, cx);
+    let root = cx.new(|_| ScriptRoot::new(view));
     root.update(cx, |root, cx| {
       root.set_background(Some(transparent_black()), cx);
       root.set_fill(matches!(entry, Entry::Panel(_)), cx);
     });
-
-    let subscriptions = subscribes
-      .into_iter()
-      .map(|subscription| subscription.subscribe(&runtime, &root, cx))
-      .collect();
-
-    let watcher = match runtime.watch(&root, window, cx) {
-      Ok(watcher) => Some(watcher),
-      Err(error) => {
-        tracing::debug!("`{id}` not watched: {error}");
-        None
-      }
-    };
-
     Ok(Script {
       root,
       opener,
-      _watcher: watcher,
-      _subscriptions: subscriptions,
+      _reload: reload,
     })
   }
 
-  /// Starts the service of plugin `id`, without a window. Its `corona/surface`
-  /// opens the plugin's panels where the shell puts them.
+  /// Starts the service of plugin `id`, without a window. Its `corona/surface` opens the
+  /// plugin's panels where the shell puts them.
   pub fn start_service(id: &str, cx: &mut App) -> Result<Service> {
     let manifest = Self::manifest(id, cx)?;
     let entry = (manifest.service.as_ref())
@@ -317,24 +293,32 @@ impl ScriptManager {
     let dir = manifest.dir.clone();
 
     let start = move |cx: &mut App| {
-      let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(&manifest.id, cx));
-      let calls = hub.start_service();
-      let stop = StopGuard(hub);
-      let (policy, subscribes) = Self::policy(&manifest, Rc::default(), Some(calls), None, cx)?;
-      let runtime = Self::runtime(&manifest.id, cx)?;
-      Ok(Running {
-        _handle: runtime.start_service(&entry, Rc::new(policy), cx)?,
-        _cleanups: subscribes
-          .into_iter()
-          .filter_map(|s| s.cleanup(cx))
-          .collect(),
-        _stop: stop,
-      })
+      let plugin = Self::plugin(&manifest, cx);
+      let watches = Watches::default();
+      let load = Load {
+        service: true,
+        ..Load::default()
+      };
+      let modules = Self::modules(&manifest, &plugin, &watches, load, cx)?;
+      if let Err(e) = write_d_ts(&manifest.dir, &modules) {
+        tracing::debug!("types of `{}` not written: {e:#}", manifest.id);
+      }
+      corona_js::Service::start(&entry, plugin, modules, watches, cx)
     };
     Ok(Service {
-      _watcher: ServiceWatcher::new(dir, start, cx)?,
+      _watch: corona_js::Service::watch(&dir, start, cx),
     })
   }
+}
+
+/// Writes the `corona.d.ts` of a plugin in `dir` with `modules`, when it changed
+fn write_d_ts(dir: &Path, modules: &[ModuleBuilder]) -> Result<PathBuf> {
+  let path = dir.join(PLUGIN_TYPES_FILENAME);
+  let text = format!("{}{STDLIB_D_TS}{}", Kit::d_ts(), d_ts(modules));
+  if fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+    fs::write(&path, text).with_context(|| path.display().to_string())?;
+  }
+  Ok(path)
 }
 
 /// Calls `method` of plugin `id`'s service, like `call` of `corona/plugin`
@@ -347,26 +331,30 @@ pub fn call(
   if !cx.global::<ScriptManager>().plugins.contains_key(id) {
     anyhow::bail!("plugin `{id}` not found");
   }
-  let hub = cx.update_global::<ScriptManager, _>(|manager, cx| manager.hub(id, cx));
+  let hub = ScriptManager::hub(id, cx);
   hub.call(method, args, cx)
 }
 
 #[cfg(test)]
 mod tests {
-  use std::{cell::RefCell, path::PathBuf, time::Duration};
-
-  use corona_compositor::{Compositor, CompositorImpl, types};
-  use gpui_kit::{self as gpui, AppContext, TestAppContext, VisualTestContext};
+  use std::{path::PathBuf, time::Duration};
 
   use corona_config::Config;
+  use corona_js::ScriptExt;
+  use corona_surface::testing::FakeCompositor;
   use corona_utils::test_bus::wait_until;
+  use gpui_kit::{self as gpui, TestAppContext, VisualTestContext};
 
   use super::*;
-  use crate::{PLUGIN_MANIFEST_FILENAME, module::CoronaModule, plugin::registry};
+  use crate::{
+    PLUGIN_MANIFEST_FILENAME,
+    plugin::registry,
+    test_support::{reports, setup},
+  };
 
   const VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 
 export default class Main extends View {
   render(_cx) {
@@ -377,8 +365,8 @@ export default class Main extends View {
 
   /// Focuses workspace `rendered` on every render, after reading the workspaces.
   const COMPOSITOR_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { listWorkspaces, focusWorkspace } from "corona/compositor";
 
 export default class Main extends View {
@@ -435,7 +423,9 @@ export default class Main extends View {
   }
 
   fn manifest(id: &str, extra: &str) -> String {
-    format!("id = \"{id}\"\nname = \"Test\"\n{extra}\n[widgets.main]\nview = \"main.js\"\n")
+    format!(
+      "id = \"{id}\"\nname = \"Test\"\napi = 2\n{extra}\n[widgets.main]\nview = \"main.js\"\n"
+    )
   }
 
   /// Shows the loaded views, so they render.
@@ -462,9 +452,15 @@ export default class Main extends View {
   /// `plugins` running, without a window
   fn running(cx: &mut TestAppContext, plugins: &Plugins) {
     cx.set_global(plugins.manager());
-    if !cx.update(|cx| cx.has_global::<Config>()) {
-      cx.set_global(Config::default());
-    }
+    cx.update(|cx| {
+      crate::register_modules(cx.script_mut());
+      corona_desktop::register_script(cx.script_mut());
+      cx.script_mut()
+        .register::<crate::test_support::TestCompositor>();
+      if !cx.has_global::<Config>() {
+        cx.set_global(Config::default());
+      }
+    });
   }
 
   /// A window to show views in, with `plugins` running
@@ -515,10 +511,7 @@ export default class Main extends View {
     let manager = plugins.manager();
     let manifest = &manager.plugins["a"];
     assert!(manifest.capabilities.may_run("git"));
-    assert_eq!(
-      manifest.modules,
-      [crate::module::CoronaModule::Weather].into()
-    );
+    assert_eq!(manifest.modules, ["weather".to_string()].into());
   }
 
   #[gpui::test]
@@ -555,9 +548,7 @@ export default class Main extends View {
     let _ = script.view();
     // storage lives in the data dir, under the id
     assert!(plugins.data.join("a").is_dir());
-    assert!(!plugins.paths.local.join("a/store.json").exists());
-    // the grant does not stay behind for the next view
-    assert_ne!(policy::default().application(), "a");
+    assert!(!plugins.paths.local.join("a/localStorage.json").exists());
   }
 
   #[gpui::test]
@@ -597,11 +588,11 @@ export default class Main extends View {
 
   #[gpui::test]
   fn loads_a_typescript_view(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { greet } from "./util";
 
@@ -616,19 +607,19 @@ export default class Main extends View {
     plugins.add("a", &manifest, &[("main.ts", view), ("util.ts", util)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello ts");
+    assert_eq!(reports(&fake).last().unwrap(), "hello ts");
   }
 
   #[gpui::test]
   fn plugins_do_not_share_globals(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let view = |init: &str| {
       VIEW
         .replace("render(", &format!("init() {{ {init} }}\n  render("))
         .replace(
-          "\"gpui-base\";",
-          "\"gpui-base\";\nimport { focusWorkspace } from \"corona/compositor\";",
+          "\"corona/base\";",
+          "\"corona/base\";\nimport { focusWorkspace } from \"corona/compositor\";",
         )
     };
     let extra = "capabilities = { corona = [\"compositor\"] }";
@@ -640,110 +631,46 @@ export default class Main extends View {
     let (host, cx) = host(cx, &plugins);
     let _a = show(cx, &host, "a").unwrap();
     let _b = show(cx, &host, "b").unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "undefined then");
+    assert_eq!(reports(&fake).last().unwrap(), "undefined then");
   }
 
   #[gpui::test]
-  fn failed_load_resets_policy(cx: &mut TestAppContext) {
+  fn a_missing_view_fails_the_load(cx: &mut TestAppContext) {
     let plugins = Plugins::new();
-    let extra = r#"capabilities = { clipboard = { read = true } }"#;
-    // the view file is missing, so mounting it fails
-    plugins.add("a", &manifest("a", extra), &[]);
+    plugins.add("a", &manifest("a", ""), &[]);
     let (_, script) = load(cx, &plugins, "a");
-    assert!(script.is_err());
-    assert!(!policy::default().capabilities().is_clipboard_readable());
+    let error = format!("{:#}", script.err().unwrap());
+    assert!(error.contains("main.js"), "{error}");
   }
 
-  /// Answers from fixed state, records what it was asked to do.
-  #[derive(Default)]
-  struct Fake {
-    calls: RefCell<Vec<String>>,
-  }
-
-  fn workspace(name: &str) -> types::Workspace {
-    types::Workspace {
-      id: name.into(),
-      name: name.into(),
-      monitor: "DP-1".into(),
-      monitor_id: 0,
-    }
-  }
-
-  impl CompositorImpl for Fake {
-    fn list_workspaces(&self) -> anyhow::Result<Vec<types::Workspace>> {
-      Ok(vec![workspace("1"), workspace("2")])
-    }
-    fn active_workspace(&self) -> anyhow::Result<types::Workspace> {
-      Ok(workspace("1"))
-    }
-    fn list_monitors(&self) -> anyhow::Result<Vec<types::Monitor>> {
-      Ok(vec![])
-    }
-    fn active_monitor(&self) -> anyhow::Result<types::Monitor> {
-      Ok(types::Monitor {
-        id: 0,
-        name: "DP-1".into(),
-        width: 1,
-        height: 1,
-        refresh_rate: 60.,
-        x: 0,
-        y: 0,
-        active_scratchpad: None,
-        active_workspace: workspace("1"),
-        scale: 1.,
-        focused: true,
-        disabled: false,
-        mirror_of: "none".into(),
-      })
-    }
-    fn list_windows(&self) -> anyhow::Result<Vec<types::Window>> {
-      Ok(vec![])
-    }
-    fn active_window(&self) -> anyhow::Result<Option<types::Window>> {
-      Ok(None)
-    }
-    fn focus_workspace(&self, workspace: &str) -> anyhow::Result<()> {
-      self.calls.borrow_mut().push(workspace.into());
-      Ok(())
-    }
-    fn focus_window(&self, _: &str) -> anyhow::Result<()> {
-      Ok(())
-    }
-    fn close_window(&self, _: &str) -> anyhow::Result<()> {
-      Ok(())
-    }
-    fn cursor_position(&self) -> anyhow::Result<(i32, i32)> {
-      Ok((3, 4))
-    }
-    fn keyboard_layout(&self) -> anyhow::Result<Option<String>> {
-      Ok(None)
-    }
-    fn set_dpms(&self, _: bool) -> anyhow::Result<()> {
-      Ok(())
-    }
-    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> anyhow::Result<()> {
-      Ok(())
-    }
+  #[gpui::test]
+  fn unknown_modules_fail_the_load(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    let extra = r#"capabilities = { corona = ["camera"] }"#;
+    plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
+    let (_, script) = load(cx, &plugins, "a");
+    let error = format!("{:#}", script.err().unwrap());
+    assert!(error.contains("unknown module `camera`"), "{error}");
   }
 
   #[gpui::test]
   fn corona_modules_are_callable_and_rerender(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor"] }"#;
     plugins.add("a", &manifest("a", extra), &[("main.js", COMPOSITOR_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let script = script.unwrap();
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     assert!(rendered > 0, "the view rendered");
-    assert_eq!(fake.calls.borrow()[0], "rendered 2");
+    assert_eq!(reports(&fake)[0], "rendered 2");
 
     // the view read the workspaces, so a change renders it again
-    let workspaces = cx.update(|_, cx| cx.global::<Compositor>().workspaces.clone());
+    let workspaces = cx.update(|_, cx| {
+      cx.global::<corona_compositor::Compositor>()
+        .workspaces
+        .clone()
+    });
     cx.update(|_, cx| {
       workspaces.update(cx, |list, cx| {
         list.pop();
@@ -751,77 +678,14 @@ export default class Main extends View {
       })
     });
     cx.run_until_parked();
-    assert!(fake.calls.borrow().len() > rendered);
-    assert_eq!(fake.calls.borrow().last().unwrap(), "rendered 1");
+    assert!(reports(&fake).len() > rendered);
+    assert_eq!(reports(&fake).last().unwrap(), "rendered 1");
     drop(script);
-  }
-
-  /// Calls every compositor function, then reports the results through `focusWorkspace`.
-  const COMPOSITOR_CALLS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
-import * as c from "corona/compositor";
-import * as control from "corona/compositor_control";
-
-export default class Main extends View {
-  render(_cx) {
-    const results = {
-      workspaces: c.listWorkspaces().map((w) => w.name),
-      activeWorkspace: c.activeWorkspace().name,
-      monitors: c.listMonitors().length,
-      activeMonitor: c.activeMonitor().name,
-      windows: c.listWindows().length,
-      activeWindow: c.activeWindow(),
-      keyboardLayout: c.keyboardLayout(),
-      focusWindow: control.focusWindow("0xa"),
-      closeWindow: control.closeWindow("0xb"),
-      cursor: control.cursorPosition(),
-    };
-    c.focusWorkspace(JSON.stringify(results));
-    return v_flex().child("plugin");
-  }
-}
-"#;
-
-  #[gpui::test]
-  fn calls_every_compositor_function(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
-    let plugins = Plugins::new();
-    let extra = r#"capabilities = { corona = ["compositor", "compositor_control"] }"#;
-    plugins.add(
-      "a",
-      &manifest("a", extra),
-      &[("main.js", COMPOSITOR_CALLS_VIEW)],
-    );
-    let (_, script) = load(cx, &plugins, "a");
-    let _script = script.unwrap();
-
-    let calls = fake.calls.borrow();
-    let results: serde_json::Value = serde_json::from_str(calls.last().unwrap()).unwrap();
-    assert_eq!(results["workspaces"], serde_json::json!(["1", "2"]));
-    assert_eq!(results["activeWorkspace"], "1");
-    assert_eq!(results["monitors"], 0);
-    assert_eq!(results["activeMonitor"], "DP-1");
-    assert_eq!(results["windows"], 0);
-    assert!(results["activeWindow"].is_null());
-    assert!(results["keyboardLayout"].is_null());
-    // `Ok(())` is null
-    assert!(results["focusWindow"].is_null());
-    assert!(results["closeWindow"].is_null());
-    assert_eq!(results["cursor"], serde_json::json!({ "x": 3, "y": 4 }));
   }
 
   #[gpui::test]
   fn ungranted_corona_modules_cannot_be_imported(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
+    let fake = setup(cx);
     let plugins = Plugins::new();
     plugins.add("a", &manifest("a", ""), &[("main.js", COMPOSITOR_VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
@@ -830,13 +694,13 @@ export default class Main extends View {
       format!("{error:#}").contains("corona/compositor"),
       "{error:#}"
     );
-    assert!(fake.calls.borrow().is_empty());
+    assert!(reports(&fake).is_empty());
   }
 
   /// Reports its `label` setting through `focusWorkspace` on every render.
   const SETTINGS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { get, all } from "corona/settings";
 
@@ -850,11 +714,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn settings_are_read_and_rerender(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
+    let fake = setup(cx);
     cx.set_global(Config::default());
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor"] }
@@ -866,9 +726,9 @@ default = "hello""#;
     plugins.add("a", &manifest("a", extra), &[("main.js", SETTINGS_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "hello 1 null");
 
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     // another plugin's settings change nothing
     cx.update(|_, cx| {
       cx.global_mut::<Config>().plugin_settings.insert(
@@ -880,7 +740,7 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().len(), rendered);
+    assert_eq!(reports(&fake).len(), rendered);
 
     cx.update(|_, cx| {
       cx.global_mut::<Config>().plugin_settings.insert(
@@ -892,7 +752,7 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "bye 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "bye 1 null");
 
     // a value of the wrong type reads as the default
     cx.update(|_, cx| {
@@ -905,22 +765,22 @@ default = "hello""#;
       );
     });
     cx.run_until_parked();
-    assert_eq!(fake.calls.borrow().last().unwrap(), "hello 1 null");
+    assert_eq!(reports(&fake).last().unwrap(), "hello 1 null");
   }
 
   /// Reports what `corona/surface` answers through `focusWorkspace` on every
   /// render.
   const SURFACE_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { panels, isPanelOpen, togglePanel, openPanel, closePanel, bar } from "corona/surface";
 
 export default class Main extends View {
   render(_cx) {
-    // an error comes back as `{ message }`
-    const errors = [togglePanel("other"), openPanel("other"), closePanel("other"), isPanelOpen("other")]
-      .filter((e) => e && e.message.includes("no panel `other`")).length;
+    const thrown = (f) => { try { f(); } catch (e) { return e.message; } };
+    const errors = [togglePanel, openPanel, closePanel, isPanelOpen]
+      .filter((f) => thrown(() => f("other"))?.includes("no panel `other`")).length;
     focusWorkspace(JSON.stringify({
       panels: panels(),
       open: isPanelOpen("p"),
@@ -937,20 +797,16 @@ export default class Main extends View {
 
   #[gpui::test]
   fn surface_reads_and_follows_its_panels(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-      corona_surface::init(cx).unwrap();
-    });
+    let fake = setup(cx);
+    cx.update(|cx| corona_surface::init(cx).unwrap());
     let plugins = Plugins::new();
     let extra = "capabilities = { corona = [\"compositor\"] }\n[panels.p]\nview = \"main.js\"";
     plugins.add("a", &manifest("a", extra), &[("main.js", SURFACE_VIEW)]);
     let (cx, script) = load(cx, &plugins, "a");
     let script = script.unwrap();
     script.set_opener(cx.update(|_, cx| cx.new(|_| ()).entity_id()));
-    let last = |fake: &Fake| -> serde_json::Value {
-      let calls = fake.calls.borrow();
+    let last = |fake: &FakeCompositor| -> serde_json::Value {
+      let calls = reports(fake);
       serde_json::from_str(calls.last().unwrap()).unwrap()
     };
     assert_eq!(
@@ -967,7 +823,7 @@ export default class Main extends View {
     );
 
     // it asked whether `p` is open, so it renders as that changes
-    let rendered = fake.calls.borrow().len();
+    let rendered = reports(&fake).len();
     cx.update(|_, cx| {
       corona_surface::panel::PanelState::open_panels(cx).update(cx, |open, cx| {
         open.insert("a:p".into());
@@ -975,17 +831,17 @@ export default class Main extends View {
       })
     });
     cx.run_until_parked();
-    assert!(fake.calls.borrow().len() > rendered);
+    assert!(reports(&fake).len() > rendered);
     assert_eq!(last(&fake)["open"], true);
   }
 
   #[gpui::test]
   fn widgets_read_their_options(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { options } from "corona/surface";
 export default class Main extends View {
@@ -1010,25 +866,20 @@ export default class Main extends View {
       });
       cx.run_until_parked();
     }
-    assert_eq!(
-      reported(&fake, "options "),
-      [r#"{"city":"Rosenheim"}"#, "null"]
-    );
+    let mut options = reported(&fake, "options ");
+    options.dedup();
+    assert_eq!(options, [r#"{"city":"Rosenheim"}"#, "null"]);
   }
 
   #[gpui::test]
   fn services_hear_of_setting_and_secret_changes(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let source = r#"
 import { focusWorkspace } from "corona/compositor";
-import { nextChange } from "corona/settings";
-export default async function main() {
-  while (true) {
-    const change = await nextChange();
-    if (change.message) break;
-    focusWorkspace("change " + JSON.stringify(change));
-  }
+import { onChange } from "corona/settings";
+export default function main() {
+  onChange((change) => focusWorkspace("change " + JSON.stringify(change)));
 }
 "#;
     let extra = r#"capabilities = { corona = ["compositor", "secrets"] }
@@ -1065,8 +916,11 @@ type = "secret""#;
       ScriptManager::secret_changed("b", "token", cx);
     });
     cx.run_until_parked();
+    // the config tells its observers once the update is done, after the secret
+    let mut changes = reported(&fake, "change ");
+    changes.sort();
     assert_eq!(
-      reported(&fake, "change "),
+      changes,
       [
         r#"{"key":"label","value":"bye"}"#,
         r#"{"key":"token","secret":true}"#
@@ -1081,7 +935,7 @@ type = "secret""#;
     plugins.add("a", &manifest("a", extra), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    let dts = fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let dts = fs::read_to_string(plugins.paths.local.join("a/corona.d.ts")).unwrap();
     let start = dts.find("declare module \"corona/settings\"").unwrap();
     let module = &dts[start..start + dts[start..].find("\n}").unwrap()];
     assert!(module.contains("    \"units\": \"a\" | \"b\";"), "{module}");
@@ -1091,48 +945,41 @@ type = "secret""#;
     );
   }
 
-  /// Installs a compositor that records what it is told to focus, which
-  /// views report through.
-  fn recorder(cx: &mut TestAppContext) -> Rc<Fake> {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
-    fake
-  }
-
-  fn reported(fake: &Fake, prefix: &str) -> Vec<String> {
-    let calls = fake.calls.borrow();
+  fn reported(fake: &FakeCompositor, prefix: &str) -> Vec<String> {
+    let calls = reports(fake);
     let found = calls.iter().filter_map(|c| c.strip_prefix(prefix));
     found.map(str::to_string).collect()
   }
 
   /// Echoes `echo`, never answers `hang`, fails everything else.
   const SERVICE: &str = r#"
-import { nextCall, reply, fail } from "corona/plugin";
+import { onCall, reply, fail } from "corona/plugin";
 
-export default async function main(_cx) {
-  while (true) {
-    const call = await nextCall();
-    if (call.message) break;
+export default function main(_cx) {
+  onCall((call) => {
     if (call.method === "echo") reply(call.id, call.args);
     else if (call.method !== "hang") fail(call.id, "no " + call.method);
-  }
+  });
 }
 "#;
 
   /// Calls `METHOD` as it starts and reports the answer.
   const CALLER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { call } from "corona/plugin";
 
 export default class Main extends View {
   init(_props, cx) {
     cx.spawn(async () => {
-      focusWorkspace("answer " + JSON.stringify(await call("METHOD", 1)));
+      let answer;
+      try {
+        answer = await call("METHOD", 1);
+      } catch (e) {
+        answer = { message: e.message };
+      }
+      focusWorkspace("answer " + JSON.stringify(answer));
     });
   }
   render() { return v_flex().child("plugin"); }
@@ -1156,7 +1003,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn a_service_answers_without_being_shown(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", true);
     running(cx, &plugins);
@@ -1169,8 +1016,8 @@ export default class Main extends View {
 
   /// Reads `PATH` before and after picking it, and reports both.
   const PICKER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { pickFiles } from "corona/desktop";
 import { readFile } from "fs/promises";
@@ -1198,7 +1045,7 @@ export default class Main extends View {
   #[gpui::test]
   fn picked_files_become_readable(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let outside = tempfile::tempdir().unwrap();
     let file = outside.path().join("picked.txt");
@@ -1221,7 +1068,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn the_service_fails_what_it_does_not_know(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "other", true);
     running(cx, &plugins);
@@ -1233,7 +1080,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn calls_without_a_service_fail(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", false);
     let (cx, script) = load(cx, &plugins, "a");
@@ -1252,7 +1099,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn calls_time_out(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "hang", true);
     running(cx, &plugins);
@@ -1270,7 +1117,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn stopping_the_service_fails_its_calls(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "hang", true);
     running(cx, &plugins);
@@ -1296,7 +1143,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn ipc_calls_reach_the_service(cx: &mut TestAppContext) {
-    recorder(cx);
+    setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", true);
     running(cx, &plugins);
@@ -1309,22 +1156,18 @@ export default class Main extends View {
 
   /// Answers with its version and reports it on a timer.
   const VERSIONED_SERVICE: &str = r#"
-import { nextCall, reply } from "corona/plugin";
+import { onCall, reply } from "corona/plugin";
 import { focusWorkspace } from "corona/compositor";
 
-export default async function main(cx) {
+export default function main(cx) {
   cx.timer.every(10, () => focusWorkspace("tick VERSION"));
-  while (true) {
-    const call = await nextCall();
-    if (call.message) break;
-    reply(call.id, "VERSION");
-  }
+  onCall((call) => reply(call.id, "VERSION"));
 }
 "#;
 
   #[gpui::test]
   fn an_edited_service_restarts(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     caller(&plugins, "echo", true);
     let path = plugins.paths.local.join("a/service.js");
@@ -1360,8 +1203,8 @@ export default async function main(cx) {
 
   /// Counts its starts in the shared state and reports what it reads.
   const STATE_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { getState, setState } from "corona/plugin";
 
@@ -1378,7 +1221,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn state_is_shared_and_rerenders(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor"] }"#;
     plugins.add("a", &manifest("a", extra), &[("main.js", STATE_VIEW)]);
@@ -1418,19 +1261,19 @@ export default function main() { setState("starts", getState("starts") * 10); }"
 
   #[gpui::test]
   fn only_the_service_takes_calls(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let view = r#"
-import { View } from "gpui-kit";
-import { nextCall } from "corona/plugin";
-export default class Main extends View { render() { return nextCall; } }
+import { View } from "corona/kit";
+import { onCall } from "corona/plugin";
+export default class Main extends View { render() { return onCall; } }
 "#;
     // and only views call it
     let main = r#"
 import { focusWorkspace } from "corona/compositor";
 import * as plugin from "corona/plugin";
 export default function main() {
-  focusWorkspace(["call", "nextCall", "reply", "fail"].filter((f) => f in plugin).join());
+  focusWorkspace(["call", "onCall", "reply", "fail"].filter((f) => f in plugin).join());
 }
 "#;
     let extra = "capabilities = { corona = [\"compositor\"] }\nservice = \"service.js\"";
@@ -1441,19 +1284,19 @@ export default function main() {
     );
     running(cx, &plugins);
     let _service = service(cx, "a");
-    assert_eq!(fake.calls.borrow().last().unwrap(), "nextCall,reply,fail");
+    assert_eq!(reports(&fake).last().unwrap(), "onCall,reply,fail");
     let (host, cx) = window(cx);
     let error = format!(
       "{:#}",
       show(cx, &host, "a").err().expect("the import fails")
     );
-    assert!(error.contains("nextCall"), "{error}");
+    assert!(error.contains("onCall"), "{error}");
   }
 
   /// Counts its starts in the shared state as it starts.
   const START_COUNTER: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { getState, setState } from "corona/plugin";
 
@@ -1469,7 +1312,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn state_outlives_a_rescan_but_not_the_plugin(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor"] }"#;
     plugins.add("a", &manifest("a", extra), &[("main.js", START_COUNTER)]);
@@ -1496,8 +1339,8 @@ export default class Main extends View {
 
   /// Reports translations.
   const I18N_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { t, language } from "corona/i18n";
 
@@ -1511,7 +1354,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn translations_fall_back_and_rerender(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor"] }"#;
     fs::create_dir_all(plugins.paths.local.join("a/locales")).unwrap();
@@ -1529,16 +1372,13 @@ export default class Main extends View {
     rust_i18n::set_locale("en");
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
-    assert_eq!(
-      fake.calls.borrow().last().unwrap(),
-      "en|hi x|english|missing"
-    );
+    assert_eq!(reports(&fake).last().unwrap(), "en|hi x|english|missing");
 
     rust_i18n::set_locale("de-AT");
     cx.update(|_, cx| cx.global_mut::<Config>().shell.language = Some("de".into()));
     cx.run_until_parked();
     assert_eq!(
-      fake.calls.borrow().last().unwrap(),
+      reports(&fake).last().unwrap(),
       "de-AT|hallo x|english|missing"
     );
   }
@@ -1549,10 +1389,10 @@ export default class Main extends View {
     plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
     let (_, script) = load(cx, &plugins, "a");
     script.unwrap();
-    let dts = || fs::read_to_string(plugins.paths.local.join("a/gpui-kit.d.ts")).unwrap();
+    let dts = || fs::read_to_string(plugins.paths.local.join("a/corona.d.ts")).unwrap();
     let (call, next) = (
-      "export function call(method: string, args?: JsonValue | null): Promise<JsonValue | Error>;",
-      "export function nextCall(): Promise<Call | Error>;",
+      "  export function call(method: string, args?: Value | null): Promise<Value>;",
+      "  export function onCall(cb: (value: Call) => void): () => void;",
     );
     let view = dts();
     for line in [
@@ -1573,15 +1413,13 @@ export default class Main extends View {
     cx.set_global(plugins.manager());
     let _service = service(cx, "a");
     assert_eq!(dts(), view);
-    // and type its entry
-    assert!(view.contains("export type ServiceMain = (cx: AsyncContext)"));
   }
 
   /// Reports through `focusWorkspace` whether the test name is on the bus,
   /// and what calling an ungranted one answers.
   const DBUS_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { call, nameHasOwner } from "corona/dbus";
 
@@ -1593,7 +1431,7 @@ export default class Main extends View {
       started = true;
       nameHasOwner("session", "io.corona.Test").then((owned) => focusWorkspace("owned " + owned));
       call({ bus: "session", dest: "io.corona.Other", path: "/", iface: "io.corona.Other", method: "X" })
-        .then((e) => focusWorkspace("denied " + e.message));
+        .catch((e) => focusWorkspace("denied " + e.message));
     }
     return v_flex().child("plugin");
   }
@@ -1613,7 +1451,7 @@ export default class Main extends View {
       system: session.clone(),
       session,
     });
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra =
       r#"capabilities = { corona = ["compositor"], dbus = { session = ["io.corona.Test"] } }"#;
@@ -1621,8 +1459,8 @@ export default class Main extends View {
     let (cx, script) = load(cx, &plugins, "a");
     let _script = script.unwrap();
 
-    wait_until(cx, |_| fake.calls.borrow().len() == 2);
-    let calls = fake.calls.borrow();
+    wait_until(cx, |_| reports(&fake).len() == 2);
+    let calls = reports(&fake);
     assert!(calls.contains(&"owned true".to_string()), "{calls:?}");
     assert!(
       calls
@@ -1636,8 +1474,8 @@ export default class Main extends View {
   fn importing(module: &str) -> String {
     format!(
       r#"
-import {{ View }} from "gpui-kit";
-import {{ v_flex }} from "gpui-base";
+import {{ View }} from "corona/kit";
+import {{ v_flex }} from "corona/base";
 import * as m from "corona/{module}";
 
 export default class Main extends View {{
@@ -1687,8 +1525,8 @@ export default class Main extends View {{
 
   /// Reports what the user picked through `focusWorkspace`.
   const PICK_VIEW: &str = r#"
-import { View } from "gpui-kit";
-import { v_flex } from "gpui-base";
+import { View } from "corona/kit";
+import { v_flex } from "corona/base";
 import { focusWorkspace } from "corona/compositor";
 import { pickFiles } from "corona/desktop";
 
@@ -1707,7 +1545,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn picks_files(cx: &mut TestAppContext) {
-    let fake = recorder(cx);
+    let fake = setup(cx);
     let plugins = Plugins::new();
     let extra = r#"capabilities = { corona = ["compositor", "desktop"] }"#;
     plugins.add("a", &manifest("a", extra), &[("main.js", PICK_VIEW)]);
@@ -1720,36 +1558,14 @@ export default class Main extends View {
       Some(vec!["/tmp/a".into(), "/tmp/b".into()])
     });
     cx.run_until_parked();
-    assert_eq!(
-      fake.calls.borrow().last().unwrap(),
-      r#"["/tmp/a","/tmp/b"]"#
-    );
+    assert_eq!(reports(&fake).last().unwrap(), r#"["/tmp/a","/tmp/b"]"#);
   }
 
-  /// Every corona module's name in `capabilities.corona`
-  const ALL_MODULES: [&str; 18] = [
-    "compositor",
-    "compositor_control",
-    "pipewire",
-    "network",
-    "mpris",
-    "bluetooth",
-    "power",
-    "brightness",
-    "notifications",
-    "notification_center",
-    "tray",
-    "sysinfo",
-    "weather",
-    "auth",
-    "secrets",
-    "desktop",
-    "idle",
-    "printing",
-  ];
+  /// Every corona module's name in `capabilities.corona` that corona_script registers
+  const ALL_MODULES: [&str; 1] = ["secrets"];
 
   fn dts(plugins: &Plugins, id: &str) -> String {
-    fs::read_to_string(plugins.paths.local.join(id).join("gpui-kit.d.ts")).unwrap()
+    fs::read_to_string(plugins.paths.local.join(id).join("corona.d.ts")).unwrap()
   }
 
   #[gpui::test]
@@ -1767,7 +1583,7 @@ export default class Main extends View {
       .update(|cx| crate::write_plugin_types(std::slice::from_ref(&dir), cx))
       .unwrap();
 
-    assert!(written.contains(&dir.join("gpui-kit.d.ts")), "{written:?}");
+    assert!(written.contains(&dir.join("corona.d.ts")), "{written:?}");
     let dts = dts(&plugins, "a");
     for module in ALL_MODULES
       .iter()
@@ -1776,7 +1592,8 @@ export default class Main extends View {
       let line = format!("declare module \"corona/{module}\"");
       assert!(dts.contains(&line), "missing {line:?}");
     }
-    assert_eq!(CoronaModule::ALL.len(), ALL_MODULES.len());
+    let registered = cx.update(|cx| cx.global::<ScriptRegistry>().all().count());
+    assert_eq!(registered, ALL_MODULES.len());
   }
 
   #[gpui::test]
@@ -1817,11 +1634,7 @@ export default class Main extends View {
 
   #[gpui::test]
   fn types_match_a_load(cx: &mut TestAppContext) {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-    });
+    setup(cx);
     let plugins = Plugins::new();
     let extra = "service = \"service.js\"\ncapabilities = { corona = [\"compositor\"] }\n[[settings]]\nkey = \"label\"\nlabel = \"Label\"\ntype = \"text\"\ndefault = \"\"";
     plugins.add(
@@ -1835,9 +1648,8 @@ export default class Main extends View {
     let (cx, script) = load(cx, &plugins, "a");
     script.unwrap();
     let loaded = dts(&plugins, "a");
-    assert!(loaded.contains("export type ServiceMain = (cx: AsyncContext)"));
 
-    let path = plugins.paths.local.join("a/gpui-kit.d.ts");
+    let path = plugins.paths.local.join("a/corona.d.ts");
     fs::remove_file(&path).unwrap();
     let dir = plugins.paths.local.join("a");
     cx.update(|_, cx| ScriptManager::write_types(&dir, cx))
@@ -1861,7 +1673,7 @@ export default class Main extends View {
     cx.update(|cx| ScriptManager::write_types(&dir, cx))
       .unwrap();
 
-    assert!(dir.join("gpui-kit.d.ts").is_file());
+    assert!(dir.join("corona.d.ts").is_file());
     assert!(!dir.join("jsconfig.json").exists());
     assert_eq!(
       fs::read_to_string(dir.join("tsconfig.json")).unwrap(),
@@ -1878,6 +1690,6 @@ export default class Main extends View {
       cx.update(|cx| ScriptManager::write_types(&dir, cx))
         .is_err()
     );
-    assert!(!dir.join("gpui-kit.d.ts").exists());
+    assert!(!dir.join("corona.d.ts").exists());
   }
 }

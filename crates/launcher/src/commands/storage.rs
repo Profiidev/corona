@@ -1,7 +1,7 @@
 //! The trash
 
 use anyhow::Result;
-use gpui_kit::{App, SharedString, assets::IconName};
+use gpui_kit::{App, AppContext, assets::IconName};
 use rust_i18n::t;
 
 use crate::{
@@ -29,28 +29,23 @@ pub fn init(cx: &mut App) {
         "trash:empty",
         |_| Meta {
           title: t!("app.launcher.storage.empty_trash").into(),
-          subtitle: trash_count()
-            .ok()
-            .map(|n| SharedString::from(t!("app.launcher.storage.items", count = n).to_string())),
           icon: Icon::Tile(IconName::Trash, 0.),
           keywords: vec!["trash".into(), "bin".into(), "recycle".into()],
           ..Default::default()
         },
         |_| {
-          let count = trash_count().unwrap_or(0);
           vec![
-            Action::sync(
-              "empty",
-              t!("app.launcher.storage.empty_trash"),
-              |_, _, _| {
-                let n = empty_trash()?;
+            Action::spawn("empty", t!("app.launcher.storage.empty_trash"), |_, cx| {
+              let emptied = cx.background_spawn(async { empty_trash() });
+              async move {
+                let n = emptied.await?;
                 Ok(Outcome::hud(t!("app.launcher.storage.emptied", count = n)))
-              },
-            )
+              }
+            })
             .destructive()
             .confirm(Confirm {
               title: t!("app.launcher.storage.empty_trash").into(),
-              message: t!("app.launcher.storage.empty_message", count = count).into(),
+              message: t!("app.launcher.storage.empty_message").into(),
               button: t!("app.launcher.storage.empty").into(),
               skippable: false,
             }),

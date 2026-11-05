@@ -1,13 +1,26 @@
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
+
 use anyhow::Result;
 use gpui_kit::App;
 
+use crate::{
+  bar::BarExt, control_center::ControlCenterExt, dashboard::DashboardExt, panel::AppPanelExt,
+};
+
 pub mod bar;
+pub mod cli;
 pub mod commands;
+pub mod control_center;
+pub mod dashboard;
 pub mod input_region;
 pub mod osd;
+pub mod overlay;
 pub mod panel;
 pub mod per_display;
 pub mod popup;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
+pub mod theme;
 pub mod tooltip;
 
 pub fn init(cx: &mut App) -> Result<()> {
@@ -15,108 +28,38 @@ pub fn init(cx: &mut App) -> Result<()> {
   panel::PanelState::init(cx);
   tooltip::TooltipState::init(cx);
   osd::OsdState::init(cx);
+  commands::register_commands(cx);
+  theme::register_commands(cx);
   Ok(())
+}
+
+/// The control center with its dashboard, its bar button and the dark mode tile; before
+/// the integrations register theirs
+pub fn register_builtins(cx: &mut App) {
+  cx.bar_mut()
+    .register::<control_center::ControlCenterButton>();
+  cx.panel().register::<control_center::ControlCenter>();
+  cx.control_center_mut()
+    .register::<dashboard::DashboardPanel>();
+  cx.dashboard_mut().quick_action::<dashboard::DarkMode>();
 }
 
 #[cfg(test)]
 pub(crate) mod test_support {
-  use std::{cell::RefCell, rc::Rc};
+  use std::rc::Rc;
 
-  use anyhow::Result;
-  use corona_compositor::{Compositor, CompositorImpl, types};
   use gpui_kit::{
     AnyWindowHandle, App, AppContext, Context, IntoElement, ParentElement, Pixels, Render, Size,
     Styled, TestAppContext, Window, WindowOptions, div, px, size,
   };
   use uuid::Uuid;
 
-  use crate::{bar::Widget, osd::Osd, panel::Panel, tooltip::Tooltip};
-
-  fn workspace() -> types::Workspace {
-    types::Workspace {
-      id: "1".into(),
-      name: "1".into(),
-      monitor: "DP-1".into(),
-      monitor_id: 0,
-    }
-  }
-
-  pub fn monitor(name: &str) -> types::Monitor {
-    types::Monitor {
-      id: 0,
-      name: name.into(),
-      width: 1920,
-      height: 1080,
-      refresh_rate: 60.,
-      x: 0,
-      y: 0,
-      active_scratchpad: None,
-      active_workspace: workspace(),
-      scale: 1.,
-      focused: true,
-      disabled: false,
-      mirror_of: "none".into(),
-    }
-  }
-
-  /// A compositor with fixed monitors and nothing else
-  #[derive(Default)]
-  pub struct Fake {
-    pub monitors: RefCell<Vec<types::Monitor>>,
-  }
-
-  impl CompositorImpl for Fake {
-    fn list_workspaces(&self) -> Result<Vec<types::Workspace>> {
-      Ok(vec![workspace()])
-    }
-    fn active_workspace(&self) -> Result<types::Workspace> {
-      Ok(workspace())
-    }
-    fn list_monitors(&self) -> Result<Vec<types::Monitor>> {
-      Ok(self.monitors.borrow().clone())
-    }
-    fn active_monitor(&self) -> Result<types::Monitor> {
-      Ok(monitor("DP-1"))
-    }
-    fn list_windows(&self) -> Result<Vec<types::Window>> {
-      Ok(vec![])
-    }
-    fn active_window(&self) -> Result<Option<types::Window>> {
-      Ok(None)
-    }
-    fn focus_workspace(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn focus_window(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn close_window(&self, _: &str) -> Result<()> {
-      Ok(())
-    }
-    fn cursor_position(&self) -> Result<(i32, i32)> {
-      Ok((0, 0))
-    }
-    fn keyboard_layout(&self) -> Result<Option<String>> {
-      Ok(None)
-    }
-    fn set_dpms(&self, _: bool) -> Result<()> {
-      Ok(())
-    }
-    fn configure_monitor(&self, _: &str, _: types::MonitorChange) -> Result<()> {
-      Ok(())
-    }
-  }
+  use crate::{bar::Widget, osd::Osd, panel::Panel, testing::FakeCompositor, tooltip::Tooltip};
 
   /// Kit, default config, a fake compositor and every surface global
-  pub fn setup(cx: &mut TestAppContext) -> Rc<Fake> {
-    let fake = Rc::new(Fake::default());
-    cx.update(|cx| {
-      gpui_kit::init(cx);
-      cx.set_global(corona_config::Config::default());
-      let compositor = Compositor::new(cx, fake.clone()).unwrap();
-      cx.set_global(compositor);
-      crate::init(cx).unwrap();
-    });
+  pub fn setup(cx: &mut TestAppContext) -> Rc<FakeCompositor> {
+    let fake = crate::testing::setup(FakeCompositor::default(), cx);
+    cx.update(|cx| crate::init(cx).unwrap());
     fake
   }
 
@@ -220,14 +163,26 @@ pub(crate) mod test_support {
   }
 
   impl Osd for OsdA {
-    const NAME: &'static str = "osd_a";
+    const KIND: &'static str = "osd_a";
+    fn title() -> gpui_kit::SharedString {
+      "OsdA".into()
+    }
+    fn description() -> gpui_kit::SharedString {
+      "".into()
+    }
     fn size(&self, _: &App) -> Size<Pixels> {
       size(px(100.), px(30.))
     }
   }
 
   impl Osd for OsdB {
-    const NAME: &'static str = "osd_b";
+    const KIND: &'static str = "osd_b";
+    fn title() -> gpui_kit::SharedString {
+      "OsdB".into()
+    }
+    fn description() -> gpui_kit::SharedString {
+      "".into()
+    }
     fn size(&self, _: &App) -> Size<Pixels> {
       size(px(200.), px(30.))
     }

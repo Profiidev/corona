@@ -1,11 +1,15 @@
 //! Where the device is: configured coordinates, GeoClue or a geocoded city, kept current for
 //! weather and nightlight.
 
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use corona_config::{ConfigProvider, LocationConfig, observe_section};
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{
+  error::ErrorLogExt,
+  persist::{load_json, save_json},
+  ticker::wait_or_refresh,
+};
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 use serde::{Deserialize, Serialize};
 use zbus::Connection;
@@ -37,15 +41,7 @@ pub struct LocationService {
 
 impl Global for LocationService {}
 
-pub trait LocationExt {
-  fn location(&self) -> &LocationService;
-}
-
-impl LocationExt for App {
-  fn location(&self) -> &LocationService {
-    self.global::<LocationService>()
-  }
-}
+corona_utils::global_ext!(LocationExt, location, LocationService);
 
 impl LocationService {
   pub fn current<'c>(&self, cx: &'c App) -> Option<&'c Location> {
@@ -70,17 +66,11 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 fn load_cache() -> Option<Location> {
-  serde_json::from_slice(&fs::read(cache_path()?).ok()?).ok()
+  load_json(&cache_path()?)
 }
 
 fn save_cache(location: &Location) -> Result<()> {
-  let Some(path) = cache_path() else {
-    return Ok(());
-  };
-  if let Some(dir) = path.parent() {
-    fs::create_dir_all(dir)?;
-  }
-  Ok(fs::write(path, serde_json::to_vec(location)?)?)
+  cache_path().map_or(Ok(()), |path| save_json(&path, location))
 }
 
 async fn resolve(
@@ -91,6 +81,10 @@ async fn resolve(
   timeout: impl Future<Output = ()>,
 ) -> Result<Location> {
   if let (Some(latitude), Some(longitude)) = (config.latitude, config.longitude) {
+    // NaN fails the range check too
+    if !(-90.0..=90.0).contains(&latitude) || !(-180.0..=180.0).contains(&longitude) {
+      bail!("latitude or longitude out of range under [location]");
+    }
     return Ok(Location {
       name: config
         .city
@@ -101,14 +95,21 @@ async fn resolve(
       query: None,
     });
   }
+  let mut geoclue_error = None;
   if config.auto_locate {
     match locate::locate(system, timeout).await {
       Ok(location) => return Ok(location),
-      Err(e) => tracing::warn!("GeoClue: {e:?}, falling back to the configured city"),
+      Err(e) => {
+        tracing::warn!("GeoClue: {e:?}, falling back to the configured city");
+        geoclue_error = Some(e);
+      }
     }
   }
   let Some(city) = &config.city else {
-    bail!("set city or latitude and longitude under [location]");
+    match geoclue_error {
+      Some(e) => bail!("GeoClue: {e}; set city or latitude and longitude under [location]"),
+      None => bail!("set city or latitude and longitude under [location]"),
+    }
   };
   if let Some(previous) = previous.filter(|l| l.query.as_ref() == Some(city)) {
     return Ok(previous.clone());
@@ -148,15 +149,7 @@ pub fn init(cx: &mut App, system: &Connection) {
           RETRY
         }
       };
-      let next = futures_lite::future::or(
-        async {
-          cx.background_executor().timer(wait).await;
-          true
-        },
-        async { requests.recv_async().await.is_ok() },
-      )
-      .await;
-      if !next {
+      if !wait_or_refresh(cx, &requests, wait).await {
         break;
       }
     }
@@ -381,6 +374,19 @@ mod tests {
   }
 
   #[test]
+  fn the_geoclue_error_is_reported_without_a_city() {
+    let bus = TestBus::new();
+    block_on(async {
+      let conn = bus.conn().await;
+      let (client, _) = fake(|_| unreachable!());
+      let error = resolve(&*client, &conn, &place(None, None, true), None, ready(()))
+        .await
+        .unwrap_err();
+      assert!(error.to_string().starts_with("GeoClue: "));
+    });
+  }
+
+  #[test]
   fn the_previous_place_is_reused() {
     let bus = TestBus::new();
     block_on(async {
@@ -511,29 +517,17 @@ mod tests {
     block_on(async {
       let conn = bus.conn().await;
       let (client, _) = fake(|_| unreachable!());
-      let nan_loc = resolve(
-        &*client,
-        &conn,
-        &place(None, Some((f64::NAN, f64::INFINITY)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(nan_loc.name, "NaN, inf");
-      assert!(nan_loc.latitude.is_nan());
-      assert_eq!(nan_loc.longitude, f64::INFINITY);
-
-      let extreme = resolve(
-        &*client,
-        &conn,
-        &place(None, Some((999.0, -999.0)), false),
-        None,
-        ready(()),
-      )
-      .await
-      .unwrap();
-      assert_eq!(extreme.name, "999.00, -999.00");
+      for coords in [(f64::NAN, f64::INFINITY), (999.0, -999.0)] {
+        let result = resolve(
+          &*client,
+          &conn,
+          &place(None, Some(coords), false),
+          None,
+          ready(()),
+        )
+        .await;
+        assert!(result.is_err());
+      }
     });
   }
 
@@ -597,7 +591,7 @@ mod tests {
       dir.path().join("corona").join("location.json")
     );
     assert_eq!(load_cache(), Some(place));
-    fs::write(cache_path().unwrap(), b"{ broken").unwrap();
+    std::fs::write(cache_path().unwrap(), b"{ broken").unwrap();
     assert!(load_cache().is_none());
     assert!(cache_path_in(None).is_none());
   }
@@ -611,8 +605,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext, config: Config) -> Running {
     let cache = isolated_cache();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let (client, urls) = fake(|url| {
       if url.contains("Nowhere") {
         (200, "{}".into())
@@ -681,8 +674,7 @@ mod tests {
       query: None,
     };
     save_cache(&cached).unwrap();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let client = gpui_kit::http_client::FakeHttpClient::create(|_| pending());
     cx.update(|cx| {
       cx.set_http_client(client);

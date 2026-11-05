@@ -1,4 +1,4 @@
-use futures_lite::{Stream, StreamExt};
+use futures_lite::{Stream, StreamExt, future::poll_once};
 use gpui_kit::App;
 
 /// Reads `stream` on its own task into an unbounded queue, so it never backs
@@ -18,6 +18,30 @@ pub fn pump<T: 'static>(
   })
   .detach();
   rx.into_stream()
+}
+
+/// Waits for the next change, then takes the rest of its burst already queued, so one refresh
+/// covers them all; `None` once `changes` ends
+pub async fn next_burst<T>(changes: &mut (impl Stream<Item = T> + Unpin)) -> Option<Vec<T>> {
+  let mut burst = vec![changes.next().await?];
+  while let Some(Some(next)) = poll_once(changes.next()).await {
+    burst.push(next);
+  }
+  Some(burst)
+}
+
+#[cfg(test)]
+mod burst_tests {
+  use futures_lite::{future::block_on, stream};
+
+  use super::*;
+
+  #[test]
+  fn a_burst_is_what_is_queued() {
+    let mut changes = stream::iter([1, 2, 3]);
+    assert_eq!(block_on(next_burst(&mut changes)), Some(vec![1, 2, 3]));
+    assert_eq!(block_on(next_burst(&mut changes)), None);
+  }
 }
 
 #[cfg(all(test, feature = "test-support"))]

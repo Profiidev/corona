@@ -1,17 +1,28 @@
 //! Clipboard history: a watcher on the data control protocol fills a SQLite store, the
 //! launcher reads it; pasting presses Ctrl+V on a virtual keyboard
 
+pub mod cli;
+pub mod commands;
+pub mod launcher;
 pub mod paste;
+pub mod placeholders;
+mod settings;
 pub mod store;
+pub mod ui;
 pub mod watch;
 
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use anyhow::Result;
-use corona_config::ConfigProvider;
+use corona_compositor::CompositorExt;
+use corona_config::{ConfigProvider, launcher::ClipboardConfig, observe_section};
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 pub use store::{Entry, Kind, Store};
+use watch::{Captured, MAX_TEXT};
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct ClipboardHistory {
@@ -33,8 +44,34 @@ impl ClipboardExt for App {
   }
 }
 
+/// Opens the history and watches the clipboard, sets the launcher's paster, and registers
+/// the clipboard's UI and commands
+pub fn init(cx: &mut App, _: &Buses) {
+  if let Err(e) = start(cx) {
+    tracing::warn!("clipboard history is off: {e:#}");
+  }
+  corona_launcher::paste::set_paster(
+    |_, cx| {
+      // the window the launcher hands the keyboard back to
+      let terminal = cx
+        .compositor()
+        .active_window(cx)
+        .is_some_and(|w| paste::is_terminal(&w.class));
+      cx.background_spawn(async move {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        paste::paste(terminal)
+      })
+    },
+    cx,
+  );
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+}
+
 /// Opens the history and starts watching the clipboard
-pub fn init(cx: &mut App) -> Result<()> {
+fn start(cx: &mut App) -> Result<()> {
   let store = Store::open(&Store::default_dir()?)?;
   let days = cx.config().launcher.clipboard.image_retention_days;
   if let Err(e) = store.prune_images(days) {
@@ -42,42 +79,74 @@ pub fn init(cx: &mut App) -> Result<()> {
   }
   let ClipboardHistory { store, revision } = ClipboardHistory::install(store, cx);
 
+  let wanted = Arc::new(watch::Wanted::default());
+  share(&wanted, &cx.config().launcher.clipboard);
+  observe_section(cx, |c| &c.launcher.clipboard, {
+    let wanted = wanted.clone();
+    move |config, _| share(&wanted, config)
+  });
   let (tx, rx) = flume::unbounded();
   std::thread::Builder::new()
     .name("clipboard".into())
     .spawn(move || {
-      if let Err(e) = watch::run(tx) {
-        tracing::warn!("clipboard history is off: {e:#}");
+      if let Err(e) = watch::run(tx, wanted) {
+        tracing::warn!("clipboard watcher stopped: {e:#}");
       }
     })?;
   cx.spawn(async move |cx| {
-    while let Ok(captured) = rx.recv_async().await {
-      cx.update(|cx| {
-        let config = cx.config().launcher.clipboard.clone();
-        if !config.enabled {
-          return;
+    let added = move |result: Result<i64>, cx: &mut App| match result {
+      Ok(_) => revision.update(cx, |r, cx| {
+        *r += 1;
+        cx.notify();
+      }),
+      Err(e) => tracing::warn!("clipboard: {e:#}"),
+    };
+    while let Ok(Captured { mime, bytes }) = rx.recv_async().await {
+      let config = cx.update(|cx| cx.config().launcher.clipboard.clone());
+      if !config.enabled {
+        continue;
+      }
+      if mime.starts_with("image/") {
+        if !config.images || bytes.len() as f32 > config.image_max_mb * 1024. * 1024. {
+          continue;
         }
-        let added = match captured.mime.starts_with("image/") {
-          true if !config.images => return,
-          true if captured.bytes.len() as f32 > config.image_max_mb * 1024. * 1024. => return,
-          true => store.add_image(&captured.bytes, &captured.mime),
-          false => match String::from_utf8(captured.bytes) {
-            Ok(text) if !text.trim().is_empty() => store.add_text(&text, &captured.mime),
-            _ => return,
-          },
-        };
-        match added {
-          Ok(_) => revision.update(cx, |r, cx| {
-            *r += 1;
-            cx.notify();
-          }),
-          Err(e) => tracing::warn!("clipboard: {e:#}"),
-        }
-      });
+        // hashing and writing a big image must not stall the UI thread
+        let (dir, size, kind) = (store.dir().to_path_buf(), bytes.len() as u64, mime.clone());
+        let file = cx
+          .background_executor()
+          .spawn(async move { Store::write_image(&dir, &bytes, &kind) })
+          .await;
+        cx.update(|cx| {
+          added(
+            file.and_then(|(hash, path)| store.add_image_file(hash, &path, &mime, size)),
+            cx,
+          )
+        });
+        continue;
+      }
+      // Longer text is not kept, storing it would stall the UI thread
+      if bytes.len() > MAX_TEXT {
+        continue;
+      }
+      let Ok(text) = String::from_utf8(bytes) else {
+        continue;
+      };
+      if !text.trim().is_empty() {
+        cx.update(|cx| added(store.add_text(&text, &mime), cx));
+      }
     }
   })
   .detach();
   Ok(())
+}
+
+/// Hands the watcher what the config lets the history take
+fn share(wanted: &watch::Wanted, config: &ClipboardConfig) {
+  wanted.set(
+    config.enabled,
+    config.images,
+    (config.image_max_mb * 1024. * 1024.) as u64,
+  );
 }
 
 impl ClipboardHistory {
@@ -99,12 +168,18 @@ impl ClipboardHistory {
   }
 
   pub fn get(&self, id: i64) -> Option<Entry> {
-    self.store.get(id).ok().flatten()
+    self.store.get(id).unwrap_or_else(|e| {
+      tracing::warn!("clipboard: {e:#}");
+      None
+    })
   }
 
   /// The `offset`th newest text, for `{clipboard offset=1}`
   pub fn nth_text(&self, offset: usize) -> Option<String> {
-    self.store.nth_text(offset).ok().flatten()
+    self.store.nth_text(offset).unwrap_or_else(|e| {
+      tracing::warn!("clipboard: {e:#}");
+      None
+    })
   }
 
   fn changed(&self, result: Result<()>, cx: &mut App) -> Result<()> {

@@ -91,6 +91,9 @@ gpui_component:
       en: More options
       de: Weitere Optionen
   Dock:
+    Unavailable Panel:
+      en: This panel isn’t available in this version.
+      de: Dieses Panel ist in dieser Version nicht verfügbar.
     Unnamed:
       en: Unnamed
       de: Unbenannt
@@ -147,6 +150,15 @@ gpui_component:
       en: Search...
       de: Suchen …
   Input:
+    Clear:
+      en: Clear
+      de: Leeren
+    Show Password:
+      en: Show password
+      de: Passwort anzeigen
+    Hide Password:
+      en: Hide password
+      de: Passwort verbergen
     Decrement:
       en: Decrement
       de: Verringern

@@ -6,6 +6,7 @@ use gpui_kit::{App, AppContext};
 use tracing::info;
 use zbus::{
   Connection, fdo, interface, message::Header, names::BusName, object_server::SignalEmitter,
+  zvariant::ObjectPath,
 };
 
 use crate::proxy::{ITEM_PATH, WATCHER_NAME, WATCHER_PATH};
@@ -31,6 +32,20 @@ impl Watcher {
         return Ok(());
       }
       items.push(item.clone());
+    }
+    // the owner may have died between the check in address and the push, after cleanup ran
+    let bus = item.split('/').next().unwrap_or_default();
+    let alive = match BusName::try_from(bus) {
+      Ok(bus) => fdo::DBusProxy::new(conn).await?.name_has_owner(bus).await?,
+      Err(_) => false,
+    };
+    if !alive {
+      self
+        .items
+        .lock()
+        .expect("watcher lock")
+        .retain(|i| i != &item);
+      return Ok(());
     }
     info!("tray item registered: {item}");
     self
@@ -69,9 +84,6 @@ impl Watcher {
     emitter: &SignalEmitter<'_>,
     service: &str,
   ) -> zbus::Result<()>;
-
-  #[zbus(signal)]
-  async fn status_notifier_host_registered(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
 
 async fn address(service: &str, header: &Header<'_>, conn: &Connection) -> fdo::Result<String> {
@@ -82,11 +94,22 @@ async fn address(service: &str, header: &Header<'_>, conn: &Connection) -> fdo::
       .ok_or_else(|| fdo::Error::InvalidArgs("unknown sender".into()))
   };
   if service.starts_with('/') {
+    ObjectPath::try_from(service).map_err(|e| fdo::Error::InvalidArgs(e.to_string()))?;
     return Ok(format!("{}{service}", sender()?));
   }
   let bus = BusName::try_from(service).map_err(|e| fdo::Error::InvalidArgs(e.to_string()))?;
   let unique = match bus {
-    BusName::Unique(unique) => unique.to_string(),
+    // a dead name never sends NameOwnerChanged again, so it would stay forever
+    BusName::Unique(unique) => {
+      if !fdo::DBusProxy::new(conn)
+        .await?
+        .name_has_owner(unique.clone().into())
+        .await?
+      {
+        return Err(fdo::Error::InvalidArgs(format!("{unique} has no owner")));
+      }
+      unique.to_string()
+    }
     well_known => fdo::DBusProxy::new(conn)
       .await?
       .get_name_owner(well_known)
@@ -100,6 +123,11 @@ pub(crate) async fn serve(conn: &Connection, cx: &mut App) -> Result<()> {
   let watcher = Watcher::default();
   let items = watcher.items.clone();
   conn.object_server().at(WATCHER_PATH, watcher).await?;
+  // before the name request, so no owner's death goes unseen
+  let mut gone = fdo::DBusProxy::new(conn)
+    .await?
+    .receive_name_owner_changed()
+    .await?;
   // queued behind a running watcher: the bus hands corona the name once that one exits
   let reply = conn
     .request_name_with_flags(WATCHER_NAME, fdo::RequestNameFlags::AllowReplacement.into())
@@ -108,10 +136,6 @@ pub(crate) async fn serve(conn: &Connection, cx: &mut App) -> Result<()> {
     info!("another status notifier watcher runs, using it until it exits");
   }
 
-  let mut gone = fdo::DBusProxy::new(conn)
-    .await?
-    .receive_name_owner_changed()
-    .await?;
   let conn = conn.clone();
   cx.background_spawn(async move {
     while let Some(signal) = gone.next().await {

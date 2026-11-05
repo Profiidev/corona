@@ -19,12 +19,13 @@ use gpui_kit::{App, AppContext, Global, Task};
 
 use crate::{
   ScriptManager,
+  module::settings::Settings,
   plugin::{
     catalog::CatalogEntry,
     materialize::matches_catalog,
     paths::Paths,
     registry::{self, Found},
-    worker::{SourceCatalog, UpdateReport, Worker, ids},
+    worker::{SourceCatalog, UpdateReport, Worker, dir_catalog, ids},
   },
 };
 
@@ -48,7 +49,8 @@ pub struct PluginManager {
   assets_missing: HashSet<PathBuf>,
   /// Bumps whenever the plugins that run, or their widgets and panels, change
   revision: u64,
-  signature: Vec<String>,
+  /// Per running plugin, what [`signatures`] says of it
+  signatures: BTreeMap<String, String>,
   _auto_update: Option<Task<()>>,
 }
 
@@ -58,8 +60,8 @@ impl Global for PluginManager {}
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginStatus {
   pub entry: CatalogEntry,
-  /// The source it is enabled from: dev sources first, then the latest
-  /// configured, then the local directory
+  /// The source it is enabled from: dev sources first, then the local
+  /// directory, then the latest configured
   pub source: String,
   pub kind: SourceKind,
   /// Other sources offering the same id, which it wins over
@@ -88,15 +90,13 @@ impl PluginManager {
       assets_pending: HashSet::new(),
       assets_missing: HashSet::new(),
       revision: 0,
-      signature: Vec::new(),
+      signatures: BTreeMap::new(),
       _auto_update: None,
     });
     Self::rescan(cx);
     observe_section(cx, |c| &c.plugins, |_, cx| Self::rescan(cx));
     // for `${setting:<key>}` hosts, which a new revision restarts with
-    // rereads every manifest on any setting change; scan once and
-    // re-grant if settings change often
-    observe_section(cx, |c| &c.plugin_settings, |_, cx| Self::rescan(cx));
+    observe_section(cx, |c| &c.plugin_settings, |_, cx| Self::regrant(cx));
     Self::heal(cx);
 
     let task = cx.spawn(async move |cx| {
@@ -119,6 +119,11 @@ impl PluginManager {
 
   pub fn revision(&self) -> u64 {
     self.revision
+  }
+
+  /// What the shell builds each running plugin from, by id; differs where the plugin changed
+  pub fn signatures(&self) -> &BTreeMap<String, String> {
+    &self.signatures
   }
 
   /// Enabled plugins that wait for approval, by id
@@ -152,7 +157,15 @@ impl PluginManager {
     let config = cx.config().plugins.clone();
     let settings = cx.config().plugin_settings.clone();
     let this = cx.global_mut::<Self>();
-    (this.active, this.unapproved) = registry::scan(&this.worker.paths, &config, &settings)
+    let mut scanned = registry::scan(&this.worker.paths, &config, &settings);
+    // a plugin that did not change keeps its grant, which holds the files the user picked
+    for (id, found) in &mut scanned {
+      let old = this.active.get(id);
+      if let Some(old) = old.filter(|old| signature(old) == signature(found)) {
+        found.manifest.capabilities = old.manifest.capabilities.clone();
+      }
+    }
+    (this.active, this.unapproved) = scanned
       .into_iter()
       .partition(|(_, found)| registry::is_approved(&config, found));
     for (id, found) in &this.unapproved {
@@ -161,9 +174,28 @@ impl PluginManager {
         found.origin.source
       );
     }
-    let signature = signature(&this.active);
-    if signature != this.signature {
-      this.signature = signature;
+    Self::publish(cx);
+  }
+
+  /// Grants the running plugins whose hosts read settings again, from the manifests already read
+  fn regrant(cx: &mut App) {
+    let settings = cx.config().plugin_settings.clone();
+    let this = cx.global_mut::<Self>();
+    let paths = &this.worker.paths;
+    for found in this.active.values_mut() {
+      if !found.manifest.host_settings.is_empty() {
+        found.regrant(paths, &settings);
+      }
+    }
+    Self::publish(cx);
+  }
+
+  /// Hands the running plugins on: bumps the revision when one changed and tells the scripts
+  fn publish(cx: &mut App) {
+    let this = cx.global_mut::<Self>();
+    let signatures = signatures(&this.active);
+    if signatures != this.signatures {
+      this.signatures = signatures;
       this.revision += 1;
     }
     let manifests = this
@@ -172,7 +204,13 @@ impl PluginManager {
       .map(|(id, found)| (id.clone(), found.manifest.clone()))
       .collect();
     if cx.has_global::<ScriptManager>() {
-      cx.global_mut::<ScriptManager>().set_plugins(manifests);
+      let scripts = cx.global_mut::<ScriptManager>();
+      scripts.set_plugins(manifests);
+      // a hub's settings follow the config, which an update leaves alone
+      let settings: Vec<_> = scripts.hubs.values().map(|h| h.settings.clone()).collect();
+      for entity in settings {
+        entity.update(cx, Settings::refresh);
+      }
     }
     cx.refresh_windows();
   }
@@ -181,22 +219,14 @@ impl PluginManager {
   pub fn list(cx: &App) -> Vec<PluginStatus> {
     let this = cx.global::<Self>();
     let config = &cx.config().plugins;
-    let mut order: Vec<&SourceConfig> = config
-      .source
-      .iter()
-      .filter(|s| s.enabled && s.kind == SourceKind::Dev)
-      .collect();
-    order.extend(
-      config
-        .source
-        .iter()
-        .filter(|s| s.enabled && s.kind != SourceKind::Dev)
-        .rev(),
-    );
-    let names = order
-      .iter()
+    let enabled = || config.source.iter().filter(|s| s.enabled);
+    let dev = enabled().filter(|s| s.kind == SourceKind::Dev);
+    let others = enabled().filter(|s| s.kind != SourceKind::Dev).rev();
+    let names: Vec<_> = dev
       .map(|s| (s.name.as_str(), s.kind))
-      .chain([(LOCAL_SOURCE, SourceKind::Path)]);
+      .chain([(LOCAL_SOURCE, SourceKind::Path)])
+      .chain(others.map(|s| (s.name.as_str(), s.kind)))
+      .collect();
 
     let mut rows: Vec<PluginStatus> = Vec::new();
     for (source, kind) in names {
@@ -507,7 +537,8 @@ impl PluginManager {
         this
           .source_errors
           .insert(name.to_string(), format!("{e:#}"));
-        cx.refresh_windows();
+        // a failed fetch may still have exported the enabled plugins offline
+        Self::rescan(cx);
         return;
       }
     };
@@ -570,6 +601,7 @@ impl PluginManager {
       return Ok(());
     }
     let name = old.map(|o| o.name).unwrap_or_default();
+    let failed = name.clone();
     let this = cx.global_mut::<Self>();
     this.catalogs.remove(&name);
     let worker = this.worker.clone();
@@ -578,7 +610,11 @@ impl PluginManager {
       let result = task.await;
       cx.update(|cx| match result {
         Ok(()) => save(cx),
-        Err(e) => tracing::error!("deleting the old source's files: {e:#}"),
+        Err(e) => Self::record_source(
+          &failed,
+          Err(e.context("deleting the old source's files")),
+          cx,
+        ),
       })
     })
     .detach();
@@ -603,11 +639,15 @@ impl PluginManager {
       bail!("no plugin source `{name}`");
     };
     let this = cx.global_mut::<Self>();
-    let offered = this
-      .catalogs
-      .remove(name)
-      .map(|c| ids(&c.entries))
-      .unwrap_or_default();
+    // without a cached catalog (never read, failed, offline) what is on disk
+    // says; no git or lock here, this runs on the main thread
+    let offered = match this.catalogs.remove(name) {
+      Some(c) => ids(&c.entries),
+      None => ids(&match source.kind {
+        SourceKind::Git => dir_catalog(SourceKind::Git, &this.paths().materialized(name)).entries,
+        _ => this.worker.stored_catalog(&source),
+      }),
+    };
     this.source_errors.remove(name);
     let worker = this.worker.clone();
     corona_config::update(cx, |c| {
@@ -722,28 +762,27 @@ pub fn in_scope(scope: AutoUpdate, source: &SourceConfig) -> bool {
 }
 
 /// What the shell builds from the running plugins: ids, where they are and
-/// their widgets, panels, services and grants; settings are read live
-fn signature(active: &HashMap<String, Found>) -> Vec<String> {
-  let mut signature: Vec<String> = active
-    .values()
-    .map(|found| {
-      let m = &found.manifest;
-      format!(
-        "{} {} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-        m.id,
-        m.dir.display(),
-        m.version,
-        m.widgets,
-        m.panels,
-        m.service,
-        m.capabilities,
-        m.modules,
-        m.dbus
-      )
-    })
-    .collect();
-  signature.sort();
-  signature
+/// their widgets, panels, services and grants, by id; settings are read live
+fn signatures(active: &HashMap<String, Found>) -> BTreeMap<String, String> {
+  active
+    .iter()
+    .map(|(id, found)| (id.clone(), signature(found)))
+    .collect()
+}
+
+fn signature(found: &Found) -> String {
+  let m = &found.manifest;
+  format!(
+    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+    m.dir.display(),
+    m.version,
+    m.widgets,
+    m.panels,
+    m.service,
+    m.capabilities,
+    m.modules,
+    m.dbus
+  )
 }
 
 #[cfg(test)]
@@ -763,7 +802,7 @@ mod tests {
 
   fn manifest(id: &str, version: &str) -> String {
     format!(
-      "id = \"{id}\"\nname = \"{id}\"\nversion = \"{version}\"\n[widgets.w]\nview = \"main.js\"\n"
+      "id = \"{id}\"\nname = \"{id}\"\napi = 2\nversion = \"{version}\"\n[widgets.w]\nview = \"main.js\"\n"
     )
   }
 

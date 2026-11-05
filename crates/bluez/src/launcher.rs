@@ -1,0 +1,211 @@
+//! Bluetooth devices: connect, disconnect, pair and forget
+
+use std::{cell::Cell, rc::Rc, sync::atomic::Ordering};
+
+use crate::{BluetoothExt, Device};
+use corona_ipc::IpcCommand;
+use corona_launcher::{
+  Accessory, Action, Command, CommandSource, Confirm, Hud, Icon, ListView, Meta, Outcome, Query,
+  Section, Tone,
+  kit::{Group, ListSource, Notify, Toggle, opener, watch},
+  registry, simple,
+};
+use corona_utils::error::spawn_logged;
+use gpui_kit::{App, SharedString, Subscription, assets::IconName};
+use rust_i18n::t;
+
+use crate::commands::{Action as DeviceAction, Bluetooth, DeviceAction as Run, Discover};
+
+fn run(action: DeviceAction, address: String, title: SharedString, done: SharedString) -> Action {
+  let id = format!("{action:?}").to_lowercase();
+  Action::spawn(id, title, move |_, cx| {
+    let task = Run::reply((action, address.clone()), cx);
+    let done = done.clone();
+    async move {
+      task.await?;
+      Ok(Outcome::Close(Some(
+        Hud::new(done).icon(IconName::Bluetooth),
+      )))
+    }
+  })
+}
+
+fn device_row(device: &Device, pairing: bool) -> Rc<dyn Command> {
+  let d = device.clone();
+  simple(
+    format!("bluetooth:{}", device.address),
+    move |_| {
+      let mut accessories = Vec::new();
+      if d.connected {
+        accessories.push(Accessory::Tag(
+          t!("app.launcher.bluetooth.connected").into(),
+          Tone::Ok,
+        ));
+      }
+      Meta {
+        title: match (pairing, d.connected) {
+          (true, _) => t!("app.launcher.bluetooth.pair", name = d.name.clone()),
+          (false, true) => t!("app.launcher.bluetooth.disconnect", name = d.name.clone()),
+          (false, false) => t!("app.launcher.bluetooth.connect", name = d.name.clone()),
+        }
+        .into(),
+        subtitle: d
+          .battery
+          .map(|b| SharedString::from(t!("app.launcher.bluetooth.battery", level = b).to_string())),
+        icon: Icon::Tile(IconName::Bluetooth, 230.),
+        keywords: vec![
+          "bluetooth".into(),
+          d.name.clone().into(),
+          d.address.clone().into(),
+        ],
+        section: Section::Results,
+        accessories,
+        ..Default::default()
+      }
+    },
+    {
+      let d = device.clone();
+      move |_| {
+        let name: SharedString = d.name.clone().into();
+        let address = d.address.clone();
+        if pairing {
+          return vec![run(
+            DeviceAction::Pair,
+            address,
+            t!("app.launcher.bluetooth.pair", name = name.clone()).into(),
+            t!("app.launcher.bluetooth.paired", name = name).into(),
+          )];
+        }
+        let toggle = match d.connected {
+          true => run(
+            DeviceAction::Disconnect,
+            address.clone(),
+            t!("app.launcher.bluetooth.disconnect", name = name.clone()).into(),
+            t!("app.launcher.bluetooth.disconnected", name = name.clone()).into(),
+          ),
+          false => run(
+            DeviceAction::Connect,
+            address.clone(),
+            t!("app.launcher.bluetooth.connect", name = name.clone()).into(),
+            t!("app.launcher.bluetooth.connected_to", name = name.clone()).into(),
+          ),
+        };
+        let forget = run(
+          DeviceAction::Forget,
+          address,
+          t!("app.launcher.bluetooth.forget").into(),
+          t!("app.launcher.bluetooth.forgotten", name = name.clone()).into(),
+        )
+        .destructive()
+        .confirm(Confirm {
+          title: t!("app.launcher.bluetooth.forget_title", name = name).into(),
+          message: t!("app.launcher.bluetooth.forget_message").into(),
+          button: t!("app.launcher.bluetooth.forget").into(),
+          skippable: false,
+        });
+        vec![toggle, forget]
+      }
+    },
+  )
+}
+
+fn observe(notify: Notify, cx: &mut App) -> Vec<Subscription> {
+  let (devices, adapter) = (
+    cx.bluetooth().devices.clone(),
+    cx.bluetooth().adapter.clone(),
+  );
+  vec![watch(&devices, &notify, cx), watch(&adapter, &notify, cx)]
+}
+
+/// A row per paired device
+struct Paired;
+
+impl CommandSource for Paired {
+  fn id(&self) -> SharedString {
+    "bluetooth:devices".into()
+  }
+
+  fn commands(&self, _: &Query, cx: &App) -> Vec<Rc<dyn Command>> {
+    cx.bluetooth()
+      .list_devices(cx)
+      .iter()
+      .filter(|d| d.paired)
+      .map(|d| device_row(d, false))
+      .collect()
+  }
+
+  fn observe(&self, notify: Notify, cx: &mut App) -> Vec<Subscription> {
+    observe(notify, cx)
+  }
+}
+
+/// Starts discovery and returns its generation
+fn start_discovery(cx: &mut App) -> u64 {
+  let task = Discover::reply(true, cx);
+  spawn_logged(cx, task);
+  cx.bluetooth().scan.load(Ordering::Relaxed)
+}
+
+/// Stops discovery unless a later start, from the panel or IPC, took it over
+fn stop_discovery(started: u64, cx: &mut App) {
+  if cx.bluetooth().scan.load(Ordering::Relaxed) == started {
+    let task = Discover::reply(false, cx);
+    spawn_logged(cx, task);
+  }
+}
+
+pub(crate) fn register(cx: &mut App) {
+  toggle(cx);
+  registry::register_source(Rc::new(Paired), cx);
+  registry::register(
+    opener(
+      "bluetooth:pair",
+      t!("app.launcher.bluetooth.pair_new"),
+      Icon::Tile(IconName::BluetoothSearching, 230.),
+      &["bluetooth", "pair", "headphones"],
+      |_| {
+        let started = Rc::new(Cell::new(0));
+        let on_close = started.clone();
+        ListView::new(
+          t!("app.launcher.bluetooth.pair_new"),
+          t!("app.launcher.bluetooth.search"),
+          Rc::new(
+            ListSource::new("bluetooth:scan", |_, cx| {
+              cx.bluetooth()
+                .list_devices(cx)
+                .iter()
+                .filter(|d| !d.paired)
+                .map(|d| device_row(d, true))
+                .collect()
+            })
+            .observe(observe)
+            .loading(|cx| cx.bluetooth().adapter(cx).is_some_and(|a| a.discovering))
+            .on_open(move |cx| started.set(start_discovery(cx)))
+            .on_close(move |cx| stop_discovery(on_close.get(), cx)),
+          ),
+        )
+        .empty(t!("app.launcher.bluetooth.scanning"))
+        .into_view()
+      },
+    ),
+    cx,
+  );
+}
+
+/// The adapter's power as a toggle
+fn toggle(cx: &mut App) {
+  let toggle = Toggle::command(
+    "bluetooth",
+    t!("app.launcher.system.bluetooth"),
+    IconName::Bluetooth,
+    230.,
+    |cx| cx.bluetooth().adapter(cx).map(|a| a.powered),
+    |on, cx| Bluetooth::handle(on.into(), cx).map(|_| ()),
+  );
+  Group::new("system:bluetooth", vec![toggle])
+    .observe(|notify, cx| {
+      let bluetooth = cx.bluetooth().clone();
+      vec![watch(&bluetooth.adapter, &notify, cx)]
+    })
+    .register(cx);
+}

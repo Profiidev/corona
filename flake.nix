@@ -36,11 +36,12 @@
         packages = {
           default = pkg;
           corona = pkg;
-          # PR build check: skips fat LTO, the bulk of the release build time
+          # PR build check: no fat LTO and no optimization, it only proves the package builds
           ci = pkg.overrideAttrs (old: {
             env = (old.env or { }) // {
               CARGO_PROFILE_RELEASE_LTO = "off";
               CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16";
+              CARGO_PROFILE_RELEASE_OPT_LEVEL = "0";
             };
           });
         };

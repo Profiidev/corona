@@ -1,0 +1,160 @@
+//! Rounded screen corners where no bar rounds them: every bar flares into the
+//! two corners at its inner edge, the others get a small layer of their own.
+
+use std::collections::HashSet;
+
+use anyhow::Result;
+use corona_config::ConfigProvider;
+use corona_surface::{
+  overlay::{layer_options, root},
+  per_display::PerDisplay,
+};
+use gpui_kit::{
+  AnyWindowHandle, App, AppContext, Context, DisplayId, IntoElement, PathBuilder, Pixels, Render,
+  Size, Styled, Window, canvas,
+  component::ActiveTheme,
+  layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  point, px,
+};
+use tracing::error;
+
+const NAMESPACE: &str = "corona_screen_corner";
+
+const CORNERS: [Anchor; 4] = [
+  Anchor::TOP.union(Anchor::LEFT),
+  Anchor::TOP.union(Anchor::RIGHT),
+  Anchor::BOTTOM.union(Anchor::LEFT),
+  Anchor::BOTTOM.union(Anchor::RIGHT),
+];
+
+pub fn init(cx: &mut App) {
+  // the radius follows the theme, which corners are free the bars
+  PerDisplay::follow(cx, |c| (c.theme.clone(), c.bar.clone()), open);
+}
+
+fn open(cx: &mut App) -> Option<impl Fn(&mut App, DisplayId) -> Vec<AnyWindowHandle> + use<>> {
+  if !cx.config().theme.screen_corners {
+    return None;
+  }
+  let placements: HashSet<_> = cx.config().bar.values().map(|b| b.position).collect();
+  let corners = free_corners(placements.iter().map(|p| p.anchor()));
+  // the bars flare by the same radius
+  let radius = cx.theme().radius * 2;
+  Some(move |cx: &mut App, display| {
+    corners
+      .iter()
+      .filter_map(|corner| {
+        create(*corner, radius, display, cx)
+          .inspect_err(|e| error!("failed to create screen corner: {e:#}"))
+          .ok()
+      })
+      .collect()
+  })
+}
+
+/// The corners no bar covers; a bar's anchor holds the two corners it flares into
+fn free_corners(bars: impl Iterator<Item = Anchor> + Clone) -> Vec<Anchor> {
+  CORNERS
+    .into_iter()
+    .filter(|corner| !bars.clone().any(|bar| bar.contains(*corner)))
+    .collect()
+}
+
+fn create(
+  corner: Anchor,
+  radius: Pixels,
+  display: DisplayId,
+  cx: &mut App,
+) -> Result<AnyWindowHandle> {
+  let handle = cx.open_window(
+    layer_options(
+      LayerShellOptions {
+        anchor: corner,
+        // 0: stays clear of other surfaces' exclusive zones, like a bar's
+        exclusive_zone: Some(px(0.)),
+        exclusive_edge: None,
+        margin: None,
+        layer: Layer::Top,
+        namespace: NAMESPACE.to_string(),
+        keyboard_interactivity: KeyboardInteractivity::None,
+      },
+      Some(display),
+      Size::new(radius, radius),
+    ),
+    |window, cx| {
+      // clicks go through to what is below
+      window.set_input_region(Some(&[]));
+      let view = cx.new(|_| Corner { corner });
+      root(view, window, cx)
+    },
+  )?;
+  Ok(handle.into())
+}
+
+struct Corner {
+  corner: Anchor,
+}
+
+impl Render for Corner {
+  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    let color = cx.theme().tokens.background;
+    let corner = self.corner;
+    canvas(
+      |_, _, _| (),
+      move |bounds, _, window, _| {
+        let r = bounds.size.width;
+        // drawn as the top right corner, mirrored into the others
+        let (flip_x, flip_y) = (
+          corner.contains(Anchor::LEFT),
+          corner.contains(Anchor::BOTTOM),
+        );
+        let at = |x: Pixels, y: Pixels| {
+          let x = if flip_x { r - x } else { x };
+          let y = if flip_y { r - y } else { y };
+          bounds.origin + point(x, y)
+        };
+        let z = px(0.);
+        let mut path = PathBuilder::fill();
+        path.move_to(at(z, z));
+        path.line_to(at(r, z));
+        path.line_to(at(r, r));
+        // a mirror reverses the direction the arc sweeps
+        path.arc_to(point(r, r), z, false, flip_x != flip_y, at(z, z));
+        path.close();
+        if let Ok(path) = path.build() {
+          window.paint_path(path, color);
+        }
+      },
+    )
+    .size_full()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use corona_config::placement::Placement;
+  use gpui_kit::layer_shell::Anchor;
+
+  use super::free_corners;
+
+  fn free(bars: &[Placement]) -> Vec<Anchor> {
+    free_corners(bars.iter().map(Placement::anchor))
+  }
+
+  #[test]
+  fn bars_cover_their_corners() {
+    assert_eq!(free(&[]).len(), 4);
+    assert_eq!(
+      free(&[Placement::Top]),
+      [
+        Anchor::BOTTOM | Anchor::LEFT,
+        Anchor::BOTTOM | Anchor::RIGHT
+      ]
+    );
+    assert_eq!(
+      free(&[Placement::Top, Placement::Left]),
+      [Anchor::BOTTOM | Anchor::RIGHT]
+    );
+    assert!(free(&[Placement::Top, Placement::Bottom]).is_empty());
+  }
+}

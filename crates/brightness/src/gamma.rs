@@ -652,7 +652,7 @@ mod tests {
       let conn = futures_lite::future::block_on(bus.conn());
       cx.update(|cx| {
         cx.set_global(corona_config::Config::default());
-        crate::init(cx, &conn).unwrap();
+        crate::connect(cx, &conn).unwrap();
       });
       let nightlight = |cx: &mut gpui_kit::TestAppContext| {
         cx.run_until_parked();
@@ -702,7 +702,7 @@ mod tests {
       let conn = futures_lite::future::block_on(bus.conn());
       cx.update(|cx| {
         cx.set_global(corona_config::Config::default());
-        crate::init(cx, &conn).unwrap();
+        crate::connect(cx, &conn).unwrap();
       });
       cx.run_until_parked();
       let error = cx

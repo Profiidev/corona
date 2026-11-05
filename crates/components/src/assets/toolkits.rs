@@ -35,20 +35,34 @@ pub fn sync(dark: bool, colors: &ThemeColor) -> Result<()> {
 
   let config = dirs::config_dir().context("Failed to get config directory")?;
   let css = gtk_css(colors);
+  // one failed file must not skip the rest
+  let mut errors = Vec::new();
   for version in ["gtk-3.0", "gtk-4.0"] {
     let dir = config.join(version);
-    write(&dir.join("corona.css"), &css)?;
+    errors.extend(write(&dir.join("corona.css"), &css).err());
     // a gtk.css that imports it already, like one home-manager writes, stays
     let gtk = dir.join("gtk.css");
-    if !fs::read_to_string(&gtk).is_ok_and(|s| s.contains(IMPORT)) {
-      write(&gtk, &format!("{IMPORT}\n"))?;
+    let existing = match fs::read_to_string(&gtk) {
+      Ok(existing) => existing,
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+      // rewriting after a failed read would truncate the user's file
+      Err(e) => {
+        errors.push(anyhow::Error::new(e).context(format!("Failed to read {}", gtk.display())));
+        continue;
+      }
+    };
+    if !existing.contains(IMPORT) {
+      errors.extend(write(&gtk, &format!("{IMPORT}\n{existing}")).err());
     }
   }
   let palette = qt_palette(colors);
   for qt in ["qt5ct", "qt6ct"] {
-    write(&config.join(qt).join("colors/corona.conf"), &palette)?;
+    errors.extend(write(&config.join(qt).join("colors/corona.conf"), &palette).err());
   }
-  Ok(())
+  match errors.into_iter().next() {
+    Some(e) => Err(e),
+    None => Ok(()),
+  }
 }
 
 const IMPORT: &str = "@import url(\"corona.css\");";

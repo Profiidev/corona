@@ -6,7 +6,7 @@ use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global};
 
 use crate::{
   audio::PipewireAudio,
-  capture::{Capture, CaptureAccess, CaptureKind, record},
+  capture::{Capture, CaptureAccess, record},
   command::Command,
   event::AudioEvent,
   state::{AudioNode, NodeType, PipewireState},
@@ -118,25 +118,6 @@ impl Pipewire {
     self.captures.read(cx)
   }
 
-  pub fn is_capturing(&self, kind: CaptureKind, cx: &App) -> bool {
-    self
-      .list_captures(cx)
-      .iter()
-      .any(|c| c.kind == kind && c.active)
-  }
-
-  pub fn capturing(&self, kind: CaptureKind, cx: &App) -> Vec<String> {
-    let mut names: Vec<String> = self
-      .list_captures(cx)
-      .iter()
-      .filter(|c| c.kind == kind && c.active && !c.name.is_empty())
-      .map(|c| c.name.clone())
-      .collect();
-    names.sort();
-    names.dedup();
-    names
-  }
-
   pub fn target(&self, stream: u32, cx: &App) -> Option<u32> {
     self.targets.read(cx).get(&stream).copied()
   }
@@ -151,6 +132,7 @@ mod tests {
   use super::*;
   use crate::{
     PipewireExt,
+    capture::CaptureKind,
     command::Target,
     testing::{Commands, props},
   };
@@ -217,7 +199,7 @@ mod tests {
       assert_eq!(pipewire.default_source(cx), None);
       assert_eq!(pipewire.target(110, cx), None);
       // the share that was running at startup is logged
-      assert!(pipewire.is_capturing(CaptureKind::Screen, cx));
+      assert!(pipewire.list_captures(cx)[0].active);
       assert_eq!(pipewire.capture_log(cx).len(), 1);
     });
   }
@@ -290,14 +272,6 @@ mod tests {
     cx.run_until_parked();
     cx.read(|cx| {
       let pipewire = cx.pipewire();
-      // sorted, unique, named and active only
-      assert_eq!(
-        pipewire.capturing(CaptureKind::Microphone, cx),
-        ["Discord", "Zoom"]
-      );
-      assert!(pipewire.capturing(CaptureKind::Camera, cx).is_empty());
-      assert!(!pipewire.is_capturing(CaptureKind::Camera, cx));
-      assert!(!pipewire.is_capturing(CaptureKind::Screen, cx));
       assert_eq!(pipewire.list_captures(cx), captures);
       // the screen share ended, three named mics started
       let log = pipewire.capture_log(cx);
@@ -338,7 +312,7 @@ mod tests {
       for error in [
         audio.set_default(1),
         audio.set_target(110, 1),
-        audio.set_volumes(1, vec![]),
+        audio.set_volumes(1, vec![0.5]),
         audio.set_mute(1, true),
       ] {
         assert_eq!(error.unwrap_err().to_string(), "No such audio node");
@@ -389,15 +363,18 @@ mod tests {
     let running = start(cx);
     cx.read(|cx| {
       let audio = cx.pipewire().audio();
-      // set_default on a Stream node ID sends Command::SetDefault with Stream kind
-      audio.set_default(110).unwrap();
-      // set_target with an invalid stream ID succeeds as long as target exists
-      audio.set_target(999, 54).unwrap();
-      // set_target with a Source node ID as the target succeeds
-      audio.set_target(110, 60).unwrap();
-      // set_volumes accepts empty or arbitrary float vectors
-      audio.set_volumes(110, vec![]).unwrap();
-      audio.set_volumes(110, vec![-0.5, f32::NAN, 10.0]).unwrap();
+      // streams have no default
+      assert!(audio.set_default(110).is_err());
+      // set_target needs an existing stream and a sink target
+      assert!(audio.set_target(999, 54).is_err());
+      assert!(audio.set_target(54, 54).is_err());
+      assert!(audio.set_target(110, 60).is_err());
+      assert!(audio.reset_target(999).is_err());
+      assert!(audio.reset_target(54).is_err());
+      // set_volumes rejects empty and non-finite values and clamps the rest
+      assert!(audio.set_volumes(110, vec![]).is_err());
+      assert!(audio.set_volumes(110, vec![f32::NAN]).is_err());
+      audio.set_volumes(110, vec![-0.5, 10.0]).unwrap();
     });
     let sent: Vec<String> = running
       .commands
@@ -407,13 +384,7 @@ mod tests {
       .collect();
     assert_eq!(
       sent,
-      [
-        "SetDefault { kind: Stream, name: \"spotify\" }",
-        "SetTarget { node: 999, name: Some(\"speaker\") }",
-        "SetTarget { node: 110, name: Some(\"mic\") }",
-        "SetVolumes { target: Node(110), volumes: [] }",
-        "SetVolumes { target: Node(110), volumes: [-0.5, NaN, 10.0] }",
-      ]
+      ["SetVolumes { target: Node(110), volumes: [0.0, 3.375] }"]
     );
   }
 }

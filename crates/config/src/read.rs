@@ -1,6 +1,7 @@
 use std::{
   collections::BTreeMap,
   path::{Path, PathBuf},
+  sync::Mutex,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -29,9 +30,9 @@ pub fn settings_file() -> Result<PathBuf> {
 
 /// Every `*.toml` below `dir`, in the order they apply: later ones win
 pub fn config_files(dir: &Path) -> Result<Vec<PathBuf>> {
-  let pattern = dir.join("**/*.toml");
-  let pattern = pattern.to_str().context("Config path is not UTF-8")?;
-  let mut files: Vec<_> = glob::glob(pattern)?.flatten().collect();
+  let dir = dir.to_str().context("Config path is not UTF-8")?;
+  let pattern = format!("{}/**/*.toml", glob::Pattern::escape(dir));
+  let mut files: Vec<_> = glob::glob(&pattern)?.flatten().collect();
   files.sort();
   Ok(files)
 }
@@ -44,10 +45,15 @@ pub struct Loaded {
 }
 
 impl Loaded {
+  /// Warns about each unknown key once: a change reloads more than once, and an
+  /// unchanged set stays quiet.
   pub fn warn_unknown(&self) {
-    for key in &self.unknown {
+    static WARNED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let mut warned = WARNED.lock().unwrap_or_else(|e| e.into_inner());
+    for key in self.unknown.iter().filter(|k| !warned.contains(k)) {
       tracing::warn!("unknown setting {key}");
     }
+    warned.clone_from(&self.unknown);
   }
 }
 
@@ -91,7 +97,8 @@ pub fn read_files(files: &[PathBuf]) -> Result<Loaded> {
 /// Environment variables: `CORONA_SHELL__LANGUAGE` sets `shell.language`
 fn environment() -> config::Environment {
   // settings sit in sections, so `CORONA_SOCKET` and the like are no settings
-  let vars = std::env::vars()
+  let vars = std::env::vars_os()
+    .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
     .filter(|(key, _)| key.starts_with("CORONA_") && key.contains("__"))
     .collect();
   config::Environment::with_prefix("CORONA")

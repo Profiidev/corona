@@ -78,19 +78,6 @@ impl Purpose {
   }
 }
 
-fn label(action: SessionAction) -> SharedString {
-  match action {
-    SessionAction::Logout => t!("app.session.logout"),
-    SessionAction::Suspend => t!("app.session.suspend"),
-    SessionAction::Hibernate => t!("app.session.hibernate"),
-    SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
-    SessionAction::Reboot => t!("app.session.reboot"),
-    SessionAction::PowerOff => t!("app.session.shutdown"),
-    SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
-  }
-  .into()
-}
-
 fn busy(action: SessionAction) -> SharedString {
   match action {
     SessionAction::Logout => t!("app.lock.busy.logout"),
@@ -103,17 +90,6 @@ fn busy(action: SessionAction) -> SharedString {
   .into()
 }
 
-fn icon(action: SessionAction) -> IconName {
-  match action {
-    SessionAction::Logout => IconName::LogOut,
-    SessionAction::Suspend => IconName::Moon,
-    SessionAction::Hibernate => IconName::Snowflake,
-    SessionAction::SuspendThenHibernate => IconName::Hourglass,
-    SessionAction::Reboot | SessionAction::RebootToFirmware => IconName::RotateCw,
-    SessionAction::PowerOff => IconName::Power,
-  }
-}
-
 /// Whether `action` shows, and whether it can be picked. Hibernating hides when
 /// the machine can't, the rest only disable. Nothing runs before the
 /// capabilities loaded, except logging out
@@ -123,14 +99,10 @@ fn availability(action: SessionAction, capabilities: Option<&SessionCapabilities
     let hidden = matches!(action, A::Hibernate | A::SuspendThenHibernate);
     return (!hidden, action == A::Logout);
   };
+  let allowed = action.allowed(c);
   match action {
-    A::Logout => (true, true),
-    A::Suspend => (c.suspend, true),
-    A::Hibernate => (c.hibernate, true),
-    A::SuspendThenHibernate => (c.suspend_then_hibernate, true),
-    A::Reboot => (true, c.reboot),
-    A::PowerOff => (true, c.power_off),
-    A::RebootToFirmware => (c.reboot_to_firmware, true),
+    A::Logout | A::Reboot | A::PowerOff => (true, allowed),
+    _ => (allowed, true),
   }
 }
 
@@ -344,6 +316,9 @@ impl AuthScreen {
   }
 
   fn activate(&mut self, action: SessionAction, cx: &mut Context<Self>) {
+    if matches!(self.log, Log::Busy(_)) {
+      return;
+    }
     self.log = Log::Busy(busy(action));
     cx.notify();
     let task = cx.power().session_action(action);
@@ -353,7 +328,7 @@ impl AuthScreen {
         this.log = match result {
           Err(e) => {
             tracing::warn!("auth: {action:?} failed: {e:#}");
-            Log::Error(t!("app.lock.failed", action = label(action)).into())
+            Log::Error(t!("app.lock.failed", action = action.label()).into())
           }
           // back from sleep, or the request only got queued
           Ok(()) => Log::Idle,
@@ -536,8 +511,8 @@ impl AuthScreen {
             let this = this.clone();
             shown.then(|| MenuItem {
               id: format!("auth-menu-{action:?}").into(),
-              icon: Some(icon(action)),
-              label: label(action),
+              icon: Some(action.icon()),
+              label: action.label(),
               enabled,
               on_click: Rc::new(move |_, cx| this.update(cx, |this, cx| this.activate(action, cx))),
             })

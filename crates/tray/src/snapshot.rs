@@ -2,12 +2,16 @@ use std::{
   collections::HashMap,
   hash::{DefaultHasher, Hash, Hasher},
   path::{Path, PathBuf},
+  time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use corona_desktop::entry::icon_for_names;
 use corona_utils::error::ErrorLogExt;
+use futures::future::join_all;
+use futures_lite::future::or;
 use image::RgbaImage;
+use smol::{Timer, unblock};
 use zbus::{
   Connection,
   fdo::{IntrospectableProxy, PropertiesProxy},
@@ -22,21 +26,100 @@ use crate::{
 };
 
 const ICON_SIZE: u16 = 32;
+const MAX_PIXMAP: i32 = 512;
 
 pub type Activatable = HashMap<String, bool>;
 
-pub async fn snapshot(conn: &Connection, activatable: &mut Activatable) -> Result<Vec<TrayItem>> {
+/// A hung app must not stall the others
+const ITEM_TIMEOUT: Duration = Duration::from_secs(2);
+
+pub async fn snapshot(
+  conn: &Connection,
+  activatable: &mut Activatable,
+  previous: &[TrayItem],
+) -> Result<(Vec<TrayItem>, bool)> {
   let watcher = WatcherProxy::builder(conn)
     .cache_properties(CacheProperties::No)
     .build()
     .await?;
+  let addresses = watcher.registered_status_notifier_items().await?;
+  let known = &*activatable;
+  let read = join_all(addresses.iter().map(|address| {
+    let known = known.get(address).copied();
+    let previous = previous.iter().find(|i| &i.address == address);
+    or(
+      read_item(conn, address, known, previous, true),
+      async move {
+        Timer::after(ITEM_TIMEOUT).await;
+        Err(anyhow!("timed out reading {address}"))
+      },
+    )
+  }))
+  .await;
   let mut items = Vec::new();
-  for address in watcher.registered_status_notifier_items().await? {
-    if let Ok(item) = read_item(conn, &address, activatable).await.log_err() {
-      items.push(item);
+  let mut dropped = false;
+  for (address, result) in addresses.iter().zip(read) {
+    match result.log_err() {
+      Ok((item, introspected)) => {
+        if introspected {
+          activatable.insert(item.address.clone(), item.can_activate);
+        }
+        items.push(item);
+      }
+      // still listed by the watcher, so a failed read must not drop it
+      Err(_) => match previous.iter().find(|i| &i.address == address) {
+        Some(item) => items.push(item.clone()),
+        None => dropped = true,
+      },
     }
   }
-  Ok(items)
+  Ok((items, dropped))
+}
+
+/// Re-reads only `targets` (address, re-read the menu too), quietly: an item that vanished
+/// meanwhile or fails keeps its previous state, the watcher's unregister signal removes it
+pub async fn refresh_items(
+  conn: &Connection,
+  activatable: &mut Activatable,
+  previous: &[TrayItem],
+  targets: &[(String, bool)],
+) -> Vec<TrayItem> {
+  let known = &*activatable;
+  let read = join_all(targets.iter().map(|(address, menu)| {
+    let known = known.get(address).copied();
+    let previous = previous.iter().find(|i| &i.address == address);
+    or(
+      read_item(conn, address, known, previous, *menu),
+      async move {
+        Timer::after(ITEM_TIMEOUT).await;
+        Err(anyhow!("timed out reading {address}"))
+      },
+    )
+  }))
+  .await;
+  let mut items = Vec::new();
+  for ((address, _), result) in targets.iter().zip(read) {
+    match result {
+      Ok((item, introspected)) => {
+        if introspected {
+          activatable.insert(item.address.clone(), item.can_activate);
+        }
+        items.push(item);
+      }
+      Err(error) => tracing::debug!("tray item {address} not refreshed: {error}"),
+    }
+  }
+  items
+}
+
+/// Replaces the snapshot's entry of each refreshed item; items the snapshot lacks are ignored,
+/// a full refresh adds them
+pub fn merge(snapshot: &mut [TrayItem], refreshed: Vec<TrayItem>) {
+  for item in refreshed {
+    if let Some(slot) = snapshot.iter_mut().find(|i| i.address == item.address) {
+      *slot = item;
+    }
+  }
 }
 
 pub(crate) async fn menu_proxy<'a>(
@@ -74,9 +157,31 @@ impl Props {
   fn pixmap(&self, key: &str) -> Option<RgbaImage> {
     let value = self.0.get(key)?.try_clone().ok()?;
     let pixmaps = Vec::<(i32, i32, Vec<u8>)>::try_from(value).ok()?;
-    let (width, height, mut pixels) = pixmaps.into_iter().max_by_key(|(w, _, _)| *w)?;
+    let (width, height, mut pixels) = pixmaps
+      .into_iter()
+      .filter(|(w, h, p)| {
+        (1..=MAX_PIXMAP).contains(w)
+          && (1..=MAX_PIXMAP).contains(h)
+          && p.len() == (*w as usize) * (*h as usize) * 4
+      })
+      .max_by_key(|(w, _, _)| *w)?;
     argb_to_rgba(&mut pixels);
     RgbaImage::from_raw(width.try_into().ok()?, height.try_into().ok()?, pixels)
+  }
+
+  /// Hash of the raw pixmap bytes, 0 without one: cheaper than decoding and writing them
+  fn pixmap_hash(&self, key: &str) -> u64 {
+    let Some(Ok(pixmaps)) = self
+      .0
+      .get(key)
+      .and_then(|v| v.try_clone().ok())
+      .map(Vec::<(i32, i32, Vec<u8>)>::try_from)
+    else {
+      return 0;
+    };
+    let mut hasher = DefaultHasher::new();
+    pixmaps.hash(&mut hasher);
+    hasher.finish()
   }
 
   fn tooltip(&self) -> Option<String> {
@@ -102,19 +207,18 @@ pub(crate) async fn can_activate(conn: &Connection, bus: &str, path: &str) -> Re
 async fn read_item(
   conn: &Connection,
   address: &str,
-  activatable: &mut Activatable,
-) -> Result<TrayItem> {
+  known: Option<bool>,
+  previous: Option<&TrayItem>,
+  refresh_menu: bool,
+) -> Result<(TrayItem, bool)> {
   let (bus, path) = parse_address(address);
-  let can_activate = match activatable.get(address) {
-    Some(&known) => known,
-    None => {
-      let known = can_activate(conn, bus, &path)
-        .await
-        .log_err()
-        .unwrap_or(true);
-      activatable.insert(address.to_string(), known);
-      known
-    }
+  // only a successful introspection is worth remembering
+  let (can_activate, introspected) = match known {
+    Some(known) => (known, false),
+    None => match can_activate(conn, bus, &path).await.log_err() {
+      Ok(known) => (known, true),
+      Err(_) => (true, false),
+    },
   };
   let props = PropertiesProxy::builder(conn)
     .destination(bus.to_string())?
@@ -132,28 +236,40 @@ async fn read_item(
     .map_or_else(Status::default, Status::from);
   let attention = status == Status::NeedsAttention;
   let theme_path = props.str("IconThemePath");
-  let icon = attention
-    .then(|| {
-      icon(
-        &props,
-        "AttentionIconName",
-        "AttentionIconPixmap",
-        theme_path.as_deref(),
-      )
-    })
-    .flatten()
-    .or_else(|| icon(&props, "IconName", "IconPixmap", theme_path.as_deref()));
+  let key = icon_key(&props, attention, theme_path.as_deref());
+  let reused = reusable_icon(previous, &key);
+  // walks app-controlled dirs and writes pixmaps, off the foreground executor
+  let (icon, props) = unblock(move || {
+    if reused.is_some() {
+      return (reused, props);
+    }
+    let icon = attention
+      .then(|| {
+        icon(
+          &props,
+          "AttentionIconName",
+          "AttentionIconPixmap",
+          theme_path.as_deref(),
+        )
+      })
+      .flatten()
+      .or_else(|| icon(&props, "IconName", "IconPixmap", theme_path.as_deref()));
+    (icon, props)
+  })
+  .await;
 
   let menu_path = props.path("Menu").filter(|p| p.as_str() != "/NO_DBUSMENU");
-  let menu = match &menu_path {
-    Some(path) => read_menu(conn, bus, path)
-      .await
-      .log_err()
-      .unwrap_or_default(),
-    None => Vec::new(),
+  let menu = match (&menu_path, previous) {
+    (None, _) => Vec::new(),
+    // only a menu signal changes the layout
+    (Some(path), Some(p)) if !refresh_menu && p.menu_path.as_ref() == Some(path) => p.menu.clone(),
+    (Some(path), _) => match read_menu(conn, bus, path).await.log_err() {
+      Ok(menu) => menu,
+      Err(_) => previous.map(|p| p.menu.clone()).unwrap_or_default(),
+    },
   };
 
-  Ok(TrayItem {
+  let item = TrayItem {
     address: address.to_string(),
     id: props.str("Id").unwrap_or_else(|| bus.to_string()),
     title: props.str("Title"),
@@ -162,13 +278,40 @@ async fn read_item(
       .str("Category")
       .as_deref()
       .map_or_else(Category::default, Category::from),
+    icon_key: icon.as_ref().map(|_| key),
     icon,
     tooltip: props.tooltip(),
     item_is_menu: props.bool("ItemIsMenu").unwrap_or(false),
     can_activate,
     menu,
     menu_path,
-  })
+  };
+  Ok((item, introspected))
+}
+
+/// What the icon is resolved from: names, theme dir and the raw pixmaps in use
+fn icon_key(props: &Props, attention: bool, theme_path: Option<&str>) -> String {
+  format!(
+    "{attention}\0{}\0{}\0{}\0{:x}\0{:x}",
+    props.str("AttentionIconName").unwrap_or_default(),
+    props.str("IconName").unwrap_or_default(),
+    theme_path.unwrap_or_default(),
+    props.pixmap_hash("IconPixmap"),
+    if attention {
+      props.pixmap_hash("AttentionIconPixmap")
+    } else {
+      0
+    },
+  )
+}
+
+/// The previous icon when it came from the same `key`; a cached pixmap another instance pruned is
+/// written again
+fn reusable_icon(previous: Option<&TrayItem>, key: &str) -> Option<PathBuf> {
+  previous
+    .filter(|p| p.icon_key.as_deref() == Some(key))
+    .and_then(|p| p.icon.clone())
+    .filter(|p| !cache_dir().is_some_and(|d| p.starts_with(d)) || p.exists())
 }
 
 fn icon(props: &Props, name: &str, pixmap: &str, theme_path: Option<&str>) -> Option<PathBuf> {
@@ -187,9 +330,17 @@ fn named_icon(name: &str, theme_path: Option<&str>) -> Option<PathBuf> {
     .or_else(|| icon_for_names([name], ICON_SIZE))
 }
 
+/// Directory entries one lookup may visit, the dir is app-controlled
+const MAX_ENTRIES: usize = 2000;
+
 fn find_in(dir: &Path, name: &str, depth: u8) -> Option<PathBuf> {
+  find_budgeted(dir, name, depth, &mut { MAX_ENTRIES })
+}
+
+fn find_budgeted(dir: &Path, name: &str, depth: u8, left: &mut usize) -> Option<PathBuf> {
   let mut subdirs = Vec::new();
   for entry in std::fs::read_dir(dir).ok()?.flatten() {
+    *left = left.checked_sub(1)?;
     let path = entry.path();
     if path.is_dir() {
       subdirs.push(path);
@@ -204,26 +355,47 @@ fn find_in(dir: &Path, name: &str, depth: u8) -> Option<PathBuf> {
   }
   subdirs
     .into_iter()
-    .find_map(|d| find_in(&d, name, depth - 1))
+    .find_map(|d| find_budgeted(&d, name, depth - 1, left))
 }
 
 fn pixmap_file(image: &RgbaImage) -> Result<PathBuf> {
   let mut hasher = DefaultHasher::new();
   image.dimensions().hash(&mut hasher);
   image.as_raw().hash(&mut hasher);
-  let path = cache_dir().join(format!("{:016x}.png", hasher.finish()));
+  let dir = cache_dir().ok_or_else(|| anyhow!("no runtime dir for pixmap icons"))?;
+  let path = dir.join(format!("{:016x}.png", hasher.finish()));
   if !path.exists() {
-    std::fs::create_dir_all(cache_dir())?;
-    image.save(&path)?;
+    std::fs::create_dir_all(&dir)?;
+    // rename, so a crash never leaves a truncated png behind
+    let tmp = path.with_extension(format!("{}.tmp.png", uuid::Uuid::new_v4()));
+    image
+      .save(&tmp)
+      .and_then(|()| Ok(std::fs::rename(&tmp, &path)?))
+      .inspect_err(|_| _ = std::fs::remove_file(&tmp))?;
   }
   Ok(path)
 }
 
-pub(crate) fn cache_dir() -> PathBuf {
-  dirs::runtime_dir()
-    .unwrap_or_else(std::env::temp_dir)
-    .join("corona")
-    .join("tray")
+/// None without a runtime dir: a shared /tmp path could be pre-created by another user
+pub(crate) fn cache_dir() -> Option<PathBuf> {
+  Some(dirs::runtime_dir()?.join("corona").join("tray"))
+}
+
+/// Deletes cached pixmaps no item uses; the age guard spares only recently written files (in-flight menus)
+pub fn prune_cache(items: &[TrayItem]) {
+  let Some(entries) = cache_dir().and_then(|d| std::fs::read_dir(d).ok()) else {
+    return;
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    let old = entry
+      .metadata()
+      .and_then(|m| m.modified())
+      .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > Duration::from_secs(60)));
+    if old && !items.iter().any(|i| i.icon.as_ref() == Some(&path)) {
+      _ = std::fs::remove_file(path);
+    }
+  }
 }
 
 async fn read_menu(conn: &Connection, bus: &str, path: &OwnedObjectPath) -> Result<Vec<MenuItem>> {
@@ -263,6 +435,7 @@ fn menu_item(value: &OwnedValue) -> Result<MenuItem> {
       _ => Toggle::None,
     },
     icon_name: props.str("icon-name"),
+    submenu: props.str("children-display").as_deref() == Some("submenu") || !children.is_empty(),
     children: children
       .iter()
       .filter_map(|c| menu_item(c).log_err().ok())
@@ -328,9 +501,13 @@ pub(crate) mod tests {
       .unwrap();
     assert_eq!(image.dimensions(), (2, 1));
     assert_eq!(image.as_raw(), &[4, 5, 6, 0x80, 7, 8, 9, 0x40]);
-    let zero = (0, 0, vec![]);
-    let image_zero = pixmaps(vec![zero]).pixmap("IconPixmap").unwrap();
-    assert_eq!(image_zero.dimensions(), (0, 0));
+    assert!(pixmaps(vec![(0, 0, vec![])]).pixmap("IconPixmap").is_none());
+    // an oversized entry does not hide a valid smaller one
+    let huge = (MAX_PIXMAP + 1, 1, vec![0; (MAX_PIXMAP as usize + 1) * 4]);
+    let image = pixmaps(vec![huge, (1, 1, vec![0xff, 1, 2, 3])])
+      .pixmap("IconPixmap")
+      .unwrap();
+    assert_eq!(image.dimensions(), (1, 1));
     // broken ones are none
     assert!(pixmaps(vec![]).pixmap("IconPixmap").is_none());
     assert!(
@@ -477,10 +654,13 @@ pub(crate) mod tests {
   fn pixmaps_are_cached_as_png() {
     let runtime = tempfile::tempdir().unwrap();
     unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
-    assert_eq!(cache_dir(), runtime.path().join("corona").join("tray"));
+    assert_eq!(
+      cache_dir().unwrap(),
+      runtime.path().join("corona").join("tray")
+    );
     let image = RgbaImage::from_raw(1, 1, vec![1, 2, 3, 4]).unwrap();
     let path = pixmap_file(&image).unwrap();
-    assert!(path.starts_with(cache_dir()));
+    assert!(path.starts_with(cache_dir().unwrap()));
     assert_eq!(image::open(&path).unwrap().into_rgba8(), image);
     // the same pixels map to the same file, other pixels to another
     assert_eq!(pixmap_file(&image).unwrap(), path);
@@ -509,6 +689,98 @@ pub(crate) mod tests {
       vec![(1i32, 1i32, vec![4u8, 1, 2, 3])].into(),
     )]);
     assert_eq!(icon(&p, "IconName", "IconPixmap", None), None);
+  }
+
+  fn bare(address: &str, icon: Option<PathBuf>, key: Option<&str>) -> TrayItem {
+    TrayItem {
+      address: address.into(),
+      id: String::new(),
+      title: None,
+      status: Status::default(),
+      category: Category::default(),
+      icon,
+      icon_key: key.map(Into::into),
+      tooltip: None,
+      item_is_menu: false,
+      can_activate: true,
+      menu: Vec::new(),
+      menu_path: None,
+    }
+  }
+
+  #[test]
+  fn icon_keys_follow_the_raw_pixmaps() {
+    let pix = |bytes: u8| {
+      props(vec![(
+        "IconPixmap",
+        vec![(1i32, 1i32, vec![bytes, 1, 2, 3])].into(),
+      )])
+    };
+    assert_eq!(
+      icon_key(&pix(1), false, None),
+      icon_key(&pix(1), false, None)
+    );
+    assert_ne!(
+      icon_key(&pix(1), false, None),
+      icon_key(&pix(2), false, None)
+    );
+    assert_ne!(
+      icon_key(&pix(1), false, None),
+      icon_key(&pix(1), true, None)
+    );
+    assert_ne!(
+      icon_key(&pix(1), false, None),
+      icon_key(&props(vec![]), false, None)
+    );
+    // the attention pixmap only counts while it is shown
+    let both = |attention: u8| {
+      props(vec![
+        ("IconPixmap", vec![(1i32, 1i32, vec![1u8, 1, 2, 3])].into()),
+        (
+          "AttentionIconPixmap",
+          vec![(1i32, 1i32, vec![attention, 1, 2, 3])].into(),
+        ),
+      ])
+    };
+    assert_eq!(
+      icon_key(&both(1), false, None),
+      icon_key(&both(2), false, None)
+    );
+    assert_ne!(
+      icon_key(&both(1), true, None),
+      icon_key(&both(2), true, None)
+    );
+  }
+
+  #[test]
+  fn unchanged_keys_skip_decoding() {
+    let runtime = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", runtime.path()) };
+    let named = bare("a", Some("/usr/icon.png".into()), Some("k"));
+    assert_eq!(
+      reusable_icon(Some(&named), "k"),
+      Some("/usr/icon.png".into())
+    );
+    assert_eq!(reusable_icon(Some(&named), "other"), None);
+    assert_eq!(reusable_icon(None, "k"), None);
+    // a pixmap file that vanished is written again
+    let cached = cache_dir().unwrap().join("1.png");
+    let pixmap = bare("a", Some(cached.clone()), Some("k"));
+    assert_eq!(reusable_icon(Some(&pixmap), "k"), None);
+    std::fs::create_dir_all(cache_dir().unwrap()).unwrap();
+    std::fs::write(&cached, b"").unwrap();
+    assert_eq!(reusable_icon(Some(&pixmap), "k"), Some(cached));
+  }
+
+  #[test]
+  fn refreshed_items_replace_their_entry_only() {
+    let mut snapshot = vec![bare("a", None, None), bare("b", None, None)];
+    let mut b = bare("b", None, None);
+    b.title = Some("new".into());
+    merge(&mut snapshot, vec![b.clone(), bare("c", None, None)]);
+    assert_eq!(snapshot.len(), 2);
+    assert_eq!(snapshot[0].title, None);
+    assert_eq!(snapshot[1], b);
   }
 
   #[test]

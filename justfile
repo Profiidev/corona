@@ -1,13 +1,11 @@
-gpui_version := "0.3.9"
+gpui_version := "0.3.10"
 gpui_crates := "gpui-pre gpui-pre-linux gpui-pre-wgpu"
-# Keep in sync with the gpui-kit tag in Cargo.toml.
-gpui_kit_tag := "v0.7.3"
 
 layer_rules := 'hl.layer_rule({ match = { namespace = "corona_panel" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_notification" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_unlock" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_osk" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_switcher" }, no_anim = true }) hl.layer_rule({ match = { namespace = "corona_launcher" }, no_anim = true })'
 
 # Always this checkout's debug build, never a corona on PATH.
 corona := justfile_directory() / "target/debug/corona"
-keybinds := 'hl.bind("SUPER + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher")) hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("' + corona + ' ipc switcher --mode workspace --current-monitor"))'
+keybinds := 'hl.bind("SUPER + TAB", hl.dsp.exec_cmd("' + corona + ' ipc window switcher")) hl.bind("SUPER + SHIFT + TAB", hl.dsp.exec_cmd("' + corona + ' ipc window switcher --mode workspace --current-monitor"))'
 
 # The gpui crates with patches/<crate>/*.diff applied. Derived, so gitignored —
 # zed's own crates can't be used directly, they need its entire workspace.
@@ -24,13 +22,6 @@ vendor:
       [ -e "$p" ] || continue
       (cd "vendor/$c" && patch -p3 --forward < "$p")
     done
-  done
-  # gpui-shell is not on crates.io, so it comes from the tagged gpui-kit source.
-  mkdir -p vendor/gpui-shell
-  curl -sL --fail "https://github.com/longbridge/gpui-kit/archive/refs/tags/{{gpui_kit_tag}}.tar.gz" \
-    | tar xz -C vendor/gpui-shell --strip-components=3 --wildcards '*/crates/shell/*'
-  for p in "$PWD/patches/gpui-shell"/*.diff; do
-    (cd vendor/gpui-shell && patch -p3 --forward < "$p")
   done
 
 # Every test, with test-support's short timeouts. Needs dbus-daemon; the ignored

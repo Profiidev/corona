@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{hypr_data_cmd, types};
+use crate::{hyprland::command::hypr_data_cmd, types};
 
 hypr_data_cmd!(
   list_workspaces,
@@ -45,8 +45,9 @@ pub struct Workspace {
   pub workspace_type: String,
   pub name: String,
   pub monitor: String,
+  /// -1 when its monitor is gone
   #[serde(rename = "monitorID")]
-  pub monitor_id: u32,
+  pub monitor_id: i32,
 }
 
 impl From<Workspace> for types::Workspace {
@@ -113,6 +114,17 @@ mod tests {
       .map(|w| w.name)
       .collect();
     assert_eq!(names, ["1", "2", "10"]);
+  }
+
+  #[test]
+  fn workspace_without_monitor() {
+    let raw = r#"{"address": "0x1", "id": 1, "type": "normal", "name": "1", "monitor": "", "monitorID": -1}"#;
+    assert_eq!(
+      serde_json::from_str::<super::Workspace>(raw)
+        .unwrap()
+        .monitor_id,
+      -1
+    );
   }
 
   #[test]

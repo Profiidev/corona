@@ -31,6 +31,26 @@ pub(crate) const WIFI_SETTING: &str = "802-11-wireless";
 /// 802-11-wireless.mode of an access point
 pub(crate) const AP_MODE: &str = "ap";
 
+impl Snapshot {
+  /// what NM not running looks like
+  pub(crate) fn offline() -> Self {
+    Self {
+      interfaces: Vec::new(),
+      routing: Vec::new(),
+      primary_interface: None,
+      connectivity: NmConnectivityState::Unknown,
+      connectivity_check: None,
+      wifi_supported: false,
+      wifi_enabled: false,
+      primary_wifi: None,
+      wifi_networks: Vec::new(),
+      vpns: Vec::new(),
+      hotspot: None,
+      primary_wifi_frequency: None,
+    }
+  }
+}
+
 pub struct Snapshot {
   pub interfaces: Vec<Interface>,
   /// the connected interfaces of any kind, each a way for NM's forwarding to route
@@ -98,31 +118,58 @@ impl From<u32> for FailReason {
   }
 }
 
+/// the object went away between listing and reading it
+pub(crate) fn is_gone(e: &anyhow::Error) -> bool {
+  const GONE: [&str; 2] = [
+    "org.freedesktop.DBus.Error.UnknownObject",
+    "org.freedesktop.DBus.Error.UnknownMethod",
+  ];
+  match e.downcast_ref::<zbus::Error>() {
+    Some(zbus::Error::FDO(e)) => matches!(**e, zbus::fdo::Error::UnknownObject(_)),
+    Some(zbus::Error::MethodError(name, ..)) => GONE.contains(&name.as_str()),
+    _ => false,
+  }
+}
+
+/// a device that vanished meanwhile is skipped silently, any other failed read is logged and
+/// skipped so one odd device does not fail the whole snapshot
+fn skip_gone<T>(read: Result<Option<T>>) -> Option<T> {
+  match read {
+    Err(e) if is_gone(&e) => None,
+    read => read.log_err().ok().flatten(),
+  }
+}
+
 pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
   let nm = NetworkManager::new(conn).await?;
 
   let mut interfaces = Vec::new();
   let mut routing = Vec::new();
   for device in nm.devices().await? {
-    if let Ok(Some(name)) = routing_interface(&device).await.log_err() {
+    if let Some(name) = skip_gone(routing_interface(&device).await) {
       routing.push(name);
     }
-    if let Ok(Some(i)) = read_device(device).await.log_err() {
+    if let Some(i) = skip_gone(read_device(device).await) {
       interfaces.push(i);
     }
   }
 
   let primary_path = nm.primary_connection().await?;
+  // the primary connection can deactivate meanwhile, the activated interfaces stand in for it
   let primary_devices = if primary_path == OwnedObjectPath::default() {
     Vec::new()
   } else {
-    ActiveConnectionProxy::builder(conn)
-      .path(primary_path)?
-      .cache_properties(CacheProperties::No)
-      .build()
-      .await?
-      .devices()
-      .await?
+    async {
+      ActiveConnectionProxy::builder(conn)
+        .path(primary_path)?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?
+        .devices()
+        .await
+    }
+    .await
+    .unwrap_or_default()
   };
 
   let primary_interface = interfaces
@@ -145,7 +192,7 @@ pub async fn snapshot(conn: &Connection) -> Result<Snapshot> {
   // any wifi device may run the hotspot, one beside the primary leaves it connected
   let mut hotspot = None;
   for device in wifi() {
-    if let Ok(Some(info)) = read_hotspot(conn, device).await.log_err() {
+    if let Some(info) = skip_gone(read_hotspot(conn, device).await) {
       hotspot = Some((device.path.clone(), info));
       break;
     }
@@ -389,19 +436,19 @@ async fn wifi_networks(conn: &Connection, device: &Interface) -> Result<Vec<Wifi
   }
 
   let active = wireless.active_access_point().await?;
+  let device_status = match device.state().await? {
+    DeviceState::Activated => Some(WifiStatus::Connected),
+    DeviceState::NeedAuth => Some(WifiStatus::NeedAuth),
+    DeviceState::Prepare
+    | DeviceState::Config
+    | DeviceState::IpConfig
+    | DeviceState::IpCheck
+    | DeviceState::Secondaries => Some(WifiStatus::Connecting),
+    _ => None,
+  };
   let mut networks: Vec<WifiNetwork> = Vec::new();
   for ap in wireless.get_access_points().await? {
-    let active_status = match device.state().await? {
-      DeviceState::Activated => Some(WifiStatus::Connected),
-      DeviceState::NeedAuth => Some(WifiStatus::NeedAuth),
-      DeviceState::Prepare
-      | DeviceState::Config
-      | DeviceState::IpConfig
-      | DeviceState::IpCheck
-      | DeviceState::Secondaries => Some(WifiStatus::Connecting),
-      _ => None,
-    }
-    .filter(|_| ap.inner().path() == active.inner().path());
+    let active_status = device_status.filter(|_| ap.inner().path() == active.inner().path());
     // an AP can vanish between listing and reading, skip it
     let Ok(AccessPointInfo {
       ssid,
@@ -462,7 +509,15 @@ pub(crate) async fn profile(conn: &Connection, path: OwnedObjectPath) -> Result<
 pub async fn saved_ssid(conn: &NmConnection<'_>) -> Result<Option<Vec<u8>>> {
   let settings = conn.get_settings().await?;
   let settings = Settings::new(settings);
-  Ok(settings.wifi.and_then(|wifi| wifi.ssid))
+  Ok(profile_ssid(settings))
+}
+
+/// the SSID of a client profile: an access point or ad-hoc one is no saved network
+fn profile_ssid(settings: Settings) -> Option<Vec<u8>> {
+  settings
+    .wifi
+    .filter(|wifi| !matches!(wifi.mode.as_deref(), Some(AP_MODE | "adhoc")))
+    .and_then(|wifi| wifi.ssid)
 }
 
 pub struct AccessPointInfo {
@@ -495,6 +550,46 @@ pub async fn read_access_point(ap: &AccessPoint<'_>) -> Result<AccessPointInfo> 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn access_point_profiles_are_not_saved_networks() {
+    use cosmic_dbus_networkmanager::settings::connection::WifiSettings;
+    let profile = |mode: Option<&str>| Settings {
+      wifi: Some(WifiSettings {
+        ssid: Some(b"net".to_vec()),
+        mode: mode.map(Into::into),
+        ..Default::default()
+      }),
+      ..Default::default()
+    };
+    assert_eq!(profile_ssid(profile(None)), Some(b"net".to_vec()));
+    assert_eq!(
+      profile_ssid(profile(Some("infrastructure"))),
+      Some(b"net".to_vec())
+    );
+    assert_eq!(profile_ssid(profile(Some(AP_MODE))), None);
+    assert_eq!(profile_ssid(profile(Some("adhoc"))), None);
+  }
+
+  #[test]
+  fn gone_errors() {
+    let fdo = |e| anyhow::Error::from(zbus::Error::FDO(Box::new(e)));
+    assert!(is_gone(&fdo(zbus::fdo::Error::UnknownObject("x".into()))));
+    assert!(!is_gone(&fdo(zbus::fdo::Error::Failed("x".into()))));
+    let method = |name: &'static str| {
+      let msg = zbus::message::Message::method_call("/", "M")
+        .unwrap()
+        .build(&())
+        .unwrap();
+      anyhow::Error::from(zbus::Error::MethodError(
+        zbus::names::OwnedErrorName::try_from(name).unwrap(),
+        None,
+        msg,
+      ))
+    };
+    assert!(is_gone(&method("org.freedesktop.DBus.Error.UnknownMethod")));
+    assert!(!is_gone(&method("org.freedesktop.DBus.Error.Failed")));
+  }
 
   #[test]
   fn fail_reasons() {

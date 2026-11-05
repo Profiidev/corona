@@ -1,4 +1,12 @@
-use std::{fs, io, path::PathBuf, sync::Arc};
+use std::{
+  fs, io,
+  os::unix::fs::DirBuilderExt,
+  path::PathBuf,
+  sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+  },
+};
 
 use futures::{AsyncReadExt, FutureExt, future::BoxFuture};
 use http_client::{
@@ -12,6 +20,9 @@ use crate::{
   store::{self, cached_response, read_meta, write_meta},
 };
 
+/// cleanup runs again after this many stored entries
+const CLEANUP_EVERY: u64 = 100;
+
 pub struct CachedHttpClient<C> {
   inner: Arc<C>,
   dir: PathBuf,
@@ -19,18 +30,25 @@ pub struct CachedHttpClient<C> {
 
 impl<C: HttpClient> CachedHttpClient<C> {
   pub fn new(inner: C, dir: PathBuf) -> io::Result<Self> {
-    fs::create_dir_all(&dir)?;
-    let cleanup_dir = dir.clone();
-    std::thread::spawn(move || {
-      if let Err(e) = cleanup(&cleanup_dir, MAX_SIZE, store::unix_now()) {
-        tracing::warn!("http cache cleanup failed: {e}");
-      }
-    });
+    // the meta files hold URLs, keep them private
+    fs::DirBuilder::new()
+      .recursive(true)
+      .mode(0o700)
+      .create(&dir)?;
+    spawn_cleanup(dir.clone());
     Ok(Self {
       inner: Arc::new(inner),
       dir,
     })
   }
+}
+
+fn spawn_cleanup(dir: PathBuf) {
+  std::thread::spawn(move || {
+    if let Err(e) = cleanup(&dir, MAX_SIZE, store::unix_now()) {
+      tracing::warn!("http cache cleanup failed: {e}");
+    }
+  });
 }
 
 impl<C: HttpClient> HttpClient for CachedHttpClient<C> {
@@ -140,8 +158,16 @@ async fn send_cached<C: HttpClient>(
   let (parts, mut body) = response.into_parts();
   let mut bytes = Vec::new();
   body.read_to_end(&mut bytes).await?;
-  if let Err(e) = store::write_entry(&base, &meta, &bytes) {
-    tracing::warn!("http cache: storing {url} failed: {e}");
+  match store::write_entry(&base, &meta, &bytes) {
+    Ok(()) => {
+      static WRITES: AtomicU64 = AtomicU64::new(0);
+      if WRITES.fetch_add(1, Ordering::Relaxed) % CLEANUP_EVERY == CLEANUP_EVERY - 1
+        && let Some(dir) = base.parent()
+      {
+        spawn_cleanup(dir.to_path_buf());
+      }
+    }
+    Err(e) => tracing::warn!("http cache: storing {url} failed: {e}"),
   }
   Ok(Response::from_parts(parts, bytes.into()))
 }

@@ -9,14 +9,28 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+corona_components.workspace = true
+corona_surface.workspace = true
+corona_settings.workspace = true
+corona_launcher.workspace = true
+corona_js.workspace = true
+corona_ipc.workspace = true
+specta.workspace = true
+rust-i18n.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
 corona_config.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true
 flume.workspace = true
 tracing.workspace = true
+rustix = { workspace = true, features = ["process"] }
+clap.workspace = true
+clap_complete.workspace = true
 sysinfo.workspace = true
-nvml-wrapper = "0.13.0"
+nvml-wrapper.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

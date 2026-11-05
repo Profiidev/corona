@@ -98,9 +98,7 @@ fn iface<'a>(interfaces: &'a Interfaces, name: &str) -> Option<&'a Props> {
     .map(|(_, props)| props)
 }
 
-pub(crate) fn get<T: TryFrom<OwnedValue>>(props: &Props, key: &str) -> Option<T> {
-  T::try_from(props.get(key)?.try_clone().ok()?).ok()
-}
+pub(crate) use corona_utils::dbus::get;
 
 fn string(props: &Props, key: &str) -> String {
   get(props, key).unwrap_or_default()

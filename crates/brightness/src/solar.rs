@@ -66,6 +66,10 @@ fn event(julian_midnight: f64, latitude: f64, longitude: f64, rising: bool) -> O
 
 /// The sun on the UTC day `date` at `latitude` (north) and `longitude` (east)
 pub(crate) fn sun(date: Date, latitude: f64, longitude: f64) -> Day {
+  // out of range (or NaN) coordinates have no sun events and would overflow the time math
+  if !(latitude.abs() <= 90. && longitude.abs() <= 180.) {
+    return Day::PolarNight;
+  }
   let midnight = date.to_zoned(jiff::tz::TimeZone::UTC).unwrap().timestamp();
   let julian_midnight = midnight.as_second() as f64 / 86400. + 2440587.5;
   let at = |minutes: f64| midnight + jiff::SignedDuration::from_secs_f64(minutes * 60.);
@@ -95,6 +99,13 @@ mod tests {
   use jiff::{civil::date, tz::TimeZone};
 
   use super::*;
+
+  #[test]
+  fn absurd_coordinates_do_not_panic() {
+    for (lat, lon) in [(0., 1e300), (f64::NAN, 0.), (0., f64::NAN), (91., 0.)] {
+      assert!(matches!(sun(date(2024, 6, 1), lat, lon), Day::PolarNight));
+    }
+  }
 
   /// local `HH:MM` in `zone`
   fn local(at: Timestamp, zone: &str) -> String {

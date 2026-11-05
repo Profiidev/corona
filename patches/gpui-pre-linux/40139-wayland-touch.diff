@@ -96,7 +96,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
          }
      }
  }
-@@ -2457,6 +2500,340 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
+@@ -2457,6 +2500,344 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
      }
  }
  
@@ -287,7 +287,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +                                    {
 +                                        if let Some(window) = state.mouse_focused_window.clone() {
 +                                            let input =
-+                                                PlatformInput::ScrollWheel(ScrollWheelEvent {
++                                                PlatformInput::Scroll(ScrollEvent {
 +                                                    position: current_center,
 +                                                    delta: ScrollDelta::Pixels(point(
 +                                                        px(scroll_delta.x.as_f32()),
@@ -295,6 +295,7 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +                                                    )),
 +                                                    modifiers: state.modifiers,
 +                                                    touch_phase: TouchPhase::Moved,
++                                                    source: ScrollSource::Touch,
 +                                                });
 +                                            drop(state);
 +                                            window.handle_input(input);
@@ -336,11 +337,12 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +                        // Send scroll end event
 +                        if let Some(window) = state.mouse_focused_window.clone() {
 +                            let position = state.touch_location.unwrap_or_default();
-+                            let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
++                            let input = PlatformInput::Scroll(ScrollEvent {
 +                                position,
 +                                delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))),
 +                                modifiers: state.modifiers,
 +                                touch_phase: TouchPhase::Ended,
++                                source: ScrollSource::Touch,
 +                            });
 +                            state.mouse_location = Some(position);
 +                            state.button_pressed = Some(MouseButton::Left);
@@ -378,11 +380,12 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +                    // Send scroll end event and switch back to single touch
 +                    if let Some(window) = state.mouse_focused_window.clone() {
 +                        let position = state.touch_location.unwrap_or_default();
-+                        let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
++                        let input = PlatformInput::Scroll(ScrollEvent {
 +                            position,
 +                            delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))),
 +                            modifiers: state.modifiers,
 +                            touch_phase: TouchPhase::Ended,
++                            source: ScrollSource::Touch,
 +                        });
 +                        state.mouse_location = Some(position);
 +                        state.button_pressed = Some(MouseButton::Left);
@@ -409,11 +412,12 @@ index 10f4aab0db1997..d17cf763f3bcc8 100644
 +                if let Some(window) = state.mouse_focused_window.clone() {
 +                    if was_scrolling {
 +                        // Send scroll end event if we were scrolling
-+                        let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
++                        let input = PlatformInput::Scroll(ScrollEvent {
 +                            position: state.mouse_location.unwrap_or_default(),
 +                            delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))),
 +                            modifiers: state.modifiers,
 +                            touch_phase: TouchPhase::Ended,
++                            source: ScrollSource::Touch,
 +                        });
 +                        drop(state);
 +                        window.handle_input(input);

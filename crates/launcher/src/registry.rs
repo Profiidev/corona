@@ -1,7 +1,7 @@
-use std::{cell::RefCell, cmp::Ordering, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, collections::HashSet, rc::Rc};
 
-use corona_config::ConfigProvider;
-use gpui_kit::{App, Global, SharedString, Subscription};
+use corona_config::{ConfigProvider, launcher::LauncherConfig};
+use gpui_kit::{App, Global, SharedString};
 
 use crate::{
   command::{Command, CommandSource, Meta, Scope, Section, SourceKind},
@@ -14,6 +14,8 @@ pub struct Registry {
   statics: Rc<Statics>,
   sources: Vec<Rc<dyn CommandSource>>,
   frecency: Frecency,
+  /// The prefixes, for the config they were collected under; dropped when commands change
+  scopes: RefCell<Option<(LauncherConfig, Vec<Scope>)>>,
 }
 
 impl Global for Registry {}
@@ -24,12 +26,15 @@ pub(crate) fn init(cx: &mut App) {
     sources: vec![statics.clone()],
     statics,
     frecency: state::load("frecency"),
+    scopes: RefCell::default(),
   });
 }
 
 /// Adds a fixed command to the root search
 pub fn register(command: Rc<dyn Command>, cx: &mut App) {
-  cx.global::<Registry>().statics.0.borrow_mut().push(command);
+  let registry = cx.global::<Registry>();
+  registry.statics.0.borrow_mut().push(command);
+  registry.scopes.take();
 }
 
 pub fn register_all(commands: impl IntoIterator<Item = Rc<dyn Command>>, cx: &mut App) {
@@ -40,12 +45,9 @@ pub fn register_all(commands: impl IntoIterator<Item = Rc<dyn Command>>, cx: &mu
 
 /// Adds a changing set of commands, an evaluator or a fallback
 pub fn register_source(source: Rc<dyn CommandSource>, cx: &mut App) {
-  cx.global_mut::<Registry>().sources.push(source);
-}
-
-/// Drops the sources with this id, for plugins that unload
-pub fn unregister_source(id: &str, cx: &mut App) {
-  cx.global_mut::<Registry>().sources.retain(|s| s.id() != id);
+  let registry = cx.global_mut::<Registry>();
+  registry.sources.push(source);
+  registry.scopes.take();
 }
 
 impl Registry {
@@ -55,16 +57,20 @@ impl Registry {
 
   /// The command with this id, from any root source
   pub fn find(&self, id: &str, cx: &App) -> Option<Rc<dyn Command>> {
-    let query = Query::default();
-    self
-      .sources
-      .iter()
-      .filter(|s| s.kind() == SourceKind::Root)
-      .flat_map(|s| s.commands(&query, cx))
-      .find(|c| c.id() == id)
+    // some commands, like desktop actions and setting fields, only show for a query
+    [Query::default(), Query::new(id)].iter().find_map(|query| {
+      self
+        .sources
+        .iter()
+        .filter(|s| s.kind() == SourceKind::Root)
+        .flat_map(|s| s.commands(query, cx))
+        .find(|c| c.id() == id)
+    })
   }
 
-  /// Every root command, for the settings page and prefixes
+  /// Every configurable root command, for the settings page and prefixes
+  ///
+  /// Skips the transient running timers.
   pub fn all(&self, cx: &App) -> Vec<Rc<dyn Command>> {
     let query = Query::default();
     self
@@ -72,24 +78,29 @@ impl Registry {
       .iter()
       .filter(|s| s.kind() == SourceKind::Root)
       .flat_map(|s| s.commands(&query, cx))
+      .filter(|c| c.meta(cx).section != Section::Running)
       .collect()
   }
 
   pub fn scopes(&self, cx: &App) -> Vec<Scope> {
-    self.all(cx).iter().filter_map(|c| c.scope(cx)).collect()
+    let launcher = &cx.config().launcher;
+    if let Some((config, scopes)) = &*self.scopes.borrow()
+      && config == launcher
+    {
+      return scopes.clone();
+    }
+    let scopes: Vec<Scope> = self
+      .all(cx)
+      .iter()
+      .filter(|c| launcher.command(&c.id()).is_none_or(|c| c.enabled))
+      .filter_map(|c| c.scope(cx))
+      .collect();
+    *self.scopes.borrow_mut() = Some((launcher.clone(), scopes.clone()));
+    scopes
   }
 
   pub fn frecency(&self, id: &str) -> f64 {
     self.frecency.score(id, state::now())
-  }
-
-  pub fn observe(&self, notify: Rc<dyn Fn(&mut App)>, cx: &mut App) -> Vec<Subscription> {
-    self
-      .sources
-      .clone()
-      .iter()
-      .flat_map(|s| s.observe(notify.clone(), cx))
-      .collect()
   }
 
   pub fn loading(&self, cx: &App) -> bool {
@@ -126,6 +137,8 @@ pub struct Row {
   pub meta: Meta,
   pub found: Match,
   pub frecency: f64,
+  /// Whether the settings page lists the command, so common actions apply
+  pub managed: bool,
 }
 
 impl Row {
@@ -170,8 +183,10 @@ pub fn compare(a: &Row, b: &Row) -> Ordering {
 }
 
 fn row(command: Rc<dyn Command>, found: Match, registry: &Registry, cx: &App) -> Row {
+  let meta = command.meta(cx);
   Row {
-    meta: command.meta(cx),
+    managed: meta.section != Section::Running,
+    meta,
     frecency: registry.frecency(&command.id()),
     command,
     found,
@@ -215,6 +230,15 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       .is_none_or(|c| c.enabled && !(root && c.hidden))
   };
 
+  // Query-gated commands are absent from the settings page, so favorite, alias, hide and
+  // disable on them could never be undone
+  let listed = (!query.is_empty()).then(|| {
+    registry
+      .all(cx)
+      .iter()
+      .map(|c| c.id())
+      .collect::<HashSet<SharedString>>()
+  });
   let mut results = Results::default();
   let mut rows = Vec::new();
   let mut fallbacks = Vec::new();
@@ -224,16 +248,28 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       SourceKind::Evaluator if !query.is_empty() => results.evaluated.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Exact), registry, cx)),
+          .map(|c| Row {
+            managed: false,
+            ..row(c, Match::new(Tier::Exact), registry, cx)
+          })
+          .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Fallback if !query.is_empty() => fallbacks.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Fuzzy), registry, cx)),
+          .map(|c| Row {
+            managed: false,
+            ..row(c, Match::new(Tier::Fuzzy), registry, cx)
+          })
+          .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Root => rows.extend(
         rank_commands(commands, query, source.filters(), cx)
           .into_iter()
+          .map(|r| Row {
+            managed: r.managed && listed.as_ref().is_none_or(|l| l.contains(&r.id())),
+            ..r
+          })
           .filter(|r| enabled(&r.id(), true)),
       ),
       _ => {}
@@ -252,7 +288,7 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       config
         .fallbacks
         .iter()
-        .position(|f| r.id().ends_with(f.as_str()))
+        .position(|f| !f.trim().is_empty() && r.id().ends_with(f.as_str()))
         .unwrap_or(usize::MAX)
     };
     fallbacks.retain(|r| order(r) != usize::MAX);
@@ -342,6 +378,7 @@ mod tests {
       cx.set_global(Registry {
         statics: Rc::new(Statics::default()),
         sources: Vec::new(),
+        scopes: RefCell::default(),
         frecency: Frecency::default(),
       });
       let statics = cx.global::<Registry>().statics.clone();

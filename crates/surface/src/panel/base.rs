@@ -3,24 +3,24 @@ use std::time::Duration;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
 use corona_config::{
-  APP_NAME, ConfigProvider,
-  placement::{Placement, PlacementStyle, PlacmentBounds},
+  ConfigProvider,
+  placement::{Placement, PlacementBounds, PlacementStyle},
 };
 use gpui_kit::{
   AnyView, AnyWindowHandle, AppContext, Background, Bounds, Canvas, Context, DisplayId,
   InteractiveElement, IntoElement, MouseButton, ParentElement, Path, PathBuilder, Pixels, Render,
-  Size, Styled, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
-  WindowKind, WindowOptions, canvas,
+  Size, Styled, WeakEntity, Window, WindowOptions, canvas,
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
-  point,
   prelude::FluentBuilder,
   px,
 };
 
-use crate::panel::{
-  PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData,
+use crate::{
+  input_region::InputRegion,
+  overlay::layer_options,
+  panel::{PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData},
 };
 
 const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
@@ -34,7 +34,7 @@ pub struct BasePanel {
   placement: Placement,
   // True when opening or open, false when closing. Destroyed when closed.
   open: bool,
-  blocks_input: bool,
+  input_region: InputRegion,
   removing: bool,
   anim: SmoothRetarget,
   display: Option<DisplayId>,
@@ -54,6 +54,21 @@ impl BasePanel {
     cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.block(cx)))
       .detach();
 
+    // The compositor can close the surface (output unplugged) without `close` running. Only a
+    // panel still marked open clears the flag, a closed one may already be replaced by a new one.
+    cx.on_release(|this, cx| {
+      if this.open {
+        PanelState::mark_open(&this.name, false, cx);
+      }
+      let blockers = std::mem::take(&mut this.blockers);
+      cx.defer(move |cx| {
+        for handle in blockers {
+          let _ = handle.update(cx, |_, window, _| window.remove_window());
+        }
+      });
+    })
+    .detach();
+
     PanelState::mark_open(&data.name, true, cx);
     Self {
       name: data.name.clone(),
@@ -63,7 +78,7 @@ impl BasePanel {
       width: data.width,
       height: data.height,
       open: true,
-      blocks_input: true,
+      input_region: InputRegion::default(),
       removing: false,
       anim: SmoothRetarget::new(0.),
       align,
@@ -151,12 +166,8 @@ impl Render for BasePanel {
     let h = (self.height + bn) * progress;
 
     if self.open {
-      if !self.blocks_input {
-        self.blocks_input = true;
-        window.set_input_region(None);
-      }
+      self.input_region.clear(window);
     } else {
-      self.blocks_input = false;
       let viewport = window.viewport_size();
       let along = match self.align {
         Align::Left => 0.,
@@ -167,7 +178,7 @@ impl Render for BasePanel {
       let panel = self
         .placement
         .rect(viewport, px(along), px(self.width), px(h - bn));
-      window.set_input_region(Some(&[panel]));
+      self.input_region.set(panel, window);
     }
 
     if !self.open && progress == 0. && !self.removing {
@@ -236,26 +247,20 @@ impl Render for Blocker {
 
 fn blocker_options(display_id: DisplayId) -> WindowOptions {
   WindowOptions {
-    kind: WindowKind::LayerShell(LayerShellOptions {
-      anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-      exclusive_zone: None,
-      exclusive_edge: None,
-      margin: None,
-      layer: Layer::Top,
-      namespace: format!("{PANEL_NAME}_blocker"),
-      keyboard_interactivity: KeyboardInteractivity::None,
-    }),
-    window_background: WindowBackgroundAppearance::Transparent,
-    window_decorations: Some(WindowDecorations::Client),
     inactive_frame_interval: None,
-    app_id: Some(APP_NAME.to_string()),
-    titlebar: None,
-    window_bounds: Some(WindowBounds::Windowed(Bounds {
-      origin: point(px(0.), px(0.)),
-      size: Size::new(px(0.), px(0.)),
-    })),
-    display_id: Some(display_id),
-    ..Default::default()
+    ..layer_options(
+      LayerShellOptions {
+        anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+        exclusive_zone: None,
+        exclusive_edge: None,
+        margin: None,
+        layer: Layer::Top,
+        namespace: format!("{PANEL_NAME}_blocker"),
+        keyboard_interactivity: KeyboardInteractivity::None,
+      },
+      Some(display_id),
+      Size::default(),
+    )
   }
 }
 
@@ -330,7 +335,7 @@ pub fn panel_path(
 
 #[cfg(test)]
 mod tests {
-  use gpui_kit::size;
+  use gpui_kit::{WindowKind, point, size};
 
   use super::*;
 

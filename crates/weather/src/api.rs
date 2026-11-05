@@ -2,27 +2,17 @@
 
 use std::time::SystemTime;
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use corona_config::Units;
-use futures_lite::AsyncReadExt;
-use gpui_kit::http_client::{AsyncBody, HttpClient};
-use serde::{Deserialize, de::DeserializeOwned};
+use corona_reqwest::get_json;
+use gpui_kit::http_client::HttpClient;
+use serde::Deserialize;
 
 use crate::state::{Current, Day, Hour, Location, Weather};
 
 const FORECAST: &str = "https://api.open-meteo.com/v1/forecast";
 const DAYS: u32 = 7;
 const HOURS: u32 = 24;
-
-async fn get<T: DeserializeOwned>(client: &dyn HttpClient, url: &str) -> Result<T> {
-  let mut response = client.get(url, AsyncBody::empty(), true).await?;
-  let mut body = String::new();
-  response.body_mut().read_to_string(&mut body).await?;
-  if !response.status().is_success() {
-    bail!("{} answered {}: {}", url, response.status(), body.trim());
-  }
-  serde_json::from_str(&body).with_context(|| format!("parsing {url}"))
-}
 
 pub(crate) async fn forecast(
   client: &dyn HttpClient,
@@ -41,7 +31,7 @@ pub(crate) async fn forecast(
      &forecast_days={DAYS}&forecast_hours={HOURS}&timezone=auto{units_query}",
     location.latitude, location.longitude
   );
-  let response: Forecast = get(client, &url).await?;
+  let response: Forecast = get_json(client, &url).await?;
   Ok(response.into_weather(location, units))
 }
 
@@ -59,10 +49,10 @@ struct Forecast {
 struct CurrentResponse {
   time: String,
   temperature_2m: f64,
-  apparent_temperature: f64,
-  relative_humidity_2m: f64,
-  wind_speed_10m: f64,
-  wind_direction_10m: f64,
+  apparent_temperature: Option<f64>,
+  relative_humidity_2m: Option<f64>,
+  wind_speed_10m: Option<f64>,
+  wind_direction_10m: Option<f64>,
   uv_index: Option<f64>,
   weather_code: u8,
   is_day: u8,
@@ -104,10 +94,10 @@ impl Forecast {
       current: Current {
         time: c.time,
         temperature: c.temperature_2m,
-        apparent_temperature: c.apparent_temperature,
-        humidity: c.relative_humidity_2m,
-        wind_speed: c.wind_speed_10m,
-        wind_direction: c.wind_direction_10m,
+        apparent_temperature: c.apparent_temperature.unwrap_or(c.temperature_2m),
+        humidity: c.relative_humidity_2m.unwrap_or_default(),
+        wind_speed: c.wind_speed_10m.unwrap_or_default(),
+        wind_direction: c.wind_direction_10m.unwrap_or_default(),
         uv_index: c.uv_index.unwrap_or_default(),
         code: c.weather_code,
         is_day: c.is_day == 1,
@@ -132,8 +122,8 @@ impl Forecast {
             max: (*d.temperature_2m_max.get(i)?)?,
             min: (*d.temperature_2m_min.get(i)?)?,
             code: (*d.weather_code.get(i)?)?,
-            sunrise: d.sunrise.get(i)?.clone()?,
-            sunset: d.sunset.get(i)?.clone()?,
+            sunrise: d.sunrise.get(i).cloned().flatten(),
+            sunset: d.sunset.get(i).cloned().flatten(),
           })
         })
         .collect(),
@@ -176,7 +166,7 @@ pub(crate) mod tests {
     assert_eq!(weather.hourly.len(), 2);
     // a missing probability reads as 0
     assert_eq!(weather.hourly[1].precipitation_probability, 0.);
-    assert_eq!(weather.daily[0].sunset, "2026-10-01T18:54");
+    assert_eq!(weather.daily[0].sunset.as_deref(), Some("2026-10-01T18:54"));
     assert_eq!(
       (weather.elevation, weather.timezone_abbreviation.as_str()),
       (482., "GMT+2")
@@ -236,7 +226,7 @@ pub(crate) mod tests {
       .replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": []"#);
     let weather = parse(&json);
     assert_eq!(weather.hourly.len(), 1);
-    assert!(weather.daily.is_empty());
+    assert_eq!(weather.daily.len(), 1);
   }
 
   #[test]
@@ -288,17 +278,15 @@ pub(crate) mod tests {
     let weather = parse(&json);
     assert_eq!(weather.hourly.len(), 1);
     assert_eq!(weather.hourly[0].temperature, 14.4);
-    assert!(weather.daily.is_empty());
+    assert_eq!(weather.daily[0].sunrise, None);
     assert_eq!(weather.current.temperature, 14.2);
   }
 
   #[test]
-  fn bad_json_names_the_url() {
+  fn bad_json_hides_the_url() {
     let (client, _) = fake(|_| (200, "<html>".into()));
     let error = block_on(super::forecast(&*client, here(), Units::Metric)).unwrap_err();
-    assert!(error.to_string().starts_with(&format!(
-      "parsing {FORECAST}?latitude=47.86&longitude=-12.5"
-    )));
+    assert_eq!(error.to_string(), "parsing response");
   }
 
   #[test]
@@ -344,23 +332,26 @@ pub(crate) mod tests {
   }
 
   #[test]
-  fn null_or_ragged_sunset_drops_day() {
-    // null sunset drops day
+  fn null_or_ragged_sunset_keeps_day() {
+    // null sunset keeps day
     let null_sunset =
       FORECAST_JSON.replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": [null]"#);
     let weather = parse(&null_sunset);
-    assert!(weather.daily.is_empty());
+    assert_eq!(weather.daily.len(), 1);
+    assert_eq!(weather.daily[0].sunset, None);
 
-    // ragged/empty sunset drops day
+    // ragged/empty sunset keeps day
     let empty_sunset =
       FORECAST_JSON.replace(r#""sunset": ["2026-10-01T18:54"]"#, r#""sunset": []"#);
     let weather2 = parse(&empty_sunset);
-    assert!(weather2.daily.is_empty());
+    assert_eq!(weather2.daily.len(), 1);
+    assert_eq!(weather2.daily[0].sunset, None);
   }
 
   #[test]
   fn body_streaming_io_failure() {
     use futures_lite::io::AsyncRead;
+    use gpui_kit::http_client::AsyncBody;
     use std::io;
     use std::pin::Pin;
     use std::task::{Context, Poll};

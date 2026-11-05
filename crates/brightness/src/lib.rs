@@ -10,6 +10,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use corona_config::{BrightnessConfig, ConfigProvider, observe_section};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::Connection;
 
@@ -24,12 +26,20 @@ pub use crate::{
 };
 
 mod backlight;
+pub mod cli;
+pub mod commands;
 mod ddc;
 mod gamma;
+mod launcher;
 mod nightlight;
 mod outputs;
+pub mod script;
+mod settings;
 mod solar;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Brightness {
@@ -45,15 +55,7 @@ pub struct Brightness {
 
 impl Global for Brightness {}
 
-pub trait BrightnessExt {
-  fn brightness(&self) -> &Brightness;
-}
-
-impl BrightnessExt for App {
-  fn brightness(&self) -> &Brightness {
-    self.global::<Brightness>()
-  }
-}
+corona_utils::global_ext!(BrightnessExt, brightness, Brightness);
 
 impl Brightness {
   pub fn list_displays<'c>(&self, cx: &'c App) -> &'c [Display] {
@@ -110,7 +112,11 @@ impl Brightness {
     let id = id.to_string();
     async move {
       let (kind, max) = display?;
-      let brightness = brightness.min(max);
+      let brightness = match kind {
+        // raw 0 turns some panels off
+        DisplayKind::Backlight => brightness.clamp(1, max.max(1)),
+        _ => brightness.min(max),
+      };
       match (kind, id.split_once('/')) {
         (DisplayKind::Backlight, Some((_, name))) => {
           backlight::set(&conn, name, brightness).await?
@@ -118,7 +124,9 @@ impl Brightness {
         (DisplayKind::External, Some((_, bus))) => {
           let ddc = ddc.context("ddcutil is off")?;
           ddc.send(DdcCommand::Set {
-            bus: bus.parse()?,
+            bus: bus
+              .parse()
+              .with_context(|| format!("malformed display id {id}"))?,
             brightness,
           })?;
         }
@@ -174,9 +182,16 @@ fn merge(
       .any(|b| b.output.as_ref() == Some(&output.name))
   };
 
+  // panels are never external monitors, also when their backlight is not under the connector
+  let internal = |output: &Output| {
+    ["eDP", "LVDS", "DSI"]
+      .iter()
+      .any(|prefix| output.name.starts_with(prefix))
+  };
+
   let monitors: Vec<Display> = outputs
     .iter()
-    .filter(|o| !builtin(o))
+    .filter(|o| !builtin(o) && !internal(o))
     .map(|output| {
       match detected
         .iter()
@@ -216,7 +231,30 @@ fn merge(
     .collect()
 }
 
-pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows the backlights and monitors, registers the brightness UI, commands and script
+/// module
+pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  // read once at startup
+  observe_section(
+    cx,
+    |c| &c.brightness.enable_ddcutil,
+    |_, _| tracing::warn!("brightness.enable_ddcutil applies after a restart"),
+  );
+  connect(cx, &buses.system)?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  register_script(cx.script_mut());
+  Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::BrightnessModule>();
+}
+
+pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let ddcutil_available = ddc::available();
   let ddcutil_enabled = cx.config().brightness.enable_ddcutil;
   let (events_tx, events) = flume::unbounded();
@@ -227,7 +265,22 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     let poll = poll.clone();
     move |config: &BrightnessConfig, _| poll.store(config.poll_seconds, Ordering::Relaxed)
   });
+  let ddc = (ddcutil_enabled && ddcutil_available).then(|| {
+    let (commands_tx, commands) = flume::unbounded();
+    let (updates_tx, updates) = flume::unbounded();
+    ddc::worker(commands, updates_tx);
+    let events = events_tx.clone();
+    thread::spawn(move || {
+      for update in updates.iter() {
+        if events.send(Event::Ddc(update)).is_err() {
+          break;
+        }
+      }
+    });
+    commands_tx
+  });
   let sysfs = events_tx.clone();
+  let redetect = ddc.clone();
   thread::spawn(move || {
     let mut last = None;
     loop {
@@ -237,7 +290,12 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
         outputs::connected(&drm),
       );
       if last.as_ref() != Some(&current) {
+        // monitors come and go: look for their DDC buses again
+        let replugged = last.as_ref().is_some_and(|(_, o)| *o != current.1);
         last = Some(current.clone());
+        if replugged && let Some(ddc) = &redetect {
+          _ = ddc.send(DdcCommand::Redetect);
+        }
         let (backlights, outputs) = current;
         if sysfs
           .send(Event::Sysfs {
@@ -253,20 +311,6 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     }
   });
 
-  let ddc = (ddcutil_enabled && ddcutil_available).then(|| {
-    let (commands_tx, commands) = flume::unbounded();
-    let (updates_tx, updates) = flume::unbounded();
-    ddc::worker(commands, updates_tx);
-    let events = events_tx.clone();
-    thread::spawn(move || {
-      for update in updates.iter() {
-        if events.send(Event::Ddc(update)).is_err() {
-          break;
-        }
-      }
-    });
-    commands_tx
-  });
   if ddcutil_enabled && !ddcutil_available {
     tracing::warn!("enable_ddcutil is set, but ddcutil is not on the PATH");
   }
@@ -299,7 +343,12 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
           outputs: o,
         } => (backlights, outputs) = (b, o),
         Event::Ddc(Update::Displays(list)) => ddc = Ddc::Detected(list),
-        Event::Ddc(Update::DetectFailed) => ddc = Ddc::DetectFailed,
+        Event::Ddc(Update::DetectFailed) => {
+          // a failed redetect keeps the displays found earlier
+          if !matches!(ddc, Ddc::Detected(_)) {
+            ddc = Ddc::DetectFailed;
+          }
+        }
         Event::Ddc(Update::Brightness { bus, brightness }) => {
           let id = format!("ddc/{bus}");
           if let Ddc::Detected(list) = &mut ddc
@@ -320,7 +369,13 @@ pub fn init(cx: &mut App, conn: &Connection) -> Result<()> {
           }
         }
       }
-      displays.write(cx, merge(&backlights, &outputs, &ddc, &failed));
+      let merged = merge(&backlights, &outputs, &ddc, &failed);
+      displays.update(cx, |displays, cx| {
+        if *displays != merged {
+          *displays = merged;
+          cx.notify();
+        }
+      });
     }
   })
   .detach();
@@ -362,6 +417,7 @@ esac
 bus="$3"
 case "$4" in
   getvcp)
+    if [ -f "$dir/getvcp-fails-once-$bus" ]; then rm "$dir/getvcp-fails-once-$bus"; exit 1; fi
     [ -f "$dir/getvcp-$bus" ] || exit 1
     cat "$dir/getvcp-$bus" ;;
   setvcp)
@@ -532,38 +588,13 @@ mod tests {
     assert_eq!(merged.len(), 2);
     assert!(super::merge(&[], &[], &Ddc::Detecting, &none).is_empty());
 
-    // a backlight whose output is None does not match any output name in builtin(output),
-    // causing an unmapped laptop backlight to coexist with its DRM connector as an external unsupported display
+    // a backlight whose output is None still owns the internal connector
     let mut panel_unmapped = display("backlight/intel_backlight", "", DisplayKind::Backlight);
     panel_unmapped.output = None;
     let edp_outputs = [output("eDP-1", Some("Internal Panel"))];
     let merged = super::merge(&[panel_unmapped], &edp_outputs, &Ddc::Detecting, &none);
-    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.len(), 1);
     assert_eq!(merged[0].id, "backlight/intel_backlight");
-    assert_eq!(merged[1].id, "output/eDP-1");
-    assert_eq!(merged[1].unavailable, Some(Unavailable::Detecting));
-  }
-
-  #[test]
-  fn brightness_update_ignored_when_not_detected() {
-    let mut ddc = Ddc::Detecting;
-    let bus = 5;
-    let brightness = 80;
-    let id = format!("ddc/{bus}");
-    if let Ddc::Detected(list) = &mut ddc
-      && let Some(display) = list.iter_mut().find(|d| d.id == id)
-    {
-      display.brightness = brightness;
-    }
-    assert_eq!(ddc, Ddc::Detecting);
-
-    let mut ddc = Ddc::DetectFailed;
-    if let Ddc::Detected(list) = &mut ddc
-      && let Some(display) = list.iter_mut().find(|d| d.id == id)
-    {
-      display.brightness = brightness;
-    }
-    assert_eq!(ddc, Ddc::DetectFailed);
   }
 
   #[test]
@@ -689,8 +720,7 @@ mod global_tests {
 
   #[gpui::test]
   fn set_brightness_checks_the_display(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let (tx, rx) = flume::unbounded();
     state(cx, &conn, Some(tx));
 
@@ -715,15 +745,17 @@ mod global_tests {
     set(cx, "ddc/5", 0).unwrap();
     let sent: Vec<_> = rx
       .try_iter()
-      .map(|DdcCommand::Set { bus, brightness }| (bus, brightness))
+      .filter_map(|command| match command {
+        DdcCommand::Set { bus, brightness } => Some((bus, brightness)),
+        DdcCommand::Redetect => None,
+      })
       .collect();
     assert_eq!(sent, [(5, 100), (5, 30), (5, 0)]);
   }
 
   #[gpui::test]
   fn set_brightness_without_ddcutil(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     state(cx, &conn, None);
     assert_eq!(
       set(cx, "ddc/5", 1).unwrap_err().to_string(),
@@ -733,8 +765,7 @@ mod global_tests {
 
   #[gpui::test]
   fn backlights_go_through_logind(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let logind = block_on(async {
       let logind = bus.conn().await;
@@ -755,13 +786,13 @@ mod global_tests {
     let root = sysfs();
     state(cx, &conn, None);
     set(cx, "backlight/intel_backlight", 5000).unwrap();
-    // zero brightness passes through to logind as minimum
+    // zero brightness is raised to 1, raw 0 can turn the panel off
     set(cx, "backlight/intel_backlight", 0).unwrap();
     assert_eq!(
       calls.lock().unwrap().as_slice(),
       [
         ("backlight".to_string(), "intel_backlight".to_string(), 1200),
-        ("backlight".to_string(), "intel_backlight".to_string(), 0),
+        ("backlight".to_string(), "intel_backlight".to_string(), 1),
       ]
     );
     // sysfs untouched
@@ -774,8 +805,7 @@ mod global_tests {
 
   #[gpui::test]
   fn refused_by_logind_writes_sysfs(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let _logind = block_on(async {
       let logind = bus.conn().await;
       logind
@@ -811,8 +841,7 @@ mod global_tests {
 
   #[gpui::test]
   fn no_logind_writes_sysfs(cx: &mut TestAppContext) {
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     let root = sysfs();
     state(cx, &conn, None);
     set(cx, "backlight/intel_backlight", 700).unwrap();
@@ -847,7 +876,7 @@ mod global_tests {
     config.brightness.poll_seconds = 1;
     cx.update(|cx| {
       cx.set_global(config);
-      init(cx, &conn).unwrap();
+      connect(cx, &conn).unwrap();
     });
     bus
   }

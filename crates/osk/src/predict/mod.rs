@@ -3,7 +3,7 @@
 mod completer;
 mod spell;
 
-use std::{fs, path::PathBuf};
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 
@@ -60,6 +60,8 @@ pub struct Chip {
 /// The strip's three slots; the best suggestion is in the middle
 pub type Chips = [Option<Chip>; 3];
 
+/// Cheap to clone: the dictionary and the learned words are shared
+#[derive(Clone)]
 pub struct Predictor {
   pub language: Language,
   completer: Completer,
@@ -76,7 +78,7 @@ impl Predictor {
       speller: Speller::from_ranked_list(list),
     };
     if let Some(text) = learned_path(language).and_then(|p| fs::read_to_string(p).ok()) {
-      predictor.completer.learned = parse_learned(&text);
+      predictor.completer.learned = Arc::new(parse_learned(&text));
     }
     predictor
   }
@@ -99,10 +101,16 @@ impl Predictor {
       return [second, first, third];
     }
 
-    let ended = before_cursor.trim_end_matches(|c: char| !c.is_alphabetic() && c != '\'');
+    let ended = before_cursor.trim_end_matches(|c: char| !c.is_alphabetic());
     let boundary = &before_cursor[ended.len()..];
-    let (_, word) = current_word(ended);
-    if !spell || boundary.chars().count() > 2 || !self.misspelled(word) {
+    let (start, word) = current_word(ended);
+    // Digits don't end a word: "html5" and "4chan" are one token, not a misspelled "html"
+    let glued = boundary.chars().next().is_some_and(char::is_alphanumeric)
+      || ended[..start]
+        .chars()
+        .next_back()
+        .is_some_and(char::is_alphanumeric);
+    if !spell || glued || boundary.chars().count() > 2 || !self.misspelled(word) {
       return Chips::default();
     }
     let mut fixes = self.speller.suggest(word, 2).into_iter().map(|c| Chip {
@@ -162,22 +170,37 @@ impl Predictor {
     if let Some(dir) = path.parent() {
       fs::create_dir_all(dir)?;
     }
-    fs::write(path, text)?;
+    // renamed over the old file, so a crash mid-write keeps the old words
+    let tmp = path.with_extension("tmp");
+    // owner only: typed words can be personal
+    let mut file = fs::OpenOptions::new()
+      .write(true)
+      .create(true)
+      .truncate(true)
+      .mode(0o600)
+      .open(&tmp)?;
+    file.write_all(text.as_bytes())?;
+    fs::rename(tmp, path)?;
     Ok(())
   }
 
   /// Forgets the learned words of every language, here and on disk
   pub fn clear_learned(&mut self) -> Result<()> {
-    self.completer.learned.clear();
-    for language in Language::ALL {
-      if let Some(path) = learned_path(language)
-        && path.exists()
-      {
-        fs::remove_file(path)?;
-      }
-    }
-    Ok(())
+    Arc::make_mut(&mut self.completer.learned).clear();
+    clear_learned_files()
   }
+}
+
+/// Deletes the learned words of every language from disk
+pub fn clear_learned_files() -> Result<()> {
+  for language in Language::ALL {
+    if let Some(path) = learned_path(language)
+      && path.exists()
+    {
+      fs::remove_file(path)?;
+    }
+  }
+  Ok(())
 }
 
 fn learned_path(language: Language) -> Option<PathBuf> {
@@ -227,6 +250,14 @@ mod tests {
     assert_eq!(p.predict("say teh ", true, false), Chips::default());
     assert_eq!(p.predict("the ", true, true), Chips::default());
     assert_eq!(p.predict("teh   ", true, true), Chips::default());
+    assert_eq!(p.predict("see html5 ", true, true), Chips::default());
+    assert_eq!(p.predict("4chan ", true, true), Chips::default());
+    let chips = p.predict("say 'teh' ", true, true);
+    let fix = chips[1].as_ref().unwrap();
+    assert_eq!(
+      (fix.delete.as_str(), fix.insert.as_str()),
+      ("teh' ", "the' ")
+    );
   }
 
   #[test]

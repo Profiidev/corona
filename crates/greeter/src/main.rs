@@ -204,7 +204,7 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .method_timeout(Duration::from_secs(5))
     .build()
     .await?;
-  corona_power::init(cx, &system).await
+  corona_power::connect(cx, &system).await
 }
 
 fn main() {
@@ -218,21 +218,18 @@ fn main() {
         .and_then(|file| config::read(&file))
         .inspect_err(|e| tracing::error!("greeter: default settings: {e:#}"))
         .unwrap_or_default();
-      let language = (config.language)
-        .or_else(|| std::env::var("LANG").ok())
-        .unwrap_or_default();
       let monitor = config.monitor;
       // the theme loader reads the shell's settings
       cx.set_global(corona_config::Config {
         theme: config.theme,
         ..Default::default()
       });
-      rust_i18n::set_locale(language.split(['_', '.', '-']).next().unwrap_or_default());
+      corona_components::i18n::apply(config.language.as_deref());
       corona_components::assets::load(cx).expect("Failed to load assets");
-      cx.foreground_executor()
-        .clone()
-        .block_on(init_dbus(cx))
-        .expect("Failed to init dbus");
+      // power actions are optional, login must work without them
+      if let Err(e) = cx.foreground_executor().clone().block_on(init_dbus(cx)) {
+        tracing::error!("greeter: power actions unavailable: {e:#}");
+      }
 
       cx.open_window(
         WindowOptions {

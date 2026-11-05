@@ -2,25 +2,18 @@ use std::{
   cell::RefCell,
   collections::BTreeMap,
   path::{Path, PathBuf},
-  rc::Rc,
 };
 
-use corona_config::Config;
-use corona_macros::named;
-use corona_utils::error::ErrorLogExt;
-use gpui_shell::HostModule;
+use corona_js::{Cx, Data, Json, ModuleBuilder, Opt, host_module, track};
+use gpui_kit::Entity;
 use rust_i18n_support::try_load_locales;
 use serde_json::{Map, Value};
+use specta::specta;
 
-use crate::{host_fn::Module, module::Subscribe};
+use crate::module::settings::Settings;
 
 /// The fallback when neither the language nor its prefix has a translation
 const FALLBACK: &str = "en";
-
-/// The shell's language, e.g. `de` or `pt-BR`
-fn language() -> String {
-  rust_i18n::locale().to_string()
-}
 
 /// A plugin's translations: its `locales/*.yml`, in the format of the shell's
 /// own (`_version: 2`, or one file per language)
@@ -97,51 +90,51 @@ fn substitute(text: &str, vars: &Map<String, Value>) -> String {
   out + rest
 }
 
-/// `corona/i18n`: the plugin's translations, from `locales/` in its directory.
-/// Every plugin has it.
-pub fn module(dir: &Path, subs: &mut Vec<Subscribe>) -> HostModule {
-  let dir: PathBuf = dir.join("locales");
-  // ponytail: read once per language and view, edits show after a reload of the plugin
-  let cache: Rc<RefCell<Option<Translations>>> = Rc::default();
-  subs.push(watch());
-
-  Module::new("corona/i18n")
-    .func(named!(
-      "language",
-      /// The shell's language, e.g. `de` or `pt-BR`.
-      || rust_i18n::locale().to_string()
-    ))
-    .func(named!(
-      "t",
-      /// The translation of `key` (`a.b` for nested keys) in the shell's
-      /// language, then its prefix (`pt` for `pt-BR`), then English; the key
-      /// itself when there is none. `%{name}` is replaced with `vars.name`.
-      move |key: String, vars: Option<Map<String, Value>>| {
-        let language = language();
-        let mut cache = cache.borrow_mut();
-        if cache.as_ref().is_none_or(|t| t.language != language) {
-          *cache = Some(Translations::load(&dir, language));
-        }
-        let text = cache.as_ref().and_then(|t| t.get(&key)).unwrap_or(&key);
-        substitute(text, &vars.unwrap_or_default())
-      }
-    ))
-    .into()
+/// A runtime's translations, read once per language: edits show after a reload
+struct I18n {
+  dir: PathBuf,
+  cache: RefCell<Option<Translations>>,
+  /// Follows the shell's language
+  settings: Entity<Settings>,
 }
 
-/// Renders the script again when the language changes
-fn watch() -> Subscribe {
-  Subscribe::Refresh(Box::new(move |runtime, root, cx| {
-    let (runtime, root) = (runtime.clone(), root.clone());
-    let mut last = language();
-    cx.observe_global::<Config>(move |cx| {
-      let now = language();
-      if now != last {
-        last = now;
-        runtime.refresh(&root, cx).log_err().ok();
-      }
-    })
-  }))
+impl I18n {
+  /// The shell's language; a view that reads it renders again as it changes
+  fn language(&self, cx: &Cx) -> String {
+    track(&self.settings);
+    self.settings.read(cx).language.clone()
+  }
+}
+
+/// The shell's language, e.g. `de` or `pt-BR`.
+#[specta]
+fn language(cx: Cx, i18n: Data<I18n>) -> String {
+  i18n.language(&cx)
+}
+
+/// The translation of `key` (`a.b` for nested keys) in the shell's language, then its
+/// prefix (`pt` for `pt-BR`), then English; the key itself when there is none. `%{name}`
+/// is replaced with `vars.name`.
+#[specta]
+fn t(cx: Cx, i18n: Data<I18n>, key: String, vars: Opt<Json<Map<String, Value>>>) -> String {
+  let language = i18n.language(&cx);
+  let mut cache = i18n.cache.borrow_mut();
+  if cache.as_ref().is_none_or(|t| t.language != language) {
+    *cache = Some(Translations::load(&i18n.dir, language));
+  }
+  let text = cache.as_ref().and_then(|t| t.get(&key)).unwrap_or(&key);
+  substitute(text, &vars.0.map(|v| v.0).unwrap_or_default())
+}
+
+/// `corona/i18n`: the plugin's translations, from `locales/` in its directory. Every
+/// plugin has it; `settings` follows the shell's language.
+pub fn module(dir: &Path, settings: Entity<Settings>, m: &mut ModuleBuilder) {
+  m.provide(I18n {
+    dir: dir.join("locales"),
+    cache: RefCell::default(),
+    settings,
+  });
+  host_module!(m, { sync: [language, t] });
 }
 
 #[cfg(test)]

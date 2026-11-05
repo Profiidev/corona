@@ -219,7 +219,7 @@
 +        dmabuf,
 +        wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
 +    );
-+    Ok(unsafe { device.create_texture_from_hal::<Vulkan>(raw, &desc) })
++    Ok(unsafe { device.create_texture_from_hal::<Vulkan>(raw, &desc, wgpu::TextureUses::UNINITIALIZED) })
 +}
 +
 +/// # Safety

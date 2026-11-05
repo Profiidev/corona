@@ -156,13 +156,7 @@ pub enum Icon {
   Image(Arc<std::path::Path>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tone {
-  Ok,
-  Off,
-  Warn,
-  Err,
-}
+pub use corona_components::components::list::Tone;
 
 #[derive(Clone)]
 pub enum Accessory {
@@ -304,7 +298,6 @@ pub enum Clip {
 pub struct Hud {
   pub icon: Option<IconName>,
   pub text: SharedString,
-  pub swatch: Option<Hsla>,
 }
 
 impl Hud {
@@ -312,7 +305,6 @@ impl Hud {
     Self {
       icon: None,
       text: text.into(),
-      swatch: None,
     }
   }
 
@@ -350,7 +342,6 @@ pub struct Detail {
 pub enum DetailBody {
   None,
   Text(SharedString),
-  Markdown(SharedString),
   Image(Arc<std::path::Path>),
   /// Monospace, like a clipboard entry of code
   Code(SharedString),

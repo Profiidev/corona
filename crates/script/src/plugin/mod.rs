@@ -11,9 +11,18 @@ pub mod registry;
 pub mod settings;
 pub mod worker;
 
-/// The JSON schema of `plugin.toml`, for editors
-pub fn plugin_schema() -> serde_json::Value {
-  schemars::schema_for!(manifest::ManifestFile).to_value()
+use corona_js::ScriptRegistry;
+use serde_json::json;
+
+/// The JSON schema of `plugin.toml`, for editors: `capabilities.corona` lists the modules
+/// in `modules`
+pub fn plugin_schema(modules: &ScriptRegistry) -> serde_json::Value {
+  let mut schema = schemars::schema_for!(manifest::ManifestFile).to_value();
+  let names: Vec<_> = (modules.all())
+    .map(|m| json!({ "const": m.name, "description": m.doc }))
+    .collect();
+  schema["$defs"]["CapabilitiesFile"]["properties"]["corona"]["items"] = json!({ "oneOf": names });
+  schema
 }
 
 /// The JSON schema of a source's `catalog.toml`, for editors
@@ -31,7 +40,9 @@ mod tests {
 
   #[test]
   fn schemas_describe_the_files() {
-    let plugin = plugin_schema();
+    let mut modules = ScriptRegistry::default();
+    crate::module::register(&mut modules);
+    let plugin = plugin_schema(&modules);
     assert_eq!(plugin["title"], "ManifestFile");
     for key in [
       "id",
@@ -52,6 +63,14 @@ mod tests {
       let path = ["$defs", def, "properties", key];
       assert!(property(&plugin, &path).is_object(), "{def}.{key}");
     }
+    let grants = property(
+      &plugin,
+      &["$defs", "CapabilitiesFile", "properties", "corona"],
+    );
+    let secrets = (grants["items"]["oneOf"].as_array().unwrap().iter())
+      .find(|m| m["const"] == "secrets")
+      .unwrap();
+    assert!(secrets["description"].as_str().unwrap().contains("keyring"));
     let catalog = catalog_schema();
     assert_eq!(catalog["title"], "CatalogFile");
     assert!(property(&catalog, &["properties", "plugin"]).is_object());

@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 
 use crate::{
   Compositor,
-  hyprland::{Hyprland, command::Ipc},
+  hyprland::{Hyprland, command::Ipc, encoding::decode_ipc_response},
   types,
 };
 
@@ -44,14 +44,36 @@ impl Hyprland {
         let socket = match UnixStream::connect(&event_path) {
           Ok(socket) => socket,
           Err(e) => {
-            warn!("Failed to hyprland connect to event socket: {}", e);
+            warn!("Failed to connect to the Hyprland event socket: {}", e);
             thread::sleep(RECONNECT);
             continue;
           }
         };
 
-        for line in BufReader::new(socket).lines().map_while(Result::ok) {
-          let events = match ipc.parse_event(&line) {
+        // events missed since startup or while disconnected
+        {
+          match ipc.refresh_events() {
+            Ok(events) => {
+              for event in events {
+                if tx.send(event).is_err() {
+                  break 'listen;
+                }
+              }
+            }
+            Err(e) => warn!("Failed to refresh hyprland state: {}", e),
+          }
+        }
+
+        let mut reader = BufReader::new(socket);
+        let mut buf = Vec::new();
+        loop {
+          buf.clear();
+          // bytes, not lines(): a non-UTF-8 title must not end the stream
+          if !matches!(reader.read_until(b'\n', &mut buf), Ok(n) if n > 0) {
+            break;
+          }
+          let line = decode_ipc_response(&buf);
+          let events = match ipc.parse_event(line.trim_end_matches(['\n', '\r'])) {
             Ok(events) => events,
             Err(e) => {
               warn!("Failed to parse hyprland event: {}", e);
@@ -65,13 +87,18 @@ impl Hyprland {
             }
           }
         }
+        // a socket that closes at once must not spin
+        thread::sleep(RECONNECT);
       }
     });
 
     cx.spawn(async move |cx| {
       while let Ok(event) = rx.recv_async().await {
         cx.update(|cx| {
-          cx.update_global::<Compositor, _>(|compositor, cx| apply(compositor, event, cx))
+          // not registered yet, or init failed after the listener started
+          if cx.has_global::<Compositor>() {
+            cx.update_global::<Compositor, _>(|compositor, cx| apply(compositor, event, cx))
+          }
         });
       }
     })
@@ -87,7 +114,7 @@ fn apply(compositor: &Compositor, event: CompositorEvent, cx: &mut App) {
     }
     CompositorEvent::Monitor(monitors) => compositor.monitors.write_changed(cx, monitors),
     CompositorEvent::ActiveMonitor(monitor) => compositor.active_monitor.write_changed(cx, monitor),
-    CompositorEvent::Window(windows) => compositor.windows.write_changed(cx, windows),
+    CompositorEvent::Window(windows) => compositor.set_windows(cx, windows),
     CompositorEvent::ActiveWindow(window) => compositor.active_window.write_changed(cx, window),
     CompositorEvent::KeyboardLayout(layout) => compositor.keyboard_layout.write_changed(cx, layout),
     CompositorEvent::Urgent(address) => compositor.urgent.update(cx, |urgent, cx| {
@@ -111,6 +138,28 @@ fn window_address(data: &str) -> Option<String> {
 }
 
 impl Ipc {
+  /// All state, for after the event socket was down
+  fn refresh_events(&self) -> Result<Vec<CompositorEvent>> {
+    let monitors = self.list_monitors()?;
+    let active = types::focused_monitor(&monitors);
+    let mut events = vec![CompositorEvent::Workspace(self.list_workspaces()?)];
+    // best effort, as in refresh_monitors: it can fail right after the focused monitor went
+    events.extend(
+      self
+        .active_workspace()
+        .ok()
+        .map(CompositorEvent::ActiveWorkspace),
+    );
+    events.extend([
+      CompositorEvent::Monitor(monitors),
+      CompositorEvent::Window(self.list_windows()?),
+      CompositorEvent::ActiveWindow(self.active_window()?),
+      CompositorEvent::KeyboardLayout(self.keyboard_layout()?),
+    ]);
+    events.extend(active.map(CompositorEvent::ActiveMonitor));
+    Ok(events)
+  }
+
   fn parse_event(&self, event: &str) -> Result<Vec<CompositorEvent>> {
     let (name, data) = event
       .split_once(">>")
@@ -120,20 +169,27 @@ impl Ipc {
       "workspace" | "createworkspace" | "destroyworkspace" | "renameworkspace"
       | "moveworkspace" => {
         let workspaces = self.list_workspaces()?;
-        let active = self.active_workspace()?;
+        // fails right after the focused monitor goes away
+        let active = self.active_workspace().ok();
         let monitors = self.list_monitors()?;
-        let mut events = vec![
-          CompositorEvent::Workspace(workspaces),
-          CompositorEvent::ActiveWorkspace(active),
-          CompositorEvent::Monitor(monitors),
-        ];
+        let focused = types::focused_monitor(&monitors);
+        let mut events = vec![CompositorEvent::Workspace(workspaces)];
+        events.extend(active.map(CompositorEvent::ActiveWorkspace));
+        events.push(CompositorEvent::Monitor(monitors));
+        events.extend(focused.map(CompositorEvent::ActiveMonitor));
         // its windows move along, and no window event says so
         if name == "moveworkspace" {
           events.push(CompositorEvent::Window(self.list_windows()?));
         }
         events
       }
-      "activespecial" => vec![CompositorEvent::Monitor(self.list_monitors()?)],
+      "activespecial" => {
+        let monitors = self.list_monitors()?;
+        let active = types::focused_monitor(&monitors);
+        let mut events = vec![CompositorEvent::Monitor(monitors)];
+        events.extend(active.map(CompositorEvent::ActiveMonitor));
+        events
+      }
       // fullscreen, floating and pinned change how windows stack
       "openwindow" | "closewindow" | "movewindow" | "kill" | "windowtitle" | "fullscreen"
       | "changefloatingmode" | "pin" => {
@@ -153,14 +209,18 @@ impl Ipc {
         .map(CompositorEvent::Urgent)
         .into_iter()
         .collect(),
-      // focus left every window when it names none
+      // attend the window that took focus; nothing to attend when it names none
       "activewindowv2" => window_address(data)
         .map(CompositorEvent::Attended)
         .into_iter()
         .collect(),
+      // focus_history_id in the window list changes with it
       "activewindow" => {
         let window = self.active_window()?;
-        vec![CompositorEvent::ActiveWindow(window)]
+        vec![
+          CompositorEvent::Window(self.list_windows()?),
+          CompositorEvent::ActiveWindow(window),
+        ]
       }
       "focusedmon" => {
         let (monitor_name, _) = data
@@ -169,11 +229,13 @@ impl Ipc {
 
         let monitors = self.list_monitors()?;
         let monitor = monitors
-          .into_iter()
+          .iter()
           .find(|m| m.name == monitor_name)
+          .cloned()
           .context("Monitor not found")?;
 
         vec![
+          CompositorEvent::Monitor(monitors),
           CompositorEvent::ActiveWorkspace(monitor.active_workspace.clone()),
           CompositorEvent::ActiveMonitor(monitor),
         ]
@@ -186,13 +248,18 @@ impl Ipc {
         let monitors = self.list_monitors()?;
         // nor a focus event when the focused one went; optional, so a moment
         // with no monitor focused does not lose the monitor list
-        let active = monitors.iter().find(|m| m.focused && !m.disabled).cloned();
+        let active = types::focused_monitor(&monitors);
         let mut events = vec![
           CompositorEvent::Monitor(monitors),
           CompositorEvent::Workspace(self.list_workspaces()?),
-          CompositorEvent::ActiveWorkspace(self.active_workspace()?),
-          CompositorEvent::Window(self.list_windows()?),
         ];
+        events.extend(
+          self
+            .active_workspace()
+            .ok()
+            .map(CompositorEvent::ActiveWorkspace),
+        );
+        events.push(CompositorEvent::Window(self.list_windows()?));
         events.extend(active.map(CompositorEvent::ActiveMonitor));
         events
       }
@@ -265,7 +332,7 @@ mod tests {
       "moveworkspace",
     ] {
       let events = parse(&hypr, &format!("{name}>>3")).unwrap();
-      let mut want = vec!["Workspace", "ActiveWorkspace", "Monitor"];
+      let mut want = vec!["Workspace", "ActiveWorkspace", "Monitor", "ActiveMonitor"];
       // a moved workspace takes its windows to another monitor
       if name == "moveworkspace" {
         want.push("Window");
@@ -274,7 +341,7 @@ mod tests {
     }
     assert_eq!(
       names(&parse(&hypr, "activespecial>>special:x,DP-1").unwrap()),
-      ["Monitor"]
+      ["Monitor", "ActiveMonitor"]
     );
     // mirroring is a monitor removed and added: workspaces and windows move
     for name in ["monitoradded", "monitorremoved"] {
@@ -303,7 +370,7 @@ mod tests {
     assert_eq!(names(&closed), ["Window", "ActiveWindow", "Attended"]);
     assert_eq!(closed[2], CompositorEvent::Attended("0xabc".into()));
     let active = parse(&hypr, "activewindow>>firefox,title").unwrap();
-    assert_eq!(names(&active), ["ActiveWindow"]);
+    assert_eq!(names(&active), ["Window", "ActiveWindow"]);
   }
 
   #[test]
@@ -398,6 +465,7 @@ mod tests {
     let hypr = FakeHyprland::start();
     let events = parse(&hypr, "focusedmon>>DP-1,2").unwrap();
     let [
+      CompositorEvent::Monitor(_),
       CompositorEvent::ActiveWorkspace(workspace),
       CompositorEvent::ActiveMonitor(monitor),
     ] = &events[..]

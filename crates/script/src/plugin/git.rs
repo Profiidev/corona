@@ -73,7 +73,8 @@ pub fn ensure_repo(parent: &Path, repo: &Path, location: &str) -> Result<()> {
     bail!("invalid git location `{location}`");
   }
   if repo.join(".git").exists() || repo.join("HEAD").exists() {
-    if has_origin(repo) {
+    // a killed clone keeps its origin but has an unborn HEAD
+    if has_origin(repo) && head(repo).is_ok() {
       return git(
         repo,
         &["remote", "set-url", "--", "origin", location],
@@ -95,7 +96,10 @@ fn has_origin(repo: &Path) -> bool {
 
 /// Updates the remote branches only; what is applied stays
 pub fn fetch(repo: &Path) -> Result<()> {
-  git(repo, &["fetch", "--quiet", "origin"], NETWORK).map(drop)
+  git(repo, &["fetch", "--quiet", "origin"], NETWORK)?;
+  // the default branch may have moved; a repository without one is no failure
+  git(repo, &["remote", "set-head", "origin", "--auto"], NETWORK).ok();
+  Ok(())
 }
 
 /// The newest fetched revision of the default branch
@@ -118,14 +122,13 @@ pub fn set_head(repo: &Path, rev: &str) -> Result<()> {
   git(repo, &["update-ref", "HEAD", rev], LOCAL).map(drop)
 }
 
-/// The contents of `path` at `rev`, at most [`SHOW_LIMIT`] bytes. With
-/// `local_only` a file not fetched yet is an error rather than a download.
-pub fn show_file(repo: &Path, rev: &str, path: &str, local_only: bool) -> Result<Vec<u8>> {
+/// The contents of `path` at `rev`, at most [`SHOW_LIMIT`] bytes
+pub fn show_file(repo: &Path, rev: &str, path: &str) -> Result<Vec<u8>> {
   let spec = format!("{rev}:{path}");
   run(
     Some(repo),
     ["show".into(), spec.into()],
-    local_only,
+    false,
     LOCAL,
     SHOW_LIMIT,
   )
@@ -193,6 +196,34 @@ fn run(
   run_with(repo, args, &[], local_only, timeout, limit)
 }
 
+/// The ssh command git would run: `GIT_SSH_COMMAND`, `core.sshCommand`, `GIT_SSH`, else `ssh`.
+/// Exporting `GIT_SSH_COMMAND` overrides the last two, so they are resolved here.
+fn ssh_command(repo: Option<&Path>) -> String {
+  if let Ok(cmd) = std::env::var("GIT_SSH_COMMAND") {
+    return cmd;
+  }
+  let mut config = Command::new("git");
+  if let Some(repo) = repo {
+    config.arg("-C").arg(repo);
+  }
+  let configured = config
+    .args(["config", "--get", "core.sshCommand"])
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty());
+  configured
+    .or_else(|| {
+      let program = std::env::var("GIT_SSH").ok().filter(|s| !s.is_empty())?;
+      Some(format!("'{}'", program.replace('\'', "'\\''")))
+    })
+    .unwrap_or_else(|| "ssh".to_string())
+}
+
 /// Runs git with every way it could ask for credentials turned off, killed
 /// after `timeout`. Reads at most `limit` bytes of output.
 fn run_with(
@@ -209,7 +240,7 @@ fn run_with(
     .map(|a| a.to_string_lossy())
     .collect::<Vec<_>>()
     .join(" ");
-  let ssh = std::env::var("GIT_SSH_COMMAND").unwrap_or_else(|_| "ssh".to_string());
+  let ssh = ssh_command(repo);
 
   let mut command = Command::new("git");
   if let Some(repo) = repo {
@@ -237,7 +268,10 @@ fn run_with(
     .env("GIT_ASKPASS", "/bin/false")
     .env("SSH_ASKPASS", "/bin/false")
     .env("SSH_ASKPASS_REQUIRE", "never")
-    .env("GIT_SSH_COMMAND", format!("{ssh} -oBatchMode=yes"))
+    .env(
+      "GIT_SSH_COMMAND",
+      format!("{ssh} -oBatchMode=yes -oControlMaster=no -oControlPath=none"),
+    )
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
@@ -248,6 +282,8 @@ fn run_with(
     command.env(key, value);
   }
 
+  // own process group: on timeout the ssh/remote helpers die with git
+  std::os::unix::process::CommandExt::process_group(&mut command, 0);
   let started = Instant::now();
   let mut child = command
     .spawn()
@@ -265,9 +301,9 @@ fn run_with(
     read.map(|_| buf)
   });
   let err = thread::spawn(move || {
-    let mut buf = String::new();
-    stderr.read_to_string(&mut buf).ok();
-    buf
+    let mut buf = Vec::new();
+    stderr.read_to_end(&mut buf).ok();
+    String::from_utf8_lossy(&buf).into_owned()
   });
 
   let deadline = started + timeout;
@@ -276,6 +312,8 @@ fn run_with(
       break status;
     }
     if Instant::now() > deadline {
+      // SAFETY: plain kill(2) on the group we created at spawn
+      unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
       child.kill().ok();
       child.wait().ok();
       bail!("git {label} timed out after {}s", timeout.as_secs());
@@ -409,10 +447,10 @@ mod tests {
     assert!(has_path(&repo, &rev, "a/plugin.toml"));
     assert!(!has_path(&repo, &rev, "b/plugin.toml"));
     assert_eq!(
-      show_file(&repo, "HEAD", "a/plugin.toml", false).unwrap(),
+      show_file(&repo, "HEAD", "a/plugin.toml").unwrap(),
       b"id = \"a\"\n"
     );
-    assert!(show_file(&repo, "HEAD", "missing", false).is_err());
+    assert!(show_file(&repo, "HEAD", "missing").is_err());
   }
 
   #[test]
@@ -427,10 +465,7 @@ mod tests {
     fetch(&repo).unwrap();
     assert_eq!(head(&repo).unwrap(), first);
     assert_eq!(remote_head(&repo).unwrap(), second);
-    assert_eq!(
-      show_file(&repo, &second, "a/plugin.toml", false).unwrap(),
-      b"2"
-    );
+    assert_eq!(show_file(&repo, &second, "a/plugin.toml").unwrap(), b"2");
 
     set_head(&repo, &second).unwrap();
     assert_eq!(head(&repo).unwrap(), second);
@@ -457,6 +492,22 @@ mod tests {
   }
 
   #[test]
+  fn ensure_repo_reclones_an_unborn_head() {
+    let remote = Remote::new();
+    remote.write("x", "one");
+    let rev = remote.commit();
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("src/repo");
+    fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "--quiet"], LOCAL).unwrap();
+    git(&repo, &["remote", "add", "origin", &remote.url()], LOCAL).unwrap();
+    assert!(head(&repo).is_err());
+    ensure_repo(tmp.path(), &repo, &remote.url()).unwrap();
+    fetch(&repo).unwrap();
+    assert_eq!(remote_head(&repo).unwrap(), rev);
+  }
+
+  #[test]
   fn exports_one_subdir() {
     let remote = Remote::new();
     remote
@@ -480,7 +531,7 @@ mod tests {
     remote.write("big", &"x".repeat(SHOW_LIMIT + 1));
     remote.commit();
     let (_tmp, repo) = cloned(&remote);
-    let e = show_file(&repo, "HEAD", "big", false).unwrap_err();
+    let e = show_file(&repo, "HEAD", "big").unwrap_err();
     assert!(e.to_string().contains("larger"), "{e}");
   }
 

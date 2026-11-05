@@ -19,7 +19,7 @@ pub enum Kind {
 }
 
 impl Kind {
-  fn as_str(self) -> &'static str {
+  pub fn as_str(self) -> &'static str {
     match self {
       Kind::Text => "text",
       Kind::Image => "image",
@@ -40,6 +40,13 @@ impl Kind {
   /// A link or a colour when the text is just that
   pub fn of_text(text: &str) -> Self {
     let t = text.trim();
+    let function = !t.contains('\n')
+      && ["rgb(", "rgba(", "hsl(", "hsla(", "oklch("]
+        .iter()
+        .any(|f| t.starts_with(f) && t.ends_with(')'));
+    if function {
+      return Kind::Color;
+    }
     if t.contains(char::is_whitespace) {
       return Kind::Text;
     }
@@ -49,10 +56,7 @@ impl Kind {
     let hex = t.strip_prefix('#').is_some_and(|h| {
       matches!(h.len(), 3 | 4 | 6 | 8) && h.chars().all(|c| c.is_ascii_hexdigit())
     });
-    let function = ["rgb(", "rgba(", "hsl(", "hsla(", "oklch("]
-      .iter()
-      .any(|f| t.starts_with(f) && t.ends_with(')'));
-    match hex || function {
+    match hex {
       true => Kind::Color,
       false => Kind::Text,
     }
@@ -70,7 +74,7 @@ pub struct Entry {
   pub path: Option<PathBuf>,
   pub size: u64,
   pub pinned: bool,
-  /// Unix seconds
+  /// Unix milliseconds
   pub created: u64,
   pub used: u64,
 }
@@ -82,6 +86,105 @@ pub struct Store {
 
 const PREVIEW: usize = 2000;
 
+/// Long side of a thumbnail in pixels
+const THUMB_SIDE: u32 = 256;
+
+/// `<hash>.png` -> `<hash>.thumb.png`
+pub fn thumb_path(path: &Path) -> PathBuf {
+  path.with_extension("thumb.png")
+}
+
+fn is_thumb(path: &Path) -> bool {
+  path
+    .file_name()
+    .is_some_and(|n| n.to_string_lossy().ends_with(".thumb.png"))
+}
+
+/// The size to scale to, None when the image is small enough as it is
+fn thumb_size(w: u32, h: u32) -> Option<(u32, u32)> {
+  if w.max(h) <= THUMB_SIDE || w == 0 || h == 0 {
+    return None;
+  }
+  let scale =
+    |a: u32, b: u32| ((u64::from(a) * u64::from(THUMB_SIDE) / u64::from(b)) as u32).max(1);
+  Some(match w >= h {
+    true => (THUMB_SIDE, scale(h, w)),
+    false => (scale(w, h), THUMB_SIDE),
+  })
+}
+
+/// Images that were tried this session, thumbnail or not, so a failure is never retried
+static TRIED: std::sync::Mutex<Option<std::collections::HashSet<PathBuf>>> =
+  std::sync::Mutex::new(None);
+
+/// Whether a thumbnail should be generated for `path`: none yet and not tried before
+fn should_generate(path: &Path, tried: &mut std::collections::HashSet<PathBuf>) -> bool {
+  !is_thumb(path) && !thumb_path(path).exists() && tried.insert(path.to_path_buf())
+}
+
+fn make_thumb(path: &Path) -> Result<()> {
+  let img = image::open(path)?;
+  let Some((w, h)) = thumb_size(img.width(), img.height()) else {
+    return Ok(());
+  };
+  let out = thumb_path(path);
+  // unique per call: concurrent makers of the same thumbnail must not share a temp file
+  static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+  let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let tmp = out.with_extension(format!("{n}.tmp"));
+  img
+    .resize_exact(w, h, image::imageops::FilterType::Triangle)
+    .save_with_format(&tmp, image::ImageFormat::Png)?;
+  std::fs::rename(&tmp, &out)?;
+  Ok(())
+}
+
+/// The thumbnail when there is one, else the original; starts generating a missing one in the
+/// background (once per session). Never decodes on the calling thread.
+pub fn display_path(path: &Path) -> PathBuf {
+  let thumb = thumb_path(path);
+  if thumb.exists() {
+    return thumb;
+  }
+  let start = {
+    let mut tried = TRIED.lock().unwrap_or_else(|e| e.into_inner());
+    should_generate(path, tried.get_or_insert_with(Default::default))
+  };
+  if start {
+    let path = path.to_path_buf();
+    std::thread::spawn(move || {
+      if let Err(e) = make_thumb(&path) {
+        tracing::debug!("no thumbnail for {}: {e}", path.display());
+      }
+    });
+  }
+  path.to_path_buf()
+}
+
+/// Thumbnails whose image is gone
+fn remove_orphan_thumbs(dir: &Path) -> Result<()> {
+  let files: Vec<PathBuf> = std::fs::read_dir(dir)?
+    .flatten()
+    .map(|f| f.path())
+    .collect();
+  for thumb in files.iter().filter(|p| is_thumb(p)) {
+    let stem = thumb
+      .file_name()
+      .map(|n| n.to_string_lossy().replace(".thumb.png", "."));
+    let has_image = files.iter().any(|f| {
+      !is_thumb(f)
+        && f.file_name().is_some_and(|n| {
+          let n = n.to_string_lossy();
+          stem.as_deref().is_some_and(|s| n.starts_with(s)) && !n.ends_with(".tmp")
+        })
+    });
+    if !has_image {
+      let _ = std::fs::remove_file(thumb);
+    }
+  }
+  Ok(())
+}
+
 fn hash(bytes: &[u8]) -> String {
   let mut hasher = DefaultHasher::new();
   bytes.hash(&mut hasher);
@@ -92,7 +195,7 @@ fn hash(bytes: &[u8]) -> String {
 fn now() -> i64 {
   std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
-    .map_or(0, |d| d.as_secs() as i64)
+    .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// FTS5 query: every word as a quoted prefix
@@ -125,6 +228,7 @@ impl Store {
     let db = Connection::open(dir.join("history.db"))?;
     db.execute_batch(
       "PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
       CREATE TABLE IF NOT EXISTS entries (
         id INTEGER PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -170,21 +274,40 @@ impl Store {
   }
 
   /// Adds an image, kept as a file named after its hash
+  #[cfg(test)]
   pub fn add_image(&self, bytes: &[u8], mime: &str) -> Result<i64> {
+    let (hash, path) = Self::write_image(&self.dir, bytes, mime)?;
+    self.add_image_file(hash, &path, mime, bytes.len() as u64)
+  }
+
+  /// Hashes and writes an image file into `dir`, for a thread that is not the database's
+  pub fn write_image(dir: &Path, bytes: &[u8], mime: &str) -> Result<(String, PathBuf)> {
     let hash = hash(bytes);
     let ext = mime.rsplit('/').next().unwrap_or("png");
-    let path = self.dir.join(format!("{hash}.{ext}"));
+    let path = dir.join(format!("{hash}.{ext}"));
     if !path.exists() {
-      std::fs::write(&path, bytes)?;
+      // renamed into place, so a cut-off write is never mistaken for the image
+      let tmp = dir.join(format!("{hash}.tmp"));
+      std::fs::write(&tmp, bytes)?;
+      std::fs::rename(&tmp, &path)?;
     }
-    self.upsert(
-      Kind::Image,
-      None,
-      mime,
-      hash,
-      Some(&path),
-      bytes.len() as u64,
-    )
+    // off the caller's way; a failure keeps the original
+    if !thumb_path(&path).exists() {
+      let path = path.clone();
+      std::thread::spawn(move || {
+        if let Err(e) = make_thumb(&path) {
+          tracing::debug!("no thumbnail for {}: {e}", path.display());
+        }
+      });
+    }
+    Ok((hash, path))
+  }
+
+  /// Adds an image that [`Store::write_image`] has written
+  pub fn add_image_file(&self, hash: String, path: &Path, mime: &str, size: u64) -> Result<i64> {
+    // a delete of the same image may have removed the file since it was written
+    anyhow::ensure!(path.exists(), "image file is gone: {}", path.display());
+    self.upsert(Kind::Image, None, mime, hash, Some(path), size)
   }
 
   fn upsert(
@@ -304,10 +427,19 @@ impl Store {
   }
 
   pub fn delete(&self, id: i64) -> Result<()> {
-    if let Some(path) = self.get(id)?.and_then(|e| e.path) {
+    // files go only once the rows are gone
+    let path: Option<Option<String>> = self
+      .db
+      .query_row(
+        "DELETE FROM entries WHERE id = ?1 RETURNING path",
+        [id],
+        |r| r.get(0),
+      )
+      .optional()?;
+    if let Some(path) = path.flatten() {
+      let _ = std::fs::remove_file(thumb_path(Path::new(&path)));
       let _ = std::fs::remove_file(path);
     }
-    self.db.execute("DELETE FROM entries WHERE id = ?1", [id])?;
     Ok(())
   }
 
@@ -318,7 +450,14 @@ impl Store {
 
   /// Images older than `days`, pinned ones stay
   pub fn prune_images(&self, days: u32) -> Result<usize> {
-    let before = now() - i64::from(days) * 86_400;
+    // leftovers of writes that never finished
+    for file in std::fs::read_dir(&self.dir)?.flatten() {
+      if file.path().extension().is_some_and(|e| e == "tmp") {
+        let _ = std::fs::remove_file(file.path());
+      }
+    }
+    let _ = remove_orphan_thumbs(&self.dir);
+    let before = now() - i64::from(days) * 86_400_000;
     self.delete_where(
       "kind = 'image' AND pinned = 0 AND used < ?1",
       params![before],
@@ -326,20 +465,18 @@ impl Store {
   }
 
   fn delete_where(&self, condition: &str, args: impl rusqlite::Params + Clone) -> Result<usize> {
+    // files go only once the rows are gone
     let mut statement = self.db.prepare(&format!(
-      "SELECT path FROM entries WHERE {condition} AND path IS NOT NULL"
+      "DELETE FROM entries WHERE {condition} RETURNING path"
     ))?;
-    let paths: Vec<String> = statement
-      .query_map(args.clone(), |r| r.get(0))?
+    let paths: Vec<Option<String>> = statement
+      .query_map(args, |r| r.get(0))?
       .collect::<rusqlite::Result<_>>()?;
-    for path in paths {
+    for path in paths.iter().flatten() {
+      let _ = std::fs::remove_file(thumb_path(Path::new(path)));
       let _ = std::fs::remove_file(path);
     }
-    Ok(
-      self
-        .db
-        .execute(&format!("DELETE FROM entries WHERE {condition}"), args)?,
-    )
+    Ok(paths.len())
   }
 }
 
@@ -348,10 +485,16 @@ mod tests {
   use super::*;
 
   #[test]
+  fn fts_query_quotes() {
+    assert_eq!(fts_query("a \"b\" c*"), "\"a\"* \"\"\"b\"\"\"* \"c*\"*");
+    assert_eq!(fts_query("  "), "");
+  }
+
+  #[test]
   fn kinds() {
     assert_eq!(Kind::of_text("https://example.com/a"), Kind::Link);
     assert_eq!(Kind::of_text("#3a3a8c"), Kind::Color);
-    assert_eq!(Kind::of_text("rgb(1, 2, 3)"), Kind::Text);
+    assert_eq!(Kind::of_text("rgb(1, 2, 3)"), Kind::Color);
     assert_eq!(Kind::of_text("rgb(1,2,3)"), Kind::Color);
     assert_eq!(Kind::of_text("hello world"), Kind::Text);
     assert_eq!(Kind::of_text("#zzz"), Kind::Text);
@@ -365,7 +508,7 @@ mod tests {
     let b = store.add_text("https://example.com", "text/plain").unwrap();
     let img = store.add_image(b"\x89PNG fake", "image/png").unwrap();
     // the same text again moves to the top, no duplicate
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::thread::sleep(std::time::Duration::from_millis(2));
     assert_eq!(store.add_text("hello world", "text/plain").unwrap(), a);
     let ids: Vec<i64> = store
       .list("", None, 10)
@@ -401,6 +544,61 @@ mod tests {
     assert!(store.list("hello", None, 10).unwrap().is_empty());
     store.delete(b).unwrap();
     assert!(store.list("", None, 10).unwrap().is_empty());
+  }
+
+  #[test]
+  fn thumb_sizes_and_names() {
+    assert_eq!(thumb_size(200, 100), None);
+    assert_eq!(thumb_size(0, 900), None);
+    assert_eq!(thumb_size(1024, 512), Some((256, 128)));
+    assert_eq!(thumb_size(512, 2048), Some((64, 256)));
+    assert_eq!(thumb_size(10000, 10), Some((256, 1)));
+    let p = Path::new("/d/abc.png");
+    assert_eq!(thumb_path(p), Path::new("/d/abc.thumb.png"));
+    assert!(is_thumb(&thumb_path(p)) && !is_thumb(p));
+  }
+
+  #[test]
+  fn lazy_decision_and_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    let img = dir.path().join("a.png");
+    std::fs::write(&img, b"not an image").unwrap();
+    let mut tried = Default::default();
+    assert!(should_generate(&img, &mut tried));
+    // never twice in a session, even though it failed
+    assert!(make_thumb(&img).is_err());
+    assert!(!should_generate(&img, &mut tried));
+    // never when one exists
+    let other = dir.path().join("b.png");
+    std::fs::write(thumb_path(&other), b"x").unwrap();
+    assert!(!should_generate(&other, &mut tried));
+    assert!(!thumb_path(&img).exists());
+  }
+
+  #[test]
+  fn thumbnail_lifecycle() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::RgbImage::new(600, 300)
+      .write_to(&mut bytes, image::ImageFormat::Png)
+      .unwrap();
+    let (_, path) = Store::write_image(dir.path(), bytes.get_ref(), "image/png").unwrap();
+    make_thumb(&path).unwrap();
+    let thumb = thumb_path(&path);
+    assert_eq!(image::image_dimensions(&thumb).unwrap(), (256, 128));
+    assert_eq!(display_path(&path), thumb);
+    // an orphan goes on prune, a live thumb stays
+    let orphan = dir.path().join("dead.thumb.png");
+    std::fs::write(&orphan, b"x").unwrap();
+    store.prune_images(30).unwrap();
+    assert!(!orphan.exists() && thumb.exists());
+    // deleting the entry takes the thumbnail along
+    let id = store
+      .add_image_file("h".into(), &path, "image/png", 1)
+      .unwrap();
+    store.delete(id).unwrap();
+    assert!(!path.exists() && !thumb.exists());
   }
 
   #[test]

@@ -6,8 +6,6 @@ use gpui_kit::{
   linear_gradient, prelude::FluentBuilder, px, relative,
 };
 
-use corona_config::ConfigProvider;
-
 const TITLE_SIZE: f32 = 12.;
 const TITLE_MAX_WIDTH: f32 = 100.;
 const FADE_WIDTH: f32 = 16.;
@@ -115,6 +113,8 @@ pub struct ScrollingTextState {
   return_from: Option<f32>,
   hovered: bool,
   hover_at: Option<Instant>,
+  // bumped per hover event, so only the latest leave's timer ends the return
+  generation: usize,
   shift: f32,
   // the text's, set on render
   speed: f32,
@@ -132,6 +132,8 @@ impl ScrollingTextExt for Entity<ScrollingTextState> {
     move |hovered, _, cx| {
       state.update(cx, |this, cx| {
         this.hovered = *hovered;
+        this.generation = this.generation.wrapping_add(1);
+        let generation = this.generation;
         if *hovered {
           this.hover_at = Some(Instant::now());
           this.return_from = None;
@@ -143,14 +145,16 @@ impl ScrollingTextExt for Entity<ScrollingTextState> {
             .map_or(0., |t| t.elapsed().as_secs_f32());
           this.return_from = (cycle > 0.).then(|| (elapsed / cycle).fract());
 
-          let ret = cx.config().shell.animation.duration(this.return_duration);
+          let ret = crate::animation::animation_duration(this.return_duration, cx);
 
           cx.spawn(async move |this, cx| {
             cx.background_executor().timer(ret).await;
             this
               .update(cx, |this, cx| {
-                this.return_from = None;
-                cx.notify();
+                if this.generation == generation {
+                  this.return_from = None;
+                  cx.notify();
+                }
               })
               .ok();
           })
@@ -191,7 +195,7 @@ impl RenderOnce for ScrollingText {
 
     let state = self.state.read(cx);
     let theme = cx.theme();
-    let anim = cx.config().shell.animation.clone();
+    let return_duration = crate::animation::animation_duration(self.return_duration, cx);
 
     let label = || {
       div()
@@ -246,7 +250,7 @@ impl RenderOnce for ScrollingText {
           .child(label())
           .with_animation(
             ("scrolling-text-return", id),
-            Animation::new(anim.duration(self.return_duration)).with_easing(ease_out_quint()),
+            Animation::new(return_duration).with_easing(ease_out_quint()),
             move |this, delta| this.ml(px(offset - shift * from * (1. - delta))),
           )
           .into_any_element(),

@@ -1,4 +1,6 @@
 use anyhow::{Context, Result};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, Task};
 use upower_dbus::KbdBacklightProxy;
@@ -17,11 +19,18 @@ pub use crate::state::{
 };
 
 mod charge;
+pub mod cli;
+pub mod commands;
+mod launcher;
 mod listener;
 mod profiles;
+pub mod script;
 mod session;
 mod snapshot;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 /// how long before a session watch that failed starts over
 const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
@@ -39,15 +48,7 @@ pub struct Power {
 
 impl Global for Power {}
 
-pub trait PowerExt {
-  fn power(&self) -> &Power;
-}
-
-impl PowerExt for App {
-  fn power(&self) -> &Power {
-    self.global::<Power>()
-  }
-}
+corona_utils::global_ext!(PowerExt, power, Power);
 
 impl Power {
   pub fn status<'c>(&self, cx: &'c App) -> Option<&'c Status> {
@@ -190,7 +191,23 @@ impl Power {
   }
 }
 
-pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
+/// Follows UPower and power-profiles-daemon, registers the power UI, commands and script module
+pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
+  connect(cx, &buses.system).await?;
+  ui::register(cx);
+  commands::register(cx);
+  launcher::register(cx);
+  register_script(cx.script_mut());
+  Ok(())
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::PowerModule>();
+}
+
+/// Only the backend, without the shell's UI, e.g. for the greeter
+pub async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let state = Power {
     status: cx.new(|_| None),
     battery: cx.new(|_| None),
@@ -200,6 +217,10 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
     sleep: cx.new(|_| SleepState::default()),
     conn: conn.clone(),
   };
+
+  // subscribe before the first snapshot so no change can slip in between
+  let changes = subscribe(conn).await?;
+  listener(cx, conn.clone(), changes, state.clone());
 
   let (watch, sleep) = (conn.clone(), state.sleep.clone());
   cx.spawn(async move |cx| {
@@ -220,9 +241,6 @@ pub async fn init(cx: &mut App, conn: &Connection) -> Result<()> {
   })
   .detach();
 
-  // subscribe before the first snapshot so no change can slip in between
-  let changes = subscribe(conn).await?;
-  listener(cx, conn.clone(), changes, state.clone());
   cx.set_global(state);
 
   Ok(())
@@ -601,7 +619,7 @@ mod tests {
     cx.update(|cx| {
       cx.foreground_executor()
         .clone()
-        .block_on(init(cx, &conn))
+        .block_on(connect(cx, &conn))
         .unwrap()
     });
   }
@@ -1350,19 +1368,16 @@ mod tests {
   }
 
   #[gpui::test]
-  fn upower_crash_retains_stale_power_state(cx: &mut TestAppContext) {
+  fn upower_crash_clears_power_state(cx: &mut TestAppContext) {
     let bus = TestBus::new();
     let services = services(&bus);
     start(cx, &bus);
     wait_until(cx, |cx| cx.read(|cx| cx.power().status(cx).is_some()));
-    let status_before = cx.read(|cx| cx.power().status(cx).cloned()).unwrap();
-    let battery_before = cx.read(|cx| cx.power().battery(cx).cloned()).unwrap();
     drop(services.upower);
     settle(cx);
-    // State is retained rather than cleared to None
     cx.read(|cx| {
-      assert_eq!(cx.power().status(cx), Some(&status_before));
-      assert_eq!(cx.power().battery(cx), Some(&battery_before));
+      assert_eq!(cx.power().status(cx), None);
+      assert_eq!(cx.power().battery(cx), None);
     });
   }
 
@@ -1373,7 +1388,13 @@ mod tests {
     let power = power_on(cx, &bus);
     let err = block_on(power.session_action(SessionAction::RebootToFirmware)).unwrap_err();
     assert!(err.to_string().contains("reboot rejected"));
-    assert_eq!(logind.calls(), ["SetRebootToFirmwareSetup true"]);
+    assert_eq!(
+      logind.calls(),
+      [
+        "SetRebootToFirmwareSetup true",
+        "SetRebootToFirmwareSetup false"
+      ]
+    );
   }
 
   #[gpui::test]
@@ -1383,7 +1404,13 @@ mod tests {
     let power = power_on(cx, &bus);
     let err = block_on(power.reboot_to("auto-windows".into())).unwrap_err();
     assert!(err.to_string().contains("reboot rejected"));
-    assert_eq!(logind.calls(), ["SetRebootToBootLoaderEntry auto-windows"]);
+    assert_eq!(
+      logind.calls(),
+      [
+        "SetRebootToBootLoaderEntry auto-windows",
+        "SetRebootToBootLoaderEntry "
+      ]
+    );
   }
 
   #[gpui::test]

@@ -9,6 +9,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+corona_components.workspace = true
+corona_settings.workspace = true
+corona_ipc.workspace = true
 corona_compositor.workspace = true
 corona_config.workspace = true
 corona_surface.workspace = true
@@ -24,7 +27,8 @@ rustix = { workspace = true, features = ["event", "fs"] }
 wayland-client.workspace = true
 wayland-protocols = { workspace = true, features = ["unstable"] }
 wayland-protocols-misc.workspace = true
-xkbcommon = "0.8.0"
+xkbcommon.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

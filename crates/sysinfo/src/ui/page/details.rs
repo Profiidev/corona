@@ -1,0 +1,240 @@
+use std::time::{Duration, SystemTime};
+
+use crate::{GpuVendor, SystemMonitorExt, sampler::unique_disks};
+use gpui_kit::{
+  Context, IntoElement, ParentElement, Styled,
+  assets::IconName,
+  base::StyledExt,
+  component::{Icon, Sizable, Theme},
+  div, px,
+};
+
+use crate::ui::page::{SysinfoPanel, card};
+use corona_components::{
+  format::{Base, bytes},
+  i18n::decimal,
+};
+use rust_i18n::t;
+
+const DETAIL_TEXT: f32 = 10.;
+const DETAIL_LINE: f32 = 14.;
+
+pub(crate) fn rate(bytes_per_second: f64) -> String {
+  match bytes_per_second {
+    r if r >= 1e6 => format!("{} MB/s", decimal(r / 1e6, 1)),
+    r => format!("{} kB/s", decimal(r / 1e3, 1)),
+  }
+}
+
+fn duration(duration: Duration) -> String {
+  // seconds per unit, keys for one and for more of it
+  const UNITS: [(u64, &str, &str); 6] = [
+    (
+      365 * 86400,
+      "app.sysinfo.duration.year",
+      "app.sysinfo.duration.years",
+    ),
+    (
+      30 * 86400,
+      "app.sysinfo.duration.month",
+      "app.sysinfo.duration.months",
+    ),
+    (
+      86400,
+      "app.sysinfo.duration.day",
+      "app.sysinfo.duration.days",
+    ),
+    (
+      3600,
+      "app.sysinfo.duration.hour",
+      "app.sysinfo.duration.hours",
+    ),
+    (
+      60,
+      "app.sysinfo.duration.minute",
+      "app.sysinfo.duration.minutes",
+    ),
+    (
+      1,
+      "app.sysinfo.duration.second",
+      "app.sysinfo.duration.seconds",
+    ),
+  ];
+  let mut seconds = duration.as_secs();
+  let parts: Vec<String> = UNITS
+    .iter()
+    .filter_map(|(size, one, other)| {
+      let count = seconds / size;
+      seconds %= size;
+      let key = if count == 1 { *one } else { *other };
+      (count > 0).then(|| t!(key, count = count).to_string())
+    })
+    .take(2)
+    .collect();
+  if parts.is_empty() {
+    t!("app.sysinfo.duration.seconds", count = 0).into()
+  } else {
+    parts.join(" ")
+  }
+}
+
+fn since(time: SystemTime) -> Duration {
+  time.elapsed().unwrap_or_default()
+}
+
+fn line(theme: &Theme, icon: IconName, text: String) -> impl IntoElement {
+  div()
+    .flex()
+    .gap_2()
+    .items_center()
+    .text_size(px(DETAIL_TEXT))
+    .line_height(px(DETAIL_LINE))
+    .text_color(theme.colors.muted_foreground)
+    .child(Icon::new(icon).xsmall())
+    .child(div().flex_1().min_w_0().truncate().child(text))
+}
+
+fn value(theme: &Theme, icon: IconName, label: String, value: String) -> impl IntoElement {
+  div()
+    .flex()
+    .gap_2()
+    .items_center()
+    .text_size(px(DETAIL_TEXT))
+    .line_height(px(DETAIL_LINE))
+    .child(Icon::new(icon).xsmall())
+    .child(
+      div()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .text_color(theme.colors.muted_foreground)
+        .child(label),
+    )
+    .child(value)
+}
+
+impl SysinfoPanel {
+  pub(super) fn system(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
+    let mut system = card(cx)
+      .gap_1()
+      .child(div().text_sm().font_bold().child(t!("app.sysinfo.system")));
+    let Some(info) = cx.system_monitor().info(cx) else {
+      return system;
+    };
+
+    system = system.child(line(theme, IconName::Cpu, info.cpu_model.clone()));
+    for gpu in &info.gpus {
+      let name = match &gpu.driver {
+        Some(driver) => format!("{} ({driver})", gpu.name),
+        None => gpu.name.clone(),
+      };
+      let icon = match gpu.vendor {
+        GpuVendor::Nvidia | GpuVendor::Amd => IconName::Gpu,
+        GpuVendor::Intel | GpuVendor::Other => IconName::Monitor,
+      };
+      system = system.child(line(theme, icon, name));
+    }
+    system = system
+      .child(line(theme, IconName::Monitor, info.os.clone()))
+      .child(line(
+        theme,
+        IconName::Layers,
+        format!("Linux {}", info.kernel),
+      ));
+    if let Some(compositor) = &info.compositor {
+      system = system.child(line(theme, IconName::AppWindow, compositor.clone()));
+    }
+    let uptime = t!(
+      "app.sysinfo.uptime",
+      duration = duration(since(info.booted))
+    )
+    .to_string();
+    system.child(line(theme, IconName::Clock, uptime))
+  }
+
+  pub(super) fn resources(&self, theme: &Theme, cx: &Context<'_, Self>) -> impl IntoElement {
+    let mut resources = card(cx).gap_1().child(
+      div()
+        .text_sm()
+        .font_bold()
+        .child(t!("app.sysinfo.resources")),
+    );
+    let monitor = cx.system_monitor();
+    let Some(sample) = monitor.sample(cx) else {
+      return resources;
+    };
+
+    let [one, five, fifteen] = sample.load;
+    resources = resources
+      .child(value(
+        theme,
+        IconName::Activity,
+        t!("app.sysinfo.cpu_load").into(),
+        format!(
+          "{} / {} / {}",
+          decimal(one, 2),
+          decimal(five, 2),
+          decimal(fifteen, 2)
+        ),
+      ))
+      .child(value(
+        theme,
+        IconName::MemoryStick,
+        "RAM".into(),
+        format!(
+          "{} / {}",
+          bytes(sample.memory_used, Base::Binary),
+          bytes(sample.memory_total, Base::Binary)
+        ),
+      ))
+      .child(value(
+        theme,
+        IconName::ArrowLeftRight,
+        t!("app.resource.swap").into(),
+        format!(
+          "{} / {}",
+          bytes(sample.swap_used, Base::Binary),
+          bytes(sample.swap_total, Base::Binary)
+        ),
+      ));
+
+    for disk in &unique_disks(sample.disks.clone()) {
+      let used = disk.total.saturating_sub(disk.available);
+      let percent = used as f64 / disk.total.max(1) as f64 * 100.;
+      resources = resources.child(value(
+        theme,
+        IconName::HardDrive,
+        disk.mount_point.clone(),
+        format!(
+          "{} / {} ({percent:.0}%)",
+          bytes(used, Base::Binary),
+          bytes(disk.total, Base::Binary)
+        ),
+      ));
+    }
+    resources
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn formatting() {
+    assert_eq!(bytes(24_266_000_000, Base::Binary), "22.6 GiB");
+    assert_eq!(rate(15_900.), "15.9 kB/s");
+    assert_eq!(rate(2_500_000.), "2.5 MB/s");
+    assert_eq!(
+      duration(Duration::from_secs(12 * 3600 + 60 + 5)),
+      "12 hours 1 minute"
+    );
+    assert_eq!(
+      duration(Duration::from_secs(
+        365 * 86400 + 4 * 30 * 86400 + 3 * 86400
+      )),
+      "1 year 4 months"
+    );
+    assert_eq!(duration(Duration::ZERO), "0 seconds");
+  }
+}

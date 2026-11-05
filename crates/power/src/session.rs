@@ -1,8 +1,10 @@
 use std::env;
 
 use anyhow::{Context, Result};
+use corona_utils::error::ErrorLogExt;
 use futures_lite::StreamExt;
-use gpui_kit::{AsyncApp, Task};
+use gpui_kit::{AsyncApp, SharedString, Task, assets::IconName};
+use rust_i18n::t;
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 #[zbus::proxy(
@@ -77,6 +79,46 @@ pub enum SessionAction {
   RebootToFirmware,
 }
 
+impl SessionAction {
+  pub fn label(self) -> SharedString {
+    match self {
+      SessionAction::Logout => t!("app.session.logout"),
+      SessionAction::Suspend => t!("app.session.suspend"),
+      SessionAction::Hibernate => t!("app.session.hibernate"),
+      SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+      SessionAction::Reboot => t!("app.session.reboot"),
+      SessionAction::PowerOff => t!("app.session.shutdown"),
+      SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
+    }
+    .into()
+  }
+
+  pub fn icon(self) -> IconName {
+    match self {
+      SessionAction::Logout => IconName::LogOut,
+      SessionAction::Suspend => IconName::Pause,
+      SessionAction::Hibernate => IconName::Snowflake,
+      SessionAction::SuspendThenHibernate => IconName::Moon,
+      SessionAction::Reboot => IconName::RotateCw,
+      SessionAction::PowerOff => IconName::Power,
+      SessionAction::RebootToFirmware => IconName::Cpu,
+    }
+  }
+
+  /// Whether this machine lets the action run
+  pub fn allowed(self, capabilities: &SessionCapabilities) -> bool {
+    match self {
+      SessionAction::Logout => true,
+      SessionAction::Suspend => capabilities.suspend,
+      SessionAction::Hibernate => capabilities.hibernate,
+      SessionAction::SuspendThenHibernate => capabilities.suspend_then_hibernate,
+      SessionAction::Reboot => capabilities.reboot,
+      SessionAction::PowerOff => capabilities.power_off,
+      SessionAction::RebootToFirmware => capabilities.reboot_to_firmware,
+    }
+  }
+}
+
 /// What this machine allows, read when the session menu opens
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SessionCapabilities {
@@ -143,7 +185,15 @@ pub(crate) async fn run(conn: Connection, action: SessionAction) -> Result<()> {
     SessionAction::PowerOff => manager.power_off(true).await?,
     SessionAction::RebootToFirmware => {
       manager.set_reboot_to_firmware_setup(true).await?;
-      manager.reboot(true).await?
+      if let Err(err) = manager.reboot(true).await {
+        // don't leave the one-shot flag armed for a later reboot
+        manager
+          .set_reboot_to_firmware_setup(false)
+          .await
+          .log_err()
+          .ok();
+        return Err(err.into());
+      }
     }
   }
   Ok(())
@@ -152,7 +202,16 @@ pub(crate) async fn run(conn: Connection, action: SessionAction) -> Result<()> {
 pub(crate) async fn reboot_to(conn: Connection, entry: String) -> Result<()> {
   let manager = manager(&conn).await?;
   manager.set_reboot_to_boot_loader_entry(&entry).await?;
-  Ok(manager.reboot(true).await?)
+  if let Err(err) = manager.reboot(true).await {
+    // don't leave the one-shot entry armed for a later reboot
+    manager
+      .set_reboot_to_boot_loader_entry("")
+      .await
+      .log_err()
+      .ok();
+    return Err(err.into());
+  }
+  Ok(())
 }
 
 /// Holds every suspend and hibernate back until `before_sleep`'s task ends.

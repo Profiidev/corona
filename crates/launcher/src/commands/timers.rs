@@ -3,7 +3,7 @@
 
 use std::{rc::Rc, time::Duration};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use gpui_kit::{
   App, AppContext, Entity, Global, SharedString, Subscription, Task, assets::IconName,
 };
@@ -43,13 +43,13 @@ struct Timers {
 
 impl Global for Timers {}
 
-fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
   std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// `1h 05m`, `4:59`
+/// `1:05:00`, `4:59`
 pub fn clock(ms: u64) -> String {
   let s = ms / 1000;
   match s >= 3600 {
@@ -66,16 +66,13 @@ fn save(list: &[Timer]) {
 
 pub fn init(cx: &mut App) {
   let saved: Vec<Timer> = state::load("timers");
-  let list = cx.new(|_| saved.clone());
+  let list = cx.new(|_| saved);
   let tick = cx.new(|_| 0u64);
   cx.set_global(Timers {
     list,
     tick,
     _ticker: None,
   });
-  for timer in saved {
-    schedule(&timer, cx);
-  }
   run_ticker(cx);
   registry::register_source(Rc::new(Running), cx);
   registry::register_all([timer_command(), stopwatch_command()], cx);
@@ -100,6 +97,17 @@ fn run_ticker(cx: &mut App) {
           *t += 1;
           cx.notify();
         });
+        // the monotonic wait above does not count suspend, so end timers that ran out meanwhile
+        let now = now_ms();
+        let due: Vec<_> = list
+          .read(cx)
+          .iter()
+          .filter(|t| matches!(t.kind, Kind::Timer { end, .. } if end <= now))
+          .map(|t| (t.id, t.label.clone()))
+          .collect();
+        for (id, label) in due {
+          fire(id, label, cx);
+        }
         !list.read(cx).is_empty()
       });
       if !more {
@@ -111,43 +119,41 @@ fn run_ticker(cx: &mut App) {
   cx.global_mut::<Timers>()._ticker = Some(task);
 }
 
-/// Notifies and drops a timer when it ends
-fn schedule(timer: &Timer, cx: &mut App) {
-  let Kind::Timer { end, .. } = timer.kind else {
-    return;
-  };
-  let (id, label) = (timer.id, timer.label.clone());
-  let wait = Duration::from_millis(end.saturating_sub(now_ms()));
-  cx.spawn(async move |cx| {
-    cx.background_executor().timer(wait).await;
-    cx.update(|cx| {
-      let gone = remove(id, cx);
-      if gone {
-        hooks::notify(
-          t!("app.launcher.timers.finished").to_string(),
-          label.unwrap_or_default(),
-          cx,
-        );
-      }
-    });
-  })
-  .detach();
+/// Drops a timer that ended and tells the user, once
+fn fire(id: u64, label: Option<String>, cx: &mut App) {
+  if remove(id, cx) {
+    hooks::notify(
+      t!("app.launcher.timers.finished").to_string(),
+      label.unwrap_or_default(),
+      cx,
+    );
+  }
+}
+
+/// The longest timer
+const MAX_TIMER: Duration = Duration::from_secs(365 * 24 * 3600);
+
+/// A timer ending `duration` from now
+pub fn countdown(duration: Duration) -> Result<Kind> {
+  let total = u64::try_from(duration.as_millis())
+    .ok()
+    .filter(|_| duration <= MAX_TIMER)
+    .context("duration too long")?;
+  let end = now_ms().checked_add(total).context("duration too long")?;
+  Ok(Kind::Timer { end, total })
 }
 
 /// Adds a timer or stopwatch; it runs until removed
 pub fn start(kind: Kind, label: Option<String>, cx: &mut App) -> Timer {
-  let timer = Timer {
-    id: now_ms(),
-    label,
-    kind,
-  };
   let list = cx.global::<Timers>().list.clone();
+  // two starts in one millisecond still get different ids
+  let id = now_ms().max(list.read(cx).iter().map(|t| t.id + 1).max().unwrap_or(0));
+  let timer = Timer { id, label, kind };
   list.update(cx, |list, cx| {
     list.push(timer.clone());
     save(list);
     cx.notify();
   });
-  schedule(&timer, cx);
   run_ticker(cx);
   timer
 }
@@ -266,7 +272,7 @@ fn timer_command() -> Rc<dyn Command> {
       Some(
         t!(
           "app.launcher.timers.start_for",
-          time = clock(d.as_millis() as u64)
+          time = clock(d.min(MAX_TIMER).as_millis() as u64)
         )
         .into(),
       )
@@ -277,18 +283,15 @@ fn timer_command() -> Rc<dyn Command> {
         t!("app.launcher.timers.start"),
         |args, _, cx| {
           let d = duration(args)?;
-          let total = d.as_millis() as u64;
+          let kind = countdown(d)?;
           let label = args.text(1).map(str::to_string);
-          start(
-            Kind::Timer {
-              end: now_ms() + total,
-              total,
-            },
-            label,
-            cx,
-          );
+          start(kind, label, cx);
           Ok(Outcome::Close(Some(
-            Hud::new(t!("app.launcher.timers.started", time = clock(total))).icon(IconName::Timer),
+            Hud::new(t!(
+              "app.launcher.timers.started",
+              time = clock(d.as_millis() as u64)
+            ))
+            .icon(IconName::Timer),
           )))
         },
       )]

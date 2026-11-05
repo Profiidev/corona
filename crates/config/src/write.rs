@@ -1,11 +1,11 @@
-use std::fs;
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt};
 
 use anyhow::{Context, Result};
 use gpui_kit::App;
 use toml::Value;
 
 use crate::{
-  Config, ConfigProvider,
+  Config,
   read::{UNSET, apply, config_dir, config_files, read, read_files, settings_file},
 };
 
@@ -15,7 +15,7 @@ use crate::{
 /// file, so their files are never touched (Nix keeps them read-only) and a
 /// setting that goes back to their value leaves the settings file again.
 pub fn update(cx: &mut App, edit: impl FnOnce(&mut Config)) -> Result<()> {
-  let mut config = cx.config().clone();
+  let mut config = read()?.config;
   edit(&mut config);
 
   let base = Value::try_from(read_files(&config_files(&config_dir()?)?)?.config)?;
@@ -41,7 +41,17 @@ pub fn update(cx: &mut App, edit: impl FnOnce(&mut Config)) -> Result<()> {
   fs::create_dir_all(file.parent().context("settings file has no directory")?)?;
   // written whole then renamed over, so a reader never sees half of it
   let tmp = file.with_extension("toml.tmp");
-  fs::write(&tmp, toml::to_string_pretty(&overrides)?)?;
+  // it can hold secrets like API keys, so only the user may read it; a stale
+  // temp file would keep its old mode, so it goes first
+  let _ = fs::remove_file(&tmp);
+  let mut out = fs::OpenOptions::new()
+    .write(true)
+    .create_new(true)
+    .mode(0o600)
+    .open(&tmp)?;
+  out.write_all(toml::to_string_pretty(&overrides)?.as_bytes())?;
+  // flushed to disk first, else a crash after the rename leaves an empty file
+  out.sync_all()?;
   fs::rename(&tmp, &file)?;
 
   apply(read()?, cx);
@@ -90,6 +100,7 @@ mod tests {
   use toml::Value;
 
   use super::*;
+  use crate::ConfigProvider;
   use crate::{OsdConfig, ThemeMode, placement::Placement};
 
   fn value(s: &str) -> Value {

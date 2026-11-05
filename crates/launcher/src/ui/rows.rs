@@ -2,14 +2,15 @@ use std::{ops::Range, rc::Rc, time::Duration};
 
 use corona_components::{animation::animation_duration, components::window_icon::WindowIcon};
 use gpui_kit::{
-  Animation, AnimationExt, AnyElement, App, Context, FontWeight, HighlightStyle,
-  InteractiveElement, IntoElement, ObjectFit, ParentElement, SharedString,
-  StatefulInteractiveElement, Styled, StyledImage, StyledText, Window,
+  Animation, AnimationExt, AnyElement, AnyImageCache, App, Context, Entity, FontWeight,
+  HighlightStyle, ImageCacheProvider, InteractiveElement, IntoElement, ObjectFit, ParentElement,
+  RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled, StyledImage, StyledText,
+  Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
   },
-  div, img, list,
+  div, image_cache, img, list,
   prelude::FluentBuilder,
   px, relative,
 };
@@ -21,7 +22,7 @@ use super::{
 };
 use crate::{
   command::{Accessory, Detail, DetailBody, Evaluation, Icon, Section},
-  registry::Row,
+  registry::{Registry, Row},
   view::Layout,
 };
 
@@ -45,13 +46,41 @@ pub(super) fn frame(
     .text_color(theme.foreground)
     .font_family(theme.font_family.clone())
     .child(search_bar(this, page, cx))
-    .child(div().flex_1().min_h_0().child(body(this, page, window, cx)))
+    .child(
+      // dropped with the launcher so decoded images do not outlive it
+      image_cache(BoundedImages)
+        .flex_1()
+        .min_h_0()
+        .child(body(this, page, window, cx)),
+    )
     .child(footer(this, page, cx))
     .children(overlays::panel(this, cx))
     .children(overlays::filter_menu(this, cx))
     .children(overlays::confirm(this, cx))
     .children(overlays::toast(this, cx))
     .into_any_element()
+}
+
+/// Decoded pictures kept before a long scroll starts over
+const MAX_IMAGES: usize = 256;
+
+/// Keeps decoded pictures until the launcher closes, but never more than `MAX_IMAGES`; rows
+/// scrolled back into view load again
+struct BoundedImages;
+
+impl ImageCacheProvider for BoundedImages {
+  fn provide(&mut self, window: &mut Window, cx: &mut App) -> AnyImageCache {
+    let cache = window.with_global_id("launcher-images".into(), |id, window| {
+      window.with_element_state::<Entity<RetainAllImageCache>, _>(id, |cache, _| {
+        let cache = cache.unwrap_or_else(|| RetainAllImageCache::new(cx));
+        (cache.clone(), cache)
+      })
+    });
+    if cache.read(cx).len() > MAX_IMAGES {
+      cache.update(cx, |cache, cx| cache.clear(window, cx));
+    }
+    cache.into()
+  }
 }
 
 fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl IntoElement {
@@ -61,7 +90,10 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
   let loading = this.busy > 0
     || match &page.body {
       Body::List(view) => view.source.loading(cx),
-      Body::Root => page.scope.as_ref().is_some_and(|s| s.source.loading(cx)),
+      Body::Root => match &page.scope {
+        Some(s) => s.source.loading(cx),
+        None => cx.global::<Registry>().loading(cx),
+      },
       _ => false,
     };
   let (chip_fill, chip_border) = style::chip(cx);
@@ -158,7 +190,9 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
         let focused = args.focused == i;
         div()
           .h(px(30.))
+          // all inputs share the bar; extra ones narrow the rest instead of being dropped
           .w(px(130.))
+          .min_w(px(56.))
           .px(px(8.))
           .flex()
           .items_center()
@@ -280,13 +314,10 @@ fn results(this: &Launcher, page: &Page, _: &mut Window, cx: &mut Context<Launch
     }
   };
 
-  let preview = this.shows_preview(cx).then(|| {
-    page
-      .selected_row()
-      .and_then(|row| row.command.detail(cx))
-      .map(|detail| preview_pane(detail, cx))
-      .unwrap_or_else(|| div().flex_1().into_any_element())
-  });
+  let preview = (this.preview && page.previews())
+    .then(|| page.detail.clone())
+    .flatten()
+    .map(|detail| preview_pane(detail, cx));
   div()
     .size_full()
     .flex()
@@ -732,9 +763,6 @@ fn preview_pane(detail: Detail, cx: &App) -> AnyElement {
         .child(text)
         .into_any_element(),
     ),
-    DetailBody::Markdown(text) => {
-      Some(TextView::markdown("launcher-preview-md", text).into_any_element())
-    }
     DetailBody::Image(path) => Some(
       img(path)
         .w_full()
@@ -841,11 +869,7 @@ fn footer(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl Into
     }
   };
   let primary: Option<SharedString> = match &page.body {
-    Body::Root | Body::List(_) => page
-      .selected_row()
-      .filter(|r| this.inline_args(r).is_ok())
-      .and_then(|r| r.command.actions(cx).into_iter().next())
-      .map(|a| a.title),
+    Body::Root | Body::List(_) => page.primary.clone(),
     Body::Detail(detail) => detail.actions.first().map(|a| a.title.clone()),
     Body::Form(form) => Some(form.read(cx).submit_label().clone()),
     Body::Custom { .. } => None,

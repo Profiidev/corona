@@ -5,7 +5,7 @@ use cosmic_dbus_networkmanager::{
   interface::enums::{ActiveConnectionState, DeviceState},
 };
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 use zbus::zvariant::OwnedObjectPath;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub struct Vpn {
   pub state: ActiveConnectionState,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum HotspotBand {
   /// 2.4 GHz

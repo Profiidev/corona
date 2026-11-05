@@ -48,6 +48,8 @@ pub struct TrayItem {
   pub status: Status,
   pub category: Category,
   pub icon: Option<PathBuf>,
+  /// What `icon` was resolved from, when that was no pixmap, so unchanged names skip the lookup
+  pub(crate) icon_key: Option<String>,
   pub tooltip: Option<String>,
   pub item_is_menu: bool,
   pub can_activate: bool,
@@ -72,6 +74,8 @@ pub struct MenuItem {
   pub visible: bool,
   pub toggle: Toggle,
   pub icon_name: Option<String>,
+  /// Children may be empty until `AboutToShow` populates them
+  pub submenu: bool,
   pub children: Vec<MenuItem>,
 }
 

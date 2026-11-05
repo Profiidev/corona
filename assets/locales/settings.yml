@@ -493,15 +493,22 @@ app:
           en: Lock keys
           de: Feststelltasten
         description:
-          en: 'Caps, num and scroll lock. Bind `corona ipc lock-key caps` (num, scroll) to the keys in Hyprland.'
-          de: 'Feststell-, Num- und Rollen-Taste. Binde `corona ipc lock-key caps` (num, scroll) in Hyprland an die Tasten.'
+          en: 'Caps, num and scroll lock. Bind `corona ipc keyboard lock-key caps` (num, scroll) to the keys in Hyprland.'
+          de: 'Feststell-, Num- und Rollen-Taste. Binde `corona ipc keyboard lock-key caps` (num, scroll) in Hyprland an die Tasten.'
       stay_awake:
         title:
           en: Stay awake
           de: Wach bleiben
         description:
-          en: 'When stay awake is turned on or off, e.g. with `corona ipc stay-awake`.'
-          de: 'Wenn „Wach bleiben“ ein- oder ausgeschaltet wird, z. B. mit `corona ipc stay-awake`.'
+          en: 'When stay awake is turned on or off, e.g. with `corona ipc idle stay-awake`.'
+          de: 'Wenn „Wach bleiben“ ein- oder ausgeschaltet wird, z. B. mit `corona ipc idle stay-awake`.'
+      launcher:
+        title:
+          en: Launcher
+          de: Starter
+        description:
+          en: 'The note the launcher shows after some commands, e.g. "Copied".'
+          de: 'Der Hinweis, den der Starter nach manchen Befehlen zeigt, z. B. „Kopiert“.'
       title:
         en: OSD
         de: OSD
@@ -632,6 +639,20 @@ app:
         description:
           en: Tiles on the dashboard.
           de: Kacheln in der Übersicht.
+      sliders:
+        title:
+          en: Sliders
+          de: Regler
+        description:
+          en: Sliders on the dashboard.
+          de: Regler in der Übersicht.
+      cards:
+        title:
+          en: Cards
+          de: Karten
+        description:
+          en: Cards at the bottom of the dashboard.
+          de: Karten unten in der Übersicht.
       add:
         en: Add…
         de: Hinzufügen…
@@ -1370,6 +1391,15 @@ app:
         clipboard_write:
           en: 'Write the clipboard'
           de: 'In die Zwischenablage schreiben'
+        printing_print:
+          en: 'Print files it can read'
+          de: 'Dateien drucken, die es lesen kann'
+        printing_manage:
+          en: 'Scan documents, add and pause printers and cancel print jobs'
+          de: 'Dokumente scannen, Drucker hinzufügen und pausieren und Druckaufträge abbrechen'
+        printing_manage_warning:
+          en: 'Warning: it can talk to devices in your local network.'
+          de: 'Achtung: Es kann mit Geräten in deinem lokalen Netz sprechen.'
         storage:
           en: 'Store its own data'
           de: 'Eigene Daten speichern'

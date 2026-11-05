@@ -2,18 +2,22 @@
 //! recent files and the file actions
 
 use std::{
+  cmp::Reverse,
+  collections::BinaryHeap,
+  io::Read,
   path::{Path, PathBuf},
   rc::Rc,
   sync::{Arc, RwLock},
   time::{Duration, Instant, SystemTime},
 };
 
+use corona_components::format::{Base, bytes};
 use corona_config::{ConfigProvider, expand_home, launcher::FilesConfig};
 use corona_desktop::apps;
 use gpui_kit::{App, AppContext, Entity, Global, SharedString, assets::IconName};
 use nucleo_matcher::{
   Config, Matcher, Utf32Str,
-  pattern::{CaseMatching, Normalization, Pattern},
+  pattern::{AtomKind, CaseMatching, Normalization, Pattern},
 };
 use rust_i18n::t;
 
@@ -22,6 +26,7 @@ use crate::{
     Action, Clip, Command, CommandSource, Detail, DetailBody, Icon, Meta, Outcome, Scope, Section,
     SourceKind,
   },
+  commands::thumbs,
   kit::{ListSource, opener, watch},
   matching::Query,
   registry, simple,
@@ -67,6 +72,7 @@ fn walk(config: &FilesConfig) -> Vec<PathBuf> {
     .git_ignore(config.respect_ignore)
     .ignore(config.respect_ignore)
     .git_global(config.respect_ignore)
+    .git_exclude(config.respect_ignore)
     .parents(false)
     .filter_entry(move |e| {
       let name = e.file_name().to_string_lossy();
@@ -112,33 +118,49 @@ fn refresh_index(cx: &mut App) {
 
 /// The best `limit` paths for `query` by their file name, then the whole path
 fn search(files: &[PathBuf], query: &str, limit: usize) -> Vec<PathBuf> {
-  let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+  let pattern = Pattern::new(
+    query,
+    CaseMatching::Ignore,
+    Normalization::Smart,
+    AtomKind::Fuzzy,
+  );
   let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
   let mut buf = Vec::new();
-  let mut scored: Vec<(u32, &PathBuf)> = files
-    .iter()
-    .filter_map(|path| {
-      let name = path.file_name()?.to_string_lossy();
-      let by_name = pattern.score(Utf32Str::new(&name, &mut buf), &mut matcher);
-      let score = match by_name {
-        Some(s) => s + 1000,
-        None => pattern.score(
+  // a min-heap of the best `limit` so far: higher score, then shorter path, is better
+  let mut best = BinaryHeap::with_capacity(limit + 1);
+  for (i, path) in files.iter().enumerate() {
+    let Some(name) = path.file_name() else {
+      continue;
+    };
+    let by_name = pattern.score(
+      Utf32Str::new(&name.to_string_lossy(), &mut buf),
+      &mut matcher,
+    );
+    let score = match by_name {
+      Some(s) => s + 1000,
+      None => {
+        match pattern.score(
           Utf32Str::new(&path.to_string_lossy(), &mut buf),
           &mut matcher,
-        )?,
-      };
-      Some((score, path))
-    })
-    .collect();
-  scored.sort_by(|a, b| {
-    b.0
-      .cmp(&a.0)
-      .then_with(|| a.1.as_os_str().len().cmp(&b.1.as_os_str().len()))
-  });
-  scored
+        ) {
+          Some(s) => s,
+          None => continue,
+        }
+      }
+    };
+    best.push(Reverse((
+      score,
+      Reverse(path.as_os_str().len()),
+      Reverse(i),
+    )));
+    if best.len() > limit {
+      best.pop();
+    }
+  }
+  best
+    .into_sorted_vec()
     .into_iter()
-    .take(limit)
-    .map(|(_, p)| p.clone())
+    .map(|Reverse((_, _, Reverse(i)))| files[i].clone())
     .collect()
 }
 
@@ -160,7 +182,7 @@ fn icon_for(path: &Path) -> IconName {
     .map(|e| e.to_string_lossy().to_lowercase())
     .as_deref()
   {
-    Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp") => IconName::FileImage,
+    _ if is_image(path) => IconName::FileImage,
     Some("mp4" | "mkv" | "webm" | "mov") => IconName::FilePlay,
     Some("mp3" | "flac" | "ogg" | "wav" | "opus") => IconName::FileMusic,
     Some("zip" | "tar" | "gz" | "xz" | "zst" | "7z") => IconName::FileArchive,
@@ -172,19 +194,15 @@ fn icon_for(path: &Path) -> IconName {
   }
 }
 
+/// By extension only, so listing rows costs no stat
 fn is_image(path: &Path) -> bool {
-  matches!(icon_for(path), IconName::FileImage)
-}
-
-fn size(bytes: u64) -> String {
-  const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let mut value = bytes as f64;
-  let mut unit = 0;
-  while value >= 1024. && unit < UNITS.len() - 1 {
-    value /= 1024.;
-    unit += 1;
-  }
-  format!("{value:.1} {}", UNITS[unit])
+  matches!(
+    path
+      .extension()
+      .map(|e| e.to_string_lossy().to_lowercase())
+      .as_deref(),
+    Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp")
+  )
 }
 
 fn modified(time: SystemTime) -> String {
@@ -226,7 +244,12 @@ pub fn file_actions(path: &Path) -> Vec<Action> {
     Action::sync(
       "copy_path",
       t!("app.launcher.files.copy_path"),
-      move |_, _, _| Ok(Outcome::Copy(Clip::Text(copy.display().to_string()))),
+      move |_, _, _| {
+        let path = copy
+          .to_str()
+          .ok_or_else(|| anyhow::anyhow!("path is not valid UTF-8"))?;
+        Ok(Outcome::Copy(Clip::Text(path.to_string())))
+      },
     )
     .icon(IconName::Copy)
     .shortcut("ctrl-shift-c"),
@@ -234,16 +257,19 @@ pub fn file_actions(path: &Path) -> Vec<Action> {
       "copy_file",
       t!("app.launcher.files.copy_file"),
       move |_, _, _| {
-        Ok(Outcome::Copy(Clip::Text(format!(
-          "file://{}",
-          uri.display()
-        ))))
+        Ok(Outcome::Copy(Clip::Text(
+          corona_utils::uri::path_to_file_uri(&uri),
+        )))
       },
     )
     .icon(IconName::Files),
-    Action::sync("trash", t!("app.launcher.files.trash"), move |_, _, _| {
-      trash::delete(&trash)?;
-      Ok(Outcome::hud(t!("app.launcher.files.trashed")))
+    Action::spawn("trash", t!("app.launcher.files.trash"), move |_, cx| {
+      let path = trash.clone();
+      let deleted = cx.background_spawn(async move { trash::delete(&path) });
+      async move {
+        deleted.await?;
+        Ok(Outcome::hud(t!("app.launcher.files.trashed")))
+      }
     })
     .icon(IconName::Trash)
     .destructive(),
@@ -276,7 +302,12 @@ fn open_with(path: PathBuf) -> crate::View {
                 t!("app.launcher.files.open"),
                 move |_, _, cx| {
                   let mut argv = app.exec.clone();
-                  argv.push(path.display().to_string());
+                  argv.push(
+                    path
+                      .to_str()
+                      .ok_or_else(|| anyhow::anyhow!("path is not valid UTF-8"))?
+                      .to_string(),
+                  );
                   let argv = apps::command_for(&app, &argv, &cx.config().launcher.terminal);
                   apps::spawn(&app.id, &argv, None)?;
                   Ok(Outcome::close())
@@ -311,9 +342,11 @@ impl Command for FileRow {
     Meta {
       title: name.into(),
       subtitle: self.path.parent().map(|p| tilde(p).into()),
-      icon: match is_image(&self.path) {
-        true => Icon::Image(self.path.as_path().into()),
-        false => Icon::Named(icon_for(&self.path)),
+      icon: match (is_image(&self.path), thumbs::ready(&self.path)) {
+        (true, Some(thumb)) => Icon::Image(thumb.as_path().into()),
+        // vectors are drawn at row size; the rest show a plain icon until their thumbnail is made
+        (true, None) if !thumbs::is_raster(&self.path) => Icon::Image(self.path.as_path().into()),
+        _ => Icon::Named(icon_for(&self.path)),
       },
       section: Section::Results,
       ..Default::default()
@@ -324,10 +357,24 @@ impl Command for FileRow {
     let meta = std::fs::metadata(&self.path).ok()?;
     let body = if is_image(&self.path) {
       DetailBody::Image(self.path.as_path().into())
-    } else if meta.is_file() && meta.len() < 1024 * 1024 {
-      let mut text = std::fs::read(&self.path).ok()?;
-      text.truncate(4096);
-      match String::from_utf8(text) {
+    } else if meta.is_file() {
+      let mut text = Vec::new();
+      std::fs::File::open(&self.path)
+        .ok()?
+        .take(4096)
+        .read_to_end(&mut text)
+        .ok()?;
+      // the cut may split the last character
+      let text = String::from_utf8(text).or_else(|e| match e.utf8_error().error_len() {
+        None => {
+          let valid = e.utf8_error().valid_up_to();
+          let mut bytes = e.into_bytes();
+          bytes.truncate(valid);
+          String::from_utf8(bytes)
+        }
+        Some(_) => Err(e),
+      });
+      match text {
         Ok(text) => DetailBody::Code(text.into()),
         Err(_) => DetailBody::None,
       }
@@ -341,7 +388,7 @@ impl Command for FileRow {
     if meta.is_file() {
       metadata.push((
         t!("app.launcher.files.size").into(),
-        size(meta.len()).into(),
+        bytes(meta.len(), Base::Binary).into(),
       ));
     }
     if let Ok(time) = meta.modified() {
@@ -380,7 +427,9 @@ fn files_view(query: String) -> crate::View {
         let Ok(files) = index.files.read() else {
           return Vec::new();
         };
-        search(&files, &query.raw, RESULTS)
+        let found = search(&files, &query.raw, RESULTS);
+        thumbs::prepare(found.iter().map(PathBuf::as_path), cx);
+        found
           .into_iter()
           .map(|path| {
             Rc::new(FileRow {
@@ -429,40 +478,55 @@ impl CommandSource for PathSource {
     true
   }
 
-  fn commands(&self, query: &Query, _: &App) -> Vec<Rc<dyn Command>> {
+  fn commands(&self, query: &Query, cx: &App) -> Vec<Rc<dyn Command>> {
     let typed = query.raw.as_str();
     let (dir, filter) = self.split(typed);
     let filter = filter.to_lowercase();
-    let Ok(read) = std::fs::read_dir(&dir) else {
-      return Vec::new();
-    };
-    let mut entries: Vec<(bool, String, PathBuf)> = read
-      .filter_map(Result::ok)
-      .filter_map(|e| {
-        let name = e.file_name().to_string_lossy().to_string();
-        let lower = name.to_lowercase();
-        let hidden = name.starts_with('.') && !filter.starts_with('.');
-        (!hidden && lower.starts_with(&filter)).then(|| (!e.path().is_dir(), lower, e.path()))
-      })
-      .collect();
-    entries.sort();
-    let prefix = typed.rsplit_once('/').map_or("", |(dir, _)| dir);
+    let entries = list_dir(&dir, &filter, typed);
+    thumbs::prepare(entries.iter().map(|(p, _)| p.as_path()), cx);
     entries
       .into_iter()
-      .take(RESULTS)
-      .map(|(file, _, path)| {
-        let name = path
-          .file_name()
-          .map(|n| n.to_string_lossy().to_string())
-          .unwrap_or_default();
-        let completion = (!file).then(|| match prefix.is_empty() {
-          true => format!("{name}/"),
-          false => format!("{prefix}/{name}/"),
-        });
-        Rc::new(FileRow { path, completion }) as Rc<dyn Command>
-      })
+      .map(|(path, completion)| Rc::new(FileRow { path, completion }) as Rc<dyn Command>)
       .collect()
   }
+}
+
+/// Entries of `dir` starting with `filter` (lowercase), directories first, each with its Tab
+/// completion when a directory. `typed` is the full text typed after the scope prefix.
+fn list_dir(dir: &Path, filter: &str, typed: &str) -> Vec<(PathBuf, Option<String>)> {
+  let Ok(read) = std::fs::read_dir(dir) else {
+    return Vec::new();
+  };
+  let mut entries: Vec<(bool, String, PathBuf)> = read
+    .filter_map(Result::ok)
+    .filter_map(|e| {
+      let name = e.file_name().to_string_lossy().to_string();
+      let lower = name.to_lowercase();
+      let hidden = name.starts_with('.') && !filter.starts_with('.');
+      // file_type avoids a stat per entry; only symlinks need to be followed
+      let dir = e
+        .file_type()
+        .is_ok_and(|t| t.is_dir() || (t.is_symlink() && e.path().is_dir()));
+      (!hidden && lower.starts_with(filter)).then(|| (!dir, lower, e.path()))
+    })
+    .collect();
+  entries.sort();
+  let prefix = typed.rsplit_once('/').map_or("", |(dir, _)| dir);
+  entries
+    .into_iter()
+    .take(RESULTS)
+    .map(|(file, _, path)| {
+      let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+      let completion = (!file).then(|| match prefix.is_empty() {
+        true => format!("{name}/"),
+        false => format!("{prefix}/{name}/"),
+      });
+      (path, completion)
+    })
+    .collect()
 }
 
 fn path_scope(id: &'static str, prefix: &'static str, base: PathBuf) -> Rc<dyn Command> {
@@ -513,7 +577,16 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
   let attr = |tag: &str, name: &str| -> Option<String> {
     let start = tag.find(&format!(" {name}=\""))? + name.len() + 3;
     let end = tag[start..].find('"')?;
-    Some(tag[start..start + end].to_string())
+    let value = &tag[start..start + end];
+    Some(
+      value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&"),
+    )
   };
   let mut found: Vec<(String, PathBuf)> = xbel
     .split("<bookmark ")
@@ -521,9 +594,9 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
     .filter_map(|tag| {
       let tag = format!(" {}", &tag[..tag.find('>')?]);
       let href = attr(&tag, "href")?;
-      let path = crate::commands::web::decode(href.strip_prefix("file://")?);
+      let path = corona_utils::uri::file_uri_to_path(&href)?;
       let modified = attr(&tag, "modified").unwrap_or_default();
-      Some((modified, PathBuf::from(path)))
+      Some((modified, path))
     })
     .collect();
   found.sort_by(|a, b| b.0.cmp(&a.0));
@@ -531,25 +604,32 @@ pub fn recent(xbel: &str) -> Vec<PathBuf> {
 }
 
 fn recent_view() -> crate::View {
+  // read once per opening, not per keystroke
+  let text = dirs::data_dir()
+    .map(|d| d.join("recently-used.xbel"))
+    .and_then(|path| std::fs::read_to_string(path).ok())
+    .unwrap_or_default();
+  let paths: Vec<PathBuf> = recent(&text)
+    .into_iter()
+    .filter(|p| p.exists())
+    .take(RESULTS)
+    .collect();
+  let rows: Vec<Rc<dyn Command>> = paths
+    .iter()
+    .cloned()
+    .map(|path| {
+      Rc::new(FileRow {
+        path,
+        completion: None,
+      }) as Rc<dyn Command>
+    })
+    .collect();
   ListView::new(
     t!("app.launcher.files.recent"),
     t!("app.launcher.files.search"),
-    Rc::new(ListSource::new("files:recent", |_, _| {
-      let Some(path) = dirs::data_dir().map(|d| d.join("recently-used.xbel")) else {
-        return Vec::new();
-      };
-      let text = std::fs::read_to_string(path).unwrap_or_default();
-      recent(&text)
-        .into_iter()
-        .filter(|p| p.exists())
-        .take(RESULTS)
-        .map(|path| {
-          Rc::new(FileRow {
-            path,
-            completion: None,
-          }) as Rc<dyn Command>
-        })
-        .collect()
+    Rc::new(ListSource::new("files:recent", move |_, cx| {
+      thumbs::prepare(paths.iter().map(PathBuf::as_path), cx);
+      rows.clone()
     })),
   )
   .preview()
@@ -645,12 +725,15 @@ mod tests {
       </bookmark>
       <bookmark href="file:///home/a/new.txt" modified="2026-05-01T00:00:00Z">
       </bookmark>
+      <bookmark href="file:///home/a/a&amp;b&#39;s.txt" modified="2026-03-01T00:00:00Z">
+      </bookmark>
       <bookmark href="https://example.com" modified="2026-06-01T00:00:00Z"></bookmark>
     </xbel>"#;
     assert_eq!(
       recent(xbel),
       [
         PathBuf::from("/home/a/new.txt"),
+        PathBuf::from("/home/a/a&b's.txt"),
         PathBuf::from("/home/a/old file.txt")
       ]
     );
@@ -671,5 +754,26 @@ mod tests {
       (dir.path().join("Docs"), "a".into())
     );
     assert_eq!(source.split("do"), (dir.path().to_path_buf(), "do".into()));
+
+    let root = dir.path();
+    assert_eq!(
+      list_dir(root, "", ""),
+      [
+        (root.join("Docs"), Some("Docs/".into())),
+        (root.join("doc.md"), None)
+      ]
+    );
+    assert_eq!(list_dir(root, ".", "."), [(root.join(".hidden"), None)]);
+    assert_eq!(
+      list_dir(root, "d", "d"),
+      [
+        (root.join("Docs"), Some("Docs/".into())),
+        (root.join("doc.md"), None)
+      ]
+    );
+    assert_eq!(
+      list_dir(&root.join("Docs"), "", "Docs/"),
+      [(root.join("Docs/a.txt"), None)]
+    );
   }
 }

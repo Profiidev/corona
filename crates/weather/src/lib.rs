@@ -1,16 +1,28 @@
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, observe_section};
+use corona_js::ScriptExt;
 use corona_location::LocationExt;
-use corona_utils::error::ErrorLogExt;
+use corona_utils::{
+  Buses,
+  error::ErrorLogExt,
+  persist::{load_json, save_json},
+  ticker::wait_or_refresh,
+};
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
 
 pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass};
 pub use corona_config::Units;
 
 mod api;
+mod launcher;
+pub mod script;
+pub mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const RETRY: Duration = Duration::from_secs(5 * 60);
 
@@ -23,15 +35,7 @@ pub struct WeatherService {
 
 impl Global for WeatherService {}
 
-pub trait WeatherExt {
-  fn weather(&self) -> &WeatherService;
-}
-
-impl WeatherExt for App {
-  fn weather(&self) -> &WeatherService {
-    self.global::<WeatherService>()
-  }
-}
+corona_utils::global_ext!(WeatherExt, weather, WeatherService);
 
 impl WeatherService {
   pub fn current<'c>(&self, cx: &'c App) -> Option<&'c Weather> {
@@ -56,7 +60,7 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 fn load_cache_from(path: Option<PathBuf>) -> Option<Weather> {
-  serde_json::from_slice(&fs::read(path?).ok()?).ok()
+  load_json(&path?)
 }
 
 fn load_cache() -> Option<Weather> {
@@ -64,20 +68,28 @@ fn load_cache() -> Option<Weather> {
 }
 
 fn save_cache_to(path: Option<PathBuf>, weather: &Weather) -> Result<()> {
-  let Some(path) = path else {
-    return Ok(());
-  };
-  if let Some(dir) = path.parent() {
-    fs::create_dir_all(dir)?;
-  }
-  Ok(fs::write(path, serde_json::to_vec(weather)?)?)
+  path.map_or(Ok(()), |path| save_json(&path, weather))
 }
 
 fn save_cache(weather: &Weather) -> Result<()> {
   save_cache_to(cache_path(), weather)
 }
 
-pub fn init(cx: &mut App) {
+/// Starts the forecast, registers its UI, commands and script module
+pub fn init(cx: &mut App, _: &Buses) {
+  start(cx);
+  ui::register(cx);
+  launcher::register(cx);
+  settings::register(cx);
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::WeatherModule>();
+}
+
+fn start(cx: &mut App) {
   let (refresh, requests) = flume::unbounded();
   let state = WeatherService {
     weather: cx.new(|_| load_cache()),
@@ -109,7 +121,8 @@ pub fn init(cx: &mut App) {
           save_cache(&next).log_err().ok();
           weather.write(cx, Some(next));
           error.write(cx, None);
-          Duration::from_secs(config.refresh_minutes.max(1) * 60)
+          // a hand-edited huge value would overflow the timer instant
+          Duration::from_secs(config.refresh_minutes.clamp(1, 24 * 60) * 60)
         }
         Err(e) => {
           tracing::warn!("weather: {e:?}");
@@ -117,15 +130,7 @@ pub fn init(cx: &mut App) {
           RETRY
         }
       };
-      let next = futures_lite::future::or(
-        async {
-          cx.background_executor().timer(wait).await;
-          true
-        },
-        async { requests.recv_async().await.is_ok() },
-      )
-      .await;
-      if !next {
+      if !wait_or_refresh(cx, &requests, wait).await {
         break;
       }
     }
@@ -153,7 +158,7 @@ mod tests {
 
   use corona_config::{Config, LocationConfig};
   use corona_utils::test_bus::TestBus;
-  use futures_lite::future::{block_on, pending};
+  use futures_lite::future::pending;
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
@@ -224,7 +229,7 @@ mod tests {
       dir.path().join("corona").join("weather.json")
     );
     assert_eq!(load_cache(), Some(sample()));
-    fs::write(cache_path().unwrap(), b"{ broken").unwrap();
+    std::fs::write(cache_path().unwrap(), b"{ broken").unwrap();
     assert!(load_cache().is_none());
   }
 
@@ -232,7 +237,7 @@ mod tests {
   fn cache_write_failures_are_errors() {
     let dir = isolated_cache();
     // a file where the directory should go
-    fs::write(dir.path().join("corona"), b"").unwrap();
+    std::fs::write(dir.path().join("corona"), b"").unwrap();
     assert!(save_cache(&sample()).is_err());
   }
 
@@ -245,8 +250,7 @@ mod tests {
 
   fn start(cx: &mut TestAppContext, config: Config) -> Running {
     let cache = isolated_cache();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (bus, conn) = TestBus::with_conn();
     let status = Arc::new(Mutex::new(200));
     let answer = status.clone();
     let (client, urls) = fake(move |url| {
@@ -263,7 +267,7 @@ mod tests {
       cx.set_http_client(client);
       cx.set_global(config);
       corona_location::init(cx, &conn);
-      init(cx);
+      super::start(cx);
     });
     cx.run_until_parked();
     Running {
@@ -335,7 +339,10 @@ mod tests {
     cx.run_until_parked();
     cx.read(|cx| {
       let service = cx.weather();
-      assert!(service.error(cx).unwrap().contains("500"));
+      let error = service.error(cx).unwrap();
+      assert!(error.contains("500"));
+      // the exact coordinates stay out of the shown error
+      assert!(!error.contains("latitude") && !error.contains("52.5"));
       // the last weather stays
       assert_eq!(
         service.current(cx).unwrap().location.name,
@@ -355,15 +362,14 @@ mod tests {
   fn shows_the_cache_first(cx: &mut TestAppContext) {
     let cache = isolated_cache();
     save_cache(&sample()).unwrap();
-    let bus = TestBus::new();
-    let conn = block_on(bus.conn());
+    let (_bus, conn) = TestBus::with_conn();
     // never answers: only the cache can be showing
     let client = gpui_kit::http_client::FakeHttpClient::create(|_| pending());
     cx.update(|cx| {
       cx.set_http_client(client);
       cx.set_global(berlin());
       corona_location::init(cx, &conn);
-      init(cx);
+      super::start(cx);
     });
     cx.run_until_parked();
     cx.read(|cx| assert_eq!(cx.weather().current(cx), Some(&sample())));
@@ -440,7 +446,8 @@ mod tests {
 
   #[gpui::test]
   fn background_task_terminates_on_disconnect(cx: &mut TestAppContext) {
-    start(cx, berlin());
+    let running = start(cx, berlin());
+    let before = requests(&running);
     cx.update(|cx| {
       let (dummy_tx, _) = flume::unbounded();
       let dummy_service = WeatherService {
@@ -450,6 +457,16 @@ mod tests {
       };
       cx.set_global(dummy_service);
     });
-    cx.executor().advance_clock(Duration::from_secs(10 * 60));
+    cx.executor().advance_clock(Duration::from_secs(31 * 60));
+    // the loop is gone, nothing fetches after the refresh interval
+    assert_eq!(requests(&running), before);
+  }
+
+  #[gpui::test]
+  fn huge_refresh_minutes_does_not_overflow(cx: &mut TestAppContext) {
+    let mut config = berlin();
+    config.weather.refresh_minutes = u64::MAX;
+    let running = start(cx, config);
+    assert_eq!(requests(&running), 2);
   }
 }

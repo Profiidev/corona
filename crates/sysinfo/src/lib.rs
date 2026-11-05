@@ -1,15 +1,26 @@
 use std::time::Duration;
 
 use corona_config::{Config, ConfigProvider, observe_section};
+use corona_js::ScriptExt;
+use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 use crate::sampler::Update;
 
 pub use crate::state::{Disk, Gpu, GpuSample, GpuVendor, History, Sample, SystemInfo};
 
+pub mod cli;
+pub mod commands;
 mod gpu;
+mod launcher;
+mod processes;
 mod sampler;
+pub mod script;
+mod settings;
 mod state;
+pub mod ui;
+
+rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const HISTORY: usize = 60;
 
@@ -18,21 +29,13 @@ pub struct SystemMonitor {
   pub info: Entity<Option<SystemInfo>>,
   pub sample: Entity<Option<Sample>>,
   pub history: Entity<History>,
-  pub interval: Entity<Option<Duration>>,
-  intervals: flume::Sender<Option<Duration>>,
+  pub interval: Entity<Duration>,
+  intervals: flume::Sender<Duration>,
 }
 
 impl Global for SystemMonitor {}
 
-pub trait SystemMonitorExt {
-  fn system_monitor(&self) -> &SystemMonitor;
-}
-
-impl SystemMonitorExt for App {
-  fn system_monitor(&self) -> &SystemMonitor {
-    self.global::<SystemMonitor>()
-  }
-}
+corona_utils::global_ext!(SystemMonitorExt, system_monitor, SystemMonitor);
 
 impl SystemMonitor {
   pub fn info<'c>(&self, cx: &'c App) -> Option<&'c SystemInfo> {
@@ -47,11 +50,11 @@ impl SystemMonitor {
     self.history.read(cx)
   }
 
-  pub fn interval(&self, cx: &App) -> Option<Duration> {
+  pub fn interval(&self, cx: &App) -> Duration {
     *self.interval.read(cx)
   }
 
-  pub fn set_interval(&self, interval: Option<Duration>, cx: &mut App) {
+  pub fn set_interval(&self, interval: Duration, cx: &mut App) {
     self.interval.write(cx, interval);
     let _ = self.intervals.send(interval);
   }
@@ -61,19 +64,36 @@ fn interval(config: &Config) -> Duration {
   Duration::from_secs(config.system.monitor.poll_seconds.max(1))
 }
 
-pub fn init(cx: &mut App) {
+/// Starts sampling, registers its UI, commands and script module
+pub fn init(cx: &mut App, _: &Buses) {
+  start(cx);
+  ui::register(cx);
+  launcher::register(cx);
+  processes::register(cx);
+  commands::register(cx);
+  settings::register(cx);
+  register_script(cx.script_mut());
+}
+
+/// Registers this integration's script modules, for the shell and the CLI
+pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
+  registry.register::<script::SysinfoModule>();
+}
+
+fn start(cx: &mut App) {
   let (intervals, intervals_rx) = flume::unbounded();
   let (updates_tx, updates) = flume::unbounded();
   sampler::spawn(intervals_rx, updates_tx);
 
+  let every = interval(cx.config());
   let state = SystemMonitor {
     info: cx.new(|_| None),
     sample: cx.new(|_| None),
     history: cx.new(|_| History::default()),
-    interval: cx.new(|_| None),
+    interval: cx.new(|_| every),
     intervals,
   };
-  state.set_interval(Some(interval(cx.config())), cx);
+  state.set_interval(every, cx);
 
   let (info, sample, history) = (
     state.info.clone(),
@@ -104,7 +124,7 @@ pub fn init(cx: &mut App) {
       let interval = interval(cx.config());
       cx.global::<SystemMonitor>()
         .clone()
-        .set_interval(Some(interval), cx);
+        .set_interval(interval, cx);
     },
   );
 }
@@ -146,14 +166,9 @@ mod tests {
     config.system.monitor.poll_seconds = 1;
     cx.update(|cx| {
       cx.set_global(config);
-      init(cx);
+      super::start(cx);
     });
-    cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(1))
-      )
-    });
+    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(1)));
     wait(cx, |cx| cx.system_monitor().info(cx).is_some());
     wait(cx, |cx| cx.system_monitor().history(cx).cpu.len() >= 2);
     cx.read(|cx| {
@@ -168,25 +183,18 @@ mod tests {
   }
 
   #[gpui::test]
-  fn config_and_pausing_set_the_interval(cx: &mut TestAppContext) {
+  fn config_sets_the_interval(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      init(cx);
+      super::start(cx);
     });
     cx.update(|cx| {
       let mut config = cx.config().clone();
       config.system.monitor.poll_seconds = 0;
       cx.set_global(config);
     });
-    cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(1))
-      )
-    });
-    cx.update(|cx| cx.system_monitor().clone().set_interval(None, cx));
-    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), None));
+    cx.read(|cx| assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(1)));
   }
 
   #[gpui::test]
@@ -194,7 +202,7 @@ mod tests {
     cx.executor().allow_parking();
     cx.update(|cx| {
       cx.set_global(Config::default());
-      init(cx);
+      super::start(cx);
     });
     for sec in 1..=5 {
       cx.update(|cx| {
@@ -205,10 +213,7 @@ mod tests {
     }
     cx.run_until_parked();
     cx.read(|cx| {
-      assert_eq!(
-        cx.system_monitor().interval(cx),
-        Some(Duration::from_secs(5))
-      );
+      assert_eq!(cx.system_monitor().interval(cx), Duration::from_secs(5));
     });
   }
 }

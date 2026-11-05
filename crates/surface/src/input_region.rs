@@ -10,6 +10,12 @@ impl InputRegion {
       window.set_input_region(Some(&[region]));
     }
   }
+
+  pub fn clear(&mut self, window: &mut Window) {
+    if self.0.take().is_some() {
+      window.set_input_region(None);
+    }
+  }
 }
 
 #[cfg(test)]

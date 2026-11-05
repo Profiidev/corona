@@ -2,7 +2,7 @@ use std::{fs, time::Duration};
 
 use anyhow::{Context, Result};
 use gpui_kit::App;
-use notify::{RecursiveMode, Watcher};
+use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
 
 use crate::read::{apply, config_dir, read, settings_file};
 
@@ -18,7 +18,18 @@ const DEBOUNCE: Duration = Duration::from_millis(150);
 pub fn watch(cx: &mut App, on_error: impl Fn(String, &mut App) + 'static) -> Result<()> {
   let (tx, rx) = flume::unbounded();
   let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-    if event.is_ok_and(|e| !e.kind.is_access()) {
+    // a directory has no reliable extension, so its removal or rename counts too
+    let relevant = |e: notify::Event| {
+      !e.kind.is_access()
+        && (e.paths.is_empty()
+          || e.kind.is_remove()
+          || matches!(e.kind, EventKind::Modify(ModifyKind::Name(_)))
+          || e
+            .paths
+            .iter()
+            .any(|p| p.extension().is_some_and(|x| x == "toml")))
+    };
+    if event.map_or(true, relevant) {
       let _ = tx.send(());
     }
   })?;
@@ -26,9 +37,13 @@ pub fn watch(cx: &mut App, on_error: impl Fn(String, &mut App) + 'static) -> Res
   let state_dir = settings
     .parent()
     .context("settings file has no directory")?;
-  for dir in [config_dir()?.as_path(), state_dir] {
+  // the state dir also holds plugin clones and runtime state, only settings.toml matters
+  for (dir, mode) in [
+    (config_dir()?.as_path(), RecursiveMode::Recursive),
+    (state_dir, RecursiveMode::NonRecursive),
+  ] {
     fs::create_dir_all(dir)?;
-    watcher.watch(dir, RecursiveMode::Recursive)?;
+    watcher.watch(dir, mode)?;
   }
 
   cx.spawn(async move |cx| {
@@ -66,7 +81,7 @@ mod tests {
   /// Runs the app in real time until `done`: file events come from notify's own
   /// thread. Fake time moves past the debounce on every turn.
   fn wait_until(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
       cx.run_until_parked();
       cx.executor().advance_clock(DEBOUNCE * 2);

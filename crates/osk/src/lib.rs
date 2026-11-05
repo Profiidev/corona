@@ -1,10 +1,13 @@
 //! The on-screen keyboard: a floating key board that types into the focused
 //! window without taking its focus, shown when a text field gets focus
 
+pub mod cli;
+pub mod commands;
 pub mod hinge;
 pub mod keymap;
 pub mod layouts;
 pub mod predict;
+pub mod settings;
 pub mod ui;
 pub mod wayland;
 
@@ -23,7 +26,7 @@ use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
 
 use crate::{
   layouts::Layout,
-  predict::{Language, Predictor},
+  predict::{Language, Predictor, clear_learned_files},
   wayland::{Command, Commands, Event, Field},
 };
 
@@ -44,8 +47,6 @@ pub struct Osk {
   pub tablet: Entity<bool>,
   /// The focused text field
   pub field: Entity<Option<Field>>,
-  /// The seat's input method is this keyboard's, so focused fields are known
-  pub input_method: Entity<bool>,
   commands: Option<Commands>,
   /// Shown by a focused field, so leaving it hides again
   auto_shown: bool,
@@ -63,8 +64,15 @@ pub struct Osk {
 
 impl Global for Osk {}
 
+/// Starts the keyboard, registers its IPC commands and settings page
+pub fn init(cx: &mut App, _: &corona_utils::Buses) {
+  start(cx);
+  commands::register(cx);
+  settings::register(cx);
+}
+
 /// Connects to the compositor and follows its keyboard layout and the settings
-pub fn init(cx: &mut App) {
+fn start(cx: &mut App) {
   let enabled = cx.config().osk.enabled;
   let (events, events_rx) = flume::unbounded();
   let commands = wayland::spawn(enabled, events).log_err().ok();
@@ -79,7 +87,6 @@ pub fn init(cx: &mut App) {
     visible: cx.new(|_| false),
     tablet: cx.new(|_| false),
     field: cx.new(|_| None),
-    input_method: cx.new(|_| enabled),
     commands,
     auto_shown: false,
     hide_later: None,
@@ -91,7 +98,9 @@ pub fn init(cx: &mut App) {
     hinge: None,
   };
   osk.send(Command::Keymap(osk.layout.xkb()));
+  let visible = osk.visible.clone();
   cx.set_global(osk);
+  ui::watch_closed(visible, cx);
   sync(cx);
 
   let keyboard_layout = cx.compositor().keyboard_layout.clone();
@@ -141,7 +150,7 @@ fn sync(cx: &mut App) {
     }
     if osk.language != language {
       osk.language = language;
-      if osk.predictor.is_some() {
+      if osk.predictor.is_some() || osk.loading.is_some() {
         osk.load_predictor(language, cx);
       }
     }
@@ -196,15 +205,22 @@ fn on_event(event: Event, cx: &mut App) {
   cx.update_global::<Osk, _>(|osk, cx| match event {
     Event::Unavailable => {
       tracing::warn!("another input method holds the seat, the keyboard shows only on request");
-      osk.input_method.write_changed(cx, false);
+      osk.field.write_changed(cx, None);
+    }
+    Event::Stopped => {
+      tracing::warn!("the on-screen keyboard thread stopped, keys are no longer sent");
+      osk.commands = None;
+      osk.field.write_changed(cx, None);
     }
     Event::Field(field) => {
       let focused = field.is_some();
+      // every done of the same field reports again, which must not reopen a hidden keyboard
+      let gained = focused && osk.field.read(cx).is_none();
       osk.field.write_changed(cx, field);
       if focused {
         osk.hide_later = None;
         let wanted = shows_on_focus(cx.config().osk.auto_show, *osk.tablet.read(cx));
-        if wanted && !*osk.visible.read(cx) {
+        if gained && wanted && !*osk.visible.read(cx) {
           osk.auto_shown = true;
           osk.open(cx);
         }
@@ -237,9 +253,13 @@ impl Osk {
   pub fn hide(&mut self, cx: &mut App) {
     self.auto_shown = false;
     self.hide_later = None;
-    // not from inside the keyboard's own window, which cannot be updated then
-    cx.defer(ui::close);
-    self.visible.write_changed(cx, false);
+    // not from inside the keyboard's own window, which cannot be updated then;
+    // ordered with open's deferred write
+    let visible = self.visible.clone();
+    cx.defer(move |cx| {
+      ui::close(cx);
+      visible.write_changed(cx, false);
+    });
   }
 
   pub fn toggle(&mut self, cx: &mut App) {
@@ -252,11 +272,15 @@ impl Osk {
   /// Entering arms showing on focus, and shows now when a field has it;
   /// leaving hides
   pub fn set_tablet(&mut self, on: bool, cx: &mut App) {
+    let was = *self.tablet.read(cx);
     self.tablet.write_changed(cx, on);
     let focused = self.field.read(cx).is_some();
     let auto_show = cx.config().osk.auto_show;
     if !on {
-      self.hide(cx);
+      // only leaving tablet mode hides, not the first reading of a laptop
+      if was {
+        self.hide(cx);
+      }
     } else if focused && shows_on_focus(auto_show, true) && !self.is_visible(cx) {
       self.auto_shown = true;
       self.open(cx);
@@ -264,6 +288,7 @@ impl Osk {
   }
 
   fn open(&mut self, cx: &mut App) {
+    self.hide_later = None;
     if self.predictor.is_none() && self.loading.is_none() {
       self.load_predictor(self.language, cx);
     }
@@ -303,7 +328,9 @@ impl Osk {
     predictor.lock().unwrap().learn(&word);
     self.save_later = Some(cx.spawn(async move |cx| {
       cx.background_executor().timer(SAVE_DELAY).await;
-      let save = cx.background_spawn(async move { predictor.lock().unwrap().save() });
+      // copied, so the file write holds no lock
+      let snapshot = predictor.lock().unwrap().clone();
+      let save = cx.background_spawn(async move { snapshot.save() });
       let _ = save.await.log_err();
     }));
   }
@@ -315,7 +342,7 @@ impl Osk {
     cx.background_spawn(async move {
       let cleared = match predictor {
         Some(p) => p.lock().unwrap().clear_learned(),
-        None => Predictor::new(Language::En).clear_learned(),
+        None => clear_learned_files(),
       };
       let _ = cleared.log_err();
     })
@@ -323,16 +350,12 @@ impl Osk {
   }
 }
 
-/// Reads the keyboard; changes go through `cx.update_global::<Osk, _>`
-pub trait OskExt {
-  fn osk(&self) -> &Osk;
-}
-
-impl OskExt for App {
-  fn osk(&self) -> &Osk {
-    self.global::<Osk>()
-  }
-}
+corona_utils::global_ext!(
+  /// Reads the keyboard; changes go through `cx.update_global::<Osk, _>`
+  OskExt,
+  osk,
+  Osk
+);
 
 /// The keyboard global with its commands in a queue, no compositor needed
 #[cfg(test)]
@@ -347,7 +370,6 @@ pub(crate) fn test_setup(
       visible: cx.new(|_| false),
       tablet: cx.new(|_| false),
       field: cx.new(|_| None),
-      input_method: cx.new(|_| true),
       commands: Some(commands),
       auto_shown: false,
       hide_later: None,

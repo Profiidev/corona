@@ -2,16 +2,33 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
 use crate::{
-  config::ConfigCommands, ipc::IpcCommands, launcher::LauncherCommands, network::NetworkCommands,
-  schema::SchemaCommands, types::TypesCommand,
+  config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands, types::TypesCommand,
 };
 
 mod config;
 mod ipc;
-mod launcher;
-mod network;
 mod schema;
 mod types;
+
+/// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
+fn script_modules(registry: &mut corona_js::ScriptRegistry) {
+  corona_script::register_modules(registry);
+  corona_desktop::register_script(registry);
+  corona_idle::register_script(registry);
+  corona_windows::register_script(registry);
+  corona_auth::register_script(registry);
+  corona_network_manager::register_script(registry);
+  corona_brightness::register_script(registry);
+  corona_power::register_script(registry);
+  corona_notifications::register_script(registry);
+  corona_pipewire::register_script(registry);
+  corona_bluez::register_script(registry);
+  corona_mpris::register_script(registry);
+  corona_printing::register_script(registry);
+  corona_sysinfo::register_script(registry);
+  corona_tray::register_script(registry);
+  corona_weather::register_script(registry);
+}
 
 /// Corona Shell CLI
 #[derive(Parser)]
@@ -40,7 +57,7 @@ pub enum Commands {
   /// Launcher tools: dmenu and links
   Launcher {
     #[command(subcommand)]
-    command: LauncherCommands,
+    command: corona_launcher::cli::ToolCommands,
   },
   /// Settings commands
   Config {
@@ -58,7 +75,7 @@ pub enum Commands {
   #[command(hide = true)]
   Network {
     #[command(subcommand)]
-    command: NetworkCommands,
+    command: corona_network_manager::root::Commands,
   },
 }
 
@@ -116,5 +133,12 @@ mod tests {
     assert!(parse(&["types", "-o", "x.d.ts"]).is_err());
     assert!(parse(&[]).is_err());
     assert!(parse(&["nope"]).is_err());
+  }
+
+  #[test]
+  fn registers_every_script_module() {
+    let mut modules = corona_js::ScriptRegistry::default();
+    script_modules(&mut modules);
+    assert_eq!(modules.all().count(), 18);
   }
 }
