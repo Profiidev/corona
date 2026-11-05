@@ -465,7 +465,9 @@ impl DisksPanel {
       true => format!("{} · {name}", t!("app.disks.repair")),
       false => format!("{} · {name}", t!("app.disks.check")),
     };
-    let started = std::time::Instant::now();
+    // the latest attempt's start, a retry does not count the failed one
+    let started = Rc::new(std::cell::Cell::new(std::time::Instant::now()));
+    let attempt = started.clone();
     let this = cx.entity().downgrade();
     let target = path.clone();
     DisksLog::run_then(
@@ -473,6 +475,7 @@ impl DisksPanel {
       title,
       vec![path.clone()],
       Rc::new(move |cx| {
+        attempt.set(std::time::Instant::now());
         let udisks = cx.udisks();
         match repair {
           true => {
@@ -493,7 +496,7 @@ impl DisksPanel {
               path.clone(),
               repair,
               clean,
-              started.elapsed(),
+              started.get().elapsed(),
             ));
             cx.notify();
           })

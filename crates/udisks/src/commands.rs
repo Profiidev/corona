@@ -102,6 +102,13 @@ impl IpcCommand for DriveAction {
       }
       Drive::Unmount => Box::pin(udisks.unmount(&volume.block, UnmountOptions::default())),
       Drive::Eject => match &volume.drive {
+        Some(drive)
+          if !udisks
+            .drive(drive, cx)
+            .is_some_and(crate::Drive::is_removable) =>
+        {
+          Box::pin(async move { bail!("{} is not a removable drive", volume.device) })
+        }
         Some(drive) => Box::pin(udisks.eject_drive(drive, cx)),
         None => Box::pin(async move { bail!("{} is on no drive", volume.device) }),
       },

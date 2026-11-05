@@ -55,14 +55,18 @@ pub fn backup(
   compress: bool,
   progress: &Progress,
 ) -> io::Result<u64> {
-  // written aside and moved in place once whole, so a failure never costs an older image
-  let part = image.with_added_extension("part");
+  // written aside under a name of its own and moved in place once whole, so a failure never
+  // costs an older image and two backups to one name never share a file
+  static PARTS: AtomicU64 = AtomicU64::new(0);
+  let part = image.with_added_extension(format!(
+    "{}-{}.part",
+    std::process::id(),
+    PARTS.fetch_add(1, Ordering::Relaxed)
+  ));
   let write = || -> io::Result<u64> {
     // the opened fd's own length, the cached size may be stale
     let size = device.seek(SeekFrom::End(0))?;
     device.rewind()?;
-    // a stale or planted .part is replaced, never written through
-    let _ = std::fs::remove_file(&part);
     let file = File::options()
       .write(true)
       .create_new(true)
@@ -86,12 +90,33 @@ pub fn backup(
       }
     }
   };
-  let result = write().and_then(|copied| std::fs::rename(&part, image).map(|()| copied));
+  let result = write().and_then(|copied| publish(&part, image).map(|()| copied));
   // a half written image is no backup
   if result.is_err() {
     let _ = std::fs::remove_file(&part);
   }
   result
+}
+
+/// Moves the finished image in place, failing where a file appeared at the target meanwhile
+fn publish(part: &Path, image: &Path) -> io::Result<()> {
+  use rustix::{
+    fs::{CWD, RenameFlags, renameat_with},
+    io::Errno,
+  };
+  match renameat_with(CWD, part, CWD, image, RenameFlags::NOREPLACE) {
+    Ok(()) => Ok(()),
+    Err(Errno::EXIST) => Err(io::Error::new(
+      io::ErrorKind::AlreadyExists,
+      format!("{} appeared while the backup ran", image.display()),
+    )),
+    // the filesystem cannot rename without replacing, check and rename as the next best
+    Err(Errno::INVAL | Errno::NOSYS | Errno::NOTSUP) if !image.exists() => {
+      std::fs::rename(part, image)
+    }
+    Err(Errno::INVAL | Errno::NOSYS | Errno::NOTSUP) => Err(io::ErrorKind::AlreadyExists.into()),
+    Err(e) => Err(e.into()),
+  }
 }
 
 /// Writes an image over the device, a zstd one decompressed on the way
@@ -271,9 +296,36 @@ mod tests {
     progress.cancel.store(true, Ordering::Relaxed);
     let err = backup(File::open(&device).unwrap(), &image, false, &progress).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Interrupted);
-    assert!(!image.with_added_extension("part").exists());
+    // no half image is left beside it
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
     // the image there before stays
     assert_eq!(std::fs::read(&image).unwrap(), b"older");
+  }
+
+  #[test]
+  fn backup_never_replaces_a_new_image() {
+    let dir = tempfile::tempdir().unwrap();
+    let device = dir.path().join("device");
+    std::fs::write(&device, [1u8; 100]).unwrap();
+    let image = dir.path().join("image");
+    let part = dir.path().join("image.part");
+    std::fs::write(&part, b"new").unwrap();
+    std::fs::write(&image, b"appeared").unwrap();
+    let err = publish(&part, &image).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read(&image).unwrap(), b"appeared");
+    std::fs::remove_file(&image).unwrap();
+    publish(&part, &image).unwrap();
+    assert_eq!(std::fs::read(&image).unwrap(), b"new");
+    // a backup lands under its own name
+    backup(
+      File::open(&device).unwrap(),
+      &dir.path().join("b"),
+      false,
+      &Progress::default(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(dir.path().join("b")).unwrap(), [1u8; 100]);
   }
 
   #[test]

@@ -627,7 +627,6 @@ impl DisksPanel {
           no_discard: dialog.check("no_discard"),
           update_partition_type: true,
           tear_down: true,
-          ..Default::default()
         };
         let start: Start =
           Rc::new(move |cx| Box::pin(cx.udisks().format(&path, &fs, options.clone())));
@@ -708,7 +707,6 @@ impl DisksPanel {
               ResizeTarget::Encrypted => {
                 let options = PassphraseOptions {
                   passphrase: Some(passphrase).filter(|p| !p.is_empty()),
-                  ..Default::default()
                 };
                 udisks
                   .resize_encrypted(&path, if fill { 0 } else { new }, options)
@@ -825,13 +823,10 @@ impl DisksPanel {
           title("app.disks.delete"),
           objects,
           Rc::new(move |cx| {
-            Box::pin(cx.udisks().delete_partition(
-              &path,
-              DeleteOptions {
-                tear_down: true,
-                ..Default::default()
-              },
-            ))
+            Box::pin(
+              cx.udisks()
+                .delete_partition(&path, DeleteOptions { tear_down: true }),
+            )
           }),
           cx,
         );
@@ -1034,10 +1029,7 @@ impl DisksPanel {
             let file = open
               .await
               .with_context(|| format!("opening {}", image.display()))?;
-            let options = LoopSetupOptions {
-              read_only,
-              ..Default::default()
-            };
+            let options = LoopSetupOptions { read_only };
             let device = udisks.loop_setup(file.into(), options).await?;
             if autoclear {
               // attached already, a retry would attach the image again

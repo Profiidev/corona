@@ -9,7 +9,7 @@ use crate::listener::{listener, subscribe};
 
 pub use crate::{
   options::{
-    CreatePartitionOptions, DeleteOptions, Extra, FormatOptions, LoopSetupOptions, MountOptions,
+    CreatePartitionOptions, DeleteOptions, FormatOptions, LoopSetupOptions, MountOptions,
     PassphraseOptions, UnlockOptions, UnmountOptions,
   },
   state::{
@@ -183,10 +183,15 @@ impl Udisks {
         steps.push(Step::Unmount(block.path.clone()));
       }
     }
+    let name = self
+      .drive(drive, cx)
+      .map(Drive::name)
+      .filter(|n| !n.is_empty())
+      .unwrap_or_else(|| drive.as_str().to_string());
     let path = drive.clone();
     let power_off = self.drive(drive, cx).is_some_and(|d| d.can_power_off);
     async move {
-      anyhow::ensure!(!system, "{} is in use by the system", path.as_str());
+      anyhow::ensure!(!system, "{name} is in use by the system");
       for step in steps {
         match step {
           Step::Unmount(block) => this
@@ -669,7 +674,6 @@ mod tests {
         &path(SDB1),
         MountOptions {
           options: Some("ro".into()),
-          ..Default::default()
         },
       )
     });
@@ -678,13 +682,8 @@ mod tests {
     assert_eq!(volumes(cx)[0].mount_points, ["/run/media/me/sdb1"]);
 
     let unmount = cx.read(|cx| {
-      cx.udisks().unmount(
-        &path(SDB1),
-        UnmountOptions {
-          force: true,
-          ..Default::default()
-        },
-      )
+      cx.udisks()
+        .unmount(&path(SDB1), UnmountOptions { force: true })
     });
     block_on(unmount).unwrap();
     wait_until(cx, |cx| !volumes(cx)[0].is_mounted());

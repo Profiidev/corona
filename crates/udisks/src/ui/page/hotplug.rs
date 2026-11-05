@@ -158,6 +158,14 @@ pub fn init(cx: &mut App) {
   .detach();
 }
 
+/// Names come off the medium and daemons parse markup in notifications
+fn escape(text: &str) -> String {
+  text
+    .replace('&', "&amp;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+}
+
 fn notify(drive: OwnedObjectPath, sent: Rc<RefCell<HashMap<u32, Sent>>>, cx: &mut App) {
   let udisks = cx.udisks();
   let Some(d) = udisks.drive(&drive, cx) else {
@@ -192,7 +200,7 @@ fn notify(drive: OwnedObjectPath, sent: Rc<RefCell<HashMap<u32, Sent>>>, cx: &mu
   });
   let body = volumes
     .iter()
-    .map(|v| v.label.clone())
+    .map(|v| escape(&v.label))
     .collect::<Vec<_>>()
     .join(", ");
   let send = cx.global::<Notifications>().send_notify(Notify {
@@ -200,7 +208,7 @@ fn notify(drive: OwnedObjectPath, sent: Rc<RefCell<HashMap<u32, Sent>>>, cx: &mu
     app_icon: "drive-removable-media".into(),
     summary: t!(
       "app.disks.hotplug.connected",
-      name = d.name(),
+      name = escape(&d.name()),
       size = size(d.size)
     )
     .into(),
@@ -222,6 +230,14 @@ mod tests {
   use crate::Lock;
 
   use super::*;
+
+  #[test]
+  fn markup_in_names_is_escaped() {
+    assert_eq!(
+      escape(r#"R&D <a href="x">go</a>"#),
+      r#"R&amp;D &lt;a href="x"&gt;go&lt;/a&gt;"#
+    );
+  }
 
   fn volume(name: &str, mounted: bool, lock: Option<Lock>) -> Volume {
     Volume {
