@@ -28,6 +28,7 @@ mod components_misc;
 mod components_navigation;
 mod components_overlays;
 mod elements;
+mod typings;
 
 pub(crate) use elements::FAMILY;
 
