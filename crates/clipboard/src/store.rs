@@ -128,7 +128,10 @@ fn make_thumb(path: &Path) -> Result<()> {
     return Ok(());
   };
   let out = thumb_path(path);
-  let tmp = out.with_extension("tmp");
+  // unique per call: concurrent makers of the same thumbnail must not share a temp file
+  static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+  let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let tmp = out.with_extension(format!("{n}.tmp"));
   img
     .resize_exact(w, h, image::imageops::FilterType::Triangle)
     .save_with_format(&tmp, image::ImageFormat::Png)?;

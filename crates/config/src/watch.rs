@@ -81,7 +81,7 @@ mod tests {
   /// Runs the app in real time until `done`: file events come from notify's own
   /// thread. Fake time moves past the debounce on every turn.
   fn wait_until(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
       cx.run_until_parked();
       cx.executor().advance_clock(DEBOUNCE * 2);

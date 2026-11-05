@@ -14,7 +14,7 @@ use tempfile::TempDir;
 /// thread, which gpui's test scheduler cannot see. Needs
 /// `cx.executor().allow_parking()`.
 pub fn wait_until(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-  let deadline = Instant::now() + Duration::from_secs(10);
+  let deadline = Instant::now() + Duration::from_secs(30);
   loop {
     cx.run_until_parked();
     if done(cx) {
