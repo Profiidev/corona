@@ -27,6 +27,7 @@ cap-std.workspace = true
 libc.workspace = true
 # the IO of the stdlib runs here, off the gpui executor
 tokio.workspace = true
+rustls.workspace = true
 reqwest.workspace = true
 tokio-tungstenite.workspace = true
 hyper.workspace = true

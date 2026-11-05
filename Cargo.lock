@@ -2086,6 +2086,7 @@ dependencies = [
  "libc",
  "md-5 0.11.0",
  "rquickjs",
+ "rustls",
  "serde",
  "serde_json",
  "sha1 0.11.0",

@@ -16,6 +16,7 @@ use crate::runtime::caps::CapabilityError;
 
 /// Runs the IO of every plugin; JS awaits its tasks from the gpui executor.
 static RT: LazyLock<Runtime> = LazyLock::new(|| {
+  let _ = rustls::crypto::ring::default_provider().install_default();
   tokio::runtime::Builder::new_multi_thread()
     .worker_threads(2)
     .thread_name("corona-js-io")
