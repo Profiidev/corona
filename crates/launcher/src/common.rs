@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use anyhow::Context;
 use corona_config::{Config, ConfigProvider, launcher::CommandConfig};
 use gpui_kit::{App, SharedString, Task, assets::IconName};
 use rust_i18n::t;
@@ -19,16 +20,18 @@ fn entry<'c>(c: &'c mut Config, id: &str) -> &'c mut CommandConfig {
 }
 
 /// Changes a command's settings, dropping entries back at their defaults
-pub fn update_command(id: &str, cx: &mut App, edit: impl FnOnce(&mut CommandConfig)) {
-  let result = corona_config::update(cx, |c| {
+pub fn update_command(
+  id: &str,
+  cx: &mut App,
+  edit: impl FnOnce(&mut CommandConfig),
+) -> anyhow::Result<()> {
+  corona_config::update(cx, |c| {
     edit(entry(c, id));
     c.launcher
       .commands
       .retain(|_, e| *e != CommandConfig::default());
-  });
-  if let Err(e) = result {
-    tracing::warn!("failed to save launcher settings: {e:#}");
-  }
+  })
+  .context("failed to save launcher settings")
 }
 
 pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
@@ -47,7 +50,7 @@ pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
   };
   actions.push(
     Action::sync("common:favorite", title, move |_, _, cx| {
-      update_command(&fav, cx, |e| e.favorite = on);
+      update_command(&fav, cx, |e| e.favorite = on)?;
       Ok(Outcome::KeepOpen)
     })
     .icon(IconName::Star)
@@ -67,8 +70,7 @@ pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
           move |values: crate::view::FormValues, _: &mut gpui_kit::Window, cx: &mut App| {
             let alias = values.get("alias").cloned().unwrap_or_default();
             let alias = (!alias.trim().is_empty()).then(|| alias.trim().to_string());
-            update_command(&id, cx, |e| e.alias = alias);
-            Task::ready(Ok(Outcome::Pop))
+            Task::ready(update_command(&id, cx, |e| e.alias = alias).map(|()| Outcome::Pop))
           },
         );
         Ok(Outcome::Push(View::Form(FormView {
@@ -101,7 +103,7 @@ pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
         false => t!("app.launcher.common.hide"),
       },
       move |_, _, cx| {
-        update_command(&hide_id, cx, |e| e.hidden = !hidden);
+        update_command(&hide_id, cx, |e| e.hidden = !hidden)?;
         Ok(Outcome::KeepOpen)
       },
     )
@@ -115,7 +117,7 @@ pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
       "common:disable",
       t!("app.launcher.common.disable"),
       move |_, _, cx| {
-        update_command(&disable_id, cx, |e| e.enabled = false);
+        update_command(&disable_id, cx, |e| e.enabled = false)?;
         Ok(Outcome::KeepOpen)
       },
     )

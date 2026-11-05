@@ -117,12 +117,17 @@ fn join(values: &[SharedString]) -> String {
     .join(", ")
 }
 
+/// A signed value is a step; unlike an absolute level its bare integers are points, `+1` is 1%
 fn parse_step(input: &str) -> Result<ArgValue> {
+  let step = |rest: &str| match rest.trim().parse::<u32>() {
+    Ok(points) => Ok(points as f32 / 100.),
+    Err(_) => parse_level(rest),
+  };
   if let Some(rest) = input.strip_prefix('+') {
-    return Ok(ArgValue::Step(parse_level(rest)?));
+    return Ok(ArgValue::Step(step(rest)?));
   }
   if let Some(rest) = input.strip_prefix('-') {
-    return Ok(ArgValue::Step(-parse_level(rest)?));
+    return Ok(ArgValue::Step(-step(rest)?));
   }
   Ok(ArgValue::Level(parse_level(input)?))
 }
@@ -195,6 +200,18 @@ impl ArgValue {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Args(pub Vec<Option<ArgValue>>);
 
+/// A required argument the input left out, as opposed to an invalid value
+#[derive(Debug)]
+pub struct MissingArg(String);
+
+impl std::fmt::Display for MissingArg {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{} is required", self.0)
+  }
+}
+
+impl std::error::Error for MissingArg {}
+
 impl Args {
   pub fn get(&self, i: usize) -> Option<&ArgValue> {
     self.0.get(i).and_then(Option::as_ref)
@@ -222,7 +239,7 @@ impl Args {
       };
       if part.is_empty() {
         if !spec.optional {
-          bail!("{} is required", spec.name);
+          return Err(MissingArg(spec.name.to_string()).into());
         }
         values.push(None);
         continue;
@@ -232,22 +249,30 @@ impl Args {
     Ok(Self(values))
   }
 
-  /// Fields filled from the arguments row, one input per spec
-  pub fn from_fields(specs: &[ArgSpec], fields: &[String]) -> Result<Self> {
+  /// Fields filled from the arguments row, one input per spec.
+  /// The error carries the index of the failing field.
+  pub fn from_fields(
+    specs: &[ArgSpec],
+    fields: &[String],
+  ) -> std::result::Result<Self, (usize, anyhow::Error)> {
     let mut values = Vec::with_capacity(specs.len());
-    for (spec, field) in specs.iter().zip(
-      fields
-        .iter()
-        .map(String::as_str)
-        .chain(std::iter::repeat("")),
-    ) {
+    for (i, (spec, field)) in specs
+      .iter()
+      .zip(
+        fields
+          .iter()
+          .map(String::as_str)
+          .chain(std::iter::repeat("")),
+      )
+      .enumerate()
+    {
       if field.trim().is_empty() {
         if !spec.optional {
-          bail!("{} is required", spec.name);
+          return Err((i, MissingArg(spec.name.to_string()).into()));
         }
         values.push(None);
       } else {
-        values.push(Some(spec.parse(field)?));
+        values.push(Some(spec.parse(field).map_err(|e| (i, e))?));
       }
     }
     Ok(Self(values))
@@ -277,6 +302,10 @@ mod tests {
     assert_eq!(spec.parse("40").unwrap(), ArgValue::Level(0.4));
     assert_eq!(spec.parse("+5").unwrap(), ArgValue::Step(0.05));
     assert_eq!(spec.parse("-5%").unwrap(), ArgValue::Step(-0.05));
+    assert_eq!(spec.parse("+1").unwrap(), ArgValue::Step(0.01));
+    assert_eq!(spec.parse("-1").unwrap(), ArgValue::Step(-0.01));
+    assert_eq!(spec.parse("+0.5").unwrap(), ArgValue::Step(0.5));
+    assert_eq!(spec.parse("1").unwrap(), ArgValue::Level(1.));
     assert_eq!(spec.parse("MUTE").unwrap(), ArgValue::Word("mute".into()));
     assert!(spec.parse("loud").is_err());
   }
@@ -288,6 +317,13 @@ mod tests {
     assert!(spec.parse("maybe").is_err());
     assert_eq!(spec.completions("o"), vec!["on", "off"]);
     assert_eq!(spec.completions("t"), vec!["toggle"]);
+  }
+
+  #[test]
+  fn missing_vs_invalid() {
+    let specs = [ArgSpec::duration("duration")];
+    assert!(Args::parse(&specs, "").unwrap_err().is::<MissingArg>());
+    assert!(!Args::parse(&specs, "soon").unwrap_err().is::<MissingArg>());
   }
 
   #[test]
@@ -313,6 +349,8 @@ mod tests {
     let args = Args::from_fields(&specs, &["a b".into()]).unwrap();
     assert_eq!(args.text(0), Some("a b"));
     assert_eq!(args.get(1), None);
-    assert!(Args::from_fields(&specs, &[]).is_err());
+    assert_eq!(Args::from_fields(&specs, &[]).unwrap_err().0, 0);
+    let err = Args::from_fields(&specs, &["a".into(), "abc".into()]).unwrap_err();
+    assert_eq!(err.0, 1);
   }
 }

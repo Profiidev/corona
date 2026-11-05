@@ -202,7 +202,11 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     entry.alias.clone().unwrap_or_default(),
     {
       let id = id.to_string();
-      move |value, cx| crate::common::update_command(&id, cx, |e| e.alias = some(&value))
+      move |value, cx| {
+        if let Err(e) = crate::common::update_command(&id, cx, |e| e.alias = some(&value)) {
+          tracing::warn!("{e:#}");
+        }
+      }
     },
     window,
     cx,
@@ -216,7 +220,9 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
         .small()
         .on_click(move |checked: &bool, _, cx| {
           let checked = *checked;
-          crate::common::update_command(&id, cx, |e| set(e, checked))
+          if let Err(e) = crate::common::update_command(&id, cx, |e| set(e, checked)) {
+            tracing::warn!("{e:#}");
+          }
         })
     };
   div()

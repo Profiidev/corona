@@ -63,6 +63,9 @@ app:
       copied_only:
         en: 'Copied to clipboard, paste unavailable'
         de: 'Kopiert, Einfügen nicht möglich'
+      copy_failed:
+        en: 'Unsupported clipboard format'
+        de: 'Nicht unterstütztes Zwischenablage-Format'
     section:
       favorites:
         en: 'Favorites'

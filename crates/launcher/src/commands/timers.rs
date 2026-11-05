@@ -66,16 +66,13 @@ fn save(list: &[Timer]) {
 
 pub fn init(cx: &mut App) {
   let saved: Vec<Timer> = state::load("timers");
-  let list = cx.new(|_| saved.clone());
+  let list = cx.new(|_| saved);
   let tick = cx.new(|_| 0u64);
   cx.set_global(Timers {
     list,
     tick,
     _ticker: None,
   });
-  for timer in saved {
-    schedule(&timer, cx);
-  }
   run_ticker(cx);
   registry::register_source(Rc::new(Running), cx);
   registry::register_all([timer_command(), stopwatch_command()], cx);
@@ -122,20 +119,6 @@ fn run_ticker(cx: &mut App) {
   cx.global_mut::<Timers>()._ticker = Some(task);
 }
 
-/// Notifies and drops a timer when it ends
-fn schedule(timer: &Timer, cx: &mut App) {
-  let Kind::Timer { end, .. } = timer.kind else {
-    return;
-  };
-  let (id, label) = (timer.id, timer.label.clone());
-  let wait = Duration::from_millis(end.saturating_sub(now_ms()));
-  cx.spawn(async move |cx| {
-    cx.background_executor().timer(wait).await;
-    cx.update(|cx| fire(id, label, cx));
-  })
-  .detach();
-}
-
 /// Drops a timer that ended and tells the user, once
 fn fire(id: u64, label: Option<String>, cx: &mut App) {
   if remove(id, cx) {
@@ -171,7 +154,6 @@ pub fn start(kind: Kind, label: Option<String>, cx: &mut App) -> Timer {
     save(list);
     cx.notify();
   });
-  schedule(&timer, cx);
   run_ticker(cx);
   timer
 }

@@ -2,16 +2,17 @@ use std::{ops::Range, rc::Rc, time::Duration};
 
 use corona_components::{animation::animation_duration, components::window_icon::WindowIcon};
 use gpui_kit::{
-  Animation, AnimationExt, AnyElement, App, Context, FontWeight, HighlightStyle,
-  InteractiveElement, IntoElement, ObjectFit, ParentElement, SharedString,
-  StatefulInteractiveElement, Styled, StyledImage, StyledText, Window,
+  Animation, AnimationExt, AnyElement, AnyImageCache, App, Context, Entity, FontWeight,
+  HighlightStyle, ImageCacheProvider, InteractiveElement, IntoElement, ObjectFit, ParentElement,
+  RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled, StyledImage, StyledText,
+  Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
   },
   div, image_cache, img, list,
   prelude::FluentBuilder,
-  px, relative, retain_all,
+  px, relative,
 };
 use rust_i18n::t;
 
@@ -47,7 +48,7 @@ pub(super) fn frame(
     .child(search_bar(this, page, cx))
     .child(
       // dropped with the launcher so decoded images do not outlive it
-      image_cache(retain_all("launcher-images"))
+      image_cache(BoundedImages)
         .flex_1()
         .min_h_0()
         .child(body(this, page, window, cx)),
@@ -58,6 +59,28 @@ pub(super) fn frame(
     .children(overlays::confirm(this, cx))
     .children(overlays::toast(this, cx))
     .into_any_element()
+}
+
+/// Decoded pictures kept before a long scroll starts over
+const MAX_IMAGES: usize = 256;
+
+/// Keeps decoded pictures until the launcher closes, but never more than `MAX_IMAGES`; rows
+/// scrolled back into view load again
+struct BoundedImages;
+
+impl ImageCacheProvider for BoundedImages {
+  fn provide(&mut self, window: &mut Window, cx: &mut App) -> AnyImageCache {
+    let cache = window.with_global_id("launcher-images".into(), |id, window| {
+      window.with_element_state::<Entity<RetainAllImageCache>, _>(id, |cache, _| {
+        let cache = cache.unwrap_or_else(|| RetainAllImageCache::new(cx));
+        (cache.clone(), cache)
+      })
+    });
+    if cache.read(cx).len() > MAX_IMAGES {
+      cache.update(cx, |cache, cx| cache.clear(window, cx));
+    }
+    cache.into()
+  }
 }
 
 fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl IntoElement {
@@ -167,7 +190,9 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
         let focused = args.focused == i;
         div()
           .h(px(30.))
+          // all inputs share the bar; extra ones narrow the rest instead of being dropped
           .w(px(130.))
+          .min_w(px(56.))
           .px(px(8.))
           .flex()
           .items_center()
@@ -738,9 +763,6 @@ fn preview_pane(detail: Detail, cx: &App) -> AnyElement {
         .child(text)
         .into_any_element(),
     ),
-    DetailBody::Markdown(text) => {
-      Some(TextView::markdown("launcher-preview-md", text).into_any_element())
-    }
     DetailBody::Image(path) => Some(
       img(path)
         .w_full()

@@ -99,18 +99,16 @@ pub struct LauncherState {
 impl Global for LauncherState {}
 
 pub fn is_open(cx: &App) -> bool {
-  cx.has_global::<LauncherState>()
+  cx.try_global::<LauncherState>()
+    .is_some_and(|s| s.view.upgrade().is_some())
 }
 
 pub fn toggle(cx: &mut App) -> Result<()> {
   if is_open(cx) {
-    // a surface destroyed from outside leaves a dead state behind: open anew then
-    if cx.global::<LauncherState>().view.upgrade().is_some() {
-      close(cx);
-      return Ok(());
-    }
-    cx.remove_global::<LauncherState>();
+    close(cx);
+    return Ok(());
   }
+  // a surface destroyed from outside leaves a dead state behind: open() replaces it
   open(
     Open::Root {
       query: String::new(),

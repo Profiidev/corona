@@ -342,7 +342,6 @@ pub struct Detail {
 pub enum DetailBody {
   None,
   Text(SharedString),
-  Markdown(SharedString),
   Image(Arc<std::path::Path>),
   /// Monospace, like a clipboard entry of code
   Code(SharedString),

@@ -3,7 +3,6 @@ use gpui_kit::{
   Render, SharedString, Styled, Subscription, Window,
   component::{
     ActiveTheme, Sizable,
-    checkbox::Checkbox,
     input::{Input, InputEvent, InputState, Textarea, TextareaState},
     scroll::ScrollableElement,
     searchable_list::{SearchableListItem, SearchableVec},
@@ -39,7 +38,6 @@ enum Control {
   Input(Entity<InputState>),
   Area(Entity<TextareaState>),
   Dropdown(Entity<SelectState<SearchableVec<Choice>>>),
-  Checkbox(bool),
 }
 
 struct FieldState {
@@ -110,12 +108,8 @@ impl FormPage {
               )
             }))
           }
-          FieldKind::Checkbox => Control::Checkbox(field.value == "true"),
         };
-        let initial = match field.kind {
-          FieldKind::Checkbox => (field.value == "true").to_string(),
-          _ => field.value.clone(),
-        };
+        let initial = field.value.clone();
         FieldState {
           initial,
           field,
@@ -147,7 +141,6 @@ impl FormPage {
         .selected_value()
         .cloned()
         .unwrap_or_default(),
-      Control::Checkbox(checked) => checked.to_string(),
     }
   }
 
@@ -156,7 +149,6 @@ impl FormPage {
       Control::Input(input) => Some(input.focus_handle(cx)),
       Control::Area(area) => Some(area.focus_handle(cx)),
       Control::Dropdown(select) => Some(select.focus_handle(cx)),
-      Control::Checkbox(_) => None,
     }
   }
 
@@ -238,7 +230,7 @@ impl Render for FormPage {
     let theme = cx.theme();
     let muted = theme.colors.muted_foreground;
     let danger = theme.colors.danger;
-    let rows = self.fields.iter().enumerate().map(|(index, state)| {
+    let rows = self.fields.iter().map(|state| {
       let control = match &state.control {
         Control::Input(input) => {
           let masked = state.field.kind == FieldKind::Password;
@@ -248,13 +240,6 @@ impl Render for FormPage {
         }
         Control::Area(area) => Textarea::new(area).into_any_element(),
         Control::Dropdown(select) => Select::new(select).small().into_any_element(),
-        Control::Checkbox(checked) => Checkbox::new(("form-check", index))
-          .checked(*checked)
-          .on_click(cx.listener(move |this, checked: &bool, _, cx| {
-            this.fields[index].control = Control::Checkbox(*checked);
-            cx.notify();
-          }))
-          .into_any_element(),
       };
       div()
         .flex()

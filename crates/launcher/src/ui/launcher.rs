@@ -14,11 +14,13 @@ use rust_i18n::t;
 use super::{
   Back, Complete, CompleteBack, LauncherState, Open, PageDown, PageUp, Run, RunKeepOpen,
   RunSecondary, SelectLeft, SelectNext, SelectPrev, SelectRight, Submit, ToggleActions,
-  ToggleFilter, TogglePreview, form::FormPage, hud, style, window_size,
+  ToggleFilter, TogglePreview, form::FormPage, hud, window_size,
 };
 use crate::{
-  args::{ArgSpec, Args},
-  command::{Action, Command, Confirm, Detail, Hud, Outcome, Scope, Section, Toast, ToastKind},
+  args::{ArgSpec, Args, MissingArg},
+  command::{
+    Action, Command, Confirm, Detail, Hud, Meta, Outcome, Scope, Section, Toast, ToastKind,
+  },
   matching::{Query, match_text},
   paste,
   registry::{self, Registry, Results, Row},
@@ -198,6 +200,8 @@ pub struct Launcher {
   /// The filter dropdown is open, on this option
   pub(super) filter_menu: Option<usize>,
   pub(super) busy: usize,
+  /// Bumped by reset(); results of actions started before it are dropped
+  generation: u64,
   /// What the failure toast's Retry runs
   retry: Option<Deferred>,
   was_active: bool,
@@ -244,6 +248,7 @@ impl Launcher {
       preview: cx.config().launcher.preview,
       filter_menu: None,
       busy: 0,
+      generation: 0,
       retry: None,
       was_active: false,
       pointer: None,
@@ -282,6 +287,8 @@ impl Launcher {
     self.retry = None;
     self.filter_menu = None;
     self.external = false;
+    self.busy = 0;
+    self.generation += 1;
     match open {
       Open::Root { query } => {
         self.push_page(Page::new(Body::Root, None, query), window, cx);
@@ -292,19 +299,28 @@ impl Launcher {
       }
       Open::Command { id, query, run } => {
         let command = cx.global::<Registry>().find(&id, cx);
+        let parsed = command
+          .as_ref()
+          .filter(|_| run)
+          .map(|c| parse_inline(&c.meta(cx), &query));
+        // required arguments left out: behave like a plain open and let the user type them
+        let prefill = !run
+          || command
+            .as_ref()
+            .is_some_and(|c| needs_args_row(&c.meta(cx)))
+          || matches!(&parsed, Some(Err(e)) if e.is::<MissingArg>());
         let root_query = match &command {
-          Some(command) if !run => format!("{} {query}", command.meta(cx).title)
+          Some(command) if prefill => format!("{} {query}", command.meta(cx).title)
             .trim()
             .to_string(),
           _ => String::new(),
         };
         self.push_page(Page::new(Body::Root, None, root_query), window, cx);
         match command {
-          Some(_) if !run => {}
+          Some(_) if prefill => {}
           Some(command) => {
             self.external = true;
-            let specs = command.meta(cx).args;
-            match Args::parse(&specs, &query) {
+            match parsed.expect("run parses the query") {
               Ok(args) => {
                 if let Some(action) = command.actions(cx).into_iter().next() {
                   self.run(Some(command), action, args, false, window, cx);
@@ -379,9 +395,11 @@ impl Launcher {
     let placeholder = page.placeholder();
     self.pages.push(page);
     self.input.update(cx, |input, cx| {
-      input.set_value(query, window, cx);
+      input.set_value(query.clone(), window, cx);
       input.set_placeholder(placeholder, window, cx);
     });
+    // set_value emits no change event, so a prefilled query would never become a scope
+    self.detect_scope(&query, window, cx);
     self.refresh(cx);
     self.focus(window, cx);
   }
@@ -429,24 +447,31 @@ impl Launcher {
     self.external && matches!(self.pages.first().map(|p| &p.body), Some(Body::Root))
   }
 
+  /// Turns a `prefix ` at the start of the root query into the scope chip
+  fn detect_scope(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+    let page = self.page();
+    if !matches!(page.body, Body::Root) || page.scope.is_some() {
+      return;
+    }
+    let scopes = cx.global::<Registry>().scopes(cx);
+    if let Some((scope, rest)) = find_scope(&scopes, text) {
+      let placeholder = scope.placeholder.clone();
+      self.page_mut().scope = Some(scope);
+      self.page_mut().query = rest.clone();
+      self.input.update(cx, |input, cx| {
+        input.set_value(rest, window, cx);
+        input.set_placeholder(placeholder, window, cx);
+      });
+    }
+  }
+
   fn on_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
     let text = self.input.read(cx).value().to_string();
     let page = self.page_mut();
     page.query = text.clone();
     page.args = None;
     page.completion = 0;
-    if matches!(page.body, Body::Root) && page.scope.is_none() {
-      let scopes = cx.global::<Registry>().scopes(cx);
-      if let Some((scope, rest)) = find_scope(&scopes, &text) {
-        let placeholder = scope.placeholder.clone();
-        self.page_mut().scope = Some(scope);
-        self.page_mut().query = rest.clone();
-        self.input.update(cx, |input, cx| {
-          input.set_value(rest, window, cx);
-          input.set_placeholder(placeholder, window, cx);
-        });
-      }
-    }
+    self.detect_scope(&text, window, cx);
     if let Body::Custom { view, .. } = &self.page().body
       && let Some(on_query) = view.on_query.clone()
     {
@@ -590,10 +615,7 @@ impl Launcher {
 
   /// Arguments typed inline for the selected row, or the error to show instead of running
   pub(super) fn inline_args(&self, row: &Row) -> Result<Args> {
-    if row.meta.args.is_empty() || row.meta.args_row {
-      return Ok(Args::default());
-    }
-    Args::parse(&row.meta.args, row.found.args.as_deref().unwrap_or(""))
+    parse_inline(&row.meta, row.found.args.as_deref().unwrap_or(""))
   }
 
   fn run_selected(
@@ -624,13 +646,7 @@ impl Launcher {
             self.run(Some(command), action, parsed, keep_open, window, cx);
           }
         }
-        Err(e) => {
-          let index = args
-            .specs
-            .iter()
-            .zip(&fields)
-            .position(|(s, f)| !s.optional && f.trim().is_empty())
-            .unwrap_or(0);
+        Err((index, e)) => {
           if let Some(args) = self.page_mut().args.as_mut() {
             args.error = Some((index, e.to_string().into()));
             args.focused = index;
@@ -644,7 +660,7 @@ impl Launcher {
     let Some(row) = self.page().selected_row().cloned() else {
       return;
     };
-    if row.meta.args_row && row.meta.args.iter().any(|a| !a.optional) {
+    if needs_args_row(&row.meta) {
       return self.open_args(&row, window, cx);
     }
     let Ok(args) = self.inline_args(&row) else {
@@ -658,13 +674,7 @@ impl Launcher {
   }
 
   fn open_args(&mut self, row: &Row, window: &mut Window, cx: &mut Context<Self>) {
-    let specs: Vec<ArgSpec> = row
-      .meta
-      .args
-      .iter()
-      .take(style::MAX_ARGS)
-      .cloned()
-      .collect();
+    let specs: Vec<ArgSpec> = row.meta.args.clone();
     let inputs = specs
       .iter()
       .map(|spec| {
@@ -694,7 +704,7 @@ impl Launcher {
     cx: &mut Context<Self>,
   ) {
     if let Some(confirm) = action.confirm.clone()
-      && !self.skip_confirm.contains(action.id.as_ref())
+      && !(confirm.skippable && self.skip_confirm.contains(action.id.as_ref()))
     {
       self.panel = None;
       self.confirm = Some(ConfirmState {
@@ -733,19 +743,32 @@ impl Launcher {
       && matches!(self.page().body, Body::Root)
       && self.page().scope.is_none()
       && !action.id.starts_with("common:")
+      && command.meta(cx).section != Section::Running
+      && cx.global::<Registry>().find(&command.id(), cx).is_some()
     {
       registry::record_use(&command.id(), cx);
     }
     let task = (action.run)(&args, window, cx);
     let keep_open = keep_open || action.keep_open;
     self.busy += 1;
+    let generation = self.generation;
+    let depth = self.pages.len();
     cx.notify();
     cx.spawn_in(window, async move |this, cx| {
-      let result = task.await;
+      let mut result = task.await;
       let failure = result.as_ref().err().map(|e| format!("{e:#}"));
       let id = action.id.clone();
       let updated = this.update_in(cx, |this, window, cx| {
+        if this.generation != generation {
+          tracing::debug!("launcher action {id} finished after a reset, result dropped");
+          return;
+        }
         this.busy -= 1;
+        // the user left the page that started the action: Push/Pop would hit another page
+        if this.pages.len() != depth && matches!(result, Ok(Outcome::Push(_) | Outcome::Pop)) {
+          tracing::debug!("launcher action {id} finished on another page, navigation dropped");
+          result = Ok(Outcome::KeepOpen);
+        }
         this.finish(result, command, action, args, keep_open, window, cx);
       });
       if updated.is_err() {
@@ -820,12 +843,20 @@ impl Launcher {
         paste::paste(clip, cx);
       }
       Outcome::Copy(clip) => {
-        paste::copy(&clip, cx);
-        let hud = Hud::new(t!("app.launcher.hud.copied"));
+        let copied = paste::copy(&clip, cx);
+        let hud = Hud::new(if copied {
+          t!("app.launcher.hud.copied")
+        } else {
+          t!("app.launcher.hud.copy_failed")
+        });
         if keep_open {
           self.show_toast(
             Toast {
-              kind: ToastKind::Success,
+              kind: if copied {
+                ToastKind::Success
+              } else {
+                ToastKind::Failure
+              },
               title: hud.text,
               message: None,
               action: None,
@@ -861,7 +892,7 @@ impl Launcher {
   fn row_actions(&self, row: &Row, cx: &App) -> Vec<Action> {
     let mut actions = row.command.actions(cx);
     let page = self.page();
-    if matches!(page.body, Body::Root) && page.scope.is_none() {
+    if matches!(page.body, Body::Root) && page.scope.is_none() && row.managed {
       actions.extend(crate::common::actions(row.id(), cx));
     }
     actions
@@ -1392,6 +1423,23 @@ fn close_page(page: &Page, cx: &mut App) {
   }
 }
 
+/// Whether running the command needs the arguments row filled in first
+fn needs_args_row(meta: &Meta) -> bool {
+  meta.args_row && meta.args.iter().any(|a| !a.optional)
+}
+
+/// Parses what was typed after a command; an args row takes the whole tail as its first argument
+fn parse_inline(meta: &Meta, typed: &str) -> Result<Args> {
+  if meta.args.is_empty() || (meta.args_row && typed.trim().is_empty()) {
+    return Ok(Args::default());
+  }
+  let specs = match meta.args_row {
+    true => &meta.args[..1],
+    false => &meta.args[..],
+  };
+  Args::parse(specs, typed)
+}
+
 /// Index of the argument spec for the word being typed, capped at the last spec
 fn arg_index(typed: &str, specs: usize) -> usize {
   let words = typed.split_whitespace().count();
@@ -1493,6 +1541,34 @@ mod tests {
       placeholder: SharedString::default(),
       source: Rc::new(Empty),
     }
+  }
+
+  #[test]
+  fn args_row_takes_whole_tail() {
+    let meta = Meta {
+      args: vec![ArgSpec::text("text"), ArgSpec::text("target")],
+      args_row: true,
+      ..Default::default()
+    };
+    assert_eq!(
+      parse_inline(&meta, "hello world").unwrap().text(0),
+      Some("hello world")
+    );
+    assert!(parse_inline(&meta, " ").unwrap().text(0).is_none());
+    assert!(needs_args_row(&meta));
+    let optional = Meta {
+      args: vec![ArgSpec::text("text").optional()],
+      ..meta.clone()
+    };
+    assert!(!needs_args_row(&optional));
+    let plain = Meta {
+      args_row: false,
+      ..meta
+    };
+    assert_eq!(
+      parse_inline(&plain, "hello world").unwrap().text(1),
+      Some("world")
+    );
   }
 
   #[test]

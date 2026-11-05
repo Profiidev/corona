@@ -1,6 +1,6 @@
 //! Translate through DeepL and define words through Wiktionary
 
-use std::{rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, bail};
 use corona_config::{ConfigProvider, launcher::TranslateConfig};
@@ -38,7 +38,17 @@ fn deepl_key(config: &TranslateConfig) -> Result<String> {
 
 const MAX_BODY: u64 = 2 * 1024 * 1024;
 
+const TIMEOUT: Duration = Duration::from_secs(30);
+
 async fn body(client: &Arc<dyn HttpClient>, request: Request<AsyncBody>) -> Result<Vec<u8>> {
+  let timeout = async {
+    smol::Timer::after(TIMEOUT).await;
+    bail!("request timed out after {}s", TIMEOUT.as_secs())
+  };
+  smol::future::or(fetch(client, request), timeout).await
+}
+
+async fn fetch(client: &Arc<dyn HttpClient>, request: Request<AsyncBody>) -> Result<Vec<u8>> {
   let mut response = client.send(request).await?;
   let status = response.status();
   let mut bytes = Vec::new();
@@ -112,6 +122,18 @@ struct Definition {
   definition: String,
 }
 
+/// `text` with the markdown that could fetch images or links backslash-escaped
+fn escape_markdown(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  for c in text.chars() {
+    if "\\`*_[]()<>!#|~&".contains(c) {
+      out.push('\\');
+    }
+    out.push(c);
+  }
+  out
+}
+
 fn strip_tags(html: &str) -> String {
   let mut out = String::new();
   let mut tag = false;
@@ -136,12 +158,15 @@ fn strip_tags(html: &str) -> String {
 /// The definitions as markdown, English entries first
 pub fn definitions_markdown(word: &str, json: &[u8]) -> Result<String> {
   let entries: std::collections::BTreeMap<String, Vec<Usage>> = serde_json::from_slice(json)?;
-  let mut md = format!("# {word}\n");
+  let mut md = format!("# {}\n", escape_markdown(word));
   let mut languages: Vec<(&String, &Vec<Usage>)> = entries.iter().collect();
   languages.sort_by_key(|(lang, _)| *lang != "en");
   for (_, usages) in languages.into_iter().take(2) {
     for usage in usages {
-      md.push_str(&format!("\n**{}**\n", usage.part_of_speech));
+      md.push_str(&format!(
+        "\n**{}**\n",
+        escape_markdown(&usage.part_of_speech)
+      ));
       for (i, d) in usage
         .definitions
         .iter()
@@ -152,7 +177,7 @@ pub fn definitions_markdown(word: &str, json: &[u8]) -> Result<String> {
         md.push_str(&format!(
           "\n{}. {}",
           i + 1,
-          strip_tags(&d.definition).trim()
+          escape_markdown(strip_tags(&d.definition).trim())
         ));
       }
       md.push('\n');
@@ -224,7 +249,11 @@ fn translate_command() -> Rc<dyn Command> {
             let copy = translated.clone();
             Ok(Outcome::Push(View::Detail(DetailView {
               title: t!("app.launcher.lookup.translate").into(),
-              markdown: format!("{translated}\n\n---\n\n{text}").into(),
+              markdown: format!(
+                "{}\n\n---\n\n{}",
+                escape_markdown(&translated),
+                escape_markdown(&text)
+              ).into(),
               metadata: vec![
                 (t!("app.launcher.lookup.from").into(), source.into()),
                 (t!("app.launcher.lookup.to").into(), target.into()),
@@ -306,6 +335,13 @@ mod tests {
       "{md}"
     );
     assert!(md.contains("Katze"));
+  }
+
+  #[test]
+  fn markdown_is_escaped() {
+    assert_eq!(escape_markdown("![](http://x)"), "\\!\\[\\]\\(http://x\\)");
+    let json = br#"{"en":[{"partOfSpeech":"Noun","definitions":[{"definition":"![](http://x)"}]}]}"#;
+    assert!(!definitions_markdown("a", json).unwrap().contains("\n1. !["));
   }
 
   #[test]

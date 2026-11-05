@@ -18,7 +18,6 @@ pub const ROW_RADIUS: f32 = 10.;
 pub const PANEL_WIDTH: f32 = 320.;
 pub const LIST_WIDTH: f32 = 330.;
 pub const SIDEBAR_WIDTH: f32 = 230.;
-pub const MAX_ARGS: usize = 3;
 
 pub fn window_fill(cx: &App) -> Hsla {
   cx.theme().tokens.background.opacity(1.)

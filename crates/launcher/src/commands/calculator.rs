@@ -13,8 +13,7 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use corona_config::ConfigProvider;
-use futures::AsyncReadExt;
-use gpui_kit::{App, Global, SharedString, assets::IconName, http_client::AsyncBody};
+use gpui_kit::{App, Global, SharedString, assets::IconName};
 use jiff::{Span, Timestamp, Zoned, civil::Time, tz::TimeZone};
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
@@ -78,11 +77,13 @@ pub fn init(cx: &mut App) {
   // checked hourly; `refresh_rates` only fetches once the rates are older than the config allows
   cx.spawn(async move |cx| {
     loop {
-      if let Some(task) = cx.update(|cx| refresh_rates(false, cx)) {
-        let _ = task.await;
-      }
+      // a failed fetch (network not up yet) retries soon instead of after an hour
+      let failed = match cx.update(|cx| refresh_rates(false, cx)) {
+        Some(task) => task.await.is_err(),
+        None => false,
+      };
       cx.background_executor()
-        .timer(Duration::from_secs(3600))
+        .timer(Duration::from_secs(if failed { 60 } else { 3600 }))
         .await;
     }
   })
@@ -110,13 +111,9 @@ fn refresh_rates(force: bool, cx: &mut App) -> Option<gpui_kit::Task<Result<()>>
   Some(cx.spawn(async move |_| {
     let _fetching = guard;
     let result = async {
-      let mut response = client
-        .get(RATES_URL, AsyncBody::empty(), true)
+      let mut fresh: Rates = corona_reqwest::get_json(client.as_ref(), RATES_URL)
         .await
         .context("fetching exchange rates")?;
-      let mut body = Vec::new();
-      response.body_mut().read_to_end(&mut body).await?;
-      let mut fresh: Rates = serde_json::from_slice(&body).context("reading exchange rates")?;
       fresh.rates.insert("EUR".into(), 1.);
       fresh.fetched = state::now();
       let _ = state::save("rates", &fresh);
@@ -207,6 +204,8 @@ pub fn normalize(input: &str) -> String {
     && let Some(percent) = right.trim().strip_suffix('%')
     && percent.trim().parse::<f64>().is_ok()
     && !left.trim().is_empty()
+    // a unary minus, as in `2 * -5%`
+    && !left.trim_end().ends_with(['*', '/', '^', '(', '+', '-'])
   {
     let sign = if text[left.len()..].starts_with('+') {
       '+'
@@ -419,6 +418,9 @@ fn result_command(
       ..Default::default()
     },
     move |_| {
+      if loading {
+        return Vec::new();
+      }
       let (e1, r1, e2, r2) = (
         expression.clone(),
         result.clone(),
@@ -480,10 +482,6 @@ impl CommandSource for Evaluator {
       }
       None => Vec::new(),
     }
-  }
-
-  fn loading(&self, cx: &App) -> bool {
-    cx.global::<Calculator>().fetching.load(Ordering::Relaxed)
   }
 }
 
@@ -590,6 +588,8 @@ mod tests {
     assert_eq!(calc("20% of 80").as_deref(), Some("16"));
     assert_eq!(calc("80 + 15%").as_deref(), Some("92"));
     assert_eq!(calc("80 - 25%").as_deref(), Some("60"));
+    assert_eq!(normalize("2 * -5%"), "2 * -5%");
+    assert_eq!(normalize("100 * -10%"), "100 * -10%");
   }
 
   #[test]

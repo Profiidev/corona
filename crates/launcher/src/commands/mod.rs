@@ -9,6 +9,7 @@ pub mod lookup;
 pub mod run;
 pub mod storage;
 mod theme;
+mod thumbs;
 pub mod timers;
 mod tools;
 pub mod web;

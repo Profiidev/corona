@@ -1,4 +1,4 @@
-use std::{cell::RefCell, cmp::Ordering, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, collections::HashSet, rc::Rc};
 
 use corona_config::{ConfigProvider, launcher::LauncherConfig};
 use gpui_kit::{App, Global, SharedString};
@@ -68,7 +68,9 @@ impl Registry {
     })
   }
 
-  /// Every root command, for the settings page and prefixes
+  /// Every configurable root command, for the settings page and prefixes
+  ///
+  /// Skips the transient running timers.
   pub fn all(&self, cx: &App) -> Vec<Rc<dyn Command>> {
     let query = Query::default();
     self
@@ -76,6 +78,7 @@ impl Registry {
       .iter()
       .filter(|s| s.kind() == SourceKind::Root)
       .flat_map(|s| s.commands(&query, cx))
+      .filter(|c| c.meta(cx).section != Section::Running)
       .collect()
   }
 
@@ -134,6 +137,8 @@ pub struct Row {
   pub meta: Meta,
   pub found: Match,
   pub frecency: f64,
+  /// Whether the settings page lists the command, so common actions apply
+  pub managed: bool,
 }
 
 impl Row {
@@ -178,8 +183,10 @@ pub fn compare(a: &Row, b: &Row) -> Ordering {
 }
 
 fn row(command: Rc<dyn Command>, found: Match, registry: &Registry, cx: &App) -> Row {
+  let meta = command.meta(cx);
   Row {
-    meta: command.meta(cx),
+    managed: meta.section != Section::Running,
+    meta,
     frecency: registry.frecency(&command.id()),
     command,
     found,
@@ -223,6 +230,15 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       .is_none_or(|c| c.enabled && !(root && c.hidden))
   };
 
+  // Query-gated commands are absent from the settings page, so favorite, alias, hide and
+  // disable on them could never be undone
+  let listed = (!query.is_empty()).then(|| {
+    registry
+      .all(cx)
+      .iter()
+      .map(|c| c.id())
+      .collect::<HashSet<SharedString>>()
+  });
   let mut results = Results::default();
   let mut rows = Vec::new();
   let mut fallbacks = Vec::new();
@@ -232,18 +248,28 @@ pub fn rank(query: &Query, cx: &App) -> Results {
       SourceKind::Evaluator if !query.is_empty() => results.evaluated.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Exact), registry, cx))
+          .map(|c| Row {
+            managed: false,
+            ..row(c, Match::new(Tier::Exact), registry, cx)
+          })
           .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Fallback if !query.is_empty() => fallbacks.extend(
         commands
           .into_iter()
-          .map(|c| row(c, Match::new(Tier::Fuzzy), registry, cx))
+          .map(|c| Row {
+            managed: false,
+            ..row(c, Match::new(Tier::Fuzzy), registry, cx)
+          })
           .filter(|r| enabled(&r.id(), false)),
       ),
       SourceKind::Root => rows.extend(
         rank_commands(commands, query, source.filters(), cx)
           .into_iter()
+          .map(|r| Row {
+            managed: r.managed && listed.as_ref().is_none_or(|l| l.contains(&r.id())),
+            ..r
+          })
           .filter(|r| enabled(&r.id(), true)),
       ),
       _ => {}

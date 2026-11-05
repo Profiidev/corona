@@ -20,7 +20,8 @@ pub fn set_paster(paste: impl Fn(Clip, &mut App) -> Task<Result<()>> + 'static, 
   cx.set_global(Paster(Rc::new(paste)));
 }
 
-pub fn copy(clip: &Clip, cx: &mut App) {
+/// False when the clip has no clipboard form, nothing was written
+pub fn copy(clip: &Clip, cx: &mut App) -> bool {
   let item = match clip {
     Clip::Text(text) => ClipboardItem::new_string(text.clone()),
     Clip::Image { bytes, mime } => {
@@ -34,17 +35,21 @@ pub fn copy(clip: &Clip, cx: &mut App) {
         "image/tiff" => ImageFormat::Tiff,
         "image/x-icon" | "image/vnd.microsoft.icon" => ImageFormat::Ico,
         // unknown type: writing it as PNG would mislabel the bytes
-        _ => return,
+        _ => return false,
       };
       ClipboardItem::new_image(&Image::from_bytes(format, bytes.to_vec()))
     }
   };
   cx.write_to_clipboard(item);
+  true
 }
 
 /// Copies, then pastes when a paster is set; says which in the HUD
 pub fn paste(clip: Clip, cx: &mut App) {
-  copy(&clip, cx);
+  if !copy(&clip, cx) {
+    hud::show(Hud::new(t!("app.launcher.hud.copy_failed")), cx);
+    return;
+  }
   let Some(paster) = cx.try_global::<Paster>().map(|p| p.0.clone()) else {
     hud::show(Hud::new(t!("app.launcher.hud.copied_only")), cx);
     return;
