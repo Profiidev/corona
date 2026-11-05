@@ -198,7 +198,9 @@ impl Sampler {
 
 /// virtual interfaces carry traffic that the physical NIC already counts
 fn is_physical(name: impl AsRef<OsStr>) -> bool {
-  let Some(name) = name.as_ref().to_str() else { return false };
+  let Some(name) = name.as_ref().to_str() else {
+    return false;
+  };
   const VIRTUAL: [&str; 10] = [
     "lo",
     "veth",
