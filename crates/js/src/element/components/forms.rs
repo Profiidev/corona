@@ -9,7 +9,7 @@ use gpui_kit::{
   ParentElement, Refineable, RenderOnce, SharedString, StyleRefinement, Styled, WeakEntity, Window,
   base::{self, CheckboxState, StepAction},
   component::{
-    Disableable, FocusableExt, Selectable, Sizable,
+    ActiveTheme as _, Disableable, FocusableExt, Selectable, Sizable,
     button::{Button, ButtonVariant, ButtonVariants, Toggle, ToggleVariants},
     checkbox::Checkbox,
     clipboard::Clipboard,
@@ -319,6 +319,8 @@ pub struct Indicator {
   state: Entity<base::slider::SliderState>,
   axis: Axis,
   range: Option<StyleRefinement>,
+  reverse: bool,
+  children: Vec<AnyElement>,
 }
 
 #[derive(IntoElement)]
@@ -337,7 +339,7 @@ impl Styled for Indicator {
 
 impl ParentElement for Indicator {
   fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-    self.inner.extend(elements)
+    self.children.extend(elements)
   }
 }
 
@@ -355,21 +357,27 @@ impl ParentElement for Thumb {
 
 impl RenderOnce for Indicator {
   fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-    let range = self.state.read(cx).percentage();
-    let Some(style) = self.range else {
-      return self.inner;
+    let state = self.state.read(cx);
+    let is_range = state.value().is_range();
+    let percentage = state.percentage();
+    let (bar_start, bar_end) = if self.reverse && !is_range {
+      (relative(percentage.end), relative(0.))
+    } else {
+      (relative(percentage.start), relative(1. - percentage.end))
     };
-    let mut fill = div().absolute();
-    *Styled::style(&mut fill) = style;
+
+    let mut fill = div().rounded_full().absolute();
+    if let Some(style) = self.range {
+      Styled::style(&mut fill).refine(&style);
+    } else {
+      fill = fill.bg(cx.theme().tokens.slider_bar);
+    }
+    let fill = fill.absolute();
     let fill = match self.axis {
-      Axis::Horizontal => (fill.top_0().bottom_0())
-        .left(relative(range.start))
-        .w(relative(range.end - range.start)),
-      Axis::Vertical => (fill.left_0().right_0())
-        .bottom(relative(range.start))
-        .h(relative(range.end - range.start)),
+      Axis::Horizontal => fill.h_full().left(bar_start).right(bar_end),
+      Axis::Vertical => fill.w_full().bottom(bar_start).top(bar_end),
     };
-    self.inner.child(fill)
+    self.inner.relative().child(fill).children(self.children)
   }
 }
 
@@ -751,9 +759,25 @@ mod methods {
     /// Splits an `OtpInput`'s cells into this many groups.
     fn groups(count: u32) |c, n| pick!(c, n, OtpInput => |b: OtpInput| b.groups(count as usize));
     /// A vertical `Slider`.
-    fn vertical() |c, n| pick!(c, n, Slider => |b: Slider| b.vertical());
+    fn vertical() |c, n| pick!(c, n,
+      Slider => |b: Slider| b.vertical(),
+      Indicator => |mut b: Indicator| {
+        b.axis = Axis::Vertical;
+        b
+      },
+      Thumb => |mut b: Thumb| {
+        b.axis = Axis::Vertical;
+        b
+      },
+    );
     /// Fills a `Slider` from the other end.
-    fn reverse() |c, n| pick!(c, n, Slider => |b: Slider| b.reverse());
+    fn reverse() |c, n| pick!(c, n,
+      Slider => |b: Slider| b.reverse(),
+      Indicator => |mut b: Indicator| {
+        b.reverse = true;
+        b
+      },
+    );
     /// Draws an `InputGroup` as invalid.
     fn invalid(value: bool) |c, n| pick!(c, n, InputGroup => |b: InputGroup| b.invalid(value));
     /// Draws the focus ring of an `InputGroup`.
@@ -2212,6 +2236,8 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
         state: s.clone(),
         axis: Axis::Horizontal,
         range: None,
+        reverse: false,
+        children: Vec::new(),
       })
     })?,
     slider_part(ctx, "SliderThumb", |s| {
