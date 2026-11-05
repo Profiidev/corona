@@ -1323,15 +1323,26 @@ fn token_renderer<'js, M: gpui_kit::component::input::InputModeKind + 'static>(
 
 // Retained states
 
-/// Updates a state with the window of the current call
+/// Updates a state with the window of the current call, or the active window if called outside one
 fn update<T: 'static>(
   ctx: &Ctx<'_>,
   state: &crate::Retained<T>,
   f: impl FnOnce(&mut T, &mut Window, &mut gpui_kit::Context<T>),
 ) -> Result<()> {
-  let window = window_or_throw(ctx)?;
-  state.entity(ctx)?.update(app(), |s, cx| f(s, window, cx));
-  Ok(())
+  if let Some(window) = crate::runtime::scope::try_window() {
+    state.entity(ctx)?.update(app(), |s, cx| f(s, window, cx));
+    Ok(())
+  } else if let Some(handle) = app().windows().first().copied() {
+    let entity = state.entity(ctx)?;
+    app()
+      .update_window(handle, |_, window, cx| {
+        entity.update(cx, |s, cx| f(s, window, cx));
+      })
+      .map_err(|e| Exception::throw_type(ctx, &e.to_string()))
+  } else {
+    window_or_throw(ctx)?;
+    Ok(())
+  }
 }
 
 /// What `on` of a text state gets: the keys held for `submit`

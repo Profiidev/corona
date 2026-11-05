@@ -347,3 +347,36 @@ export default class Main extends View {
 fn slider_indicator_renders_fill_and_thumb(cx: &mut TestAppContext) {
   let (_view, _cx) = rooted(cx, SLIDER_INDICATOR);
 }
+
+const TIMER_UPDATE: &str = r##"
+import { View, div } from "corona/kit";
+import * as base from "corona/base";
+
+globalThis.updated = false;
+
+export default class Main extends View {
+  init(_props, cx) {
+    this.slider = base.SliderState.new({ min: 0, max: 100, value: 10 });
+    cx.timer.after(5, (cx) => {
+      this.slider.set_value(50);
+      globalThis.val = this.slider.value();
+      globalThis.updated = true;
+      cx.notify();
+    });
+  }
+
+  render(_cx) {
+    return div().child(base.Slider.new(this.slider));
+  }
+}
+"##;
+
+#[gpui::test]
+fn timer_can_update_slider_state(cx: &mut TestAppContext) {
+  let (view, cx) = rooted(cx, TIMER_UPDATE);
+  cx.executor()
+    .advance_clock(std::time::Duration::from_millis(20));
+  cx.run_until_parked();
+  assert_eq!(eval(&view, cx, "globalThis.updated"), "true");
+  assert_eq!(eval(&view, cx, "String(globalThis.val)"), "50");
+}
