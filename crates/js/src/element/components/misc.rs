@@ -957,9 +957,12 @@ mod methods {
       "Message" => let a = alignment.get::<Alignments>(c)?;
         |m: Slot<Message>| Slot { widget: m.widget.alignment(a), ..m },
     });
-    /// The treatment of a `Bubble` or `Marker`.
-    fn variant(variant: Lit<'js, (BubbleVariants, MarkerVariants)>) for ["Bubble", "Marker"] |c, n| on_kind!(c, n, {
+    /// The treatment of a `Bubble`.
+    fn variant(variant: Lit<'js, BubbleVariants>) for ["Bubble"] |c, n| on_kind!(c, n, {
       "Bubble" => let v = variant.get::<BubbleVariants>(c)?; |b: Bubble| b.with_variant(v),
+    });
+    /// The treatment of a `Marker`.
+    fn variant(variant: Lit<'js, MarkerVariants>) for ["Marker"] |c, n| on_kind!(c, n, {
       "Marker" => let v = variant.get::<MarkerVariants>(c)?; |m: Marker| m.with_variant(v),
     });
     /// Whether the marker shows its loading treatment.
@@ -1000,7 +1003,7 @@ mod methods {
       "MessageScroller" => |s: MessageScroller| s.with_jump_button_label(label),
     });
     /// Disables an `Editor`, a `SettingItem`'s field, a questionnaire choice or question.
-    fn disabled(disabled: bool) for ["Editor", "SettingItem", "QuestionnaireChoice", "QuestionnaireItem", "QuestionnaireInput"] |c, n| on_kind!(c, n, {
+    fn disabled(disabled: bool) for ["Editor", "QuestionnaireChoice", "QuestionnaireInput", "QuestionnaireItem", "SettingItem"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.disabled(disabled),
       "SettingItem" => |i: ItemNode| ItemNode { disabled, ..i },
       "QuestionnaireChoice" => |d: ChoiceData| ChoiceData { disabled, ..d },
@@ -1045,7 +1048,7 @@ mod methods {
       "Diff" => let i = indicator.get::<ChangeIndicators>(c)?; |d: Diff| d.change_indicator(i),
     });
     /// The text under a setting's or question's title.
-    fn description(text: String) for ["SettingItem", "SettingGroup", "SettingPage", "QuestionnaireChoice", "QuestionnaireItem"] |c, n| on_kind!(c, n, {
+    fn description(text: String) for ["QuestionnaireChoice", "QuestionnaireItem", "SettingGroup", "SettingItem", "SettingPage"] |c, n| on_kind!(c, n, {
       "SettingItem" => |i: ItemNode| ItemNode { description: Some(text), ..i },
       "SettingGroup" => |g: GroupNode| GroupNode(g.0.description(text)),
       "SettingPage" => |p: PageNode| PageNode(p.0.description(text)),
@@ -1065,7 +1068,7 @@ mod methods {
       "SettingGroup" => |g: GroupNode| GroupNode(g.0.title(text)),
     });
     /// Renders a `SettingItem`'s field, or what follows a `SettingPage`'s title, lazily.
-    fn content(render: Function<'js>) for ["SettingItem", "SettingPage"] |c, n| on_kind!(c, n, {
+    fn content(render: Function<'js> as "(cx: Context) => Element | string | null | undefined") for ["SettingItem", "SettingPage"] |c, n| on_kind!(c, n, {
       "SettingItem" => let field = Some(Lazy::new(c, render)?); |i: ItemNode| ItemNode { field, ..i },
       "SettingPage" => let lazy = Lazy::new(c, render)?;
         |p: PageNode| PageNode(p.0.title_suffix(move |w, cx| lazy.render(None, w, cx))),
@@ -1109,16 +1112,16 @@ mod methods {
         |q: QuestionnaireNode| QuestionnaireNode { shortcuts, ..q },
     });
     /// `handler(url, cx)` on a link click, instead of opening it.
-    fn on_link_click(handler: On<'js, Url>) for ["TextView"] |c, n| on_kind!(c, n, {
+    fn on_link_click(handler: On<'js, Url>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => let l = frame().listener(handler.0, |url: &gpui_kit::SharedString| Url(url.to_string()));
         |t: TextView| t.on_link_click(move |url, _, w, cx| l(url, w, cx)),
     });
     /// Whether the text can be selected; on when left out.
-    fn selectable(value: Opt<bool>) for ["TextView"] |c, n| on_kind!(c, n, {
+    fn selectable(value: Opt<bool>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => |t: TextView| t.selectable(value.0.unwrap_or(true)),
     });
     /// Whether the view scrolls its content; on when left out.
-    fn scrollable(value: Opt<bool>) for ["TextView"] |c, n| on_kind!(c, n, {
+    fn scrollable(value: Opt<bool>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => |t: TextView| t.scrollable(value.0.unwrap_or(true)),
     });
     /// Where in its `relative()` parent the HUD sits.

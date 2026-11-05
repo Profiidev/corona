@@ -3209,11 +3209,22 @@ declare module "corona/kit" {
     | "font_black";
   export type NullaryStyles<Self> = { [Method in NullaryStyle]: (this: Element<StyledKind>) => Self };
   /** The kinds of element taking style methods. */
-  export type StyledKind = "canvas" | "Accordion" | "AccordionHeader" | "AccordionItem" | "AccordionPanel" | "AccordionTrigger" | "Alert" | "AlertDialog" | "AreaChart" | "Attachment" | "Avatar" | "AvatarFallback" | "AvatarImage" | "Badge" | "BarChart" | "Breadcrumb" | "Bubble" | "Button" | "Calendar" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Collapsible" | "ColorPicker" | "Combobox" | "Command" | "DataTable" | "DatePicker" | "DescriptionList" | "Dialog" | "Diff" | "DropdownButton" | "DropdownMenu" | "Editor" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyHeader" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "Icon" | "Input" | "InputGroup" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Kbd" | "Label" | "LineChart" | "Link" | "List" | "Marker" | "Message" | "MessageScroller" | "NativeMenuTrigger" | "Notification" | "NumberInput" | "OtpInput" | "Pagination" | "PieChart" | "Popover" | "Popup" | "Progress" | "ProgressIndicator" | "ProgressTrack" | "Questionnaire" | "RadarChart" | "Radio" | "RadioGroup" | "Rating" | "Resizable" | "ResizablePanel" | "Scroll" | "Scrollable" | "Select" | "Separator" | "SettingGroup" | "Sheet" | "ShimmerText" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "Skeleton" | "Slider" | "SliderIndicator" | "SliderThumb" | "SliderTrack" | "Spinner" | "StatusBar" | "Stepper" | "StepperItem" | "Switch" | "Tab" | "TabBar" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableFooter" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Tag" | "TextView" | "Textarea" | "TimeField" | "Toggle" | "ToggleGroup" | "Toolbar" | "Tree" | "VirtualList" | "div" | "dock_area" | "dock_content" | "image" | "list" | "style" | "svg" | "uniform_list";
+  export type StyledKind = "Probe" | "Accordion" | "Accordion@base" | "AccordionHeader@base" | "AccordionItem" | "AccordionItem@base" | "AccordionPanel@base" | "AccordionTrigger@base" | "Alert" | "AlertDialog" | "AreaChart" | "Attachment" | "Avatar" | "Avatar@base" | "AvatarFallback@base" | "AvatarImage" | "AvatarImage@base" | "Badge" | "BarChart" | "Breadcrumb" | "Bubble" | "Button" | "Button@base" | "Calendar" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Checkbox@base" | "Collapsible" | "Collapsible@base" | "ColorPicker" | "Combobox" | "Combobox@base" | "Command" | "DataTable" | "DatePicker" | "DatePicker@base" | "DescriptionList" | "Dialog" | "Diff" | "DropdownButton" | "DropdownMenu" | "Editor" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyHeader" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "Icon" | "Input" | "InputGroup" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Kbd" | "Label" | "LineChart" | "Link" | "Link@base" | "List" | "Marker" | "Message" | "MessageScroller" | "NativeMenuTrigger" | "Notification" | "NumberInput" | "NumberInput@base" | "OtpInput@base" | "Pagination" | "Pagination@base" | "PieChart" | "Popover" | "Popover@base" | "Popup@base" | "Probe" | "Progress" | "Progress@base" | "ProgressIndicator@base" | "ProgressTrack@base" | "Questionnaire" | "RadarChart" | "Radio" | "Radio@base" | "RadioGroup" | "RadioGroup@base" | "Rating" | "Resizable" | "Resizable@base" | "ResizablePanel" | "ResizablePanel@base" | "Scrollable" | "Scroll" | "Select" | "Select@base" | "Separator" | "SettingGroup" | "Sheet" | "ShimmerText" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "Skeleton" | "Slider" | "Slider@base" | "SliderIndicator@base" | "SliderThumb@base" | "SliderTrack@base" | "Spinner" | "StatusBar" | "Stepper" | "StepperItem" | "Switch" | "Switch@base" | "Tab" | "Tab@base" | "TabBar" | "Table" | "Table@base" | "TableBody" | "TableBody@base" | "TableCaption" | "TableCaption@base" | "TableCell" | "TableCell@base" | "TableFooter" | "TableHead" | "TableHead@base" | "TableHeader" | "TableHeader@base" | "TableRow" | "TableRow@base" | "Tabs@base" | "Tag" | "TextView@base" | "Textarea" | "TimeField" | "Toggle" | "Toggle@base" | "ToggleGroup@base" | "Toolbar" | "Tree" | "VirtualList@base" | "canvas" | "div" | "dock_area@base" | "dock_content" | "dock_content@base" | "image" | "list" | "style" | "svg" | "uniform_list";
   /** The kinds of element taking `id`, `on_click`, .. */
-  export type InteractiveKind = "Accordion" | "AccordionTrigger" | "Alert" | "AlertDialog" | "AreaChart" | "Avatar" | "AvatarImage" | "Badge" | "BarChart" | "Button" | "Checkbox" | "DatePicker" | "DescriptionList" | "Dialog" | "HoverCard" | "InputGroupButton" | "Label" | "LineChart" | "Link" | "Notification" | "Pagination" | "PieChart" | "Popover" | "Popup" | "Progress" | "RadarChart" | "Radio" | "RadioGroup" | "Scroll" | "Scrollable" | "Sheet" | "SidebarFooter" | "SidebarHeader" | "SliderTrack" | "Spinner" | "Switch" | "Tab" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Toggle" | "ToggleGroup" | "div" | "image" | "svg" | "uniform_list";
+  export type InteractiveKind = "Accordion@base" | "AccordionTrigger@base" | "AreaChart" | "Avatar" | "Avatar@base" | "AvatarImage" | "AvatarImage@base" | "Badge" | "BarChart" | "Button" | "Button@base" | "Checkbox" | "Checkbox@base" | "DatePicker@base" | "DescriptionList" | "InputGroupButton" | "Label" | "LineChart" | "Link@base" | "Pagination@base" | "PieChart" | "Popup@base" | "Progress@base" | "RadarChart" | "Radio" | "Radio@base" | "RadioGroup@base" | "Scrollable" | "Scroll" | "SidebarFooter" | "SidebarHeader" | "SliderTrack@base" | "Spinner" | "Switch@base" | "Tab" | "Tab@base" | "Table@base" | "TableBody@base" | "TableCaption@base" | "TableCell@base" | "TableHead@base" | "TableHeader@base" | "TableRow@base" | "Tabs@base" | "Toggle@base" | "ToggleGroup@base" | "div" | "image" | "svg" | "uniform_list";
   /** The kinds of element taking `child`. */
-  export type ParentKind = "Accordion" | "AccordionHeader" | "AccordionItem" | "AccordionPanel" | "AccordionTrigger" | "Alert" | "AlertDialog" | "Attachment" | "AvatarFallback" | "Badge" | "Bubble" | "Button" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Collapsible" | "Combobox" | "Command" | "CommandGroup" | "DatePicker" | "DescriptionList" | "Dialog" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Link" | "Marker" | "Menu" | "MenuBar" | "Message" | "NativeMenuTrigger" | "Notification" | "NumberInput" | "OtpInput" | "Pagination" | "Popover" | "Popup" | "Progress" | "ProgressIndicator" | "ProgressTrack" | "Questionnaire" | "QuestionnaireItem" | "Radio" | "RadioGroup" | "Resizable" | "ResizablePanel" | "Scroll" | "Scrollable" | "Select" | "SettingGroup" | "SettingPage" | "Settings" | "Sheet" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "SidebarMenu" | "SidebarMenuItem" | "Slider" | "SliderIndicator" | "SliderThumb" | "SliderTrack" | "StatusBar" | "Stepper" | "StepperItem" | "Switch" | "Tab" | "TabBar" | "Table" | "TableBody" | "TableCaption" | "TableCell" | "TableFooter" | "TableHead" | "TableHeader" | "TableRow" | "Tabs" | "Tag" | "Toggle" | "ToggleGroup" | "Toolbar" | "Tree" | "TreeItem" | "div";
+  export type ParentKind = "Accordion" | "Accordion@base" | "AccordionHeader@base" | "AccordionItem" | "AccordionItem@base" | "AccordionPanel@base" | "AccordionTrigger@base" | "Attachment" | "AvatarFallback@base" | "Badge" | "Bubble" | "Button" | "Button@base" | "Carousel" | "CarouselContent" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Checkbox" | "Checkbox@base" | "Collapsible" | "Collapsible@base" | "Combobox@base" | "Command" | "CommandGroup" | "DatePicker@base" | "DescriptionList" | "Empty" | "EmptyContent" | "EmptyDescription" | "EmptyMedia" | "EmptyTitle" | "Field" | "Form" | "GroupBox" | "HoverCard" | "InputGroupAddon" | "InputGroupButton" | "InputGroupText" | "Link" | "Link@base" | "Marker" | "Menu" | "MenuBar" | "Message" | "NativeMenuTrigger" | "NumberInput@base" | "OtpInput@base" | "Pagination@base" | "Popover" | "Progress@base" | "ProgressIndicator@base" | "ProgressTrack@base" | "Questionnaire" | "QuestionnaireItem" | "Radio" | "Radio@base" | "RadioGroup" | "RadioGroup@base" | "Resizable" | "Resizable@base" | "ResizablePanel" | "ResizablePanel@base" | "Scrollable" | "Scroll" | "Select@base" | "SettingGroup" | "SettingPage" | "Settings" | "Sidebar" | "SidebarFooter" | "SidebarHeader" | "SidebarMenu" | "SidebarMenuItem" | "Slider@base" | "SliderIndicator@base" | "SliderThumb@base" | "SliderTrack@base" | "StatusBar" | "Stepper" | "StepperItem" | "Switch@base" | "Tab" | "Tab@base" | "TabBar" | "Table" | "Table@base" | "TableBody" | "TableBody@base" | "TableCaption" | "TableCaption@base" | "TableCell" | "TableCell@base" | "TableFooter" | "TableHead" | "TableHead@base" | "TableHeader" | "TableHeader@base" | "TableRow" | "TableRow@base" | "Tabs@base" | "Tag" | "Toggle" | "Toggle@base" | "ToggleGroup@base" | "Toolbar" | "Tree" | "TreeItem" | "div";
+  /** What an element takes: style methods, interaction methods, `child`. */
+  export type Capability = "style" | "interactive" | "parent";
+  /**
+   * An element of any kind taking all of `C`, e.g. `ElementOf<"style" | "parent">` for a helper
+   * returning a `div()`, an `h_flex()` or a `Button`.
+   */
+  export type ElementOf<C extends Capability> = Element<
+    ("style" extends C ? StyledKind : string) &
+      ("interactive" extends C ? InteractiveKind : string) &
+      ("parent" extends C ? ParentKind : string)
+  >;
 
   /** An element of the render that built it: chain its methods, pass it to `child`. `K` is its kind: a component's methods are typed on the kinds having them. */
   export interface Element<K extends string = string> extends NullaryStyles<Element<K>> {
@@ -3361,7 +3372,7 @@ declare module "corona/kit" {
     /** The label a hover shows over this element. */
     tooltip(this: Element<InteractiveKind>, text: string): this;
     /** What this element announces itself as. */
-    role(this: Element<InteractiveKind>, name: string): this;
+    role(this: Element<InteractiveKind>, name: "alert" | "button" | "checkbox" | "dialog" | "group" | "heading" | "image" | "link" | "list" | "list_item" | "listbox" | "menu" | "menu_item" | "option" | "progress_indicator" | "radio_button" | "slider" | "status" | "switch" | "tab" | "tab_list" | "tab_panel" | "text_input" | "toolbar" | "tooltip"): this;
     /** What a screen reader announces. */
     aria_label(this: Element<InteractiveKind>, label: string): this;
     /** Same as `aria_label`. */
@@ -3427,36 +3438,43 @@ declare module "corona/kit" {
     /** Styles while an ancestor with `group(name)` is hovered. */
     group_hover(this: Element<StyledKind>, group: string, style: (style: Element<"style">) => Element): this;
     /** Sets the probe's label. */
-    label(text: string): this;
+    label(this: Element<"Probe">, text: string): this;
     /** The visible label of a button, check, switch, radio, toggle, color picker or field. */
-    label(this: Element<"Button" | "Checkbox" | "Switch" | "Radio" | "Toggle" | "ColorPicker" | "Field" | "InputGroupButton">, text: string): this;
+    label(this: Element<"Button" | "Checkbox" | "ColorPicker" | "Field" | "InputGroupButton" | "Radio" | "Switch" | "Toggle">, text: string): this;
     /** An icon of an `InputGroupButton`, by asset path. */
     icon(this: Element<"InputGroupButton">, path: string): this;
     /** Concise hover help. */
-    tooltip(this: Element<"Button" | "Checkbox" | "Switch" | "Toggle" | "Clipboard" | "InputGroupButton">, text: string): this;
+    tooltip(this: Element<"Button" | "Button@base" | "Checkbox" | "Checkbox@base" | "Clipboard" | "InputGroupButton" | "Switch" | "Switch@base" | "Toggle" | "Toggle@base">, text: string): this;
     /** The controlled value of a `Checkbox`, `Switch`, `Radio` or `Toggle`. */
-    checked(this: Element<"Checkbox" | "Switch" | "Radio" | "Toggle">, value: boolean): this;
+    checked(this: Element<"Checkbox" | "Checkbox@base" | "Radio" | "Radio@base" | "Switch" | "Switch@base" | "Toggle">, value: boolean): this;
     /** The controlled state of a `corona/base` `Toggle`: a button that stays down. */
-    pressed(this: Element<"Toggle">, value: boolean): this;
+    pressed(this: Element<"Toggle@base">, value: boolean): this;
     /**
-     * `handler(value, cx)` with the new value: `checked` of a check, switch, radio or toggle,
-     * the index of a `RadioGroup`, the stars of a `Rating`. The script owns the value.
+     * `handler(checked, cx)` with the new value of a check, switch, radio or toggle. The script
+     * owns the value.
      */
-    on_change(this: Element<"Checkbox" | "Switch" | "Radio" | "Toggle" | "RadioGroup" | "Rating" | "Input" | "Textarea">, handler: (event: any, cx: Context) => void): this;
+    on_change(this: Element<"Checkbox" | "Checkbox@base" | "Radio" | "Radio@base" | "Switch" | "Switch@base" | "Toggle" | "Toggle@base">, handler: (event: boolean, cx: Context) => void): this;
+    /**
+     * `handler(index, cx)` with the index of the checked `Radio` of a `RadioGroup`, or the
+     * stars of a `Rating`.
+     */
+    on_change(this: Element<"RadioGroup" | "Rating">, handler: (event: number, cx: Context) => void): this;
+    /** `handler(text, cx)` with the new text of an `Input` or `Textarea`. */
+    on_change(this: Element<"Input" | "Textarea">, handler: (event: string, cx: Context) => void): this;
     /** Blocks interaction and draws the control disabled. */
-    disabled(this: Element<"Button" | "Label" | "Link" | "Checkbox" | "Switch" | "Radio" | "RadioGroup" | "Toggle" | "Rating" | "Input" | "NumberInput" | "Textarea" | "OtpInput" | "Slider" | "DatePicker" | "TimeField" | "Select" | "Combobox" | "InputGroup" | "InputGroupButton" | "SliderTrack" | "SliderThumb">, value: boolean): this;
+    disabled(this: Element<"Button" | "Button@base" | "Checkbox" | "Checkbox@base" | "Combobox" | "Combobox@base" | "DatePicker" | "DatePicker@base" | "Input" | "InputGroup" | "InputGroupButton" | "Label" | "Link" | "Link@base" | "NumberInput" | "NumberInput@base" | "OtpInput" | "OtpInput@base" | "Radio" | "Radio@base" | "RadioGroup" | "Rating" | "Select" | "Select@base" | "Slider" | "Slider@base" | "SliderThumb@base" | "SliderTrack@base" | "Switch" | "Switch@base" | "Textarea" | "TimeField" | "Toggle" | "Toggle@base">, value: boolean): this;
     /** The selected state of a `Button`. */
-    selected(this: Element<"Button" | "InputGroupButton">, value: boolean): this;
+    selected(this: Element<"Button" | "Button@base" | "InputGroupButton">, value: boolean): this;
     /** Shows a spinner and blocks clicks. */
     loading(this: Element<"Button" | "InputGroupButton">, value: boolean): this;
     /** The semantic control size. */
-    size(this: Element<"Button" | "Checkbox" | "Switch" | "Radio" | "Toggle" | "Rating" | "Form" | "InputGroup" | "InputGroupButton">, size: "xsmall" | "small" | "medium" | "large"): this;
+    size(this: Element<"Button" | "Button@base" | "Checkbox" | "Checkbox@base" | "Form" | "InputGroup" | "InputGroupButton" | "Radio" | "Radio@base" | "Rating" | "Switch" | "Switch@base" | "Toggle" | "Toggle@base">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** The outlined look of a button, toggle or keycap. */
-    outline(this: Element<"Button" | "Toggle" | "Kbd" | "InputGroupButton">): this;
+    outline(this: Element<"Button" | "InputGroupButton" | "Kbd" | "Toggle">): this;
     /** The primary action look. */
     primary(this: Element<"Button">): this;
     /** The secondary look of a `Button`, or the muted secondary text of a `Label`. */
-    secondary(this: Element<"Label" | "Button">, text?: string): this;
+    secondary(this: Element<"Button" | "Label">, text?: string): this;
     /** The destructive action look. */
     danger(this: Element<"Button">): this;
     /** The success look. */
@@ -3472,13 +3490,13 @@ declare module "corona/kit" {
     /** A native button variant of an `InputGroupButton`. */
     variant(this: Element<"InputGroupButton">, variant: "default" | "primary" | "secondary" | "danger" | "warning" | "success" | "info" | "ghost" | "link" | "text"): this;
     /** The absolute HTTP(S) URL a `Link` opens. */
-    href(this: Element<"Link">, url: string): this;
+    href(this: Element<"Link" | "Link@base">, url: string): this;
     /** The checked radio of a `RadioGroup`, by index. */
     selected_index(this: Element<"RadioGroup">, index: number): this;
     /** The orientation a `corona/base` `RadioGroup` or `ToggleGroup` announces. */
-    axis(this: Element<"RadioGroup" | "ToggleGroup" | "Slider" | "SliderTrack" | "SliderIndicator" | "SliderThumb">, axis: "horizontal" | "vertical"): this;
+    axis(this: Element<"RadioGroup@base" | "Slider@base" | "SliderIndicator@base" | "SliderThumb@base" | "SliderTrack@base" | "ToggleGroup@base">, axis: "horizontal" | "vertical"): this;
     /** This item's one-based position and its collection's size, announced. */
-    set_position(this: Element<"Radio">, position: number, size: number): this;
+    set_position(this: Element<"Radio@base">, position: number, size: number): this;
     /** Draws a `Label`'s text as a password. */
     masked(this: Element<"Input" | "Label">, value: boolean): this;
     /** Highlights the matches of `text` in a `Label`. */
@@ -3486,10 +3504,12 @@ declare module "corona/kit" {
     /** Whether a keycap or text area draws its frame. */
     appearance(this: Element<"Kbd" | "Textarea">, value: boolean): this;
     /**
-     * What a `Clipboard` copies, the stars of a `Rating`, or the row id a `Select` shows as
-     * selected; an id without a row selects nothing.
+     * What a `Clipboard` copies, the text of an `Input` or `Textarea`, or the row id a `Select`
+     * shows as selected; an id without a row selects nothing.
      */
-    value(this: Element<"Select" | "Input" | "Textarea" | "Clipboard" | "Rating">, value: string | number): this;
+    value(this: Element<"Clipboard" | "Input" | "Select" | "Textarea">, value: string): this;
+    /** The stars of a `Rating`. */
+    value(this: Element<"Rating">, stars: number): this;
     /** How many stars a `Rating` has. */
     max(this: Element<"Rating">, count: number): this;
     /** The accent color of a `Rating`. */
@@ -3497,21 +3517,21 @@ declare module "corona/kit" {
     /** Draws a `Textarea`'s border. */
     bordered(this: Element<"Textarea">, value: boolean): this;
     /** Allows selecting and copying but no edits. */
-    readonly(this: Element<"Input" | "Textarea" | "InputGroup">, value: boolean): this;
+    readonly(this: Element<"Input" | "InputGroup" | "Textarea">, value: boolean): this;
     /** The prompt shown while empty. */
-    placeholder(this: Element<"Input" | "Textarea" | "NumberInput" | "DatePicker" | "Select" | "Combobox">, text: string): this;
+    placeholder(this: Element<"Combobox" | "DatePicker" | "Input" | "NumberInput" | "Select" | "Textarea">, text: string): this;
     /** The prompt of a `Combobox`'s search field. */
     search_placeholder(this: Element<"Combobox">, text: string): this;
     /** Shows a search field above a `Combobox`'s items; takes effect from the next frame. */
     searchable(this: Element<"Combobox">, value: boolean): this;
     /** The width of a `Select`'s or `Combobox`'s menu, in pixels. */
-    menu_width(this: Element<"Select" | "Combobox">, width: number): this;
+    menu_width(this: Element<"Combobox" | "Select">, width: number): this;
     /** Splits an `OtpInput`'s cells into this many groups. */
     groups(this: Element<"OtpInput">, count: number): this;
     /** A vertical `Slider`. */
-    vertical(this: Element<"Slider" | "SliderIndicator" | "SliderThumb">): this;
+    vertical(this: Element<"Slider" | "SliderIndicator@base" | "SliderThumb@base">): this;
     /** Fills a `Slider` from the other end. */
-    reverse(this: Element<"Slider" | "SliderIndicator">): this;
+    reverse(this: Element<"Slider" | "SliderIndicator@base">): this;
     /** Draws an `InputGroup` as invalid. */
     invalid(this: Element<"InputGroup">, value: boolean): this;
     /** Draws the focus ring of an `InputGroup`. */
@@ -3525,29 +3545,30 @@ declare module "corona/kit" {
     /** How many grid columns a `Field` spans. */
     col_span(this: Element<"Field">, span: number): this;
     /** Where a `Field` aligns its control. */
-    align(this: Element<"Field" | "InputGroupAddon">, to: string | number): this;
+    align(this: Element<"Field">, to: "start" | "center" | "end"): this;
+    /** Where an `InputGroupAddon` sits in its group. */
+    align(this: Element<"InputGroupAddon">, to: "inline-start" | "inline-end" | "block-start" | "block-end"): this;
     /** How many columns a `Form` lays its fields out in. */
     columns(this: Element<"Form">, count: number): this;
     /** The label width of a horizontal `Form`, in pixels. */
     label_width(this: Element<"Form">, width: number): this;
-    /**
-     * The text control of an `InputGroup` (`InputGroupInput` or `InputGroupTextarea`), or
-     * the editor slot of a `corona/base` `NumberInput`.
-     */
-    input(this: Element<"InputGroup" | "NumberInput">, control: Element | Entity | string | number | boolean): this;
+    /** The text control of an `InputGroup`: an `InputGroupInput` or `InputGroupTextarea`. */
+    input(this: Element<"InputGroup">, control: Element<"Input" | "Textarea">): this;
+    /** The editor slot of a `corona/base` `NumberInput`. */
+    input(this: Element<"NumberInput@base">, control: Element | Entity | string | number | boolean): this;
     /** Appends an `InputGroupAddon` to an `InputGroup`. */
-    addon(this: Element<"InputGroup">, addon: Element | Entity | string | number | boolean): this;
+    addon(this: Element<"InputGroup">, addon: Element<"InputGroupAddon">): this;
     /** Names the control for accessibility. */
-    aria_label(this: Element<"Input" | "Textarea" | "InputGroup" | "InputGroupButton">, label: string): this;
+    aria_label(this: Element<"Input" | "Input@base" | "InputGroup" | "InputGroupButton" | "Textarea" | "Textarea@base">, label: string): this;
     /** What a screen reader announces. */
-    accessibility_label(this: Element<"Radio" | "ColorPicker" | "Button" | "Link" | "Checkbox" | "Switch" | "Toggle" | "Select">, label: string): this;
+    accessibility_label(this: Element<"Button" | "Button@base" | "Checkbox" | "Checkbox@base" | "ColorPicker" | "Link" | "Link@base" | "Radio" | "Radio@base" | "Select" | "Select@base" | "Switch" | "Switch@base" | "Toggle" | "Toggle@base">, label: string): this;
     /** Whether Tab lands on a `Radio`. */
-    tab_stop(this: Element<"Radio">, value: boolean): this;
+    tab_stop(this: Element<"Radio" | "Radio@base">, value: boolean): this;
     /**
      * Renders each inline token: `render(token, cx)` answers its element, `null` for the
      * default chip.
      */
-    token(this: Element<"Input" | "Textarea">, render: (...args: any[]) => unknown): this;
+    token(this: Element<"Input" | "Textarea">, render: (token: import("corona/component").InlineTokenContext, cx: Context) => Element | string | null | undefined): this;
     /** `listener(event, cx)` after a click on a token that nothing consumed. */
     on_token_click(this: Element<"Input" | "Textarea">, listener: (event: import("corona/component").InlineTokenClickEvent, cx: Context) => void): this;
     /** `listener(event, cx)` when the pointer enters or leaves a token. */
@@ -3561,101 +3582,108 @@ declare module "corona/kit" {
     /** Grows a `Textarea` between two row counts, on its state. */
     auto_grow(this: Element<"Textarea">, min_rows: number, max_rows: number): this;
     /** `handler(event, cx)` on activation. */
-    on_click(this: Element<"Button" | "Link" | "InputGroupButton">, handler: (event: ClickEvent, cx: Context) => void): this;
+    on_click(this: Element<"Button" | "Button@base" | "InputGroupButton" | "Link" | "Link@base">, handler: (event: ClickEvent, cx: Context) => void): this;
     /** Whether a `corona/base` `Select`, `Combobox` or `DatePicker` is showing its list. */
-    open(this: Element<"Select" | "Combobox" | "DatePicker">, value: boolean): this;
+    open(this: Element<"Combobox@base" | "DatePicker@base" | "Select@base">, value: boolean): this;
     /** `handler(open, cx)` when something other than the script opened or closed it. */
-    on_open_change(this: Element<"Select" | "Combobox" | "DatePicker">, handler: (event: boolean, cx: Context) => void): this;
+    on_open_change(this: Element<"Combobox@base" | "DatePicker@base" | "Select@base">, handler: (event: boolean, cx: Context) => void): this;
     /** `handler(_, cx)` on Enter in an open `corona/base` `Select` or `Combobox`. */
-    on_confirm(this: Element<"Select" | "Combobox">, handler: (event: {}, cx: Context) => void): this;
+    on_confirm(this: Element<"Combobox@base" | "Select@base">, handler: (event: {}, cx: Context) => void): this;
     /** `handler(_, cx)` on Escape in an open `corona/base` `Select` or `Combobox`. */
-    on_dismiss(this: Element<"Select" | "Combobox">, handler: (event: {}, cx: Context) => void): this;
+    on_dismiss(this: Element<"Combobox@base" | "Select@base">, handler: (event: {}, cx: Context) => void): this;
     /** The handle a `corona/base` `Select` or `Combobox` moves the keyboard to when it opens. */
-    content_focus_handle(this: Element<"Select" | "Combobox">, handle: FocusHandle): this;
+    content_focus_handle(this: Element<"Combobox@base" | "Select@base">, handle: FocusHandle): this;
     /** Which thumb of a range slider a `SliderThumb` is. */
-    start(this: Element<"SliderThumb">, value: boolean): this;
+    start(this: Element<"SliderThumb@base">, value: boolean): this;
     /** How the filled part of a `SliderIndicator` looks: `declare(el)` styles it. */
-    range_style(this: Element<"SliderIndicator">, declare: (...args: any[]) => unknown): this;
+    range_style(this: Element<"SliderIndicator@base">, declare: (style: Element<"style">) => unknown): this;
     /** How every cell of a `corona/base` `OtpInput` looks. */
-    cell_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
+    cell_style(this: Element<"OtpInput@base">, declare: (style: Element<"style">) => unknown): this;
     /** What the cell the next digit lands in adds to `cell_style`. */
-    cell_active_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
+    cell_active_style(this: Element<"OtpInput@base">, declare: (style: Element<"style">) => unknown): this;
     /** The blinking mark in that cell while it is empty. */
-    caret_style(this: Element<"OtpInput">, declare: (...args: any[]) => unknown): this;
+    caret_style(this: Element<"OtpInput@base">, declare: (style: Element<"style">) => unknown): this;
     /** The look of a `corona/base` `NumberInput`'s decrement button. */
-    decrement_button(this: Element<"NumberInput">, look: Element | Entity | string | number | boolean): this;
+    decrement_button(this: Element<"NumberInput@base">, look: Element | Entity | string | number | boolean): this;
     /** The look of a `corona/base` `NumberInput`'s increment button. */
-    increment_button(this: Element<"NumberInput">, look: Element | Entity | string | number | boolean): this;
+    increment_button(this: Element<"NumberInput@base">, look: Element | Entity | string | number | boolean): this;
     /** Stacks both step buttons to the right of the text. */
-    controls_right(this: Element<"NumberInput">): this;
+    controls_right(this: Element<"NumberInput@base">): this;
     /** `handler(action, cx)` on a step; replaces the built-in stepping. */
-    on_step(this: Element<"NumberInput">, handler: (event: "increment" | "decrement", cx: Context) => void): this;
+    on_step(this: Element<"NumberInput@base">, handler: (event: "increment" | "decrement", cx: Context) => void): this;
     /** Whether a `Tab`, sidebar row, header or footer shows as selected. */
-    selected(this: Element<"Tab" | "SidebarHeader" | "SidebarFooter" | "SidebarMenuItem" | "DropdownButton">, value: boolean): this;
+    selected(this: Element<"DropdownButton" | "SidebarFooter" | "SidebarHeader" | "SidebarMenuItem" | "Tab" | "Tab@base">, value: boolean): this;
     /** Disables a tab, accordion part, step, pagination, menu or command item. */
-    disabled(this: Element<"Tab" | "AccordionItem" | "Accordion" | "Pagination" | "Stepper" | "StepperItem" | "Toolbar" | "SidebarMenuItem" | "CommandItem" | "NativeMenuItem" | "MenuItem" | "Menu" | "DropdownButton" | "NativeMenuTrigger">, value: boolean): this;
+    disabled(this: Element<"Accordion" | "AccordionItem" | "AccordionItem@base" | "CommandItem" | "DropdownButton" | "Menu" | "MenuItem" | "NativeMenuItem" | "NativeMenuTrigger" | "Pagination" | "SidebarMenuItem" | "Stepper" | "StepperItem" | "Tab" | "Tab@base" | "Toolbar">, value: boolean): this;
     /** A `Tab`'s one-based place among `size` tabs, announced as "tab 2 of 5". */
-    set_position(this: Element<"Tab">, position: number, size: number): this;
+    set_position(this: Element<"Tab@base">, position: number, size: number): this;
     /** Whether an accordion item or a collapsible is open. */
-    open(this: Element<"AccordionItem" | "Collapsible">, value: boolean): this;
-    /** An `AccordionItem`'s `AccordionHeader`, or a `Sidebar`'s header. */
-    header(this: Element<"AccordionItem" | "Sidebar">, el: Element | Entity | string | number | boolean): this;
+    open(this: Element<"AccordionItem" | "AccordionItem@base" | "Collapsible" | "Collapsible@base">, value: boolean): this;
+    /** An `AccordionItem`'s `AccordionHeader`. */
+    header(this: Element<"AccordionItem@base">, el: Element<"AccordionHeader@base">): this;
+    /** A `Sidebar`'s header. */
+    header(this: Element<"Sidebar">, el: Element | Entity | string | number | boolean): this;
     /** A `Sidebar`'s footer. */
     footer(this: Element<"Sidebar">, el: Element | Entity | string | number | boolean): this;
     /** An `AccordionItem`'s `AccordionPanel`. */
-    panel(this: Element<"AccordionItem">, element: Element | Entity | string | number | boolean): this;
+    panel(this: Element<"AccordionItem@base">, element: Element<"AccordionPanel@base">): this;
     /** What revealing a collapsible shows. */
-    content(this: Element<"Collapsible">, el: Element | Entity | string | number | boolean): this;
+    content(this: Element<"Collapsible" | "Collapsible@base">, el: Element | Entity | string | number | boolean): this;
     /** A stable identity for a collapsible's reveal motion. */
     motion_id(this: Element<"Collapsible">, id: string | number): this;
     /** An `AccordionHeader`'s announced heading level, 3 by default. */
-    aria_level(this: Element<"AccordionHeader">, level: number): this;
+    aria_level(this: Element<"AccordionHeader@base">, level: number): this;
     /** Keeps a shut `AccordionPanel` in the tree, with its scroll position and focus. */
-    keep_mounted(this: Element<"AccordionPanel">, value?: boolean): this;
+    keep_mounted(this: Element<"AccordionPanel@base">, value?: boolean): this;
+    /** `handler(open, cx)` with the open state an `AccordionTrigger` asks for. */
+    on_change(this: Element<"AccordionTrigger@base">, handler: (event: boolean, cx: Context) => void): this;
     /**
-     * `handler(value, cx)`: an `AccordionTrigger`'s requested open state, or the index a
-     * `TabBar` or `Stepper`, or the page a `Pagination`, asks for.
+     * `handler(index, cx)` with the index a `TabBar` or `Stepper`, or the page a `Pagination`,
+     * asks for.
      */
-    on_change(this: Element<"AccordionTrigger" | "TabBar" | "Stepper" | "Pagination">, handler: (event: any, cx: Context) => void): this;
-    /** A resizable panel's initial size in pixels, or a component's semantic size. */
-    size(this: Element<"ResizablePanel" | "TabBar" | "Accordion" | "Pagination" | "Stepper" | "DropdownButton">, size: number | "xsmall" | "small" | "medium" | "large"): this;
+    on_change(this: Element<"Pagination" | "Stepper" | "TabBar">, handler: (event: number, cx: Context) => void): this;
+    /** A resizable panel's initial size in pixels. */
+    size(this: Element<"ResizablePanel" | "ResizablePanel@base">, pixels: number): this;
+    /** A component's semantic size. */
+    size(this: Element<"Accordion" | "Accordion@base" | "DropdownButton" | "Pagination" | "Pagination@base" | "Stepper" | "TabBar">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** Whether a `resizable_panel()` is drawn; hidden, it keeps its place. Default `true`. */
-    visible(this: Element<"ResizablePanel">, value?: boolean): this;
+    visible(this: Element<"ResizablePanel" | "ResizablePanel@base">, value?: boolean): this;
     /** How far a resizable panel may be dragged, in pixels. */
-    size_range(this: Element<"ResizablePanel">, min: number, max?: number): this;
+    size_range(this: Element<"ResizablePanel" | "ResizablePanel@base">, min: number, max?: number): this;
     /** `handler(sizes, cx)` after a drag resized the panels of a resizable group. */
-    on_resize(this: Element<"Resizable">, handler: (event: number[], cx: Context) => void): this;
+    on_resize(this: Element<"Resizable" | "Resizable@base">, handler: (event: number[], cx: Context) => void): this;
     /** A `Resizable`'s direction: `"horizontal"` or `"vertical"`. */
-    axis(this: Element<"Resizable">, value: string): this;
+    axis(this: Element<"Resizable" | "Resizable@base">, value: "horizontal" | "vertical"): this;
     /** A `Resizable`'s size across its axis, in pixels. */
-    cross_size(this: Element<"Resizable">, pixels: number): this;
+    cross_size(this: Element<"Resizable" | "Resizable@base">, pixels: number): this;
     /** When a `Scrollbar` shows: `"scrolling"`, `"hover"` or `"always"`. */
-    mode(this: Element<"Scrollbar">, value: string): this;
+    mode(this: Element<"Scrollbar">, value: "scrolling" | "hover" | "always"): this;
     /** The content size a `Scrollbar` measures its thumb against, in pixels. */
     scroll_size(this: Element<"Scrollbar">, width: number, height: number): this;
     /** Makes a `Scrollbar` take its viewport from its own bounds. */
     viewport_from_layout(this: Element<"Scrollbar">, enabled?: boolean): this;
     /** Which axes a `Scrollbar` or `Scroll` covers: `"vertical"`, `"horizontal"` or `"both"`. */
-    scroll_axis(this: Element<"Scrollbar" | "Scroll">, axis: string): this;
+    scroll_axis(this: Element<"Scroll" | "Scrollbar">, axis: "vertical" | "horizontal" | "both"): this;
     /** Lets a `VirtualListScrollHandle` drive a virtual list. */
-    track_scroll(this: Element<"VirtualList">, handle: import("corona/base").VirtualListScrollHandle): this;
+    track_scroll(this: Element<"VirtualList@base">, handle: import("corona/base").VirtualListScrollHandle): this;
     /** Which item a virtual list measures for its cross-axis size. */
-    with_item_to_measure_index(this: Element<"VirtualList">, index: number): this;
+    with_item_to_measure_index(this: Element<"VirtualList@base">, index: number): this;
     /** A `Tab`'s text, or a `Separator`'s. */
-    label(this: Element<"Tab" | "Separator">, label: string): this;
+    label(this: Element<"Separator" | "Tab">, label: string): this;
     /** What a `Tab` announces. */
-    aria_label(this: Element<"Tab">, label: string): this;
+    aria_label(this: Element<"Tab" | "Tab@base">, label: string): this;
     /** `handler(key, cx)` when a row of a virtual list is clicked, `key` what `get_key` gave. */
-    on_item_click(this: Element<"VirtualList">, handler: (event: string, cx: Context) => void): this;
+    on_item_click(this: Element<"VirtualList@base">, handler: (event: string, cx: Context) => void): this;
     /** `handler(key, event, cx)` on a secondary press over a row of a virtual list. */
-    on_item_secondary_click(this: Element<"VirtualList">, handler: (...args: any[]) => unknown): this;
+    on_item_secondary_click(this: Element<"VirtualList@base">, handler: (key: string, event: ClickEvent, cx: Context) => void): this;
     /** The zero-based selected tab or current step. */
-    selected_index(this: Element<"TabBar" | "Stepper">, index: number): this;
-    /**
-     * A `TabBar`'s look (`"tab"`, `"outline"`, `"pill"`, `"segmented"`, `"underline"`) or a
-     * `GroupBox`'s (`"normal"`, `"fill"`, `"outline"`).
-     */
-    variant(this: Element<"DropdownButton" | "GroupBox" | "TabBar">, variant: string): this;
+    selected_index(this: Element<"Stepper" | "TabBar">, index: number): this;
+    /** A `DropdownButton`'s look. */
+    variant(this: Element<"DropdownButton">, variant: "primary" | "secondary" | "danger" | "ghost"): this;
+    /** A `GroupBox`'s look. */
+    variant(this: Element<"GroupBox">, variant: "normal" | "fill" | "outline"): this;
+    /** A `TabBar`'s look. */
+    variant(this: Element<"TabBar">, variant: "tab" | "outline" | "pill" | "segmented" | "underline"): this;
     /** Whether a `TabBar` lists tabs that do not fit in a menu. */
     menu(this: Element<"TabBar">, value: boolean): this;
     /** Whether an `Accordion` keeps several items open. */
@@ -3687,13 +3715,13 @@ declare module "corona/kit" {
     /** Adds to a `StatusBar`'s trailing side. */
     right_content(this: Element<"StatusBar">, el: Element | Entity | string | number | boolean): this;
     /** The side a `Sidebar` or `SidebarToggleButton` sits on: `"left"` or `"right"`. */
-    side(this: Element<"Sidebar" | "SidebarToggleButton">, side: string): this;
+    side(this: Element<"Sidebar" | "SidebarToggleButton">, side: "left" | "right"): this;
     /** How a `Sidebar` collapses: `"icon"`, `"offcanvas"` or `"none"`. */
-    collapsible(this: Element<"Sidebar">, mode: string): this;
+    collapsible(this: Element<"Sidebar">, mode: "icon" | "offcanvas" | "none"): this;
     /** Whether a `Sidebar` is collapsed, and which icon its toggle shows. */
     collapsed(this: Element<"Sidebar" | "SidebarToggleButton">, value: boolean): this;
     /** `handler(event, cx)` when a sidebar row or toggle is pressed. */
-    on_click(this: Element<"SidebarMenuItem" | "SidebarToggleButton" | "DropdownButton">, handler: (event: ClickEvent, cx: Context) => void): this;
+    on_click(this: Element<"DropdownButton" | "SidebarMenuItem" | "SidebarToggleButton">, handler: (event: ClickEvent, cx: Context) => void): this;
     /** Whether a sidebar row's submenu starts open. */
     default_open(this: Element<"SidebarMenuItem">, value: boolean): this;
     /** Lets a press on a sidebar row open its submenu. */
@@ -3701,7 +3729,7 @@ declare module "corona/kit" {
     /** Lets a press on a sidebar row toggle its submenu. */
     click_to_toggle(this: Element<"SidebarMenuItem">, value: boolean): this;
     /** A sidebar row's icon: `"home"`, `"components"`, `"settings"`, `"archive"` or `"account"`. */
-    icon(this: Element<"SidebarMenuItem">, icon: string): this;
+    icon(this: Element<"SidebarMenuItem">, icon: "home" | "components" | "settings" | "archive" | "account"): this;
     /** Whether a `Command` shows its search field. */
     searchable(this: Element<"Command">, value: boolean): this;
     /** Whether a `Command` filters its items by the query. */
@@ -3721,13 +3749,13 @@ declare module "corona/kit" {
     /** Another word a `CommandItem` is found by. */
     keyword(this: Element<"CommandItem">, keyword: string): this;
     /** Whether a command or native menu item shows a check. */
-    checked(this: Element<"CommandItem" | "NativeMenuItem" | "MenuItem">, value: boolean): this;
+    checked(this: Element<"CommandItem" | "MenuItem" | "NativeMenuItem">, value: boolean): this;
     /** The action a command or native menu item dispatches, for `on_action`. */
     action(this: Element<"CommandItem" | "NativeMenuItem">, action: string): this;
     /** The outlined look of a `DropdownButton`. */
     outline(this: Element<"DropdownButton">): this;
     /** Where a `DropdownButton`'s menu opens. */
-    menu_anchor(this: Element<"DropdownButton">, anchor: string): this;
+    menu_anchor(this: Element<"DropdownButton">, anchor: "top_right" | "bottom_right" | "bottom_left" | "top_left"): this;
     /** Adds a `DropdownButton` menu item calling `handler(cx)`. */
     menu_item(this: Element<"DropdownButton">, label: string, handler: (cx: Context) => void): this;
     /**
@@ -3757,36 +3785,38 @@ declare module "corona/kit" {
     /** Scrolls vertically and paints a base-layer scrollbar. */
     overflow_y_scrollbar(this: Element<"div">): this;
     /** The element a `corona/base` `Popover` or `HoverCard` draws while closed, and that opens it. */
-    trigger(this: Element<"Popover" | "HoverCard">, element: Element | Entity | string | number | boolean): this;
+    trigger(this: Element<"HoverCard@base" | "Popover@base">, element: Element | Entity | string | number | boolean): this;
     /** The element that opens a `corona/component` `HoverCard` when hovered. */
     trigger_element(this: Element<"HoverCard">, element: Element | Entity | string | number | boolean): this;
+    /** What a `Popover`, `HoverCard` or `Popup` shows while open: an element of this render. */
+    content(this: Element<"HoverCard" | "HoverCard@base" | "Popover" | "Popover@base" | "Popup@base">, content: Element): this;
     /**
-     * What a surface shows while open: an element of this render. A `Dialog` or `Sheet`
-     * outlives the render, so it takes a fn rendering its content instead.
+     * What a `Dialog` or `Sheet` shows: it outlives the render, so it takes a fn rendering its
+     * content instead.
      */
-    content(this: Element<"Popover" | "HoverCard" | "Popup" | "Dialog" | "Sheet">, content: Element | (() => Element)): this;
+    content(this: Element<"Dialog" | "Sheet">, content: () => Element): this;
     /** Whether a `Popover` is open; set, the script holds the state through `on_open_change`. */
-    open(this: Element<"Popover">, value: boolean): this;
+    open(this: Element<"Popover" | "Popover@base">, value: boolean): this;
     /** Whether an uncontrolled `Popover` starts open. */
-    default_open(this: Element<"Popover">, value: boolean): this;
+    default_open(this: Element<"Popover" | "Popover@base">, value: boolean): this;
     /** Whether a press outside an open `Popover` closes it. Default `true`. */
-    overlay_closable(this: Element<"Popover">, value: boolean): this;
+    overlay_closable(this: Element<"Popover" | "Popover@base">, value: boolean): this;
     /** Which pointer button opens a `Popover`. Default `"left"`. */
-    mouse_button(this: Element<"Popover">, button: "left" | "right" | "middle"): this;
+    mouse_button(this: Element<"Popover" | "Popover@base">, button: "left" | "right" | "middle"): this;
     /** Which corner of a `Popover`, `HoverCard` or `Popup` is pinned to its trigger. */
-    anchor(this: Element<"Popover" | "HoverCard" | "Popup">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
+    anchor(this: Element<"HoverCard" | "HoverCard@base" | "Popover" | "Popover@base" | "Popup@base">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
     /** Same as `anchor`. */
-    card_anchor(this: Element<"Popover" | "HoverCard" | "Popup">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
+    card_anchor(this: Element<"HoverCard" | "HoverCard@base" | "Popover" | "Popover@base" | "Popup@base">, anchor: "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right" | "left_center" | "right_center"): this;
     /** How long the pointer rests on a `HoverCard`'s trigger before it opens. Default 600. */
-    open_delay(this: Element<"HoverCard">, ms: number): this;
+    open_delay(this: Element<"HoverCard" | "HoverCard@base">, ms: number): this;
     /** How long a `HoverCard` stays open after the pointer left it and its trigger. Default 300. */
-    close_delay(this: Element<"HoverCard">, ms: number): this;
+    close_delay(this: Element<"HoverCard" | "HoverCard@base">, ms: number): this;
     /** Whether a `corona/component` `Popover` or `HoverCard` draws its surface. Default `true`. */
-    appearance(this: Element<"Popover" | "HoverCard">, value: boolean): this;
+    appearance(this: Element<"HoverCard" | "Popover">, value: boolean): this;
     /** `handler(open, cx)` when a `Popover` or `HoverCard` opens or closes by itself. */
-    on_open_change(this: Element<"Popover" | "HoverCard">, handler: (event: boolean, cx: Context) => void): this;
+    on_open_change(this: Element<"HoverCard" | "HoverCard@base" | "Popover" | "Popover@base">, handler: (event: boolean, cx: Context) => void): this;
     /** The title of a window effect or an `Alert`. */
-    title(this: Element<"Dialog" | "AlertDialog" | "Sheet" | "Notification" | "Alert">, text: string): this;
+    title(this: Element<"Alert" | "AlertDialog" | "Dialog" | "Notification" | "Sheet">, text: string): this;
     /** The text under an `AlertDialog`'s title. */
     description(this: Element<"AlertDialog">, text: string): this;
     /** The text under a `Notification`'s title. */
@@ -3798,11 +3828,11 @@ declare module "corona/kit" {
     /** Whether a `Notification` hides by itself. Default `true`. */
     autohide(this: Element<"Notification">, value: boolean): this;
     /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s OK button; the dialog closes after. */
-    on_ok(this: Element<"Dialog" | "AlertDialog">, handler: (cx: Context) => void): this;
+    on_ok(this: Element<"AlertDialog" | "Dialog">, handler: (cx: Context) => void): this;
     /** `handler(cx)` on a `Dialog`'s or `AlertDialog`'s cancel button; the dialog closes after. */
-    on_cancel(this: Element<"Dialog" | "AlertDialog">, handler: (cx: Context) => void): this;
+    on_cancel(this: Element<"AlertDialog" | "Dialog">, handler: (cx: Context) => void): this;
     /** `handler(cx)` once a window effect closed, however it was closed. */
-    on_close(this: Element<"Dialog" | "AlertDialog" | "Sheet" | "Notification">, handler: (cx: Context) => void): this;
+    on_close(this: Element<"AlertDialog" | "Dialog" | "Notification" | "Sheet">, handler: (cx: Context) => void): this;
     /** `handler(cx)` on a click on a `Notification`. */
     on_click(this: Element<"Notification">, handler: (cx: Context) => void): this;
     /** Draws an `Alert` full width, without border, radius or title. */
@@ -3814,40 +3844,44 @@ declare module "corona/kit" {
     /** The kind of a `Notification`. Default `"info"`. */
     type(this: Element<"Notification">, level: "info" | "success" | "warning" | "error"): this;
     /**
-     * The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
-     * it, `0..=100`), or the text of a `DescriptionItem`.
+     * The value of a `Progress`: a percentage (`corona/base` announces it, `corona/component`
+     * draws it, `0..=100`).
      */
-    value(this: Element<"Progress" | "DescriptionItem">, value: number | string): this;
+    value(this: Element<"Progress" | "Progress@base">, value: number): this;
+    /** The text of a `DescriptionItem`. */
+    value(this: Element<"DescriptionItem">, value: number | string): this;
     /** Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far". */
-    indeterminate(this: Element<"Progress">, value: boolean): this;
+    indeterminate(this: Element<"Progress@base">, value: boolean): this;
     /** Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback. */
-    image(this: Element<"Avatar">, image: Element): this;
+    image(this: Element<"Avatar@base">, image: Element<"AvatarImage@base">): this;
     /** Fills an `Avatar`'s fallback slot with an `AvatarFallback`, shown without an image. */
-    fallback(this: Element<"Avatar">, fallback: Element): this;
+    fallback(this: Element<"Avatar@base">, fallback: Element<"AvatarFallback@base">): this;
     /** A `Table`'s total number of rows, also those not rendered, as announced. */
-    row_count(this: Element<"Table">, count: number): this;
+    row_count(this: Element<"Table@base">, count: number): this;
     /** A `Table`'s total number of columns, also those not rendered. */
-    column_count(this: Element<"Table">, count: number): this;
+    column_count(this: Element<"Table@base">, count: number): this;
     /** The semantic size of a styled widget. */
-    size(this: Element<"Badge" | "Spinner" | "DescriptionList" | "Progress" | "Avatar" | "Icon" | "Tag" | "Calendar" | "CarouselPrevious" | "CarouselNext" | "CarouselPaginationItem" | "Table">, size: "xsmall" | "small" | "medium" | "large"): this;
+    size(this: Element<"Avatar" | "Avatar@base" | "Badge" | "Calendar" | "CarouselNext" | "CarouselPaginationItem" | "CarouselPrevious" | "DescriptionList" | "Icon" | "Progress" | "Progress@base" | "Spinner" | "Table" | "Table@base" | "Tag">, size: "xsmall" | "small" | "medium" | "large"): this;
     /** What a screen reader announces. */
-    accessibility_label(this: Element<"Progress" | "Table" | "Carousel" | "CarouselItem" | "CarouselPrevious" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem">, label: string): this;
+    accessibility_label(this: Element<"Carousel" | "CarouselItem" | "CarouselNext" | "CarouselPagination" | "CarouselPaginationItem" | "CarouselPrevious" | "Progress" | "Progress@base" | "Table" | "Table@base">, label: string): this;
     /** How many columns a table cell spans. */
-    col_span(this: Element<"TableHead" | "TableCell">, span: number): this;
+    col_span(this: Element<"TableCell" | "TableHead">, span: number): this;
     /** Centers a table cell's text. */
-    text_center(this: Element<"TableHead" | "TableCell">): this;
+    text_center(this: Element<"TableCell" | "TableCell@base" | "TableHead" | "TableHead@base">): this;
     /** Right-aligns a table cell's text. */
-    text_right(this: Element<"TableHead" | "TableCell">): this;
+    text_right(this: Element<"TableCell" | "TableCell@base" | "TableHead" | "TableHead@base">): this;
     /** The color of a `Badge`, `Spinner`, `Icon` or `Progress`. */
-    color(this: Element<"Badge" | "Spinner" | "Icon" | "Progress">, color: Color): this;
+    color(this: Element<"Badge" | "Icon" | "Progress" | "Spinner">, color: Color): this;
     /** A `Badge` as a dot; a `LineChart` or `RadarChart` with dots on its points. */
     dot(this: Element<"Badge" | "LineChart" | "RadarChart">): this;
     /** The number a `Badge` shows. */
     count(this: Element<"Badge">, count: number): this;
     /** The largest number a `Badge` shows, `max+` above. */
     max(this: Element<"Badge">, max: number): this;
-    /** The look of a `Tag` or an `EmptyMedia`. */
-    variant(this: Element<"Tag" | "EmptyMedia">, variant: "primary" | "secondary" | "danger" | "success" | "warning" | "info" | "default" | "icon"): this;
+    /** The look of a `Tag`. */
+    variant(this: Element<"Tag">, variant: "primary" | "secondary" | "danger" | "success" | "warning" | "info"): this;
+    /** The look of an `EmptyMedia`. */
+    variant(this: Element<"EmptyMedia">, variant: "default" | "icon"): this;
     /** Draws a `Tag` outlined. */
     outline(this: Element<"Tag">): this;
     /** The quieter color of a `Skeleton`. */
@@ -3857,15 +3891,15 @@ declare module "corona/kit" {
     /** How a `Spinner` turns. */
     ease(this: Element<"Spinner">, ease: "linear" | "ease_in_out" | "ease_out_quint"): this;
     /** Fills an `Empty`'s header with an `EmptyHeader`. */
-    header(this: Element<"Empty">, header: Element): this;
+    header(this: Element<"Empty">, header: Element<"EmptyHeader">): this;
     /** Fills an `Empty`'s content with an `EmptyContent`. */
-    content(this: Element<"Empty">, content: Element): this;
+    content(this: Element<"Empty">, content: Element<"EmptyContent">): this;
     /** Fills an `EmptyHeader`'s media with an `EmptyMedia`. */
-    media(this: Element<"EmptyHeader">, media: Element): this;
+    media(this: Element<"EmptyHeader">, media: Element<"EmptyMedia">): this;
     /** Fills an `EmptyHeader`'s title with an `EmptyTitle`. */
-    title(this: Element<"EmptyHeader">, title: Element): this;
+    title(this: Element<"EmptyHeader">, title: Element<"EmptyTitle">): this;
     /** Fills an `EmptyHeader`'s description with an `EmptyDescription`. */
-    description(this: Element<"EmptyHeader">, description: Element): this;
+    description(this: Element<"EmptyHeader">, description: Element<"EmptyDescription">): this;
     /** Rotates an `Icon`. */
     rotate(this: Element<"Icon">, radians: number): this;
     /** Animates a `corona/component` `Progress` as busy. */
@@ -3873,15 +3907,17 @@ declare module "corona/kit" {
     /** The name an `Avatar` shows the initials of without an image. */
     name(this: Element<"Avatar">, name: string): this;
     /** The image of an `Avatar`: an absolute path under a read grant, or a plugin file. */
-    src(this: Element<"Avatar">, path: string): this;
+    src(this: Element<"Avatar" | "Avatar@base">, path: string): this;
     /** Lays a `DescriptionList` out in a column. */
     vertical(this: Element<"DescriptionList">): this;
     /** Draws a `DescriptionList` or `DataTable` with borders. */
-    bordered(this: Element<"DescriptionList" | "DataTable">, value: boolean): this;
+    bordered(this: Element<"DataTable" | "DescriptionList">, value: boolean): this;
     /** How many columns a `DescriptionList` has. */
     columns(this: Element<"DescriptionList">, columns: number): this;
-    /** Adds `DescriptionItem`s to a `DescriptionList`, or `TreeItem`s to a `Tree` or `TreeItem`. */
-    items(this: Element<"DescriptionList" | "Tree" | "TreeItem">, items: Element[]): this;
+    /** Adds `DescriptionItem`s to a `DescriptionList`. */
+    items(this: Element<"DescriptionList">, items: Element<"DescriptionItem">[]): this;
+    /** Adds `TreeItem`s to a `Tree` or `TreeItem`. */
+    items(this: Element<"Tree" | "TreeItem">, items: Element<"TreeItem">[]): this;
     /** Adds a separator row to a `DescriptionList`. */
     separator(this: Element<"DescriptionList">): this;
     /** How many columns a `DescriptionItem` spans. */
@@ -3891,21 +3927,21 @@ declare module "corona/kit" {
     /** Whether a `TreeItem` is disabled. */
     disabled(this: Element<"TreeItem">, value: boolean): this;
     /** Draws a chart's grid lines. */
-    grid(this: Element<"BarChart" | "LineChart" | "AreaChart" | "RadarChart">, value?: boolean): this;
+    grid(this: Element<"AreaChart" | "BarChart" | "LineChart" | "RadarChart">, value?: boolean): this;
     /** Draws a `BarChart`'s label axis. */
     label_axis(this: Element<"BarChart">, value: boolean): this;
     /** Draws a `BarChart`'s value axis. */
     value_axis(this: Element<"BarChart">, value: boolean): this;
     /** Draws a `LineChart`'s or `AreaChart`'s x axis. */
-    x_axis(this: Element<"LineChart" | "AreaChart">, value: boolean): this;
+    x_axis(this: Element<"AreaChart" | "LineChart">, value: boolean): this;
     /** Labels every `margin`th tick of a chart's axis. */
-    tick_margin(this: Element<"BarChart" | "LineChart" | "AreaChart">, margin: number): this;
+    tick_margin(this: Element<"AreaChart" | "BarChart" | "LineChart">, margin: number): this;
     /** Draws a smooth curve. */
-    natural(this: Element<"LineChart" | "AreaChart">): this;
+    natural(this: Element<"AreaChart" | "LineChart">): this;
     /** Draws straight segments. */
-    linear(this: Element<"LineChart" | "AreaChart">): this;
+    linear(this: Element<"AreaChart" | "LineChart">): this;
     /** Draws steps. */
-    step_after(this: Element<"LineChart" | "AreaChart">): this;
+    step_after(this: Element<"AreaChart" | "LineChart">): this;
     /** A `PieChart`'s hole, in pixels: a donut. */
     inner_radius(this: Element<"PieChart">, radius: number): this;
     /** The gap between a `PieChart`'s slices, in radians. */
@@ -3942,8 +3978,10 @@ declare module "corona/kit" {
     axis(this: Element<"Attachment">, axis: "horizontal" | "vertical"): this;
     /** The sender edge a `Message` or `Bubble` sits on. */
     alignment(this: Element<"Bubble" | "Message">, alignment: "start" | "end"): this;
-    /** The treatment of a `Bubble` or `Marker`. */
-    variant(this: Element<"Bubble" | "Marker">, variant: "filled" | "secondary" | "muted" | "tinted" | "outline" | "ghost" | "destructive" | "plain" | "separator" | "border"): this;
+    /** The treatment of a `Bubble`. */
+    variant(this: Element<"Bubble">, variant: "filled" | "secondary" | "muted" | "tinted" | "outline" | "ghost" | "destructive"): this;
+    /** The treatment of a `Marker`. */
+    variant(this: Element<"Marker">, variant: "plain" | "separator" | "border"): this;
     /** Whether the marker shows its loading treatment. */
     loading(this: Element<"Marker">, loading: boolean): this;
     /** The marker's loading treatment. */
@@ -3965,7 +4003,7 @@ declare module "corona/kit" {
     /** The jump-to-latest button's label. */
     jump_button_label(this: Element<"MessageScroller">, label: string): this;
     /** Disables an `Editor`, a `SettingItem`'s field, a questionnaire choice or question. */
-    disabled(this: Element<"Editor" | "SettingItem" | "QuestionnaireChoice" | "QuestionnaireItem" | "QuestionnaireInput">, disabled: boolean): this;
+    disabled(this: Element<"Editor" | "QuestionnaireChoice" | "QuestionnaireInput" | "QuestionnaireItem" | "SettingItem">, disabled: boolean): this;
     /** Draws the editor's own background and border. */
     appearance(this: Element<"Editor">, appearance: boolean): this;
     bordered(this: Element<"Editor">, bordered: boolean): this;
@@ -3986,7 +4024,7 @@ declare module "corona/kit" {
     /** How changed lines are marked beside the code. */
     change_indicator(this: Element<"Diff">, indicator: "signs" | "bars" | "none"): this;
     /** The text under a setting's or question's title. */
-    description(this: Element<"SettingItem" | "SettingGroup" | "SettingPage" | "QuestionnaireChoice" | "QuestionnaireItem">, text: string): this;
+    description(this: Element<"QuestionnaireChoice" | "QuestionnaireItem" | "SettingGroup" | "SettingItem" | "SettingPage">, text: string): this;
     /** The axis a setting's label and field are laid out along. */
     layout(this: Element<"SettingItem">, axis: "horizontal" | "vertical"): this;
     /** Search keywords matching the setting. */
@@ -3994,7 +4032,7 @@ declare module "corona/kit" {
     /** The setting group's title. */
     title(this: Element<"SettingGroup">, text: string): this;
     /** Renders a `SettingItem`'s field, or what follows a `SettingPage`'s title, lazily. */
-    content(this: Element<"SettingItem" | "SettingPage">, render: (...args: any[]) => unknown): this;
+    content(this: Element<"SettingItem" | "SettingPage">, render: (cx: Context) => Element | string | null | undefined): this;
     /** Opens the page's groups. */
     default_open(this: Element<"SettingPage">, default_open: boolean): this;
     /** Shows the reset control. */
@@ -4014,23 +4052,23 @@ declare module "corona/kit" {
     /** Gives each choice of the active question a letter or number shortcut. */
     shortcuts(this: Element<"Questionnaire">, mode: "letters" | "numbers"): this;
     /** `handler(url, cx)` on a link click, instead of opening it. */
-    on_link_click(this: Element<"TextView">, handler: (event: string, cx: Context) => void): this;
+    on_link_click(this: Element<"TextView@base">, handler: (event: string, cx: Context) => void): this;
     /** Whether the text can be selected; on when left out. */
-    selectable(this: Element<"TextView">, value?: boolean): this;
+    selectable(this: Element<"TextView@base">, value?: boolean): this;
     /** Whether the view scrolls its content; on when left out. */
-    scrollable(this: Element<"TextView">, value?: boolean): this;
+    scrollable(this: Element<"TextView@base">, value?: boolean): this;
     /** Where in its `relative()` parent the HUD sits. */
     anchor(this: Element<"fps_monitor">, anchor: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center"): this;
     /** The frame budget in milliseconds the HUD grades against. */
     frame_budget(this: Element<"fps_monitor">, ms: number): this;
     /** The tab bar above a group's displayed panel. */
-    tab_bar(this: Element<"dock_area">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element): this;
+    tab_bar(this: Element<"dock_area@base">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element): this;
     /** What a group with no displayed panel shows. */
-    empty_group(this: Element<"dock_area">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element | null): this;
+    empty_group(this: Element<"dock_area@base">, handler: (group: import("corona/base").DockGroup, cx: Context) => Element | null): this;
     /** The hint where a dragged panel would land. */
-    drop_indicator(this: Element<"dock_area">, handler: (drop: import("corona/base").DockDrop, cx: Context) => Element | null): this;
+    drop_indicator(this: Element<"dock_area@base">, handler: (drop: import("corona/base").DockDrop, cx: Context) => Element | null): this;
     /** One dock's chrome around its content; put `dock_content()` where its panels go. */
-    dock(this: Element<"dock_area">, handler: (dock: import("corona/base").DockRegion, cx: Context) => Element | null): this;
+    dock(this: Element<"dock_area@base">, handler: (dock: import("corona/base").DockRegion, cx: Context) => Element | null): this;
     /** Displays tab `index` of `group` on a click. */
     select_tab(this: Element<InteractiveKind>, group: import("corona/base").DockGroup, index: number): this;
     /** Closes `panel` (an id) of `group` on a click, if the group allows it. */
@@ -4281,62 +4319,62 @@ declare module "corona/base" {
     };
   }): void;
   /** Activation, focus, disabled and selected state. No styling. */
-  export const Button: { new (id: string | number): Element<"Button">; new: (id: string | number) => Element<"Button"> };
+  export const Button: { new (id: string | number): Element<"Button@base">; new: (id: string | number) => Element<"Button@base"> };
   /** An external HTTP(S) resource opened through the system browser. */
-  export const Link: { new (id: string | number): Element<"Link">; new: (id: string | number) => Element<"Link"> };
+  export const Link: { new (id: string | number): Element<"Link@base">; new: (id: string | number) => Element<"Link@base"> };
   /** A controlled toggle. No styling: draw the indicator yourself. */
-  export const Checkbox: { new (id: string | number): Element<"Checkbox">; new: (id: string | number) => Element<"Checkbox"> };
+  export const Checkbox: { new (id: string | number): Element<"Checkbox@base">; new: (id: string | number) => Element<"Checkbox@base"> };
   /** A controlled switch. No styling. */
-  export const Switch: { new (id: string | number): Element<"Switch">; new: (id: string | number) => Element<"Switch"> };
+  export const Switch: { new (id: string | number): Element<"Switch@base">; new: (id: string | number) => Element<"Switch@base"> };
   /** One option in a radio group. No styling. */
-  export const Radio: { new (id: string | number): Element<"Radio">; new: (id: string | number) => Element<"Radio"> };
+  export const Radio: { new (id: string | number): Element<"Radio@base">; new: (id: string | number) => Element<"Radio@base"> };
   /** A button that stays down: `pressed(..)` in, `on_change(..)` out. */
-  export const Toggle: { new (id: string | number): Element<"Toggle">; new: (id: string | number) => Element<"Toggle"> };
+  export const Toggle: { new (id: string | number): Element<"Toggle@base">; new: (id: string | number) => Element<"Toggle@base"> };
   /** A set of radios, announced as one group. */
-  export const RadioGroup: { new (id: string | number): Element<"RadioGroup">; new: (id: string | number) => Element<"RadioGroup"> };
+  export const RadioGroup: { new (id: string | number): Element<"RadioGroup@base">; new: (id: string | number) => Element<"RadioGroup@base"> };
   /** A set of toggles, announced as a toolbar. */
-  export const ToggleGroup: { new (id: string | number): Element<"ToggleGroup">; new: (id: string | number) => Element<"ToggleGroup"> };
+  export const ToggleGroup: { new (id: string | number): Element<"ToggleGroup@base">; new: (id: string | number) => Element<"ToggleGroup@base"> };
   /** A select root: the semantics and the keyboard, none of the picture. */
-  export const Select: { new (id: string | number): Element<"Select">; new: (id: string | number) => Element<"Select"> };
+  export const Select: { new (id: string | number): Element<"Select@base">; new: (id: string | number) => Element<"Select@base"> };
   /** A combobox root whose trigger is an editable field. */
-  export const Combobox: { new (id: string | number): Element<"Combobox">; new: (id: string | number) => Element<"Combobox"> };
+  export const Combobox: { new (id: string | number): Element<"Combobox@base">; new: (id: string | number) => Element<"Combobox@base"> };
   /** A date-picker root; it holds no date. */
-  export const DatePicker: { new (id: string | number, focus_handle: FocusHandle): Element<"DatePicker">; new: (id: string | number, focus_handle: FocusHandle) => Element<"DatePicker"> };
+  export const DatePicker: { new (id: string | number, focus_handle: FocusHandle): Element<"DatePicker@base">; new: (id: string | number, focus_handle: FocusHandle) => Element<"DatePicker@base"> };
   /** The bare editor of retained text. */
-  export const Input: { new (state: InputState): Element<"Input">; new: (state: InputState) => Element<"Input"> };
+  export const Input: { new (state: InputState): Element<"Input@base">; new: (state: InputState) => Element<"Input@base"> };
   /** A spinbutton; give it `decrement_button`/`increment_button`. */
-  export const NumberInput: { new (state: InputState): Element<"NumberInput">; new: (state: InputState) => Element<"NumberInput"> };
+  export const NumberInput: { new (state: InputState): Element<"NumberInput@base">; new: (state: InputState) => Element<"NumberInput@base"> };
   /** The bare editor of retained multi-line text. */
-  export const Textarea: { new (state: TextareaState): Element<"Textarea">; new: (state: TextareaState) => Element<"Textarea"> };
+  export const Textarea: { new (state: TextareaState): Element<"Textarea@base">; new: (state: TextareaState) => Element<"Textarea@base"> };
   /** A code drawn cell by cell: `cell_style(..)`, `caret_style(..)`. */
-  export const OtpInput: { new (state: OtpState): Element<"OtpInput">; new: (state: OtpState) => Element<"OtpInput"> };
+  export const OtpInput: { new (state: OtpState): Element<"OtpInput@base">; new: (state: OtpState) => Element<"OtpInput@base"> };
   /** The slider root: announces the value. */
-  export const Slider: { new (state: SliderState): Element<"Slider">; new: (state: SliderState) => Element<"Slider"> };
+  export const Slider: { new (state: SliderState): Element<"Slider@base">; new: (state: SliderState) => Element<"Slider@base"> };
   /** The press and drag surface. */
-  export const SliderTrack: { new (state: SliderState): Element<"SliderTrack">; new: (state: SliderState) => Element<"SliderTrack"> };
+  export const SliderTrack: { new (state: SliderState): Element<"SliderTrack@base">; new: (state: SliderState) => Element<"SliderTrack@base"> };
   /** The groove; `range_style(..)` draws the fill. */
-  export const SliderIndicator: { new (state: SliderState): Element<"SliderIndicator">; new: (state: SliderState) => Element<"SliderIndicator"> };
+  export const SliderIndicator: { new (state: SliderState): Element<"SliderIndicator@base">; new: (state: SliderState) => Element<"SliderIndicator@base"> };
   /** The knob; `start(true)` is a range's lower one. */
-  export const SliderThumb: { new (state: SliderState): Element<"SliderThumb">; new: (state: SliderState) => Element<"SliderThumb"> };
+  export const SliderThumb: { new (state: SliderState): Element<"SliderThumb@base">; new: (state: SliderState) => Element<"SliderThumb@base"> };
   import { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent } from "corona/component";
   export { InputState, TextareaState, SliderState, OtpState, SliderValue, TextEvent };
   type Ctor<K extends string, A extends any[]> = { new (...args: A): Element<K>; new: (...args: A) => Element<K> };
   /** A tab list; each `Tab` is told whether it is selected and reports clicks. */
-  export const Tabs: Ctor<"Tabs", [id: string | number]>;
+  export const Tabs: Ctor<"Tabs@base", [id: string | number]>;
   /** One tab: `selected(..)` in, `on_click(..)` out. */
-  export const Tab: Ctor<"Tab", [id: string | number]>;
+  export const Tab: Ctor<"Tab@base", [id: string | number]>;
   /** An accordion: items, each with an `AccordionHeader` and an `AccordionPanel`. Draws nothing. */
-  export const Accordion: Ctor<"Accordion", [id: string | number]>;
+  export const Accordion: Ctor<"Accordion@base", [id: string | number]>;
   /** One item: `open(..)`, `header(..)`, `panel(..)`. */
-  export const AccordionItem: Ctor<"AccordionItem", []>;
+  export const AccordionItem: Ctor<"AccordionItem@base", []>;
   /** The heading owning an item's trigger. */
-  export const AccordionHeader: Ctor<"AccordionHeader", [trigger: Element]>;
+  export const AccordionHeader: Ctor<"AccordionHeader@base", [trigger: Element<"AccordionTrigger@base">]>;
   /** The region an item reveals; gone while shut unless `keep_mounted()`. */
-  export const AccordionPanel: Ctor<"AccordionPanel", []>;
+  export const AccordionPanel: Ctor<"AccordionPanel@base", []>;
   /** The button: `on_change(open => ..)` asks for the other state. */
-  export const AccordionTrigger: Ctor<"AccordionTrigger", [id: string | number]>;
+  export const AccordionTrigger: Ctor<"AccordionTrigger@base", [id: string | number]>;
   /** A pagination landmark; draw the pages from `pagination_items`. */
-  export const Pagination: Ctor<"Pagination", [id: string | number]>;
+  export const Pagination: Ctor<"Pagination@base", [id: string | number]>;
   /** One entry of a page layout: a page, or a gap standing for the pages `[first, last]`. */
   export type PaginationEntry =
     | { page: number; ellipsis?: undefined }
@@ -4344,20 +4382,20 @@ declare module "corona/base" {
   /** Which pages to draw around `current_page`, and where the gaps fall. */
   export function pagination_items(current_page: number, total_pages: number, visible_pages?: number): PaginationEntry[];
   /** Renders its `content` only while `open`; children always. */
-  export const Collapsible: Ctor<"Collapsible", []>;
+  export const Collapsible: Ctor<"Collapsible@base", []>;
   /** A row of `resizable_panel()`s with draggable dividers; sizes persist under `id`. */
-  export function h_resizable(id: string | number): Element<"Resizable">;
+  export function h_resizable(id: string | number): Element<"Resizable@base">;
   /** A column of `resizable_panel()`s. */
-  export function v_resizable(id: string | number): Element<"Resizable">;
+  export function v_resizable(id: string | number): Element<"Resizable@base">;
   /** One pane of a resizable group: `size(px)`, `size_range(min, max)`. */
-  export function resizable_panel(): Element<"ResizablePanel">;
+  export function resizable_panel(): Element<"ResizablePanel@base">;
   /** A scroll area's or virtual list's name, or its handle. */
   type ScrollTarget = string | number | import("corona/kit").ScrollHandle | VirtualListScrollHandle;
   /** A scrollbar driving the area that tracks `handle`; it fills the element it is put in. */
   export const Scrollbar: {
-    new: (handle: ScrollTarget) => Element<"Scrollbar">;
-    horizontal: (handle: ScrollTarget) => Element<"Scrollbar">;
-    vertical: (handle: ScrollTarget) => Element<"Scrollbar">;
+    new: (handle: ScrollTarget) => Element<"Scrollbar@base">;
+    horizontal: (handle: ScrollTarget) => Element<"Scrollbar@base">;
+    vertical: (handle: ScrollTarget) => Element<"Scrollbar@base">;
   };
   /** A list of rows of the given heights that renders only the visible ones. */
   export function v_virtual_list(
@@ -4366,7 +4404,7 @@ declare module "corona/base" {
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
-  ): Element<"VirtualList">;
+  ): Element<"VirtualList@base">;
   /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
   export function h_virtual_list(
     id: string | number,
@@ -4374,7 +4412,7 @@ declare module "corona/base" {
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: import("corona/kit").ItemRange, cx: import("corona/kit").Context) => Element[],
-  ): Element<"VirtualList">;
+  ): Element<"VirtualList@base">;
   /** A virtual list's scroll position; `track_scroll(handle)` on the list. */
   export class VirtualListScrollHandle {
     constructor();
@@ -4384,37 +4422,37 @@ declare module "corona/base" {
     scroll_to_bottom(): void;
   }
   /** An unstyled surface anchored to `trigger(..)`, opened by a press: `content(..)`, `open(..)`, `on_open_change(..)`. */
-  export const Popover: { new (id: string | number): Element<"Popover">; new: (id: string | number) => Element<"Popover"> };
+  export const Popover: { new (id: string | number): Element<"Popover@base">; new: (id: string | number) => Element<"Popover@base"> };
   /** An unstyled surface anchored to `trigger(..)`, opened by resting the pointer on it. */
-  export const HoverCard: { new (id: string | number): Element<"HoverCard">; new: (id: string | number) => Element<"HoverCard"> };
+  export const HoverCard: { new (id: string | number): Element<"HoverCard@base">; new: (id: string | number) => Element<"HoverCard@base"> };
   /** The bare anchored surface: shows `content(..)` while it is set, anchored to `trigger`. */
-  export const Popup: { new (id: string | number, trigger: Element): Element<"Popup">; new: (id: string | number, trigger: Element) => Element<"Popup"> };
+  export const Popup: { new (id: string | number, trigger: Element): Element<"Popup@base">; new: (id: string | number, trigger: Element) => Element<"Popup@base"> };
   /** The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it. */
-  export const Progress: { new (id: string | number): Element<"Progress">; new: (id: string | number) => Element<"Progress"> };
+  export const Progress: { new (id: string | number): Element<"Progress@base">; new: (id: string | number) => Element<"Progress@base"> };
   /** The groove, a plain element. */
-  export const ProgressTrack: { new (): Element<"ProgressTrack">; new: () => Element<"ProgressTrack"> };
+  export const ProgressTrack: { new (): Element<"ProgressTrack@base">; new: () => Element<"ProgressTrack@base"> };
   /** The filled part, a plain element: size it from the value. */
-  export const ProgressIndicator: { new (): Element<"ProgressIndicator">; new: () => Element<"ProgressIndicator"> };
+  export const ProgressIndicator: { new (): Element<"ProgressIndicator@base">; new: () => Element<"ProgressIndicator@base"> };
   /** Renders its `image` slot, or its `fallback` without one; draws nothing else. */
-  export const Avatar: { new (): Element<"Avatar">; new: () => Element<"Avatar"> };
+  export const Avatar: { new (): Element<"Avatar@base">; new: () => Element<"Avatar@base"> };
   /** The image slot of an `Avatar`: an asset or an absolute path. */
-  export const AvatarImage: { new (source: string): Element<"AvatarImage">; new: (source: string) => Element<"AvatarImage"> };
+  export const AvatarImage: { new (source: string): Element<"AvatarImage@base">; new: (source: string) => Element<"AvatarImage@base"> };
   /** The fallback slot of an `Avatar`. */
-  export const AvatarFallback: { new (): Element<"AvatarFallback">; new: () => Element<"AvatarFallback"> };
+  export const AvatarFallback: { new (): Element<"AvatarFallback@base">; new: () => Element<"AvatarFallback@base"> };
   /** An unstyled semantic table: nest the parts below. */
-  export const Table: { new (id: string | number): Element<"Table">; new: (id: string | number) => Element<"Table"> };
+  export const Table: { new (id: string | number): Element<"Table@base">; new: (id: string | number) => Element<"Table@base"> };
   /** The header row group. */
-  export const TableHeader: { new (id: string | number): Element<"TableHeader">; new: (id: string | number) => Element<"TableHeader"> };
+  export const TableHeader: { new (id: string | number): Element<"TableHeader@base">; new: (id: string | number) => Element<"TableHeader@base"> };
   /** The body row group. */
-  export const TableBody: { new (id: string | number): Element<"TableBody">; new: (id: string | number) => Element<"TableBody"> };
+  export const TableBody: { new (id: string | number): Element<"TableBody@base">; new: (id: string | number) => Element<"TableBody@base"> };
   /** One row, `row_index` one-based. */
-  export const TableRow: { new (id: string | number, row_index: number): Element<"TableRow">; new: (id: string | number, row_index: number) => Element<"TableRow"> };
+  export const TableRow: { new (id: string | number, row_index: number): Element<"TableRow@base">; new: (id: string | number, row_index: number) => Element<"TableRow@base"> };
   /** One column header, `column_index` one-based. */
-  export const TableHead: { new (id: string | number, column_index: number): Element<"TableHead">; new: (id: string | number, column_index: number) => Element<"TableHead"> };
+  export const TableHead: { new (id: string | number, column_index: number): Element<"TableHead@base">; new: (id: string | number, column_index: number) => Element<"TableHead@base"> };
   /** One data cell, `column_index` one-based. */
-  export const TableCell: { new (id: string | number, column_index: number): Element<"TableCell">; new: (id: string | number, column_index: number) => Element<"TableCell"> };
+  export const TableCell: { new (id: string | number, column_index: number): Element<"TableCell@base">; new: (id: string | number, column_index: number) => Element<"TableCell@base"> };
   /** A caption slot. */
-  export const TableCaption: { new (id: string | number): Element<"TableCaption">; new: (id: string | number) => Element<"TableCaption"> };
+  export const TableCaption: { new (id: string | number): Element<"TableCaption@base">; new: (id: string | number) => Element<"TableCaption@base"> };
   /** A selected date: a day, a `[start, end]` range, or nothing. Days are `"YYYY-MM-DD"`. */
   export type CalendarDate = string | [string | null, string | null] | null;
   /** A calendar month and its selected date. Retained: create it in `init`. */
@@ -4437,8 +4475,8 @@ declare module "corona/base" {
   }
   /** Rich HTML or Markdown text. */
   export const TextView: {
-    html(id: string, html: string): Element<"TextView">;
-    markdown(id: string, markdown: string): Element<"TextView">;
+    html(id: string, html: string): Element<"TextView@base">;
+    markdown(id: string, markdown: string): Element<"TextView@base">;
   };
   /** Where a region sits relative to the center of a dock area. */
   export type DockPlacement = "center" | "left" | "right" | "bottom";
@@ -4533,9 +4571,9 @@ declare module "corona/base" {
     register_panel: (name: string, Class: import("corona/kit").ViewClass) => string;
   };
   /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
-  export function dock_area(area: DockArea): Element<"dock_area">;
+  export function dock_area(area: DockArea): Element<"dock_area@base">;
   /** Where a dock's panels go inside its chrome handler. */
-  export const dock_content: { new (): Element<"dock_content">; new: () => Element<"dock_content"> };
+  export const dock_content: { new (): Element<"dock_content@base">; new: () => Element<"dock_content@base"> };
 }
 declare module "corona/component" {
   import { ClickEvent, Context, Element, FocusHandle } from "corona/kit";
@@ -4737,7 +4775,7 @@ declare module "corona/component" {
   /** A styled tab bar taking `Tab` children. */
   export const TabBar: Ctor<"TabBar", [id: string | number]>;
   /** @deprecated Use `TabBar`. */
-  export const Tabs: Ctor<"Tabs", [id: string | number]>;
+  export const Tabs: Ctor<"TabBar", [id: string | number]>;
   /** One tab of a `TabBar`. */
   export const Tab: Ctor<"Tab", []>;
   /** An accordion taking `AccordionItem` children. */
@@ -4759,9 +4797,9 @@ declare module "corona/component" {
   export const StatusBar: Ctor<"StatusBar", []>;
   export const Toolbar: Ctor<"Toolbar", [id: string | number]>;
   export const Separator: Ctor<"Separator", []>;
-  export const VerticalSeparator: Ctor<"VerticalSeparator", []>;
-  export const DashedSeparator: Ctor<"DashedSeparator", []>;
-  export const VerticalDashedSeparator: Ctor<"VerticalDashedSeparator", []>;
+  export const VerticalSeparator: Ctor<"Separator", []>;
+  export const DashedSeparator: Ctor<"Separator", []>;
+  export const VerticalDashedSeparator: Ctor<"Separator", []>;
   /** Panes with draggable dividers, horizontal unless `axis("vertical")`; takes `ResizablePanel`s. */
   export const Resizable: Ctor<"Resizable", [id: string | number]>;
   export const ResizablePanel: Ctor<"ResizablePanel", []>;

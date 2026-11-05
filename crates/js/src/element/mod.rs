@@ -378,7 +378,11 @@ pub fn define<'js>(
       kind = n.kind();
       Ok(())
     })?;
-    if kinds.is_none_or(|k| k.contains(&kind)) {
+    // `"Button@base"` types a `corona/base` element; the kind it makes is `"Button"`
+    if kinds.is_none_or(|k| {
+      k.iter()
+        .any(|k| k.strip_suffix("@base").unwrap_or(k) == kind)
+    }) {
       MISS.set(false);
       match f.call::<_, Value>((This(this.0.clone()), Rest(args.0.clone()))) {
         Err(_) if MISS.replace(false) => drop(ctx.catch()),
@@ -514,7 +518,8 @@ pub fn jsdoc(lines: &[&str], indent: &str) -> String {
 }
 
 /// One line per builder method, `fn name(args) |ctx, node| body;` with `body` a
-/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. A leading `kinds: KINDS;`
+/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. An argument may end in
+/// `as "type"`, the TypeScript type it has in place of its Rust type's. A leading `kinds: KINDS;`
 /// limits the table to elements of those kinds, see [`define`]. Emits `install(proto)`, which
 /// puts the methods on the element prototype, and `d_ts()`, their `interface Element` members;
 /// doc comments become JSDoc.
@@ -525,7 +530,7 @@ macro_rules! el_methods {
   };
   (@table $kinds:expr; $(
     $(#[doc = $doc:literal])*
-    fn $name:ident($($arg:ident: $ty:ty),* $(,)?) $(for [$($kind:literal),+ $(,)?])? |$ctx:pat_param, $n:pat_param| $body:expr;
+    fn $name:ident($($arg:ident: $ty:ty $(as $ts:literal)?),* $(,)?) $(for [$($kind:literal),+ $(,)?])? |$ctx:pat_param, $n:pat_param| $body:expr;
   )*) => {
     /// Puts these methods on the element prototype.
     pub fn install<'js>(proto: &$crate::rquickjs::Object<'js>) -> $crate::rquickjs::Result<()> {
@@ -553,7 +558,7 @@ macro_rules! el_methods {
           "{}{}: {}",
           stringify!($arg),
           if <$ty as $crate::TsType>::OPTIONAL { "?" } else { "" },
-          <$ty as $crate::TsType>::ts(),
+          $crate::el_methods!(@ts $ty; $($ts)?),
         )),*];
         let this = $crate::el_methods!(@this $($($kind),+)?);
         let args = [this].into_iter().filter(|t| !t.is_empty()).chain(args.iter().cloned()).collect::<Vec<_>>();
@@ -562,6 +567,9 @@ macro_rules! el_methods {
       out
     }
   };
+  // an argument's TypeScript type: its own, unless `as "type"` names one
+  (@ts $ty:ty;) => { <$ty as $crate::TsType>::ts() };
+  (@ts $ty:ty; $ts:literal) => { String::from($ts) };
   // the kinds a method runs on: its own, else the table's
   (@kinds $table:expr;) => { $table };
   (@kinds $table:expr; $($kind:literal),+) => { Some(&[$($kind),+]) };
@@ -639,7 +647,11 @@ pub(crate) fn el_d_ts() -> String {
     .filter_map(|l| l.strip_prefix("    "))
     .filter_map(|l| l.split_once("(this: Element<"))
     .map(|(name, _)| name)
-    .filter(|name| crate::element::style::NULLARY.iter().any(|(n, _)| n == name))
+    .filter(|name| {
+      crate::element::style::NULLARY
+        .iter()
+        .any(|(n, _)| n == name)
+    })
     .collect();
   clashing.sort_unstable();
   clashing.dedup();
@@ -682,7 +694,7 @@ impl Id {
   }
 }
 
-mod methods {
+pub(crate) mod methods {
   use gpui_kit::{KeyContext, Role};
   use rquickjs::{Class, Exception};
 
@@ -690,7 +702,7 @@ mod methods {
   use crate::{FocusHandle, Opt, ScrollHandle, frame, frame_or_throw};
 
   /// The accessibility roles a script can name
-  const ROLES: &[(&str, Role)] = &[
+  pub(crate) const ROLES: &[(&str, Role)] = &[
     ("alert", Role::Alert),
     ("button", Role::Button),
     ("checkbox", Role::CheckBox),
@@ -786,7 +798,7 @@ mod methods {
       })
     });
     /// What this element announces itself as.
-    fn role(name: String) |ctx, n| {
+    fn role(name: String as "\"alert\" | \"button\" | \"checkbox\" | \"dialog\" | \"group\" | \"heading\" | \"image\" | \"link\" | \"list\" | \"list_item\" | \"listbox\" | \"menu\" | \"menu_item\" | \"option\" | \"progress_indicator\" | \"radio_button\" | \"slider\" | \"status\" | \"switch\" | \"tab\" | \"tab_list\" | \"tab_panel\" | \"text_input\" | \"toolbar\" | \"tooltip\"") |ctx, n| {
       let Some((_, role)) = ROLES.iter().find(|(r, _)| *r == name) else {
         let names: Vec<&str> = ROLES.iter().map(|(r, _)| *r).collect();
         return Err(Exception::throw_type(ctx, &crate::element::style::unknown("role", &name, &names)));

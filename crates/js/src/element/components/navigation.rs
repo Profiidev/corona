@@ -13,7 +13,7 @@ use gpui_kit::{
   ScrollStrategy, StatefulInteractiveElement, StyleRefinement, Styled, Window,
   base::{self as b, PaginationItem, ScrollbarAxis, ScrollbarMode},
   component::{
-    self as c, Disableable, IconName, IndexPath, Selectable, Side, Sizable, Size,
+    self as c, Disableable, IconName, IndexPath, Selectable, Side, Sizable,
     button::{Button, ButtonVariants},
     command::{Command, CommandGroup, CommandItem, CommandState},
     group_box::{GroupBoxVariant, GroupBoxVariants},
@@ -34,7 +34,7 @@ use rquickjs::{
   function::{Args, IntoJsFunc},
 };
 
-use super::{Family, constructor};
+use super::{Family, SizeArg, constructor};
 use crate::{
   Child, Color, El, Id, Named, Node, On, Opt, Payload, Retained, ScriptView, ScrollHandle, TsType,
   ViewCx, app,
@@ -640,54 +640,6 @@ impl<'js, T: FromJs<'js>> Later<'js, T> {
   }
 }
 
-/// A size: pixels, or a component's semantic size
-pub enum SizeArg {
-  Px(f32),
-  Named(Size),
-}
-
-impl<'js> FromJs<'js> for SizeArg {
-  fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
-    if let Some(n) = value.as_number() {
-      return Ok(Self::Px(n as f32));
-    }
-    let name = String::from_js(ctx, value)?;
-    Ok(Self::Named(match name.as_str() {
-      "xsmall" => Size::XSmall,
-      "small" => Size::Small,
-      "medium" => Size::Medium,
-      "large" => Size::Large,
-      _ => {
-        return Err(unknown(
-          ctx,
-          "size",
-          &name,
-          &["xsmall", "small", "medium", "large"],
-        ));
-      }
-    }))
-  }
-}
-
-impl TsType for SizeArg {
-  fn ts() -> String {
-    r#"number | "xsmall" | "small" | "medium" | "large""#.into()
-  }
-}
-
-impl SizeArg {
-  /// The semantic size, or a JS error for pixels
-  fn named(self, ctx: &Ctx<'_>) -> Result<Size> {
-    match self {
-      Self::Named(s) => Ok(s),
-      Self::Px(_) => Err(Exception::throw_type(
-        ctx,
-        "expected \"xsmall\", \"small\", \"medium\" or \"large\"",
-      )),
-    }
-  }
-}
-
 fn unknown(ctx: &Ctx<'_>, what: &str, name: &str, names: &[&str]) -> rquickjs::Error {
   Exception::throw_type(ctx, &crate::element::style::unknown(what, name, names))
 }
@@ -767,7 +719,7 @@ payloads! {
   Nums(Vec<u32>) => "number[]",
   Sizes(Vec<f32>) => "number[]",
   Text(String) => "string",
-  Change(bool) => "any",
+  Change(bool) => "boolean",
   Click(ClickPayload) => "ClickEvent",
   Path(PathPayload) => "{ section: number; row: number }",
 }
@@ -927,7 +879,7 @@ mod methods {
 
   crate::el_methods! {
     /// Whether a `Tab`, sidebar row, header or footer shows as selected.
-    fn selected(value: bool) for ["Tab", "SidebarHeader", "SidebarFooter", "SidebarMenuItem", "DropdownButton"] |c, n| on!(c, n,
+    fn selected(value: bool) for ["DropdownButton", "SidebarFooter", "SidebarHeader", "SidebarMenuItem", "Tab", "Tab@base"] |c, n| on!(c, n,
       b::Tab => |t| t.selected(value),
       c::tab::Tab => |t| t.selected(value),
       SidebarHeader => |t| t.selected(value),
@@ -936,7 +888,7 @@ mod methods {
       DropButton => |t| DropButton { button: t.button.selected(value), ..t },
     );
     /// Disables a tab, accordion part, step, pagination, menu or command item.
-    fn disabled(value: bool) for ["Tab", "AccordionItem", "Accordion", "Pagination", "Stepper", "StepperItem", "Toolbar", "SidebarMenuItem", "CommandItem", "NativeMenuItem", "MenuItem", "Menu", "DropdownButton", "NativeMenuTrigger"] |c, n| on!(c, n,
+    fn disabled(value: bool) for ["Accordion", "AccordionItem", "AccordionItem@base", "CommandItem", "DropdownButton", "Menu", "MenuItem", "NativeMenuItem", "NativeMenuTrigger", "Pagination", "SidebarMenuItem", "Stepper", "StepperItem", "Tab", "Tab@base", "Toolbar"] |c, n| on!(c, n,
       b::Tab => |t| t.disabled(value),
       b::AccordionItem => |t| t.disabled(value),
       c::tab::Tab => |t| t.disabled(value),
@@ -955,27 +907,28 @@ mod methods {
       NativeTrigger => |t| NativeTrigger { button: t.button.disabled(value), ..t },
     );
     /// A `Tab`'s one-based place among `size` tabs, announced as "tab 2 of 5".
-    fn set_position(position: u32, size: u32) for ["Tab"] |c, n| on!(c, n,
+    fn set_position(position: u32, size: u32) for ["Tab@base"] |c, n| on!(c, n,
       b::Tab => |t| t.set_position(position as usize, size as usize),
     );
     /// Whether an accordion item or a collapsible is open.
-    fn open(value: bool) for ["AccordionItem", "Collapsible"] |c, n| on!(c, n,
+    fn open(value: bool) for ["AccordionItem", "AccordionItem@base", "Collapsible", "Collapsible@base"] |c, n| on!(c, n,
       b::AccordionItem => |t| t.open(value),
       b::Collapsible => |t| t.open(value),
       c::accordion::AccordionItem => |t| t.open(value),
       c::collapsible::Collapsible => |t| t.open(value),
     );
-    /// An `AccordionItem`'s `AccordionHeader`, or a `Sidebar`'s header.
-    fn header(el: Child<'js>) for ["AccordionItem", "Sidebar"] |c, n| {
-      if is::<b::AccordionItem>(&**n) {
-        let header = part::<b::AccordionHeader>(c, el, "an AccordionHeader")?;
-        return crate::map(c, n, |t: b::AccordionItem| t.header(header));
+    /// An `AccordionItem`'s `AccordionHeader`.
+    fn header(el: Child<'js> as "Element<\"AccordionHeader@base\">") for ["AccordionItem@base"] |c, n| {
+      let header = part::<b::AccordionHeader>(c, el, "an AccordionHeader")?;
+      on!(c, n, b::AccordionItem => |t| t.header(header))
+    };
+    /// A `Sidebar`'s header.
+    fn header(el: Child<'js>) for ["Sidebar"] |c, n| {
+      if !is::<Sidebar<SidebarMenu>>(&**n) {
+        return Err(not_on(c, &**n));
       }
-      if is::<Sidebar<SidebarMenu>>(&**n) {
-        let header = element(c, el)?;
-        return crate::map(c, n, |t: Sidebar<SidebarMenu>| t.header(header));
-      }
-      Err(not_on(c, &**n))
+      let header = element(c, el)?;
+      crate::map(c, n, |t: Sidebar<SidebarMenu>| t.header(header))
     };
     /// A `Sidebar`'s footer.
     fn footer(el: Child<'js>) for ["Sidebar"] |c, n| {
@@ -986,7 +939,7 @@ mod methods {
       crate::map(c, n, |t: Sidebar<SidebarMenu>| t.footer(footer))
     };
     /// An `AccordionItem`'s `AccordionPanel`.
-    fn panel(element: Child<'js>) for ["AccordionItem"] |c, n| {
+    fn panel(element: Child<'js> as "Element<\"AccordionPanel@base\">") for ["AccordionItem@base"] |c, n| {
       if !is::<b::AccordionItem>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -994,7 +947,7 @@ mod methods {
       crate::map(c, n, |t: b::AccordionItem| t.panel(panel))
     };
     /// What revealing a collapsible shows.
-    fn content(el: Child<'js>) for ["Collapsible"] |c, n| {
+    fn content(el: Child<'js>) for ["Collapsible", "Collapsible@base"] |c, n| {
       if !is::<b::Collapsible>(&**n) && !is::<c::collapsible::Collapsible>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -1009,20 +962,21 @@ mod methods {
       c::collapsible::Collapsible => |t| t.motion_id(id.into_inner()),
     );
     /// An `AccordionHeader`'s announced heading level, 3 by default.
-    fn aria_level(level: u32) for ["AccordionHeader"] |c, n| on!(c, n,
+    fn aria_level(level: u32) for ["AccordionHeader@base"] |c, n| on!(c, n,
       b::AccordionHeader => |t| t.level(level as usize),
     );
     /// Keeps a shut `AccordionPanel` in the tree, with its scroll position and focus.
-    fn keep_mounted(value: Opt<bool>) for ["AccordionPanel"] |c, n| on!(c, n,
+    fn keep_mounted(value: Opt<bool>) for ["AccordionPanel@base"] |c, n| on!(c, n,
       b::AccordionPanel => |t| t.keep_mounted(value.0.unwrap_or(true)),
     );
-    /// `handler(value, cx)`: an `AccordionTrigger`'s requested open state, or the index a
-    /// `TabBar` or `Stepper`, or the page a `Pagination`, asks for.
-    fn on_change(handler: On<'js, Change>) for ["AccordionTrigger", "TabBar", "Stepper", "Pagination"] |c, n| {
-      if is::<b::AccordionTrigger>(&**n) {
-        let l = frame().listener(handler.0, |open: &bool| *open);
-        return crate::map(c, n, |t: b::AccordionTrigger| t.on_change(move |open, _, w, cx| l(&open, w, cx)));
-      }
+    /// `handler(open, cx)` with the open state an `AccordionTrigger` asks for.
+    fn on_change(handler: On<'js, Change>) for ["AccordionTrigger@base"] |c, n| {
+      let l = frame().listener(handler.0, |open: &bool| *open);
+      on!(c, n, b::AccordionTrigger => |t| t.on_change(move |open, _, w, cx| l(&open, w, cx)))
+    };
+    /// `handler(index, cx)` with the index a `TabBar` or `Stepper`, or the page a `Pagination`,
+    /// asks for.
+    fn on_change(handler: On<'js, Num>) for ["Pagination", "Stepper", "TabBar"] |c, n| {
       let l = frame().listener(handler.0, |i: &usize| Num(*i as u32));
       on!(c, n,
         c::tab::TabBar => |t| t.on_click(l),
@@ -1030,24 +984,13 @@ mod methods {
         c::pagination::Pagination => |t| t.on_click(l),
       )
     };
-    /// A resizable panel's initial size in pixels, or a component's semantic size.
-    fn size(size: super::Later<'js, SizeArg>) for ["ResizablePanel", "TabBar", "Accordion", "Pagination", "Stepper", "DropdownButton"] |c, n| {
-      let any = [
-        is::<b::ResizablePanel>(&**n),
-        is::<c::tab::TabBar>(&**n),
-        is::<c::accordion::Accordion>(&**n),
-        is::<c::pagination::Pagination>(&**n),
-        is::<c::stepper::Stepper>(&**n),
-        is::<DropButton>(&**n),
-      ];
-      if !any.contains(&true) {
-        return Err(not_on(c, &**n));
-      }
-      let size = size.get()?;
-      if let SizeArg::Px(p) = size {
-        return on!(c, n, b::ResizablePanel => |t| t.size(px(p)));
-      }
-      let s = size.named(c)?;
+    /// A resizable panel's initial size in pixels.
+    fn size(pixels: f32) for ["ResizablePanel", "ResizablePanel@base"] |c, n| {
+      on!(c, n, b::ResizablePanel => |t| t.size(px(pixels)))
+    };
+    /// A component's semantic size.
+    fn size(size: SizeArg<'js>) for ["Accordion", "Accordion@base", "DropdownButton", "Pagination", "Pagination@base", "Stepper", "TabBar"] |c, n| {
+      let s = size.get(c, &**n)?;
       on!(c, n,
         c::tab::TabBar => |t| t.with_size(s),
         c::accordion::Accordion => |t| t.with_size(s),
@@ -1057,15 +1000,15 @@ mod methods {
       )
     };
     /// Whether a `resizable_panel()` is drawn; hidden, it keeps its place. Default `true`.
-    fn visible(value: Opt<bool>) for ["ResizablePanel"] |c, n| on!(c, n,
+    fn visible(value: Opt<bool>) for ["ResizablePanel", "ResizablePanel@base"] |c, n| on!(c, n,
       b::ResizablePanel => |t| t.visible(value.0.unwrap_or(true)),
     );
     /// How far a resizable panel may be dragged, in pixels.
-    fn size_range(min: f32, max: Opt<f32>) for ["ResizablePanel"] |c, n| on!(c, n,
+    fn size_range(min: f32, max: Opt<f32>) for ["ResizablePanel", "ResizablePanel@base"] |c, n| on!(c, n,
       b::ResizablePanel => |t| t.size_range(px(min)..px(max.0.unwrap_or(f32::MAX))),
     );
     /// `handler(sizes, cx)` after a drag resized the panels of a resizable group.
-    fn on_resize(handler: On<'js, Sizes>) for ["Resizable"] |c, n| {
+    fn on_resize(handler: On<'js, Sizes>) for ["Resizable", "Resizable@base"] |c, n| {
       let l = frame().listener(handler.0, |s: &Vec<f32>| Sizes(s.clone()));
       on!(c, n, Group => |g| Group {
         group: g.group.on_resize(move |state, w, cx| {
@@ -1076,16 +1019,16 @@ mod methods {
       })
     };
     /// A `Resizable`'s direction: `"horizontal"` or `"vertical"`.
-    fn axis(value: String) for ["Resizable"] |c, n| {
+    fn axis(value: String as "\"horizontal\" | \"vertical\"") for ["Resizable", "Resizable@base"] |c, n| {
       let axis = pick(c, "axis", &value, AXES)?;
       on!(c, n, Group => |g| Group { group: g.group.axis(axis), ..g })
     };
     /// A `Resizable`'s size across its axis, in pixels.
-    fn cross_size(pixels: f32) for ["Resizable"] |c, n| on!(c, n,
+    fn cross_size(pixels: f32) for ["Resizable", "Resizable@base"] |c, n| on!(c, n,
       Group => |g| Group { group: g.group.size(px(pixels)), ..g },
     );
     /// When a `Scrollbar` shows: `"scrolling"`, `"hover"` or `"always"`.
-    fn mode(value: String) for ["Scrollbar"] |c, n| {
+    fn mode(value: String as "\"scrolling\" | \"hover\" | \"always\"") for ["Scrollbar"] |c, n| {
       let modes = [("scrolling", ScrollbarMode::Scrolling), ("hover", ScrollbarMode::Hover), ("always", ScrollbarMode::Always)];
       let mode = pick(c, "scrollbar mode", &value, &modes)?;
       on!(c, n, b::Scrollbar => |s| s.mode(mode))
@@ -1102,7 +1045,7 @@ mod methods {
       },
     );
     /// Which axes a `Scrollbar` or `Scroll` covers: `"vertical"`, `"horizontal"` or `"both"`.
-    fn scroll_axis(axis: String) for ["Scrollbar", "Scroll"] |c, n| {
+    fn scroll_axis(axis: String as "\"vertical\" | \"horizontal\" | \"both\"") for ["Scroll", "Scrollbar"] |c, n| {
       let axis = pick(c, "scroll axis", &axis, SCROLL_AXES)?;
       on!(c, n,
         b::Scrollbar => |s| s.axis(axis),
@@ -1110,7 +1053,7 @@ mod methods {
       )
     };
     /// Lets a `VirtualListScrollHandle` drive a virtual list.
-    fn track_scroll(handle: super::Later<'js, Class<'js, VirtualListScrollHandle>>) for ["VirtualList"] |c, n| {
+    fn track_scroll(handle: super::Later<'js, Class<'js, VirtualListScrollHandle>>) for ["VirtualList@base"] |c, n| {
       if !is::<VList>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -1122,20 +1065,20 @@ mod methods {
       on!(c, n, VList => |l| VList { list: l.list.track_scroll(&handle), ..l })
     };
     /// Which item a virtual list measures for its cross-axis size.
-    fn with_item_to_measure_index(index: u32) for ["VirtualList"] |c, n| on!(c, n,
+    fn with_item_to_measure_index(index: u32) for ["VirtualList@base"] |c, n| on!(c, n,
       VList => |l| VList { list: l.list.with_item_to_measure_index(index as usize), ..l },
     );
     /// A `Tab`'s text, or a `Separator`'s.
-    fn label(label: String) for ["Tab", "Separator"] |c, n| on!(c, n,
+    fn label(label: String) for ["Separator", "Tab"] |c, n| on!(c, n,
       c::tab::Tab => |t| t.label(label),
       c::separator::Separator => |t| t.label(label),
     );
     /// What a `Tab` announces.
-    fn aria_label(label: String) for ["Tab"] |c, n| on!(c, n,
+    fn aria_label(label: String) for ["Tab", "Tab@base"] |c, n| on!(c, n,
       c::tab::Tab => |t| t.aria_label(label),
     );
     /// `handler(key, cx)` when a row of a virtual list is clicked, `key` what `get_key` gave.
-    fn on_item_click(handler: On<'js, Text>) for ["VirtualList"] |c, n| {
+    fn on_item_click(handler: On<'js, Text>) for ["VirtualList@base"] |c, n| {
       if !is::<VList>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -1147,7 +1090,7 @@ mod methods {
       })
     };
     /// `handler(key, event, cx)` on a secondary press over a row of a virtual list.
-    fn on_item_secondary_click(handler: Function<'js>) for ["VirtualList"] |c, n| {
+    fn on_item_secondary_click(handler: Function<'js> as "(key: string, event: ClickEvent, cx: Context) => void") for ["VirtualList@base"] |c, n| {
       if !is::<VList>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -1161,34 +1104,32 @@ mod methods {
       })
     };
     /// The zero-based selected tab or current step.
-    fn selected_index(index: u32) for ["TabBar", "Stepper"] |c, n| on!(c, n,
+    fn selected_index(index: u32) for ["Stepper", "TabBar"] |c, n| on!(c, n,
       c::tab::TabBar => |t| t.selected_index(index as usize),
       c::stepper::Stepper => |t| t.selected_index(index as usize),
     );
-    /// A `TabBar`'s look (`"tab"`, `"outline"`, `"pill"`, `"segmented"`, `"underline"`) or a
-    /// `GroupBox`'s (`"normal"`, `"fill"`, `"outline"`).
-    fn variant(variant: String) for ["DropdownButton", "GroupBox", "TabBar"] |c, n| {
-      if is::<DropButton>(&**n) {
-        let kinds = ["primary", "secondary", "danger", "ghost"];
-        let v = pick(c, "variant", &variant, &kinds.map(|k| (k, k)))?;
-        return on!(c, n, DropButton => |t| DropButton {
-          button: match v {
-            "primary" => t.button.primary(),
-            "secondary" => t.button.secondary(),
-            "danger" => t.button.danger(),
-            _ => t.button.ghost(),
-          },
-          ..t
-        });
-      }
-      if is::<c::group_box::GroupBox>(&**n) {
-        let groups = [("normal", GroupBoxVariant::Normal), ("fill", GroupBoxVariant::Fill), ("outline", GroupBoxVariant::Outline)];
-        let v = pick(c, "variant", &variant, &groups)?;
-        return on!(c, n, c::group_box::GroupBox => |g| g.with_variant(v));
-      }
-      if !is::<c::tab::TabBar>(&**n) {
-        return Err(not_on(c, &**n));
-      }
+    /// A `DropdownButton`'s look.
+    fn variant(variant: String as "\"primary\" | \"secondary\" | \"danger\" | \"ghost\"") for ["DropdownButton"] |c, n| {
+      let kinds = ["primary", "secondary", "danger", "ghost"];
+      let v = pick(c, "variant", &variant, &kinds.map(|k| (k, k)))?;
+      on!(c, n, DropButton => |t| DropButton {
+        button: match v {
+          "primary" => t.button.primary(),
+          "secondary" => t.button.secondary(),
+          "danger" => t.button.danger(),
+          _ => t.button.ghost(),
+        },
+        ..t
+      })
+    };
+    /// A `GroupBox`'s look.
+    fn variant(variant: String as "\"normal\" | \"fill\" | \"outline\"") for ["GroupBox"] |c, n| {
+      let groups = [("normal", GroupBoxVariant::Normal), ("fill", GroupBoxVariant::Fill), ("outline", GroupBoxVariant::Outline)];
+      let v = pick(c, "variant", &variant, &groups)?;
+      on!(c, n, c::group_box::GroupBox => |g| g.with_variant(v))
+    };
+    /// A `TabBar`'s look.
+    fn variant(variant: String as "\"tab\" | \"outline\" | \"pill\" | \"segmented\" | \"underline\"") for ["TabBar"] |c, n| {
       let tabs = [
         ("tab", TabVariant::Tab),
         ("outline", TabVariant::Outline),
@@ -1277,7 +1218,7 @@ mod methods {
       crate::map(c, n, |t: c::status_bar::StatusBar| t.right(e))
     };
     /// The side a `Sidebar` or `SidebarToggleButton` sits on: `"left"` or `"right"`.
-    fn side(side: String) for ["Sidebar", "SidebarToggleButton"] |c, n| {
+    fn side(side: String as "\"left\" | \"right\"") for ["Sidebar", "SidebarToggleButton"] |c, n| {
       let side = pick(c, "side", &side, SIDES)?;
       on!(c, n,
         Sidebar<SidebarMenu> => |t| t.side(side),
@@ -1285,7 +1226,7 @@ mod methods {
       )
     };
     /// How a `Sidebar` collapses: `"icon"`, `"offcanvas"` or `"none"`.
-    fn collapsible(mode: String) for ["Sidebar"] |c, n| {
+    fn collapsible(mode: String as "\"icon\" | \"offcanvas\" | \"none\"") for ["Sidebar"] |c, n| {
       let modes = [("icon", SidebarCollapsible::Icon), ("offcanvas", SidebarCollapsible::Offcanvas), ("none", SidebarCollapsible::None)];
       let mode = pick(c, "collapsible mode", &mode, &modes)?;
       on!(c, n, Sidebar<SidebarMenu> => |t| t.collapsible(mode))
@@ -1296,7 +1237,7 @@ mod methods {
       SidebarToggleButton => |t| t.collapsed(value),
     );
     /// `handler(event, cx)` when a sidebar row or toggle is pressed.
-    fn on_click(handler: On<'js, Click>) for ["SidebarMenuItem", "SidebarToggleButton", "DropdownButton"] |c, n| {
+    fn on_click(handler: On<'js, Click>) for ["DropdownButton", "SidebarMenuItem", "SidebarToggleButton"] |c, n| {
       if !is::<SideItem>(&**n) && !is::<SidebarToggleButton>(&**n) && !is::<DropButton>(&**n) {
         return Err(not_on(c, &**n));
       }
@@ -1320,7 +1261,7 @@ mod methods {
       SideItem => |t| SideItem { item: t.item.click_to_toggle(value), ..t },
     );
     /// A sidebar row's icon: `"home"`, `"components"`, `"settings"`, `"archive"` or `"account"`.
-    fn icon(icon: String) for ["SidebarMenuItem"] |c, n| {
+    fn icon(icon: String as "\"home\" | \"components\" | \"settings\" | \"archive\" | \"account\"") for ["SidebarMenuItem"] |c, n| {
       let icons = [
         ("home", IconName::SquareTerminal),
         ("components", IconName::LayoutDashboard),
@@ -1362,7 +1303,7 @@ mod methods {
     /// Another word a `CommandItem` is found by.
     fn keyword(keyword: String) for ["CommandItem"] |c, n| on!(c, n, CommandItem => |t| t.keywords([keyword]));
     /// Whether a command or native menu item shows a check.
-    fn checked(value: bool) for ["CommandItem", "NativeMenuItem", "MenuItem"] |c, n| on!(c, n,
+    fn checked(value: bool) for ["CommandItem", "MenuItem", "NativeMenuItem"] |c, n| on!(c, n,
       CommandItem => |t| t.checked(value),
       NativeItem => |t| NativeItem { checked: value, ..t },
       MenuEntry => |t| MenuEntry { checked: value, ..t },
@@ -1378,7 +1319,7 @@ mod methods {
     /// The outlined look of a `DropdownButton`.
     fn outline() for ["DropdownButton"] |c, n| on!(c, n, DropButton => |t| DropButton { button: t.button.outline(), ..t });
     /// Where a `DropdownButton`'s menu opens.
-    fn menu_anchor(anchor: String) for ["DropdownButton"] |c, n| {
+    fn menu_anchor(anchor: String as "\"top_right\" | \"bottom_right\" | \"bottom_left\" | \"top_left\"") for ["DropdownButton"] |c, n| {
       let anchors = [
         ("top_right", gpui_kit::Anchor::TopRight),
         ("bottom_right", gpui_kit::Anchor::BottomRight),
@@ -2304,7 +2245,7 @@ const BASE_D_TS: &str = r#"  type Ctor<A extends any[]> = { new (...args: A): El
   /** One item: `open(..)`, `header(..)`, `panel(..)`. */
   export const AccordionItem: Ctor<[]>;
   /** The heading owning an item's trigger. */
-  export const AccordionHeader: Ctor<[trigger: Element]>;
+  export const AccordionHeader: Ctor<[trigger: Element<"AccordionTrigger">]>;
   /** The region an item reveals; gone while shut unless `keep_mounted()`. */
   export const AccordionPanel: Ctor<[]>;
   /** The button: `on_change(open => ..)` asks for the other state. */

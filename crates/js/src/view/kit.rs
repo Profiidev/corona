@@ -275,7 +275,7 @@ impl Kit {
       FAMILIES
         .iter()
         .filter(|f| f.module == module)
-        .map(|f| kinded((f.d_ts)()))
+        .map(|f| kinded(module, (f.d_ts)()))
         .collect()
     };
     format!(
@@ -603,34 +603,47 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
   }
 "#;
 
-/// Constructors making an element of another kind than their name
-const KIND_OF: &[(&str, &str)] = &[
-  ("InputGroupInput", "Input"),
-  ("InputGroupTextarea", "Textarea"),
-  ("VForm", "Form"),
-  ("HForm", "Form"),
-  ("HorizontalRadioGroup", "RadioGroup"),
-  ("InfoAlert", "Alert"),
-  ("SuccessAlert", "Alert"),
-  ("WarningAlert", "Alert"),
-  ("ErrorAlert", "Alert"),
-  ("Tooltip", "Button"),
-  ("Image", "image"),
-  ("Text", "div"),
+/// Constructors `(module, name, kind)` making an element of another kind than their name
+const KIND_OF: &[(&str, &str, &str)] = &[
+  ("corona/component", "Tabs", "TabBar"),
+  ("corona/component", "VerticalSeparator", "Separator"),
+  ("corona/component", "DashedSeparator", "Separator"),
+  ("corona/component", "VerticalDashedSeparator", "Separator"),
+  ("corona/component", "InputGroupInput", "Input"),
+  ("corona/component", "InputGroupTextarea", "Textarea"),
+  ("corona/component", "VForm", "Form"),
+  ("corona/component", "HForm", "Form"),
+  ("corona/component", "HorizontalRadioGroup", "RadioGroup"),
+  ("corona/component", "InfoAlert", "Alert"),
+  ("corona/component", "SuccessAlert", "Alert"),
+  ("corona/component", "WarningAlert", "Alert"),
+  ("corona/component", "ErrorAlert", "Alert"),
+  ("corona/component", "Tooltip", "Button"),
+  ("corona/component", "Image", "image"),
+  ("corona/component", "Text", "div"),
 ];
 
 /// Types the elements `export const Name: Ctor<..>` and `{ new (..): Element; .. }` make as
 /// `Element<"Name">`, the kind the methods of `el_methods!` are typed on
-fn kinded(d_ts: String) -> String {
+fn kinded(module: &str, d_ts: String) -> String {
+  let base = |line: &str| match module {
+    "corona/base" => qualify_base(line),
+    _ => line.to_string(),
+  };
   d_ts
     .lines()
     .map(|line| {
+      let line = &base(line);
       let Some(name) = line
         .strip_prefix("  export const ")
         .and_then(|l| l.split_once(": "))
-        .map(|(name, _)| KIND_OF.iter().find(|(n, _)| *n == name).map_or(name, |(_, k)| k))
+        .map(|(name, _)| KIND_OF.iter().find(|(m, n, _)| *m == module && *n == name).map_or(name, |(_, _, k)| k))
       else {
         return line.replace("type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };", "type Ctor<K extends string, A extends any[]> = { new (...args: A): Element<K>; new: (...args: A) => Element<K> };");
+      };
+      let name = &match module {
+        "corona/base" => format!("{name}@base"),
+        _ => name.to_string(),
       };
       line
         .replace("Ctor<[", &format!("Ctor<\"{name}\", ["))
@@ -640,6 +653,24 @@ fn kinded(d_ts: String) -> String {
     .collect::<Vec<_>>()
     .join("\n")
     + "\n"
+}
+
+/// `Element<"Kind">` of a `corona/base` line as `Element<"Kind@base">`: base and component
+/// widgets share a name and kind, but not their methods
+fn qualify_base(line: &str) -> String {
+  let mut out = String::new();
+  let mut rest = line;
+  while let Some(at) = rest.find("Element<\"") {
+    let (head, tail) = rest.split_at(at + 9);
+    out.push_str(head);
+    let end = tail.find('"').unwrap_or(tail.len());
+    out.push_str(&tail[..end]);
+    if !tail[..end].contains('@') {
+      out.push_str("@base");
+    }
+    rest = &tail[end..];
+  }
+  out + rest
 }
 
 #[cfg(test)]

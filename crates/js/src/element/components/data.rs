@@ -1307,39 +1307,43 @@ mod methods {
   use super::*;
 
   crate::el_methods! {
-    /// The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
-    /// it, `0..=100`), or the text of a `DescriptionItem`.
-    fn value(value: NumStr) for ["Progress", "DescriptionItem"] |c, n| match value {
-      NumStr::Num(v) => any!(c, n,
-        base::Progress => |p| p.value(v),
-        Progress => |p| p.value(v),
-        Data<DescriptionItem> => |d| Data(d.0, d.1.value(v.to_string())),
-      ),
-      NumStr::Str(v) => any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.value(v))),
+    /// The value of a `Progress`: a percentage (`corona/base` announces it, `corona/component`
+    /// draws it, `0..=100`).
+    fn value(value: f32) for ["Progress", "Progress@base"] |c, n| any!(c, n,
+      base::Progress => |p| p.value(value),
+      Progress => |p| p.value(value),
+    );
+    /// The text of a `DescriptionItem`.
+    fn value(value: NumStr) for ["DescriptionItem"] |c, n| {
+      let text = match value {
+        NumStr::Num(v) => v.to_string(),
+        NumStr::Str(v) => v,
+      };
+      any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.value(text)))
     };
     /// Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far".
-    fn indeterminate(value: bool) for ["Progress"] |c, n| any!(c, n, base::Progress => |p| p.indeterminate(value));
+    fn indeterminate(value: bool) for ["Progress@base"] |c, n| any!(c, n, base::Progress => |p| p.indeterminate(value));
     /// Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback.
-    fn image(image: Part<'js>) for ["Avatar"] |c, n| {
+    fn image(image: Part<'js> as "Element<\"AvatarImage@base\">") for ["Avatar@base"] |c, n| {
       let image = image.take::<AvatarImage>(c, "an AvatarImage")?;
       any!(c, n, base::Avatar => |a| a.image(image))
     };
     /// Fills an `Avatar`'s fallback slot with an `AvatarFallback`, shown without an image.
-    fn fallback(fallback: Part<'js>) for ["Avatar"] |c, n| {
+    fn fallback(fallback: Part<'js> as "Element<\"AvatarFallback@base\">") for ["Avatar@base"] |c, n| {
       let fallback = fallback.take::<AvatarFallback>(c, "an AvatarFallback")?;
       any!(c, n, base::Avatar => |a| a.fallback(fallback))
     };
     /// A `Table`'s total number of rows, also those not rendered, as announced.
-    fn row_count(count: u32) for ["Table"] |c, n| {
+    fn row_count(count: u32) for ["Table@base"] |c, n| {
       let count = crate::element::items(c, count)?;
       any!(c, n, base::Table => |t| t.row_count(count))
     };
     /// A `Table`'s total number of columns, also those not rendered.
-    fn column_count(count: u32) for ["Table"] |c, n| {
+    fn column_count(count: u32) for ["Table@base"] |c, n| {
       any!(c, n, base::Table => |t| t.column_count(count as usize))
     };
     /// The semantic size of a styled widget.
-    fn size(size: SizeArg<'js>) for ["Badge", "Spinner", "DescriptionList", "Progress", "Avatar", "Icon", "Tag", "Calendar", "CarouselPrevious", "CarouselNext", "CarouselPaginationItem", "Table"] |c, n| {
+    fn size(size: SizeArg<'js>) for ["Avatar", "Avatar@base", "Badge", "Calendar", "CarouselNext", "CarouselPaginationItem", "CarouselPrevious", "DescriptionList", "Icon", "Progress", "Progress@base", "Spinner", "Table", "Table@base", "Tag"] |c, n| {
       let size = Sz(size.get(c, &**n)?);
       any!(c, n,
         W<Badge> => |x| x.with_size(size.0),
@@ -1357,7 +1361,7 @@ mod methods {
       )
     };
     /// What a screen reader announces.
-    fn accessibility_label(label: String) for ["Progress", "Table", "Carousel", "CarouselItem", "CarouselPrevious", "CarouselNext", "CarouselPagination", "CarouselPaginationItem"] |c, n| any!(c, n,
+    fn accessibility_label(label: String) for ["Carousel", "CarouselItem", "CarouselNext", "CarouselPagination", "CarouselPaginationItem", "CarouselPrevious", "Progress", "Progress@base", "Table", "Table@base"] |c, n| any!(c, n,
       base::Progress => |p| p.accessibility_label(label),
       Progress => |p| p.accessibility_label(label),
       table::Table => |t| t.accessibility_label(label),
@@ -1369,22 +1373,22 @@ mod methods {
       CarouselPaginationItem => |t| t.accessibility_label(label),
     );
     /// How many columns a table cell spans.
-    fn col_span(span: u32) for ["TableHead", "TableCell"] |c, n| any!(c, n,
+    fn col_span(span: u32) for ["TableCell", "TableHead"] |c, n| any!(c, n,
       table::TableHead => |t| t.col_span(span as usize),
       table::TableCell => |t| t.col_span(span as usize),
     );
     /// Centers a table cell's text.
-    fn text_center() for ["TableHead", "TableCell"] |c, n| any!(c, n,
+    fn text_center() for ["TableCell", "TableCell@base", "TableHead", "TableHead@base"] |c, n| any!(c, n,
       table::TableHead => |t| t.text_center(),
       table::TableCell => |t| t.text_center(),
     );
     /// Right-aligns a table cell's text.
-    fn text_right() for ["TableHead", "TableCell"] |c, n| any!(c, n,
+    fn text_right() for ["TableCell", "TableCell@base", "TableHead", "TableHead@base"] |c, n| any!(c, n,
       table::TableHead => |t| t.text_right(),
       table::TableCell => |t| t.text_right(),
     );
     /// The color of a `Badge`, `Spinner`, `Icon` or `Progress`.
-    fn color(color: Color) for ["Badge", "Spinner", "Icon", "Progress"] |c, n| any!(c, n,
+    fn color(color: Color) for ["Badge", "Icon", "Progress", "Spinner"] |c, n| any!(c, n,
       W<Badge> => |x| x.map(|b| b.color(color.0)),
       W<Spinner> => |x| x.map(|s| s.color(color.0)),
       Icon => |x| x.text_color(color.0),
@@ -1400,10 +1404,15 @@ mod methods {
     fn count(count: u32) for ["Badge"] |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.count(count as usize)));
     /// The largest number a `Badge` shows, `max+` above.
     fn max(max: u32) for ["Badge"] |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.max(max as usize)));
-    /// The look of a `Tag` or an `EmptyMedia`.
-    fn variant(variant: Var) for ["Tag", "EmptyMedia"] |c, n| match variant.0 {
+    /// The look of a `Tag`.
+    fn variant(variant: Var as "\"primary\" | \"secondary\" | \"danger\" | \"success\" | \"warning\" | \"info\"") for ["Tag"] |c, n| match variant.0 {
       Variant::Tag(v) => any!(c, n, Tag => |t| t.with_variant(v)),
+      Variant::Media(_) => Err(crate::miss(c, n.kind())),
+    };
+    /// The look of an `EmptyMedia`.
+    fn variant(variant: Var as "\"default\" | \"icon\"") for ["EmptyMedia"] |c, n| match variant.0 {
       Variant::Media(v) => any!(c, n, EmptyMedia => |m| m.with_variant(v)),
+      Variant::Tag(_) => Err(crate::miss(c, n.kind())),
     };
     /// Draws a `Tag` outlined.
     fn outline() for ["Tag"] |c, n| any!(c, n, Tag => |t| t.outline());
@@ -1414,27 +1423,27 @@ mod methods {
     /// How a `Spinner` turns.
     fn ease(ease: Ease) for ["Spinner"] |c, n| any!(c, n, W<Spinner> => |x| x.map(|s| s.ease(ease.0)));
     /// Fills an `Empty`'s header with an `EmptyHeader`.
-    fn header(header: Part<'js>) for ["Empty"] |c, n| {
+    fn header(header: Part<'js> as "Element<\"EmptyHeader\">") for ["Empty"] |c, n| {
       let header = header.take::<EmptyHeader>(c, "an EmptyHeader")?;
       any!(c, n, Empty => |e| e.header(header))
     };
     /// Fills an `Empty`'s content with an `EmptyContent`.
-    fn content(content: Part<'js>) for ["Empty"] |c, n| {
+    fn content(content: Part<'js> as "Element<\"EmptyContent\">") for ["Empty"] |c, n| {
       let content = content.take::<EmptyContent>(c, "an EmptyContent")?;
       any!(c, n, Empty => |e| e.content(content))
     };
     /// Fills an `EmptyHeader`'s media with an `EmptyMedia`.
-    fn media(media: Part<'js>) for ["EmptyHeader"] |c, n| {
+    fn media(media: Part<'js> as "Element<\"EmptyMedia\">") for ["EmptyHeader"] |c, n| {
       let media = media.take::<EmptyMedia>(c, "an EmptyMedia")?;
       any!(c, n, EmptyHeader => |h| h.media(media))
     };
     /// Fills an `EmptyHeader`'s title with an `EmptyTitle`.
-    fn title(title: Part<'js>) for ["EmptyHeader"] |c, n| {
+    fn title(title: Part<'js> as "Element<\"EmptyTitle\">") for ["EmptyHeader"] |c, n| {
       let title = title.take::<EmptyTitle>(c, "an EmptyTitle")?;
       any!(c, n, EmptyHeader => |h| h.title(title))
     };
     /// Fills an `EmptyHeader`'s description with an `EmptyDescription`.
-    fn description(description: Part<'js>) for ["EmptyHeader"] |c, n| {
+    fn description(description: Part<'js> as "Element<\"EmptyDescription\">") for ["EmptyHeader"] |c, n| {
       let description = description.take::<EmptyDescription>(c, "an EmptyDescription")?;
       any!(c, n, EmptyHeader => |h| h.description(description))
     };
@@ -1445,14 +1454,14 @@ mod methods {
     /// The name an `Avatar` shows the initials of without an image.
     fn name(name: String) for ["Avatar"] |c, n| any!(c, n, Avatar => |a| a.name(name));
     /// The image of an `Avatar`: an absolute path under a read grant, or a plugin file.
-    fn src(path: String) for ["Avatar"] |c, n| {
+    fn src(path: String) for ["Avatar", "Avatar@base"] |c, n| {
       let src = source(c, path)?;
       any!(c, n, Avatar => |a| a.src(src))
     };
     /// Lays a `DescriptionList` out in a column.
     fn vertical() for ["DescriptionList"] |c, n| any!(c, n, W<DescriptionList> => |x| x.map(|d| d.layout(gpui_kit::Axis::Vertical)));
     /// Draws a `DescriptionList` or `DataTable` with borders.
-    fn bordered(value: bool) for ["DescriptionList", "DataTable"] |c, n| any!(c, n,
+    fn bordered(value: bool) for ["DataTable", "DescriptionList"] |c, n| any!(c, n,
       W<DescriptionList> => |x| x.map(|d| d.bordered(value)),
       DataTableEl => |t| DataTableEl { w: t.w.map(|d| d.bordered(value)), ..t },
     );
@@ -1460,14 +1469,13 @@ mod methods {
     fn columns(columns: u32) for ["DescriptionList"] |c, n| {
       any!(c, n, W<DescriptionList> => |x| x.map(|d| d.columns(columns as usize)))
     };
-    /// Adds `DescriptionItem`s to a `DescriptionList`, or `TreeItem`s to a `Tree` or `TreeItem`.
-    fn items(items: Parts<'js>) for ["DescriptionList", "Tree", "TreeItem"] |c, n| {
-      if is::<W<DescriptionList>>(&**n) {
-        let items = items.take::<Data<DescriptionItem>>(c, "a DescriptionItem")?;
-        return map(c, n, |x: W<DescriptionList>| {
-          x.map(|d| d.children(items.into_iter().map(|i| i.1)))
-        });
-      }
+    /// Adds `DescriptionItem`s to a `DescriptionList`.
+    fn items(items: Parts<'js> as "Element<\"DescriptionItem\">[]") for ["DescriptionList"] |c, n| {
+      let items = items.take::<Data<DescriptionItem>>(c, "a DescriptionItem")?;
+      any!(c, n, W<DescriptionList> => |x| x.map(|d| d.children(items.into_iter().map(|i| i.1))))
+    };
+    /// Adds `TreeItem`s to a `Tree` or `TreeItem`.
+    fn items(items: Parts<'js> as "Element<\"TreeItem\">[]") for ["Tree", "TreeItem"] |c, n| {
       let items = items.take::<Data<TreeItem>>(c, "a TreeItem")?;
       let items = items.into_iter().map(|i| i.1);
       any!(c, n,
@@ -1486,7 +1494,7 @@ mod methods {
     /// Whether a `TreeItem` is disabled.
     fn disabled(value: bool) for ["TreeItem"] |c, n| any!(c, n, Data<TreeItem> => |t| Data(t.0, t.1.disabled(value)));
     /// Draws a chart's grid lines.
-    fn grid(value: Opt<bool>) for ["BarChart", "LineChart", "AreaChart", "RadarChart"] |c, n| {
+    fn grid(value: Opt<bool>) for ["AreaChart", "BarChart", "LineChart", "RadarChart"] |c, n| {
       let value = value.0.unwrap_or(true);
       any!(c, n,
       Bar => |x| x.map(|ch| ch.grid(value)),
@@ -1500,28 +1508,28 @@ mod methods {
     /// Draws a `BarChart`'s value axis.
     fn value_axis(value: bool) for ["BarChart"] |c, n| any!(c, n, Bar => |x| x.map(|ch| ch.value_axis(value)));
     /// Draws a `LineChart`'s or `AreaChart`'s x axis.
-    fn x_axis(value: bool) for ["LineChart", "AreaChart"] |c, n| any!(c, n,
+    fn x_axis(value: bool) for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.x_axis(value)),
       Area => |x| x.map(|ch| ch.x_axis(value)),
     );
     /// Labels every `margin`th tick of a chart's axis.
-    fn tick_margin(margin: u32) for ["BarChart", "LineChart", "AreaChart"] |c, n| any!(c, n,
+    fn tick_margin(margin: u32) for ["AreaChart", "BarChart", "LineChart"] |c, n| any!(c, n,
       Bar => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
       Line => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
       Area => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
     );
     /// Draws a smooth curve.
-    fn natural() for ["LineChart", "AreaChart"] |c, n| any!(c, n,
+    fn natural() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.natural()),
       Area => |x| x.map(|ch| ch.natural()),
     );
     /// Draws straight segments.
-    fn linear() for ["LineChart", "AreaChart"] |c, n| any!(c, n,
+    fn linear() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.linear()),
       Area => |x| x.map(|ch| ch.linear()),
     );
     /// Draws steps.
-    fn step_after() for ["LineChart", "AreaChart"] |c, n| any!(c, n,
+    fn step_after() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.step_after()),
       Area => |x| x.map(|ch| ch.step_after()),
     );

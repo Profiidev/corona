@@ -41,7 +41,7 @@ impl Node for Probe {
 mod probe {
   crate::el_methods! {
     /// Sets the probe's label.
-    fn label(text: String) |c, n| crate::map(c, n, |mut p: super::Probe| {
+    fn label(text: String) for ["Probe"] |c, n| crate::map(c, n, |mut p: super::Probe| {
       p.label = text;
       p
     });

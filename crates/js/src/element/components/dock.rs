@@ -1111,9 +1111,8 @@ mod chrome {
   use super::*;
 
   crate::el_methods! {
-    kinds: &["dock_area"];
     /// The tab bar above a group's displayed panel.
-    fn tab_bar(handler: GroupChrome<'js>) for ["dock_area"] |c, n| {
+    fn tab_bar(handler: GroupChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.tab_bar = Some(key);
@@ -1121,7 +1120,7 @@ mod chrome {
       })
     };
     /// What a group with no displayed panel shows.
-    fn empty_group(handler: EmptyChrome<'js>) for ["dock_area"] |c, n| {
+    fn empty_group(handler: EmptyChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.empty_group = Some(key);
@@ -1129,7 +1128,7 @@ mod chrome {
       })
     };
     /// The hint where a dragged panel would land.
-    fn drop_indicator(handler: DropChrome<'js>) for ["dock_area"] |c, n| {
+    fn drop_indicator(handler: DropChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.drop_indicator = Some(key);
@@ -1137,7 +1136,7 @@ mod chrome {
       })
     };
     /// One dock's chrome around its content; put `dock_content()` where its panels go.
-    fn dock(handler: DockChrome<'js>) for ["dock_area"] |c, n| {
+    fn dock(handler: DockChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.dock = Some(key);

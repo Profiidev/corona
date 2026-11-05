@@ -287,7 +287,7 @@ mod methods {
   crate::el_methods! {
     kinds: KINDS;
     /// The element a `corona/base` `Popover` or `HoverCard` draws while closed, and that opens it.
-    fn trigger(element: Child<'js>) for ["Popover", "HoverCard"] |c, n| {
+    fn trigger(element: Child<'js>) for ["HoverCard@base", "Popover@base"] |c, n| {
       let t = frame().child(c, element)?;
       ov(c, n, |o| match o {
         Popover(p) => Ok(Popover(p.trigger_with(move |_, _, _| t))),
@@ -303,10 +303,9 @@ mod methods {
         o => Err(o),
       })
     };
-    /// What a surface shows while open: an element of this render. A `Dialog` or `Sheet`
-    /// outlives the render, so it takes a fn rendering its content instead.
-    fn content(content: Content<'js>) for ["Popover", "HoverCard", "Popup", "Dialog", "Sheet"] |c, n| match content {
-      Content::Fn(f) => opt(c, n, &["Dialog", "Sheet"], "content", f, Err),
+    /// What a `Popover`, `HoverCard` or `Popup` shows while open: an element of this render.
+    fn content(content: Content<'js> as "Element") for ["HoverCard", "HoverCard@base", "Popover", "Popover@base", "Popup@base"] |c, n| match content {
+      Content::Fn(_) => Err(crate::miss(c, n.kind())),
       Content::El(child) => {
         let el = frame().child(c, child)?;
         ov(c, n, |o| match o {
@@ -319,54 +318,60 @@ mod methods {
         })
       }
     };
+    /// What a `Dialog` or `Sheet` shows: it outlives the render, so it takes a fn rendering its
+    /// content instead.
+    fn content(content: Content<'js> as "() => Element") for ["Dialog", "Sheet"] |c, n| match content {
+      Content::Fn(f) => opt(c, n, &["Dialog", "Sheet"], "content", f, Err),
+      Content::El(_) => Err(crate::miss(c, n.kind())),
+    };
     /// Whether a `Popover` is open; set, the script holds the state through `on_open_change`.
-    fn open(value: bool) for ["Popover"] |c, n| ov(c, n, |o| match o {
+    fn open(value: bool) for ["Popover", "Popover@base"] |c, n| ov(c, n, |o| match o {
       Popover(p) => Ok(Popover(p.open(value))),
       CPopover(p) => Ok(CPopover(p.open(value))),
       o => Err(o),
     });
     /// Whether an uncontrolled `Popover` starts open.
-    fn default_open(value: bool) for ["Popover"] |c, n| ov(c, n, |o| match o {
+    fn default_open(value: bool) for ["Popover", "Popover@base"] |c, n| ov(c, n, |o| match o {
       Popover(p) => Ok(Popover(p.default_open(value))),
       CPopover(p) => Ok(CPopover(p.default_open(value))),
       o => Err(o),
     });
     /// Whether a press outside an open `Popover` closes it. Default `true`.
-    fn overlay_closable(value: bool) for ["Popover"] |c, n| ov(c, n, |o| match o {
+    fn overlay_closable(value: bool) for ["Popover", "Popover@base"] |c, n| ov(c, n, |o| match o {
       Popover(p) => Ok(Popover(p.overlay_closable(value))),
       CPopover(p) => Ok(CPopover(p.overlay_closable(value))),
       o => Err(o),
     });
     /// Which pointer button opens a `Popover`. Default `"left"`.
-    fn mouse_button(button: Press) for ["Popover"] |c, n| ov(c, n, |o| match o {
+    fn mouse_button(button: Press) for ["Popover", "Popover@base"] |c, n| ov(c, n, |o| match o {
       Popover(p) => Ok(Popover(p.mouse_button(Press::named(button.0)))),
       CPopover(p) => Ok(CPopover(p.mouse_button(Press::named(button.0)))),
       o => Err(o),
     });
     /// Which corner of a `Popover`, `HoverCard` or `Popup` is pinned to its trigger.
-    fn anchor(anchor: Anc) for ["Popover", "HoverCard", "Popup"] |c, n| anchor_to(c, n, Anc::named(anchor.0));
+    fn anchor(anchor: Anc) for ["HoverCard", "HoverCard@base", "Popover", "Popover@base", "Popup@base"] |c, n| anchor_to(c, n, Anc::named(anchor.0));
     /// Same as `anchor`.
-    fn card_anchor(anchor: Anc) for ["Popover", "HoverCard", "Popup"] |c, n| anchor_to(c, n, Anc::named(anchor.0));
+    fn card_anchor(anchor: Anc) for ["HoverCard", "HoverCard@base", "Popover", "Popover@base", "Popup@base"] |c, n| anchor_to(c, n, Anc::named(anchor.0));
     /// How long the pointer rests on a `HoverCard`'s trigger before it opens. Default 600.
-    fn open_delay(ms: Ms) for ["HoverCard"] |c, n| ov(c, n, |o| match o {
+    fn open_delay(ms: Ms) for ["HoverCard", "HoverCard@base"] |c, n| ov(c, n, |o| match o {
       HoverCard(h) => Ok(HoverCard(h.open_delay(ms.0))),
       CHoverCard(h) => Ok(CHoverCard(h.open_delay(ms.0))),
       o => Err(o),
     });
     /// How long a `HoverCard` stays open after the pointer left it and its trigger. Default 300.
-    fn close_delay(ms: Ms) for ["HoverCard"] |c, n| ov(c, n, |o| match o {
+    fn close_delay(ms: Ms) for ["HoverCard", "HoverCard@base"] |c, n| ov(c, n, |o| match o {
       HoverCard(h) => Ok(HoverCard(h.close_delay(ms.0))),
       CHoverCard(h) => Ok(CHoverCard(h.close_delay(ms.0))),
       o => Err(o),
     });
     /// Whether a `corona/component` `Popover` or `HoverCard` draws its surface. Default `true`.
-    fn appearance(value: bool) for ["Popover", "HoverCard"] |c, n| ov(c, n, |o| match o {
+    fn appearance(value: bool) for ["HoverCard", "Popover"] |c, n| ov(c, n, |o| match o {
       CPopover(p) => Ok(CPopover(p.appearance(value))),
       CHoverCard(h) => Ok(CHoverCard(h.appearance(value))),
       o => Err(o),
     });
     /// `handler(open, cx)` when a `Popover` or `HoverCard` opens or closes by itself.
-    fn on_open_change(handler: On<'js, bool>) for ["Popover", "HoverCard"] |c, n| {
+    fn on_open_change(handler: On<'js, bool>) for ["HoverCard", "HoverCard@base", "Popover", "Popover@base"] |c, n| {
       let l = frame().listener(handler.0, |open: &bool| *open);
       ov(c, n, |o| match o {
         Popover(p) => Ok(Popover(p.on_open_change(l))),
@@ -377,7 +382,7 @@ mod methods {
       })
     };
     /// The title of a window effect or an `Alert`.
-    fn title(text: String) for ["Dialog", "AlertDialog", "Sheet", "Notification", "Alert"] |c, n| opt(c, n, EFFECTS, "title", text.clone(), |o| match o {
+    fn title(text: String) for ["Alert", "AlertDialog", "Dialog", "Notification", "Sheet"] |c, n| opt(c, n, EFFECTS, "title", text.clone(), |o| match o {
       Alert(a) => Ok(Alert(a.title(text))),
       o => Err(o),
     });
@@ -392,13 +397,13 @@ mod methods {
     /// Whether a `Notification` hides by itself. Default `true`.
     fn autohide(value: bool) for ["Notification"] |c, n| opt(c, n, &["Notification"], "autohide", value, Err);
     /// `handler(cx)` on a `Dialog`'s or `AlertDialog`'s OK button; the dialog closes after.
-    fn on_ok(handler: Cb<'js>) for ["Dialog", "AlertDialog"] |c, n| opt(c, n, &["Dialog", "AlertDialog"], "on_ok", handler.0, Err);
+    fn on_ok(handler: Cb<'js>) for ["AlertDialog", "Dialog"] |c, n| opt(c, n, &["Dialog", "AlertDialog"], "on_ok", handler.0, Err);
     /// `handler(cx)` on a `Dialog`'s or `AlertDialog`'s cancel button; the dialog closes after.
-    fn on_cancel(handler: Cb<'js>) for ["Dialog", "AlertDialog"] |c, n| {
+    fn on_cancel(handler: Cb<'js>) for ["AlertDialog", "Dialog"] |c, n| {
       opt(c, n, &["Dialog", "AlertDialog"], "on_cancel", handler.0, Err)
     };
     /// `handler(cx)` once a window effect closed, however it was closed.
-    fn on_close(handler: Cb<'js>) for ["Dialog", "AlertDialog", "Sheet", "Notification"] |c, n| opt(c, n, EFFECTS, "on_close", handler.0, Err);
+    fn on_close(handler: Cb<'js>) for ["AlertDialog", "Dialog", "Notification", "Sheet"] |c, n| opt(c, n, EFFECTS, "on_close", handler.0, Err);
     /// `handler(cx)` on a click on a `Notification`.
     fn on_click(handler: Cb<'js>) for ["Notification"] |c, n| opt(c, n, &["Notification"], "on_click", handler.0, Err);
     /// Draws an `Alert` full width, without border, radius or title.
