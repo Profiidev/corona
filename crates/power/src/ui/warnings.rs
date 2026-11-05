@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{Battery, BatteryState, Power, PowerExt};
+use crate::{Battery, BatteryState, Power, PowerExt, Status};
 use corona_config::{BatteryWarningConfig, ConfigProvider, observe_section};
 use corona_notifications::{Notifications, Notify, Urgency};
 use gpui_kit::App;
@@ -25,12 +25,26 @@ enum Step {
   Warn(Level),
 }
 
+fn is_discharging(battery: &Battery, status: Option<&Status>) -> bool {
+  let on_battery = status.map_or(
+    matches!(
+      battery.state,
+      BatteryState::Discharging | BatteryState::Empty
+    ),
+    |s| s.on_battery,
+  );
+  on_battery && battery.state != BatteryState::Charging
+}
+
 /// What to do with the battery as it is now, `warned` the level already shown
 /// this discharge
-fn step(warned: Option<Level>, battery: Option<&Battery>, config: &BatteryWarningConfig) -> Step {
-  let Some(battery) = battery.filter(|b| {
-    config.enabled && matches!(b.state, BatteryState::Discharging | BatteryState::Empty)
-  }) else {
+fn step(
+  warned: Option<Level>,
+  battery: Option<&Battery>,
+  status: Option<&Status>,
+  config: &BatteryWarningConfig,
+) -> Step {
+  let Some(battery) = battery.filter(|b| config.enabled && is_discharging(b, status)) else {
     return match warned {
       Some(_) => Step::Clear,
       None => Step::Keep,
@@ -68,6 +82,11 @@ pub(crate) fn init(cx: &mut App) {
     cx.observe(&power.battery, move |_, cx| check(&warned, cx))
       .detach();
   }
+  {
+    let warned = warned.clone();
+    cx.observe(&power.status, move |_, cx| check(&warned, cx))
+      .detach();
+  }
   observe_section(
     cx,
     |c| &c.notification.battery,
@@ -84,9 +103,11 @@ fn apply(warned: &mut Warned, level: Option<Level>) -> (Option<Level>, Option<u3
 
 fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
   let battery = cx.power().battery(cx);
+  let status = cx.power().status(cx);
   let step = step(
     warned.borrow().level,
     battery,
+    status,
     &cx.config().notification.battery,
   );
   let (level, id) = match step {
@@ -144,9 +165,21 @@ fn check(warned: &Rc<RefCell<Warned>>, cx: &mut App) {
     timeout,
   });
   let warned = warned.clone();
+  let notifications = notifications.clone();
   cx.spawn(async move |_| match send.await {
     // ponytail: charging before the daemon answers leaves this one up, close it then if it shows
-    Ok(id) => warned.borrow_mut().id = Some(id),
+    Ok(id) => {
+      let mut warned = warned.borrow_mut();
+      if warned.level.is_none() {
+        let close = notifications.close(id);
+        drop(warned);
+        if let Err(e) = close.await {
+          tracing::warn!("battery notification: {e:#}");
+        }
+      } else {
+        warned.id = Some(id);
+      }
+    }
     Err(e) => tracing::warn!("battery notification: {e:#}"),
   })
   .detach();
@@ -171,13 +204,23 @@ mod tests {
     }
   }
 
+  fn status(on_battery: bool) -> Status {
+    Status {
+      on_battery,
+      lid_closed: None,
+      critical_action: String::new(),
+    }
+  }
+
   #[test]
   fn warns_once_per_level() {
     let config = BatteryWarningConfig::default();
+    let on_battery = status(true);
     let at = |warned, p| {
       step(
         warned,
         Some(&battery(p, BatteryState::Discharging)),
+        Some(&on_battery),
         &config,
       )
     };
@@ -207,17 +250,49 @@ mod tests {
     let config = BatteryWarningConfig::default();
     let charging = battery(4., BatteryState::Charging);
     assert_eq!(
-      step(Some(Level::Critical), Some(&charging), &config),
+      step(Some(Level::Critical), Some(&charging), None, &config),
       Step::Clear
     );
-    assert_eq!(step(None, Some(&charging), &config), Step::Keep);
-    assert_eq!(step(Some(Level::Low), None, &config), Step::Clear);
+    assert_eq!(step(None, Some(&charging), None, &config), Step::Keep);
+    assert_eq!(step(Some(Level::Low), None, None, &config), Step::Clear);
     let off = BatteryWarningConfig {
       enabled: false,
       ..config
     };
     let low = battery(4., BatteryState::Discharging);
-    assert_eq!(step(Some(Level::Low), Some(&low), &off), Step::Clear);
-    assert_eq!(step(None, Some(&low), &off), Step::Keep);
+    assert_eq!(step(Some(Level::Low), Some(&low), None, &off), Step::Clear);
+    assert_eq!(step(None, Some(&low), None, &off), Step::Keep);
+  }
+
+  #[test]
+  fn hides_when_charger_is_attached_and_warns_again_when_detached_in_critical() {
+    let config = BatteryWarningConfig::default();
+    let critical = battery(3., BatteryState::Discharging);
+    let attached = status(false);
+    let detached = status(true);
+
+    // Charger is attached: clears the critical warning even if battery still reports discharging/empty
+    assert_eq!(
+      step(
+        Some(Level::Critical),
+        Some(&critical),
+        Some(&attached),
+        &config
+      ),
+      Step::Clear
+    );
+
+    // After clear, warned level is None. When detached and still in critical area, warn again
+    assert_eq!(
+      step(None, Some(&critical), Some(&detached), &config),
+      Step::Warn(Level::Critical)
+    );
+
+    // If detached but battery charged above critical, do not warn critical
+    let normal = battery(25., BatteryState::Discharging);
+    assert_eq!(
+      step(None, Some(&normal), Some(&detached), &config),
+      Step::Keep
+    );
   }
 }
