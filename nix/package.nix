@@ -34,9 +34,9 @@ let
       patchFlags = [ "-p3" ];
     };
 
-  gpui-pre = vendorCrate "gpui-pre" "sha256-V1hvZZ8lZ0gyTzqrLgLx/LOCFNMzyc90USPXDufYhcY=";
-  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-O8ro+PYCWzEz0TKYzzj4DTTQyHrCBwxo8jMjPEr1yLY=";
-  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-NhoFFN7CgVTskMDuc6po/SX+y0gudmJbCb/F12QIy7k=";
+  gpui-pre = vendorCrate "gpui-pre" "sha256-ILF1poFhTcQ4GvwkHM/eWhF06ZTzjCaiekkHYUla90c=";
+  gpui-pre-linux = vendorCrate "gpui-pre-linux" "sha256-0D0CuwxSUvIqQK/GoyHUqQNa/XdWelJU0bzUKh7ChX0=";
+  gpui-pre-wgpu = vendorCrate "gpui-pre-wgpu" "sha256-qOofkrRG5LGq2SyWIYbUZshILFqQFSnrySNMVRq+qkc=";
 in
 
 rustPlatform.buildRustPackage (finalAttrs: {
