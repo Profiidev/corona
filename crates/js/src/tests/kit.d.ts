@@ -4427,6 +4427,8 @@ declare module "corona/base" {
   export const HoverCard: { new (id: string | number): Element<"HoverCard@base">; new: (id: string | number) => Element<"HoverCard@base"> };
   /** The bare anchored surface: shows `content(..)` while it is set, anchored to `trigger`. */
   export const Popup: { new (id: string | number, trigger: Element): Element<"Popup@base">; new: (id: string | number, trigger: Element) => Element<"Popup@base"> };
+  /** Takes no space, not even a gap: return it to hide a widget or card. */
+  export const Empty: { new (): Element<"Empty@base">; new: () => Element<"Empty@base"> };
   /** The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it. */
   export const Progress: { new (id: string | number): Element<"Progress@base">; new: (id: string | number) => Element<"Progress@base"> };
   /** The groove, a plain element. */

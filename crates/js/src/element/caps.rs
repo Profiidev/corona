@@ -65,6 +65,7 @@ const KINDS: &[(&str, u8)] = &[
   ("DropdownMenu", STYLE),
   ("Editor", STYLE),
   ("Empty", STYLE | PARENT),
+  ("Empty@base", 0),
   ("EmptyContent", STYLE | PARENT),
   ("EmptyDescription", STYLE | PARENT),
   ("EmptyHeader", STYLE),

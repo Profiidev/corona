@@ -126,6 +126,7 @@ impl<T: 'static> Node for Data<T> {
 }
 
 crate::node!(base::Progress, "Progress", style, interactive, parent);
+crate::node!(gpui_kit::Empty, "Empty");
 crate::node!(ProgressTrack, "ProgressTrack", style, parent);
 crate::node!(ProgressIndicator, "ProgressIndicator", style, parent);
 crate::node!(base::Avatar, "Avatar", style, interactive);
@@ -1272,6 +1273,7 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
   }
   let calendar = Class::<JsCalendarState>::create_constructor(ctx)?.expect("constructor");
   Ok(vec![
+    c!("Empty", |ctx: Ctx<'js>| new_el(&ctx, gpui_kit::Empty)),
     c!("Progress", part!(base::Progress)),
     c!("ProgressTrack", |ctx: Ctx<'js>| new_el(
       &ctx,
@@ -1604,6 +1606,11 @@ fn ctor(doc: &str, name: &str, args: &str) -> String {
 fn base_d_ts() -> String {
   let parts: &[(&str, &str, &str)] = &[
     (
+      " Takes no space, not even a gap: return it to hide a widget or card.",
+      "Empty",
+      "",
+    ),
+    (
       " The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it.",
       "Progress",
       "id: string | number",
@@ -1854,6 +1861,7 @@ const COMPONENT_D_TS: &str = r#"  import { CalendarState, CalendarDate } from "c
 pub(crate) const BASE: Family = Family {
   module: "corona/base",
   names: &[
+    "Empty",
     "Progress",
     "ProgressTrack",
     "ProgressIndicator",
