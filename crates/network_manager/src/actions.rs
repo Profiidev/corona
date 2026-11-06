@@ -821,6 +821,32 @@ fn hotspot_settings(
   settings
 }
 
+/// writes the Corona Hotspot profile without starting it, so the form survives a restart
+pub(crate) async fn save_hotspot(conn: &Connection, config: HotspotConfig) -> Result<()> {
+  config.validate()?;
+  match saved_hotspot(conn).await? {
+    Some((path, uuid)) => {
+      let settings = hotspot_settings(config, uuid, None);
+      proxy::<ConnectionSettingsProxy, ConnectionSettingsProxy>(conn, path)
+        .await?
+        .update(borrowed(&settings))
+        .await
+        .context("updating the saved hotspot profile")?;
+    }
+    None => {
+      let settings = hotspot_settings(config, None, None);
+      SettingsProxy::builder(conn)
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?
+        .add_connection(borrowed(&settings))
+        .await
+        .context("saving the hotspot profile")?;
+    }
+  }
+  Ok(())
+}
+
 /// `client`: the wifi device sharing `device`'s radio, which stays connected beside the hotspot,
 /// and whether it was connected when asked
 pub(crate) async fn start_hotspot(
