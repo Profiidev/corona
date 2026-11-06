@@ -31,7 +31,7 @@ const TIMEOUT: Duration = Duration::from_millis(500);
 #[cfg(test)]
 const DETECT_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(test)]
-const QUARANTINE: Duration = Duration::from_millis(400);
+const QUARANTINE: Duration = Duration::from_secs(2);
 #[cfg(test)]
 const STARTUP_DELAY: Duration = Duration::ZERO;
 #[cfg(test)]
