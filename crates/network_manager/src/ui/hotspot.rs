@@ -237,13 +237,7 @@ impl ControlCenterPage for HotspotPanel {
         }
       })
     });
-    let selects = [
-      &this.band,
-      &this.security,
-      &this.auto_off,
-      &this.isolate,
-    ]
-    .map(|select| {
+    let selects = [&this.band, &this.security, &this.auto_off, &this.isolate].map(|select| {
       cx.subscribe(select, |this, _, event: &SelectEvent<Vec<String>>, cx| {
         if matches!(event, SelectEvent::Confirm(_)) {
           this.save_hotspot(cx);
