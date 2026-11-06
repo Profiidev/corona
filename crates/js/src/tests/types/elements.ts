@@ -117,10 +117,10 @@ Select.new(
   (row) => div().child(row.label),
   () => {}
 );
-// @ts-expect-error a select row has no such field
 Select.new(
   's',
   () => [{ id: 'a', label: 'A' }],
+  // @ts-expect-error a select row has no such field
   (row) => div().child(row.nope),
   () => {}
 );
