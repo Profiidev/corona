@@ -15,7 +15,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::icons::interface_icon;
+use crate::ui::icons::primary_icon;
 use crate::ui::network::{LoadingState, NetworkPanel, refresh_button, utils::address};
 use rust_i18n::t;
 
@@ -25,7 +25,7 @@ impl NetworkPanel {
     let state = cx.network_manager().connectivity(cx);
     let connectivity_check_enabled = cx.network_manager().connectivity_check(cx).is_some();
 
-    let icon = interface_icon(primary);
+    let icon = primary_icon(primary, cx.network_manager().list_wifi_networks(cx));
 
     let (label, variant) = match state {
       NmConnectivityState::Full => (t!("app.network.online"), TagVariant::Success),

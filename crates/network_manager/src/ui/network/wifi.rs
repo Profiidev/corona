@@ -20,6 +20,7 @@ use gpui_kit::{
   px,
 };
 
+use crate::ui::icons::signal_icon;
 use crate::ui::network::{LoadingState, NetworkPanel, refresh_button};
 use rust_i18n::t;
 
@@ -118,12 +119,7 @@ impl NetworkPanel {
     cx: &Context<'_, Self>,
   ) -> impl IntoElement {
     let interface = device.map(|d| d.name.clone()).unwrap_or_default();
-    let signal_icon = match network.strength {
-      0..25 => IconName::WifiZero,
-      25..50 => IconName::WifiLow,
-      50..75 => IconName::WifiHigh,
-      75.. => IconName::Wifi,
-    };
+    let signal_icon = signal_icon(network.strength);
 
     div()
       .id(format!("wifi-network-{}", network.ssid))
