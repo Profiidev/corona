@@ -52,16 +52,21 @@ impl IpcCommand for Open {
   type Response = ();
 
   fn handle(request: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    ui::open(request.into(), cx)
+  }
+}
+
+impl From<OpenRequest> for OpenWith {
+  fn from(request: OpenRequest) -> Self {
     let query = request.query.unwrap_or_default();
-    let open = match request.command {
+    match request.command {
       Some(id) => OpenWith::Command {
         id,
         query,
         run: !request.prefill,
       },
       None => OpenWith::Root { query },
-    };
-    ui::open(open, cx)
+    }
   }
 }
 
@@ -84,11 +89,11 @@ pub struct Toggle;
 impl IpcCommand for Toggle {
   const COMMAND: &'static str = "launcher:toggle";
 
-  type Payload = ();
+  type Payload = OpenRequest;
   type Response = ();
 
-  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    ui::toggle(cx)
+  fn handle(request: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    ui::toggle(request.into(), cx)
   }
 }
 
@@ -260,6 +265,32 @@ impl IpcCommand for StopTimer {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn open_request_becomes_open() {
+    let open = |command: Option<&str>, prefill| {
+      OpenWith::from(OpenRequest {
+        command: command.map(Into::into),
+        query: Some("q".into()),
+        prefill,
+      })
+    };
+    assert!(matches!(open(None, false), OpenWith::Root { query } if query == "q"));
+    assert!(
+      matches!(open(Some("a"), false), OpenWith::Command { id, query, run: true } if id == "a" && query == "q")
+    );
+    assert!(matches!(
+      open(Some("a"), true),
+      OpenWith::Command { run: false, .. }
+    ));
+  }
+
+  #[test]
+  fn toggle_takes_the_open_request() {
+    let r: OpenRequest = serde_json::from_str(r#"{"command":"volume","query":null}"#).unwrap();
+    assert_eq!(r.command.as_deref(), Some("volume"));
+    assert!(!r.prefill);
+  }
 
   #[test]
   fn requests_json() {

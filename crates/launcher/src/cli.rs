@@ -30,7 +30,15 @@ pub enum Commands {
     query: Option<String>,
   },
   Close,
-  Toggle,
+  /// Open the launcher, or close it when already open on the same command
+  Toggle {
+    /// Id of the command to toggle, like `volume`
+    #[arg(long, add = ArgValueCandidates::new(commands))]
+    command: Option<String>,
+    /// Text to search for, or the command's arguments
+    #[arg(long)]
+    query: Option<String>,
+  },
   /// The trash
   Trash {
     #[command(subcommand)]
@@ -61,7 +69,14 @@ impl Commands {
         what,
       ),
       Commands::Close => done(Close::send(()), what),
-      Commands::Toggle => done(Toggle::send(()), what),
+      Commands::Toggle { command, query } => done(
+        Toggle::send(OpenRequest {
+          command,
+          query,
+          prefill: false,
+        }),
+        what,
+      ),
       Commands::Trash { command } => command.run(),
       Commands::Timer { command } => command.run(),
       Commands::Calc { expression } => {
