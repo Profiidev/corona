@@ -19,7 +19,7 @@ bitflags.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 flume.workspace = true
-chardetng = "1.0.0"
+chardetng.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

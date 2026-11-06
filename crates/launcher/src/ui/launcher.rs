@@ -7,6 +7,7 @@ use gpui_kit::{
   IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseMoveEvent, ParentElement,
   Render, SharedString, Styled, Subscription, Task, Window,
   base::input::{InputEvent, InputState},
+  component::ActiveTheme,
   div, px,
 };
 use rust_i18n::t;
@@ -62,6 +63,8 @@ pub(super) struct Page {
   pub fresh: bool,
   /// Which completion Tab showed last
   pub completion: usize,
+  /// The command this page belongs to, inherited by the pages it pushes
+  pub command: Option<String>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -82,6 +85,7 @@ impl Page {
       list: ListState::new(0, ListAlignment::Top, px(200.)),
       fresh: true,
       completion: 0,
+      command: None,
       _subscriptions: Vec::new(),
     }
   }
@@ -443,6 +447,16 @@ impl Launcher {
   }
 
   /// Opened into a command: the root page under it never shows
+  /// The command whose page is showing
+  pub(super) fn active_command(&self) -> Option<&str> {
+    self.pages.last()?.command.as_deref()
+  }
+
+  /// Opened into a command whose page has not arrived yet, so there is nothing to show
+  fn waiting(&self) -> bool {
+    self.busy > 0 && self.pages.len() == 1 && self.root_hidden()
+  }
+
   fn root_hidden(&self) -> bool {
     self.external && matches!(self.pages.first().map(|p| &p.body), Some(Body::Root))
   }
@@ -836,7 +850,11 @@ impl Launcher {
         }
       }
       Outcome::KeepOpen => self.refresh(cx),
-      Outcome::Push(view) => self.push(view, window, cx),
+      Outcome::Push(view) => {
+        let owner = self.page().command.clone();
+        self.push(view, window, cx);
+        self.page_mut().command = owner.or(command.map(|c| c.id().to_string()));
+      }
       Outcome::Pop => self.pop(window, cx),
       Outcome::Paste(clip) => {
         close_in(window, cx);
@@ -1516,7 +1534,17 @@ impl Render for Launcher {
           .w(card.width)
           .h(card.height)
           .occlude()
-          .child(super::rows::frame(self, window, cx)),
+          .child(match self.waiting() {
+            // keep the card itself so the surface does not look closed and reopened
+            true => div()
+              .size_full()
+              .rounded(px(super::style::RADIUS))
+              .border_1()
+              .border_color(cx.theme().colors.border)
+              .bg(super::style::window_fill(cx))
+              .into_any_element(),
+            false => super::rows::frame(self, window, cx),
+          }),
       )
   }
 }
@@ -1726,6 +1754,97 @@ mod view_tests {
       view.read_with(cx, |l, cx| l.input.read(cx).value().to_string()),
       ""
     );
+  }
+
+  #[gpui::test]
+  fn command_open_hides_the_root_until_its_page_arrives(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = cx.add_window_view(|window, cx| {
+      Launcher::new(
+        Open::Command {
+          id: "test:list".into(),
+          query: String::new(),
+          run: true,
+        },
+        window,
+        cx,
+      )
+    });
+    cx.run_until_parked();
+    let (waiting, active, pages) = view.read_with(cx, |l, _| {
+      (
+        l.waiting(),
+        l.active_command().map(str::to_string),
+        l.pages().len(),
+      )
+    });
+    assert!(!waiting);
+    assert_eq!(active.as_deref(), Some("test:list"));
+    assert_eq!(pages, 2);
+  }
+
+  #[gpui::test]
+  fn waiting_means_a_command_page_is_pending(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = cx.add_window_view(|window, cx| {
+      Launcher::new(
+        Open::Command {
+          id: "test:count".into(),
+          query: String::new(),
+          run: true,
+        },
+        window,
+        cx,
+      )
+    });
+    cx.run_until_parked();
+    // the action kept the launcher open on the hidden root: nothing pending
+    assert!(!view.read_with(cx, |l, _| l.waiting()));
+    view.update(cx, |l, _| l.busy = 1);
+    assert!(view.read_with(cx, |l, _| l.waiting()));
+    // a plain open never hides the root
+    let (view, cx) = open(cx);
+    view.update(cx, |l, _| l.busy = 1);
+    assert!(!view.read_with(cx, |l, _| l.waiting()));
+  }
+
+  #[gpui::test]
+  fn active_command_follows_navigation(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = open(cx);
+    let active = |cx: &mut VisualTestContext| {
+      view.read_with(cx, |l, _| l.active_command().map(str::to_string))
+    };
+    assert_eq!(active(cx), None);
+    cx.simulate_input("open list");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(active(cx).as_deref(), Some("test:list"));
+    cx.simulate_keystrokes("escape");
+    assert_eq!(active(cx), None);
+  }
+
+  #[gpui::test]
+  fn reset_forgets_the_active_command(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = open(cx);
+    cx.simulate_input("open list");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    view.update_in(cx, |l, window, cx| {
+      l.reset(
+        Open::Root {
+          query: String::new(),
+        },
+        window,
+        cx,
+      )
+    });
+    assert_eq!(
+      view.read_with(cx, |l, _| l.active_command().map(str::to_string)),
+      None
+    );
+    assert!(!view.read_with(cx, |l, _| l.waiting()));
   }
 
   #[gpui::test]

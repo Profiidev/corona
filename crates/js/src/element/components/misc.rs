@@ -48,28 +48,6 @@ use crate::{
   frame, map, new_el, runtime::runtime, view::window_or_throw,
 };
 
-/// Every kind this file makes; their methods throw on any other element
-const KINDS: &[&str] = &[
-  "Attachment",
-  "Bubble",
-  "Marker",
-  "Message",
-  "ShimmerText",
-  "MessageScroller",
-  "Editor",
-  "Diff",
-  "Settings",
-  "SettingPage",
-  "SettingGroup",
-  "SettingItem",
-  "Questionnaire",
-  "QuestionnaireItem",
-  "QuestionnaireChoice",
-  "QuestionnaireInput",
-  "TextView",
-  "fps_monitor",
-];
-
 fn not_here(ctx: &Ctx<'_>, n: &dyn Node) -> rquickjs::Error {
   crate::miss(ctx, n.kind())
 }
@@ -957,73 +935,75 @@ mod methods {
   use super::*;
 
   crate::el_methods! {
-    kinds: KINDS;
     /// The semantic size of an `Attachment` or `Settings`.
-    fn size(size: Lit<'js, Sizes>) |c, n| on_kind!(c, n, {
+    fn size(size: Lit<'js, Sizes>) for ["Attachment", "Settings"] |c, n| on_kind!(c, n, {
       "Attachment" => let s = size.get::<Sizes>(c)?;
         |a: Slot<Attachment>| Slot { widget: a.widget.with_size(s), ..a },
       "Settings" => let s = size.get::<Sizes>(c)?; |a: SettingsNode| SettingsNode(a.0.with_size(s)),
     });
     /// The attachment's lifecycle status.
-    fn status(status: Lit<'js, Statuses>) |c, n| on_kind!(c, n, {
+    fn status(status: Lit<'js, Statuses>) for ["Attachment"] |c, n| on_kind!(c, n, {
       "Attachment" => let s = status.get::<Statuses>(c)?;
         |a: Slot<Attachment>| Slot { widget: a.widget.status(s), ..a },
     });
     /// The attachment's layout axis.
-    fn axis(axis: Lit<'js, Axes>) |c, n| on_kind!(c, n, {
+    fn axis(axis: Lit<'js, Axes>) for ["Attachment"] |c, n| on_kind!(c, n, {
       "Attachment" => let x = axis.get::<Axes>(c)?;
         |a: Slot<Attachment>| Slot { widget: a.widget.axis(x), ..a },
     });
     /// The sender edge a `Message` or `Bubble` sits on.
-    fn alignment(alignment: Lit<'js, Alignments>) |c, n| on_kind!(c, n, {
+    fn alignment(alignment: Lit<'js, Alignments>) for ["Bubble", "Message"] |c, n| on_kind!(c, n, {
       "Bubble" => let a = alignment.get::<Alignments>(c)?; |b: Bubble| b.alignment(a),
       "Message" => let a = alignment.get::<Alignments>(c)?;
         |m: Slot<Message>| Slot { widget: m.widget.alignment(a), ..m },
     });
-    /// The treatment of a `Bubble` or `Marker`.
-    fn variant(variant: Lit<'js, (BubbleVariants, MarkerVariants)>) |c, n| on_kind!(c, n, {
+    /// The treatment of a `Bubble`.
+    fn variant(variant: Lit<'js, BubbleVariants>) for ["Bubble"] |c, n| on_kind!(c, n, {
       "Bubble" => let v = variant.get::<BubbleVariants>(c)?; |b: Bubble| b.with_variant(v),
+    });
+    /// The treatment of a `Marker`.
+    fn variant(variant: Lit<'js, MarkerVariants>) for ["Marker"] |c, n| on_kind!(c, n, {
       "Marker" => let v = variant.get::<MarkerVariants>(c)?; |m: Marker| m.with_variant(v),
     });
     /// Whether the marker shows its loading treatment.
-    fn loading(loading: bool) |c, n| on_kind!(c, n, { "Marker" => |m: Marker| m.loading(loading) });
+    fn loading(loading: bool) for ["Marker"] |c, n| on_kind!(c, n, { "Marker" => |m: Marker| m.loading(loading) });
     /// The marker's loading treatment.
-    fn loading_style(loading_style: Lit<'js, LoadingStyles>) |c, n| on_kind!(c, n, {
+    fn loading_style(loading_style: Lit<'js, LoadingStyles>) for ["Marker"] |c, n| on_kind!(c, n, {
       "Marker" => let s = loading_style.get::<LoadingStyles>(c)?;
         |m: Marker| m.with_loading_style(s),
     });
     /// A stable identity for a `ShimmerText`'s animation.
-    fn id(id: crate::Id) |c, n| on_kind!(c, n, {
+    fn id(id: crate::Id) for ["ShimmerText"] |c, n| on_kind!(c, n, {
       "ShimmerText" => |s: ShimmerText| s.id(id.into_inner()),
     });
     /// How long one shimmer sweep takes.
-    fn duration_ms(duration_ms: f64) |c, n| on_kind!(c, n, {
+    fn duration_ms(duration_ms: f64) for ["ShimmerText"] |c, n| on_kind!(c, n, {
       "ShimmerText" => let d = millis(c, duration_ms)?; |s: ShimmerText| s.duration(d),
     });
     /// The highlight's half-width, relative to the text.
-    fn spread(spread: f32) |c, n| on_kind!(c, n, {
+    fn spread(spread: f32) for ["ShimmerText"] |c, n| on_kind!(c, n, {
       "ShimmerText" => |s: ShimmerText| s.spread(spread),
     });
     /// Sweeps right to left.
-    fn reverse(reverse: bool) |c, n| on_kind!(c, n, {
+    fn reverse(reverse: bool) for ["ShimmerText"] |c, n| on_kind!(c, n, {
       "ShimmerText" => |s: ShimmerText| s.reverse(reverse),
     });
     /// Sweeps once instead of looping.
-    fn once(once: bool) |c, n| on_kind!(c, n, { "ShimmerText" => |s: ShimmerText| s.once(once) });
+    fn once(once: bool) for ["ShimmerText"] |c, n| on_kind!(c, n, { "ShimmerText" => |s: ShimmerText| s.once(once) });
     /// Shows the transcript's scrollbar.
-    fn scrollbar(scrollbar: bool) |c, n| on_kind!(c, n, {
+    fn scrollbar(scrollbar: bool) for ["MessageScroller"] |c, n| on_kind!(c, n, {
       "MessageScroller" => |s: MessageScroller| s.scrollbar(scrollbar),
     });
     /// Shows the jump-to-latest button.
-    fn jump_button(jump_button: bool) |c, n| on_kind!(c, n, {
+    fn jump_button(jump_button: bool) for ["MessageScroller"] |c, n| on_kind!(c, n, {
       "MessageScroller" => |s: MessageScroller| s.jump_button(jump_button),
     });
     /// The jump-to-latest button's label.
-    fn jump_button_label(label: String) |c, n| on_kind!(c, n, {
+    fn jump_button_label(label: String) for ["MessageScroller"] |c, n| on_kind!(c, n, {
       "MessageScroller" => |s: MessageScroller| s.with_jump_button_label(label),
     });
     /// Disables an `Editor`, a `SettingItem`'s field, a questionnaire choice or question.
-    fn disabled(disabled: bool) |c, n| on_kind!(c, n, {
+    fn disabled(disabled: bool) for ["Editor", "QuestionnaireChoice", "QuestionnaireInput", "QuestionnaireItem", "SettingItem"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.disabled(disabled),
       "SettingItem" => |i: ItemNode| ItemNode { disabled, ..i },
       "QuestionnaireChoice" => |d: ChoiceData| ChoiceData { disabled, ..d },
@@ -1031,44 +1011,44 @@ mod methods {
       "QuestionnaireInput" => |d: InputData| InputData { disabled, ..d },
     });
     /// Draws the editor's own background and border.
-    fn appearance(appearance: bool) |c, n| on_kind!(c, n, {
+    fn appearance(appearance: bool) for ["Editor"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.appearance(appearance),
     });
-    fn bordered(bordered: bool) |c, n| on_kind!(c, n, {
+    fn bordered(bordered: bool) for ["Editor"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.bordered(bordered),
     });
-    fn readonly(readonly: bool) |c, n| on_kind!(c, n, {
+    fn readonly(readonly: bool) for ["Editor"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.readonly(readonly),
     });
     /// What a screen reader announces.
-    fn aria_label(label: String) |c, n| on_kind!(c, n, {
+    fn aria_label(label: String) for ["Editor"] |c, n| on_kind!(c, n, {
       "Editor" => |e: Editor| e.aria_label(label),
     });
     /// Shows line numbers.
-    fn line_number(value: bool) |c, n| on_kind!(c, n, { "Diff" => |d: Diff| d.line_number(value) });
-    fn syntax_highlight(value: bool) |c, n| on_kind!(c, n, {
+    fn line_number(value: bool) for ["Diff"] |c, n| on_kind!(c, n, { "Diff" => |d: Diff| d.line_number(value) });
+    fn syntax_highlight(value: bool) for ["Diff"] |c, n| on_kind!(c, n, {
       "Diff" => |d: Diff| d.syntax_highlight(value),
     });
     /// Shows a header above each file.
-    fn header_visible(value: bool) |c, n| on_kind!(c, n, {
+    fn header_visible(value: bool) for ["Diff"] |c, n| on_kind!(c, n, {
       "Diff" => |d: Diff| d.header_visible(value),
     });
     /// Tints changed lines.
-    fn change_background(value: bool) |c, n| on_kind!(c, n, {
+    fn change_background(value: bool) for ["Diff"] |c, n| on_kind!(c, n, {
       "Diff" => |d: Diff| d.change_background(value),
     });
     /// Wraps long lines.
-    fn soft_wrap(value: bool) |c, n| on_kind!(c, n, { "Diff" => |d: Diff| d.soft_wrap(value) });
+    fn soft_wrap(value: bool) for ["Diff"] |c, n| on_kind!(c, n, { "Diff" => |d: Diff| d.soft_wrap(value) });
     /// How the start of each hunk is marked.
-    fn hunk_separator(separator: Lit<'js, HunkSeparators>) |c, n| on_kind!(c, n, {
+    fn hunk_separator(separator: Lit<'js, HunkSeparators>) for ["Diff"] |c, n| on_kind!(c, n, {
       "Diff" => let s = separator.get::<HunkSeparators>(c)?; |d: Diff| d.hunk_separator(s),
     });
     /// How changed lines are marked beside the code.
-    fn change_indicator(indicator: Lit<'js, ChangeIndicators>) |c, n| on_kind!(c, n, {
+    fn change_indicator(indicator: Lit<'js, ChangeIndicators>) for ["Diff"] |c, n| on_kind!(c, n, {
       "Diff" => let i = indicator.get::<ChangeIndicators>(c)?; |d: Diff| d.change_indicator(i),
     });
     /// The text under a setting's or question's title.
-    fn description(text: String) |c, n| on_kind!(c, n, {
+    fn description(text: String) for ["QuestionnaireChoice", "QuestionnaireItem", "SettingGroup", "SettingItem", "SettingPage"] |c, n| on_kind!(c, n, {
       "SettingItem" => |i: ItemNode| ItemNode { description: Some(text), ..i },
       "SettingGroup" => |g: GroupNode| GroupNode(g.0.description(text)),
       "SettingPage" => |p: PageNode| PageNode(p.0.description(text)),
@@ -1076,80 +1056,80 @@ mod methods {
       "QuestionnaireItem" => |d: ItemData| ItemData { description: Some(text), ..d },
     });
     /// The axis a setting's label and field are laid out along.
-    fn layout(axis: Lit<'js, Axes>) |c, n| on_kind!(c, n, {
+    fn layout(axis: Lit<'js, Axes>) for ["SettingItem"] |c, n| on_kind!(c, n, {
       "SettingItem" => let layout = Some(axis.get::<Axes>(c)?); |i: ItemNode| ItemNode { layout, ..i },
     });
     /// Search keywords matching the setting.
-    fn keywords(keywords: Vec<String>) |c, n| on_kind!(c, n, {
+    fn keywords(keywords: Vec<String>) for ["SettingItem"] |c, n| on_kind!(c, n, {
       "SettingItem" => |i: ItemNode| ItemNode { keywords, ..i },
     });
     /// The setting group's title.
-    fn title(text: String) |c, n| on_kind!(c, n, {
+    fn title(text: String) for ["SettingGroup"] |c, n| on_kind!(c, n, {
       "SettingGroup" => |g: GroupNode| GroupNode(g.0.title(text)),
     });
     /// Renders a `SettingItem`'s field, or what follows a `SettingPage`'s title, lazily.
-    fn content(render: Function<'js>) |c, n| on_kind!(c, n, {
+    fn content(render: Function<'js> as "(cx: Context) => Element | string | null | undefined") for ["SettingItem", "SettingPage"] |c, n| on_kind!(c, n, {
       "SettingItem" => let field = Some(Lazy::new(c, render)?); |i: ItemNode| ItemNode { field, ..i },
       "SettingPage" => let lazy = Lazy::new(c, render)?;
         |p: PageNode| PageNode(p.0.title_suffix(move |w, cx| lazy.render(None, w, cx))),
     });
     /// Opens the page's groups.
-    fn default_open(default_open: bool) |c, n| on_kind!(c, n, {
+    fn default_open(default_open: bool) for ["SettingPage"] |c, n| on_kind!(c, n, {
       "SettingPage" => |p: PageNode| PageNode(p.0.default_open(default_open)),
     });
     /// Shows the reset control.
-    fn resettable(resettable: bool) |c, n| on_kind!(c, n, {
+    fn resettable(resettable: bool) for ["SettingPage"] |c, n| on_kind!(c, n, {
       "SettingPage" => |p: PageNode| PageNode(p.0.resettable(resettable)),
     });
     /// The sidebar's width in pixels.
-    fn sidebar_width(pixels: f32) |c, n| on_kind!(c, n, {
+    fn sidebar_width(pixels: f32) for ["Settings"] |c, n| on_kind!(c, n, {
       "Settings" => |s: SettingsNode| SettingsNode(s.0.sidebar_width(px(pixels))),
     });
     /// How far the sidebar can be resized, in pixels.
-    fn sidebar_size_range(minimum: f32, maximum: f32) |c, n| on_kind!(c, n, {
+    fn sidebar_size_range(minimum: f32, maximum: f32) for ["Settings"] |c, n| on_kind!(c, n, {
       "Settings" => |s: SettingsNode| SettingsNode(s.0.sidebar_size_range(px(minimum)..px(maximum))),
     });
     /// The page shown first.
-    fn default_selected_page(index: u32) |c, n| on_kind!(c, n, {
+    fn default_selected_page(index: u32) for ["Settings"] |c, n| on_kind!(c, n, {
       "Settings" => let i = SelectIndex { page_ix: index as usize, group_ix: None };
         |s: SettingsNode| SettingsNode(s.0.default_selected_index(i)),
     });
     /// Selects the choice at first.
-    fn default_selected(value: bool) |c, n| on_kind!(c, n, {
+    fn default_selected(value: bool) for ["QuestionnaireChoice"] |c, n| on_kind!(c, n, {
       "QuestionnaireChoice" => |d: ChoiceData| ChoiceData { default_selected: value, ..d },
     });
     /// Requires an answer; hides Skip.
-    fn required(value: bool) |c, n| on_kind!(c, n, {
+    fn required(value: bool) for ["QuestionnaireItem"] |c, n| on_kind!(c, n, {
       "QuestionnaireItem" => |d: ItemData| ItemData { required: value, ..d },
     });
     /// Accepts several choices.
-    fn multiple(value: bool) |c, n| on_kind!(c, n, {
+    fn multiple(value: bool) for ["QuestionnaireItem"] |c, n| on_kind!(c, n, {
       "QuestionnaireItem" => |d: ItemData| ItemData { multiple: value, ..d },
     });
     /// Gives each choice of the active question a letter or number shortcut.
-    fn shortcuts(mode: Lit<'js, ShortcutModes>) |c, n| on_kind!(c, n, {
+    fn shortcuts(mode: Lit<'js, ShortcutModes>) for ["Questionnaire"] |c, n| on_kind!(c, n, {
       "Questionnaire" => let shortcuts = Some(mode.get::<ShortcutModes>(c)?);
         |q: QuestionnaireNode| QuestionnaireNode { shortcuts, ..q },
     });
     /// `handler(url, cx)` on a link click, instead of opening it.
-    fn on_link_click(handler: On<'js, Url>) |c, n| on_kind!(c, n, {
+    fn on_link_click(handler: On<'js, Url>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => let l = frame().listener(handler.0, |url: &gpui_kit::SharedString| Url(url.to_string()));
         |t: TextView| t.on_link_click(move |url, _, w, cx| l(url, w, cx)),
     });
     /// Whether the text can be selected; on when left out.
-    fn selectable(value: Opt<bool>) |c, n| on_kind!(c, n, {
+    fn selectable(value: Opt<bool>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => |t: TextView| t.selectable(value.0.unwrap_or(true)),
     });
     /// Whether the view scrolls its content; on when left out.
-    fn scrollable(value: Opt<bool>) |c, n| on_kind!(c, n, {
+    fn scrollable(value: Opt<bool>) for ["TextView@base"] |c, n| on_kind!(c, n, {
       "TextView" => |t: TextView| t.scrollable(value.0.unwrap_or(true)),
     });
     /// Where in its `relative()` parent the HUD sits.
-    fn anchor(anchor: Lit<'js, Anchors>) |c, n| on_kind!(c, n, {
+    fn anchor(anchor: Lit<'js, Anchors>) for ["fps_monitor"] |c, n| on_kind!(c, n, {
       "fps_monitor" => let a = anchor.get::<Anchors>(c)?; |f: FpsOverlay| f.anchor(a),
     });
     /// The frame budget in milliseconds the HUD grades against.
-    fn frame_budget(ms: f64) |c, n| on_kind!(c, n, {
+    fn frame_budget(ms: f64) for ["fps_monitor"] |c, n| on_kind!(c, n, {
       "fps_monitor" => let b = millis(c, ms)?; |f: FpsOverlay| f.frame_budget(b),
     });
   }
@@ -1370,8 +1350,8 @@ const D_TS: &str = r#"  export type ComponentSize = "xsmall" | "small" | "medium
   };
   /** A virtualized message transcript; `render_item(index)` renders a row. */
   export const MessageScroller: {
-    new (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null): Element;
-    new: (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null) => Element;
+    new (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null): Element<"MessageScroller">;
+    new: (id: string, state: MessageScrollerState, render_item: (index: number) => Element | null) => Element<"MessageScroller">;
   };
   /** Retained source-editor state. Made in `init` or a handler: it needs the window. */
   export interface EditorState {
@@ -1511,8 +1491,8 @@ pub(crate) const BASE: Family = Family {
   d_ts: || {
     r#"  /** Rich HTML or Markdown text. */
   export const TextView: {
-    html(id: string, html: string): Element;
-    markdown(id: string, markdown: string): Element;
+    html(id: string, html: string): Element<"TextView">;
+    markdown(id: string, markdown: string): Element<"TextView">;
   };
 "#
     .into()
@@ -1558,7 +1538,7 @@ pub(crate) const FPS: Family = Family {
     r#"  import { Element } from "corona/kit";
   export type Anchor = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "top_center" | "bottom_center" | "left_center" | "right_center";
   /** The performance HUD as an element; its parent must be `relative()`. */
-  export function fps_monitor(): Element;
+  export function fps_monitor(): Element<"fps_monitor">;
   export interface FpsMonitorOptions {
     /** Default `top_right`. */
     anchor?: Anchor;

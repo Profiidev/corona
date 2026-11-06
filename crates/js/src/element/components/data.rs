@@ -126,6 +126,7 @@ impl<T: 'static> Node for Data<T> {
 }
 
 crate::node!(base::Progress, "Progress", style, interactive, parent);
+crate::node!(gpui_kit::Empty, "Empty");
 crate::node!(ProgressTrack, "ProgressTrack", style, parent);
 crate::node!(ProgressIndicator, "ProgressIndicator", style, parent);
 crate::node!(base::Avatar, "Avatar", style, interactive);
@@ -173,66 +174,14 @@ crate::node!(table::TableHead, "TableHead", style, parent);
 crate::node!(table::TableCell, "TableCell", style, parent);
 crate::node!(table::TableCaption, "TableCaption", style, parent);
 
-/// Every kind this family makes
-const KINDS: &[&str] = &[
-  "Progress",
-  "ProgressTrack",
-  "ProgressIndicator",
-  "Avatar",
-  "AvatarImage",
-  "AvatarFallback",
-  "Table",
-  "TableHeader",
-  "TableBody",
-  "TableFooter",
-  "TableRow",
-  "TableHead",
-  "TableCell",
-  "TableCaption",
-  "Badge",
-  "Tag",
-  "Skeleton",
-  "Spinner",
-  "Empty",
-  "EmptyHeader",
-  "EmptyMedia",
-  "EmptyTitle",
-  "EmptyDescription",
-  "EmptyContent",
-  "Icon",
-  "DescriptionList",
-  "DescriptionItem",
-  "BarChart",
-  "LineChart",
-  "AreaChart",
-  "PieChart",
-  "RadarChart",
-  "Calendar",
-  "Carousel",
-  "CarouselContent",
-  "CarouselItem",
-  "CarouselPrevious",
-  "CarouselNext",
-  "CarouselPagination",
-  "CarouselPaginationItem",
-  "List",
-  "DataTable",
-  "Tree",
-  "TreeItem",
-];
-
 /// `child` of the parents taking typed children, typed as the generic one
 #[allow(dead_code)]
 mod children {
   use super::*;
 
   crate::el_methods! {
-    kinds: &[
-      "Table", "TableHeader", "TableBody", "TableFooter", "TableRow", "Tree", "TreeItem",
-      "DescriptionList", "Empty",
-    ];
-    fn child(child: Child<'js>) |c, n| typed(c, n, child);
-    fn children(children: Vec<Child<'js>>) |c, n| {
+    fn child(child: Child<'js>) for ["Table", "TableHeader", "TableBody", "TableFooter", "TableRow", "Tree", "TreeItem", "DescriptionList", "Empty"] |c, n| typed(c, n, child);
+    fn children(children: Vec<Child<'js>>) for ["Table", "TableHeader", "TableBody", "TableFooter", "TableRow", "Tree", "TreeItem", "DescriptionList", "Empty"] |c, n| {
       children.into_iter().try_for_each(|child| typed(c, n, child))
     };
   }
@@ -1324,6 +1273,7 @@ fn base_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> 
   }
   let calendar = Class::<JsCalendarState>::create_constructor(ctx)?.expect("constructor");
   Ok(vec![
+    c!("Empty", |ctx: Ctx<'js>| new_el(&ctx, gpui_kit::Empty)),
     c!("Progress", part!(base::Progress)),
     c!("ProgressTrack", |ctx: Ctx<'js>| new_el(
       &ctx,
@@ -1359,40 +1309,43 @@ mod methods {
   use super::*;
 
   crate::el_methods! {
-    kinds: KINDS;
-    /// The value: a `Progress` percentage (`corona/base` announces it, `corona/component` draws
-    /// it, `0..=100`), or the text of a `DescriptionItem`.
-    fn value(value: NumStr) |c, n| match value {
-      NumStr::Num(v) => any!(c, n,
-        base::Progress => |p| p.value(v),
-        Progress => |p| p.value(v),
-        Data<DescriptionItem> => |d| Data(d.0, d.1.value(v.to_string())),
-      ),
-      NumStr::Str(v) => any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.value(v))),
+    /// The value of a `Progress`: a percentage (`corona/base` announces it, `corona/component`
+    /// draws it, `0..=100`).
+    fn value(value: f32) for ["Progress", "Progress@base"] |c, n| any!(c, n,
+      base::Progress => |p| p.value(value),
+      Progress => |p| p.value(value),
+    );
+    /// The text of a `DescriptionItem`.
+    fn value(value: NumStr) for ["DescriptionItem"] |c, n| {
+      let text = match value {
+        NumStr::Num(v) => v.to_string(),
+        NumStr::Str(v) => v,
+      };
+      any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.value(text)))
     };
     /// Withdraws a `corona/base` `Progress` value from the accessibility tree: "no idea how far".
-    fn indeterminate(value: bool) |c, n| any!(c, n, base::Progress => |p| p.indeterminate(value));
+    fn indeterminate(value: bool) for ["Progress@base"] |c, n| any!(c, n, base::Progress => |p| p.indeterminate(value));
     /// Fills an `Avatar`'s image slot with an `AvatarImage`; it renders instead of the fallback.
-    fn image(image: Part<'js>) |c, n| {
+    fn image(image: Part<'js> as "Element<\"AvatarImage@base\">") for ["Avatar@base"] |c, n| {
       let image = image.take::<AvatarImage>(c, "an AvatarImage")?;
       any!(c, n, base::Avatar => |a| a.image(image))
     };
     /// Fills an `Avatar`'s fallback slot with an `AvatarFallback`, shown without an image.
-    fn fallback(fallback: Part<'js>) |c, n| {
+    fn fallback(fallback: Part<'js> as "Element<\"AvatarFallback@base\">") for ["Avatar@base"] |c, n| {
       let fallback = fallback.take::<AvatarFallback>(c, "an AvatarFallback")?;
       any!(c, n, base::Avatar => |a| a.fallback(fallback))
     };
     /// A `Table`'s total number of rows, also those not rendered, as announced.
-    fn row_count(count: u32) |c, n| {
+    fn row_count(count: u32) for ["Table@base"] |c, n| {
       let count = crate::element::items(c, count)?;
       any!(c, n, base::Table => |t| t.row_count(count))
     };
     /// A `Table`'s total number of columns, also those not rendered.
-    fn column_count(count: u32) |c, n| {
+    fn column_count(count: u32) for ["Table@base"] |c, n| {
       any!(c, n, base::Table => |t| t.column_count(count as usize))
     };
     /// The semantic size of a styled widget.
-    fn size(size: SizeArg<'js>) |c, n| {
+    fn size(size: SizeArg<'js>) for ["Avatar", "Avatar@base", "Badge", "Calendar", "CarouselNext", "CarouselPaginationItem", "CarouselPrevious", "DescriptionList", "Icon", "Progress", "Progress@base", "Spinner", "Table", "Table@base", "Tag"] |c, n| {
       let size = Sz(size.get(c, &**n)?);
       any!(c, n,
         W<Badge> => |x| x.with_size(size.0),
@@ -1410,7 +1363,7 @@ mod methods {
       )
     };
     /// What a screen reader announces.
-    fn accessibility_label(label: String) |c, n| any!(c, n,
+    fn accessibility_label(label: String) for ["Carousel", "CarouselItem", "CarouselNext", "CarouselPagination", "CarouselPaginationItem", "CarouselPrevious", "Progress", "Progress@base", "Table", "Table@base"] |c, n| any!(c, n,
       base::Progress => |p| p.accessibility_label(label),
       Progress => |p| p.accessibility_label(label),
       table::Table => |t| t.accessibility_label(label),
@@ -1422,105 +1375,109 @@ mod methods {
       CarouselPaginationItem => |t| t.accessibility_label(label),
     );
     /// How many columns a table cell spans.
-    fn col_span(span: u32) |c, n| any!(c, n,
+    fn col_span(span: u32) for ["TableCell", "TableHead"] |c, n| any!(c, n,
       table::TableHead => |t| t.col_span(span as usize),
       table::TableCell => |t| t.col_span(span as usize),
     );
     /// Centers a table cell's text.
-    fn text_center() |c, n| any!(c, n,
+    fn text_center() for ["TableCell", "TableCell@base", "TableHead", "TableHead@base"] |c, n| any!(c, n,
       table::TableHead => |t| t.text_center(),
       table::TableCell => |t| t.text_center(),
     );
     /// Right-aligns a table cell's text.
-    fn text_right() |c, n| any!(c, n,
+    fn text_right() for ["TableCell", "TableCell@base", "TableHead", "TableHead@base"] |c, n| any!(c, n,
       table::TableHead => |t| t.text_right(),
       table::TableCell => |t| t.text_right(),
     );
     /// The color of a `Badge`, `Spinner`, `Icon` or `Progress`.
-    fn color(color: Color) |c, n| any!(c, n,
+    fn color(color: Color) for ["Badge", "Icon", "Progress", "Spinner"] |c, n| any!(c, n,
       W<Badge> => |x| x.map(|b| b.color(color.0)),
       W<Spinner> => |x| x.map(|s| s.color(color.0)),
       Icon => |x| x.text_color(color.0),
       Progress => |x| x.color(color.0),
     );
     /// A `Badge` as a dot; a `LineChart` or `RadarChart` with dots on its points.
-    fn dot() |c, n| any!(c, n,
+    fn dot() for ["Badge", "LineChart", "RadarChart"] |c, n| any!(c, n,
       W<Badge> => |x| x.map(Badge::dot),
       Line => |x| x.map(|l| l.dot()),
       Radar => |x| x.map(|r| r.dot()),
     );
     /// The number a `Badge` shows.
-    fn count(count: u32) |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.count(count as usize)));
+    fn count(count: u32) for ["Badge"] |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.count(count as usize)));
     /// The largest number a `Badge` shows, `max+` above.
-    fn max(max: u32) |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.max(max as usize)));
-    /// The look of a `Tag` or an `EmptyMedia`.
-    fn variant(variant: Var) |c, n| match variant.0 {
+    fn max(max: u32) for ["Badge"] |c, n| any!(c, n, W<Badge> => |x| x.map(|b| b.max(max as usize)));
+    /// The look of a `Tag`.
+    fn variant(variant: Var as "\"primary\" | \"secondary\" | \"danger\" | \"success\" | \"warning\" | \"info\"") for ["Tag"] |c, n| match variant.0 {
       Variant::Tag(v) => any!(c, n, Tag => |t| t.with_variant(v)),
+      Variant::Media(_) => Err(crate::miss(c, n.kind())),
+    };
+    /// The look of an `EmptyMedia`.
+    fn variant(variant: Var as "\"default\" | \"icon\"") for ["EmptyMedia"] |c, n| match variant.0 {
       Variant::Media(v) => any!(c, n, EmptyMedia => |m| m.with_variant(v)),
+      Variant::Tag(_) => Err(crate::miss(c, n.kind())),
     };
     /// Draws a `Tag` outlined.
-    fn outline() |c, n| any!(c, n, Tag => |t| t.outline());
+    fn outline() for ["Tag"] |c, n| any!(c, n, Tag => |t| t.outline());
     /// The quieter color of a `Skeleton`.
-    fn secondary() |c, n| any!(c, n, Skeleton => |s| s.secondary());
+    fn secondary() for ["Skeleton"] |c, n| any!(c, n, Skeleton => |s| s.secondary());
     /// The icon a `Spinner` turns.
-    fn icon(icon: SpinnerIcon) |c, n| any!(c, n, W<Spinner> => |x| x.map(|s| s.icon(icon.0)));
+    fn icon(icon: SpinnerIcon) for ["Spinner"] |c, n| any!(c, n, W<Spinner> => |x| x.map(|s| s.icon(icon.0)));
     /// How a `Spinner` turns.
-    fn ease(ease: Ease) |c, n| any!(c, n, W<Spinner> => |x| x.map(|s| s.ease(ease.0)));
+    fn ease(ease: Ease) for ["Spinner"] |c, n| any!(c, n, W<Spinner> => |x| x.map(|s| s.ease(ease.0)));
     /// Fills an `Empty`'s header with an `EmptyHeader`.
-    fn header(header: Part<'js>) |c, n| {
+    fn header(header: Part<'js> as "Element<\"EmptyHeader\">") for ["Empty"] |c, n| {
       let header = header.take::<EmptyHeader>(c, "an EmptyHeader")?;
       any!(c, n, Empty => |e| e.header(header))
     };
     /// Fills an `Empty`'s content with an `EmptyContent`.
-    fn content(content: Part<'js>) |c, n| {
+    fn content(content: Part<'js> as "Element<\"EmptyContent\">") for ["Empty"] |c, n| {
       let content = content.take::<EmptyContent>(c, "an EmptyContent")?;
       any!(c, n, Empty => |e| e.content(content))
     };
     /// Fills an `EmptyHeader`'s media with an `EmptyMedia`.
-    fn media(media: Part<'js>) |c, n| {
+    fn media(media: Part<'js> as "Element<\"EmptyMedia\">") for ["EmptyHeader"] |c, n| {
       let media = media.take::<EmptyMedia>(c, "an EmptyMedia")?;
       any!(c, n, EmptyHeader => |h| h.media(media))
     };
     /// Fills an `EmptyHeader`'s title with an `EmptyTitle`.
-    fn title(title: Part<'js>) |c, n| {
+    fn title(title: Part<'js> as "Element<\"EmptyTitle\">") for ["EmptyHeader"] |c, n| {
       let title = title.take::<EmptyTitle>(c, "an EmptyTitle")?;
       any!(c, n, EmptyHeader => |h| h.title(title))
     };
     /// Fills an `EmptyHeader`'s description with an `EmptyDescription`.
-    fn description(description: Part<'js>) |c, n| {
+    fn description(description: Part<'js> as "Element<\"EmptyDescription\">") for ["EmptyHeader"] |c, n| {
       let description = description.take::<EmptyDescription>(c, "an EmptyDescription")?;
       any!(c, n, EmptyHeader => |h| h.description(description))
     };
     /// Rotates an `Icon`.
-    fn rotate(radians: f32) |c, n| any!(c, n, Icon => |i| i.rotate(super::radians(radians)));
+    fn rotate(radians: f32) for ["Icon"] |c, n| any!(c, n, Icon => |i| i.rotate(super::radians(radians)));
     /// Animates a `corona/component` `Progress` as busy.
-    fn loading(value: bool) |c, n| any!(c, n, Progress => |p| p.loading(value));
+    fn loading(value: bool) for ["Progress"] |c, n| any!(c, n, Progress => |p| p.loading(value));
     /// The name an `Avatar` shows the initials of without an image.
-    fn name(name: String) |c, n| any!(c, n, Avatar => |a| a.name(name));
+    fn name(name: String) for ["Avatar"] |c, n| any!(c, n, Avatar => |a| a.name(name));
     /// The image of an `Avatar`: an absolute path under a read grant, or a plugin file.
-    fn src(path: String) |c, n| {
+    fn src(path: String) for ["Avatar", "Avatar@base"] |c, n| {
       let src = source(c, path)?;
       any!(c, n, Avatar => |a| a.src(src))
     };
     /// Lays a `DescriptionList` out in a column.
-    fn vertical() |c, n| any!(c, n, W<DescriptionList> => |x| x.map(|d| d.layout(gpui_kit::Axis::Vertical)));
+    fn vertical() for ["DescriptionList"] |c, n| any!(c, n, W<DescriptionList> => |x| x.map(|d| d.layout(gpui_kit::Axis::Vertical)));
     /// Draws a `DescriptionList` or `DataTable` with borders.
-    fn bordered(value: bool) |c, n| any!(c, n,
+    fn bordered(value: bool) for ["DataTable", "DescriptionList"] |c, n| any!(c, n,
       W<DescriptionList> => |x| x.map(|d| d.bordered(value)),
       DataTableEl => |t| DataTableEl { w: t.w.map(|d| d.bordered(value)), ..t },
     );
     /// How many columns a `DescriptionList` has.
-    fn columns(columns: u32) |c, n| {
+    fn columns(columns: u32) for ["DescriptionList"] |c, n| {
       any!(c, n, W<DescriptionList> => |x| x.map(|d| d.columns(columns as usize)))
     };
-    /// Adds `DescriptionItem`s to a `DescriptionList`, or `TreeItem`s to a `Tree` or `TreeItem`.
-    fn items(items: Parts<'js>) |c, n| {
-      if is::<W<DescriptionList>>(&**n) {
-        let items = items.take::<Data<DescriptionItem>>(c, "a DescriptionItem")?;
-        return map(c, n, |x: W<DescriptionList>| {
-          x.map(|d| d.children(items.into_iter().map(|i| i.1)))
-        });
-      }
+    /// Adds `DescriptionItem`s to a `DescriptionList`.
+    fn items(items: Parts<'js> as "Element<\"DescriptionItem\">[]") for ["DescriptionList"] |c, n| {
+      let items = items.take::<Data<DescriptionItem>>(c, "a DescriptionItem")?;
+      any!(c, n, W<DescriptionList> => |x| x.map(|d| d.children(items.into_iter().map(|i| i.1))))
+    };
+    /// Adds `TreeItem`s to a `Tree` or `TreeItem`.
+    fn items(items: Parts<'js> as "Element<\"TreeItem\">[]") for ["Tree", "TreeItem"] |c, n| {
       let items = items.take::<Data<TreeItem>>(c, "a TreeItem")?;
       let items = items.into_iter().map(|i| i.1);
       any!(c, n,
@@ -1529,17 +1486,17 @@ mod methods {
       )
     };
     /// Adds a separator row to a `DescriptionList`.
-    fn separator() |c, n| any!(c, n, W<DescriptionList> => |x| x.map(DescriptionList::separator));
+    fn separator() for ["DescriptionList"] |c, n| any!(c, n, W<DescriptionList> => |x| x.map(DescriptionList::separator));
     /// How many columns a `DescriptionItem` spans.
-    fn span(span: u32) |c, n| {
+    fn span(span: u32) for ["DescriptionItem"] |c, n| {
       any!(c, n, Data<DescriptionItem> => |d| Data(d.0, d.1.span(span as usize)))
     };
     /// Whether a `TreeItem` starts expanded.
-    fn expanded(value: bool) |c, n| any!(c, n, Data<TreeItem> => |t| Data(t.0, t.1.expanded(value)));
+    fn expanded(value: bool) for ["TreeItem"] |c, n| any!(c, n, Data<TreeItem> => |t| Data(t.0, t.1.expanded(value)));
     /// Whether a `TreeItem` is disabled.
-    fn disabled(value: bool) |c, n| any!(c, n, Data<TreeItem> => |t| Data(t.0, t.1.disabled(value)));
+    fn disabled(value: bool) for ["TreeItem"] |c, n| any!(c, n, Data<TreeItem> => |t| Data(t.0, t.1.disabled(value)));
     /// Draws a chart's grid lines.
-    fn grid(value: Opt<bool>) |c, n| {
+    fn grid(value: Opt<bool>) for ["AreaChart", "BarChart", "LineChart", "RadarChart"] |c, n| {
       let value = value.0.unwrap_or(true);
       any!(c, n,
       Bar => |x| x.map(|ch| ch.grid(value)),
@@ -1549,100 +1506,110 @@ mod methods {
       )
     };
     /// Draws a `BarChart`'s label axis.
-    fn label_axis(value: bool) |c, n| any!(c, n, Bar => |x| x.map(|ch| ch.label_axis(value)));
+    fn label_axis(value: bool) for ["BarChart"] |c, n| any!(c, n, Bar => |x| x.map(|ch| ch.label_axis(value)));
     /// Draws a `BarChart`'s value axis.
-    fn value_axis(value: bool) |c, n| any!(c, n, Bar => |x| x.map(|ch| ch.value_axis(value)));
+    fn value_axis(value: bool) for ["BarChart"] |c, n| any!(c, n, Bar => |x| x.map(|ch| ch.value_axis(value)));
     /// Draws a `LineChart`'s or `AreaChart`'s x axis.
-    fn x_axis(value: bool) |c, n| any!(c, n,
+    fn x_axis(value: bool) for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.x_axis(value)),
       Area => |x| x.map(|ch| ch.x_axis(value)),
     );
     /// Labels every `margin`th tick of a chart's axis.
-    fn tick_margin(margin: u32) |c, n| any!(c, n,
+    fn tick_margin(margin: u32) for ["AreaChart", "BarChart", "LineChart"] |c, n| any!(c, n,
       Bar => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
       Line => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
       Area => |x| x.map(|ch| ch.tick_margin(margin.max(1) as usize)),
     );
     /// Draws a smooth curve.
-    fn natural() |c, n| any!(c, n,
+    fn natural() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.natural()),
       Area => |x| x.map(|ch| ch.natural()),
     );
     /// Draws straight segments.
-    fn linear() |c, n| any!(c, n,
+    fn linear() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.linear()),
       Area => |x| x.map(|ch| ch.linear()),
     );
     /// Draws steps.
-    fn step_after() |c, n| any!(c, n,
+    fn step_after() for ["AreaChart", "LineChart"] |c, n| any!(c, n,
       Line => |x| x.map(|ch| ch.step_after()),
       Area => |x| x.map(|ch| ch.step_after()),
     );
     /// A `PieChart`'s hole, in pixels: a donut.
-    fn inner_radius(radius: f32) |c, n| any!(c, n, Pie => |x| x.map(|ch| ch.inner_radius(radius)));
+    fn inner_radius(radius: f32) for ["PieChart"] |c, n| any!(c, n, Pie => |x| x.map(|ch| ch.inner_radius(radius)));
     /// The gap between a `PieChart`'s slices, in radians.
-    fn pad_angle(angle: f32) |c, n| any!(c, n, Pie => |x| x.map(|ch| ch.pad_angle(angle)));
+    fn pad_angle(angle: f32) for ["PieChart"] |c, n| any!(c, n, Pie => |x| x.map(|ch| ch.pad_angle(angle)));
     /// Labels a `PieChart`'s slices.
-    fn labels(value: bool) |c, n| any!(c, n, Pie => |x| match value {
+    fn labels(value: bool) for ["PieChart"] |c, n| any!(c, n, Pie => |x| match value {
       true => x.map(|ch| ch.label(|r: &Row| r.label.clone())),
       false => x,
     });
     /// How many rings a `RadarChart`'s grid has.
-    fn grid_levels(levels: u32) |c, n| {
+    fn grid_levels(levels: u32) for ["RadarChart"] |c, n| {
       any!(c, n, Radar => |x| x.map(|ch| ch.grid_levels(levels.max(1) as usize)))
     };
     /// How many months a `Calendar` shows side by side.
-    fn number_of_months(count: u32) |c, n| {
+    fn number_of_months(count: u32) for ["Calendar"] |c, n| {
       any!(c, n, Calendar => |x| x.number_of_months(count.max(1) as usize))
     };
     /// Stripes a `DataTable`'s rows.
-    fn stripe(value: bool) |c, n| {
+    fn stripe(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| DataTableEl { w: t.w.map(|d| d.stripe(value)), ..t })
     };
     /// When a `DataTable` shows its scrollbars.
-    fn scrollbar_visible(vertical: bool, horizontal: bool) |c, n| any!(c, n,
+    fn scrollbar_visible(vertical: bool, horizontal: bool) for ["DataTable"] |c, n| any!(c, n,
       DataTableEl => |t| DataTableEl {
         w: t.w.map(|d| d.scrollbar_visible(vertical, horizontal)),
         ..t
       },
     );
     /// Whether a `DataTable`'s rows can be selected.
-    fn row_selectable(value: bool) |c, n| {
+    fn row_selectable(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.row_selectable = value))
     };
     /// Whether a `DataTable`'s columns can be selected.
-    fn column_selectable(value: bool) |c, n| {
+    fn column_selectable(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.col_selectable = value))
     };
     /// Whether a `DataTable`'s cells can be selected.
-    fn cell_selectable(value: bool) |c, n| {
+    fn cell_selectable(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.cell_selectable = value))
     };
     /// Whether a `DataTable` has a row header column.
-    fn row_header(value: bool) |c, n| {
+    fn row_header(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.row_header = value))
     };
     /// Whether a `DataTable`'s columns sort.
-    fn sortable(value: bool) |c, n| any!(c, n, DataTableEl => |t| t.state(|s| s.sortable = value));
+    fn sortable(value: bool) for ["DataTable"] |c, n| any!(c, n, DataTableEl => |t| t.state(|s| s.sortable = value));
     /// Whether a `DataTable`'s columns resize.
-    fn column_resizable(value: bool) |c, n| {
+    fn column_resizable(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.col_resizable = value))
     };
     /// Whether a `DataTable`'s columns move.
-    fn column_movable(value: bool) |c, n| {
+    fn column_movable(value: bool) for ["DataTable"] |c, n| {
       any!(c, n, DataTableEl => |t| t.state(|s| s.col_movable = value))
     };
   }
 }
 
 /// A `{ new (..): Element; new: (..) => Element }` declaration
+///
+/// `args` starting with `<T> ` makes the constructor generic in `T`.
 fn ctor(doc: &str, name: &str, args: &str) -> String {
   let doc = crate::jsdoc(&[doc], "  ");
-  format!("{doc}  export const {name}: {{ new ({args}): Element; new: ({args}) => Element }};\n")
+  let (generic, args) = args.strip_prefix("<T> ").map_or(("", args), |a| ("<T>", a));
+  format!(
+    "{doc}  export const {name}: {{ new {generic}({args}): Element; new: {generic}({args}) => Element }};\n"
+  )
 }
 
 fn base_d_ts() -> String {
   let parts: &[(&str, &str, &str)] = &[
+    (
+      " Takes no space, not even a gap: return it to hide a widget or card.",
+      "Empty",
+      "",
+    ),
     (
       " The progress root: announces `value`, draws nothing; put a `ProgressTrack` in it.",
       "Progress",
@@ -1822,12 +1789,12 @@ fn component_d_ts() -> String {
     (
       " A list of rows rendered lazily by `render_row`; its state is kept by `id`.",
       "List",
-      "id: string, rows: readonly unknown[] | (() => readonly unknown[]), render_row: (row: any, cx: Context) => Element",
+      "<T> id: string, rows: readonly T[] | (() => readonly T[]), render_row: (row: T, cx: Context) => Element",
     ),
     (
       " A table of rows, its visible cells rendered lazily by `render_cell`.",
       "DataTable",
-      "state: DataTableState, rows: readonly unknown[] | (() => readonly unknown[]), render_cell: (row: any, column: string, cx: Context) => Element",
+      "<T> state: DataTableState, rows: readonly T[] | (() => readonly T[]), render_cell: (row: T, column: string, cx: Context) => Element",
     ),
     (
       " A tree of `TreeItem` children; what is expanded is kept by `id`.",
@@ -1894,6 +1861,7 @@ const COMPONENT_D_TS: &str = r#"  import { CalendarState, CalendarDate } from "c
 pub(crate) const BASE: Family = Family {
   module: "corona/base",
   names: &[
+    "Empty",
     "Progress",
     "ProgressTrack",
     "ProgressIndicator",

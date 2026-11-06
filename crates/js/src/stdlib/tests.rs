@@ -687,6 +687,23 @@ fn fetch_reads_a_response_and_refuses_one_over_the_limit(cx: &mut TestAppContext
 }
 
 #[gpui::test]
+fn fetch_https_does_not_panic_on_crypto_provider(cx: &mut TestAppContext) {
+  let source = main(
+    "",
+    r#"
+    try {
+      await fetch("https://127.0.0.1:9/");
+      report("allowed");
+    } catch (error) {
+      report(error.message);
+    }"#,
+  );
+  let (_service, _) = start(cx, "fetch_https", local(), &source);
+  let seen = settle(cx, |log| !log.is_empty());
+  assert!(!seen[0].contains("panicked"), "{seen:?}");
+}
+
+#[gpui::test]
 fn fetch_reauthorizes_every_redirect_target(cx: &mut TestAppContext) {
   let target = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
   let redirect = serve_once(format!(

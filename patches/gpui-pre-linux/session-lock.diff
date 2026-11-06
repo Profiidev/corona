@@ -75,9 +75,9 @@ diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/s
      pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
      pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
 +    pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
-     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
-     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
-     pub gesture_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+     pub kde_blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
+     pub background_effects_manager:
+         Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1>,
 @@ -281,6 +286,7 @@
          let dialog_v = XdgWmDialogV1::interface().version;
          Ok(Globals {
@@ -239,9 +239,9 @@ diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/s
 +use wayland_protocols::ext::session_lock::v1::client::{
 +    ext_session_lock_surface_v1, ext_session_lock_v1,
 +};
+ use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1;
  use wayland_protocols::wp::viewporter::client::wp_viewport;
  use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
- use wayland_protocols::xdg::shell::client::xdg_popup;
 @@ -149,6 +152,11 @@
      Xdg(WaylandXdgSurfaceState),
      LayerShell(WaylandLayerSurfaceState),

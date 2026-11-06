@@ -30,13 +30,9 @@ flume.workspace = true
 futures-lite.workspace = true
 smol.workspace = true
 jiff.workspace = true
-roxmltree = "0.21.1"
-rustls = { version = "0.23.45", default-features = false, features = [
-  "ring",
-  "std",
-  "tls12"
-] }
-ring = "0.17.14"
+roxmltree.workspace = true
+rustls.workspace = true
+ring.workspace = true
 
 [dev-dependencies]
 corona_utils = { workspace = true, features = ["test-support"] }

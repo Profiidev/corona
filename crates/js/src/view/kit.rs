@@ -275,7 +275,7 @@ impl Kit {
       FAMILIES
         .iter()
         .filter(|f| f.module == module)
-        .map(|f| (f.d_ts)())
+        .map(|f| kinded(module, (f.d_ts)()))
         .collect()
     };
     format!(
@@ -290,9 +290,11 @@ impl Kit {
   export type DefiniteLength = number | `${{number}}px` | `${{number}}rem` | `${{number}}%` | SpacingToken;
   export type AbsoluteLength = number | `${{number}}px` | `${{number}}rem`;
   export type Props = Record<string, any>;
-{events}{nullary}  export type NullaryStyles = {{ [Method in NullaryStyle]: () => Element }};
-  /** An element of the render that built it: chain its methods, pass it to `child`. */
-  export interface Element extends NullaryStyles {{
+{events}{nullary}  export type NullaryStyles<Self> = {{ [Method in NullaryStyle]: (this: Element<StyledKind>) => Self }};
+{caps}
+  /** An element of the render that built it: chain its methods, pass it to `child`. `K` is its kind: a component's methods are typed on the kinds having them. */
+  export interface Element<K extends string = string> extends NullaryStyles<Element<K>> {{
+    readonly __kind?: K;
 {el}  }}
   export type NativeElement = Element;
 {rest}}}
@@ -300,9 +302,9 @@ declare var window: import("corona/kit").Window;
 declare module "corona/base" {{
   import {{ ClickEvent, Context, Element, FocusHandle }} from "corona/kit";
   /** A row, centered on the cross axis. */
-  export function h_flex(): Element;
+  export function h_flex(): Element<"div">;
   /** A column. */
-  export function v_flex(): Element;
+  export function v_flex(): Element<"div">;
 {theme}{base}}}
 declare module "corona/component" {{
   import {{ ClickEvent, Context, Element, FocusHandle }} from "corona/kit";
@@ -315,6 +317,7 @@ declare module "corona/fps" {{
       colors = union(COLOR_TOKENS),
       events = events::D_TS,
       nullary = nullary_d_ts(),
+      caps = crate::element::caps::d_ts(),
       el = el_d_ts(),
       rest = KIT_D_TS,
       theme = theme::d_ts(),
@@ -494,11 +497,11 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     abstract render(cx: Context): Element | Entity | string;
   }
   export type ViewClass = new (props?: Props) => View;
-  export function div(): Element;
+  export function div(): Element<"div">;
   /** A vector icon tinted with the text color: an absolute path or an asset. */
-  export function svg(path: string): Element;
+  export function svg(path: string): Element<"svg">;
   /** A full-color image: a file path or PNG, JPEG, WebP, GIF, BMP, TIFF or ICO bytes. */
-  export function image(source: string | Uint8Array): Element;
+  export function image(source: string | Uint8Array): Element<"image">;
   /** The visible items, `[start, end)`. */
   export interface ItemRange {
     start: number;
@@ -510,14 +513,14 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     item_count: number,
     get_key: (index: number) => string,
     render: (index: number, cx: Context) => Element,
-  ): Element;
+  ): Element<"list">;
   /** gpui's list of rows of one height, rendered a range at a time. */
   export function uniform_list(
     id: string,
     item_count: number,
     get_key: (index: number) => string,
     render: (range: ItemRange, cx: Context) => Element[],
-  ): Element;
+  ): Element<"uniform_list">;
   /** Geometry from `PathBuilder.build()`, for `window.paint_path`. */
   export interface Path {}
   export interface PathBuilder {
@@ -596,9 +599,79 @@ const KIT_D_TS: &str = r#"  /** A retained child view from `cx.new`; a child whe
     zoom_window(): void;
     toggle_fullscreen(): void;
     /** An element painting `path` with `fill`, in its own coordinates. */
-    paint_path(path: Path, fill: Color | Background): Element;
+    paint_path(path: Path, fill: Color | Background): Element<"canvas">;
   }
 "#;
+
+/// Constructors `(module, name, kind)` making an element of another kind than their name
+const KIND_OF: &[(&str, &str, &str)] = &[
+  ("corona/component", "Tabs", "TabBar"),
+  ("corona/component", "VerticalSeparator", "Separator"),
+  ("corona/component", "DashedSeparator", "Separator"),
+  ("corona/component", "VerticalDashedSeparator", "Separator"),
+  ("corona/component", "InputGroupInput", "Input"),
+  ("corona/component", "InputGroupTextarea", "Textarea"),
+  ("corona/component", "VForm", "Form"),
+  ("corona/component", "HForm", "Form"),
+  ("corona/component", "HorizontalRadioGroup", "RadioGroup"),
+  ("corona/component", "InfoAlert", "Alert"),
+  ("corona/component", "SuccessAlert", "Alert"),
+  ("corona/component", "WarningAlert", "Alert"),
+  ("corona/component", "ErrorAlert", "Alert"),
+  ("corona/component", "Tooltip", "Button"),
+  ("corona/component", "Image", "image"),
+  ("corona/component", "Text", "div"),
+];
+
+/// Types the elements `export const Name: Ctor<..>` and `{ new (..): Element; .. }` make as
+/// `Element<"Name">`, the kind the methods of `el_methods!` are typed on
+fn kinded(module: &str, d_ts: String) -> String {
+  let base = |line: &str| match module {
+    "corona/base" => qualify_base(line),
+    _ => line.to_string(),
+  };
+  d_ts
+    .lines()
+    .map(|line| {
+      let line = &base(line);
+      let Some(name) = line
+        .strip_prefix("  export const ")
+        .and_then(|l| l.split_once(": "))
+        .map(|(name, _)| KIND_OF.iter().find(|(m, n, _)| *m == module && *n == name).map_or(name, |(_, _, k)| k))
+      else {
+        return line.replace("type Ctor<A extends any[]> = { new (...args: A): Element; new: (...args: A) => Element };", "type Ctor<K extends string, A extends any[]> = { new (...args: A): Element<K>; new: (...args: A) => Element<K> };");
+      };
+      let name = &match module {
+        "corona/base" => format!("{name}@base"),
+        _ => name.to_string(),
+      };
+      line
+        .replace("Ctor<[", &format!("Ctor<\"{name}\", ["))
+        .replace("): Element; new: (", &format!("): Element<\"{name}\">; new: ("))
+        .replace(") => Element };", &format!(") => Element<\"{name}\"> }};"))
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
+    + "\n"
+}
+
+/// `Element<"Kind">` of a `corona/base` line as `Element<"Kind@base">`: base and component
+/// widgets share a name and kind, but not their methods
+fn qualify_base(line: &str) -> String {
+  let mut out = String::new();
+  let mut rest = line;
+  while let Some(at) = rest.find("Element<\"") {
+    let (head, tail) = rest.split_at(at + 9);
+    out.push_str(head);
+    let end = tail.find('"').unwrap_or(tail.len());
+    out.push_str(&tail[..end]);
+    if !tail[..end].contains('@') {
+      out.push_str("@base");
+    }
+    rest = &tail[end..];
+  }
+  out + rest
+}
 
 #[cfg(test)]
 mod tests {

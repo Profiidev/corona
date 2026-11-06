@@ -36,6 +36,7 @@ export default class Main extends View {
     const rows = [{ id: "a", label: "A", value: 1 }, { id: "b", label: "B", value: 3 }];
     const results = [
       attempt(() => div().child("|")),
+      attempt(() => div().child(base.Empty.new())),
       attempt(() => base.Progress.new("p").value(40).indeterminate(false).accessibility_label("Load")
         .child(base.ProgressTrack.new().w(100).h(4).child(base.ProgressIndicator.new().w(40).h(4)))),
       attempt(() => base.Avatar.new().w(40).h(40)

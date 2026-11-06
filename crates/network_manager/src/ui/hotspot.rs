@@ -10,13 +10,16 @@ use gpui_kit::{
   App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render, Styled,
   Subscription, Task, TestSupportExt, Window,
   assets::IconName,
-  base::{Disableable, IndexPath, StyledExt, input::InputState},
+  base::{
+    Disableable, IndexPath, StyledExt,
+    input::{InputEvent, InputState},
+  },
   black,
   component::{
     ActiveTheme, Icon, Sizable, Theme,
     input::Input,
     scroll::ScrollableElement,
-    select::{Select, SelectState},
+    select::{Select, SelectEvent, SelectState},
     spinner::Spinner,
     switch::Switch,
   },
@@ -45,6 +48,7 @@ pub struct HotspotPanel {
   clients: Vec<HotspotClient>,
   _poll_clients: Option<Task<()>>,
   _hotspot: Subscription,
+  _save: Vec<Subscription>,
 }
 
 const BANDS: [HotspotBand; 2] = [HotspotBand::Bg, HotspotBand::A];
@@ -177,7 +181,7 @@ impl ControlCenterPage for HotspotPanel {
     });
     cx.defer_in(window, |this, window, cx| this.load_hotspot(window, cx));
 
-    Self {
+    let mut this = Self {
       error: PageError::default(),
       ssid: cx.new(|cx| InputState::new(window, cx).placeholder(t!("app.network.hidden.ssid"))),
       password: cx.new(|cx| {
@@ -223,7 +227,25 @@ impl ControlCenterPage for HotspotPanel {
       clients: Vec::new(),
       _poll_clients: None,
       _hotspot: hotspot,
-    }
+      _save: Vec::new(),
+    };
+    // inputs save when done, not on every key: half a password would not validate
+    let inputs = [&this.ssid, &this.password].map(|input| {
+      cx.subscribe(input, |this, _, event: &InputEvent, cx| {
+        if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+          this.save_hotspot(cx);
+        }
+      })
+    });
+    let selects = [&this.band, &this.security, &this.auto_off, &this.isolate].map(|select| {
+      cx.subscribe(select, |this, _, event: &SelectEvent<Vec<String>>, cx| {
+        if matches!(event, SelectEvent::Confirm(_)) {
+          this.save_hotspot(cx);
+        }
+      })
+    });
+    this._save = inputs.into_iter().chain(selects).collect();
+    this
   }
 }
 
@@ -301,6 +323,15 @@ impl HotspotPanel {
       auto_off: selected(&AUTO_OFF, auto_off_label, &self.auto_off, cx).unwrap_or(Some(10)),
       isolate: selected(&ISOLATE, isolate_label, &self.isolate, cx).unwrap_or(true),
     }
+  }
+
+  /// keeps the form for the next start; a form that does not validate yet is left as it was
+  fn save_hotspot(&self, cx: &mut Context<Self>) {
+    let save = cx.network_manager().save_hotspot(self.config(cx), cx);
+    cx.spawn(async move |_, _| {
+      let _ = save.await.log_err();
+    })
+    .detach();
   }
 
   /// fills the form and the QR code from the running or the saved hotspot

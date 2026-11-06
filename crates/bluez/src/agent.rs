@@ -330,10 +330,12 @@ mod tests {
   fn other_messages() {
     assert!(matches!(event(Message::Cancel), Some(AgentEvent::Cancel)));
     assert!(matches!(event(Message::Release), Some(AgentEvent::Cancel)));
+    let (response, _) = oneshot::channel();
     assert!(
       event(Message::AuthorizeService {
         device: dev(),
         uuid: "0000110b".into(),
+        response,
       })
       .is_none()
     );

@@ -103,18 +103,39 @@ pub fn is_open(cx: &App) -> bool {
     .is_some_and(|s| s.view.upgrade().is_some())
 }
 
-pub fn toggle(cx: &mut App) -> Result<()> {
-  if is_open(cx) {
+/// The command the open launcher was opened into
+fn open_command(cx: &mut App) -> Option<String> {
+  let state = cx.try_global::<LauncherState>()?;
+  let (handle, view) = (state.handle, state.view.upgrade()?);
+  handle
+    .update(cx, |_, _, cx| {
+      view.read(cx).active_command().map(str::to_string)
+    })
+    .ok()
+    .flatten()
+}
+
+/// Toggling closes unless it names a command other than the one showing
+fn toggle_closes(open: &Open, active: Option<&str>) -> bool {
+  match open {
+    Open::Command { id, .. } => active == Some(id.as_str()),
+    _ => true,
+  }
+}
+
+/// Opening again on the command already showing, with nothing new to tell it
+fn keeps_page(open: &Open, active: Option<&str>) -> bool {
+  matches!(open, Open::Command { id, query, .. } if query.is_empty() && active == Some(id.as_str()))
+}
+
+/// Closes when open on the same command (or on no command and none asked), else opens `open`
+pub fn toggle(open: Open, cx: &mut App) -> Result<()> {
+  if is_open(cx) && toggle_closes(&open, open_command(cx).as_deref()) {
     close(cx);
     return Ok(());
   }
   // a surface destroyed from outside leaves a dead state behind: open() replaces it
-  open(
-    Open::Root {
-      query: String::new(),
-    },
-    cx,
-  )
+  self::open(open, cx)
 }
 
 pub fn close(cx: &mut App) {
@@ -132,8 +153,12 @@ pub fn open(open: Open, cx: &mut App) -> Result<()> {
     .try_global::<LauncherState>()
     .and_then(|s| Some((s.handle, s.view.upgrade()?)))
   {
+    // already on that command and nothing new to tell it: a reset would only blank the card
+    let same = keeps_page(&open, view.read(cx).active_command());
     return handle.update(cx, |_, window, cx| {
-      view.update(cx, |view, cx| view.reset(open, window, cx));
+      if !same {
+        view.update(cx, |view, cx| view.reset(open, window, cx));
+      }
       view.update(cx, |view, cx| view.focus(window, cx));
     });
   }
@@ -163,4 +188,46 @@ pub(crate) fn window_size(cx: &App) -> Size<Pixels> {
     px(launcher.width.max(MIN_WIDTH)),
     px(launcher.height.max(MIN_HEIGHT)),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn command(id: &str, query: &str) -> Open {
+    Open::Command {
+      id: id.into(),
+      query: query.into(),
+      run: true,
+    }
+  }
+
+  #[test]
+  fn toggle_closes_on_the_active_command() {
+    let root = Open::Root {
+      query: String::new(),
+    };
+    // no command asked: always closes
+    assert!(toggle_closes(&root, None));
+    assert!(toggle_closes(&root, Some("a")));
+    // same command as the one showing
+    assert!(toggle_closes(&command("a", ""), Some("a")));
+    // another command, or the main page: switch instead
+    assert!(!toggle_closes(&command("b", ""), Some("a")));
+    assert!(!toggle_closes(&command("a", ""), None));
+  }
+
+  #[test]
+  fn reopening_keeps_the_page_only_without_news() {
+    assert!(keeps_page(&command("a", ""), Some("a")));
+    assert!(!keeps_page(&command("a", "40"), Some("a")));
+    assert!(!keeps_page(&command("b", ""), Some("a")));
+    assert!(!keeps_page(&command("a", ""), None));
+    assert!(!keeps_page(
+      &Open::Root {
+        query: String::new()
+      },
+      Some("a")
+    ));
+  }
 }

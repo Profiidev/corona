@@ -21,6 +21,7 @@ use gpui_kit::{
   component::ActiveTheme,
   div,
   layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions},
+  prelude::FluentBuilder,
   px, relative,
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
@@ -80,6 +81,10 @@ impl Popup {
       slot: SmoothRetarget::new(-(slot as f32)),
       height: Rc::default(),
     }
+  }
+
+  fn shows_progress_bar(&self) -> bool {
+    self.timeout != NEVER
   }
 }
 
@@ -456,30 +461,33 @@ impl Render for Popups {
             .child({
               let id = popup.item.id;
               let clickable = popup.item.actions.iter().any(|a| a.key == "default");
-              let left = popup.remaining.as_secs_f32() / popup.timeout.as_secs_f32();
+              let auto_hide = popup.shows_progress_bar();
               NotificationsPanel::notification_card(cx, &popup.item, self.replies.get(id))
                 .bg(theme.colors.accent.opacity(config.background_opacity))
                 .relative()
-                .child(
-                  div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .w(relative(left))
-                    .overflow_hidden()
-                    .child(
-                      div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .w(px(width))
-                        .h_full()
-                        .rounded_xl()
-                        .border_t_2()
-                        .border_color(theme.colors.primary),
-                    ),
-                )
+                .when(auto_hide, |d| {
+                  let left = popup.remaining.as_secs_f32() / popup.timeout.as_secs_f32();
+                  d.child(
+                    div()
+                      .absolute()
+                      .top_0()
+                      .left_0()
+                      .size_full()
+                      .w(relative(left))
+                      .overflow_hidden()
+                      .child(
+                        div()
+                          .absolute()
+                          .top_0()
+                          .left_0()
+                          .w(px(width))
+                          .h_full()
+                          .rounded_xl()
+                          .border_t_2()
+                          .border_color(theme.colors.primary),
+                      ),
+                  )
+                })
                 .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                   if let Some(popup) = this.items.iter_mut().find(|p| p.item.id == id) {
                     popup.hovered = *hovered;
@@ -622,5 +630,38 @@ mod tests {
       assert_eq!(popup.remaining, timeout);
       assert_eq!(timeout_for(&popup.item, &config), timeout);
     }
+  }
+
+  #[test]
+  fn progress_bar_hidden_when_not_auto_hiding() {
+    let config = NotificationConfig::default();
+    // Critical battery notification has expire_timeout 0 (stays until dismissed/charged)
+    let critical_battery = Item {
+      expire_timeout: 0,
+      ..item(
+        "corona",
+        "Battery almost empty",
+        "5% left",
+        Urgency::Critical,
+      )
+    };
+    let popup = Popup::new(critical_battery, 0, &config);
+    assert_eq!(popup.timeout, NEVER);
+    assert!(!popup.shows_progress_bar());
+
+    // Normal notification that auto-hides shows progress bar
+    let normal = item("app", "title", "body", Urgency::Normal);
+    let popup_normal = Popup::new(normal, 0, &config);
+    assert_ne!(popup_normal.timeout, NEVER);
+    assert!(popup_normal.shows_progress_bar());
+
+    // Explicit timeout notification also shows progress bar
+    let custom = Item {
+      expire_timeout: 5000,
+      ..item("app", "title", "body", Urgency::Low)
+    };
+    let popup_custom = Popup::new(custom, 0, &config);
+    assert_ne!(popup_custom.timeout, NEVER);
+    assert!(popup_custom.shows_progress_bar());
   }
 }

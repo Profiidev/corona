@@ -41,7 +41,7 @@ impl Node for Probe {
 mod probe {
   crate::el_methods! {
     /// Sets the probe's label.
-    fn label(text: String) |c, n| crate::map(c, n, |mut p: super::Probe| {
+    fn label(text: String) for ["Probe"] |c, n| crate::map(c, n, |mut p: super::Probe| {
       p.label = text;
       p
     });
@@ -265,6 +265,11 @@ fn style_table_matches_gpui() {
       .filter(|l| l.starts_with(&format!("    {name}(")))
     {
       let args = &line[name.len() + 5..];
+      // `this: Element<..>` is no argument
+      let args = args.strip_prefix("this: ").map_or(args, |a| {
+        a.split_once('>')
+          .map_or("", |(_, r)| r.trim_start_matches(", "))
+      });
       let first = args.split([',', ')']).next().unwrap_or_default();
       assert!(
         first.is_empty() || first.contains("?:"),

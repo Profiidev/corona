@@ -9,6 +9,7 @@ use std::{
   time::{Duration, Instant, UNIX_EPOCH},
 };
 
+use anyhow::Result;
 use nvml_wrapper::Nvml;
 use sysinfo::{
   Components, CpuRefreshKind, Disks, MINIMUM_CPU_UPDATE_INTERVAL, MemoryRefreshKind, Networks,
@@ -39,9 +40,12 @@ struct Sampler {
   last: Instant,
 }
 
-pub(crate) fn spawn(intervals: flume::Receiver<Duration>, updates: flume::Sender<Update>) {
+pub(crate) fn spawn(
+  intervals: flume::Receiver<Duration>,
+  updates: flume::Sender<Update>,
+) -> Result<()> {
+  let mut sampler = Sampler::new()?;
   thread::spawn(move || {
-    let mut sampler = Sampler::new();
     if updates.send(Update::Info(sampler.info())).is_err() {
       return;
     }
@@ -65,27 +69,28 @@ pub(crate) fn spawn(intervals: flume::Receiver<Duration>, updates: flume::Sender
       }
     }
   });
+  Ok(())
 }
 
 impl Sampler {
-  fn new() -> Self {
+  fn new() -> Result<Self> {
     let nvml = Nvml::init()
       .or_else(|_| Nvml::builder().lib_path(OsStr::new(NIXOS_NVML)).init())
       .inspect_err(|e| tracing::debug!("no NVML: {e}"))
       .ok();
     let gpus = gpu::list(Path::new(PCI), nvml.as_ref());
     let nvml = nvml.filter(|_| gpus.iter().any(|g| g.vendor == GpuVendor::Nvidia));
-    Self {
-      system: System::new(),
-      networks: Networks::new_with_refreshed_list(),
-      disks: Disks::new_with_refreshed_list(),
-      components: Components::new_with_refreshed_list(),
+    Ok(Self {
+      system: System::new()?,
+      networks: Networks::new_with_refreshed_list()?,
+      disks: Disks::new_with_refreshed_list()?,
+      components: Components::new_with_refreshed_list()?,
       nvml,
       gpus,
       drm: Engines::new(),
       started: Instant::now(),
       last: Instant::now(),
-    }
+    })
   }
 
   fn info(&mut self) -> SystemInfo {
@@ -95,7 +100,11 @@ impl Sampler {
     let cpus = self.system.cpus();
     SystemInfo {
       os: pretty_name(&fs::read_to_string("/etc/os-release").unwrap_or_default())
-        .or_else(|| Some(format!("{} {}", System::name()?, System::os_version()?)))
+        .or_else(|| match (System::name(), System::os_version()) {
+          (Ok(name), Ok(version)) => Some(format!("{name} {version}")),
+          (Ok(name), Err(_)) => Some(name),
+          _ => None,
+        })
         .unwrap_or_else(|| "Linux".into()),
       kernel: System::kernel_version().unwrap_or_default(),
       hostname: System::host_name().unwrap_or_default(),
@@ -111,7 +120,7 @@ impl Sampler {
       installed: fs::metadata("/etc/machine-id")
         .and_then(|m| m.modified())
         .ok(),
-      booted: UNIX_EPOCH + Duration::from_secs(System::boot_time()),
+      booted: UNIX_EPOCH + Duration::from_secs(System::boot_time().unwrap_or_default()),
     }
   }
 
@@ -141,7 +150,7 @@ impl Sampler {
 
     self
       .system
-      .refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage().with_frequency());
+      .refresh_cpu_specifics(CpuRefreshKind::nothing().with_usage().with_frequency());
     self
       .system
       .refresh_memory_specifics(MemoryRefreshKind::everything());
@@ -157,7 +166,9 @@ impl Sampler {
       .fold((0, 0), |(rx, tx), (_, data)| {
         (rx + data.received(), tx + data.transmitted())
       });
-    let load = System::load_average();
+    let [one, five, fifteen] = System::load_average()
+      .map(|l| [l.one, l.five, l.fifteen])
+      .unwrap_or([0.0, 0.0, 0.0]);
     let drm = self.engines();
     let gpus = self
       .gpus
@@ -169,14 +180,14 @@ impl Sampler {
 
     Sample {
       cpu: self.system.global_cpu_usage(),
-      cpu_cores: cpus.iter().map(|cpu| cpu.cpu_usage()).collect(),
+      cpu_cores: cpus.iter().map(|cpu| cpu.usage()).collect(),
       cpu_frequency: average_frequency(cpus.iter().map(|cpu| cpu.frequency())),
       cpu_temperature: cpu_temperature(&self.components),
       memory_used: self.system.used_memory(),
       memory_total: self.system.total_memory(),
       swap_used: self.system.used_swap(),
       swap_total: self.system.total_swap(),
-      load: [load.one, load.five, load.fifteen],
+      load: [one, five, fifteen],
       network_rx: rx as f64 / elapsed,
       network_tx: tx as f64 / elapsed,
       disks: disks(&self.disks),
@@ -186,7 +197,10 @@ impl Sampler {
 }
 
 /// virtual interfaces carry traffic that the physical NIC already counts
-fn is_physical(name: &str) -> bool {
+fn is_physical(name: impl AsRef<OsStr>) -> bool {
+  let Some(name) = name.as_ref().to_str() else {
+    return false;
+  };
   const VIRTUAL: [&str; 10] = [
     "lo",
     "veth",
@@ -369,10 +383,10 @@ mod tests {
   }
 
   #[test]
-  fn sampler_thread_follows_the_interval() {
+  fn sampler_thread_follows_the_interval() -> Result<()> {
     let (intervals, intervals_rx) = flume::unbounded();
     let (updates_tx, updates) = flume::unbounded();
-    spawn(intervals_rx, updates_tx);
+    spawn(intervals_rx, updates_tx)?;
     let wait = Duration::from_secs(10);
     let Update::Info(info) = updates.recv_timeout(wait).unwrap() else {
       panic!("info comes first");
@@ -399,20 +413,22 @@ mod tests {
       updates.recv_timeout(wait),
       Err(flume::RecvTimeoutError::Disconnected)
     ));
+    Ok(())
   }
 
   #[test]
-  fn sampler_thread_stops_without_listeners() {
+  fn sampler_thread_stops_without_listeners() -> Result<()> {
     let (intervals, intervals_rx) = flume::unbounded();
     let (updates_tx, updates) = flume::unbounded::<Update>();
     drop(updates);
-    spawn(intervals_rx, updates_tx);
+    spawn(intervals_rx, updates_tx)?;
     // the thread is gone once the receiving end is: sends fail
     let deadline = Instant::now() + Duration::from_secs(10);
     while intervals.send(Duration::ZERO).is_ok() {
       assert!(Instant::now() < deadline, "sampler kept running");
       thread::sleep(Duration::from_millis(10));
     }
+    Ok(())
   }
 
   #[test]

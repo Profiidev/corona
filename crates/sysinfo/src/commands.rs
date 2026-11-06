@@ -37,7 +37,7 @@ impl IpcCommand for ListProcesses {
   type Response = Vec<(u32, String)>;
 
   fn handle(_: Self::Payload, _: &mut App) -> Result<Self::Response> {
-    let mut list: Vec<(u32, String)> = snapshot().into_iter().map(|p| (p.pid, p.name)).collect();
+    let mut list: Vec<(u32, String)> = snapshot()?.into_iter().map(|p| (p.pid, p.name)).collect();
     list.sort();
     Ok(list)
   }

@@ -676,6 +676,21 @@ impl NetworkManager {
     async move { actions::hotspot_config(&conn, running).await }
   }
 
+  /// saves the Corona Hotspot profile without starting it; a running hotspot keeps its own
+  pub fn save_hotspot(
+    &self,
+    config: HotspotConfig,
+    cx: &App,
+  ) -> impl Future<Output = Result<()>> + use<> {
+    let (conn, running) = (self.conn.clone(), self.hotspot(cx).is_some());
+    async move {
+      if running {
+        return Ok(());
+      }
+      actions::save_hotspot(&conn, config).await
+    }
+  }
+
   /// answer the pending secret request, None cancels it
   pub fn answer_secret(&self, cx: &mut App, secret: Option<Secret>) {
     let request = self.secret_request.update(cx, |request, cx| {

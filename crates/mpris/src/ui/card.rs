@@ -2,7 +2,7 @@ use crate::{MprisExt, PlaybackStatus};
 use corona_components::components::card::CardExt;
 use corona_components::components::list::muted;
 use gpui_kit::{
-  App, Context, Div, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
+  App, Context, Div, Empty, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,
   assets::IconName,
   base::{Disableable, StyledExt},
@@ -150,6 +150,7 @@ impl DashboardCard for MediaCard {
 
 impl Render for MediaCard {
   fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    media(cx).map_or_else(|| div().into_any_element(), |d| d.into_any_element())
+    // `Empty` takes no layout, so the row's gap leaves it out
+    media(cx).map_or_else(|| Empty.into_any_element(), |d| d.into_any_element())
   }
 }

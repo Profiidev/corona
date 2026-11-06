@@ -196,6 +196,12 @@ gpui_component:
     Reset All:
       en: Reset All
       de: Alle zurücksetzen
+    no_results:
+      en: No matching settings
+      de: Keine passenden Einstellungen
+    no_results_description:
+      en: Try a different keyword.
+      de: Versuche ein anderes Stichwort.
   Pagination:
     previous:
       en: Previous

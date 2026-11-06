@@ -23,6 +23,7 @@ use crate::{
 };
 
 pub(crate) mod background;
+pub(crate) mod caps;
 pub(crate) mod components;
 pub(crate) mod events;
 pub(crate) mod style;
@@ -377,7 +378,11 @@ pub fn define<'js>(
       kind = n.kind();
       Ok(())
     })?;
-    if kinds.is_none_or(|k| k.contains(&kind)) {
+    // `"Button@base"` types a `corona/base` element; the kind it makes is `"Button"`
+    if kinds.is_none_or(|k| {
+      k.iter()
+        .any(|k| k.strip_suffix("@base").unwrap_or(k) == kind)
+    }) {
       MISS.set(false);
       match f.call::<_, Value>((This(this.0.clone()), Rest(args.0.clone()))) {
         Err(_) if MISS.replace(false) => drop(ctx.catch()),
@@ -513,7 +518,8 @@ pub fn jsdoc(lines: &[&str], indent: &str) -> String {
 }
 
 /// One line per builder method, `fn name(args) |ctx, node| body;` with `body` a
-/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. A leading `kinds: KINDS;`
+/// `rquickjs::Result<()>` changing `node: &mut Box<dyn Node>`. An argument may end in
+/// `as "type"`, the TypeScript type it has in place of its Rust type's. A leading `kinds: KINDS;`
 /// limits the table to elements of those kinds, see [`define`]. Emits `install(proto)`, which
 /// puts the methods on the element prototype, and `d_ts()`, their `interface Element` members;
 /// doc comments become JSDoc.
@@ -524,7 +530,7 @@ macro_rules! el_methods {
   };
   (@table $kinds:expr; $(
     $(#[doc = $doc:literal])*
-    fn $name:ident($($arg:ident: $ty:ty),* $(,)?) |$ctx:pat_param, $n:pat_param| $body:expr;
+    fn $name:ident($($arg:ident: $ty:ty $(as $ts:literal)?),* $(,)?) $(for [$($kind:literal),+ $(,)?])? |$ctx:pat_param, $n:pat_param| $body:expr;
   )*) => {
     /// Puts these methods on the element prototype.
     pub fn install<'js>(proto: &$crate::rquickjs::Object<'js>) -> $crate::rquickjs::Result<()> {
@@ -537,7 +543,7 @@ macro_rules! el_methods {
             Ok::<_, $crate::rquickjs::Error>(this.0)
           },
         )?;
-        $crate::define(proto, stringify!($name), $kinds, f)?;
+        $crate::define(proto, stringify!($name), $crate::el_methods!(@kinds $kinds; $($($kind),+)?), f)?;
       )*
       Ok(())
     }
@@ -552,12 +558,25 @@ macro_rules! el_methods {
           "{}{}: {}",
           stringify!($arg),
           if <$ty as $crate::TsType>::OPTIONAL { "?" } else { "" },
-          <$ty as $crate::TsType>::ts(),
+          $crate::el_methods!(@ts $ty; $($ts)?),
         )),*];
-        out.push_str(&format!("    {}({}): Element;\n", stringify!($name), args.join(", ")));
+        let this = $crate::el_methods!(@this $($($kind),+)?);
+        let args = [this].into_iter().filter(|t| !t.is_empty()).chain(args.iter().cloned()).collect::<Vec<_>>();
+        out.push_str(&format!("    {}({}): this;\n", stringify!($name), args.join(", ")));
       )*
       out
     }
+  };
+  // an argument's TypeScript type: its own, unless `as "type"` names one
+  (@ts $ty:ty;) => { <$ty as $crate::TsType>::ts() };
+  (@ts $ty:ty; $ts:literal) => { String::from($ts) };
+  // the kinds a method runs on: its own, else the table's
+  (@kinds $table:expr;) => { $table };
+  (@kinds $table:expr; $($kind:literal),+) => { Some(&[$($kind),+]) };
+  // its `this:` parameter in the d.ts, none when it is on every element
+  (@this) => { String::new() };
+  (@this $($kind:literal),+) => {
+    format!("this: Element<{}>", [$(concat!("\"", $kind, "\"")),+].join(" | "))
   };
   ($($rest:tt)*) => {
     $crate::el_methods!(@table None; $($rest)*);
@@ -577,14 +596,70 @@ pub(crate) fn install(ctx: &Ctx<'_>) -> Result<()> {
   Ok(())
 }
 
+/// Types each member of `members` on the kinds `kinds_of` names for it: `name(args)` becomes
+/// `name(this: Element<kinds>, args)`.
+pub(crate) fn on_kinds(members: &str, kinds_of: impl Fn(&str) -> Option<&'static str>) -> String {
+  members
+    .lines()
+    .map(|line| {
+      let signature = line
+        .strip_prefix("    ")
+        .filter(|m| m.starts_with(|c: char| c.is_ascii_lowercase()))
+        .and_then(|m| m.split_once('('));
+      match signature {
+        Some((head, rest)) if !rest.starts_with("this:") => {
+          let name = head.split('<').next().unwrap_or(head);
+          match kinds_of(name) {
+            Some(kinds) => {
+              let sep = if rest.starts_with(')') { "" } else { ", " };
+              format!("    {head}(this: Element<{kinds}>{sep}{rest}\n")
+            }
+            None => format!("{line}\n"),
+          }
+        }
+        _ => format!("{line}\n"),
+      }
+    })
+    .collect()
+}
+
 /// The members of `interface Element`
 pub(crate) fn el_d_ts() -> String {
-  let mut out =
-    crate::element::style::d_ts() + &methods::d_ts() + &crate::element::events::d_ts() + fns::D_TS;
+  let styled = |_: &str| Some("StyledKind");
+  let interactive = |_: &str| Some("InteractiveKind");
+  let mut out = on_kinds(&crate::element::style::d_ts(), styled)
+    + &on_kinds(&methods::d_ts(), |name| match name {
+      "child" | "children" => Some("ParentKind"),
+      _ => Some("InteractiveKind"),
+    })
+    + &on_kinds(&crate::element::events::d_ts(), interactive)
+    + &on_kinds(fns::D_TS, |name| match name {
+      "map" | "when" | "when_some" => None,
+      _ => Some("StyledKind"),
+    });
   for family in crate::element::components::FAMILIES {
     out.push_str(&(family.el_d_ts)());
   }
-  out
+  // a member of the interface hides the base's of its name, so a component method named like a
+  // no-argument style (`text_center`) must not hide that style from other elements
+  let mut clashing: Vec<&str> = out
+    .lines()
+    .filter_map(|l| l.strip_prefix("    "))
+    .filter_map(|l| l.split_once("(this: Element<"))
+    .map(|(name, _)| name)
+    .filter(|name| {
+      crate::element::style::NULLARY
+        .iter()
+        .any(|(n, _)| n == name)
+    })
+    .collect();
+  clashing.sort_unstable();
+  clashing.dedup();
+  let styles: String = clashing
+    .iter()
+    .map(|name| format!("    {name}(this: Element<StyledKind>): this;\n"))
+    .collect();
+  out + &styles
 }
 
 /// An element id: a name or a number
@@ -619,7 +694,7 @@ impl Id {
   }
 }
 
-mod methods {
+pub(crate) mod methods {
   use gpui_kit::{KeyContext, Role};
   use rquickjs::{Class, Exception};
 
@@ -627,7 +702,7 @@ mod methods {
   use crate::{FocusHandle, Opt, ScrollHandle, frame, frame_or_throw};
 
   /// The accessibility roles a script can name
-  const ROLES: &[(&str, Role)] = &[
+  pub(crate) const ROLES: &[(&str, Role)] = &[
     ("alert", Role::Alert),
     ("button", Role::Button),
     ("checkbox", Role::CheckBox),
@@ -723,7 +798,7 @@ mod methods {
       })
     });
     /// What this element announces itself as.
-    fn role(name: String) |ctx, n| {
+    fn role(name: String as "\"alert\" | \"button\" | \"checkbox\" | \"dialog\" | \"group\" | \"heading\" | \"image\" | \"link\" | \"list\" | \"list_item\" | \"listbox\" | \"menu\" | \"menu_item\" | \"option\" | \"progress_indicator\" | \"radio_button\" | \"slider\" | \"status\" | \"switch\" | \"tab\" | \"tab_list\" | \"tab_panel\" | \"text_input\" | \"toolbar\" | \"tooltip\"") |ctx, n| {
       let Some((_, role)) = ROLES.iter().find(|(r, _)| *r == name) else {
         let names: Vec<&str> = ROLES.iter().map(|(r, _)| *r).collect();
         return Err(Exception::throw_type(ctx, &crate::element::style::unknown("role", &name, &names)));
@@ -780,23 +855,23 @@ mod fns {
   use super::{El, interact, with_node};
 
   pub const D_TS: &str = r#"    /** Passes this element to `transform` and returns what it returns. */
-    map<T>(transform: (element: Element) => T): T;
+    map<T>(transform: (element: this) => T): T;
     /** Applies `branch` only when `condition` is truthy. */
-    when(condition: unknown, branch: (element: Element) => Element): Element;
+    when(condition: unknown, branch: (element: this) => this): this;
     /** Applies `branch` only when `value` is not null or undefined, passing it along. */
-    when_some<T>(value: T | null | undefined, branch: (element: Element, value: T) => Element): Element;
+    when_some<T>(value: T | null | undefined, branch: (element: this, value: T) => this): this;
     /** Styles while hovered. */
-    hover(style: (style: Element) => Element): Element;
+    hover(style: (style: Element<"style">) => Element): this;
     /** Styles while pressed. */
-    active(style: (style: Element) => Element): Element;
+    active(style: (style: Element<"style">) => Element): this;
     /** Styles while focused. */
-    focus(style: (style: Element) => Element): Element;
+    focus(style: (style: Element<"style">) => Element): this;
     /** Styles while something inside is focused. */
-    in_focus(style: (style: Element) => Element): Element;
+    in_focus(style: (style: Element<"style">) => Element): this;
     /** Styles while focused from the keyboard. */
-    focus_visible(style: (style: Element) => Element): Element;
+    focus_visible(style: (style: Element<"style">) => Element): this;
     /** Styles while an ancestor with `group(name)` is hovered. */
-    group_hover(group: string, style: (style: Element) => Element): Element;
+    group_hover(group: string, style: (style: Element<"style">) => Element): this;
 "#;
 
   fn styled<'js>(this: &Class<'js, El>, f: Function<'js>) -> Result<StyleRefinement> {

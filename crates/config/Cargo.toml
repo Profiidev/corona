@@ -18,9 +18,9 @@ glob.workspace = true
 flume.workspace = true
 tracing.workspace = true
 notify.workspace = true
-serde_ignored = "0.1.14"
+serde_ignored.workspace = true
 toml.workspace = true
-config = { version = "0.15.27", default-features = false, features = ["toml"] }
+config.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

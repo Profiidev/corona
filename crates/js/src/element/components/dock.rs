@@ -1111,9 +1111,8 @@ mod chrome {
   use super::*;
 
   crate::el_methods! {
-    kinds: &["dock_area"];
     /// The tab bar above a group's displayed panel.
-    fn tab_bar(handler: GroupChrome<'js>) |c, n| {
+    fn tab_bar(handler: GroupChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.tab_bar = Some(key);
@@ -1121,7 +1120,7 @@ mod chrome {
       })
     };
     /// What a group with no displayed panel shows.
-    fn empty_group(handler: EmptyChrome<'js>) |c, n| {
+    fn empty_group(handler: EmptyChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.empty_group = Some(key);
@@ -1129,7 +1128,7 @@ mod chrome {
       })
     };
     /// The hint where a dragged panel would land.
-    fn drop_indicator(handler: DropChrome<'js>) |c, n| {
+    fn drop_indicator(handler: DropChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.drop_indicator = Some(key);
@@ -1137,7 +1136,7 @@ mod chrome {
       })
     };
     /// One dock's chrome around its content; put `dock_content()` where its panels go.
-    fn dock(handler: DockChrome<'js>) |c, n| {
+    fn dock(handler: DockChrome<'js>) for ["dock_area@base"] |c, n| {
       let key = hook(c, handler.0.0)?;
       crate::map(c, n, |mut a: AreaEl| {
         a.hooks.dock = Some(key);
@@ -1242,7 +1241,7 @@ fn install(proto: &Object<'_>) -> Result<()> {
 }
 
 fn el_d_ts() -> String {
-  chrome::d_ts() + &commands::d_ts()
+  chrome::d_ts() + &crate::element::on_kinds(&commands::d_ts(), |_| Some("InteractiveKind"))
 }
 
 fn exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
@@ -1322,6 +1321,11 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
     zoomable?: boolean;
     visible?: boolean;
   }
+  const dock_state: unique symbol;
+  /** A layout from `dump()`, opaque: keep it, or `JSON.stringify` it and parse it back. */
+  export interface DockState {
+    readonly [dock_state]: true;
+  }
   /** A dockable layout the user rearranges. Make it in `init` or a handler. */
   export interface DockArea {
     /** Docks `view`, a view from `cx.new(Class)`. */
@@ -1329,9 +1333,9 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
     remove_panel(id: number): boolean;
     panels(): DockPanel[];
     /** The layout as plain data, with each panel's `serialize()`. */
-    dump(): any;
+    dump(): DockState;
     /** Restores a `dump()`, rebuilding registered panels and calling their `deserialize(data)`. */
-    load(state: any): void;
+    load(state: DockState): void;
     has_dock(placement: DockPlacement): boolean;
     is_dock_open(placement: DockPlacement): boolean;
     toggle_dock(placement: DockPlacement): void;
@@ -1352,7 +1356,7 @@ const D_TS: &str = r#"  /** Where a region sits relative to the center of a dock
     register_panel: (name: string, Class: import("corona/kit").ViewClass) => string;
   };
   /** Draws a dock area; its chrome comes from `tab_bar`, `empty_group`, `drop_indicator`, `dock`. */
-  export function dock_area(area: DockArea): Element;
+  export function dock_area(area: DockArea): Element<"dock_area">;
 "#;
 
 pub(crate) const FAMILY: Family = Family {

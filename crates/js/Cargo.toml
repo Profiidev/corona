@@ -10,54 +10,39 @@ categories.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
-gpui-fps = "0.8.1"
+gpui-fps.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
 futures.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-rquickjs = { version = "0.14", features = ["futures", "macro", "loader"] }
+rquickjs.workspace = true
 specta.workspace = true
-specta-typescript = "=0.0.14"
+specta-typescript.workspace = true
 # applies the serde attributes of host types to their TypeScript
-specta-serde = "=0.0.14"
+specta-serde.workspace = true
 serde.workspace = true
 # sandboxed filesystem access: every op goes through a granted directory handle
-cap-std = "4.0.3"
-libc = "0.2"
+cap-std.workspace = true
+libc.workspace = true
 # the IO of the stdlib runs here, off the gpui executor
-tokio = { version = "1.53", features = [
-  "rt-multi-thread",
-  "net",
-  "io-util",
-  "process",
-  "time",
-  "sync",
-  "macros"
-] }
-reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
-  "charset",
-  "http2",
-  "rustls-tls-native-roots",
-  "stream"
-] }
-tokio-tungstenite = { version = "0.29", features = [
-  "connect",
-  "rustls-tls-native-roots"
-] }
-hyper = { version = "1.11", features = ["client", "http1"] }
-hyper-util = { version = "0.1.21", features = ["tokio"] }
-http-body-util = "0.1.5"
-url = "2.5"
-base64 = "0.22"
-sha1 = "0.10"
-sha2 = "0.10"
-md-5 = "0.10"
-flate2 = "1.1"
-getrandom = "0.3"
+tokio.workspace = true
+rustls.workspace = true
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+url.workspace = true
+base64.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+md-5.workspace = true
+flate2.workspace = true
+getrandom.workspace = true
 # strips TypeScript types to whitespace, keeping positions. Pinned: swc majors weekly
-swc_ts_fast_strip = "=59.0.0"
-swc_common = "26"
+swc_ts_fast_strip.workspace = true
+swc_common.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

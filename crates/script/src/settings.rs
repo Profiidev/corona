@@ -641,13 +641,21 @@ fn changes(previous: &Approval, approval: &Approval, cx: &App) -> Div {
         .child(
           div()
             .flex()
-            .items_center()
+            .items_start()
             .gap_2()
             .when_some(tag, |d, (variant, label)| {
-              d.child(Tag::new().small().with_variant(variant).child(label))
+              d.child(
+                Tag::new()
+                  .small()
+                  .flex_shrink_0()
+                  .with_variant(variant)
+                  .child(label),
+              )
             })
             .child(
               div()
+                .flex_1()
+                .min_w_0()
                 .text_sm()
                 .when(change == Change::Kept, |d| {
                   d.text_color(cx.theme().muted_foreground)

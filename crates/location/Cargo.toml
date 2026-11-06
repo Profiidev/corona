@@ -20,7 +20,7 @@ tracing.workspace = true
 dirs.workspace = true
 flume.workspace = true
 futures-lite.workspace = true
-corona-zbus-geoclue2 = "0.1.0"
+corona-zbus-geoclue2.workspace = true
 
 [dev-dependencies]
 corona_utils = { workspace = true, features = ["test-support"] }

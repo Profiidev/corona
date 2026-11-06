@@ -32,8 +32,8 @@ futures-lite.workspace = true
 smol.workspace = true
 futures.workspace = true
 tracing.workspace = true
-libc = "0.2"
-pam-client = { version = "0.5.0", default-features = false }
+libc.workspace = true
+pam-client.workspace = true
 
 [dev-dependencies]
 corona_script = { workspace = true, features = ["test-support"] }
@@ -45,4 +45,4 @@ tempfile.workspace = true
 # pipewire's bindgen turns on clang-sys `runtime`, then pam-sys's bindgen must
 # load libclang itself (from LIBCLANG_PATH) or its build script panics
 [build-dependencies]
-bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
+bindgen.workspace = true
