@@ -8,10 +8,8 @@ use corona_utils::error::spawn_logged;
 use gpui_kit::{App, SharedString, Subscription};
 use rust_i18n::t;
 
-use crate::{
-  PowerExt,
-  ui::{icons::power_profile, page::PowerPanel},
-};
+use crate::panel::power::{PowerPanel, icons::power_profile};
+use corona_power::PowerExt;
 
 /// Lit for any profile but the default one
 fn profile_active(active: Option<&str>) -> bool {

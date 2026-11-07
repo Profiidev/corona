@@ -4,7 +4,7 @@ use clap::Subcommand;
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use corona_ipc::{IpcCommandSend, cli::candidates};
 
-use crate::commands::{CycleProfile, ListProfiles, SetProfile};
+use corona_shell::ipc::power::{CycleProfile, ListProfiles, SetProfile};
 
 #[derive(Subcommand)]
 pub enum Commands {

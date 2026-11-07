@@ -6,6 +6,7 @@ mod bluez;
 mod mpris;
 mod notifications;
 mod pipewire;
+mod power;
 mod printing;
 mod sysinfo;
 mod tray;
@@ -17,6 +18,7 @@ pub(crate) fn register(registry: &mut ScriptRegistry) {
   registry.register::<printing::PrintingModule>();
   registry.register::<mpris::MprisModule>();
   registry.register::<pipewire::PipewireModule>();
+  registry.register::<power::PowerModule>();
   registry
     .register::<notifications::NotificationsModule>()
     .register::<notifications::NotificationCenterModule>();

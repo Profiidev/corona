@@ -1,4 +1,4 @@
-use crate::PowerExt;
+use corona_power::PowerExt;
 use anyhow::{Context, Result, bail};
 use corona_ipc::{IpcCommand, IpcExt};
 use corona_utils::error::spawn_logged;

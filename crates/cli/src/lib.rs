@@ -12,6 +12,7 @@ mod ipc;
 mod mpris;
 mod notifications;
 mod pipewire;
+mod power;
 mod schema;
 mod sysinfo;
 mod tray;
@@ -26,7 +27,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_auth::register_script(registry);
   corona_network_manager::register_script(registry);
   corona_brightness::register_script(registry);
-  corona_power::register_script(registry);
   corona_weather::register_script(registry);
 }
 

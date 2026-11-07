@@ -8,6 +8,7 @@ pub(crate) mod audio;
 pub(crate) mod clipboard;
 pub(crate) mod media;
 pub(crate) mod notifications;
+pub(crate) mod power;
 pub(crate) mod printers;
 pub(crate) mod sysinfo;
 
@@ -19,5 +20,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<media::MediaPanel>()
     .register::<notifications::NotificationsPanel>()
     .register::<clipboard::ClipboardPanel>()
-    .register::<audio::AudioPanel>();
+    .register::<audio::AudioPanel>()
+    .register::<power::PowerPanel>();
 }

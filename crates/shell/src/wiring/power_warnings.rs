@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{Battery, BatteryState, Power, PowerExt, Status};
+use corona_power::{Battery, BatteryState, Power, PowerExt, Status};
 use corona_config::{BatteryWarningConfig, ConfigProvider, observe_section};
 use corona_notifications::{Notifications, Notify, Urgency};
 use gpui_kit::App;
@@ -69,7 +69,7 @@ struct Warned {
   id: Option<u32>,
 }
 
-pub(crate) fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App) {
   let (Some(power), Some(_)) = (
     cx.try_global::<Power>().cloned(),
     cx.try_global::<Notifications>(),

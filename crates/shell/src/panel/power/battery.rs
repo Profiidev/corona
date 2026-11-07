@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{Battery, BatteryState, PowerExt};
+use corona_power::{Battery, BatteryState, PowerExt};
 use corona_components::async_listener::AsyncListenerExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
@@ -11,7 +11,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::page::{PowerPanel, card};
+use crate::panel::power::{PowerPanel, card};
 use corona_components::{i18n::decimal, time::duration};
 use rust_i18n::t;
 

@@ -9,6 +9,7 @@ pub(crate) mod privacy;
 pub(crate) mod tray;
 mod notifications;
 pub(crate) mod mpris;
+mod power;
 mod printing;
 pub(crate) mod sysinfo;
 
@@ -23,6 +24,8 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsButton>()
     .register::<tray::Tray>()
     .register::<audio::AudioButton>()
+    .register::<PageButton<crate::panel::power::PowerPanel>>()
+    .register::<power::BatteryButton>()
     .register::<privacy::Privacy>()
     .register::<PageButton<crate::panel::clipboard::ClipboardPanel>>()
     .register::<IdlePageButton<crate::panel::printers::PrintersPanel>>();

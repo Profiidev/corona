@@ -1,4 +1,4 @@
-use crate::PowerExt;
+use corona_power::PowerExt;
 use corona_components::components::card::PageError;
 use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
@@ -8,6 +8,7 @@ use gpui_kit::{
 };
 
 pub(crate) mod battery;
+pub(crate) mod icons;
 mod devices;
 mod profiles;
 

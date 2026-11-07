@@ -13,6 +13,7 @@ pub(crate) fn register_all(cx: &mut App) {
     .slider::<sliders::audio::Output>()
     .slider::<sliders::audio::Input>()
     .quick_action::<quick_actions::notifications::DndToggle>()
+    .quick_action::<quick_actions::power::PowerProfileToggle>()
     .header::<cards::sysinfo::ProfileCard>()
     .card::<cards::mpris::MediaCard>();
 }

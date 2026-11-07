@@ -1,5 +1,4 @@
-use crate::Battery;
-use crate::{BatteryState, PowerExt};
+use corona_power::{Battery, BatteryState, PowerExt};
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{
   Context, Empty, FontWeight, Hsla, IntoElement, ParentElement, Render, Styled, Subscription,
@@ -12,7 +11,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::ui::page::PowerPanel;
+use crate::panel::power::PowerPanel;
 use corona_surface::control_center::Standalone;
 
 pub struct BatteryButton {

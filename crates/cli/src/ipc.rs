@@ -98,7 +98,7 @@ pub enum IpcCommands {
   /// Power profile commands
   PowerProfile {
     #[command(subcommand)]
-    command: corona_power::cli::Commands,
+    command: crate::power::Commands,
   },
   /// Theme commands
   Theme {
@@ -160,7 +160,7 @@ pub(crate) mod tests {
   use corona_network_manager::commands::radio::Wifi;
   use corona_shell::ipc::notifications::{ClearHistory, DoNotDisturb, Show};
   use corona_shell::ipc::pipewire::volume::Volume;
-  use corona_power::commands::{CycleProfile, SetProfile};
+  use corona_shell::ipc::power::{CycleProfile, SetProfile};
   use corona_script::commands::PluginCall;
   use corona_settings::commands::SettingsWindow;
   use corona_surface::commands::{ClosePanel, OpenPage, OpenPanel, TogglePanel};

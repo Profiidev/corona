@@ -3,11 +3,9 @@
 use corona_components::time::duration;
 use std::rc::Rc;
 
-use crate::{
-  PowerExt,
-  commands::{CycleProfile, SetProfile},
-  ui::icons::power_profile as profile_label,
-};
+use crate::ipc::power::{CycleProfile, SetProfile};
+use crate::panel::power::icons::power_profile as profile_label;
+use corona_power::PowerExt;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
   Action, DetailView, Icon, Meta, Outcome, View, detail_row,
@@ -23,7 +21,7 @@ fn battery(cx: &App) -> View {
     Some(b) => {
       rows.push(detail_row(
         t!("app.launcher.info.state"),
-        crate::ui::page::battery::state(b.state),
+        crate::panel::power::battery::state(b.state),
       ));
       if let Some(t) = b.time_to_empty.filter(|t| !t.is_zero()) {
         rows.push(detail_row(t!("app.launcher.info.to_empty"), duration(t)));

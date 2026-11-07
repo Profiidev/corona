@@ -1,4 +1,4 @@
-use crate::PowerExt;
+use corona_power::PowerExt;
 use corona_components::async_listener::AsyncListenerExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
@@ -11,10 +11,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::{
-  icons::power_profile,
-  page::{PowerPanel, card},
-};
+use crate::panel::power::{PowerPanel, card, icons::power_profile};
 use rust_i18n::t;
 
 impl PowerPanel {

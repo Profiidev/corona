@@ -1,4 +1,4 @@
-use crate::PowerExt;
+use corona_power::PowerExt;
 use gpui_kit::App;
 
 use corona_surface::{
@@ -7,7 +7,7 @@ use corona_surface::{
 };
 use corona_utils::error::ErrorLogExt;
 
-use crate::ui::icons::power_profile;
+use crate::panel::power::icons::power_profile;
 
 osd_kind!(
   PowerProfileOsd(ToggleOsd),

@@ -5,9 +5,11 @@ use gpui_kit::App;
 pub(crate) mod audio;
 mod bluetooth;
 mod notifications;
+mod power;
 
 pub(crate) fn register_all(cx: &mut App) {
   audio::init(cx);
   bluetooth::init(cx);
   notifications::init(cx);
+  power::init(cx);
 }

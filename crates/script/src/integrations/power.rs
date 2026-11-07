@@ -1,7 +1,7 @@
 use std::time::UNIX_EPOCH;
 
 use crate as pw;
-use crate::PowerExt;
+use corona_power::PowerExt;
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, PluginRef, ScriptModule, Throws, Unsubscribe,
   host_module, json,
