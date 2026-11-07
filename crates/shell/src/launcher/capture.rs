@@ -13,7 +13,7 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
+use corona_capture::{
   commands::{ColorPicker, Screenshot},
   ui::screenshot::mode::Mode,
 };

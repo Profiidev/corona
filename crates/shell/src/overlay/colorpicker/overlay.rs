@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
+use corona_capture::{
   RgbaImageExt,
   image::{Rgba, RgbaImage},
 };
@@ -14,7 +14,7 @@ use gpui_kit::{
   px, rgb,
 };
 
-use crate::ui::colorpicker::state::ColorPickerState;
+use crate::overlay::colorpicker::state::ColorPickerState;
 use corona_surface::overlay::OverlayState;
 
 const DIAMETER: f32 = 180.;

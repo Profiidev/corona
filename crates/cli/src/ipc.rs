@@ -78,7 +78,7 @@ pub enum IpcCommands {
   /// Screenshots and the color picker
   Capture {
     #[command(subcommand)]
-    command: corona_capture::cli::Commands,
+    command: crate::capture::Commands,
   },
   /// Notification commands
   Notification {
@@ -153,7 +153,7 @@ pub(crate) mod tests {
   use corona_auth::commands::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_shell::ipc::brightness::{brightness::SetBrightness, nightlight::Nightlight};
-  use corona_capture::commands::{ColorPicker, Screenshot};
+  use corona_shell::ipc::capture::{ColorPicker, Screenshot};
   use corona_shell::ipc::idle::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};
   use corona_shell::ipc::mpris::media::Media;

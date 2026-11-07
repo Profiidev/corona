@@ -3,6 +3,7 @@
 use gpui_kit::App;
 
 mod bluetooth;
+mod capture;
 mod disks;
 mod idle;
 mod brightness;
@@ -19,6 +20,7 @@ mod weather;
 
 pub(crate) fn register_all(cx: &mut App) {
   bluetooth::register(cx);
+  capture::register(cx);
   disks::register(cx);
   idle::register(cx);
   brightness::register(cx);

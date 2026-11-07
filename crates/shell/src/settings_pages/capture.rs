@@ -9,7 +9,7 @@ use rust_i18n::t;
 
 settings_page!(ScreenshotSettings, "screenshot", 120, |cx| screenshot());
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut().register::<ScreenshotSettings>();
 }
 

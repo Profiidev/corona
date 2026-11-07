@@ -12,7 +12,7 @@ use gpui_kit::{
   div, point, px,
 };
 
-use crate::ui::screenshot::{mode::Mode, overlay::Overlay, save::is_empty, state::ScreenshotState};
+use crate::overlay::screenshot::{mode::Mode, overlay::Overlay, save::is_empty, state::ScreenshotState};
 
 pub struct ScreenshotToolbar {
   toolbar_bounds: Rc<Cell<Bounds<Pixels>>>,

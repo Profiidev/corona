@@ -16,7 +16,7 @@ mod tests {
         .register::<crate::settings_pages::weather::LocationSettings>()
         .register::<crate::settings_pages::pipewire::PrivacySettings>()
         .register::<crate::settings_pages::notifications::NotificationSettings>()
-        .register::<corona_capture::settings::ScreenshotSettings>()
+        .register::<crate::settings_pages::capture::ScreenshotSettings>()
         .register::<corona_osk::settings::OskSettings>()
         .register::<corona_auth::settings::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()

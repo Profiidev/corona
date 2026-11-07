@@ -4,9 +4,9 @@ use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
-use crate::ui::{colorpicker::state::ColorPickerState, screenshot::state::ScreenshotState};
+use crate::overlay::{colorpicker::state::ColorPickerState, screenshot::state::ScreenshotState};
 
-pub use crate::ui::screenshot::mode::Mode;
+pub use crate::overlay::screenshot::mode::Mode;
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()

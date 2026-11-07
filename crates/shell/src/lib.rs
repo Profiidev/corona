@@ -122,7 +122,6 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   if let Err(err) = corona_pipewire::init(cx, &buses) {
     tracing::error!("Failed to start pipewire: {err:#}");
   }
-  corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
   corona_osk::init(cx, &buses);
   corona_windows::init(cx, &buses);

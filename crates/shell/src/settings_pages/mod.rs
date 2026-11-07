@@ -3,6 +3,7 @@
 use gpui_kit::App;
 
 mod brightness;
+pub(crate) mod capture;
 mod clipboard;
 pub(crate) mod idle;
 mod disks;
@@ -24,4 +25,5 @@ pub(crate) fn register_all(cx: &mut App) {
   idle::register(cx);
   disks::register(cx);
   brightness::register(cx);
+  capture::register(cx);
 }

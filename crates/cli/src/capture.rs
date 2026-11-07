@@ -3,7 +3,7 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
 
-use crate::commands::{ColorPicker, Mode, Screenshot};
+use corona_shell::ipc::capture::{ColorPicker, Mode, Screenshot};
 
 #[derive(Subcommand)]
 pub enum Commands {

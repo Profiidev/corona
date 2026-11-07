@@ -7,6 +7,7 @@ use crate::{
 
 mod bluetooth;
 mod brightness;
+mod capture;
 mod clipboard;
 mod config;
 mod idle;
