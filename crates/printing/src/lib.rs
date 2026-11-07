@@ -14,7 +14,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use gpui_kit::{App, AppContext, AsyncApp, Entity, Global, Task};
 use zbus::Connection;
 
-use corona_js::ScriptExt;
 use corona_utils::{Buses, error::ErrorLogExt};
 
 use crate::ipp::IppError;
