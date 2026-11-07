@@ -18,6 +18,7 @@ mod notifications;
 mod pipewire;
 mod power;
 mod schema;
+mod session;
 mod sysinfo;
 mod tray;
 mod types;
@@ -28,7 +29,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
   corona_desktop::register_script(registry);
   corona_windows::register_script(registry);
-  corona_auth::register_script(registry);
 }
 
 /// Corona Shell CLI

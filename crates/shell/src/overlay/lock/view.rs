@@ -5,7 +5,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use crate::AuthExt;
+use corona_auth::AuthExt;
 use corona_auth_screen::{AuthScreen, Purpose};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
@@ -15,7 +15,7 @@ use gpui_kit::{
   px, relative,
 };
 
-use crate::ui::lock::{state::LockState, user};
+use crate::overlay::lock::{state::LockState, user};
 
 const ZOOM: f32 = 0.96;
 const FEATHER: f32 = 10.;

@@ -12,7 +12,7 @@ use specta::specta;
 
 /// Only ever the user running corona, a plugin cannot probe other accounts
 fn user() -> String {
-  crate::polkit::current_user()
+  corona_auth::polkit::current_user()
 }
 
 /// Failed attempts a plugin gets before it has to wait
@@ -88,7 +88,7 @@ async fn limited<F: Future<Output = Result<bool>>>(started: Result<(Attempt, F)>
   let (attempt, run) = started?;
   let result = run.await;
   // a timeout is not a wrong finger; dropping the attempt frees the slot
-  if matches!(&result, Err(e) if e.is::<crate::ScanTimeout>()) {
+  if matches!(&result, Err(e) if e.is::<corona_auth::ScanTimeout>()) {
     return result;
   }
   let ok = matches!(result, Ok(true));
@@ -166,7 +166,7 @@ mod tests {
   fn a_timeout_is_not_a_failure() {
     let plugin = "timeout-test";
     for _ in 0..=FREE_FAILURES {
-      let started = Attempt::start(plugin).map(|a| (a, async { Err(crate::ScanTimeout.into()) }));
+      let started = Attempt::start(plugin).map(|a| (a, async { Err(corona_auth::ScanTimeout.into()) }));
       assert!(futures::executor::block_on(limited(started)).is_err());
     }
     assert!(Attempt::start(plugin).is_ok());
@@ -177,7 +177,7 @@ mod tests {
     cx.executor().allow_parking();
     // no fprintd on this bus
     let (_bus, conn) = TestBus::with_conn();
-    cx.update(|cx| crate::connect(cx, &conn));
+    cx.update(|cx| corona_auth::connect(cx, &conn));
     let body = "if (!globalThis.started) {
       globalThis.started = true;
       m.fingerprint().catch((e) => report({ message: e.message }));

@@ -189,7 +189,7 @@ fn pick_user(identities: &[Identity], me: u32) -> Option<u32> {
 }
 
 /// The account running corona; $USER can be unset or stale
-pub(crate) fn current_user() -> String {
+pub fn current_user() -> String {
   // SAFETY: getuid cannot fail
   user_name(unsafe { libc::getuid() })
     .or_else(|| std::env::var("USER").ok())

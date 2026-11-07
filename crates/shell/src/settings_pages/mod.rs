@@ -2,6 +2,7 @@
 
 use gpui_kit::App;
 
+pub(crate) mod auth;
 mod brightness;
 pub(crate) mod capture;
 mod clipboard;
@@ -24,6 +25,7 @@ pub(crate) fn register_all(cx: &mut App) {
   clipboard::register(cx);
   idle::register(cx);
   disks::register(cx);
+  auth::register(cx);
   brightness::register(cx);
   capture::register(cx);
 }

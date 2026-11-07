@@ -6,7 +6,7 @@ use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::ui::lock::LockState;
+use crate::overlay::lock::LockState;
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Session>();
@@ -60,26 +60,31 @@ impl IpcCommand for Session {
   type Response = ();
 
   fn handle(action: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    let (lock, power) = plan(action);
-    let lock = lock.then(|| LockState::lock(cx));
-    let power = power.map(|a| cx.power().session_action(a));
-
-    cx.spawn(async move |cx| {
-      if let Some(lock) = lock {
-        lock.await;
-        // a refused lock removes the state; never suspend unlocked
-        if !cx.update(|cx| cx.has_global::<LockState>()) {
-          tracing::warn!("session not locked, skipping the power action");
-          return;
-        }
-      }
-      if let Some(power) = power {
-        let _ = power.await.log_err();
-      }
-    })
-    .detach();
+    run(action, cx);
     Ok(())
   }
+}
+
+/// Locks first when the action says so, then runs its power action
+pub fn run(action: Action, cx: &mut App) {
+  let (lock, power) = plan(action);
+  let lock = lock.then(|| LockState::lock(cx));
+  let power = power.map(|a| cx.power().session_action(a));
+
+  cx.spawn(async move |cx| {
+    if let Some(lock) = lock {
+      lock.await;
+      // a refused lock removes the state; never suspend unlocked
+      if !cx.update(|cx| cx.has_global::<LockState>()) {
+        tracing::warn!("session not locked, skipping the power action");
+        return;
+      }
+    }
+    if let Some(power) = power {
+      let _ = power.await.log_err();
+    }
+  })
+  .detach();
 }
 
 #[cfg(test)]

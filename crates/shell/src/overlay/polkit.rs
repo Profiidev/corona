@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::polkit::Polkit;
+use corona_auth::polkit::Polkit;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, Context, IntoElement, Render, SharedString, Window,
 };

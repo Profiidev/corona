@@ -4,7 +4,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use crate::AuthExt;
+use corona_auth::AuthExt;
 use anyhow::{Result, anyhow};
 use corona_auth_screen::Fingerprint;
 use corona_capture::{
@@ -30,7 +30,7 @@ use gpui_kit::{
 
 use corona_components::animation::animation_duration;
 
-use crate::ui::lock::{
+use crate::overlay::lock::{
   user,
   view::{Background, Lock, Unlock, ZOOM_SPEED},
 };
@@ -282,7 +282,7 @@ impl LockState {
             cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Failed));
           }
           // idle; the claim is released, claim again
-          Err(e) if e.is::<crate::ScanTimeout>() => {}
+          Err(e) if e.is::<corona_auth::ScanTimeout>() => {}
           // no reader, no prints enrolled or fprintd missing; the password still works
           Err(e) => {
             cx.update(|cx| Self::set_reader(cx, |r| *r = Fingerprint::Off));

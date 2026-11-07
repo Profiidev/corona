@@ -2,6 +2,7 @@
 
 use gpui_kit::App;
 
+mod auth;
 mod bluetooth;
 mod capture;
 mod disks;
@@ -19,6 +20,7 @@ mod tray;
 mod weather;
 
 pub(crate) fn register_all(cx: &mut App) {
+  auth::register(cx);
   bluetooth::register(cx);
   capture::register(cx);
   disks::register(cx);

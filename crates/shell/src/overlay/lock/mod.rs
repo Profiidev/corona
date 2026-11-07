@@ -11,7 +11,7 @@ mod view;
 /// Who is logged in, for the lock screen
 fn user(cx: &App) -> User {
   User {
-    name: crate::polkit::current_user().into(),
+    name: corona_auth::polkit::current_user().into(),
     avatar: cx
       .config()
       .shell

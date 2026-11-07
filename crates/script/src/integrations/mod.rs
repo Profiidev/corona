@@ -2,6 +2,7 @@
 
 use corona_js::ScriptRegistry;
 
+mod auth;
 mod bluez;
 mod brightness;
 mod idle;
@@ -16,6 +17,7 @@ mod tray;
 mod weather;
 
 pub(crate) fn register(registry: &mut ScriptRegistry) {
+  registry.register::<auth::AuthModule>();
   registry.register::<bluez::BluetoothModule>();
   registry.register::<brightness::BrightnessModule>();
   registry.register::<idle::IdleModule>();

@@ -2,6 +2,7 @@
 
 use gpui_kit::App;
 
+pub mod auth;
 pub mod bluetooth;
 pub mod capture;
 pub mod disks;
@@ -17,6 +18,7 @@ pub mod sysinfo;
 pub mod tray;
 
 pub(crate) fn register_all(cx: &mut App) {
+  auth::register(cx);
   bluetooth::register(cx);
   capture::register(cx);
   disks::register(cx);

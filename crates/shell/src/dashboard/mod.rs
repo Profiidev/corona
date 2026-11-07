@@ -4,10 +4,13 @@ use corona_surface::dashboard::DashboardExt;
 use gpui_kit::App;
 
 mod cards;
+mod session;
 mod quick_actions;
 mod sliders;
 
 pub(crate) fn register_all(cx: &mut App) {
+  cx.dashboard_mut()
+    .button(|_, cx| cx.new(session::PowerMenu::new).into());
   cx.dashboard_mut()
     .quick_action::<quick_actions::bluetooth::BluetoothToggle>()
     .slider::<sliders::brightness::Brightness>()

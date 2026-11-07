@@ -15,7 +15,7 @@ use rust_i18n::t;
 
 settings_page!(LockscreenSettings, "lockscreen", 100, |cx| lockscreen(cx));
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<LockscreenSettings>()
     .group("system", "profile", 0, || {

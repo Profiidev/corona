@@ -108,7 +108,7 @@ pub enum IpcCommands {
   /// Call a method of a plugin's service and print its answer as JSON
   Plugin(corona_script::cli::PluginArgs),
   /// Lock, suspend, log out, reboot or shut down
-  Session(corona_auth::cli::SessionArgs),
+  Session(crate::session::SessionArgs),
   /// The settings window: open, close or toggle
   Settings(corona_settings::cli::SettingsArgs),
 }
@@ -150,7 +150,7 @@ impl IpcCommands {
 #[cfg(test)]
 pub(crate) mod tests {
   use clap::Parser;
-  use corona_auth::commands::Session;
+  use corona_shell::ipc::auth::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_shell::ipc::brightness::{brightness::SetBrightness, nightlight::Nightlight};
   use corona_shell::ipc::capture::{ColorPicker, Screenshot};

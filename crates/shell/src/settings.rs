@@ -18,7 +18,7 @@ mod tests {
         .register::<crate::settings_pages::notifications::NotificationSettings>()
         .register::<crate::settings_pages::capture::ScreenshotSettings>()
         .register::<corona_osk::settings::OskSettings>()
-        .register::<corona_auth::settings::LockscreenSettings>()
+        .register::<crate::settings_pages::auth::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()
         .register::<corona_windows::settings::WindowSwitcherSettings>()
         .register::<crate::settings_pages::idle::IdleSettings>();

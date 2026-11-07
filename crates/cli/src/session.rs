@@ -2,7 +2,7 @@
 
 use corona_ipc::IpcCommandSend;
 
-use crate::commands::{Action, Session};
+use corona_shell::ipc::auth::{Action, Session};
 
 #[derive(clap::Args)]
 pub struct SessionArgs {
