@@ -1,4 +1,4 @@
-use crate::NotificationsExt;
+use corona_notifications::NotificationsExt;
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt};
@@ -90,7 +90,7 @@ impl IpcCommand for DismissToasts {
   type Response = ();
 
   fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    crate::ui::overlay::NotificationPopups::dismiss_all(cx);
+    crate::overlay::notifications::NotificationPopups::dismiss_all(cx);
     Ok(())
   }
 }

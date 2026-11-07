@@ -9,6 +9,7 @@ mod quick_actions;
 pub(crate) fn register_all(cx: &mut App) {
   cx.dashboard_mut()
     .quick_action::<quick_actions::bluetooth::BluetoothToggle>()
+    .quick_action::<quick_actions::notifications::DndToggle>()
     .header::<cards::sysinfo::ProfileCard>()
     .card::<cards::mpris::MediaCard>();
 }

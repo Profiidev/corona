@@ -83,7 +83,7 @@ pub enum IpcCommands {
   /// Notification commands
   Notification {
     #[command(subcommand)]
-    command: corona_notifications::cli::Commands,
+    command: crate::notifications::Commands,
   },
   /// Brightness and nightlight commands
   Brightness {
@@ -158,7 +158,7 @@ pub(crate) mod tests {
   use corona_ipc::{IpcCommand, cli::testing::request};
   use corona_shell::ipc::mpris::media::Media;
   use corona_network_manager::commands::radio::Wifi;
-  use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
+  use corona_shell::ipc::notifications::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
   use corona_power::commands::{CycleProfile, SetProfile};
   use corona_script::commands::PluginCall;
@@ -303,7 +303,7 @@ pub(crate) mod tests {
       (&["process", "kill-port", "8080"], json!([1]), corona_shell::ipc::sysinfo::KillPort::COMMAND, json!(8080)),
       (&["launcher", "timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
       (&["launcher", "timer", "stop", "7"], json!(null), corona_launcher::ipc::StopTimer::COMMAND, json!(7)),
-      (&["notification", "dismiss"], json!(null), corona_notifications::commands::DismissToasts::COMMAND, json!(null)),
+      (&["notification", "dismiss"], json!(null), corona_shell::ipc::notifications::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_launcher::ipc::Toggle::COMMAND, json!({ "command": null, "query": null, "prefill": false })),
       (&["launcher", "close"], json!(null), corona_launcher::ipc::Close::COMMAND, json!(null)),
       (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40", "prefill": false })),

@@ -12,7 +12,7 @@ settings_page!(NotificationSettings, "notifications", 30, |cx| {
   notifications()
 });
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut().register::<NotificationSettings>();
 }
 

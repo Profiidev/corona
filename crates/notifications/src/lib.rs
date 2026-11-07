@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{APP_NAME, ConfigProvider, observe_section};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use futures_lite::{Stream, StreamExt};
 use gpui_kit::{App, AppContext, Entity, Global};
@@ -16,17 +15,10 @@ use zbus::{
 
 use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
-pub use crate::state::{Action, Notification, NotificationImage, Urgency, strip_markup};
+pub use crate::state::{MAX_ACTIONS, sound_due, Action, Notification, NotificationImage, Urgency, strip_markup};
 
-pub mod cli;
-pub mod commands;
-mod hooks;
-mod launcher;
-pub mod script;
 mod server;
-pub mod settings;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -325,8 +317,7 @@ pub fn pre_start() {
   };
 }
 
-/// Serves or follows the notifications on the session bus, as `notification.enabled` says,
-/// registers their UI, commands, script modules and the plugin host's and launcher's hooks
+/// Serves or follows the notifications on the session bus, as `notification.enabled` says
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   // read once at startup
   observe_section(
@@ -336,20 +327,7 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   );
   let serve = cx.config().notification.enabled;
   connect(cx, &buses.session, serve).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  hooks::init(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry
-    .register::<script::NotificationsModule>()
-    .register::<script::NotificationCenterModule>();
 }
 
 /// With `serve`, be the notification daemon; without it the state stays empty, for when another

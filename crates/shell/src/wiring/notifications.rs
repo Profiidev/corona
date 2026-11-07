@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use corona_utils::error::spawn_logged;
 
-use crate::{Action, Notifications, NotificationsExt, Notify, Urgency};
+use corona_notifications::{Action, Notifications, NotificationsExt, Notify, Urgency};
 use corona_script::hooks::{self, Click, Notice};
 use futures_lite::StreamExt;
 use gpui_kit::App;
@@ -15,7 +15,7 @@ const CLICK: &str = "default";
 /// What clicking each notification sent does, by its id
 type Clicks = Rc<RefCell<HashMap<u32, Click>>>;
 
-pub(crate) fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App) {
   let clicks = Clicks::default();
   listen(clicks.clone(), cx);
   hooks::set_notify(move |notice, cx| send(notice, clicks.clone(), cx), cx);

@@ -7,7 +7,8 @@ use corona_surface::{
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{NotificationsExt, ui::page::NotificationsPanel};
+use crate::panel::notifications::NotificationsPanel;
+use corona_notifications::NotificationsExt;
 
 pub struct DndToggle;
 

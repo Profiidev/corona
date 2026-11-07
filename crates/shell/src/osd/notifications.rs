@@ -1,4 +1,4 @@
-use crate::NotificationsExt;
+use corona_notifications::NotificationsExt;
 use gpui_kit::{App, assets::IconName};
 
 use corona_surface::{

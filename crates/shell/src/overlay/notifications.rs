@@ -7,7 +7,7 @@ use std::{
   time::{Duration, Instant, SystemTime},
 };
 
-use crate::{Filter, NotificationsExt, Urgency, state::sound_due, strip_markup};
+use corona_notifications::{Filter, NotificationsExt, Urgency, sound_due, strip_markup};
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
@@ -26,7 +26,7 @@ use gpui_kit::{
 };
 use rodio::{Decoder, DeviceSinkBuilder, Source};
 
-use crate::ui::page::{NotificationsPanel, ReplyInputs};
+use crate::panel::notifications::{NotificationsPanel, ReplyInputs};
 use corona_components::filter::filter_regex;
 
 const NAMESPACE: &str = "corona_notification";
@@ -37,7 +37,7 @@ const MAX_OPEN_POPUPS: usize = 5;
 /// the timeout of a popup that stays until clicked
 const NEVER: Duration = Duration::MAX;
 
-type Item = crate::Notification;
+type Item = corona_notifications::Notification;
 
 struct Popups {
   items: Vec<Popup>,

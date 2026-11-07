@@ -3,7 +3,7 @@ use corona_surface::control_center::ControlCenterPage;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
 
-use crate::{Notification, NotificationsExt};
+use corona_notifications::{Notification, NotificationsExt};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,

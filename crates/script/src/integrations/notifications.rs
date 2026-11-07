@@ -15,7 +15,7 @@ use specta::{Type, Types, datatype::DataType, specta};
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate as nt;
-use crate::{NotificationsExt, state::MAX_ACTIONS};
+use corona_notifications::{MAX_ACTIONS, NotificationsExt};
 
 #[derive(Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]

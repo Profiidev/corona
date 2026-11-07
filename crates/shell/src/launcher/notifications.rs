@@ -10,13 +10,14 @@ use corona_launcher::{
 };
 use corona_surface::{commands::OpenPage, control_center::ControlCenterPage};
 
-use crate::{Notification, NotificationsExt, strip_markup, ui::page::NotificationsPanel};
+use crate::panel::notifications::NotificationsPanel;
+use corona_notifications::{Notification, NotificationsExt, strip_markup};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
 use corona_components::i18n;
 
-use crate::commands::{ClearHistory, DismissToasts, Dnd, DoNotDisturb};
+use crate::ipc::notifications::{ClearHistory, DismissToasts, Dnd, DoNotDisturb};
 
 /// `time` in the local zone, as `pattern` formats it
 fn when(time: std::time::SystemTime, pattern: &str) -> String {

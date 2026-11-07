@@ -22,6 +22,7 @@ corona_bluez.workspace = true
 corona_sysinfo.workspace = true
 corona_printing.workspace = true
 corona_mpris.workspace = true
+corona_notifications.workspace = true
 corona_ipc.workspace = true
 gpui-kit.workspace = true
 corona_js.workspace = true

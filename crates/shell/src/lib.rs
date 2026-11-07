@@ -15,9 +15,11 @@ pub mod ipc;
 mod launcher;
 mod locale_keys;
 mod osd;
+mod overlay;
 mod panel;
 mod settings;
 mod settings_pages;
+mod wiring;
 
 /// What has to happen before any thread starts
 pub fn pre_start() {
@@ -101,6 +103,7 @@ fn register_ui(cx: &mut App) {
   osd::register_all(cx);
   launcher::register_all(cx);
   settings_pages::register_all(cx);
+  wiring::wire_all(cx);
 }
 
 fn register_variants(cx: &mut App) {

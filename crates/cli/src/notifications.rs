@@ -3,7 +3,7 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
 
-use crate::commands::{ClearHistory, DismissToasts, Dnd, DoNotDisturb, Show};
+use corona_shell::ipc::notifications::{ClearHistory, DismissToasts, Dnd, DoNotDisturb, Show};
 
 #[derive(Subcommand)]
 pub enum Commands {

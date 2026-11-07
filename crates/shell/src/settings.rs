@@ -15,7 +15,7 @@ mod tests {
       cx.settings_mut()
         .register::<corona_weather::settings::LocationSettings>()
         .register::<corona_pipewire::settings::PrivacySettings>()
-        .register::<corona_notifications::settings::NotificationSettings>()
+        .register::<crate::settings_pages::notifications::NotificationSettings>()
         .register::<corona_capture::settings::ScreenshotSettings>()
         .register::<corona_osk::settings::OskSettings>()
         .register::<corona_auth::settings::LockscreenSettings>()
