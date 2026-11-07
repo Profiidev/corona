@@ -20,19 +20,21 @@ pub(crate) mod sysinfo;
 
 pub(crate) fn register_all(cx: &mut App) {
   disks::init(cx);
-  bluetooth::register(cx);
+  // the order the pages are listed in
   cx.control_center_mut()
-    .register::<sysinfo::SysinfoPanel>()
-    .register::<printers::PrintersPanel>()
-    .register::<media::MediaPanel>()
     .register::<notifications::NotificationsPanel>()
-    .register::<clipboard::ClipboardPanel>()
     .register::<audio::AudioPanel>()
-    .register::<weather::WeatherPanel>()
-    .register::<calendar::CalendarPanel>()
-    .register::<disks::DisksPanel>()
+    .register::<clipboard::ClipboardPanel>()
+    .register::<sysinfo::SysinfoPanel>()
+    .register::<bluetooth::BluetoothPanel>()
     .register::<network::NetworkPanel>()
     .register::<hotspot::HotspotPanel>()
+    .register::<printers::PrintersPanel>()
+    .register::<power::PowerPanel>()
+    .register::<disks::DisksPanel>()
+    .register::<weather::WeatherPanel>()
+    .register::<calendar::CalendarPanel>()
     .register::<brightness::BrightnessPanel>()
-    .register::<power::PowerPanel>();
+    .register::<media::MediaPanel>();
+  bluetooth::open_for_pairing(cx);
 }

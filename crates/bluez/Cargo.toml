@@ -19,7 +19,6 @@ anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-bluez.workspace = true
 futures-channel.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

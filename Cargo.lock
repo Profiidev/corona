@@ -1709,7 +1709,6 @@ dependencies = [
  "libc",
  "pam-client",
  "rust-i18n",
- "serde",
  "smol",
  "tempfile",
  "tracing",
@@ -1741,7 +1740,6 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
- "tracing",
  "uuid",
  "zbus",
 ]
@@ -1751,7 +1749,6 @@ name = "corona_brightness"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_compositor",
  "corona_config",
  "corona_location",
  "corona_utils",
@@ -1761,9 +1758,7 @@ dependencies = [
  "jiff",
  "rust-i18n",
  "rustix",
- "serde",
  "serde_json",
- "specta",
  "tempfile",
  "tracing",
  "wayland-client",
@@ -1777,18 +1772,13 @@ name = "corona_capture"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_compositor",
- "corona_config",
- "corona_utils",
  "futures",
  "gbm",
  "gpui-kit",
  "gpui-pre-wgpu",
  "image",
- "jiff",
  "rust-i18n",
  "rustix",
- "serde",
  "tempfile",
  "tracing",
  "wayland-backend",
@@ -1805,32 +1795,18 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
- "corona_auth",
- "corona_brightness",
- "corona_capture",
- "corona_clipboard",
  "corona_config",
  "corona_desktop",
- "corona_idle",
  "corona_ipc",
  "corona_js",
  "corona_launcher",
- "corona_mpris",
  "corona_network_manager",
- "corona_notifications",
  "corona_osk",
- "corona_pipewire",
- "corona_power",
- "corona_printing",
  "corona_script",
  "corona_settings",
  "corona_shell",
  "corona_surface",
- "corona_sysinfo",
- "corona_tray",
- "corona_udisks",
  "corona_utils",
- "corona_weather",
  "corona_windows",
  "gpui-kit",
  "serde_json",
@@ -1991,7 +1967,6 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
- "specta",
  "tempfile",
  "tracing",
  "wayland-client",
@@ -2121,10 +2096,7 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "rust-i18n",
- "serde",
  "serde_json",
- "tracing",
- "uuid",
  "zbus",
 ]
 
@@ -2143,7 +2115,6 @@ dependencies = [
  "futures",
  "futures-lite",
  "gpui-kit",
- "qrcode",
  "rust-i18n",
  "rustix",
  "serde",
@@ -2159,7 +2130,6 @@ name = "corona_notifications"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_compositor",
  "corona_config",
  "corona_utils",
  "cpal",
@@ -2168,17 +2138,11 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "image",
- "jiff",
- "rodio",
  "rust-i18n",
- "serde",
  "serde_json",
  "smol",
- "specta",
- "specta-typescript",
  "tempfile",
  "tracing",
- "uuid",
  "zbus",
 ]
 
@@ -2215,20 +2179,16 @@ name = "corona_pipewire"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_compositor",
- "corona_config",
  "corona_utils",
  "dashmap",
  "flume",
  "gpui-kit",
  "pipewire",
- "regex",
  "rust-i18n",
  "serde",
  "serde_json",
  "specta",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2237,7 +2197,6 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "corona-zbus-upower",
- "corona_config",
  "corona_utils",
  "flume",
  "futures-lite",
@@ -2245,9 +2204,6 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
- "specta",
- "tracing",
- "uuid",
  "zbus",
 ]
 
@@ -2256,7 +2212,6 @@ name = "corona_printing"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_config",
  "corona_utils",
  "dirs 7.0.0",
  "flume",
@@ -2270,7 +2225,6 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
- "specta",
  "tempfile",
  "tracing",
  "uuid",
@@ -2451,13 +2405,9 @@ dependencies = [
  "nvml-wrapper",
  "rust-i18n",
  "rustix",
- "serde",
- "serde_json",
- "specta",
  "sysinfo 0.40.1",
  "tempfile",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2465,7 +2415,6 @@ name = "corona_tray"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_config",
  "corona_desktop",
  "corona_utils",
  "dirs 7.0.0",
@@ -2473,9 +2422,7 @@ dependencies = [
  "futures-lite",
  "gpui-kit",
  "image",
- "regex",
  "rust-i18n",
- "serde",
  "serde_json",
  "smol",
  "specta",
@@ -2490,20 +2437,15 @@ name = "corona_udisks"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_config",
  "corona_utils",
  "futures",
  "futures-lite",
  "gpui-kit",
- "jiff",
  "rust-i18n",
- "rustix",
- "serde",
  "tempfile",
  "tracing",
  "uuid",
  "zbus",
- "zstd",
 ]
 
 [[package]]
@@ -2535,14 +2477,11 @@ dependencies = [
  "flume",
  "futures-lite",
  "gpui-kit",
- "jiff",
  "rust-i18n",
  "serde",
  "serde_json",
- "specta",
  "tempfile",
  "tracing",
- "uuid",
 ]
 
 [[package]]

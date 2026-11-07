@@ -10,8 +10,6 @@ categories.workspace = true
 
 [dependencies]
 rust-i18n.workspace = true
-serde.workspace = true
-uuid.workspace = true
 futures.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
@@ -19,7 +17,6 @@ zbus.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 corona-zbus-mpris2.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

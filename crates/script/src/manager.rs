@@ -1562,7 +1562,23 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 2] = ["secrets", "bluetooth"];
+  const ALL_MODULES: [&str; 15] = [
+    "secrets",
+    "auth",
+    "bluetooth",
+    "brightness",
+    "idle",
+    "mpris",
+    "network",
+    "notification_center",
+    "notifications",
+    "pipewire",
+    "power",
+    "printing",
+    "sysinfo",
+    "tray",
+    "weather",
+  ];
 
   fn dts(plugins: &Plugins, id: &str) -> String {
     fs::read_to_string(plugins.paths.local.join(id).join("corona.d.ts")).unwrap()

@@ -12,14 +12,9 @@ categories.workspace = true
 test-support = []
 
 [dependencies]
-zstd.workspace = true
-corona_config.workspace = true
 rust-i18n.workspace = true
-serde.workspace = true
 futures.workspace = true
-jiff.workspace = true
 tracing.workspace = true
-rustix.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 anyhow.workspace = true
