@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{
+use corona_clipboard::{
   ClipboardExt,
   placeholders::{self, Env},
 };

@@ -8,7 +8,7 @@ use corona_settings::{SettingsExt, SettingsPage, item};
 use gpui_kit::{App, component::setting::SettingItem};
 use rust_i18n::t;
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .group(LauncherSettings::ID, "quicklinks", 0, || {
       t!("app.settings.launcher.groups.quicklinks").into()

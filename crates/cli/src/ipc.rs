@@ -41,7 +41,7 @@ pub enum IpcCommands {
   /// The clipboard history
   Clipboard {
     #[command(subcommand)]
-    command: corona_clipboard::cli::Commands,
+    command: crate::clipboard::Commands,
   },
   /// Removable drives
   Drive {
@@ -294,8 +294,8 @@ pub(crate) mod tests {
       (&["media", "loop", "track"], json!(null), corona_shell::ipc::mpris::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["launcher", "calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
-      (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_clipboard::commands::ListClipboard::COMMAND, json!(["foo", 5])),
-      (&["clipboard", "clear"], json!(3), corona_clipboard::commands::ClearClipboard::COMMAND, json!(null)),
+      (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::ipc::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
+      (&["clipboard", "clear"], json!(3), corona_shell::ipc::clipboard::ClearClipboard::COMMAND, json!(null)),
       (&["launcher", "trash", "count"], json!(3), corona_launcher::ipc::TrashCount::COMMAND, json!(null)),
       (&["drive", "eject", "USB"], json!(null), corona_udisks::commands::DriveAction::COMMAND, json!(["Eject", "USB"])),
       (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_udisks::commands::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),

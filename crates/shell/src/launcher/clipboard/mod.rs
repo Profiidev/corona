@@ -4,7 +4,7 @@ pub mod snippets;
 
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
-use crate::{ClipboardExt, Entry, Kind};
+use corona_clipboard::{ClipboardExt, Entry, Kind};
 use corona_components::time::ago_short;
 use gpui_kit::{App, AppContext, SharedString, Task, assets::IconName};
 use rust_i18n::t;
@@ -105,7 +105,7 @@ impl Command for EntryRow {
     let e = &self.0;
     let title = title(e);
     let icon = match (e.kind, &e.path, e.text.as_deref().and_then(swatch)) {
-      (_, Some(path), _) => Icon::Image(crate::store::display_path(path).into()),
+      (_, Some(path), _) => Icon::Image(corona_clipboard::store::display_path(path).into()),
       (Kind::Color, _, Some(color)) => Icon::Swatch(color),
       (Kind::Link, ..) => Icon::Named(IconName::Link),
       _ => Icon::Named(IconName::Type),
@@ -262,7 +262,7 @@ fn history_view() -> corona_launcher::View {
   .into_view()
 }
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   snippets::init(cx);
   registry::register_all(
     [

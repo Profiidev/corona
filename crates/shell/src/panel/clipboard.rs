@@ -3,8 +3,8 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::launcher::{clip, kind_label, swatch, title};
-use crate::{ClipboardExt, Entry, Kind};
+use crate::launcher::clipboard::{clip, kind_label, swatch, title};
+use corona_clipboard::{ClipboardExt, Entry, Kind};
 use corona_components::components::{card::CardExt, modal::Dialog, segmented};
 use corona_launcher::command::Hud;
 use corona_utils::{error::ErrorLogExt, ticker::TickerExt};
@@ -143,7 +143,7 @@ fn preview(entry: &Entry) -> AnyElement {
     .filter(|_| entry.kind == Kind::Color)
     .and_then(swatch);
   match (&entry.path, color) {
-    (Some(path), _) => frame.child(img(crate::store::display_path(path)).size_full()),
+    (Some(path), _) => frame.child(img(corona_clipboard::store::display_path(path)).size_full()),
     (None, Some(color)) => frame.child(div().size_6().rounded_md().bg(color)),
     _ => frame.child(
       Icon::new(match entry.kind {
@@ -318,7 +318,7 @@ impl Render for ClipboardPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::{ClipboardHistory, Store};
+  use corona_clipboard::{ClipboardHistory, Store};
   use gpui_kit::{self as gpui, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;

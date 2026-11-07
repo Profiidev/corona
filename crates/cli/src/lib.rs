@@ -6,6 +6,7 @@ use crate::{
 };
 
 mod bluetooth;
+mod clipboard;
 mod config;
 mod ipc;
 mod mpris;

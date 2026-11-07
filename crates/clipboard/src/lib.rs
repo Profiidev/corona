@@ -1,20 +1,14 @@
 //! Clipboard history: a watcher on the data control protocol fills a SQLite store, the
 //! launcher reads it; pasting presses Ctrl+V on a virtual keyboard
 
-pub mod cli;
-pub mod commands;
-pub mod launcher;
 pub mod paste;
 pub mod placeholders;
-mod settings;
 pub mod store;
-pub mod ui;
 pub mod watch;
 
 use std::{rc::Rc, sync::Arc};
 
 use anyhow::Result;
-use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, launcher::ClipboardConfig, observe_section};
 use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
@@ -44,30 +38,11 @@ impl ClipboardExt for App {
   }
 }
 
-/// Opens the history and watches the clipboard, sets the launcher's paster, and registers
-/// the clipboard's UI and commands
+/// Opens the history and watches the clipboard
 pub fn init(cx: &mut App, _: &Buses) {
   if let Err(e) = start(cx) {
     tracing::warn!("clipboard history is off: {e:#}");
   }
-  corona_launcher::paste::set_paster(
-    |_, cx| {
-      // the window the launcher hands the keyboard back to
-      let terminal = cx
-        .compositor()
-        .active_window(cx)
-        .is_some_and(|w| paste::is_terminal(&w.class));
-      cx.background_spawn(async move {
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        paste::paste(terminal)
-      })
-    },
-    cx,
-  );
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
 }
 
 /// Opens the history and starts watching the clipboard

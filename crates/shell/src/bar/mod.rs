@@ -17,5 +17,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<PageButton<crate::panel::media::MediaPanel>>()
     .register::<mpris::ActivePlayer>()
     .register::<notifications::NotificationsButton>()
+    .register::<PageButton<crate::panel::clipboard::ClipboardPanel>>()
     .register::<IdlePageButton<crate::panel::printers::PrintersPanel>>();
 }

@@ -15,7 +15,6 @@ specta-typescript.workspace = true
 rust-i18n.workspace = true
 serde.workspace = true
 uuid.workspace = true
-clap.workspace = true
 jiff.workspace = true
 corona_utils.workspace = true
 corona_config.workspace = true

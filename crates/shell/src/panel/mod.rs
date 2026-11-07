@@ -4,6 +4,7 @@ use corona_surface::control_center::ControlCenterExt;
 use gpui_kit::App;
 
 pub(crate) mod bluetooth;
+pub(crate) mod clipboard;
 pub(crate) mod media;
 pub(crate) mod notifications;
 pub(crate) mod printers;
@@ -15,5 +16,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<sysinfo::SysinfoPanel>()
     .register::<printers::PrintersPanel>()
     .register::<media::MediaPanel>()
-    .register::<notifications::NotificationsPanel>();
+    .register::<notifications::NotificationsPanel>()
+    .register::<clipboard::ClipboardPanel>();
 }

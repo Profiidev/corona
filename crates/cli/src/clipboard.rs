@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done},
 };
 
-use crate::commands::{ClearClipboard, DeleteClip, ListClipboard};
+use corona_shell::ipc::clipboard::{ClearClipboard, DeleteClip, ListClipboard};
 
 #[derive(Subcommand)]
 pub enum Commands {
