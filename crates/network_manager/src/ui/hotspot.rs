@@ -501,13 +501,8 @@ impl HotspotPanel {
           )
         })
         // a running hotspot keeps its settings until it is restarted
-        .child(Input::new(&form.ssid).small().disabled(running))
-        .child(
-          Input::new(&form.password)
-            .mask_toggle()
-            .small()
-            .disabled(running),
-        )
+        .child(Input::new(&form.ssid).disabled(running))
+        .child(Input::new(&form.password).mask_toggle().disabled(running))
         // side by side, so the card fits the panel with the QR code
         .child(
           div()
@@ -516,16 +511,16 @@ impl HotspotPanel {
             .child(
               div()
                 .flex_1()
-                .child(Select::new(&form.band).small().disabled(running)),
+                .child(Select::new(&form.band).disabled(running)),
             )
             .child(
               div()
                 .flex_1()
-                .child(Select::new(&form.security).small().disabled(running)),
+                .child(Select::new(&form.security).disabled(running)),
             ),
         )
-        .child(Select::new(&form.auto_off).small().disabled(running))
-        .child(Select::new(&form.isolate).small().disabled(running))
+        .child(Select::new(&form.auto_off).disabled(running))
+        .child(Select::new(&form.isolate).disabled(running))
         .when(form.password.read(cx).value().is_empty(), |d| {
           d.child(
             div()
