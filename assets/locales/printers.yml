@@ -85,9 +85,6 @@ app:
     no_scanners:
       en: No scanners found
       de: Keine Scanner gefunden
-    sane_hint:
-      en: 'Older scanners without AirScan need SANE: install sane-backends (NixOS: hardware.sane.enable = true), add network scanners to the backend config (e.g. "tcp <ip>" in xerox_mfp.conf) and check with "scanimage -L".'
-      de: 'Ältere Scanner ohne AirScan brauchen SANE: sane-backends installieren (NixOS: hardware.sane.enable = true), Netzwerkscanner in der Backend-Konfiguration eintragen (z. B. "tcp <IP>" in xerox_mfp.conf) und mit "scanimage -L" prüfen.'
     tls:
       en: Encrypted
       de: Verschlüsselt
