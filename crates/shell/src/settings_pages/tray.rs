@@ -16,9 +16,9 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::ui::widget::{Options, Tray};
+use crate::bar::tray::{Options, Tray};
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut().widget_options::<Tray>(WidgetOptions {
     form: tray_form,
     label: None,

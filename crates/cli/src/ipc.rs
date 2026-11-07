@@ -56,7 +56,7 @@ pub enum IpcCommands {
   /// Tray items and their menus
   Tray {
     #[command(subcommand)]
-    command: corona_tray::cli::Commands,
+    command: crate::tray::Commands,
   },
   /// Open, close or toggle the launcher, the trash, timers and the calculator
   Launcher {
@@ -292,7 +292,7 @@ pub(crate) mod tests {
       (&["bluetooth", "discover", "on"], json!(null), Discover::COMMAND, json!(true)),
       (&["media", "seek", "-10"], json!(null), corona_shell::ipc::mpris::player::Seek::COMMAND, json!({ "By": -10.0 })),
       (&["media", "loop", "track"], json!(null), corona_shell::ipc::mpris::player::Loop::COMMAND, json!("Track")),
-      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
+      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::ipc::tray::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["launcher", "calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::ipc::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
       (&["clipboard", "clear"], json!(3), corona_shell::ipc::clipboard::ClearClipboard::COMMAND, json!(null)),

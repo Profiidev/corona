@@ -1,4 +1,4 @@
-use crate::{MenuItem, Toggle, TrayExt};
+use corona_tray::{MenuItem, Toggle, TrayExt};
 
 use corona_surface::popup::{self, ROW, SEPARATOR};
 use corona_utils::error::spawn_logged;

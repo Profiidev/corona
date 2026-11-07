@@ -1,5 +1,5 @@
 use crate as tray;
-use crate::TrayExt;
+use corona_tray::TrayExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json,
 };

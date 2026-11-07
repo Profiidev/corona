@@ -1,4 +1,4 @@
-use crate::{MenuItem, TrayExt};
+use corona_tray::{MenuItem, TrayExt};
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;

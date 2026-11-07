@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done},
 };
 
-use crate::commands::{Activate, ListEntries};
+use corona_shell::ipc::tray::{Activate, ListEntries};
 
 #[derive(Subcommand)]
 pub enum Commands {

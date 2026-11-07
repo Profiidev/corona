@@ -11,10 +11,8 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
-  TrayExt,
-  commands::{Activate, entries},
-};
+use crate::ipc::tray::{Activate, entries};
+use corona_tray::TrayExt;
 
 pub(crate) fn register(cx: &mut App) {
   registry::register(

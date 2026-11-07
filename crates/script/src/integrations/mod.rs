@@ -7,10 +7,12 @@ mod mpris;
 mod notifications;
 mod printing;
 mod sysinfo;
+mod tray;
 
 pub(crate) fn register(registry: &mut ScriptRegistry) {
   registry.register::<bluez::BluetoothModule>();
   registry.register::<sysinfo::SysinfoModule>();
+  registry.register::<tray::TrayModule>();
   registry.register::<printing::PrintingModule>();
   registry.register::<mpris::MprisModule>();
   registry

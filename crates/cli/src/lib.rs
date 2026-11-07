@@ -13,6 +13,7 @@ mod mpris;
 mod notifications;
 mod schema;
 mod sysinfo;
+mod tray;
 mod types;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
@@ -26,7 +27,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_brightness::register_script(registry);
   corona_power::register_script(registry);
   corona_pipewire::register_script(registry);
-  corona_tray::register_script(registry);
   corona_weather::register_script(registry);
 }
 
