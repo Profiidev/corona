@@ -14,11 +14,11 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::Osk;
+use corona_osk::Osk;
 
 settings_page!(OskSettings, "osk", 90, |cx| osk());
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut().register::<OskSettings>();
 }
 

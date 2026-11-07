@@ -8,7 +8,7 @@ use corona_config::{
   launcher::{CommandConfig, SearchEngine},
 };
 use corona_settings::{
-  SettingsPage, group, item, page, settings_page, shared_groups, shared_items,
+  SettingsExt, SettingsPage, group, item, page, settings_page, shared_groups, shared_items,
 };
 use gpui_kit::{
   App, AppContext, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
@@ -29,7 +29,11 @@ use corona_components::settings_fields::{
   Choice, number, optional_text, save, searchable, switch, text,
 };
 
-use crate::registry::Registry;
+use corona_launcher::registry::Registry;
+
+pub(super) fn register(cx: &mut App) {
+  cx.settings_mut().register::<LauncherSettings>();
+}
 
 settings_page!(
   /// The launcher page: behavior, every command's alias and visibility and where
@@ -203,7 +207,7 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     {
       let id = id.to_string();
       move |value, cx| {
-        if let Err(e) = crate::common::update_command(&id, cx, |e| e.alias = some(&value)) {
+        if let Err(e) = corona_launcher::common::update_command(&id, cx, |e| e.alias = some(&value)) {
           tracing::warn!("{e:#}");
         }
       }
@@ -221,7 +225,7 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
         .small()
         .on_click(move |checked: &bool, _, cx| {
           let checked = *checked;
-          if let Err(e) = crate::common::update_command(&id, cx, |e| set(e, checked)) {
+          if let Err(e) = corona_launcher::common::update_command(&id, cx, |e| set(e, checked)) {
             tracing::warn!("{e:#}");
           }
         })

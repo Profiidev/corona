@@ -8,8 +8,10 @@ pub(crate) mod capture;
 mod clipboard;
 pub(crate) mod idle;
 mod disks;
+pub(crate) mod launcher;
 pub(crate) mod notifications;
 pub(crate) mod pipewire;
+pub(crate) mod osk;
 mod printing;
 mod sysinfo;
 mod tray;
@@ -25,6 +27,8 @@ pub(crate) fn register_all(cx: &mut App) {
   clipboard::register(cx);
   idle::register(cx);
   disks::register(cx);
+  launcher::register(cx);
+  osk::register(cx);
   auth::register(cx);
   brightness::register(cx);
   capture::register(cx);
@@ -47,7 +51,7 @@ mod tests {
         .register::<crate::settings::pipewire::PrivacySettings>()
         .register::<crate::settings::notifications::NotificationSettings>()
         .register::<crate::settings::capture::ScreenshotSettings>()
-        .register::<corona_osk::settings::OskSettings>()
+        .register::<crate::settings::osk::OskSettings>()
         .register::<crate::settings::auth::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()
         .register::<corona_windows::settings::WindowSwitcherSettings>()

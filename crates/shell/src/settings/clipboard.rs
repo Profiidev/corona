@@ -3,7 +3,7 @@
 
 use corona_components::settings_fields::{number, switch};
 use corona_config::launcher::{Quicklink, Snippet};
-use corona_launcher::settings::{LauncherSettings, records_item};
+use super::launcher::{LauncherSettings, records_item};
 use corona_settings::{SettingsExt, SettingsPage, item};
 use gpui_kit::{App, component::setting::SettingItem};
 use rust_i18n::t;

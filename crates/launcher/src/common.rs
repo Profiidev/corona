@@ -7,11 +7,9 @@ use corona_config::{Config, ConfigProvider, launcher::CommandConfig};
 use gpui_kit::{App, SharedString, Task, assets::IconName};
 use rust_i18n::t;
 
-use corona_settings::SettingsExt;
 
 use crate::{
   command::{Action, Outcome},
-  settings::LauncherSettings,
   view::{Field, FieldKind, FormView, View},
 };
 
@@ -130,7 +128,7 @@ pub fn actions(id: SharedString, cx: &App) -> Vec<Action> {
       "common:configure",
       t!("app.launcher.common.configure"),
       |_, _, cx| {
-        cx.open_settings::<LauncherSettings>()?;
+        corona_settings::open(Some("launcher"), cx)?;
         Ok(Outcome::close())
       },
     )
