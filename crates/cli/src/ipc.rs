@@ -21,7 +21,7 @@ pub enum IpcCommands {
   /// Audio devices, app streams, output and microphone volume
   Audio {
     #[command(subcommand)]
-    command: corona_pipewire::cli::Commands,
+    command: crate::pipewire::Commands,
   },
   /// Wi-Fi radio and networks, VPNs, hotspot and captive portal
   Network {
@@ -159,7 +159,7 @@ pub(crate) mod tests {
   use corona_shell::ipc::mpris::media::Media;
   use corona_network_manager::commands::radio::Wifi;
   use corona_shell::ipc::notifications::{ClearHistory, DoNotDisturb, Show};
-  use corona_pipewire::commands::volume::Volume;
+  use corona_shell::ipc::pipewire::volume::Volume;
   use corona_power::commands::{CycleProfile, SetProfile};
   use corona_script::commands::PluginCall;
   use corona_settings::commands::SettingsWindow;
@@ -281,9 +281,9 @@ pub(crate) mod tests {
       (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_windows::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
       (&["window", "show-desktop"], json!(null), corona_windows::commands::window::ShowDesktop::COMMAND, json!(null)),
       (&["keyboard", "layout", "next"], json!(["de", "us"]), corona_windows::commands::window::KeyboardLayout::COMMAND, json!("next")),
-      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_pipewire::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
-      (&["audio", "stream", "firefox", "40"], json!(null), corona_pipewire::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
-      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_pipewire::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
+      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_shell::ipc::pipewire::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
+      (&["audio", "stream", "firefox", "40"], json!(null), corona_shell::ipc::pipewire::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
+      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_shell::ipc::pipewire::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
       (&["network", "connect", "home"], json!(null), corona_network_manager::commands::network::ConnectWifi::COMMAND, json!("home")),
       (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_network_manager::commands::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
       (&["network", "vpn", "work", "on"], json!(true), corona_network_manager::commands::network::SwitchVpn::COMMAND, json!(["work", "On"])),

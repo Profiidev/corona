@@ -1,4 +1,4 @@
-use crate::{AudioNode, PipewireExt};
+use corona_pipewire::{AudioNode, PipewireExt};
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -7,12 +7,13 @@ use gpui_kit::{
   div,
 };
 
-use crate::ui::page::{
+use crate::panel::audio::{
   state::{DefaultState, StreamState, on_select},
   ui::{audio_node, audio_stream},
 };
 use rust_i18n::t;
 
+pub(crate) mod icons;
 mod listener;
 mod state;
 mod ui;

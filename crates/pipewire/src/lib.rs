@@ -1,7 +1,6 @@
 use std::{thread, time::Duration};
 
 use anyhow::Result;
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use gpui_kit::App;
 use pipewire::{context::ContextRc, core::CoreRc, main_loop::MainLoopRc, registry::RegistryRc};
@@ -11,18 +10,12 @@ use crate::{event::AudioEvent, listener::Handles, state::PipewireState};
 mod api;
 mod audio;
 mod capture;
-pub mod cli;
 mod command;
-pub mod commands;
 mod event;
-mod launcher;
 mod listener;
-pub mod script;
-pub mod settings;
 mod state;
 #[cfg(test)]
 mod testing;
-pub mod ui;
 pub mod volume;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
@@ -34,20 +27,10 @@ pub use state::{AudioNode, NodeType};
 
 corona_utils::global_ext!(PipewireExt, pipewire, Pipewire);
 
-/// Starts the PipeWire thread, registers the audio and privacy UI, commands and script module
+/// Starts the PipeWire thread
 pub fn init(cx: &mut App, _: &Buses) -> Result<()> {
   start(cx)?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::PipewireModule>();
 }
 
 fn start(cx: &mut App) -> Result<()> {

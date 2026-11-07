@@ -1,11 +1,9 @@
-use crate::{CaptureKind, PipewireExt};
+use corona_pipewire::{CaptureKind, PipewireExt};
 use gpui_kit::App;
 
-use crate::ui::{
-  icons::{capture_icon, capture_label},
-  osd::{PrivacyOsd, show},
-  privacy::hidden,
-};
+use crate::bar::privacy::hidden;
+use crate::osd::audio::{PrivacyOsd, show};
+use crate::panel::audio::icons::{capture_icon, capture_label};
 use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 

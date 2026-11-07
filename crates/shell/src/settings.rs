@@ -14,7 +14,7 @@ mod tests {
       // the integrations' pages, rendered here too
       cx.settings_mut()
         .register::<corona_weather::settings::LocationSettings>()
-        .register::<corona_pipewire::settings::PrivacySettings>()
+        .register::<crate::settings_pages::pipewire::PrivacySettings>()
         .register::<crate::settings_pages::notifications::NotificationSettings>()
         .register::<corona_capture::settings::ScreenshotSettings>()
         .register::<corona_osk::settings::OskSettings>()

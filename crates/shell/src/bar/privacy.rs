@@ -4,7 +4,7 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use crate::{CaptureKind, PipewireExt};
+use corona_pipewire::{CaptureKind, PipewireExt};
 use corona_config::{ConfigProvider, PrivacyConfig, observe_section};
 use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::ticker::TickerExt;
@@ -22,7 +22,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ui::icons::{capture_icon, capture_label};
+use crate::panel::audio::icons::{capture_icon, capture_label};
 use corona_components::filter::filter_regex;
 use corona_surface::popup::{self, ROW, SEPARATOR};
 use rust_i18n::t;

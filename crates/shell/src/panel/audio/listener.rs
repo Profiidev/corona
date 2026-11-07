@@ -1,7 +1,7 @@
-use crate::{AudioNode, PipewireExt};
+use corona_pipewire::{AudioNode, PipewireExt};
 use gpui_kit::{Context, Subscription, Window};
 
-use crate::ui::page::{
+use crate::panel::audio::{
   AudioPanel,
   state::{StreamState, on_select},
 };

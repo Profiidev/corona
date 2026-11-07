@@ -1,4 +1,4 @@
-use crate::{
+use corona_pipewire::{
   AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
   PipewireExt,
 };
@@ -9,7 +9,7 @@ use gpui_kit::App;
 use serde::Serialize;
 use specta::{Type, specta};
 
-type Pw = Glob<crate::Pipewire>;
+type Pw = Glob<corona_pipewire::Pipewire>;
 
 // The script's view of an `AudioNode`: `volume` added, device ids left out.
 #[derive(Serialize, Type)]

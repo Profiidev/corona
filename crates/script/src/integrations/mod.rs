@@ -5,6 +5,7 @@ use corona_js::ScriptRegistry;
 mod bluez;
 mod mpris;
 mod notifications;
+mod pipewire;
 mod printing;
 mod sysinfo;
 mod tray;
@@ -15,6 +16,7 @@ pub(crate) fn register(registry: &mut ScriptRegistry) {
   registry.register::<tray::TrayModule>();
   registry.register::<printing::PrintingModule>();
   registry.register::<mpris::MprisModule>();
+  registry.register::<pipewire::PipewireModule>();
   registry
     .register::<notifications::NotificationsModule>()
     .register::<notifications::NotificationCenterModule>();

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{AudioNode, PipewireExt, volume::to_slider};
+use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use corona_desktop::entry::name_for_names;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -14,7 +14,7 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::{
+use crate::ipc::pipewire::{
   audio::{Kind, MoveStream, MuteFocused, SetDefault, StreamVolume},
   volume::Action as VolumeAction,
 };

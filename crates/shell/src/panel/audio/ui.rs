@@ -1,4 +1,4 @@
-use crate::{AudioNode, PipewireExt};
+use corona_pipewire::{AudioNode, PipewireExt};
 use corona_components::components::window_icon::WindowIcon;
 use corona_desktop::entry::name_for_names;
 use corona_utils::error::ErrorLogExt;
@@ -15,8 +15,8 @@ use gpui_kit::{
   div,
 };
 
-use crate::ui::icons::volume_icon;
-use crate::ui::page::state::{DefaultState, NodeState, StreamState};
+use crate::panel::audio::icons::volume_icon;
+use crate::panel::audio::state::{DefaultState, NodeState, StreamState};
 
 fn audio_btns(state: &NodeState, node: Option<&AudioNode>, mic: bool) -> Div {
   div()

@@ -8,11 +8,11 @@ use corona_settings::{
 use gpui_kit::{App, Axis, Window, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
 
-use crate::ui::privacy::Privacy;
+use crate::bar::privacy::Privacy;
 
 settings_page!(PrivacySettings, "privacy", 140, |cx| privacy());
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<PrivacySettings>()
     .widget_options::<Privacy>(WidgetOptions {

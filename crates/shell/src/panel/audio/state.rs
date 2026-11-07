@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc};
 
-use crate::{
+use corona_pipewire::{
   AudioNode, PipewireAudio, PipewireExt,
   volume::{to_linear, to_slider},
 };
@@ -11,7 +11,7 @@ use gpui_kit::{
   component::select::{SelectEvent, SelectState},
 };
 
-use crate::ui::page::utils::{NodeSelectItem, index_of, select_items, target_of};
+use crate::panel::audio::utils::{NodeSelectItem, index_of, select_items, target_of};
 
 pub const DEFAULT_SINK_ID: u32 = u32::MAX;
 

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{PipewireExt, volume::to_slider};
+use corona_pipewire::{PipewireExt, volume::to_slider};
 use anyhow::Result;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -15,8 +15,8 @@ use rust_i18n::t;
 
 use corona_surface::{control_center::Standalone, panel::AppPanelExt};
 
-use crate::commands::volume::{Action as VolumeAction, Device, Volume};
-use crate::ui::page::AudioPanel;
+use crate::ipc::pipewire::volume::{Action as VolumeAction, Device, Volume};
+use crate::panel::audio::AudioPanel;
 
 /// The default device's slider level and mute
 fn level(device: Device, cx: &App) -> Option<(f32, bool)> {

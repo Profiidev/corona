@@ -1,4 +1,4 @@
-use crate::{
+use corona_pipewire::{
   PipewireExt,
   volume::{to_linear, to_slider},
 };

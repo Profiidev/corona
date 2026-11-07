@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use gpui_kit::assets::IconName;
 use rust_i18n::t;
 
-use crate::CaptureKind;
+use corona_pipewire::CaptureKind;
 
 pub fn volume_icon(volume: f32, muted: bool) -> IconName {
   if muted {

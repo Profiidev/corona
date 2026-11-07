@@ -8,9 +8,9 @@ use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, Entity, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
+use crate::panel::audio::{AudioPanel, icons::volume_icon};
+use corona_pipewire::{
   AudioNode, PipewireExt,
-  ui::{icons::volume_icon, page::AudioPanel},
   volume::{to_linear, to_slider},
 };
 

@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{STEP, described, done, level},
 };
 
-use crate::commands::{
+use corona_shell::ipc::pipewire::{
   audio::{Kind, ListNodes, MoveStream, MuteFocused, SetDefault, StreamVolume},
   volume::{Action, Device, Volume},
 };

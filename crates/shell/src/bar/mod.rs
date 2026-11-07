@@ -3,7 +3,9 @@
 use corona_surface::bar::{BarExt, IdlePageButton, PageButton};
 use gpui_kit::App;
 
+pub(crate) mod audio;
 mod bluetooth;
+pub(crate) mod privacy;
 pub(crate) mod tray;
 mod notifications;
 pub(crate) mod mpris;
@@ -11,6 +13,7 @@ mod printing;
 pub(crate) mod sysinfo;
 
 pub(crate) fn register_all(cx: &mut App) {
+  privacy::init_filter(cx);
   cx.bar_mut()
     .register::<bluetooth::BluetoothButton>()
     .register::<PageButton<crate::panel::sysinfo::SysinfoPanel>>()
@@ -19,6 +22,8 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<mpris::ActivePlayer>()
     .register::<notifications::NotificationsButton>()
     .register::<tray::Tray>()
+    .register::<audio::AudioButton>()
+    .register::<privacy::Privacy>()
     .register::<PageButton<crate::panel::clipboard::ClipboardPanel>>()
     .register::<IdlePageButton<crate::panel::printers::PrintersPanel>>();
 }

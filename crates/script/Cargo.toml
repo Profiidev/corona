@@ -23,6 +23,7 @@ corona_sysinfo.workspace = true
 corona_tray.workspace = true
 corona_printing.workspace = true
 corona_mpris.workspace = true
+corona_pipewire.workspace = true
 corona_notifications.workspace = true
 corona_ipc.workspace = true
 gpui-kit.workspace = true
