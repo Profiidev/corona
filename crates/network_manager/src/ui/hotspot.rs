@@ -476,6 +476,7 @@ impl HotspotPanel {
             })
             .child(
               Switch::new("hotspot-enabled")
+                .cursor_pointer()
                 .ml_auto()
                 .checked(running)
                 // a second start while the first waits would take over the wifi; with wifi off
@@ -509,18 +510,34 @@ impl HotspotPanel {
             .flex()
             .gap_2()
             .child(
-              div()
-                .flex_1()
-                .child(Select::new(&form.band).disabled(running)),
+              div().flex_1().child(
+                Select::new(&form.band)
+                  .cursor_pointer()
+                  .when(running, |this| this.cursor_not_allowed())
+                  .disabled(running),
+              ),
             )
             .child(
-              div()
-                .flex_1()
-                .child(Select::new(&form.security).disabled(running)),
+              div().flex_1().child(
+                Select::new(&form.security)
+                  .cursor_pointer()
+                  .when(running, |this| this.cursor_not_allowed())
+                  .disabled(running),
+              ),
             ),
         )
-        .child(Select::new(&form.auto_off).disabled(running))
-        .child(Select::new(&form.isolate).disabled(running))
+        .child(
+          Select::new(&form.auto_off)
+            .cursor_pointer()
+            .when(running, |this| this.cursor_not_allowed())
+            .disabled(running),
+        )
+        .child(
+          Select::new(&form.isolate)
+            .cursor_pointer()
+            .when(running, |this| this.cursor_not_allowed())
+            .disabled(running),
+        )
         .when(form.password.read(cx).value().is_empty(), |d| {
           d.child(
             div()

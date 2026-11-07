@@ -144,6 +144,7 @@ impl PrintersPanel {
           )
           .child(
             Switch::new(format!("printer-pause-{name}"))
+              .cursor_pointer()
               .checked(printer.state != PrinterState::Stopped)
               .tooltip(t!("app.printers.enabled"))
               .on_change(cx.async_listener(

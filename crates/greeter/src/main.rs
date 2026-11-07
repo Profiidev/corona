@@ -128,6 +128,7 @@ impl Greeter {
       None => t!("app.lock.no_session").into(),
     };
     let trigger = Button::new("session-trigger")
+      .cursor_pointer()
       .icon(IconName::Monitor)
       .label(label);
     corner_menu(

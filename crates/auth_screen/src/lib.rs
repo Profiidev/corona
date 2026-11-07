@@ -521,6 +521,7 @@ impl AuthScreen {
       })
       .collect();
     let trigger = Button::new("auth-menu-trigger")
+      .cursor_pointer()
       .icon(IconName::Power)
       .tooltip(self.purpose.menu());
     corner_menu(

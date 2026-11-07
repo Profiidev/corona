@@ -217,6 +217,7 @@ fn source_row(name: &str, cx: &App) -> Div {
     })
     .child(
       Switch::new(format!("source-enabled-{name}"))
+        .cursor_pointer()
         .checked(source.enabled)
         .on_click(move |checked: &bool, _, cx| {
           PluginManager::set_source_enabled(&toggle, *checked, cx)
@@ -476,6 +477,7 @@ fn plugin_row(row: &PluginStatus, cx: &mut App) -> Div {
     .child(match enabling {
       true => Spinner::new().into_any_element(),
       false => Switch::new(format!("plugin-enabled-{id}"))
+        .cursor_pointer()
         .checked(row.enabled)
         .on_click(move |checked: &bool, window, cx| match checked {
           true => PluginManager::enable(&enable_id, ask(name.clone(), window), cx),

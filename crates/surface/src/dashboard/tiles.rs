@@ -78,6 +78,8 @@ fn tile(action: &QuickActionEntry, tile: Tile) -> Button {
   let enabled = tile.toggle.is_some();
 
   Button::new(ElementId::Name(format!("toggle-{}", action.id).into()))
+    .cursor_pointer()
+    .when(!enabled, |this| this.cursor_not_allowed())
     .with_variant(match tile.active {
       true => ButtonVariant::Primary,
       false => ButtonVariant::Default,

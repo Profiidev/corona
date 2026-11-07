@@ -121,6 +121,7 @@ impl DisksPanel {
         Switch::new(gpui_kit::ElementId::Name(
           format!("disks-autoclear-{id}").into(),
         ))
+        .cursor_pointer()
         .checked(backing.autoclear)
         .small()
         .tooltip(t!("app.disks.autoclear"))

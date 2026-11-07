@@ -102,8 +102,8 @@ mod tests {
 
   impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-      let mut layout =
-        ControlCenterLayout::new("media").buttons([Button::new("extra")].into_iter());
+      let mut layout = ControlCenterLayout::new("media")
+        .buttons([Button::new("extra").cursor_pointer()].into_iter());
       layout.close = |cx| {
         cx.set_global(Closed);
         Ok(())

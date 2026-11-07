@@ -69,6 +69,7 @@ impl BluetoothPanel {
               .icon(IconName::RefreshCw)
               .small()
               .cursor_pointer()
+              .when(!powered, |this| this.cursor_not_allowed())
               .tooltip(t!("app.bluetooth.scan"))
               .disabled(!powered)
               .loading(scanning)
@@ -79,6 +80,8 @@ impl BluetoothPanel {
           )
           .child(
             Switch::new("bt-powered")
+              .cursor_pointer()
+              .when(adapter.is_none(), |this| this.cursor_not_allowed())
               .checked(powered)
               .disabled(adapter.is_none())
               .on_change(cx.async_listener(
@@ -101,6 +104,7 @@ impl BluetoothPanel {
             )
             .child(
               Switch::new("bt-discoverable")
+                .cursor_pointer()
                 .checked(adapter.discoverable)
                 .on_change(cx.async_listener(
                   |_, checked: &bool, _, cx| cx.bluetooth().set_discoverable(*checked, cx),

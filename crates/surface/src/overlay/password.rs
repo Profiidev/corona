@@ -171,11 +171,13 @@ impl PasswordCard<'_> {
               .justify_end()
               .child(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)))
+                  .cursor_pointer()
                   .label(t!("app.common.cancel"))
                   .on_click(move |_, window, cx| on_cancel(window, cx)),
               )
               .child(
                 Button::new(SharedString::from(format!("{}-submit", self.id)))
+                  .cursor_pointer()
                   .primary()
                   .label(self.submit_label)
                   .loading(self.busy)

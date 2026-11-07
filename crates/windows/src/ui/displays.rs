@@ -262,6 +262,8 @@ impl DisplaysPanel {
       )
       .child(
         Switch::new(SharedString::from(format!("display-{name}")))
+          .cursor_pointer()
+          .when(last, |this| this.cursor_not_allowed())
           .checked(!monitor.disabled)
           .disabled(last)
           .on_click(cx.listener(move |this, checked: &bool, _, cx| {
@@ -320,6 +322,7 @@ impl DisplaysPanel {
               .icon(IconName::Unlink)
               .label(t!("app.displays.stop_mirroring"))
               .cursor_pointer()
+              .when(mirroring.is_none(), |this| this.cursor_not_allowed())
               .disabled(mirroring.is_none())
               .on_click(cx.listener({
                 let target = target.clone();
@@ -337,6 +340,7 @@ impl DisplaysPanel {
               .icon(IconName::Link)
               .label(t!("app.displays.start_mirroring"))
               .cursor_pointer()
+              .when(!can_mirror, |this| this.cursor_not_allowed())
               .disabled(!can_mirror)
               .on_click(cx.listener(move |this, _, _, cx| {
                 if let (Some(source), Some(target)) = (&source, &target) {

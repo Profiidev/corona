@@ -1163,7 +1163,7 @@ impl DisksPanel {
             .flex_col()
             .gap_1()
             .child(field_label(label))
-            .child(Select::new(state).small())
+            .child(Select::new(state).cursor_pointer().small())
             .into_any_element(),
         );
       }
@@ -1174,6 +1174,7 @@ impl DisksPanel {
           Checkbox::new(gpui_kit::ElementId::Name(
             format!("disks-dialog-check-{key}").replace('.', "-").into(),
           ))
+          .cursor_pointer()
           .checked(dialog.check(key))
           .label(label)
           .small()
@@ -1327,7 +1328,7 @@ impl DisksPanel {
               .gap_1()
               .child(field_label(t!("app.disks.dialog.new_size").into()))
               .child(div().text_sm().child(size(dialog.slider_value * MIB)))
-              .child(Slider::new(slider))
+              .child(Slider::new(slider).cursor_pointer())
               .child(
                 div()
                   .flex()
@@ -1378,7 +1379,7 @@ impl DisksPanel {
               .gap_1()
               .child(field_label(t!("app.disks.size").into()))
               .child(div().text_sm().child(size(dialog.slider_value * MIB)))
-              .child(Slider::new(slider))
+              .child(Slider::new(slider).cursor_pointer())
               .into_any_element(),
           );
         }

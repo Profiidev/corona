@@ -106,7 +106,9 @@ impl Sliders {
   }
 
   fn row(&self, entry: &SliderEntry, row: &Row, percent: f32, cx: &App) -> Div {
-    let icon = Button::new(format!("dashboard-{}-icon", entry.id)).icon((entry.icon)(cx));
+    let icon = Button::new(format!("dashboard-{}-icon", entry.id))
+      .cursor_pointer()
+      .icon((entry.icon)(cx));
     let icon = match (entry.muted)(cx) {
       Some(muted) => {
         let toggle = entry.toggle_mute;

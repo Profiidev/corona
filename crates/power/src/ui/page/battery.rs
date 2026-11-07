@@ -126,6 +126,7 @@ impl PowerPanel {
             theme,
             t!("app.power.charge_limit", percent = limit.end),
             Switch::new("charge-limit")
+              .cursor_pointer()
               .checked(limit.enabled)
               .on_change(cx.async_listener(
                 |_, enabled: &bool, _, cx| cx.power().set_charge_threshold(*enabled, cx),
