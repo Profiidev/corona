@@ -1,4 +1,4 @@
-use crate::BrightnessExt;
+use corona_brightness::BrightnessExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -8,7 +8,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::ui::page::{BrightnessPanel, card};
+use crate::panel::brightness::{BrightnessPanel, card};
 
 /// The slider's range in kelvin
 pub(super) const MIN: f32 = 1000.;

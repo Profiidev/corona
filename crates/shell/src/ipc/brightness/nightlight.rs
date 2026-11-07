@@ -1,4 +1,4 @@
-use crate::BrightnessExt;
+use corona_brightness::BrightnessExt;
 use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;

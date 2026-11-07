@@ -1,5 +1,5 @@
 use crate as br;
-use crate::BrightnessExt;
+use corona_brightness::BrightnessExt;
 use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
 use serde::Serialize;

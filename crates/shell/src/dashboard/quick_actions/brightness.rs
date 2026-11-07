@@ -8,7 +8,8 @@ use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{BrightnessExt, ui::page::BrightnessPanel};
+use crate::panel::brightness::BrightnessPanel;
+use corona_brightness::BrightnessExt;
 
 pub struct NightlightToggle;
 

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{BrightnessExt, Display};
+use corona_brightness::{BrightnessExt, Display};
 use corona_ipc::{IpcCommand, Switch};
 use corona_launcher::{
   Accessory, Action, ArgSpec, ArgValue, Args, Command, CommandSource, Hud, Icon, Meta, Outcome,
@@ -14,11 +14,11 @@ use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
 use crate::{
-  commands::{
+  dashboard::sliders::brightness::display,
+  ipc::brightness::{
     brightness::{Action as BrightnessAction, SetBrightness},
     nightlight::{Nightlight, Request as NightlightRequest},
   },
-  ui::slider::display,
 };
 
 fn label(d: &Display) -> String {

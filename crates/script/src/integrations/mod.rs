@@ -3,6 +3,7 @@
 use corona_js::ScriptRegistry;
 
 mod bluez;
+mod brightness;
 mod mpris;
 mod notifications;
 mod pipewire;
@@ -13,6 +14,7 @@ mod tray;
 
 pub(crate) fn register(registry: &mut ScriptRegistry) {
   registry.register::<bluez::BluetoothModule>();
+  registry.register::<brightness::BrightnessModule>();
   registry.register::<sysinfo::SysinfoModule>();
   registry.register::<tray::TrayModule>();
   registry.register::<printing::PrintingModule>();

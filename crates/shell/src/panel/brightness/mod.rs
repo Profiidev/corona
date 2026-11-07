@@ -1,7 +1,7 @@
 use corona_components::components::list::card;
 use std::{collections::HashMap, pin::Pin, time::Duration};
 
-use crate::{BrightnessExt, Display, DisplayKind};
+use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
 use corona_components::components::{
   card::PageError,
@@ -14,7 +14,7 @@ use gpui_kit::{
   base::slider::SliderState, component::ActiveTheme, div, prelude::FluentBuilder,
 };
 
-use crate::ui::page::lights::{Light, displays, keyboard};
+use crate::panel::brightness::lights::{Light, displays, keyboard};
 use rust_i18n::t;
 
 mod lights;

@@ -1,4 +1,4 @@
-use crate::BrightnessExt;
+use corona_brightness::BrightnessExt;
 use gpui_kit::{App, assets::IconName};
 
 use corona_surface::{
@@ -7,7 +7,7 @@ use corona_surface::{
 };
 use corona_utils::error::ErrorLogExt;
 
-use crate::ui::page::display_name;
+use crate::panel::brightness::display_name;
 
 osd_kind!(
   BrightnessOsd(LevelOsd),

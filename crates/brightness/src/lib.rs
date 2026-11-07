@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use corona_config::{BrightnessConfig, ConfigProvider, observe_section};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::Connection;
@@ -26,18 +25,12 @@ pub use crate::{
 };
 
 mod backlight;
-pub mod cli;
-pub mod commands;
 mod ddc;
 mod gamma;
-mod launcher;
 mod nightlight;
 mod outputs;
-pub mod script;
-mod settings;
 mod solar;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -231,8 +224,7 @@ fn merge(
     .collect()
 }
 
-/// Follows the backlights and monitors, registers the brightness UI, commands and script
-/// module
+/// Follows the backlights and monitors
 pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   // read once at startup
   observe_section(
@@ -241,17 +233,7 @@ pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
     |_, _| tracing::warn!("brightness.enable_ddcutil applies after a restart"),
   );
   connect(cx, &buses.system)?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::BrightnessModule>();
 }
 
 pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

@@ -88,7 +88,7 @@ pub enum IpcCommands {
   /// Brightness and nightlight commands
   Brightness {
     #[command(subcommand)]
-    command: corona_brightness::cli::Commands,
+    command: crate::brightness::Commands,
   },
   /// Keep the session awake
   Idle {
@@ -152,7 +152,7 @@ pub(crate) mod tests {
   use clap::Parser;
   use corona_auth::commands::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
-  use corona_brightness::commands::{brightness::SetBrightness, nightlight::Nightlight};
+  use corona_shell::ipc::brightness::{brightness::SetBrightness, nightlight::Nightlight};
   use corona_capture::commands::{ColorPicker, Screenshot};
   use corona_idle::commands::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};

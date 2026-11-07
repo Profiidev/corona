@@ -6,7 +6,7 @@ use corona_settings::{SettingsExt, item};
 use gpui_kit::{App, component::setting::SettingItem};
 use rust_i18n::t;
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .group("system", "nightlight", 10, || {
       t!("app.settings.system.groups.nightlight").into()

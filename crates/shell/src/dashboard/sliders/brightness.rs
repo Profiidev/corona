@@ -11,7 +11,8 @@ use corona_utils::error::spawn_logged;
 use gpui_kit::{App, Entity, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{BrightnessExt, Display, ui::page::BrightnessPanel};
+use crate::panel::brightness::BrightnessPanel;
+use corona_brightness::{BrightnessExt, Display};
 
 /// the focused monitor's display, or the first usable one
 pub fn display(cx: &App) -> Option<&Display> {
@@ -74,7 +75,7 @@ impl DashboardSlider for Brightness {
 
 #[cfg(test)]
 mod tests {
-  use crate::{DisplayKind, Unavailable};
+  use corona_brightness::{DisplayKind, Unavailable};
 
   use super::*;
 

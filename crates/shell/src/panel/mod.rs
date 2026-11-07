@@ -5,6 +5,7 @@ use gpui_kit::App;
 
 pub(crate) mod bluetooth;
 pub(crate) mod audio;
+pub(crate) mod brightness;
 pub(crate) mod clipboard;
 pub(crate) mod media;
 pub(crate) mod notifications;
@@ -21,5 +22,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsPanel>()
     .register::<clipboard::ClipboardPanel>()
     .register::<audio::AudioPanel>()
+    .register::<brightness::BrightnessPanel>()
     .register::<power::PowerPanel>();
 }

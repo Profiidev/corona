@@ -10,6 +10,8 @@ mod sliders;
 pub(crate) fn register_all(cx: &mut App) {
   cx.dashboard_mut()
     .quick_action::<quick_actions::bluetooth::BluetoothToggle>()
+    .slider::<sliders::brightness::Brightness>()
+    .quick_action::<quick_actions::brightness::NightlightToggle>()
     .slider::<sliders::audio::Output>()
     .slider::<sliders::audio::Input>()
     .quick_action::<quick_actions::notifications::DndToggle>()

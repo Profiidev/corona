@@ -24,6 +24,7 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsButton>()
     .register::<tray::Tray>()
     .register::<audio::AudioButton>()
+    .register::<PageButton<crate::panel::brightness::BrightnessPanel>>()
     .register::<PageButton<crate::panel::power::PowerPanel>>()
     .register::<power::BatteryButton>()
     .register::<privacy::Privacy>()

@@ -1,4 +1,4 @@
-use crate::{BrightnessExt, DisplayKind, Unavailable};
+use corona_brightness::{BrightnessExt, DisplayKind, Unavailable};
 use corona_power::PowerExt;
 use gpui_kit::{
   App, Context, IntoElement, ParentElement, Styled,
@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use std::borrow::Cow;
 
-use crate::ui::page::{BrightnessPanel, KEYBOARD, card, display_name};
+use crate::panel::brightness::{BrightnessPanel, KEYBOARD, card, display_name};
 use rust_i18n::t;
 
 pub struct Light {

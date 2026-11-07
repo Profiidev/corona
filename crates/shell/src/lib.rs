@@ -10,7 +10,7 @@ use rust_i18n::t;
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 mod bar;
-mod dashboard;
+pub(crate) mod dashboard;
 pub mod ipc;
 mod launcher;
 mod locale_keys;

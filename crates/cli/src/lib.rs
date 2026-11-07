@@ -6,6 +6,7 @@ use crate::{
 };
 
 mod bluetooth;
+mod brightness;
 mod clipboard;
 mod config;
 mod ipc;
@@ -26,7 +27,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_windows::register_script(registry);
   corona_auth::register_script(registry);
   corona_network_manager::register_script(registry);
-  corona_brightness::register_script(registry);
   corona_weather::register_script(registry);
 }
 

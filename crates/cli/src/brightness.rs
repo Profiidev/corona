@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{STEP, candidates, level},
 };
 
-use crate::commands::{
+use corona_shell::ipc::brightness::{
   brightness::{Action, ListMonitors, SetBrightness},
   nightlight::{Nightlight, Request},
 };
