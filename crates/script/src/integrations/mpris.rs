@@ -1,4 +1,4 @@
-use crate as mpris;
+use corona_mpris as mpris;
 use corona_mpris::{MprisExt, seek_target};
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,

@@ -13,7 +13,7 @@ pub use crate::{
     PassphraseOptions, UnlockOptions, UnmountOptions,
   },
   state::{
-    Ata, AtaAttribute, Block, Drive, Encrypted, Filesystem, Job, JobCompleted, Lock, Loop,
+    system_block, Ata, AtaAttribute, Block, Drive, Encrypted, Filesystem, Job, JobCompleted, Lock, Loop,
     NvmeController, NvmeHealth, Partition, PartitionTable, Smart, SmartAttributes, Swapspace,
     Volume,
   },
@@ -167,8 +167,7 @@ impl Udisks {
         .as_ref()
         .and_then(|e| e.cleartext_device.as_ref())
         .and_then(|path| blocks.iter().find(|b| &b.path == path));
-      system |= ui::page::model::system_block(block)
-        || cleartext.is_some_and(ui::page::model::system_block);
+      system |= system_block(block) || cleartext.is_some_and(system_block);
       if let Some(cleartext) = cleartext {
         if cleartext.is_mounted() {
           steps.push(Step::Unmount(cleartext.path.clone()));

@@ -1,4 +1,4 @@
-use crate::{Condition, Location, WeatherExt};
+use corona_weather::{Condition, Location, WeatherExt};
 use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{

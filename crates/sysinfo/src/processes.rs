@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, bail};
+use rust_i18n::t;
 pub use sysinfo::System;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate};
 

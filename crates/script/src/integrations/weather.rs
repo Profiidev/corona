@@ -1,6 +1,6 @@
 use std::time::UNIX_EPOCH;
 
-use crate as wt;
+use corona_weather as wt;
 use corona_weather::{WeatherExt, WeatherService};
 use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
 use gpui_kit::App;
@@ -183,7 +183,7 @@ impl ScriptModule for WeatherModule {
 mod tests {
   use std::time::{Duration, UNIX_EPOCH};
 
-  use crate as wt;
+  use corona_weather as wt;
 
   use super::Forecast;
 

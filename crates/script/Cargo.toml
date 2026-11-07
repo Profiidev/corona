@@ -35,6 +35,7 @@ corona_ipc.workspace = true
 gpui-kit.workspace = true
 corona_js.workspace = true
 specta.workspace = true
+specta-typescript.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -6,7 +6,7 @@ use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, Unsubscribe,
   host_module, json,
 };
-use corona_script::{ActionEvent, ScriptManager};
+use crate::{ActionEvent, ScriptManager};
 use futures_lite::{StreamExt, future::try_zip, stream};
 use gpui_kit::App;
 use image::{ImageError, ImageReader, Limits};
@@ -14,7 +14,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use specta::{Type, Types, datatype::DataType, specta};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate as nt;
+use corona_notifications as nt;
 use corona_notifications::{MAX_ACTIONS, NotificationsExt};
 
 #[derive(Clone, Copy, Serialize, Deserialize, Type)]
@@ -487,7 +487,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use corona_script::{harness, plugin::paths::Paths};
+  use crate::{harness, plugin::paths::Paths};
 
   fn notification(urgency: nt::Urgency, time: SystemTime) -> nt::Notification {
     nt::Notification {

@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate as si;
+use corona_sysinfo as si;
 use corona_sysinfo::SystemMonitorExt;
 use corona_js::{ModuleBuilder, PluginRef, ScriptModule, json};
 use gpui_kit::App;
@@ -240,7 +240,7 @@ mod tests {
     time::{Duration, UNIX_EPOCH},
   };
 
-  use crate as si;
+  use corona_sysinfo as si;
 
   use super::{History, Sample, SystemInfo};
 

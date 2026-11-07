@@ -4,7 +4,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use crate as ca;
+use corona_auth as ca;
 use anyhow::{Result, bail, ensure};
 use corona_js::{Glob, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
@@ -124,7 +124,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use corona_script::harness;
+  use crate::harness;
 
   #[gpui::test]
   fn the_user_is_not_the_plugins_to_pick(cx: &mut TestAppContext) {

@@ -1,7 +1,7 @@
 //! The `[idle]` behaviors: lock, monitors off, suspend or a command after a
 //! while without input, like hypridle.
 
-use std::{cell::RefCell, collections::HashMap, process::Command, time::Duration};
+use std::{cell::RefCell, rc::Rc, collections::HashMap, process::Command, time::Duration};
 
 use crate::{Idle, IdleExt};
 use corona_compositor::CompositorExt;

@@ -1,4 +1,4 @@
-use crate as br;
+use corona_brightness as br;
 use corona_brightness::BrightnessExt;
 use corona_js::{Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
@@ -154,7 +154,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use corona_script::harness;
+  use crate::harness;
 
   #[gpui::test]
   fn reads_and_failures(cx: &mut TestAppContext) {

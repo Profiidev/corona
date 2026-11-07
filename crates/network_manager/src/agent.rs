@@ -48,8 +48,8 @@ pub struct SecretRequest {
   pub retry: bool,
   pub(crate) reply: flume::Sender<Secret>,
   /// what NM asked for, a cancel names the same
-  pub(crate) connection: OwnedObjectPath,
-  pub(crate) setting: String,
+  pub connection: OwnedObjectPath,
+  pub setting: String,
 }
 
 pub(crate) enum AgentEvent {

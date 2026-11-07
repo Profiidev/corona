@@ -18,13 +18,11 @@ use gpui_kit::{
 use jiff::Zoned;
 use rust_i18n::t;
 
-use crate::{
-  WeatherExt,
-  ui::{
-    calendar::CalendarPanel,
-    page::{WeatherPanel, degrees, describe, icon},
-  },
+use crate::panel::{
+  calendar::CalendarPanel,
+  weather::{WeatherPanel, degrees, describe, icon},
 };
+use corona_weather::WeatherExt;
 
 fn open<P: ControlCenterPage>(_: &ClickEvent, window: &mut Window, cx: &mut App) {
   ControlCenter::navigate_id(P::ID, window, cx)

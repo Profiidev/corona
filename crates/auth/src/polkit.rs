@@ -426,11 +426,11 @@ fn serve(requests: Entity<VecDeque<PolkitRequest>>, conn: Connection, cx: &mut A
   .detach();
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Polkit {
   /// Without polkitd; `helper` speaks polkit-agent-helper-1's protocol: the
   /// user as its argument, the cookie, then PAM lines
-  pub(crate) fn fake(helper: PathBuf, cx: &mut App) -> Self {
+  pub fn fake(helper: PathBuf, cx: &mut App) -> Self {
     Self {
       requests: cx.new(|_| VecDeque::new()),
       helper: Helper {
@@ -441,7 +441,7 @@ impl Polkit {
   }
 
   /// Asks like polkitd does; the receiver fails when the request is canceled
-  pub(crate) fn ask(&self, message: &str, cookie: &str, cx: &mut App) -> oneshot::Receiver<()> {
+  pub fn ask(&self, message: &str, cookie: &str, cx: &mut App) -> oneshot::Receiver<()> {
     let (reply, done) = oneshot::channel();
     let request = PolkitRequest {
       message: message.into(),

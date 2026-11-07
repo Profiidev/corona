@@ -25,17 +25,7 @@ pub struct PartView {
 }
 
 /// Where users mount their own drives; anything mounted elsewhere the running system uses
-const USER_MOUNTS: [&str; 4] = ["/run/media/", "/media/", "/mnt/", "/run/user/"];
-
-/// Mounted where the system needs it, like `/`, `/boot` or `/nix`, or swap in use
-pub fn system_block(block: &Block) -> bool {
-  let mounted = block.filesystem.as_ref().is_some_and(|f| {
-    f.mount_points
-      .iter()
-      .any(|m| !USER_MOUNTS.iter().any(|u| m.starts_with(u)))
-  });
-  mounted || block.swapspace.as_ref().is_some_and(|s| s.active)
-}
+pub use corona_udisks::system_block;
 
 impl DriveView {
   /// One of its partitions the running system uses

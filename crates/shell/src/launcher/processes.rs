@@ -13,8 +13,9 @@ use corona_launcher::{
   registry, simple,
   view::{Filter, ListView},
 };
-use corona_sysinfo::processes::{Process, System, kill, kill_all, kill_port, sample, snapshot};
+use corona_sysinfo::processes::{Process, System, kill, kill_port, sample};
 use gpui_kit::{App, AppContext, Entity, assets::IconName};
+use anyhow::bail;
 use rust_i18n::t;
 
 const REFRESH: Duration = Duration::from_secs(2);

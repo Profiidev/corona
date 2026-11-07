@@ -353,6 +353,18 @@ fn natural_key(device: &str) -> (&str, Option<u64>) {
   (prefix, device[prefix.len()..].parse().ok())
 }
 
+const USER_MOUNTS: [&str; 4] = ["/run/media/", "/media/", "/mnt/", "/run/user/"];
+
+/// Mounted where the system needs it, like `/`, `/boot` or `/nix`, or swap in use
+pub fn system_block(block: &Block) -> bool {
+  let mounted = block.filesystem.as_ref().is_some_and(|f| {
+    f.mount_points
+      .iter()
+      .any(|m| !USER_MOUNTS.iter().any(|u| m.starts_with(u)))
+  });
+  mounted || block.swapspace.as_ref().is_some_and(|s| s.active)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -374,7 +386,25 @@ mod tests {
 
   #[test]
   fn external_usb_disk_is_removable() {
-    let mut drive = crate::ui::page::test_drive(false);
+    let mut drive = Drive {
+      path: OwnedObjectPath::default(),
+      id: "usb".into(),
+      vendor: String::new(),
+      model: "usb".into(),
+      revision: String::new(),
+      serial: String::new(),
+      size: 0,
+      media: String::new(),
+      media_available: true,
+      removable: false,
+      ejectable: false,
+      can_power_off: false,
+      connection_bus: String::new(),
+      rotation_rate: 0,
+      sort_key: "usb".into(),
+      ata: None,
+      nvme: None,
+    };
     drive.connection_bus = "usb".into();
     assert!(!drive.is_removable());
     drive.can_power_off = true;

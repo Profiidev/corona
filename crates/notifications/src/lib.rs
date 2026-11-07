@@ -332,7 +332,7 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
 
 /// With `serve`, be the notification daemon; without it the state stays empty, for when another
 /// daemon is wanted.
-pub(crate) async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
+pub async fn connect(cx: &mut App, conn: &Connection, serve: bool) -> Result<()> {
   let (events_tx, events) = flume::unbounded();
   let dbus = DBusProxy::new(conn).await?;
   let mut acquired = dbus.receive_name_acquired().await?;

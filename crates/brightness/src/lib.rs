@@ -236,7 +236,7 @@ pub fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   Ok(())
 }
 
-pub(crate) fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
+pub fn connect(cx: &mut App, conn: &Connection) -> Result<()> {
   let ddcutil_available = ddc::available();
   let ddcutil_enabled = cx.config().brightness.enable_ddcutil;
   let (events_tx, events) = flume::unbounded();

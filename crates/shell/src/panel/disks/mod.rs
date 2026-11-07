@@ -680,7 +680,7 @@ impl Render for DisksPanel {
 mod tests;
 
 /// The locale keys the panel builds at runtime
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 pub fn runtime_keys() -> Vec<String> {
   let operations = model::OPERATIONS
     .iter()

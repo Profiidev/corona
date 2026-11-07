@@ -1,12 +1,12 @@
 //! Quick actions, sliders and cards of the dashboard
 
 use corona_surface::dashboard::DashboardExt;
-use gpui_kit::App;
+use gpui_kit::{App, AppContext};
 
 mod cards;
 mod session;
-mod quick_actions;
-mod sliders;
+pub(crate) mod quick_actions;
+pub(crate) mod sliders;
 
 pub(crate) fn register_all(cx: &mut App) {
   cx.dashboard_mut()

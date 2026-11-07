@@ -1,4 +1,4 @@
-use crate as nm;
+use corona_network_manager as nm;
 use corona_network_manager::NetworkManagerExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module, json,
@@ -539,7 +539,7 @@ impl ScriptModule for NetworkModule {
 
 #[cfg(test)]
 mod tests {
-  use crate as nm;
+  use corona_network_manager as nm;
 
   use super::*;
 

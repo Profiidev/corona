@@ -11,7 +11,6 @@ use corona_utils::{
   ticker::wait_or_refresh,
 };
 use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
-use serde::{Deserialize, Serialize};
 use zbus::Connection;
 
 mod geocode;

@@ -1,6 +1,6 @@
 use std::time::UNIX_EPOCH;
 
-use crate as pw;
+use corona_power as pw;
 use corona_power::PowerExt;
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, PluginRef, ScriptModule, Throws, Unsubscribe,
@@ -356,14 +356,14 @@ impl ScriptModule for PowerModule {
 mod tests {
   use std::time::Duration;
 
-  use crate as pw;
+  use corona_power as pw;
   use corona_utils::test_bus::{TestBus, wait_until};
   use futures_lite::future::block_on;
   use gpui_kit::{self as gpui, TestAppContext};
   use serde_json::json;
 
   use super::{Battery, BatteryState, DeviceKind, SessionAction, SessionCapabilities};
-  use corona_script::harness;
+  use crate::harness;
 
   #[gpui::test]
   fn sleep_reaches_the_plugin(cx: &mut TestAppContext) {

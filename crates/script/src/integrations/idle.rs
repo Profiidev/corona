@@ -56,7 +56,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use corona_script::harness;
+  use crate::harness;
 
   #[gpui::test]
   fn stays_awake(cx: &mut TestAppContext) {
