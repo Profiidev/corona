@@ -244,7 +244,7 @@ fn disks(disks: &Disks) -> Vec<Disk> {
 }
 
 /// one entry per device, at its shortest mount point, for listing
-pub(crate) fn unique_disks(mut all: Vec<Disk>) -> Vec<Disk> {
+pub fn unique_disks(mut all: Vec<Disk>) -> Vec<Disk> {
   all.sort_by_key(|disk| disk.mount_point.len());
   let mut seen = std::collections::HashSet::new();
   all.retain(|disk| seen.insert(disk.device.clone()));

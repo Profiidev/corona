@@ -13,7 +13,7 @@ use corona_utils::display::markdown_escape as escape;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::{SystemMonitorExt, sampler::unique_disks};
+use corona_sysinfo::{SystemMonitorExt, unique_disks};
 
 fn sysinfo(cx: &App) -> View {
   let monitor = cx.system_monitor();

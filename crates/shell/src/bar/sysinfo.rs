@@ -1,4 +1,4 @@
-use crate::{History, Sample, SystemMonitorExt};
+use corona_sysinfo::{History, Sample, SystemMonitorExt};
 use corona_surface::{
   bar::{Button, Widget},
   tooltip::TooltipExt,
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, cell::Cell, rc::Rc};
 use uuid::Uuid;
 
-use crate::ui::page::{SysinfoPanel, details::rate};
+use crate::panel::sysinfo::{SysinfoPanel, details::rate};
 use corona_components::i18n::decimal;
 use corona_surface::control_center::Standalone;
 use corona_surface::tooltip::{TextTooltip, after_hover_delay};

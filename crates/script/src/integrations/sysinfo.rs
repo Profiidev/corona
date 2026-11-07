@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate as si;
-use crate::SystemMonitorExt;
+use corona_sysinfo::SystemMonitorExt;
 use corona_js::{ModuleBuilder, PluginRef, ScriptModule, json};
 use gpui_kit::App;
 use serde::Serialize;

@@ -17,6 +17,7 @@ mod locale_keys;
 mod osd;
 mod panel;
 mod settings;
+mod settings_pages;
 
 /// What has to happen before any thread starts
 pub fn pre_start() {
@@ -99,6 +100,7 @@ fn register_ui(cx: &mut App) {
   dashboard::register_all(cx);
   osd::register_all(cx);
   launcher::register_all(cx);
+  settings_pages::register_all(cx);
 }
 
 fn register_variants(cx: &mut App) {

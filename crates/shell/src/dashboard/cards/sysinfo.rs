@@ -20,7 +20,8 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::{SystemMonitorExt, ui::page::SysinfoPanel};
+use crate::panel::sysinfo::SysinfoPanel;
+use corona_sysinfo::SystemMonitorExt;
 
 fn uptime(booted: SystemTime) -> String {
   uptime_at(booted, SystemTime::now())

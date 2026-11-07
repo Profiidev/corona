@@ -9,6 +9,7 @@ mod bluetooth;
 mod config;
 mod ipc;
 mod schema;
+mod sysinfo;
 mod types;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
@@ -25,7 +26,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_pipewire::register_script(registry);
   corona_mpris::register_script(registry);
   corona_printing::register_script(registry);
-  corona_sysinfo::register_script(registry);
   corona_tray::register_script(registry);
   corona_weather::register_script(registry);
 }

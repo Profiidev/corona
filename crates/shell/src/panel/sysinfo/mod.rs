@@ -1,4 +1,4 @@
-use crate::SystemMonitorExt;
+use corona_sysinfo::SystemMonitorExt;
 use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{

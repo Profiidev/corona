@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
-use crate::SystemMonitorExt;
+use corona_sysinfo::SystemMonitorExt;
 use gpui_kit::{
   Background, Context, Hsla, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -12,7 +12,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::page::{SysinfoPanel, card, details::rate};
+use crate::panel::sysinfo::{SysinfoPanel, card, details::rate};
 use corona_components::i18n::decimal;
 use rust_i18n::t;
 

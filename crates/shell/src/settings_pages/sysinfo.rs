@@ -10,9 +10,9 @@ use corona_settings::{
 use gpui_kit::{App, IntoElement, ParentElement, Styled, Window, component::Sizable};
 use rust_i18n::t;
 
-use crate::ui::resource::{self, Resource};
+use crate::bar::sysinfo::{self as resource, Resource};
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .group("system", "polling", 20, || {
       t!("app.settings.system.groups.polling").into()

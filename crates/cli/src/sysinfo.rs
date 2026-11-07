@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done},
 };
 
-use crate::commands::{KillPort, KillProcess, ListProcesses};
+use corona_shell::ipc::sysinfo::{KillPort, KillProcess, ListProcesses};
 
 #[derive(Subcommand)]
 pub enum Commands {

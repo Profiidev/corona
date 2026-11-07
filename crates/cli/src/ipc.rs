@@ -51,7 +51,7 @@ pub enum IpcCommands {
   /// Kill processes
   Process {
     #[command(subcommand)]
-    command: corona_sysinfo::cli::Commands,
+    command: crate::sysinfo::Commands,
   },
   /// Tray items and their menus
   Tray {
@@ -299,8 +299,8 @@ pub(crate) mod tests {
       (&["launcher", "trash", "count"], json!(3), corona_launcher::ipc::TrashCount::COMMAND, json!(null)),
       (&["drive", "eject", "USB"], json!(null), corona_udisks::commands::DriveAction::COMMAND, json!(["Eject", "USB"])),
       (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_udisks::commands::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
-      (&["process", "kill", "42", "--force"], json!(null), corona_sysinfo::commands::KillProcess::COMMAND, json!([42, true])),
-      (&["process", "kill-port", "8080"], json!([1]), corona_sysinfo::commands::KillPort::COMMAND, json!(8080)),
+      (&["process", "kill", "42", "--force"], json!(null), corona_shell::ipc::sysinfo::KillProcess::COMMAND, json!([42, true])),
+      (&["process", "kill-port", "8080"], json!([1]), corona_shell::ipc::sysinfo::KillPort::COMMAND, json!(8080)),
       (&["launcher", "timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
       (&["launcher", "timer", "stop", "7"], json!(null), corona_launcher::ipc::StopTimer::COMMAND, json!(7)),
       (&["notification", "dismiss"], json!(null), corona_notifications::commands::DismissToasts::COMMAND, json!(null)),

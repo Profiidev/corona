@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime};
 
-use crate::{GpuVendor, SystemMonitorExt, sampler::unique_disks};
+use corona_sysinfo::{GpuVendor, SystemMonitorExt, unique_disks};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,
@@ -9,7 +9,7 @@ use gpui_kit::{
   div, px,
 };
 
-use crate::ui::page::{SysinfoPanel, card};
+use crate::panel::sysinfo::{SysinfoPanel, card};
 use corona_components::{
   format::{Base, bytes},
   i18n::decimal,

@@ -3,7 +3,9 @@
 use gpui_kit::App;
 
 pub mod bluetooth;
+pub mod sysinfo;
 
 pub(crate) fn register_all(cx: &mut App) {
   bluetooth::register(cx);
+  sysinfo::register(cx);
 }

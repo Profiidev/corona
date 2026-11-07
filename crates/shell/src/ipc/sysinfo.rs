@@ -4,7 +4,7 @@ use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
-use crate::processes::{kill, kill_port, snapshot};
+use corona_sysinfo::processes::{kill, kill_port, snapshot};
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
