@@ -6,7 +6,6 @@ use std::{cell::RefCell, collections::HashMap, process::Command, time::Duration}
 use crate::{Idle, IdleExt};
 use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
-use corona_ipc::IpcCommand;
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, BorrowAppContext, Global};

@@ -25,7 +25,6 @@ wayland-client.workspace = true
 wayland-protocols.workspace = true
 zbus.workspace = true
 futures-lite.workspace = true
-clap.workspace = true
 
 [dev-dependencies]
 corona_surface = { workspace = true, features = ["test-support"] }
