@@ -1,4 +1,34 @@
-//! Checks that every settings page renders, the integrations' included
+//! Settings sections of the integrations, and a check that every settings page renders
+
+use gpui_kit::App;
+
+pub(crate) mod auth;
+mod brightness;
+pub(crate) mod capture;
+mod clipboard;
+pub(crate) mod idle;
+mod disks;
+pub(crate) mod notifications;
+pub(crate) mod pipewire;
+mod printing;
+mod sysinfo;
+mod tray;
+pub(crate) mod weather;
+
+pub(crate) fn register_all(cx: &mut App) {
+  sysinfo::register(cx);
+  tray::register(cx);
+  weather::register(cx);
+  printing::register(cx);
+  pipewire::register(cx);
+  notifications::register(cx);
+  clipboard::register(cx);
+  idle::register(cx);
+  disks::register(cx);
+  auth::register(cx);
+  brightness::register(cx);
+  capture::register(cx);
+}
 
 #[cfg(test)]
 mod tests {
@@ -13,15 +43,15 @@ mod tests {
       corona_settings::init(cx);
       // the integrations' pages, rendered here too
       cx.settings_mut()
-        .register::<crate::settings_pages::weather::LocationSettings>()
-        .register::<crate::settings_pages::pipewire::PrivacySettings>()
-        .register::<crate::settings_pages::notifications::NotificationSettings>()
-        .register::<crate::settings_pages::capture::ScreenshotSettings>()
+        .register::<crate::settings::weather::LocationSettings>()
+        .register::<crate::settings::pipewire::PrivacySettings>()
+        .register::<crate::settings::notifications::NotificationSettings>()
+        .register::<crate::settings::capture::ScreenshotSettings>()
         .register::<corona_osk::settings::OskSettings>()
-        .register::<crate::settings_pages::auth::LockscreenSettings>()
+        .register::<crate::settings::auth::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()
         .register::<corona_windows::settings::WindowSwitcherSettings>()
-        .register::<crate::settings_pages::idle::IdleSettings>();
+        .register::<crate::settings::idle::IdleSettings>();
     });
   }
 

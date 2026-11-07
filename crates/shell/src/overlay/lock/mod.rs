@@ -1,4 +1,4 @@
-use corona_auth_screen::User;
+use corona_components::auth_screen::User;
 use corona_config::ConfigProvider;
 use corona_power::PowerExt;
 use gpui_kit::{App, AppContext, Task};

@@ -6,7 +6,7 @@ use std::{
 
 use corona_auth::AuthExt;
 use anyhow::{Result, anyhow};
-use corona_auth_screen::Fingerprint;
+use corona_components::auth_screen::Fingerprint;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
   image::imageops::{self, FilterType},

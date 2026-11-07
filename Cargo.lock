@@ -1716,18 +1716,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "corona_auth_screen"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "corona_power",
- "corona_utils",
- "gpui-kit",
- "rust-i18n",
- "tracing",
-]
-
-[[package]]
 name = "corona_bluez"
 version = "0.1.4"
 dependencies = [
@@ -1849,6 +1837,7 @@ dependencies = [
  "anyhow",
  "corona_config",
  "corona_desktop",
+ "corona_power",
  "corona_utils",
  "dirs 7.0.0",
  "gpui-kit",
@@ -1930,7 +1919,6 @@ name = "corona_greeter"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "corona_auth_screen",
  "corona_components",
  "corona_config",
  "corona_power",
@@ -2324,7 +2312,6 @@ dependencies = [
  "anyhow",
  "clap",
  "corona_auth",
- "corona_auth_screen",
  "corona_bluez",
  "corona_brightness",
  "corona_capture",

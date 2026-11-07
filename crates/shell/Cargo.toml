@@ -41,7 +41,6 @@ corona_windows.workspace = true
 corona_clipboard.workspace = true
 gpui-kit.workspace = true
 serde.workspace = true
-corona_auth_screen.workspace = true
 futures.workspace = true
 futures-lite.workspace = true
 jiff.workspace = true

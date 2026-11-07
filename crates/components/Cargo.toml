@@ -11,6 +11,7 @@ categories.workspace = true
 [dependencies]
 corona_config.workspace = true
 corona_utils.workspace = true
+corona_power.workspace = true
 tracing.workspace = true
 corona_desktop.workspace = true
 anyhow.workspace = true

@@ -2,6 +2,7 @@ rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 pub mod animation;
 pub mod assets;
+pub mod auth_screen;
 pub mod async_listener;
 pub mod components;
 pub mod filter;

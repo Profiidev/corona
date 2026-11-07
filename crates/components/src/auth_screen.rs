@@ -28,8 +28,6 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 const WIDTH: f32 = 320.;
 const MENU_WIDTH: f32 = 248.;
 const INSET: f32 = 32.;

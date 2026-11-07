@@ -6,7 +6,7 @@ use std::{
 };
 
 use corona_auth::AuthExt;
-use corona_auth_screen::{AuthScreen, Purpose};
+use corona_components::auth_screen::{AuthScreen, Purpose};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
   AnyWindowHandle, App, AppContext, BoxShadow, Context, Div, Entity, FocusHandle,
