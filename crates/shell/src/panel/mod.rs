@@ -7,6 +7,7 @@ pub(crate) mod bluetooth;
 pub(crate) mod audio;
 pub(crate) mod brightness;
 pub(crate) mod clipboard;
+pub(crate) mod disks;
 pub(crate) mod hotspot;
 pub(crate) mod media;
 pub(crate) mod network;
@@ -16,6 +17,7 @@ pub(crate) mod printers;
 pub(crate) mod sysinfo;
 
 pub(crate) fn register_all(cx: &mut App) {
+  disks::init(cx);
   bluetooth::register(cx);
   cx.control_center_mut()
     .register::<sysinfo::SysinfoPanel>()
@@ -24,6 +26,7 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsPanel>()
     .register::<clipboard::ClipboardPanel>()
     .register::<audio::AudioPanel>()
+    .register::<disks::DisksPanel>()
     .register::<network::NetworkPanel>()
     .register::<hotspot::HotspotPanel>()
     .register::<brightness::BrightnessPanel>()

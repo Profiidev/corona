@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Block, UdisksExt};
+use corona_udisks::{Block, UdisksExt};
 use corona_components::components::list::{Tone, empty_note, section, tag};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   DisksPanel,
   dialogs::{Dialog, DialogKind, LabelTarget},
   model::system_block,

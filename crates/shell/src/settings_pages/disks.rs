@@ -7,9 +7,9 @@ use rust_i18n::t;
 
 use corona_surface::bar::IdlePageButton;
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
-    .widget_options::<IdlePageButton<crate::ui::page::DisksPanel>>(WidgetOptions {
+    .widget_options::<IdlePageButton<crate::panel::disks::DisksPanel>>(WidgetOptions {
       form: disks_form,
       label: None,
     });

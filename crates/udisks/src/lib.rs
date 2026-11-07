@@ -20,16 +20,11 @@ pub use crate::{
 };
 
 mod actions;
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
 mod options;
 mod proxy;
-mod settings;
 mod snapshot;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -308,10 +303,6 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   // no method timeout: Format, Check, Repair and Unmount run as long as udisksd needs
   let actions = zbus::connection::Builder::system()?.build().await?;
   connect(cx, &buses.system, &actions).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
   Ok(())
 }
 

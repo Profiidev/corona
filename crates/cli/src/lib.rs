@@ -19,6 +19,7 @@ mod schema;
 mod sysinfo;
 mod tray;
 mod types;
+mod udisks;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {

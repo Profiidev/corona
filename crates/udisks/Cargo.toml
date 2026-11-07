@@ -13,17 +13,9 @@ test-support = []
 
 [dependencies]
 zstd.workspace = true
-corona_components.workspace = true
 corona_config.workspace = true
-corona_desktop.workspace = true
-corona_surface.workspace = true
-corona_settings.workspace = true
-corona_launcher.workspace = true
-corona_ipc.workspace = true
-corona_notifications.workspace = true
 rust-i18n.workspace = true
 serde.workspace = true
-clap.workspace = true
 futures.workspace = true
 jiff.workspace = true
 tracing.workspace = true
@@ -33,10 +25,8 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 futures-lite.workspace = true
 zbus.workspace = true
-clap_complete.workspace = true
 
 [dev-dependencies]
-corona_surface = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 uuid.workspace = true
 corona_utils = { workspace = true, features = ["test-support"] }

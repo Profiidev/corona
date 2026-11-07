@@ -1,26 +1,12 @@
-//! The disks page with its job history and drive notifications, its bar button and the
-//! drive password prompt
+//! The disks bar button
 
-use corona_surface::{
-  bar::{BarExt, IdlePage, IdlePageButton},
-  control_center::ControlCenterExt,
-};
+use crate::panel::disks::{DisksPanel, jobs::log as disks_log};
+use corona_surface::bar::{IdlePage, IdlePageButton};
+use corona_udisks::UdisksExt;
 use gpui_kit::{App, Context, Subscription};
 
-use crate::{UdisksExt, ui::page::jobs::log as disks_log};
-
-pub mod drive_password;
-pub mod page;
-
-pub(crate) fn register(cx: &mut App) {
-  cx.bar_mut().register::<IdlePageButton<page::DisksPanel>>();
-  cx.control_center_mut().register::<page::DisksPanel>();
-  page::init(cx);
-  drive_password::init(cx);
-}
-
 /// Busy while a job runs or a removable drive with media is in
-impl IdlePage for page::DisksPanel {
+impl IdlePage for DisksPanel {
   fn busy(cx: &App) -> bool {
     let udisks = cx.udisks();
     let removable = udisks
@@ -43,12 +29,12 @@ impl IdlePage for page::DisksPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::Udisks;
+  use corona_udisks::Udisks;
   use corona_utils::test_bus::TestBus;
   use gpui_kit::{self as gpui, AppContext, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;
-  use crate::ui::page::test_drive as disks_test_drive;
+  use crate::panel::disks::{init as init_disks, test_drive as disks_test_drive};
   use corona_surface::bar::{IdleOptions, Widget};
   use uuid::Uuid;
 
@@ -56,7 +42,7 @@ mod tests {
     shown_drive(cx, hide_when_idle, disks_test_drive(removable))
   }
 
-  fn shown_drive(cx: &mut TestAppContext, hide_when_idle: bool, drive: crate::Drive) -> bool {
+  fn shown_drive(cx: &mut TestAppContext, hide_when_idle: bool, drive: corona_udisks::Drive) -> bool {
     cx.executor().allow_parking();
     let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
@@ -64,13 +50,13 @@ mod tests {
       cx.set_global(corona_config::Config::default());
       corona_surface::bar::BarState::init(cx);
       Udisks::fake(cx, &conn, vec![drive], vec![], vec![]);
-      crate::ui::page::init(cx);
+      init_disks(cx);
     });
     let (window, _) = cx
       .update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
           cx.new(|cx| {
-            IdlePageButton::<page::DisksPanel>::init(
+            IdlePageButton::<DisksPanel>::init(
               cx,
               Uuid::nil(),
               IdleOptions { hide_when_idle },

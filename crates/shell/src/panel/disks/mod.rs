@@ -3,7 +3,7 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{Block, SmartAttributes, UdisksExt};
+use corona_udisks::{Block, SmartAttributes, UdisksExt};
 use corona_components::components::{
   list::{self, Tone, section},
   segmented,
@@ -23,7 +23,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   dialogs::Dialog,
   jobs::{DisksLog, Start, log},
   model::{DriveView, Health, PartView, drives, health},
@@ -692,6 +692,6 @@ pub fn runtime_keys() -> Vec<String> {
 }
 
 #[cfg(test)]
-pub(crate) fn test_drive(removable: bool) -> crate::Drive {
+pub(crate) fn test_drive(removable: bool) -> corona_udisks::Drive {
   model::tests::drive("usb", removable)
 }

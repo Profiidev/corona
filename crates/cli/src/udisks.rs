@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done as log_failure},
 };
 
-use crate::commands::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
+use corona_shell::ipc::disks::{Drive, DriveAction, DrivePasswordPrompt, ListDrives};
 
 #[derive(Subcommand)]
 pub enum Commands {

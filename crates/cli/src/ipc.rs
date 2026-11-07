@@ -46,7 +46,7 @@ pub enum IpcCommands {
   /// Removable drives
   Drive {
     #[command(subcommand)]
-    command: corona_udisks::cli::Commands,
+    command: crate::udisks::Commands,
   },
   /// Kill processes
   Process {
@@ -297,8 +297,8 @@ pub(crate) mod tests {
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::ipc::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
       (&["clipboard", "clear"], json!(3), corona_shell::ipc::clipboard::ClearClipboard::COMMAND, json!(null)),
       (&["launcher", "trash", "count"], json!(3), corona_launcher::ipc::TrashCount::COMMAND, json!(null)),
-      (&["drive", "eject", "USB"], json!(null), corona_udisks::commands::DriveAction::COMMAND, json!(["Eject", "USB"])),
-      (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_udisks::commands::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
+      (&["drive", "eject", "USB"], json!(null), corona_shell::ipc::disks::DriveAction::COMMAND, json!(["Eject", "USB"])),
+      (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_shell::ipc::disks::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
       (&["process", "kill", "42", "--force"], json!(null), corona_shell::ipc::sysinfo::KillProcess::COMMAND, json!([42, true])),
       (&["process", "kill-port", "8080"], json!([1]), corona_shell::ipc::sysinfo::KillPort::COMMAND, json!(8080)),
       (&["launcher", "timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
+use corona_udisks::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
 use corona_launcher::{
   Accessory, Action, Command, DetailView, Field, FieldKind, FormView, Icon, ListView, Meta,
   Outcome, Tone, View,
@@ -13,7 +13,7 @@ use corona_utils::display::markdown_escape as escape;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   model::{Health, health, system_block},
   types::size,
 };

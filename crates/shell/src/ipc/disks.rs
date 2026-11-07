@@ -1,12 +1,12 @@
 //! Drives over IPC
 
-use crate::{MountOptions, UdisksExt, UnmountOptions};
+use corona_udisks::{MountOptions, UdisksExt, UnmountOptions};
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
-use crate::ui::drive_password;
+use crate::overlay::drive_password;
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut()
@@ -105,7 +105,7 @@ impl IpcCommand for DriveAction {
         Some(drive)
           if !udisks
             .drive(drive, cx)
-            .is_some_and(crate::Drive::is_removable) =>
+            .is_some_and(corona_udisks::Drive::is_removable) =>
         {
           Box::pin(async move { bail!("{} is not a removable drive", volume.device) })
         }

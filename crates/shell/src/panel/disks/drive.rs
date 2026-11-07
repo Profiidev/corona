@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
+use corona_udisks::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
 use corona_components::components::{
   list::{dot, kv, section},
   segmented,
@@ -18,7 +18,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   DisksPanel, DriveTab,
   dialogs::{Dialog, DialogKind},
   jobs::{DisksLog, log},
@@ -85,7 +85,7 @@ impl DisksPanel {
   fn overview(
     &self,
     drive: &Drive,
-    disk: Option<&crate::Block>,
+    disk: Option<&corona_udisks::Block>,
     cx: &Context<'_, Self>,
   ) -> Vec<AnyElement> {
     let table = disk
@@ -551,7 +551,7 @@ impl DisksPanel {
     cx: &mut Context<Self>,
   ) {
     if kind == DialogKind::Format {
-      for f in crate::ui::page::types::FORMATS {
+      for f in crate::panel::disks::types::FORMATS {
         self.load_caps(f, cx);
       }
     }

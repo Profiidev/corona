@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Block, Drive, MountOptions, UdisksExt, UnmountOptions};
+use corona_udisks::{Block, Drive, MountOptions, UdisksExt, UnmountOptions};
 use corona_components::components::list::{dot, empty_note, section, usage_bar};
 use gpui_kit::{
   AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
@@ -19,7 +19,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   DisksPanel,
   dialogs::Dialog,
   model::{DriveView, Health, PartView, cached_usage, health, percent, system_block},

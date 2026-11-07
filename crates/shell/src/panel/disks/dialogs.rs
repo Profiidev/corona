@@ -10,7 +10,7 @@ use std::{
   time::Duration,
 };
 
-use crate::{
+use corona_udisks::{
   Block, CreatePartitionOptions, DeleteOptions, FormatOptions, LoopSetupOptions, PassphraseOptions,
   UdisksExt, UnlockOptions, is_not_authorized,
 };
@@ -40,7 +40,7 @@ use gpui_kit::{
 use rust_i18n::t;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::ui::page::{
+use crate::panel::disks::{
   DisksPanel,
   fd::{self, Bench},
   jobs::{self, DisksLog, Start},

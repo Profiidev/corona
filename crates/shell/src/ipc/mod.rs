@@ -3,6 +3,7 @@
 use gpui_kit::App;
 
 pub mod bluetooth;
+pub mod disks;
 pub mod brightness;
 pub mod pipewire;
 pub mod power;
@@ -15,6 +16,7 @@ pub mod tray;
 
 pub(crate) fn register_all(cx: &mut App) {
   bluetooth::register(cx);
+  disks::register(cx);
   brightness::register(cx);
   pipewire::register(cx);
   power::register(cx);
