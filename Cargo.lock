@@ -1746,14 +1746,7 @@ name = "corona_bluez"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "clap",
- "clap_complete",
  "corona-zbus-bluez",
- "corona_components",
- "corona_ipc",
- "corona_js",
- "corona_launcher",
- "corona_surface",
  "corona_utils",
  "futures-channel",
  "futures-lite",
@@ -1761,7 +1754,6 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
- "specta",
  "tracing",
  "uuid",
  "zbus",
@@ -1843,7 +1835,6 @@ dependencies = [
  "clap",
  "clap_complete",
  "corona_auth",
- "corona_bluez",
  "corona_brightness",
  "corona_capture",
  "corona_clipboard",
@@ -1862,6 +1853,7 @@ dependencies = [
  "corona_printing",
  "corona_script",
  "corona_settings",
+ "corona_shell",
  "corona_surface",
  "corona_sysinfo",
  "corona_tray",
@@ -1872,6 +1864,7 @@ dependencies = [
  "gpui-kit",
  "serde_json",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -2395,6 +2388,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "clap",
+ "corona_bluez",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2451,6 +2445,7 @@ name = "corona_shell"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "clap",
  "corona_auth",
  "corona_bluez",
  "corona_brightness",
@@ -2484,7 +2479,10 @@ dependencies = [
  "gpui-kit",
  "regex",
  "rust-i18n",
+ "serde",
  "tracing",
+ "uuid",
+ "zbus",
 ]
 
 [[package]]

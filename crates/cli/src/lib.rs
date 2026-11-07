@@ -5,6 +5,7 @@ use crate::{
   config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands, types::TypesCommand,
 };
 
+mod bluetooth;
 mod config;
 mod ipc;
 mod schema;
@@ -22,7 +23,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_power::register_script(registry);
   corona_notifications::register_script(registry);
   corona_pipewire::register_script(registry);
-  corona_bluez::register_script(registry);
   corona_mpris::register_script(registry);
   corona_printing::register_script(registry);
   corona_sysinfo::register_script(registry);

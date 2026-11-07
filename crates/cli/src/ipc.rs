@@ -31,7 +31,7 @@ pub enum IpcCommands {
   /// The Bluetooth adapter and devices
   Bluetooth {
     #[command(subcommand)]
-    command: corona_bluez::cli::Commands,
+    command: crate::bluetooth::Commands,
   },
   /// The active media player: play, pause, seek, shuffle, loop, which one
   Media {
@@ -151,7 +151,7 @@ impl IpcCommands {
 pub(crate) mod tests {
   use clap::Parser;
   use corona_auth::commands::Session;
-  use corona_bluez::commands::{Bluetooth, DeviceAction, Discover};
+  use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_brightness::commands::{brightness::SetBrightness, nightlight::Nightlight};
   use corona_capture::commands::{ColorPicker, Screenshot};
   use corona_idle::commands::StayAwake;

@@ -5,7 +5,6 @@ use std::sync::{
 
 use anyhow::{Context, Result};
 use bluez_zbus::{adapter1::Adapter1Proxy, device1::Device1Proxy};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global};
@@ -22,14 +21,9 @@ pub use crate::{
 };
 
 mod agent;
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
-pub mod script;
 mod snapshot;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -39,7 +33,7 @@ pub struct Bluetooth {
   pub devices: Entity<Vec<Device>>,
   pub pairing_request: Entity<Option<PairingRequest>>,
   /// Bumped by every discovery start (panel, launcher, IPC), so only the latest one stops it
-  scan: Arc<AtomicU64>,
+  pub scan: Arc<AtomicU64>,
   conn: Connection,
 }
 
@@ -197,7 +191,7 @@ impl Bluetooth {
 }
 
 /// A passkey is at most 6 digits
-fn parse_passkey(code: &str) -> Option<u32> {
+pub fn parse_passkey(code: &str) -> Option<u32> {
   code.parse().ok().filter(|passkey| *passkey <= 999_999)
 }
 
@@ -217,19 +211,10 @@ async fn device(conn: &Connection, path: OwnedObjectPath) -> zbus::Result<Device
     .await
 }
 
-/// Follows BlueZ, registers its UI, commands and script module
+/// Follows BlueZ
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   connect(cx, &buses.system).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::BluetoothModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

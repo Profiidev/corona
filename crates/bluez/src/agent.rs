@@ -32,7 +32,7 @@ pub enum PairingKind {
 
 pub struct PairingRequest {
   /// Tells a retried request from the one before it
-  pub(crate) id: u64,
+  pub id: u64,
   pub device: String,
   pub kind: PairingKind,
   pub(crate) reply: Reply,

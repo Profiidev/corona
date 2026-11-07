@@ -14,6 +14,7 @@ pub mod surface;
 /// Registers the modules plugins are granted by name.
 pub fn register(registry: &mut ScriptRegistry) {
   registry.register::<secrets::Secrets>();
+  crate::integrations::register(registry);
 }
 
 /// Runs a module in a real script view, for tests of what plugins see.

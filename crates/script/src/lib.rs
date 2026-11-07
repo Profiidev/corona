@@ -25,6 +25,7 @@ pub mod cli;
 pub mod commands;
 pub mod hooks;
 mod host;
+mod integrations;
 mod manager;
 mod module;
 pub mod plugin;

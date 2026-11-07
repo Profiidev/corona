@@ -40,6 +40,9 @@ corona_osk.workspace = true
 corona_windows.workspace = true
 corona_clipboard.workspace = true
 gpui-kit.workspace = true
+serde.workspace = true
+clap.workspace = true
+uuid.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 rust-i18n.workspace = true
@@ -48,3 +51,4 @@ rust-i18n.workspace = true
 corona_udisks = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
 regex.workspace = true
+zbus.workspace = true

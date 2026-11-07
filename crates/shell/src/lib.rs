@@ -9,7 +9,13 @@ use rust_i18n::t;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
+mod bar;
+mod dashboard;
+pub mod ipc;
+mod launcher;
 mod locale_keys;
+mod osd;
+mod panel;
 mod settings;
 
 /// What has to happen before any thread starts
@@ -20,6 +26,7 @@ pub fn pre_start() {
 pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
+  register_ui(cx);
   register_variants(cx);
   // made once, from the settings and control center pages registered by now
   corona_launcher::commands::init(cx);
@@ -82,6 +89,16 @@ fn init_integrations(cx: &mut App) {
     tracing::error!("Failed to load config, using the defaults: {e:#}");
     config_failed(format!("{e:#}"), cx);
   }
+}
+
+/// The integrations' bar widgets, panels, IPC commands and launcher rows; their state is set
+fn register_ui(cx: &mut App) {
+  ipc::register_all(cx);
+  bar::register_all(cx);
+  panel::register_all(cx);
+  dashboard::register_all(cx);
+  osd::register_all(cx);
+  launcher::register_all(cx);
 }
 
 fn register_variants(cx: &mut App) {
