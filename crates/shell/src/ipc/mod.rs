@@ -8,6 +8,7 @@ pub mod pipewire;
 pub mod power;
 pub mod clipboard;
 pub mod mpris;
+pub mod network;
 pub mod notifications;
 pub mod sysinfo;
 pub mod tray;
@@ -19,6 +20,7 @@ pub(crate) fn register_all(cx: &mut App) {
   power::register(cx);
   clipboard::register(cx);
   mpris::register(cx);
+  network::register(cx);
   notifications::register(cx);
   sysinfo::register(cx);
   tray::register(cx);

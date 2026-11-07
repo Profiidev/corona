@@ -1,8 +1,8 @@
-use crate::{FailReason, Interface, NetworkManagerExt};
+use corona_network_manager::{FailReason, Interface, NetworkManagerExt};
 use corona_components::components::card::ErrorCard;
 use gpui_kit::Context;
 
-use crate::ui::network::NetworkPanel;
+use crate::panel::network::NetworkPanel;
 use rust_i18n::t;
 
 pub fn address(i: &Interface) -> String {
@@ -31,7 +31,7 @@ impl NetworkPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::{DeviceState, InterfaceType};
+  use corona_network_manager::{DeviceState, InterfaceType};
 
   use super::*;
 

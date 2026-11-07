@@ -6,6 +6,7 @@ mod bluetooth;
 mod brightness;
 pub(crate) mod clipboard;
 mod mpris;
+mod network;
 mod notifications;
 mod pipewire;
 mod power;
@@ -18,6 +19,7 @@ pub(crate) fn register_all(cx: &mut App) {
   brightness::register(cx);
   clipboard::register(cx);
   mpris::register(cx);
+  network::register(cx);
   notifications::register(cx);
   pipewire::register(cx);
   power::register(cx);

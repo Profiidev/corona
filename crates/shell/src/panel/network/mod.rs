@@ -1,4 +1,4 @@
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use corona_components::components::card::PageError;
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
@@ -12,8 +12,9 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
+use crate::panel::network::{hidden_network::HiddenPrompt, secret_prompt::SecretPrompt};
 
+pub(crate) mod icons;
 mod hidden_network;
 mod interface;
 mod secret_prompt;

@@ -1,6 +1,6 @@
 //! Local and public IP addresses
 
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use corona_launcher::{Action, Clip, DetailView, Icon, Meta, Outcome, View, registry, simple};
 use futures::AsyncReadExt;
 use gpui_kit::{

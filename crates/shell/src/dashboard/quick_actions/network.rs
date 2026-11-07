@@ -9,7 +9,8 @@ use corona_utils::error::spawn_logged;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{NetworkManagerExt, WifiStatus, ui::network::NetworkPanel};
+use crate::panel::network::NetworkPanel;
+use corona_network_manager::{NetworkManagerExt, WifiStatus};
 
 /// The connected network's name while wifi is on
 fn wifi_status(enabled: bool, connected: Option<String>) -> SharedString {

@@ -1,5 +1,5 @@
 use super::network::later;
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply, Switch};
 use corona_utils::error::spawn_logged;

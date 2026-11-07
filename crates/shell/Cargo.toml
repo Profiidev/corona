@@ -54,3 +54,4 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 regex.workspace = true
 zbus.workspace = true
 corona_printing = { workspace = true, features = ["test-support"] }
+corona_network_manager = { workspace = true, features = ["test-support"] }

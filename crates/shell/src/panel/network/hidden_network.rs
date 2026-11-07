@@ -1,4 +1,4 @@
-use crate::{HiddenSecurity, NetworkManagerExt};
+use corona_network_manager::{HiddenSecurity, NetworkManagerExt};
 use corona_components::components::{input::on_enter, modal::Dialog};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
@@ -11,7 +11,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::network::NetworkPanel;
+use crate::panel::network::NetworkPanel;
 use rust_i18n::t;
 
 pub struct HiddenPrompt {

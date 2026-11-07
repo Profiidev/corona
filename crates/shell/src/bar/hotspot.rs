@@ -1,4 +1,4 @@
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Task, Window,
@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 use uuid::Uuid;
 
-use crate::ui::hotspot::{HotspotPanel, poll_clients};
+use crate::panel::hotspot::{HotspotPanel, poll_clients};
 use corona_surface::control_center::Standalone;
 
 pub struct HotspotButton {

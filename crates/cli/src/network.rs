@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done, plain, print_switch},
 };
 
-use crate::commands::{
+use corona_shell::ipc::network::{
   network::{
     ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns,
     ListWifi, Portal, Rescan, Security, SwitchVpn,

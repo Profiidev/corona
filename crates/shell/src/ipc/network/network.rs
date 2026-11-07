@@ -1,4 +1,4 @@
-use crate::{
+use corona_network_manager::{
   ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
 };
 use anyhow::{Context, Result, anyhow, bail};

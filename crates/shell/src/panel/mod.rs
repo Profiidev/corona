@@ -7,7 +7,9 @@ pub(crate) mod bluetooth;
 pub(crate) mod audio;
 pub(crate) mod brightness;
 pub(crate) mod clipboard;
+pub(crate) mod hotspot;
 pub(crate) mod media;
+pub(crate) mod network;
 pub(crate) mod notifications;
 pub(crate) mod power;
 pub(crate) mod printers;
@@ -22,6 +24,8 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsPanel>()
     .register::<clipboard::ClipboardPanel>()
     .register::<audio::AudioPanel>()
+    .register::<network::NetworkPanel>()
+    .register::<hotspot::HotspotPanel>()
     .register::<brightness::BrightnessPanel>()
     .register::<power::PowerPanel>();
 }

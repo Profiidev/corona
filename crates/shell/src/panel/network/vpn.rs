@@ -1,4 +1,4 @@
-use crate::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
+use corona_network_manager::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::ListCard;
 use gpui_kit::{
@@ -13,7 +13,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::network::NetworkPanel;
+use crate::panel::network::NetworkPanel;
 use rust_i18n::t;
 
 impl NetworkPanel {

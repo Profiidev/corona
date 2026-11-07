@@ -1,9 +1,9 @@
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use corona_surface::bar::{Button, Widget};
 use gpui_kit::{Context, IntoElement, Render, Subscription, Window};
 use uuid::Uuid;
 
-use crate::ui::{icons::primary_icon, network::NetworkPanel};
+use crate::panel::network::{NetworkPanel, icons::primary_icon};
 use corona_surface::control_center::Standalone;
 
 pub struct NetworkButton {

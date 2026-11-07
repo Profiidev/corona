@@ -1,4 +1,4 @@
-use crate::{NetworkManagerExt, NmConnectivityState};
+use corona_network_manager::{NetworkManagerExt, NmConnectivityState};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
 use corona_utils::error::ErrorLogExt;
@@ -15,8 +15,8 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::icons::primary_icon;
-use crate::ui::network::{LoadingState, NetworkPanel, refresh_button, utils::address};
+use crate::panel::network::icons::primary_icon;
+use crate::panel::network::{LoadingState, NetworkPanel, refresh_button, utils::address};
 use rust_i18n::t;
 
 impl NetworkPanel {

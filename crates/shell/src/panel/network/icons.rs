@@ -1,4 +1,4 @@
-use crate::{Interface, InterfaceType, WifiNetwork, WifiStatus};
+use corona_network_manager::{Interface, InterfaceType, WifiNetwork, WifiStatus};
 use gpui_kit::assets::IconName;
 
 pub fn interface_icon(primary: Option<&Interface>) -> IconName {
@@ -51,7 +51,7 @@ mod tests {
       name: "x".into(),
       ip: None,
       kind,
-      state: crate::DeviceState::Activated,
+      state: corona_network_manager::DeviceState::Activated,
     }
   }
 

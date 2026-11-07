@@ -1,4 +1,4 @@
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use gpui_kit::{App, assets::IconName};
 
 use corona_surface::{

@@ -1,5 +1,5 @@
 use crate as nm;
-use crate::NetworkManagerExt;
+use corona_network_manager::NetworkManagerExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module, json,
 };

@@ -14,6 +14,8 @@ pub(crate) fn register_all(cx: &mut App) {
     .quick_action::<quick_actions::brightness::NightlightToggle>()
     .slider::<sliders::audio::Output>()
     .slider::<sliders::audio::Input>()
+    .quick_action::<quick_actions::network::WifiToggle>()
+    .quick_action::<quick_actions::network::AirplaneToggle>()
     .quick_action::<quick_actions::notifications::DndToggle>()
     .quick_action::<quick_actions::power::PowerProfileToggle>()
     .header::<cards::sysinfo::ProfileCard>()

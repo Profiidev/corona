@@ -2,7 +2,7 @@
 
 use std::{rc::Rc, time::Duration};
 
-use crate::{NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus};
+use corona_network_manager::{NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus};
 use corona_ipc::IpcCommand;
 use corona_ipc::Switch;
 use corona_launcher::{
@@ -15,15 +15,13 @@ use corona_launcher::{
 use gpui_kit::{App, Global, SharedString, Subscription, Task, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
-  commands::{
-    network::{
-      ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
-      Security, SwitchVpn,
-    },
-    radio::Wifi,
+use crate::dashboard::quick_actions::network::{airplane_state, set_airplane};
+use crate::ipc::network::{
+  network::{
+    ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
+    Security, SwitchVpn,
   },
-  ui::quick_action::{airplane_state, set_airplane},
+  radio::Wifi,
 };
 use corona_bluez::BluetoothExt;
 
@@ -210,7 +208,7 @@ impl CommandSource for NetworkSource {
       let (name, uuid) = (vpn.name.clone(), vpn.uuid.clone());
       let up = matches!(
         vpn.state,
-        crate::ActiveConnectionState::Activated | crate::ActiveConnectionState::Activating
+        corona_network_manager::ActiveConnectionState::Activated | corona_network_manager::ActiveConnectionState::Activating
       );
       commands.push(simple(
         format!("vpn:{uuid}"),

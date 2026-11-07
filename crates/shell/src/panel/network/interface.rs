@@ -1,4 +1,4 @@
-use crate::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
+use corona_network_manager::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::ListCard;
 use gpui_kit::{
@@ -12,7 +12,7 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::ui::network::{NetworkPanel, utils::address};
+use crate::panel::network::{NetworkPanel, utils::address};
 use rust_i18n::t;
 
 impl NetworkPanel {
