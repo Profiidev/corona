@@ -1,5 +1,5 @@
 use crate as mpris;
-use crate::{MprisExt, seek_target};
+use corona_mpris::{MprisExt, seek_target};
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, track,
 };

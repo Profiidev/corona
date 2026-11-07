@@ -1,4 +1,4 @@
-use crate::{MprisExt, PlaybackStatus};
+use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_components::components::card::CardExt;
 use corona_components::components::list::muted;
 use gpui_kit::{
@@ -20,7 +20,7 @@ use corona_surface::{
 use corona_utils::error::spawn_logged;
 use rust_i18n::t;
 
-use crate::ui::page::MediaPanel;
+use crate::panel::media::MediaPanel;
 
 const ART: f32 = 64.;
 

@@ -8,6 +8,7 @@ use crate::{
 mod bluetooth;
 mod config;
 mod ipc;
+mod mpris;
 mod schema;
 mod sysinfo;
 mod types;
@@ -24,7 +25,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_power::register_script(registry);
   corona_notifications::register_script(registry);
   corona_pipewire::register_script(registry);
-  corona_mpris::register_script(registry);
   corona_tray::register_script(registry);
   corona_weather::register_script(registry);
 }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{MprisExt, PlaybackStatus, Player};
+use corona_mpris::{MprisExt, PlaybackStatus, Player};
 use corona_components::{
   animation::size::SizeAnimation,
   components::scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use corona_components::components::progress_ring::ring;
 
-use crate::ui::page::MediaPanel;
+use crate::panel::media::MediaPanel;
 use corona_surface::control_center::Standalone;
 
 const TICK: Duration = Duration::from_secs(1);

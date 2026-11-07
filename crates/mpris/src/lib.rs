@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, names::OwnedBusName, zvariant::OwnedObjectPath};
@@ -11,16 +10,12 @@ use crate::{
   snapshot::player_proxy,
 };
 
+pub use crate::state::fmt_time;
 pub use crate::state::{LoopStatus, PlaybackStatus, Player};
 
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
-pub mod script;
 mod snapshot;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -36,7 +31,7 @@ impl Global for Mpris {}
 corona_utils::global_ext!(MprisExt, mpris, Mpris);
 
 /// A negative or NaN position is the track start, one past `Duration::MAX` saturates.
-pub(crate) fn seek_target(seconds: f64) -> Duration {
+pub fn seek_target(seconds: f64) -> Duration {
   Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Duration::MAX)
 }
 
@@ -158,16 +153,7 @@ fn bus_name(name: &str) -> Result<OwnedBusName> {
 /// Follows the players on the session bus, registers their UI, commands and script module
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   connect(cx, &buses.session).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::MprisModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

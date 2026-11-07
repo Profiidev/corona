@@ -1,6 +1,6 @@
 //! Play, pause, next and previous on the active player
 
-use crate::{MprisExt, PlaybackStatus};
+use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_launcher::{
   Action, Command, Icon, Meta, Outcome,
   kit::{Group, watch},
@@ -11,7 +11,7 @@ use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 use std::rc::Rc;
 
-use crate::commands::media::{Action as MediaAction, Media};
+use crate::ipc::mpris::media::{Action as MediaAction, Media};
 
 /// "Title – Artist" of the active player
 fn track(cx: &App) -> Option<SharedString> {

@@ -1,4 +1,4 @@
-use crate::{MprisExt, PlaybackStatus};
+use corona_mpris::{MprisExt, PlaybackStatus};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};

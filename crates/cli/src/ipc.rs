@@ -36,7 +36,7 @@ pub enum IpcCommands {
   /// The active media player: play, pause, seek, shuffle, loop, which one
   Media {
     #[command(subcommand)]
-    command: corona_mpris::cli::Commands,
+    command: crate::mpris::Commands,
   },
   /// The clipboard history
   Clipboard {
@@ -156,7 +156,7 @@ pub(crate) mod tests {
   use corona_capture::commands::{ColorPicker, Screenshot};
   use corona_idle::commands::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};
-  use corona_mpris::commands::media::Media;
+  use corona_shell::ipc::mpris::media::Media;
   use corona_network_manager::commands::radio::Wifi;
   use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
   use corona_pipewire::commands::volume::Volume;
@@ -290,8 +290,8 @@ pub(crate) mod tests {
       (&["network", "hotspot", "toggle"], json!(true), corona_network_manager::commands::network::Hotspot::COMMAND, json!("Toggle")),
       (&["bluetooth", "device", "connect", "Buds"], json!(null), DeviceAction::COMMAND, json!(["Connect", "Buds"])),
       (&["bluetooth", "discover", "on"], json!(null), Discover::COMMAND, json!(true)),
-      (&["media", "seek", "-10"], json!(null), corona_mpris::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
-      (&["media", "loop", "track"], json!(null), corona_mpris::commands::player::Loop::COMMAND, json!("Track")),
+      (&["media", "seek", "-10"], json!(null), corona_shell::ipc::mpris::player::Seek::COMMAND, json!({ "By": -10.0 })),
+      (&["media", "loop", "track"], json!(null), corona_shell::ipc::mpris::player::Loop::COMMAND, json!("Track")),
       (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["launcher", "calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
       (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_clipboard::commands::ListClipboard::COMMAND, json!(["foo", 5])),

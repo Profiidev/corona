@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{LoopStatus, MprisExt, PlaybackStatus, Player};
+use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
 use corona_utils::error::ErrorLogExt;
@@ -18,7 +18,8 @@ use gpui_kit::{
   px,
 };
 
-use crate::{state::fmt_time, ui::page::MediaPanel};
+use crate::panel::media::MediaPanel;
+use corona_mpris::fmt_time;
 use rust_i18n::t;
 
 /// The repeat button cycles off → playlist → track → off

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{LoopStatus, MprisExt, seek_target};
+use corona_mpris::{LoopStatus, MprisExt, seek_target};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
@@ -20,7 +20,7 @@ pub(crate) fn register(cx: &mut App) {
     .register::<ListPlayers>();
 }
 
-fn active(cx: &App) -> Result<crate::Player> {
+fn active(cx: &App) -> Result<corona_mpris::Player> {
   cx.mpris()
     .active_player(cx)
     .cloned()
@@ -36,7 +36,7 @@ pub enum SeekTo {
 }
 
 /// Seconds like `90`, or `+10` / `-10` from now, `None` for anything that is not a finite number
-pub(crate) fn parse_seek(text: &str) -> Option<SeekTo> {
+pub fn parse_seek(text: &str) -> Option<SeekTo> {
   let seconds: f64 = text.parse().ok().filter(|s: &f64| s.is_finite())?;
   Some(match text.starts_with(['+', '-']) {
     true => SeekTo::By(seconds),

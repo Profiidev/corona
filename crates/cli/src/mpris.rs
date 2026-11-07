@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{done, plain, print_lines, print_switch},
 };
 
-use crate::commands::{
+use corona_shell::ipc::mpris::{
   media::{Action, Media},
   player::{ListPlayers, Loop, LoopMode, Seek, SetPlayer, Shuffle, parse_seek},
 };
@@ -81,7 +81,7 @@ fn media(action: Action) {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::commands::player::SeekTo;
+  use corona_shell::ipc::mpris::player::SeekTo;
 
   #[test]
   fn seeks() {
