@@ -69,6 +69,7 @@ impl NetworkPanel {
               .small()
               .ml_auto()
               .cursor_pointer()
+              .when(device.is_none(), |this| this.cursor_not_allowed())
               .tooltip(t!("app.network.hidden.title"))
               .on_click(cx.listener(|this, _, window, cx| this.open_hidden_prompt(window, cx))),
           )
@@ -86,6 +87,8 @@ impl NetworkPanel {
           )
           .child(
             Switch::new("wifi-enabled")
+              .cursor_pointer()
+              .when(!supported, |this| this.cursor_not_allowed())
               .checked(enabled)
               .disabled(!supported)
               .on_change(cx.async_listener(

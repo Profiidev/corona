@@ -57,6 +57,7 @@ impl BrightnessPanel {
               )
               .child(
                 Switch::new("nightlight")
+                  .cursor_pointer()
                   .checked(state.on)
                   .on_change(cx.listener(|this, on: &bool, _, cx| {
                     let result = cx.brightness().set_nightlight(*on, cx);

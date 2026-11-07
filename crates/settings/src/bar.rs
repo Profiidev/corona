@@ -832,6 +832,7 @@ pub fn idle_form(
     .child(form_row(
       label,
       gpui_kit::component::switch::Switch::new(form_key(&name, slot, "idle"))
+        .cursor_pointer()
         .checked(current.hide_when_idle)
         .small()
         .on_click(move |checked, _, cx| {

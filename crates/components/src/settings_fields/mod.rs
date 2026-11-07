@@ -396,9 +396,12 @@ pub fn slider(
             .child(format_number(f64::from(shown))),
         )
         .child(
-          div()
-            .flex_1()
-            .child(Slider::new(&slider).disabled(options.is_disabled())),
+          div().flex_1().child(
+            Slider::new(&slider)
+              .cursor_pointer()
+              .when(options.is_disabled(), |this| this.cursor_not_allowed())
+              .disabled(options.is_disabled()),
+          ),
         )
     },
   )
@@ -467,6 +470,7 @@ pub fn searchable(
     });
   }
   Select::new(&state)
+    .cursor_pointer()
     .placeholder(placeholder)
     .search_placeholder(t!("app.settings.search"))
 }

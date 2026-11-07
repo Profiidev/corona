@@ -215,6 +215,7 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     |name: &'static str, label: SharedString, on: bool, set: fn(&mut CommandConfig, bool)| {
       let id = id.to_string();
       Checkbox::new(SharedString::from(format!("launcher-{name}-{id}")))
+        .cursor_pointer()
         .checked(on)
         .label(label)
         .small()
@@ -456,6 +457,7 @@ fn records(
       let (get, write) = (get.clone(), write.clone());
       div().flex().items_center().gap_1().children(fields).child(
         Button::new(SharedString::from(format!("launcher-{key}-{i}-remove")))
+          .cursor_pointer()
           .icon(IconName::Close)
           .ghost()
           .small()
@@ -480,6 +482,7 @@ fn records(
     .child(
       div().child(
         Button::new(SharedString::from(format!("launcher-{key}-add")))
+          .cursor_pointer()
           .label(t!("app.settings.plugins.list_add"))
           .icon(IconName::Plus)
           .outline()

@@ -128,14 +128,6 @@ impl PrintersPanel {
           .id("scanners-list")
           .children(scanners.iter().map(|s| self.scanner_row(theme, s, cx))),
       )
-      .when(!scanners.iter().any(|s| s.sane.is_some()), |d| {
-        d.child(
-          div()
-            .text_xs()
-            .text_color(theme.colors.muted_foreground)
-            .child(t!("app.printers.sane_hint")),
-        )
-      })
   }
 
   fn scanner_row(

@@ -476,6 +476,7 @@ impl HotspotPanel {
             })
             .child(
               Switch::new("hotspot-enabled")
+                .cursor_pointer()
                 .ml_auto()
                 .checked(running)
                 // a second start while the first waits would take over the wifi; with wifi off
@@ -501,31 +502,42 @@ impl HotspotPanel {
           )
         })
         // a running hotspot keeps its settings until it is restarted
-        .child(Input::new(&form.ssid).small().disabled(running))
-        .child(
-          Input::new(&form.password)
-            .mask_toggle()
-            .small()
-            .disabled(running),
-        )
+        .child(Input::new(&form.ssid).disabled(running))
+        .child(Input::new(&form.password).mask_toggle().disabled(running))
         // side by side, so the card fits the panel with the QR code
         .child(
           div()
             .flex()
             .gap_2()
             .child(
-              div()
-                .flex_1()
-                .child(Select::new(&form.band).small().disabled(running)),
+              div().flex_1().child(
+                Select::new(&form.band)
+                  .cursor_pointer()
+                  .when(running, |this| this.cursor_not_allowed())
+                  .disabled(running),
+              ),
             )
             .child(
-              div()
-                .flex_1()
-                .child(Select::new(&form.security).small().disabled(running)),
+              div().flex_1().child(
+                Select::new(&form.security)
+                  .cursor_pointer()
+                  .when(running, |this| this.cursor_not_allowed())
+                  .disabled(running),
+              ),
             ),
         )
-        .child(Select::new(&form.auto_off).small().disabled(running))
-        .child(Select::new(&form.isolate).small().disabled(running))
+        .child(
+          Select::new(&form.auto_off)
+            .cursor_pointer()
+            .when(running, |this| this.cursor_not_allowed())
+            .disabled(running),
+        )
+        .child(
+          Select::new(&form.isolate)
+            .cursor_pointer()
+            .when(running, |this| this.cursor_not_allowed())
+            .disabled(running),
+        )
         .when(form.password.read(cx).value().is_empty(), |d| {
           d.child(
             div()

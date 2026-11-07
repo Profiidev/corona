@@ -1,7 +1,7 @@
 use crate::{HiddenSecurity, NetworkManagerExt};
 use corona_components::components::{input::on_enter, modal::Dialog};
 use gpui_kit::{
-  AppContext, Context, Entity, IntoElement, ParentElement, Subscription, Window,
+  AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::{IndexPath, input::InputState},
   component::{
     Sizable,
@@ -125,7 +125,11 @@ impl NetworkPanel {
         }),
       )
       .child(Input::new(&prompt.ssid).small())
-      .child(Select::new(&prompt.security_select).small())
+      .child(
+        Select::new(&prompt.security_select)
+          .cursor_pointer()
+          .small(),
+      )
       .when(prompt.security != HiddenSecurity::Open, |d| {
         d.child(Input::new(&prompt.password).mask_toggle().small())
       })

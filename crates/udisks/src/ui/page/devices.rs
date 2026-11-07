@@ -15,6 +15,7 @@ use gpui_kit::{
   },
   div,
   prelude::FluentBuilder,
+  px,
 };
 use rust_i18n::t;
 
@@ -136,10 +137,11 @@ impl DisksPanel {
       Health::Unknown => None,
     };
     let mut rows: Vec<AnyElement> = Vec::new();
-    for part in &view.parts {
-      rows.push(self.part_row(part, None, cx));
+    for (i, part) in view.parts.iter().enumerate() {
+      let last = i + 1 == view.parts.len();
+      rows.push(self.part_row(part, None, last, cx));
       if let Some(clear) = &part.cleartext {
-        rows.push(self.part_row(part, Some(clear), cx));
+        rows.push(self.part_row(part, Some(clear), last, cx));
       }
     }
     div()
@@ -190,15 +192,17 @@ impl DisksPanel {
       .when(!view.parts.is_empty(), |d| {
         d.child(div().px_1().child(partition_map(&segments(view), cx)))
       })
-      .children(rows)
+      .child(div().flex().flex_col().ml_4().children(rows))
       .into_any_element()
   }
 
-  /// A partition's row, or with `child` its unlocked cleartext's, indented
+  /// A partition's row, or with `child` its unlocked cleartext's, indented.
+  /// `last` marks the final partition so its tree line ends at the row.
   pub(super) fn part_row(
     &self,
     part: &PartView,
     child: Option<&Block>,
+    last: bool,
     cx: &Context<'_, Self>,
   ) -> AnyElement {
     let theme = cx.theme();
@@ -232,10 +236,51 @@ impl DisksPanel {
       .next()
       .unwrap_or_default()
       .to_string();
+    let line = theme.colors.border;
+    let x = if child.is_some() { 16. } else { 0. };
     div()
+      .relative()
       .flex()
       .flex_col()
       .gap_1()
+      .pb_1()
+      .when(child.is_none(), |d| d.pl_3())
+      .when(child.is_some(), |d| d.pl_7())
+      .when(child.is_some() && !last, |d| {
+        d.child(
+          div()
+            .absolute()
+            .left_0()
+            .top_0()
+            .bottom_0()
+            .w(px(1.))
+            .bg(line),
+        )
+      })
+      .child(
+        div()
+          .absolute()
+          .left(px(x))
+          .top_0()
+          .w(px(1.))
+          .map(|d| {
+            if last || child.is_some() {
+              d.h(px(23.))
+            } else {
+              d.bottom_0()
+            }
+          })
+          .bg(line),
+      )
+      .child(
+        div()
+          .absolute()
+          .left(px(x))
+          .top(px(22.))
+          .w_3()
+          .h(px(1.))
+          .bg(line),
+      )
       .child(
         div()
           .id(gpui_kit::ElementId::Name(format!("disks-part-{id}").into()))
@@ -244,7 +289,6 @@ impl DisksPanel {
           .items_center()
           .gap_2()
           .p_1()
-          .when(child.is_some(), |d| d.pl_8())
           .rounded_md()
           .cursor_pointer()
           .hover(|s| s.bg(theme.colors.muted))
@@ -279,20 +323,15 @@ impl DisksPanel {
           .children(self.primary_button(part, child, &id, on, false, cx)),
       )
       .when_some(usage, |d, (used, total)| {
-        d.child(
-          div()
-            .px_1()
-            .when(child.is_some(), |d| d.pl_8())
-            .child(usage_bar(
-              percent(used, total),
-              t!(
-                "app.disks.used",
-                percent = format!("{:.0}", percent(used, total))
-              ),
-              size(total),
-              cx,
-            )),
-        )
+        d.child(div().px_1().child(usage_bar(
+          percent(used, total),
+          t!(
+            "app.disks.used",
+            percent = format!("{:.0}", percent(used, total))
+          ),
+          size(total),
+          cx,
+        )))
       })
       .into_any_element()
   }

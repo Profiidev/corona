@@ -4,7 +4,7 @@ use corona_components::settings_fields::{choice, switch};
 use corona_config::osk::{AutoShow, OskLanguage, OskLayout, TabletSource};
 use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{
-  App, BorrowAppContext,
+  App, BorrowAppContext, Styled,
   assets::IconName,
   component::{
     Sizable,
@@ -111,6 +111,7 @@ fn osk() -> SettingPage {
             t!("app.settings.osk.clear_learned.title"),
             SettingField::render(|_, _, _| {
               Button::new("osk-clear-learned")
+                .cursor_pointer()
                 .label(t!("app.settings.osk.clear_learned.button"))
                 .outline()
                 .small()

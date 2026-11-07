@@ -153,16 +153,19 @@ impl BluetoothPanel {
 
     let action = if !device.paired {
       Button::new(format!("bt-pair-{address}"))
+        .cursor_pointer()
         .icon(IconName::Link)
         .tooltip(t!("app.bluetooth.pair"))
         .with_variant(ButtonVariant::Primary)
     } else if device.connected {
       Button::new(format!("bt-disconnect-{address}"))
+        .cursor_pointer()
         .icon(IconName::Unplug)
         .tooltip(t!("app.common.disconnect"))
         .with_variant(ButtonVariant::Danger)
     } else {
       Button::new(format!("bt-connect-{address}"))
+        .cursor_pointer()
         .icon(IconName::Plug)
         .tooltip(t!("app.common.connect"))
         .with_variant(ButtonVariant::Primary)

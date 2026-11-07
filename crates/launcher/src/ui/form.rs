@@ -239,7 +239,10 @@ impl Render for FormPage {
             .into_any_element()
         }
         Control::Area(area) => Textarea::new(area).into_any_element(),
-        Control::Dropdown(select) => Select::new(select).small().into_any_element(),
+        Control::Dropdown(select) => Select::new(select)
+          .cursor_pointer()
+          .small()
+          .into_any_element(),
       };
       div()
         .flex()

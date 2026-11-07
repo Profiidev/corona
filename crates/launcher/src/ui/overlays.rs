@@ -192,6 +192,7 @@ pub(super) fn confirm(this: &Launcher, cx: &mut Context<Launcher>) -> Option<Any
           .when(state.confirm.skippable, |el| {
             el.child(
               Checkbox::new("launcher-dont-ask")
+                .cursor_pointer()
                 .checked(state.dont_ask)
                 .label(t!("app.launcher.dont_ask").to_string())
                 .small()
