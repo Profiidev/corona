@@ -5,6 +5,7 @@ use gpui_kit::App;
 
 pub(crate) mod audio;
 mod bluetooth;
+pub(crate) mod clock;
 mod disks;
 mod hotspot;
 mod network;
@@ -27,6 +28,9 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsButton>()
     .register::<tray::Tray>()
     .register::<audio::AudioButton>()
+    .register::<PageButton<crate::panel::weather::WeatherPanel>>()
+    .register::<PageButton<crate::panel::calendar::CalendarPanel>>()
+    .register::<clock::Clock>()
     .register::<IdlePageButton<crate::panel::disks::DisksPanel>>()
     .register::<network::NetworkButton>()
     .register::<hotspot::HotspotButton>()

@@ -13,7 +13,7 @@ mod tests {
       corona_settings::init(cx);
       // the integrations' pages, rendered here too
       cx.settings_mut()
-        .register::<corona_weather::settings::LocationSettings>()
+        .register::<crate::settings_pages::weather::LocationSettings>()
         .register::<crate::settings_pages::pipewire::PrivacySettings>()
         .register::<crate::settings_pages::notifications::NotificationSettings>()
         .register::<corona_capture::settings::ScreenshotSettings>()

@@ -1,7 +1,7 @@
 use std::time::UNIX_EPOCH;
 
 use crate as wt;
-use crate::{WeatherExt, WeatherService};
+use corona_weather::{WeatherExt, WeatherService};
 use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
 use gpui_kit::App;
 use serde::Serialize;

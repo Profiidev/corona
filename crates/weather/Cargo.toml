@@ -9,11 +9,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-corona_components.workspace = true
-corona_surface.workspace = true
-corona_settings.workspace = true
-corona_launcher.workspace = true
-corona_js.workspace = true
 specta.workspace = true
 rust-i18n.workspace = true
 jiff.workspace = true

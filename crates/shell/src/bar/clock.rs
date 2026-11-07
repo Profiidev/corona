@@ -13,7 +13,7 @@ use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ui::calendar::CalendarPanel;
+use crate::panel::calendar::CalendarPanel;
 use corona_components::i18n::format_time;
 use corona_surface::control_center::Standalone;
 

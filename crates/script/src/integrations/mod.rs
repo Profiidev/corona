@@ -12,12 +12,14 @@ mod power;
 mod printing;
 mod sysinfo;
 mod tray;
+mod weather;
 
 pub(crate) fn register(registry: &mut ScriptRegistry) {
   registry.register::<bluez::BluetoothModule>();
   registry.register::<brightness::BrightnessModule>();
   registry.register::<sysinfo::SysinfoModule>();
   registry.register::<tray::TrayModule>();
+  registry.register::<weather::WeatherModule>();
   registry.register::<printing::PrintingModule>();
   registry.register::<mpris::MprisModule>();
   registry.register::<network::NetworkModule>();

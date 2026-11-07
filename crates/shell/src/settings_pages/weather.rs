@@ -15,11 +15,11 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use crate::ui::clock::{Clock, Options};
+use crate::bar::clock::{Clock, Options};
 
 settings_page!(LocationSettings, "location", 130, |cx| location());
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut()
     .register::<LocationSettings>()
     .group_items("control_center", "control_center", 0, clock_formats)

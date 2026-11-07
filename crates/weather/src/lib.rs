@@ -2,7 +2,6 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, observe_section};
-use corona_js::ScriptExt;
 use corona_location::LocationExt;
 use corona_utils::{
   Buses,
@@ -16,11 +15,7 @@ pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass
 pub use corona_config::Units;
 
 mod api;
-mod launcher;
-pub mod script;
-pub mod settings;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -75,18 +70,9 @@ fn save_cache(weather: &Weather) -> Result<()> {
   save_cache_to(cache_path(), weather)
 }
 
-/// Starts the forecast, registers its UI, commands and script module
+/// Starts the forecast
 pub fn init(cx: &mut App, _: &Buses) {
   start(cx);
-  ui::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::WeatherModule>();
 }
 
 fn start(cx: &mut App) {

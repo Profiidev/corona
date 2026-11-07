@@ -22,14 +22,7 @@ const RETRY: Duration = Duration::from_secs(5 * 60);
 /// GeoClue follows a moving device this often
 const REFRESH: Duration = Duration::from_secs(30 * 60);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Location {
-  /// Empty for the device's own position, which the shell names
-  pub name: String,
-  pub latitude: f64,
-  pub longitude: f64,
-  pub query: Option<String>,
-}
+pub use corona_utils::Location;
 
 #[derive(Clone)]
 pub struct LocationService {

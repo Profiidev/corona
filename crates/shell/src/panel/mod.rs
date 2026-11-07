@@ -6,6 +6,7 @@ use gpui_kit::App;
 pub(crate) mod bluetooth;
 pub(crate) mod audio;
 pub(crate) mod brightness;
+pub(crate) mod calendar;
 pub(crate) mod clipboard;
 pub(crate) mod disks;
 pub(crate) mod hotspot;
@@ -14,6 +15,7 @@ pub(crate) mod network;
 pub(crate) mod notifications;
 pub(crate) mod power;
 pub(crate) mod printers;
+pub(crate) mod weather;
 pub(crate) mod sysinfo;
 
 pub(crate) fn register_all(cx: &mut App) {
@@ -26,6 +28,8 @@ pub(crate) fn register_all(cx: &mut App) {
     .register::<notifications::NotificationsPanel>()
     .register::<clipboard::ClipboardPanel>()
     .register::<audio::AudioPanel>()
+    .register::<weather::WeatherPanel>()
+    .register::<calendar::CalendarPanel>()
     .register::<disks::DisksPanel>()
     .register::<network::NetworkPanel>()
     .register::<hotspot::HotspotPanel>()

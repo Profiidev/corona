@@ -4,10 +4,8 @@ use corona_launcher::{Action, DetailView, Icon, Outcome, View, detail_row, kit::
 use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
-  Condition, WeatherExt, compass,
-  ui::page::{degrees, describe, place_name, speed},
-};
+use crate::panel::weather::{degrees, describe, place_name, speed};
+use corona_weather::{Condition, WeatherExt, compass};
 
 fn weather(cx: &App) -> View {
   let service = cx.weather();
@@ -72,7 +70,7 @@ fn weather(cx: &App) -> View {
   })
 }
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   registry::register(
     opener(
       "weather",

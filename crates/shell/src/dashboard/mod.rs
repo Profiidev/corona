@@ -19,5 +19,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .quick_action::<quick_actions::notifications::DndToggle>()
     .quick_action::<quick_actions::power::PowerProfileToggle>()
     .header::<cards::sysinfo::ProfileCard>()
-    .card::<cards::mpris::MediaCard>();
+    .card::<cards::mpris::MediaCard>()
+    .card::<cards::clock::ClockCard>();
 }

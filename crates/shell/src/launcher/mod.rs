@@ -14,6 +14,7 @@ mod power;
 mod processes;
 mod sysinfo;
 mod tray;
+mod weather;
 
 pub(crate) fn register_all(cx: &mut App) {
   bluetooth::register(cx);
@@ -27,5 +28,6 @@ pub(crate) fn register_all(cx: &mut App) {
   power::register(cx);
   sysinfo::register(cx);
   tray::register(cx);
+  weather::register(cx);
   processes::register(cx);
 }
