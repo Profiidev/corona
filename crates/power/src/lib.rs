@@ -24,8 +24,6 @@ mod session;
 mod snapshot;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 /// how long before a session watch that failed starts over
 const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 

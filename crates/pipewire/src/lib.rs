@@ -18,8 +18,6 @@ mod state;
 mod testing;
 pub mod volume;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 pub use api::Pipewire;
 pub use audio::PipewireAudio;
 pub use capture::{Capture, CaptureAccess, CaptureKind};

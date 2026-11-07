@@ -34,8 +34,6 @@ mod sane;
 mod state;
 mod tls;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct Printing {
   pub printers: Entity<Vec<Printer>>,

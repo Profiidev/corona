@@ -12,7 +12,6 @@ categories.workspace = true
 test-support = []
 
 [dependencies]
-rust-i18n.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true
 zbus.workspace = true

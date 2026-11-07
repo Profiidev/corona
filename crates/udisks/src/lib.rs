@@ -26,8 +26,6 @@ mod proxy;
 mod snapshot;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 const SERVICE: &str = "org.freedesktop.UDisks2";
 
 /// The errors polkit answers with when the user could authorize the call, or dismissed the

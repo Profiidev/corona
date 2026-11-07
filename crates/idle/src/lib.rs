@@ -21,8 +21,6 @@ mod behavior;
 pub use behavior::SessionHook;
 mod screensaver;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 /// Watches input and runs the `[idle]` behaviors and serves the D-Bus idle inhibits
 pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
   behavior::init(cx, &buses.session);

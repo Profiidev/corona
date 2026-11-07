@@ -12,7 +12,6 @@ categories.workspace = true
 test-support = []
 
 [dependencies]
-rust-i18n.workspace = true
 futures.workspace = true
 tracing.workspace = true
 corona_utils.workspace = true

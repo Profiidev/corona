@@ -20,6 +20,9 @@ corona_components.workspace = true
 corona_utils.workspace = true
 corona_auth.workspace = true
 corona_bluez.workspace = true
+corona_compositor.workspace = true
+corona_desktop.workspace = true
+smol.workspace = true
 corona_brightness.workspace = true
 corona_idle.workspace = true
 corona_sysinfo.workspace = true
@@ -60,8 +63,6 @@ clap.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
-corona_compositor.workspace = true
 corona_surface = { workspace = true, features = ["test-support"] }
-corona_desktop.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 corona_utils = { workspace = true, features = ["test-support"] }

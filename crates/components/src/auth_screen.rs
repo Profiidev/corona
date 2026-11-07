@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use anyhow::Result;
-use corona_power::{PowerExt, SessionAction, SessionCapabilities};
+pub use corona_utils::session::{SessionAction, SessionCapabilities};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
-  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Hsla, ImageSource,
+  Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Global, Hsla, ImageSource,
   InteractiveElement, IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement,
   Styled, Subscription, Task, Window,
   assets::IconName,
@@ -27,6 +27,48 @@ use gpui_kit::{
   px,
 };
 use rust_i18n::t;
+
+/// What reads and runs the session actions, set by whoever has the machine's session manager
+#[derive(Clone)]
+pub struct SessionControl {
+  pub capabilities: Rc<dyn Fn(&App) -> Task<Result<SessionCapabilities>>>,
+  pub run: Rc<dyn Fn(SessionAction, &App) -> Task<Result<()>>>,
+}
+
+impl Global for SessionControl {}
+
+/// How the session menu shows an action
+pub trait SessionActionExt {
+  fn label(self) -> SharedString;
+  fn icon(self) -> IconName;
+}
+
+impl SessionActionExt for SessionAction {
+  fn label(self) -> SharedString {
+    match self {
+      SessionAction::Logout => t!("app.session.logout"),
+      SessionAction::Suspend => t!("app.session.suspend"),
+      SessionAction::Hibernate => t!("app.session.hibernate"),
+      SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
+      SessionAction::Reboot => t!("app.session.reboot"),
+      SessionAction::PowerOff => t!("app.session.shutdown"),
+      SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
+    }
+    .into()
+  }
+
+  fn icon(self) -> IconName {
+    match self {
+      SessionAction::Logout => IconName::LogOut,
+      SessionAction::Suspend => IconName::Pause,
+      SessionAction::Hibernate => IconName::Snowflake,
+      SessionAction::SuspendThenHibernate => IconName::Moon,
+      SessionAction::Reboot => IconName::RotateCw,
+      SessionAction::PowerOff => IconName::Power,
+      SessionAction::RebootToFirmware => IconName::Cpu,
+    }
+  }
+}
 
 const WIDTH: f32 = 320.;
 const MENU_WIDTH: f32 = 248.;
@@ -302,7 +344,7 @@ impl AuthScreen {
 
   /// Reads what the machine allows on every open
   fn load_capabilities(&mut self, cx: &mut Context<Self>) {
-    let capabilities = cx.power().session_capabilities();
+    let capabilities = (cx.global::<SessionControl>().capabilities)(cx);
     cx.spawn(async move |this, cx| {
       let capabilities = capabilities.await.log_err().unwrap_or_default();
       let _ = this.update(cx, |this, cx| {
@@ -319,7 +361,7 @@ impl AuthScreen {
     }
     self.log = Log::Busy(busy(action));
     cx.notify();
-    let task = cx.power().session_action(action);
+    let task = (cx.global::<SessionControl>().run)(action, cx);
     cx.spawn(async move |this, cx| {
       let result = task.await;
       let _ = this.update(cx, |this, cx| {

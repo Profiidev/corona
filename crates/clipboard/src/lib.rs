@@ -16,8 +16,6 @@ use gpui_kit::{App, AppContext, Entity, Global};
 pub use store::{Entry, Kind, Store};
 use watch::{Captured, MAX_TEXT};
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct ClipboardHistory {
   store: Rc<Store>,

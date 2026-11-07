@@ -6,8 +6,6 @@ mod toplevel;
 mod view;
 mod wayland;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 use anyhow::Result;
 pub use image;
 

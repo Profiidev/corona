@@ -17,8 +17,6 @@ pub use corona_config::Units;
 mod api;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 const RETRY: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone)]

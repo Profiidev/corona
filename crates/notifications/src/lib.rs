@@ -20,8 +20,6 @@ pub use crate::state::{MAX_ACTIONS, sound_due, Action, Notification, Notificatio
 mod server;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct Notifications {
   pub notifications: Entity<Vec<Notification>>,

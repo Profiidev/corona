@@ -13,7 +13,6 @@ test-support = []
 
 [dependencies]
 futures.workspace = true
-rust-i18n.workspace = true
 dirs.workspace = true
 uuid.workspace = true
 clap.workspace = true

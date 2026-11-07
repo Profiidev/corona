@@ -6,6 +6,7 @@ pub mod error;
 pub mod level;
 pub mod location;
 pub mod persist;
+pub mod session;
 pub mod stream;
 #[cfg(feature = "test-support")]
 pub mod test_bus;

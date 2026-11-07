@@ -454,7 +454,6 @@ export default class Main extends View {
     cx.set_global(plugins.manager());
     cx.update(|cx| {
       crate::register_modules(cx.script_mut());
-      corona_desktop::register_script(cx.script_mut());
       cx.script_mut()
         .register::<crate::test_support::TestCompositor>();
       if !cx.has_global::<Config>() {
@@ -1562,11 +1561,14 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 15] = [
+  const ALL_MODULES: [&str; 18] = [
     "secrets",
     "auth",
     "bluetooth",
     "brightness",
+    "compositor",
+    "compositor_control",
+    "desktop",
     "idle",
     "mpris",
     "network",

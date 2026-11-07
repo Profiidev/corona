@@ -12,7 +12,6 @@ categories.workspace = true
 corona_compositor.workspace = true
 corona_config.workspace = true
 corona_power.workspace = true
-rust-i18n.workspace = true
 serde.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true

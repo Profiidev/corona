@@ -19,8 +19,6 @@ mod snapshot;
 mod state;
 mod watcher;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct Tray {
   pub items: Entity<Vec<TrayItem>>,

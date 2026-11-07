@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use corona_components::auth_screen::SessionActionExt;
 use corona_power::{EntryTitle, PowerExt, SessionAction, SessionCapabilities, entry_title};
 use corona_surface::{
   control_center::{ControlCenter, Standalone},

@@ -25,8 +25,6 @@ mod listener;
 mod snapshot;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct Bluetooth {
   pub adapter: Entity<Option<Adapter>>,

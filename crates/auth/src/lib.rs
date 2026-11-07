@@ -15,8 +15,6 @@ use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
 
 pub mod polkit;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 /// A scan nobody touched ran out; not a fault, scan again
 #[derive(Debug)]
 pub struct ScanTimeout;

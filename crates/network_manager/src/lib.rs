@@ -36,8 +36,6 @@ pub mod root;
 mod snapshot;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
 

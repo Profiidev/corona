@@ -32,8 +32,6 @@ mod outputs;
 mod solar;
 mod state;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
 #[derive(Clone)]
 pub struct Brightness {
   pub displays: Entity<Vec<Display>>,

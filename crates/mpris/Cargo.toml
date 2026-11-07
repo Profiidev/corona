@@ -9,7 +9,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-rust-i18n.workspace = true
 futures.workspace = true
 corona_utils.workspace = true
 gpui-kit.workspace = true

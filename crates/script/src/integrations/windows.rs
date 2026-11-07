@@ -110,7 +110,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
-  use corona_script::harness;
+  use crate::harness;
   use corona_surface::testing::{FakeCompositor, setup, workspace};
 
   fn install(cx: &mut TestAppContext) {
