@@ -25,7 +25,6 @@ fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_notifications::register_script(registry);
   corona_pipewire::register_script(registry);
   corona_mpris::register_script(registry);
-  corona_printing::register_script(registry);
   corona_tray::register_script(registry);
   corona_weather::register_script(registry);
 }

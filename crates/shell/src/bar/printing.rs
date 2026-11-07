@@ -1,23 +1,13 @@
-//! The printers page and its bar button
+//! The printers bar button
 
-use corona_surface::{
-  bar::{BarExt, IdlePage, IdlePageButton},
-  control_center::ControlCenterExt,
-};
+use corona_surface::bar::{IdlePage, IdlePageButton};
 use gpui_kit::{App, Context, Subscription};
 
-use crate::PrintingExt;
-
-pub mod page;
-
-pub(crate) fn register(cx: &mut App) {
-  cx.bar_mut()
-    .register::<IdlePageButton<page::PrintersPanel>>();
-  cx.control_center_mut().register::<page::PrintersPanel>();
-}
+use crate::panel::printers::PrintersPanel;
+use corona_printing::PrintingExt;
 
 /// Busy while a print job or a scan runs
-impl IdlePage for page::PrintersPanel {
+impl IdlePage for PrintersPanel {
   fn busy(cx: &App) -> bool {
     cx.printing().busy(cx)
   }
@@ -33,7 +23,7 @@ impl IdlePage for page::PrintersPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::{Job, JobState, Printing};
+  use corona_printing::{Job, JobState, Printing};
   use gpui_kit::{self as gpui, AppContext, TestAppContext, WindowOptions, test::TestWindowExt};
 
   use super::*;
@@ -51,7 +41,7 @@ mod tests {
       .update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
           cx.new(|cx| {
-            IdlePageButton::<page::PrintersPanel>::init(
+            IdlePageButton::<PrintersPanel>::init(
               cx,
               Uuid::nil(),
               IdleOptions { hide_when_idle },

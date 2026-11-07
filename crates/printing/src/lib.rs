@@ -32,11 +32,8 @@ mod listener;
 #[cfg(test)]
 mod mock;
 mod sane;
-pub mod script;
-mod settings;
 mod state;
 mod tls;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -548,15 +545,7 @@ where
 /// Connects to CUPS and Avahi, registers the printers' UI and script module
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   init_at(cx, &buses.system, Path::new(cups::SOCKET)).await?;
-  ui::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::PrintingModule>();
 }
 
 async fn init_at(cx: &mut App, conn: &Connection, sock: &Path) -> Result<()> {

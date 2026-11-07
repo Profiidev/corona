@@ -1,6 +1,8 @@
 use std::{borrow::Cow, path::PathBuf};
 
-use crate::{ColorMode, Format, InputSource, PrintingExt, ScanSettings, Scanner, ScannerCaps};
+use corona_printing::{
+  ColorMode, Format, InputSource, PrintingExt, ScanSettings, Scanner, ScannerCaps,
+};
 use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
@@ -19,7 +21,7 @@ use gpui_kit::{
   px,
 };
 
-use crate::ui::page::PrintersPanel;
+use crate::panel::printers::PrintersPanel;
 use rust_i18n::t;
 
 /// What a fresh scan uses: 300 dpi or the closest, PDF when offered.
@@ -425,7 +427,7 @@ impl PrintersPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::SourceCaps;
+  use corona_printing::SourceCaps;
 
   use super::*;
 

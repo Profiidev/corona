@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate as pr;
-use crate::PrintingExt;
+use corona_printing::PrintingExt;
 use anyhow::{Context as _, Result, ensure};
 use corona_js::{
   Capabilities, Cx, Glob, Json, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws,

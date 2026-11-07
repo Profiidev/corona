@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{PrintingExt, ScanSettings, ScannerCaps};
+use corona_printing::{PrintingExt, ScanSettings, ScannerCaps};
 use corona_components::components::{card::PageError, segmented};
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
@@ -71,7 +71,7 @@ impl ControlCenterPage for PrintersPanel {
       scanner: None,
       caps: None,
       settings: None,
-      destination: crate::pictures_dir(),
+      destination: corona_printing::pictures_dir(),
       saved: None,
       adding: None,
       _subscriptions: subscriptions,
@@ -129,7 +129,7 @@ impl Render for PrintersPanel {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
+  use corona_printing::{
     ColorMode, Format, InputSource, Job, JobState, Marker, NetworkPrinter, Printer, PrinterState,
     Printing, Scanner, SourceCaps,
   };

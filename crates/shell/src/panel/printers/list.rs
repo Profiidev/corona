@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{Job, JobState, Printer, PrinterState, PrintingExt};
+use corona_printing::{Job, JobState, Printer, PrinterState, PrintingExt};
 use anyhow::Context as _;
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::{ListCard, ListItem, card, empty_note};
@@ -19,7 +19,7 @@ use gpui_kit::{
   px, rgb,
 };
 
-use crate::ui::page::PrintersPanel;
+use crate::panel::printers::PrintersPanel;
 use rust_i18n::t;
 
 fn printer_state(state: PrinterState) -> Cow<'static, str> {
