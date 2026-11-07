@@ -93,7 +93,7 @@ pub enum IpcCommands {
   /// Keep the session awake
   Idle {
     #[command(subcommand)]
-    command: corona_idle::cli::Commands,
+    command: crate::idle::Commands,
   },
   /// Power profile commands
   PowerProfile {
@@ -154,7 +154,7 @@ pub(crate) mod tests {
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_shell::ipc::brightness::{brightness::SetBrightness, nightlight::Nightlight};
   use corona_capture::commands::{ColorPicker, Screenshot};
-  use corona_idle::commands::StayAwake;
+  use corona_shell::ipc::idle::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};
   use corona_shell::ipc::mpris::media::Media;
   use corona_shell::ipc::network::radio::Wifi;

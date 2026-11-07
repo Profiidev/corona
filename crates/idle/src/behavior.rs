@@ -9,9 +9,8 @@ use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
 use corona_ipc::IpcCommand;
 use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
-use gpui_kit::{App, BorrowAppContext};
+use gpui_kit::{App, BorrowAppContext, Global};
 
-use corona_auth::commands::{Action, Session};
 
 pub(crate) fn init(cx: &mut App, session: &zbus::Connection) {
   crate::start(cx, session, changed);
@@ -54,13 +53,13 @@ fn changed(name: &str, idle: bool, cx: &mut App) {
       )
     });
     match behavior.action {
-      IdleAction::Lock => session(Action::Lock, cx),
+      IdleAction::Lock
+      | IdleAction::Suspend
+      | IdleAction::LockAndSuspend
+      | IdleAction::LockAndSuspendThenHibernate => session(behavior.action, cx),
       IdleAction::ScreenOff => {
         let _ = cx.compositor().set_dpms(false).log_err();
       }
-      IdleAction::Suspend => session(Action::Suspend, cx),
-      IdleAction::LockAndSuspend => session(Action::LockAndSuspend, cx),
-      IdleAction::LockAndSuspendThenHibernate => session(Action::LockAndSuspendThenHibernate, cx),
       IdleAction::Command => run(&behavior.command),
     }
   } else if let Some((action, resume_command)) = FIRED.with_borrow_mut(|f| f.remove(name)) {
@@ -74,8 +73,16 @@ fn changed(name: &str, idle: bool, cx: &mut App) {
   }
 }
 
-fn session(action: Action, cx: &mut App) {
-  let _ = Session::handle(action, cx).log_err();
+/// Runs the lock or power action of a behavior; the shell sets it, nothing here knows how
+pub struct SessionHook(pub Rc<dyn Fn(IdleAction, &mut App)>);
+
+impl Global for SessionHook {}
+
+fn session(action: IdleAction, cx: &mut App) {
+  match cx.try_global::<SessionHook>().map(|h| h.0.clone()) {
+    Some(run) => run(action, cx),
+    None => tracing::warn!("idle {action:?}: nothing runs session actions"),
+  }
 }
 
 /// Runs `command` in a shell, waited on in its own thread so it leaves no zombie

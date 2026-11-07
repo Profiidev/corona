@@ -12,7 +12,7 @@ use rust_i18n::t;
 
 settings_page!(IdleSettings, "idle", 110, |cx| idle(cx));
 
-pub(crate) fn register(cx: &mut App) {
+pub(super) fn register(cx: &mut App) {
   cx.settings_mut().register::<IdleSettings>();
 }
 

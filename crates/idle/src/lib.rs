@@ -18,30 +18,14 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 mod behavior;
-pub mod cli;
-pub mod commands;
-mod launcher;
+pub use behavior::SessionHook;
 mod screensaver;
-pub mod script;
-pub mod settings;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
-/// Watches input and runs the `[idle]` behaviors, serves the D-Bus idle inhibits, and
-/// registers stay awake's OSD, tile, commands, the idle settings page and the script module
+/// Watches input and runs the `[idle]` behaviors and serves the D-Bus idle inhibits
 pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
   behavior::init(cx, &buses.session);
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(corona_js::ScriptExt::script_mut(cx));
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::IdleModule>();
 }
 
 /// Wakes the watcher's poll when dropped, so it sees the sender gone
@@ -111,7 +95,7 @@ impl Global for Idle {}
 /// Starts watching, `on_change(name, idle)` runs when the time named `name`
 /// passes without input (`true`) and when input follows (`false`).
 /// `session` serves the D-Bus idle inhibits.
-pub(crate) fn start(
+pub fn start(
   cx: &mut App,
   session: &zbus::Connection,
   on_change: impl Fn(&str, bool, &mut App) + 'static,

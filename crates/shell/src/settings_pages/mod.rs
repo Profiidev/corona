@@ -4,6 +4,7 @@ use gpui_kit::App;
 
 mod brightness;
 mod clipboard;
+pub(crate) mod idle;
 mod disks;
 pub(crate) mod notifications;
 pub(crate) mod pipewire;
@@ -20,6 +21,7 @@ pub(crate) fn register_all(cx: &mut App) {
   pipewire::register(cx);
   notifications::register(cx);
   clipboard::register(cx);
+  idle::register(cx);
   disks::register(cx);
   brightness::register(cx);
 }

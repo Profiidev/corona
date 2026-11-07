@@ -3,7 +3,7 @@
 use clap::Subcommand;
 use corona_ipc::{IpcCommandSend, Switch, cli::print_switch};
 
-use crate::commands::{Request, StayAwake};
+use corona_shell::ipc::idle::{Request, StayAwake};
 
 #[derive(Subcommand)]
 pub enum Commands {

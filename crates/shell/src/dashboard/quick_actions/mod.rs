@@ -1,4 +1,5 @@
 pub(super) mod bluetooth;
+pub(super) mod idle;
 pub(super) mod brightness;
 pub(crate) mod network;
 pub(super) mod notifications;

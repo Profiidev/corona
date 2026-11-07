@@ -4,6 +4,7 @@ use gpui_kit::App;
 
 mod bluetooth;
 mod disks;
+mod idle;
 mod brightness;
 pub(crate) mod clipboard;
 mod mpris;
@@ -19,6 +20,7 @@ mod weather;
 pub(crate) fn register_all(cx: &mut App) {
   bluetooth::register(cx);
   disks::register(cx);
+  idle::register(cx);
   brightness::register(cx);
   clipboard::register(cx);
   mpris::register(cx);

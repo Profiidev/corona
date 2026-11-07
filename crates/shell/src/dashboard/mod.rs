@@ -16,6 +16,7 @@ pub(crate) fn register_all(cx: &mut App) {
     .slider::<sliders::audio::Input>()
     .quick_action::<quick_actions::network::WifiToggle>()
     .quick_action::<quick_actions::network::AirplaneToggle>()
+    .quick_action::<quick_actions::idle::StayAwakeToggle>()
     .quick_action::<quick_actions::notifications::DndToggle>()
     .quick_action::<quick_actions::power::PowerProfileToggle>()
     .header::<cards::sysinfo::ProfileCard>()

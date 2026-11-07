@@ -1,4 +1,4 @@
-use crate::IdleExt;
+use corona_idle::IdleExt;
 use gpui_kit::{App, assets::IconName};
 
 use corona_surface::{

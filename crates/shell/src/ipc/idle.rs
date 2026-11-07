@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{Idle, IdleExt};
+use corona_idle::{Idle, IdleExt};
 use anyhow::{Result, ensure};
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, BorrowAppContext};
@@ -60,7 +60,7 @@ mod tests {
     }
     cx.executor().allow_parking();
     let (_bus, session) = TestBus::with_conn();
-    cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
+    cx.update(|cx| corona_idle::start(cx, &session, |_, _, _| {}));
     let send = |switch, minutes, cx: &mut TestAppContext| {
       cx.update(|cx| StayAwake::handle(Request { switch, minutes }, cx))
     };

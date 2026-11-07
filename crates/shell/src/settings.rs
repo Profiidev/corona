@@ -21,7 +21,7 @@ mod tests {
         .register::<corona_auth::settings::LockscreenSettings>()
         .register::<corona_windows::settings::TaskbarSettings>()
         .register::<corona_windows::settings::WindowSwitcherSettings>()
-        .register::<corona_idle::settings::IdleSettings>();
+        .register::<crate::settings_pages::idle::IdleSettings>();
     });
   }
 

@@ -4,7 +4,7 @@ use corona_surface::dashboard::{Changed, QuickAction, Tile, on_off};
 use gpui_kit::{App, BorrowAppContext, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 
-use crate::{Idle, IdleExt};
+use corona_idle::{Idle, IdleExt};
 
 pub struct StayAwakeToggle;
 

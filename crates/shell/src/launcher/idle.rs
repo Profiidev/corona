@@ -11,10 +11,8 @@ use corona_launcher::{
 use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
-use crate::{
-  IdleExt,
-  commands::{Request, StayAwake},
-};
+use crate::ipc::idle::{Request, StayAwake};
+use corona_idle::IdleExt;
 
 pub(crate) fn register(cx: &mut App) {
   Group::new("system:stay_awake", vec![caffeine()])

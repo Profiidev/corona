@@ -1,7 +1,8 @@
-use crate as ci;
-use crate::IdleExt;
-use crate::commands::{Request, StayAwake};
-use corona_ipc::{IpcCommand, Switch};
+use std::time::Duration;
+
+use anyhow::ensure;
+use corona_idle as ci;
+use corona_idle::IdleExt;
 use corona_js::{Cx, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::{App, BorrowAppContext};
 use specta::specta;
@@ -15,11 +16,13 @@ fn set_stay_awake(mut cx: Cx, on: bool) {
 /// Stays awake, turned off again after `minutes`.
 #[specta]
 fn stay_awake_for(mut cx: Cx, minutes: u32) -> Throws<()> {
-  let request = Request {
-    switch: Switch::On,
-    minutes: Some(minutes),
-  };
-  StayAwake::handle(request, &mut cx).map(|_| ()).into()
+  (|| {
+    ensure!(minutes != 0, "expected at least one minute");
+    let duration = Duration::from_secs(u64::from(minutes) * 60);
+    cx.update_global::<ci::Idle, _>(|idle, cx| idle.set_stay_awake(true, Some(duration), cx));
+    Ok(())
+  })()
+  .into()
 }
 
 /// `corona/idle`
@@ -65,7 +68,7 @@ mod tests {
     }
     cx.executor().allow_parking();
     let (_bus, session) = TestBus::with_conn();
-    cx.update(|cx| crate::start(cx, &session, |_, _, _| {}));
+    cx.update(|cx| corona_idle::start(cx, &session, |_, _, _| {}));
 
     let body = r#"if (!globalThis.started) {
       globalThis.started = true;

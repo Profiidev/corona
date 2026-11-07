@@ -20,6 +20,7 @@ corona_components.workspace = true
 corona_utils.workspace = true
 corona_bluez.workspace = true
 corona_brightness.workspace = true
+corona_idle.workspace = true
 corona_sysinfo.workspace = true
 corona_tray.workspace = true
 corona_weather.workspace = true
