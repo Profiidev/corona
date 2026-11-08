@@ -1297,6 +1297,19 @@ app:
         body:
           en: 'Now on version %{version}.'
           de: 'Jetzt auf Version %{version}.'
+      limit:
+        title:
+          en: '%{name} was restarted'
+          de: '%{name} wurde neu gestartet'
+        disabled:
+          en: '%{name} was disabled'
+          de: '%{name} wurde deaktiviert'
+        time:
+          en: 'It ran too long without returning.'
+          de: 'Es lief zu lange, ohne zurückzukehren.'
+        memory:
+          en: 'It used too much memory.'
+          de: 'Es hat zu viel Speicher belegt.'
       approve:
         title:
           en: 'Allow %{name}?'
@@ -1310,19 +1323,6 @@ app:
         deny_disable:
           en: 'Deny and disable'
           de: 'Ablehnen und deaktivieren'
-        limit:
-          title:
-            en: '%{name} was restarted'
-            de: '%{name} wurde neu gestartet'
-          disabled:
-            en: '%{name} was disabled'
-            de: '%{name} wurde deaktiviert'
-          time:
-            en: 'It ran too long without returning.'
-            de: 'Es lief zu lange, ohne zurückzukehren.'
-          memory:
-            en: 'It used too much memory.'
-            de: 'Es hat zu viel Speicher belegt.'
         changed_title:
           en: '%{name} changed'
           de: '%{name} hat sich geändert'
