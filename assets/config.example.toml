@@ -382,3 +382,9 @@ enabled = true
 [plugin_settings]
 # [plugin_settings."com.example.clock"]
 # interval = 5
+
+# Files holding a plugin's secret settings, by plugin id. A secret with a file is
+# read from it on every use instead of the keyring, e.g. /run/secrets/token.
+[plugin_secret_files]
+# [plugin_secret_files."com.example.clock"]
+# token = "~/.config/secrets/clock"

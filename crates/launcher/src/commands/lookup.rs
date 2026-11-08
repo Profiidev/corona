@@ -23,17 +23,16 @@ use crate::{
 
 /// The key from its file, else from the config
 fn deepl_key(config: &TranslateConfig) -> Result<String> {
-  let key = match &config.deepl_key_file {
-    Some(file) => Some(
-      std::fs::read_to_string(corona_config::expand_home(file))
-        .with_context(|| format!("reading {}", file.display()))?,
-    ),
-    None => config.deepl_key.clone(),
-  };
-  key
-    .map(|k| k.trim().to_string())
-    .filter(|k| !k.is_empty())
-    .context(t!("app.launcher.lookup.no_key").to_string())
+  match &config.deepl_key_file {
+    Some(file) => corona_config::read_secret_file(file),
+    None => config
+      .deepl_key
+      .as_deref()
+      .map(str::trim)
+      .filter(|k| !k.is_empty())
+      .map(str::to_string)
+      .context(t!("app.launcher.lookup.no_key").to_string()),
+  }
 }
 
 const MAX_BODY: u64 = 2 * 1024 * 1024;

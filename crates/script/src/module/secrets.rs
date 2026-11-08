@@ -1,6 +1,9 @@
 //! `corona/secrets`: strings in the user's keyring, one namespace per plugin.
 
+use std::path::PathBuf;
+
 use anyhow::{Result, ensure};
+use corona_config::Config;
 use corona_js::{Cx, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
 use specta::specta;
 
@@ -44,7 +47,10 @@ pub async fn remove(id: &str, key: &str) -> Result<()> {
   Ok(())
 }
 
-async fn get_secret(id: &str, key: &str) -> Result<Option<String>> {
+async fn get_secret(id: &str, key: &str, file: Option<PathBuf>) -> Result<Option<String>> {
+  if let Some(file) = file {
+    return corona_config::read_secret_file(&file).map(Some);
+  }
   let attributes = attributes(id, key)?;
   let items = keyring().await?.search_items(&attributes).await?;
   let Some(item) = items.first() else {
@@ -54,10 +60,14 @@ async fn get_secret(id: &str, key: &str) -> Result<Option<String>> {
   Ok(Some(String::from_utf8_lossy(&secret).into_owned()))
 }
 
-/// The secret stored under `key`, null when there is none.
+/// The secret under `key`, from its file if the user set one, else the keyring; null
+/// when there is none.
 #[specta]
-async fn get(plugin: Plugin, key: String) -> Throws<Option<String>> {
-  get_secret(&plugin.id, &key).await.into()
+async fn get(cx: Cx, plugin: Plugin, key: String) -> Throws<Option<String>> {
+  let file = cx
+    .try_global::<Config>()
+    .and_then(|c| c.plugin_secret_files.get(&plugin.id)?.get(&key).cloned());
+  get_secret(&plugin.id, &key, file).await.into()
 }
 
 /// Stores `value` under `key`, replacing what was there.
@@ -106,6 +116,17 @@ mod tests {
     let attributes = attributes("a", "token").unwrap();
     assert_eq!(attributes[1], ("plugin", "a".into()));
     assert_eq!(attributes[2], ("key", "token".into()));
+  }
+
+  #[test]
+  fn a_file_wins_over_the_keyring() {
+    let dir = std::env::temp_dir().join(format!("corona-secret-{}", std::process::id()));
+    std::fs::write(&dir, " token\n").unwrap();
+    let got = futures::executor::block_on(get_secret("a", "k", Some(dir.clone())));
+    assert_eq!(got.unwrap().as_deref(), Some("token"));
+    std::fs::remove_file(&dir).unwrap();
+    let missing = futures::executor::block_on(get_secret("a", "k", Some(dir)));
+    assert!(missing.is_err());
   }
 
   #[gpui::test]

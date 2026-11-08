@@ -70,6 +70,9 @@ pub struct Config {
   /// Settings of each plugin by id, checked against the settings its manifest
   /// declares
   pub plugin_settings: BTreeMap<String, serde_json::Map<String, serde_json::Value>>,
+  /// Files holding the secret settings of each plugin, by plugin id and setting key.
+  /// A secret with a file is read from it instead of the keyring.
+  pub plugin_secret_files: BTreeMap<String, BTreeMap<String, PathBuf>>,
 }
 
 impl Default for Config {
@@ -96,6 +99,7 @@ impl Default for Config {
       idle: IdleConfig::default(),
       plugins: PluginsConfig::default(),
       plugin_settings: BTreeMap::new(),
+      plugin_secret_files: BTreeMap::new(),
     }
   }
 }
@@ -127,6 +131,16 @@ pub fn expand_home(path: &Path) -> PathBuf {
     (Ok(rest), Some(home)) => home.join(rest),
     _ => path.to_path_buf(),
   }
+}
+
+/// The secret in `path` (`~/` expanded), without surrounding whitespace
+pub fn read_secret_file(path: &Path) -> anyhow::Result<String> {
+  use anyhow::Context;
+  let text = std::fs::read_to_string(expand_home(path))
+    .with_context(|| format!("reading {}", path.display()))?;
+  let secret = text.trim();
+  anyhow::ensure!(!secret.is_empty(), "{} is empty", path.display());
+  Ok(secret.to_string())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

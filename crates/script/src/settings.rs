@@ -1003,9 +1003,12 @@ fn list_field(id: &str, setting: &Setting, window: &mut Window, cx: &mut App) ->
 /// stored is never read back.
 struct SecretInput {
   input: Entity<InputState>,
+  /// Path of the file the secret is read from, empty for the keyring
+  file: Entity<InputState>,
   /// `Ok` once stored from here, the error when that failed
   status: Option<Result<(), String>>,
   _enter: Subscription,
+  _file: Subscription,
 }
 
 impl SecretInput {
@@ -1043,6 +1046,7 @@ fn secret_field(
 ) -> Div {
   let prefix = format!("plugin.{id}.{key}");
   let (store_id, store_key) = (id.to_string(), key.to_string());
+  let (file_id, file_key) = (id.to_string(), key.to_string());
   let field = window.use_keyed_state(prefix.clone(), cx, |window, cx| {
     let input = cx.new(|cx| {
       InputState::new(window, cx)
@@ -1064,16 +1068,58 @@ fn secret_field(
         field.write(store_id.clone(), store_key.clone(), Some(value), cx);
       },
     );
+    let configured = cx
+      .config()
+      .plugin_secret_files
+      .get(&file_id)
+      .and_then(|f| f.get(&file_key))
+      .map(|p| p.display().to_string())
+      .unwrap_or_default();
+    let file = cx.new(|cx| {
+      InputState::new(window, cx)
+        .default_value(configured)
+        .placeholder(t!("app.settings.plugins.secret_file").to_string())
+    });
+    let _file = cx.subscribe_in(
+      &file,
+      window,
+      move |_: &mut SecretInput, input, event: &InputEvent, _, cx| {
+        if !matches!(event, InputEvent::Change) {
+          return;
+        }
+        let path = input.read(cx).value().trim().to_string();
+        let (id, key) = (file_id.clone(), file_key.clone());
+        save(cx, move |c| {
+          let files = c.plugin_secret_files.entry(id.clone()).or_default();
+          if path.is_empty() {
+            files.remove(&key);
+          } else {
+            files.insert(key.clone(), path.clone().into());
+          }
+          if files.is_empty() {
+            c.plugin_secret_files.remove(&id);
+          }
+        });
+        ScriptManager::secret_changed(&file_id, &file_key, cx);
+      },
+    );
     SecretInput {
       input,
+      file,
       status: None,
       _enter,
+      _file,
     }
   });
-  let (input, status) = {
+  let (input, file, status) = {
     let field = field.read(cx);
-    (field.input.clone(), field.status.clone())
+    (
+      field.input.clone(),
+      field.file.clone(),
+      field.status.clone(),
+    )
   };
+  let from_file = !file.read(cx).value().is_empty();
   let (clear_id, clear_key) = (id.to_string(), key.to_string());
   div()
     .flex()
@@ -1098,6 +1144,10 @@ fn secret_field(
             }),
         ),
     )
+    .child(Input::new(&file))
+    .when(from_file, |d| {
+      d.child(muted(t!("app.settings.plugins.secret_from_file"), cx))
+    })
     .when(matches!(status, Some(Ok(()))), |d| {
       d.child(muted(t!("app.settings.plugins.secret_stored"), cx))
     })
