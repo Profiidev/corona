@@ -5,7 +5,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use corona_utils::error::spawn_logged;
 
 use corona_notifications::{Action, Notifications, NotificationsExt, Notify, Urgency};
-use corona_script::hooks::{self, Click, Notice};
+use corona_launcher::hooks::LauncherEvent;
+use corona_script::hooks::{self, Click, Notice, ScriptEvent};
 use futures_lite::StreamExt;
 use gpui_kit::App;
 
@@ -18,14 +19,17 @@ type Clicks = Rc<RefCell<HashMap<u32, Click>>>;
 pub(super) fn init(cx: &mut App) {
   let clicks = Clicks::default();
   listen(clicks.clone(), cx);
-  hooks::set_notify(move |notice, cx| send(notice, clicks.clone(), cx), cx);
-  corona_launcher::hooks::set_notify(
-    |summary, body, cx| {
-      let send = cx.notifications().send(summary, body);
-      spawn_logged(cx, send);
-    },
-    cx,
-  );
+  let script = hooks::events(cx);
+  cx.subscribe(&script, move |_, ScriptEvent::Notify(notice), cx| {
+    send(notice.clone(), clicks.clone(), cx)
+  })
+  .detach();
+  let launcher = corona_launcher::hooks::events(cx);
+  cx.subscribe(&launcher, |_, LauncherEvent::Notify { summary, body }, cx| {
+    let send = cx.notifications().send(summary.clone(), body.clone());
+    spawn_logged(cx, send);
+  })
+  .detach();
 }
 
 fn send(notice: Notice, clicks: Clicks, cx: &mut App) {
@@ -77,7 +81,7 @@ fn listen(clicks: Clicks, cx: &mut App) {
     while let Some((notification, _)) = actions.next().await {
       let click = clicks.borrow_mut().remove(&notification);
       if let Some(click) = click {
-        cx.update(click);
+        cx.update(|cx| click(cx));
       }
     }
   })

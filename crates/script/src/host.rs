@@ -1,7 +1,10 @@
 //! The plugins as the shell runs them: their services, bar widgets and panels, and asking
 //! the user to approve them.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+  collections::{HashMap, HashSet},
+  rc::Rc,
+};
 
 use corona_surface::{
   bar::{BarExt, BarState, WidgetData},
@@ -126,7 +129,7 @@ fn ask(id: &str, cx: &mut App) {
     body: t!("app.settings.plugins.approve.changed_body").into(),
     action: Some((
       t!("app.settings.plugins.approve.review").into(),
-      Box::new(review),
+      Rc::new(review),
     )),
   };
   hooks::notify(notice, cx);
