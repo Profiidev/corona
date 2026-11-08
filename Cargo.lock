@@ -1599,7 +1599,7 @@ dependencies = [
 
 [[package]]
 name = "corona"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "corona_cli",
  "corona_components",
@@ -1697,7 +1697,7 @@ dependencies = [
 
 [[package]]
 name = "corona_auth"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bindgen 0.69.5",
@@ -1716,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "corona_bluez"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona-zbus-bluez",
@@ -1732,7 +1732,7 @@ dependencies = [
 
 [[package]]
 name = "corona_brightness"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "corona_capture"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "futures",
@@ -1773,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "corona_cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -1798,7 +1798,7 @@ dependencies = [
 
 [[package]]
 name = "corona_clipboard"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -1825,7 +1825,7 @@ dependencies = [
 
 [[package]]
 name = "corona_components"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -1850,7 +1850,7 @@ dependencies = [
 
 [[package]]
 name = "corona_compositor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "corona_config"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "config",
@@ -1887,7 +1887,7 @@ dependencies = [
 
 [[package]]
 name = "corona_desktop"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona-freedesktop-icons",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "corona_greeter"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_components",
@@ -1925,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "corona_idle"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_compositor",
@@ -1948,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "corona_ipc"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -1965,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "corona_js"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2002,7 +2002,7 @@ dependencies = [
 
 [[package]]
 name = "corona_launcher"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "corona_location"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona-zbus-geoclue2",
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "corona_mpris"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona-zbus-mpris2",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "corona_network_manager"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "corona_notifications"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -2116,7 +2116,7 @@ dependencies = [
 
 [[package]]
 name = "corona_osk"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -2142,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "corona_pipewire"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2158,7 +2158,7 @@ dependencies = [
 
 [[package]]
 name = "corona_power"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona-zbus-upower",
@@ -2173,7 +2173,7 @@ dependencies = [
 
 [[package]]
 name = "corona_printing"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2196,7 +2196,7 @@ dependencies = [
 
 [[package]]
 name = "corona_reqwest"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "dirs 7.0.0",
@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "corona_script"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2264,7 +2264,7 @@ dependencies = [
 
 [[package]]
 name = "corona_settings"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2283,7 +2283,7 @@ dependencies = [
 
 [[package]]
 name = "corona_shell"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2336,7 +2336,7 @@ dependencies = [
 
 [[package]]
 name = "corona_surface"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2357,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "corona_sysinfo"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
@@ -2374,7 +2374,7 @@ dependencies = [
 
 [[package]]
 name = "corona_tray"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_desktop",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "corona_udisks"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_utils",
@@ -2410,7 +2410,7 @@ dependencies = [
 
 [[package]]
 name = "corona_utils"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "flume",
@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "corona_weather"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "corona_config",
