@@ -35,3 +35,16 @@ pub(crate) fn register_all(cx: &mut App) {
   sysinfo::register(cx);
   tray::register(cx);
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  fn registers_all_ipc_commands(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      register_all(cx);
+    });
+  }
+}

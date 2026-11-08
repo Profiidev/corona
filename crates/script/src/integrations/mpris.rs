@@ -207,6 +207,8 @@ impl ScriptModule for MprisModule {
 mod tests {
   use std::time::{Duration, Instant};
 
+  use gpui_kit as gpui;
+
   use super::*;
 
   fn player(status: mpris::PlaybackStatus) -> mpris::Player {
@@ -293,5 +295,47 @@ mod tests {
   #[test]
   fn seek_to_huge_position_saturates() {
     assert_eq!(seek_target(1e300), Duration::MAX);
+  }
+
+  #[gpui::test]
+  fn module_watches_and_calls(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(mpris::init(cx, &buses)).unwrap();
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.setActivePlayer("org.mpris.MediaPlayer2.spotify");
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.playPause("org.mpris.MediaPlayer2.spotify")),
+        fail(m.play("org.mpris.MediaPlayer2.spotify")),
+        fail(m.pause("org.mpris.MediaPlayer2.spotify")),
+        fail(m.next("org.mpris.MediaPlayer2.spotify")),
+        fail(m.previous("org.mpris.MediaPlayer2.spotify")),
+        fail(m.setPosition("org.mpris.MediaPlayer2.spotify", 10)),
+        fail(m.setVolume("org.mpris.MediaPlayer2.spotify", 0.5)),
+        fail(m.setShuffle("org.mpris.MediaPlayer2.spotify", true)),
+        fail(m.setLoopStatus("org.mpris.MediaPlayer2.spotify", "track")),
+      ]).then((res) => report([m.listPlayers(), m.activePlayer(), res]));
+    }"#;
+    let (view, cx) = crate::harness::module::<MprisModule>(cx, body);
+    corona_utils::test_bus::wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!([
+        [],
+        null,
+        [
+          "err", "err", "err", "err", "err", "err", "err", "err", "err"
+        ]
+      ])
+    );
   }
 }

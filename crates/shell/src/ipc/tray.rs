@@ -130,4 +130,24 @@ mod tests {
       [("App › Open", Some(1)), ("App › More › Quit", Some(4))]
     );
   }
+
+  #[gpui_kit::test]
+  fn list_and_activate(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_tray::init(cx, &buses)).unwrap();
+      assert!(ListEntries::handle((), cx).unwrap().is_empty());
+      assert!(Activate::handle((":1.2/item".into(), None), cx).is_err());
+      let r1 = Activate::reply((":1.2/item".into(), None), cx);
+      let r2 = Activate::reply((":1.2/item".into(), Some(1)), cx);
+      assert!(ex.block_on(r1).is_err());
+      assert!(ex.block_on(r2).is_err());
+    });
+  }
 }

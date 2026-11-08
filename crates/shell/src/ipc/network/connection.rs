@@ -313,3 +313,59 @@ impl IpcCommand for Portal {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use corona_utils::{Buses, test_bus::TestBus};
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  async fn network_ipc_commands(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = TestBus::with_conn();
+    let buses = Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      register(cx);
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_network_manager::init(cx, &buses))
+        .unwrap();
+
+      assert!(ListWifi::handle((), cx).unwrap().is_empty());
+      assert!(ListVpns::handle((), cx).unwrap().is_empty());
+      assert!(Portal::handle((), cx).is_ok());
+
+      assert!(ConnectWifi::handle("Home".into(), cx).is_err());
+      assert!(DisconnectWifi::handle((), cx).is_err());
+      assert!(ForgetWifi::handle("Home".into(), cx).is_err());
+      assert!(
+        JoinHidden::handle(
+          HiddenRequest {
+            ssid: "Hidden".into(),
+            security: Security::Wpa,
+            password: Some("pass".into()),
+          },
+          cx
+        )
+        .is_err()
+      );
+      assert!(Rescan::handle((), cx).is_err());
+      assert!(SwitchVpn::handle(("work".into(), Switch::On), cx).is_err());
+      assert!(Hotspot::handle(Switch::On, cx).is_err());
+    });
+
+    let disconnect = cx.update(|cx| DisconnectWifi::reply((), cx)).await;
+    assert!(disconnect.is_err());
+    let vpn = cx
+      .update(|cx| SwitchVpn::reply(("missing".into(), Switch::On), cx))
+      .await;
+    assert!(vpn.is_err());
+    let hotspot_status = cx.update(|cx| Hotspot::reply(Switch::Status, cx)).await;
+    assert!(!hotspot_status.unwrap());
+    let hotspot_on = cx.update(|cx| Hotspot::reply(Switch::On, cx)).await;
+    assert!(hotspot_on.is_err());
+  }
+}

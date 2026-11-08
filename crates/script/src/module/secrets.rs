@@ -158,4 +158,27 @@ mod tests {
     let error = serde_json::json!({ "message": "the key is empty" });
     assert_eq!(view.last(cx), serde_json::json!([error, error, error]));
   }
+
+  #[gpui::test]
+  fn secret_file_from_config_is_returned(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("token.txt");
+    std::fs::write(&file, "  super-secret \n").unwrap();
+    cx.update(|cx| {
+      let mut config = corona_config::Config::default();
+      config
+        .plugin_secret_files
+        .entry("p".into())
+        .or_default()
+        .insert("api_key".into(), file);
+      cx.set_global(config);
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.get("api_key").then(report);
+    }"#;
+    let (view, cx) = harness::module::<Secrets>(cx, body);
+    cx.run_until_parked();
+    assert_eq!(view.last(cx), serde_json::json!("super-secret"));
+  }
 }

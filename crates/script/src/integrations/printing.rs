@@ -446,6 +446,8 @@ impl ScriptModule for PrintingModule {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit::{self as gpui, TestAppContext};
+
   use super::*;
 
   fn json(value: impl Serialize) -> serde_json::Value {
@@ -529,5 +531,52 @@ mod tests {
     assert!(readable(&capabilities, "relative.txt").is_err());
     capabilities.grant_read(dir.path().canonicalize().unwrap());
     assert!(readable(&capabilities, &path).is_ok());
+  }
+
+  #[gpui::test]
+  fn module_watches_and_denies_ungranted_actions(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(pr::init(cx, &buses)).unwrap();
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.cancelJob(1)),
+        fail(m.pausePrinter("Office")),
+        fail(m.resumePrinter("Office")),
+        fail(m.addPrinter("Office")),
+        fail(m.printFile("Office", "/tmp/a.pdf")),
+        fail(m.scannerCapabilities("Scan")),
+        fail(m.scan("Scan", { resolution: 300, color_mode: "color", source: "flatbed", format: "pdf" })),
+      ]).then((res) => report([
+        m.listPrinters(),
+        m.listJobs(),
+        m.listScanners(),
+        m.listNetworkPrinters(),
+        m.scanProgress(),
+        res,
+      ]));
+    }"#;
+    let (view, cx) = crate::harness::module::<PrintingModule>(cx, body);
+    corona_utils::test_bus::wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!([
+        [],
+        [],
+        [],
+        [],
+        null,
+        ["err", "err", "err", "err", "err", "err", "err"]
+      ])
+    );
   }
 }

@@ -241,6 +241,7 @@ mod tests {
   };
 
   use corona_sysinfo as si;
+  use gpui_kit as gpui;
 
   use super::{History, Sample, SystemInfo};
 
@@ -349,5 +350,22 @@ mod tests {
     assert_eq!(converted.gpu_memory, [4.]);
     assert_eq!(converted.gpu_temperature, [5.]);
     assert!(History::from(&si::History::default()).cpu.is_empty());
+  }
+
+  #[gpui::test]
+  fn module_watches_monitor(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      cx.set_global(corona_config::Config::default());
+      si::init(cx, &buses).unwrap();
+    });
+    let body = r#"report([Array.isArray(m.history().cpu)]);"#;
+    let (view, cx) = crate::harness::module::<super::SysinfoModule>(cx, body);
+    assert_eq!(view.last(cx), serde_json::json!([true]));
   }
 }

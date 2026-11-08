@@ -94,3 +94,26 @@ impl IpcCommand for DismissToasts {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[gpui_kit::test]
+  fn dnd_show_and_clear(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_notifications::connect(cx, &conn, true))
+        .unwrap();
+      assert!(!DoNotDisturb::handle(Dnd::Status, cx).unwrap());
+      assert!(DoNotDisturb::handle(Dnd::On, cx).unwrap());
+      assert!(DoNotDisturb::handle(Dnd::Status, cx).unwrap());
+      assert!(!DoNotDisturb::handle(Dnd::Toggle, cx).unwrap());
+      assert!(!DoNotDisturb::handle(Dnd::Off, cx).unwrap());
+      assert!(Show::handle("hi".into(), cx).is_ok());
+      assert!(ClearHistory::handle((), cx).is_ok());
+    });
+  }
+}

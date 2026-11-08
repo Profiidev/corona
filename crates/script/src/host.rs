@@ -592,4 +592,52 @@ export default function main(_cx) {
     // the panel opens at the widget, so it must not stretch across the bar
     assert_eq!(width, px(40.));
   }
+
+  #[gpui::test]
+  fn limit_hit_unapproved_ask_and_broken_panel(cx: &mut TestAppContext) {
+    setup(cx);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("unapproved");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+      dir.join("plugin.toml"),
+      "id = \"com.unapproved\"\nname = \"Unapproved\"\napi = 2\n[capabilities.fs]\nread = [\"/tmp\"]\n[panels.broken]\nview = \"missing.js\"\n",
+    )
+    .unwrap();
+
+    let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let captured = notices.clone();
+    cx.update(|cx| {
+      corona_surface::init(cx).unwrap();
+      let mut config = Config::default();
+      config.plugins.enabled = vec!["com.unapproved".into()];
+      config.plugins.source.clear();
+      cx.set_global(config);
+      cx.set_global(ScriptManager::new(paths.clone()));
+      let events = hooks::events(cx);
+      cx.subscribe(&events, move |_, hooks::ScriptEvent::Notify(notice), _| {
+        captured.borrow_mut().push(notice.clone());
+      })
+      .detach();
+      PluginManager::init(paths.clone(), cx);
+      init(cx);
+    });
+    assert_eq!(notices.borrow().len(), 1);
+    let action = notices.borrow()[0].action.clone().unwrap().1;
+    cx.update(|cx| action(cx));
+
+    cx.update(|cx| {
+      limit_hit("com.unapproved", corona_js::Trip::Time, false, cx);
+      limit_hit("com.unapproved", corona_js::Trip::Memory, true, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(notices.borrow().len(), 3);
+
+    let _window = cx.add_window(|_, _| PluginError("boom".into()));
+    cx.run_until_parked();
+  }
 }

@@ -56,3 +56,16 @@ impl IpcCommand for KillPort {
     kill_port(port)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[gpui_kit::test]
+  fn lists_processes(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+      let list = ListProcesses::handle((), cx).unwrap();
+      assert!(!list.is_empty());
+    });
+  }
+}

@@ -543,4 +543,36 @@ mod tests {
       assert_eq!(pw::SessionAction::from(action), session);
     }
   }
+
+  #[gpui::test]
+  fn module_watches_and_calls(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = TestBus::with_conn();
+    cx.update(|cx| {
+      let executor = cx.foreground_executor().clone();
+      executor.block_on(pw::connect(cx, &conn)).unwrap()
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.setProfile("balanced")),
+        fail(m.setKeyboardBrightness(1)),
+        fail(m.sessionCapabilities()),
+        fail(m.sessionAction("suspend")),
+        fail(m.rebootTo("arch.conf")),
+        fail(m.setChargeThreshold(true)),
+      ]).then((res) => report([
+        m.status(),
+        m.battery(),
+        m.listDevices(),
+        m.profiles(),
+        m.keyboardBacklight(),
+        res.length,
+      ]));
+    }"#;
+    let (view, cx) = harness::module::<super::PowerModule>(cx, body);
+    wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(view.last(cx), json!([null, null, [], null, null, 6]));
+  }
 }
