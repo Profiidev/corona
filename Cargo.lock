@@ -2341,6 +2341,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "corona_capture",
  "corona_components",
  "corona_compositor",
  "corona_config",
@@ -2348,11 +2349,15 @@ dependencies = [
  "corona_utils",
  "gpui-kit",
  "rust-i18n",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "uuid",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]

@@ -807,7 +807,12 @@ pub(crate) mod methods {
     /// The label a hover shows over this element.
     fn tooltip(text: String) |ctx, n| interact(ctx, n, |i| {
       gpui_kit::StatefulInteractiveElement::tooltip(i, move |window, cx| {
-        gpui_kit::component::tooltip::Tooltip::new(text.clone()).build(window, cx)
+        let hosted = cx.try_global::<crate::TooltipHost>().map(|host| host.0);
+        hosted
+          .and_then(|show| show(&text, window, cx))
+          .unwrap_or_else(|| {
+            gpui_kit::component::tooltip::Tooltip::new(text.clone()).build(window, cx)
+          })
       })
     });
     /// What this element announces itself as.

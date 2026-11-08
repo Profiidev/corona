@@ -30,6 +30,7 @@ mod manager;
 mod module;
 pub mod plugin;
 pub mod settings;
+mod tooltip;
 
 /// Runs the enabled plugins: their services, bar widgets and panels, the plugins settings
 /// page and `plugin:*` IPC commands.
@@ -41,6 +42,7 @@ pub fn init(cx: &mut App) {
   commands::register(cx);
   settings::register(cx);
   host::init(cx);
+  tooltip::init(cx);
 }
 
 /// Writes the `corona.d.ts` of the plugins in `dirs` as loading them does, with no shell

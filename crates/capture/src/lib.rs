@@ -2,6 +2,7 @@ mod convert;
 mod gpu;
 mod hyprland;
 mod live;
+mod shm;
 mod toplevel;
 mod view;
 mod wayland;
@@ -11,6 +12,7 @@ pub use image;
 
 pub use convert::RgbaImageExt;
 pub use live::{Frames, capture_window};
+pub use shm::shm_dmabuf;
 pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};
 
