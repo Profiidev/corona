@@ -7,6 +7,7 @@ use std::{
   collections::HashMap,
   path::{Path, PathBuf},
   rc::{Rc, Weak},
+  sync::Arc,
 };
 
 use anyhow::{Result, anyhow};
@@ -24,6 +25,7 @@ use plugin::PluginData;
 
 pub(crate) mod caps;
 pub(crate) mod host;
+pub(crate) mod limits;
 pub(crate) mod module;
 pub(crate) mod plugin;
 pub(crate) mod registry;
@@ -68,6 +70,8 @@ pub(crate) struct Runtime {
   /// What retained states' `.on` subscribed, and the view they did it for
   subs: RefCell<HashMap<u32, (Option<EntityId>, Subscription)>>,
   pub(crate) watches: Watches,
+  /// The process groups of its children, ended with it
+  pub(crate) groups: Arc<stdlib::ChildGroups>,
   /// The id of the plugin it runs
   pub(crate) plugin_id: String,
   /// Unique per runtime, tags the key bindings it installs
@@ -85,6 +89,7 @@ impl Drop for Runtime {
     self.panels.get_mut().clear();
     self.subs.get_mut().clear();
     self.watches.clear();
+    self.groups.terminate();
   }
 }
 
@@ -95,6 +100,7 @@ thread_local! {
 /// The context's [`Runtime`], in its userdata
 struct RuntimeRef(Weak<Runtime>);
 
+// SAFETY: holds no JS value, so it is the same type for every `'js`
 unsafe impl<'js> JsLifetime<'js> for RuntimeRef {
   type Changed<'to> = RuntimeRef;
 }
@@ -284,6 +290,7 @@ pub(crate) fn new(
   let files = Files(plugin.dir.canonicalize().ok());
   let loader = (HostLoader, kit::loader(stdlib::loader()), files.clone());
   let rt = AsyncRuntime::new()?;
+  limits::apply(&rt, plugin.id.clone());
   now(rt.set_loader((builtin, files), loader));
   now(rt.set_host_promise_rejection_tracker(Some(Box::new(rejected))));
   let ctx = now(AsyncContext::full(&rt))?;
@@ -298,12 +305,13 @@ pub(crate) fn new(
     panels: Default::default(),
     subs: Default::default(),
     watches,
+    groups: Default::default(),
     plugin_id: plugin.id.clone(),
     owner: NEXT_OWNER.with(|n| {
       n.set(n.get() + 1);
       n.get()
     }),
-    _drive: drive(&rt, cx),
+    _drive: drive(&rt, plugin.id.clone(), cx),
     ctx: ctx.clone(),
   });
   let setup = with(&ctx, |ctx| -> rquickjs::Result<()> {
@@ -323,13 +331,16 @@ pub(crate) fn new(
 
 /// Drives async host fns, timers and the promise jobs they resolve, inside a scope of the
 /// app, until the task is dropped.
-fn drive(rt: &AsyncRuntime, cx: &App) -> Task<()> {
+fn drive(rt: &AsyncRuntime, id: String, cx: &App) -> Task<()> {
   let mut drive = Box::pin(rt.drive());
+  let rt = rt.clone();
   cx.spawn(async move |cx| {
     std::future::poll_fn(|task| {
       cx.update(|cx| {
         let _enter = Enter::new(cx, None, None);
-        drive.as_mut().poll(task)
+        let polled = drive.as_mut().poll(task);
+        limits::check_memory(&rt, &id);
+        polled
       })
     })
     .await

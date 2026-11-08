@@ -3,13 +3,13 @@
 
 use std::{
   path::{Path, PathBuf},
-  time::{Duration, SystemTime},
+  time::{Duration, Instant, SystemTime},
 };
 
 use anyhow::Result;
 use gpui_kit::{AnyWindowHandle, App, Context, Entity, Task, Window};
 
-use crate::ScriptView;
+use crate::{ScriptView, runtime::limits};
 
 pub const POLL: Duration = Duration::from_millis(250);
 
@@ -73,18 +73,40 @@ fn scan(dir: &Path) -> Stamp {
   out
 }
 
-/// Calls `on_change` after a source below `dir` changed, until the task is dropped.
+/// Calls `on_change` after a source below `dir` changed or plugin `id` hit a limit, until
+/// the task is dropped.
 /// ponytail: scans on the foreground every poll, fine for plugin-sized trees
 pub fn watch(
   dir: PathBuf,
+  id: String,
   cx: &mut App,
   mut on_change: impl FnMut(&mut App) + 'static,
 ) -> Task<()> {
   let mut last = scan(&dir);
   cx.spawn(async move |cx| {
     let mut pending = None;
+    let mut trips = Vec::new();
     loop {
       cx.background_executor().timer(POLL).await;
+      if let Some(trip) = limits::take_tripped(&id) {
+        let now = Instant::now();
+        trips.retain(|t| now.duration_since(*t) < limits::WINDOW);
+        trips.push(now);
+        let give_up = trips.len() >= limits::MAX_TRIPS;
+        cx.update(|cx| {
+          tracing::warn!("plugin `{id}` hit a limit ({trip:?}), giving up: {give_up}");
+          if let Some(hook) = cx.try_global::<limits::TripHook>().map(|h| h.0.clone()) {
+            hook(&id, trip, give_up, cx);
+          }
+          if !give_up {
+            on_change(cx);
+          }
+        });
+        if give_up {
+          break;
+        }
+        continue;
+      }
       let now = scan(&dir);
       if now == last {
         pending = None;
@@ -105,11 +127,12 @@ pub fn reload_view(
   view: &Entity<ScriptView>,
   window: AnyWindowHandle,
   dir: PathBuf,
+  id: String,
   make: impl Fn(&mut Window, &mut Context<ScriptView>) -> Result<ScriptView> + 'static,
   cx: &mut App,
 ) -> Task<()> {
   let view = view.downgrade();
-  watch(dir, cx, move |cx| {
+  watch(dir, id, cx, move |cx| {
     let Some(view) = view.upgrade() else {
       return;
     };

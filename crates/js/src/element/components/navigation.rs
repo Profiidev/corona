@@ -812,13 +812,13 @@ impl Named for CommandStateHandle {
 impl CommandStateHandle {
   #[qjs(constructor)]
   pub fn new(ctx: Ctx<'_>) -> Result<Self> {
-    let window = crate::runtime::scope::try_window().ok_or_else(|| {
+    let mut window = crate::runtime::scope::try_window().ok_or_else(|| {
       Exception::throw_type(
         &ctx,
         "CommandState needs a window: make it in init or a handler",
       )
     })?;
-    let entity = app().new(|cx| CommandState::new(window, cx));
+    let entity = app().new(|cx| CommandState::new(&mut window, cx));
     Ok(Self {
       state: Retained::new(&ctx, entity)?,
     })
@@ -831,8 +831,8 @@ impl CommandStateHandle {
 
   /// The search text.
   pub fn query(&self, ctx: Ctx<'_>) -> Result<String> {
-    let cx: &App = app();
-    Ok(self.state.entity(&ctx)?.read(cx).query(cx).to_string())
+    let cx = app();
+    Ok(self.state.entity(&ctx)?.read(&cx).query(&cx).to_string())
   }
 
   pub fn release(&mut self) -> bool {
@@ -1675,7 +1675,7 @@ fn virtual_list<'js>(
       (hooks.click, hooks.secondary)
     };
     view
-      .render_content(key, None, window, cx, args, |ctx, frame, value| {
+      .render_content(key, None, window, cx, args, |ctx, value| {
         let items: Vec<Child> = Vec::from_js(ctx, value)?;
         let rt = runtime(ctx)?;
         let slot_fn = |key: u64| -> Result<Option<Function>> {
@@ -1693,7 +1693,7 @@ fn virtual_list<'js>(
         );
         let mut out = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
-          let el = frame.child(ctx, item)?;
+          let el = crate::element::frame_child(ctx, item)?;
           if click.is_none() && secondary.is_none() {
             out.push(el);
             continue;
@@ -1709,11 +1709,12 @@ fn virtual_list<'js>(
           .child(el);
           if let Some(f) = &click {
             let key = row_key.clone();
-            row = row.on_click(frame.listener(f.clone(), move |_: &ClickEvent| Text(key.clone())));
+            row =
+              row.on_click(frame().listener(f.clone(), move |_: &ClickEvent| Text(key.clone())));
           }
           if let Some(f) = &secondary {
             let key = row_key.clone();
-            let l = frame.listener(f.clone(), move |e: &gpui_kit::MouseDownEvent| {
+            let l = frame().listener(f.clone(), move |e: &gpui_kit::MouseDownEvent| {
               KeyPress(key.clone(), e.into())
             });
             row = gpui_kit::InteractiveElement::on_mouse_down(row, gpui_kit::MouseButton::Right, l);

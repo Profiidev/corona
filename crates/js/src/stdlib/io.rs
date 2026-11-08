@@ -178,12 +178,13 @@ pub(crate) fn bytes(value: &Value<'_>, what: &str) -> Result<Vec<u8>> {
     return Ok(s.to_string()?.into_bytes());
   }
   if let Ok(array) = TypedArray::<u8>::from_value(value.clone())
-    // copied right away, nothing runs JS meanwhile
+    // SAFETY: copied right away, nothing runs JS meanwhile
     && let Some(bytes) = unsafe { array.as_bytes() }
   {
     return Ok(bytes.to_vec());
   }
   if let Some(buffer) = ArrayBuffer::from_value(value.clone())
+    // SAFETY: copied right away, nothing runs JS meanwhile
     && let Some(bytes) = unsafe { buffer.as_bytes() }
   {
     return Ok(bytes.to_vec());

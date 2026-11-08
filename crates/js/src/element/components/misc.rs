@@ -326,17 +326,12 @@ impl Lazy {
       None => Ok(()),
     };
     let rendered = view.update(cx, |view, cx| {
-      view.render_content(
-        self.key,
-        index,
-        window,
-        cx,
-        args,
-        |ctx, frame, value| match value.is_null() || value.is_undefined() {
+      view.render_content(self.key, index, window, cx, args, |ctx, value| {
+        match value.is_null() || value.is_undefined() {
           true => Ok(div().into_any_element()),
-          false => frame.child(ctx, Child::from_js(ctx, value)?),
-        },
-      )
+          false => crate::element::frame_child(ctx, Child::from_js(ctx, value)?),
+        }
+      })
     });
     rendered.unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
   }
@@ -422,14 +417,14 @@ impl ScrollerState {
       &mut gpui_kit::Context<'_, scroller::MessageScrollerState>,
     ) -> R,
   ) -> Result<R> {
-    Ok(self.state.entity(ctx)?.clone().update(app(), f))
+    Ok(self.state.entity(ctx)?.clone().update(&mut *app(), f))
   }
 }
 
 #[rquickjs::methods]
 impl ScrollerState {
   pub fn item_count(&self, ctx: Ctx<'_>) -> Result<u32> {
-    Ok(self.state.entity(&ctx)?.read(app()).item_count() as u32)
+    Ok(self.state.entity(&ctx)?.read(&app()).item_count() as u32)
   }
 
   /// Replaces every row with `count` new ones.
@@ -449,7 +444,7 @@ impl ScrollerState {
   }
 
   pub fn is_following_tail(&self, ctx: Ctx<'_>) -> Result<bool> {
-    Ok(self.state.entity(&ctx)?.read(app()).is_following_tail())
+    Ok(self.state.entity(&ctx)?.read(&app()).is_following_tail())
   }
 
   pub fn release(&mut self) -> bool {
@@ -491,14 +486,14 @@ impl Named for EditorState {
 impl EditorState {
   /// The current text.
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
-    Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
+    Ok(self.state.entity(&ctx)?.read(&app()).value().to_string())
   }
 
   /// Replaces the text, without a `change` event.
   pub fn set_value(&self, ctx: Ctx<'_>, text: String) -> Result<()> {
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let entity = self.state.entity(&ctx)?.clone();
-    entity.update(app(), |s, cx| s.set_value(text, window, cx));
+    entity.update(&mut *app(), |s, cx| s.set_value(text, &mut window, cx));
     Ok(())
   }
 
@@ -531,9 +526,9 @@ fn editor_state<'js>(
   language: Opt<Lit<'js, Languages>>,
 ) -> Result<Class<'js, EditorState>> {
   let language = language.0.map(|l| l.get::<Languages>(&ctx)).transpose()?;
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let entity = app().new(|cx| {
-    let state = NativeEditor::new(window, cx).default_value(text);
+    let state = NativeEditor::new(&mut window, cx).default_value(text);
     match language {
       Some(language) => state.language(language),
       None => state,
@@ -561,7 +556,7 @@ impl DiffState {
   pub fn set_patch(&self, ctx: Ctx<'_>, patch: String) -> Result<()> {
     let files = parse_patch(&ctx, &patch)?;
     let entity = self.state.entity(&ctx)?.clone();
-    entity.update(app(), |s, cx| s.set_files(files, cx));
+    entity.update(&mut *app(), |s, cx| s.set_files(files, cx));
     Ok(())
   }
 
@@ -811,7 +806,7 @@ fn questionnaire(o: QuestionnaireNode) -> AnyElement {
   let mut hasher = DefaultHasher::new();
   (&o.items, o.shortcuts.map(|m| m as u8)).hash(&mut hasher);
   let hash = hasher.finish();
-  let (window, cx) = (crate::window(), app());
+  let (mut window, cx) = (crate::window(), &mut *app());
   let kept = window.use_keyed_state(format!("questionnaire:{}", o.id), cx, |_, cx| {
     build(&o.items, o.shortcuts, hash, cx)
   });
@@ -885,7 +880,7 @@ fn show_fps_monitor<'js>(ctx: Ctx<'js>, options: Opt<Object<'js>>) -> Result<()>
       budget = Some(millis(&ctx, ms)?);
     }
   }
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let id = window.window_handle().window_id();
   app()
     .default_global::<Huds>()
@@ -896,7 +891,7 @@ fn show_fps_monitor<'js>(ctx: Ctx<'js>, options: Opt<Object<'js>>) -> Result<()>
 }
 
 fn hide_fps_monitor(ctx: Ctx<'_>) -> Result<bool> {
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let id = window.window_handle().window_id();
   let shown = app().default_global::<Huds>().0.remove(&id).is_some();
   window.refresh();
@@ -1502,7 +1497,7 @@ pub(crate) const BASE: Family = Family {
 
 fn fps_exports<'js>(ctx: &Ctx<'js>) -> Result<Vec<(&'static str, Value<'js>)>> {
   let monitor = |ctx: Ctx<'js>| {
-    let overlay = gpui_fps::fps_monitor(window_or_throw(&ctx)?, app());
+    let overlay = gpui_fps::fps_monitor(&mut *window_or_throw(&ctx)?, &mut app());
     new_el(&ctx, overlay)
   };
   let f = |f: Function<'js>| f.into_value();

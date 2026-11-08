@@ -309,6 +309,7 @@ async fn object_server_listening(conn: &Connection) -> Result<()> {
 pub fn pre_start() {
   // cpal names its pipewire streams `cpal-playback-<pid>` with no way to change it,
   // so the notification sound shows as corona this way. Set before any thread starts.
+  // SAFETY: called first in `run_shell`, no other thread reads or writes the environment yet
   unsafe {
     std::env::set_var(
       "PIPEWIRE_PROPS",

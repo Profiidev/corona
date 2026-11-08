@@ -2,6 +2,7 @@
 //! `corona/probe`.
 
 use std::{
+  cell::RefCell,
   io::{Read, Write},
   net::TcpListener,
   os::unix::net::UnixListener,
@@ -592,6 +593,34 @@ fn dropping_a_service_cancels_timers_and_kills_its_process_group(cx: &mut TestAp
 }
 
 #[gpui::test]
+fn dropping_a_service_ends_what_run_left_in_the_background(cx: &mut TestAppContext) {
+  let source = main(
+    r#"import { run } from "process";"#,
+    r#"
+    const out = await run("/bin/sh", ["-c", "sleep 100 </dev/null >/dev/null 2>&1 & echo $!"]);
+    report(`pids:${out.stdout.trim()}`);"#,
+  );
+  let (service, _) = start(
+    cx,
+    "run-leftover",
+    sh().process_env(["PATH".into()]),
+    &source,
+  );
+  let seen = settle(cx, |log| !log.is_empty());
+  let pid = pids(&seen)[0];
+  assert!(alive(pid), "{seen:?}");
+  drop(service);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while alive(pid) {
+    assert!(
+      Instant::now() < deadline,
+      "a background process outlived its service"
+    );
+    thread::sleep(Duration::from_millis(20));
+  }
+}
+
+#[gpui::test]
 fn a_child_that_ignores_sigterm_gets_sigkill_after_the_grace_period(cx: &mut TestAppContext) {
   let source = main(
     r#"import { spawn } from "process";"#,
@@ -684,6 +713,22 @@ fn fetch_reads_a_response_and_refuses_one_over_the_limit(cx: &mut TestAppContext
   assert_eq!(seen[0], "200|true|1, 2|true");
   assert!(seen[1].contains("8388608 byte limit"), "{seen:?}");
   assert!(seen[2].contains("may not set `Host`"), "{seen:?}");
+}
+
+#[gpui::test]
+fn fetch_refuses_method_override_headers(cx: &mut TestAppContext) {
+  let source = main(
+    "",
+    &r#"
+    for (const name of ["X-HTTP-Method-Override", "x-http-method", "X-Method-Override"]) {
+      try { await fetch("http://OK/", { headers: { [name]: "DELETE" } }); } catch (error) { report(error.message); }
+    }"#
+      .replace("OK", &serve_once("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").to_string()),
+  );
+  let (_service, _) = start(cx, "fetch-override", local(), &source);
+  let seen = settle(cx, |log| log.len() >= 3);
+  assert_eq!(seen.len(), 3, "{seen:?}");
+  assert!(seen.iter().all(|m| m.contains("may not set")), "{seen:?}");
 }
 
 #[gpui::test]
@@ -954,6 +999,7 @@ fn watched(cx: &mut TestAppContext, id: &str, entry: &Path) -> gpui::Task<()> {
   cx.update(|cx| {
     Service::watch(
       &dir,
+      id.to_string(),
       move |cx| {
         let watches = Watches::default();
         let modules = modules(&plugin, &watches, cx);
@@ -962,6 +1008,37 @@ fn watched(cx: &mut TestAppContext, id: &str, entry: &Path) -> gpui::Task<()> {
       cx,
     )
   })
+}
+
+#[gpui::test]
+fn a_spinning_service_is_interrupted_and_tripped(cx: &mut TestAppContext) {
+  crate::runtime::limits::set_budget(Duration::from_millis(50));
+  let entry = dir("service-spin").join("service.js");
+  std::fs::write(&entry, "export default function main() { while (true) {} }").unwrap();
+  let plugin = plugin("spin", entry.parent().unwrap(), Capabilities::new());
+  let started = cx.update(|cx| Service::start(&entry, plugin, Vec::new(), Watches::default(), cx));
+  assert!(started.is_ok());
+  assert_eq!(crate::take_tripped("spin"), Some(crate::Trip::Time));
+}
+
+#[gpui::test]
+fn a_service_that_keeps_tripping_is_given_up_on(cx: &mut TestAppContext) {
+  crate::runtime::limits::set_budget(Duration::from_millis(20));
+  let calls = Rc::new(RefCell::new(Vec::new()));
+  let seen = calls.clone();
+  cx.update(|cx| {
+    cx.set_global(crate::TripHook(Rc::new(move |_, _, give_up, _| {
+      seen.borrow_mut().push(give_up)
+    })))
+  });
+  let entry = dir("service-giveup").join("service.js");
+  std::fs::write(&entry, "export default function main() { while (true) {} }").unwrap();
+  let _watcher = watched(cx, "giveup", &entry);
+  for _ in 0..8 {
+    cx.executor().advance_clock(crate::POLL * 2);
+    cx.run_until_parked();
+  }
+  assert_eq!(*calls.borrow(), [false, false, true]);
 }
 
 #[gpui::test]
@@ -1091,7 +1168,7 @@ fn a_typescript_view_loads_and_reloads(cx: &mut TestAppContext) {
   assert_eq!(view.read_with(vcx, |v, _| v.text.clone()), "v1");
 
   let handle = vcx.update(|window, _| window.window_handle());
-  let _task = vcx.update(|_, cx| reload_view(&view, handle, root.clone(), make, cx));
+  let _task = vcx.update(|_, cx| reload_view(&view, handle, root.clone(), "view".into(), make, cx));
   std::thread::sleep(Duration::from_millis(20));
   std::fs::write(&entry, source("v2")).unwrap();
   for _ in 0..2 {

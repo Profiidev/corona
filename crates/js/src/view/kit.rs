@@ -197,8 +197,8 @@ fn list_el<'js>(
     view
       .update(cx, |view, cx| {
         let args = |a: &mut Args<'_>| a.push_arg(index);
-        view.render_content(key, Some(index), window, cx, args, |ctx, frame, value| {
-          frame.child(ctx, Child::from_js(ctx, value)?)
+        view.render_content(key, Some(index), window, cx, args, |ctx, value| {
+          crate::element::frame_child(ctx, Child::from_js(ctx, value)?)
         })
       })
       .unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
@@ -231,9 +231,12 @@ fn uniform_list_el<'js>(
             r.set("end", range.end)?;
             a.push_arg(r)
           };
-          view.render_content(key, None, window, cx, args, |ctx, frame, value| {
+          view.render_content(key, None, window, cx, args, |ctx, value| {
             let items: Vec<Child> = Vec::from_js(ctx, value)?;
-            items.into_iter().map(|c| frame.child(ctx, c)).collect()
+            items
+              .into_iter()
+              .map(|c| crate::element::frame_child(ctx, c))
+              .collect()
           })
         })
         .unwrap_or_else(|e| {

@@ -270,7 +270,7 @@ where
   E: 'static,
   P: for<'a> IntoJs<'a> + Clone + 'static,
 {
-  let frame = frame_or_throw(ctx)?;
+  let mut frame = frame_or_throw(ctx)?;
   let view = frame.view.entity_id();
   let listener: Listener<P> = Rc::new(frame.listener(handler, |p: &P| p.clone()));
   let rt = runtime(ctx)?;
@@ -282,34 +282,42 @@ where
   });
   *latest.borrow_mut() = Some((frame.slot, frame.generation, listener));
   if fresh {
-    let window = window_or_throw(ctx)?;
+    let mut window = window_or_throw(ctx)?;
     let weak = Rc::downgrade(&rt);
-    let sub = window.subscribe(entity, crate::app(), move |entity, event, window, cx| {
-      let Some(payload) = pick(&entity, event, cx) else {
-        return;
-      };
-      let latest = latest.borrow().clone();
-      let Some((slot, generation, listener)) = latest else {
-        return;
-      };
-      let current = weak.upgrade().is_some_and(|rt| {
-        (rt.slots.borrow())
-          .get(&(view, slot))
-          .is_some_and(|s| s.generation == generation)
-      });
-      if current {
-        listener(&payload, window, cx);
-      }
-    });
+    let sub = window.subscribe(
+      entity,
+      &mut crate::app(),
+      move |entity, event, window, cx| {
+        let Some(payload) = pick(&entity, event, cx) else {
+          return;
+        };
+        let latest = latest.borrow().clone();
+        let Some((slot, generation, listener)) = latest else {
+          return;
+        };
+        let current = weak.upgrade().is_some_and(|rt| {
+          (rt.slots.borrow())
+            .get(&(view, slot))
+            .is_some_and(|s| s.generation == generation)
+        });
+        if current {
+          listener(&payload, window, cx);
+        }
+      },
+    );
     rt.set_keyed(view, format!("{id}:sub"), sub);
   }
   Ok(())
 }
 
 /// The handler a component takes for `event`, kept for this render
-pub(crate) fn listen<P: for<'a> IntoJs<'a> + 'static, E: ?Sized + 'static>(
+pub(crate) fn listen<
+  P: for<'a> IntoJs<'a> + 'static,
+  E: ?Sized + 'static,
+  Q: Fn(&E) -> P + 'static,
+>(
   handler: Function<'_>,
-  payload: impl Fn(&E) -> P + 'static,
-) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+  payload: Q,
+) -> impl Fn(&E, &mut Window, &mut App) + 'static + use<P, E, Q> {
   frame().listener(handler, payload)
 }

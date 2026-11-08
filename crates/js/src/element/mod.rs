@@ -19,7 +19,7 @@ use rquickjs::{
 
 use crate::{
   Opt, ScriptView, ViewHandle,
-  runtime::scope::{frame, try_frame},
+  runtime::scope::{Scoped, frame, try_frame},
 };
 
 pub(crate) mod background;
@@ -211,22 +211,30 @@ impl Frame {
 
   /// Keeps `handler` for this render and returns the gpui listener that calls it with what
   /// `payload` makes of the event.
-  pub fn listener<E: ?Sized + 'static, P: for<'js> IntoJs<'js> + 'static>(
+  pub fn listener<
+    E: ?Sized + 'static,
+    P: for<'js> IntoJs<'js> + 'static,
+    Q: Fn(&E) -> P + 'static,
+  >(
     &mut self,
     handler: Function<'_>,
-    payload: impl Fn(&E) -> P + 'static,
-  ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+    payload: Q,
+  ) -> impl Fn(&E, &mut Window, &mut App) + 'static + use<E, P, Q> {
     self.listener_as(false, handler, payload)
   }
 
   /// [`listener`](Self::listener); `gesture` handlers run with the user's activation, which
   /// `openUrl` needs.
-  pub fn listener_as<E: ?Sized + 'static, P: for<'js> IntoJs<'js> + 'static>(
+  pub fn listener_as<
+    E: ?Sized + 'static,
+    P: for<'js> IntoJs<'js> + 'static,
+    Q: Fn(&E) -> P + 'static,
+  >(
     &mut self,
     gesture: bool,
     handler: Function<'_>,
-    payload: impl Fn(&E) -> P + 'static,
-  ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+    payload: Q,
+  ) -> impl Fn(&E, &mut Window, &mut App) + 'static + use<E, P, Q> {
     let index = self.handlers.len();
     self
       .handlers
@@ -280,9 +288,14 @@ pub struct El {
 }
 
 /// The frame of the current render, or a JS error
-pub fn frame_or_throw(ctx: &Ctx<'_>) -> Result<&'static mut Frame> {
+pub fn frame_or_throw(ctx: &Ctx<'_>) -> Result<Scoped<Frame>> {
   try_frame()
     .ok_or_else(|| Exception::throw_type(ctx, "elements can only be built while rendering"))
+}
+
+/// `child` as an element of the current render
+pub(crate) fn frame_child(ctx: &Ctx<'_>, child: Child<'_>) -> Result<AnyElement> {
+  frame().child(ctx, child)
 }
 
 /// A new element in the current render

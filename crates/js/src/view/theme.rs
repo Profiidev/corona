@@ -96,7 +96,7 @@ pub(crate) fn size(ctx: &Ctx<'_>, v: Finite) -> Result<f32> {
 /// `set_theme({ appearance, tokens: { colors, spacing, radius, typography? } })`: replaces the
 /// tokens it names and redraws every window. Not while rendering.
 pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
-  if crate::runtime::scope::try_frame().is_some() {
+  if crate::runtime::scope::rendering() {
     return Err(Exception::throw_type(
       &ctx,
       "set_theme while rendering would loop",
@@ -217,8 +217,8 @@ pub(crate) fn set_theme<'js>(ctx: Ctx<'js>, value: Object<'js>) -> Result<()> {
       }
     }
   }
-  let cx = app();
-  *Theme::global_mut(cx) = theme;
+  let mut cx = app();
+  *Theme::global_mut(&mut cx) = theme;
   cx.refresh_windows();
   Ok(())
 }
