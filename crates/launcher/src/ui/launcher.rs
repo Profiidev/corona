@@ -1004,11 +1004,15 @@ impl Launcher {
   }
 
   fn complete(&mut self, back: bool, window: &mut Window, cx: &mut Context<Self>) {
+    let in_search = self.input.read(cx).focus_handle(cx).is_focused(window);
     if let Some(args) = self.page_mut().args.as_mut() {
       let n = args.inputs.len();
-      args.focused = match back {
-        false => (args.focused + 1) % n,
-        true => (args.focused + n - 1) % n,
+      // from the search, Tab enters the first field and Shift-Tab the last
+      args.focused = match (in_search, back) {
+        (true, false) => 0,
+        (true, true) => n - 1,
+        (false, false) => (args.focused + 1) % n,
+        (false, true) => (args.focused + n - 1) % n,
       };
       self.focus(window, cx);
       cx.notify();
@@ -1109,6 +1113,26 @@ impl Launcher {
   /// shortcuts of the selected row run without opening the panel
   fn on_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
     let in_search = self.input.read(cx).focus_handle(cx).is_focused(window);
+    // backspace in an empty argument field steps back to the field before, then the search
+    if e.keystroke.key == "backspace"
+      && let Some(args) = self.page().args.as_ref()
+      && let Some(at) = args
+        .inputs
+        .iter()
+        .position(|i| i.read(cx).focus_handle(cx).is_focused(window))
+      && args.inputs[at].read(cx).value().is_empty()
+    {
+      cx.stop_propagation();
+      match at.checked_sub(1) {
+        Some(before) => {
+          let input = args.inputs[before].clone();
+          self.page_mut().args.as_mut().expect("checked").focused = before;
+          input.update(cx, |input, cx| input.focus(window, cx));
+        }
+        None => self.input.update(cx, |input, cx| input.focus(window, cx)),
+      }
+      return cx.notify();
+    }
     if e.keystroke.key == "backspace" && in_search && self.input.read(cx).value().is_empty() {
       if self.page_mut().scope.take().is_some() {
         cx.stop_propagation();
