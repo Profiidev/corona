@@ -15,7 +15,9 @@ use zbus::{
 
 use crate::server::{CloseReason, Event, NAME, PATH, Server};
 
-pub use crate::state::{MAX_ACTIONS, sound_due, Action, Notification, NotificationImage, Urgency, strip_markup};
+pub use crate::state::{
+  Action, MAX_ACTIONS, Notification, NotificationImage, Urgency, sound_due, strip_markup,
+};
 
 mod server;
 mod state;

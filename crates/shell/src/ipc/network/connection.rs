@@ -1,9 +1,9 @@
-use corona_network_manager::{
-  ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
-};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
+use corona_network_manager::{
+  ActiveConnectionState, HiddenSecurity, HotspotConfig, NetworkManagerExt, ScanResult, WifiStatus,
+};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 

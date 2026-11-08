@@ -2,11 +2,11 @@
 
 use std::rc::Rc;
 
-use corona_udisks::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
 use corona_components::components::{
   list::{dot, kv, section},
   segmented,
 };
+use corona_udisks::{AtaAttribute, Drive, SmartAttributes, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled, Window,
   assets::IconName,

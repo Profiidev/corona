@@ -3,11 +3,11 @@
 use corona_surface::control_center::ControlCenterPage;
 use std::{collections::HashMap, rc::Rc};
 
-use corona_udisks::{Block, SmartAttributes, UdisksExt};
 use corona_components::components::{
   list::{self, Tone, section},
   segmented,
 };
+use corona_udisks::{Block, SmartAttributes, UdisksExt};
 use gpui_kit::{
   AnyElement, App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render,
   SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window,

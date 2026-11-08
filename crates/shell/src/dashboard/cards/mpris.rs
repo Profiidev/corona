@@ -1,6 +1,6 @@
-use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_components::components::card::CardExt;
 use corona_components::components::list::muted;
+use corona_mpris::{MprisExt, PlaybackStatus};
 use gpui_kit::{
   App, Context, Div, Empty, InteractiveElement, IntoElement, ObjectFit, ParentElement, Render,
   SharedString, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,

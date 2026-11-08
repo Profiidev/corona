@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use corona_mpris::{MprisExt, PlaybackStatus, Player};
 use corona_components::{
   animation::size::SizeAnimation,
   components::scrolling_text::{ScrollingText, ScrollingTextExt, ScrollingTextState},
 };
+use corona_mpris::{MprisExt, PlaybackStatus, Player};
 use corona_surface::{
   bar::{BarStyle, Widget},
   panel::WidgetPanelExt,

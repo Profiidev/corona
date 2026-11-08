@@ -2,13 +2,13 @@
 
 use std::rc::Rc;
 
-use corona_udisks::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
 use corona_launcher::{
   Accessory, Action, Command, DetailView, Field, FieldKind, FormView, Icon, ListView, Meta,
   Outcome, Tone, View,
   kit::{ListSource, Notify, opener, watch},
   registry, simple,
 };
+use corona_udisks::{Drive, MountOptions, SmartAttributes, UdisksExt, UnmountOptions, Volume};
 use corona_utils::display::markdown_escape as escape;
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;

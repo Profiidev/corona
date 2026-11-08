@@ -1,6 +1,6 @@
-use corona_tray::{MenuItem, TrayExt};
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply};
+use corona_tray::{MenuItem, TrayExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 

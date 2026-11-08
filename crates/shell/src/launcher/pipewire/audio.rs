@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use corona_pipewire::{PipewireExt, volume::to_slider};
 use anyhow::Result;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -10,6 +9,7 @@ use corona_launcher::{
   kit::{Group, level_target, percent, watch},
   simple,
 };
+use corona_pipewire::{PipewireExt, volume::to_slider};
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 

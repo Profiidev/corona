@@ -4,8 +4,8 @@ use std::{
   time::{Duration, Instant},
 };
 
-use corona_auth as ca;
 use anyhow::{Result, bail, ensure};
+use corona_auth as ca;
 use corona_js::{Glob, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, host_module};
 use gpui_kit::App;
 use specta::specta;
@@ -166,7 +166,8 @@ mod tests {
   fn a_timeout_is_not_a_failure() {
     let plugin = "timeout-test";
     for _ in 0..=FREE_FAILURES {
-      let started = Attempt::start(plugin).map(|a| (a, async { Err(corona_auth::ScanTimeout.into()) }));
+      let started =
+        Attempt::start(plugin).map(|a| (a, async { Err(corona_auth::ScanTimeout.into()) }));
       assert!(futures::executor::block_on(limited(started)).is_err());
     }
     assert!(Attempt::start(plugin).is_ok());

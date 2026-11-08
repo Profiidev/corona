@@ -2,7 +2,6 @@
 
 use std::{rc::Rc, time::Duration};
 
-use corona_network_manager::{NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus};
 use corona_ipc::IpcCommand;
 use corona_ipc::Switch;
 use corona_launcher::{
@@ -11,6 +10,9 @@ use corona_launcher::{
   kit::{Group, ListSource, Notify, Toggle, on_off, opener, switch_arg, switch_target, tag, watch},
   registry, simple,
   ui::{self, Open},
+};
+use corona_network_manager::{
+  NetworkManagerExt, NmConnectivityState, Secret, SecretKind, WifiNetwork, WifiStatus,
 };
 use gpui_kit::{App, Global, SharedString, Subscription, Task, assets::IconName};
 use rust_i18n::t;
@@ -208,7 +210,8 @@ impl CommandSource for NetworkSource {
       let (name, uuid) = (vpn.name.clone(), vpn.uuid.clone());
       let up = matches!(
         vpn.state,
-        corona_network_manager::ActiveConnectionState::Activated | corona_network_manager::ActiveConnectionState::Activating
+        corona_network_manager::ActiveConnectionState::Activated
+          | corona_network_manager::ActiveConnectionState::Activating
       );
       commands.push(simple(
         format!("vpn:{uuid}"),

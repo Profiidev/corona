@@ -7,11 +7,11 @@ use std::{
   time::{Duration, Instant, SystemTime},
 };
 
-use corona_notifications::{Filter, NotificationsExt, Urgency, sound_due, strip_markup};
 use anyhow::Result;
 use corona_components::animation::{animation_duration, smooth_retarget::SmoothRetarget};
 use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, NotificationConfig, NotificationPosition, observe_section};
+use corona_notifications::{Filter, NotificationsExt, Urgency, sound_due, strip_markup};
 use corona_surface::overlay::{layer_options, root};
 use corona_utils::display::display_id_for;
 use gpui_kit::{

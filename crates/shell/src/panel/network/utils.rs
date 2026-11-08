@@ -1,5 +1,5 @@
-use corona_network_manager::{FailReason, Interface, NetworkManagerExt};
 use corona_components::components::card::ErrorCard;
+use corona_network_manager::{FailReason, Interface, NetworkManagerExt};
 use gpui_kit::Context;
 
 use crate::panel::network::NetworkPanel;

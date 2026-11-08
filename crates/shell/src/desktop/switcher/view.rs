@@ -14,8 +14,8 @@ use gpui_kit::{
 use tracing::error;
 
 use crate::{
-  ipc::windows::switcher::{Mode, Modifier, Options},
   desktop::switcher::SwitcherState,
+  ipc::windows::switcher::{Mode, Modifier, Options},
 };
 use corona_surface::overlay::OverlayState;
 use rust_i18n::t;

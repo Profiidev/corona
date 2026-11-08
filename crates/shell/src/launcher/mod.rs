@@ -4,12 +4,13 @@ use gpui_kit::App;
 
 mod auth;
 mod bluetooth;
+mod brightness;
 mod capture;
+pub(crate) mod clipboard;
 mod disks;
 mod displays;
 mod idle;
-mod brightness;
-pub(crate) mod clipboard;
+mod monitors;
 mod mpris;
 mod network;
 mod notifications;
@@ -20,7 +21,6 @@ mod sysinfo;
 mod tray;
 mod weather;
 mod windows;
-mod monitors;
 
 pub(crate) fn register_all(cx: &mut App) {
   displays::register(cx);

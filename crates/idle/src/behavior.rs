@@ -9,7 +9,6 @@ use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, BorrowAppContext};
 
-
 pub(crate) fn init(cx: &mut App, session: &zbus::Connection) {
   crate::start(cx, session, changed);
   watch(cx);

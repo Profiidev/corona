@@ -13,9 +13,9 @@ pub use crate::{
     PassphraseOptions, UnlockOptions, UnmountOptions,
   },
   state::{
-    system_block, Ata, AtaAttribute, Block, Drive, Encrypted, Filesystem, Job, JobCompleted, Lock, Loop,
+    Ata, AtaAttribute, Block, Drive, Encrypted, Filesystem, Job, JobCompleted, Lock, Loop,
     NvmeController, NvmeHealth, Partition, PartitionTable, Smart, SmartAttributes, Swapspace,
-    Volume,
+    Volume, system_block,
   },
 };
 

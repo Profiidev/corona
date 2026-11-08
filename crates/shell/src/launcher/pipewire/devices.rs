@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use corona_desktop::entry::name_for_names;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
@@ -11,6 +10,7 @@ use corona_launcher::{
   kit::{ListSource, Notify, level_target, opener, percent, watch},
   registry, simple,
 };
+use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use gpui_kit::{App, SharedString, Subscription, assets::IconName};
 use rust_i18n::t;
 

@@ -3,9 +3,9 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use corona_power::{Battery, BatteryState, Power, PowerExt, Status};
 use corona_config::{BatteryWarningConfig, ConfigProvider, observe_section};
 use corona_notifications::{Notifications, Notify, Urgency};
+use corona_power::{Battery, BatteryState, Power, PowerExt, Status};
 use gpui_kit::App;
 use rust_i18n::t;
 

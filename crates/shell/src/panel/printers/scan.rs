@@ -1,12 +1,12 @@
 use std::{borrow::Cow, path::PathBuf};
 
-use corona_printing::{
-  ColorMode, Format, InputSource, PrintingExt, ScanSettings, Scanner, ScannerCaps,
-};
 use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
 use corona_components::components::list::{ListItem, empty_note};
+use corona_printing::{
+  ColorMode, Format, InputSource, PrintingExt, ScanSettings, Scanner, ScannerCaps,
+};
 use gpui_kit::{
   Context, IntoElement, ParentElement, PathPromptOptions, Styled,
   assets::IconName,

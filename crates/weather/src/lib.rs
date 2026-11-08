@@ -105,10 +105,13 @@ fn start(cx: &mut App) {
       // this fetch reads the latest place and units, earlier requests are answered by it
       requests.drain();
       let (config, place) = cx.update(|cx| {
-        let place = place
-          .read(cx)
-          .clone()
-          .with_context(|| place_error.read(cx).as_deref().unwrap_or("locating").to_string());
+        let place = place.read(cx).clone().with_context(|| {
+          place_error
+            .read(cx)
+            .as_deref()
+            .unwrap_or("locating")
+            .to_string()
+        });
         (cx.config().weather.clone(), place)
       });
       let fetched = match place {

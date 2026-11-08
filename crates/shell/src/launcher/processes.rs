@@ -6,6 +6,7 @@ use std::{
   time::Duration,
 };
 
+use anyhow::bail;
 use corona_launcher::{
   args::{ArgSpec, ArgValue},
   command::{Accessory, Action, Command, Confirm, Icon, Meta, Outcome},
@@ -15,7 +16,6 @@ use corona_launcher::{
 };
 use corona_sysinfo::processes::{Process, System, kill, kill_port, sample};
 use gpui_kit::{App, AppContext, Entity, assets::IconName};
-use anyhow::bail;
 use rust_i18n::t;
 
 const REFRESH: Duration = Duration::from_secs(2);
@@ -182,4 +182,3 @@ pub(super) fn register(cx: &mut App) {
     cx,
   );
 }
-

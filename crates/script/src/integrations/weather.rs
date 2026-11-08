@@ -1,8 +1,8 @@
 use std::time::UNIX_EPOCH;
 
+use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
 use corona_weather as wt;
 use corona_weather::{WeatherExt, WeatherService};
-use corona_js::{Glob, Json, ModuleBuilder, PluginRef, ScriptModule, host_module};
 use gpui_kit::App;
 use serde::Serialize;
 use specta::{Type, specta};

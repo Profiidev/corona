@@ -7,9 +7,9 @@ use std::{
   time::{Duration, Instant},
 };
 
-use corona_udisks::{UdisksExt, is_not_authorized};
 use anyhow::Result;
 use corona_components::components::list::{Tone, empty_note, section, tag, usage_bar};
+use corona_udisks::{UdisksExt, is_not_authorized};
 use futures::future::LocalBoxFuture;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, Global, IntoElement, ParentElement, Styled,

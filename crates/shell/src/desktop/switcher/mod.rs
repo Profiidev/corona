@@ -6,7 +6,7 @@ use corona_config::ConfigProvider;
 use corona_utils::display::display_id_for;
 use gpui_kit::{AnyWindowHandle, App, AppContext, Global, WeakEntity, WindowBackgroundAppearance};
 
-use crate::{ipc::windows::switcher::Options, desktop::switcher::view::Switcher};
+use crate::{desktop::switcher::view::Switcher, ipc::windows::switcher::Options};
 use corona_surface::overlay::{OverlayState, fullscreen_options, root};
 
 const NAMESPACE: &str = "corona_switcher";
@@ -72,7 +72,7 @@ impl SwitcherState {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{ipc::windows::switcher::Mode, desktop::taskbar::tests::window};
+  use crate::{desktop::taskbar::tests::window, ipc::windows::switcher::Mode};
   use corona_surface::testing::{FakeCompositor, setup, workspace};
   use gpui_kit::{self as gpui, TestAppContext};
 

@@ -1,7 +1,9 @@
 use std::{path::Path, rc::Rc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow};
-use corona_components::auth_screen::{SessionControl, AuthScreen, Check, MenuItem, Purpose, User, corner_menu};
+use corona_components::auth_screen::{
+  AuthScreen, Check, MenuItem, Purpose, SessionControl, User, corner_menu,
+};
 use gpui_kit::{
   Anchor, App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Render,
   SharedString, Size, Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations,

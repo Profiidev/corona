@@ -1,9 +1,9 @@
+use corona_js::{
+  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json, track,
+};
 use corona_pipewire::{
   AudioNode, Capture as PwCapture, CaptureAccess as PwCaptureAccess, CaptureKind, NodeType,
   PipewireExt,
-};
-use corona_js::{
-  Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json, track,
 };
 use gpui_kit::App;
 use serde::Serialize;

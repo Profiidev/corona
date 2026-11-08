@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
-use corona_printing::{Job, JobState, Printer, PrinterState, PrintingExt};
 use anyhow::Context as _;
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::{ListCard, ListItem, card, empty_note};
+use corona_printing::{Job, JobState, Printer, PrinterState, PrintingExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, PathPromptOptions, Styled,
   assets::IconName,

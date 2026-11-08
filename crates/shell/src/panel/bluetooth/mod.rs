@@ -1,12 +1,9 @@
 use corona_components::components::card::PageError;
 use std::{sync::atomic::Ordering, time::Duration};
 
-use corona_bluez::BluetoothExt;
 use anyhow::Result;
-use corona_surface::{
-  control_center::ControlCenterPage,
-  panel::PanelState,
-};
+use corona_bluez::BluetoothExt;
+use corona_surface::{control_center::ControlCenterPage, panel::PanelState};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   App, Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
@@ -25,7 +22,9 @@ pub(super) fn open_for_pairing(cx: &mut App) {
   let request = cx.bluetooth().pairing_request.clone();
   cx.observe(&request, |request, cx| {
     if request.read(cx).is_some() && !PanelState::is_open(BluetoothPanel::ID, cx) {
-      PanelState::show(BluetoothPanel::ID, false, cx).log_err().ok();
+      PanelState::show(BluetoothPanel::ID, false, cx)
+        .log_err()
+        .ok();
     }
   })
   .detach();

@@ -4,8 +4,8 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use corona_pipewire::{CaptureKind, PipewireExt};
 use corona_config::{ConfigProvider, PrivacyConfig, observe_section};
+use corona_pipewire::{CaptureKind, PipewireExt};
 use corona_surface::bar::{BarStyle, Widget};
 use corona_utils::ticker::TickerExt;
 use gpui_kit::{

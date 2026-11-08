@@ -1,7 +1,7 @@
-use corona_notifications::NotificationsExt;
 use anyhow::Result;
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt};
+use corona_notifications::NotificationsExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};

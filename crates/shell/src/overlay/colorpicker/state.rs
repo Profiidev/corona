@@ -1,5 +1,5 @@
-use corona_capture::{capture_all, image::RgbaImage};
 use anyhow::{Result, bail};
+use corona_capture::{capture_all, image::RgbaImage};
 use corona_compositor::CompositorExt;
 use corona_utils::display::display_uuid;
 use gpui_kit::{

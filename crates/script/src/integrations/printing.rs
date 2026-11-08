@@ -2,13 +2,13 @@
 
 use std::path::Path;
 
-use corona_printing as pr;
-use corona_printing::PrintingExt;
 use anyhow::{Context as _, Result, ensure};
 use corona_js::{
   Capabilities, Cx, Glob, Json, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws,
   host_module, json, track,
 };
+use corona_printing as pr;
+use corona_printing::PrintingExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};

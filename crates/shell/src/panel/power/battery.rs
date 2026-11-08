@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use corona_power::{Battery, BatteryState, PowerExt};
 use corona_components::async_listener::AsyncListenerExt;
+use corona_power::{Battery, BatteryState, PowerExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,

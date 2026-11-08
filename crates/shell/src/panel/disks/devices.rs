@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use corona_udisks::{Block, Drive, MountOptions, UdisksExt, UnmountOptions};
 use corona_components::components::list::{dot, empty_note, section, usage_bar};
+use corona_udisks::{Block, Drive, MountOptions, UdisksExt, UnmountOptions};
 use gpui_kit::{
   AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
   Styled, TestSupportExt, Window,

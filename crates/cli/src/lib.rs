@@ -18,12 +18,12 @@ mod notifications;
 mod pipewire;
 mod power;
 mod schema;
-mod windows;
 mod session;
 mod sysinfo;
 mod tray;
 mod types;
 mod udisks;
+mod windows;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {

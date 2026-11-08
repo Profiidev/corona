@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
+use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,

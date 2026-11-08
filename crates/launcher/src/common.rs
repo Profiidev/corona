@@ -7,7 +7,6 @@ use corona_config::{Config, ConfigProvider, launcher::CommandConfig};
 use gpui_kit::{App, SharedString, Task, assets::IconName};
 use rust_i18n::t;
 
-
 use crate::{
   command::{Action, Outcome},
   view::{Field, FieldKind, FormView, View},

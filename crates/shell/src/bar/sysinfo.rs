@@ -1,8 +1,8 @@
-use corona_sysinfo::{History, Sample, SystemMonitorExt};
 use corona_surface::{
   bar::{Button, Widget},
   tooltip::TooltipExt,
 };
+use corona_sysinfo::{History, Sample, SystemMonitorExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   AnyWindowHandle, Bounds, Context, InteractiveElement, IntoElement, ParentElement, Pixels, Render,

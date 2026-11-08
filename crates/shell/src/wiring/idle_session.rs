@@ -36,7 +36,10 @@ mod tests {
 
   #[test]
   fn only_session_actions_run() {
-    assert!(matches!(session_action(IdleAction::Lock), Some(Action::Lock)));
+    assert!(matches!(
+      session_action(IdleAction::Lock),
+      Some(Action::Lock)
+    ));
     assert!(session_action(IdleAction::ScreenOff).is_none());
     assert!(session_action(IdleAction::Command).is_none());
   }

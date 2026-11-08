@@ -6,8 +6,8 @@ use std::{
   rc::Rc,
 };
 
-use corona_udisks::{MountOptions, Udisks, UdisksExt, Volume};
 use corona_notifications::{Action, Notifications, Notify, Urgency};
+use corona_udisks::{MountOptions, Udisks, UdisksExt, Volume};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;
 use rust_i18n::t;

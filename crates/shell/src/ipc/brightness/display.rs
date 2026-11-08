@@ -1,5 +1,5 @@
-use corona_brightness::{BrightnessExt, Display};
 use anyhow::{Result, bail};
+use corona_brightness::{BrightnessExt, Display};
 use corona_ipc::{IpcCommand, IpcExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::App;

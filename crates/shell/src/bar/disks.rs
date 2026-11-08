@@ -42,7 +42,11 @@ mod tests {
     shown_drive(cx, hide_when_idle, disks_test_drive(removable))
   }
 
-  fn shown_drive(cx: &mut TestAppContext, hide_when_idle: bool, drive: corona_udisks::Drive) -> bool {
+  fn shown_drive(
+    cx: &mut TestAppContext,
+    hide_when_idle: bool,
+    drive: corona_udisks::Drive,
+  ) -> bool {
     cx.executor().allow_parking();
     let (_bus, conn) = TestBus::with_conn();
     cx.update(|cx| {
@@ -56,11 +60,7 @@ mod tests {
       .update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
           cx.new(|cx| {
-            IdlePageButton::<DisksPanel>::init(
-              cx,
-              Uuid::nil(),
-              IdleOptions { hide_when_idle },
-            )
+            IdlePageButton::<DisksPanel>::init(cx, Uuid::nil(), IdleOptions { hide_when_idle })
           })
         })
       })

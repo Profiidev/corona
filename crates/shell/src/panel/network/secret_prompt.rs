@@ -1,5 +1,5 @@
-use corona_network_manager::{NetworkManagerExt, Secret, SecretKind};
 use corona_components::components::{input::on_enter, modal::Dialog};
+use corona_network_manager::{NetworkManagerExt, Secret, SecretKind};
 use gpui_kit::{
   AppContext, Context, Entity, IntoElement, ParentElement, Styled, Subscription, Window,
   base::input::InputState,

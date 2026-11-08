@@ -1,5 +1,5 @@
-use corona_clipboard::{ClipboardExt, ClipboardHistory};
 use anyhow::{Context, Result};
+use corona_clipboard::{ClipboardExt, ClipboardHistory};
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};

@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use anyhow::Result;
-pub use corona_utils::session::{SessionAction, SessionCapabilities};
 use corona_utils::error::ErrorLogExt;
+pub use corona_utils::session::{SessionAction, SessionCapabilities};
 use gpui_kit::{
   Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, Global, Hsla, ImageSource,
   InteractiveElement, IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement,

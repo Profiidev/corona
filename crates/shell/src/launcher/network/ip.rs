@@ -1,7 +1,7 @@
 //! Local and public IP addresses
 
-use corona_network_manager::NetworkManagerExt;
 use corona_launcher::{Action, Clip, DetailView, Icon, Meta, Outcome, View, registry, simple};
+use corona_network_manager::NetworkManagerExt;
 use futures::AsyncReadExt;
 use gpui_kit::{
   App, SharedString,

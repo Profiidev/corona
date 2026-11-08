@@ -1,6 +1,6 @@
-use corona_network_manager::{NetworkManagerExt, NmConnectivityState};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
+use corona_network_manager::{NetworkManagerExt, NmConnectivityState};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,

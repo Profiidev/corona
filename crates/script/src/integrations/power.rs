@@ -1,11 +1,11 @@
 use std::time::UNIX_EPOCH;
 
-use corona_power as pw;
-use corona_power::PowerExt;
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, PluginRef, ScriptModule, Throws, Unsubscribe,
   host_module, json,
 };
+use corona_power as pw;
+use corona_power::PowerExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};

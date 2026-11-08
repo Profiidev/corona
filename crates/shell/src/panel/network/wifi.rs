@@ -1,7 +1,7 @@
-use corona_network_manager::{Interface, NetworkManagerExt, WifiNetwork, WifiStatus};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::CardExt;
 use corona_components::components::list::empty_note;
+use corona_network_manager::{Interface, NetworkManagerExt, WifiNetwork, WifiStatus};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,

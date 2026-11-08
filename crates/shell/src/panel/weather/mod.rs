@@ -1,6 +1,6 @@
-use corona_weather::{Condition, Location, WeatherExt};
 use corona_components::components::list::card;
 use corona_surface::control_center::ControlCenterPage;
+use corona_weather::{Condition, Location, WeatherExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,
   assets::IconName,

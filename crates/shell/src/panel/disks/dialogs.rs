@@ -10,13 +10,13 @@ use std::{
   time::Duration,
 };
 
+use anyhow::Context as _;
+use corona_components::components::list::kv;
+use corona_components::components::modal;
 use corona_udisks::{
   Block, CreatePartitionOptions, DeleteOptions, FormatOptions, LoopSetupOptions, PassphraseOptions,
   UdisksExt, UnlockOptions, is_not_authorized,
 };
-use anyhow::Context as _;
-use corona_components::components::list::kv;
-use corona_components::components::modal;
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, PathPromptOptions,
   SharedString, Styled, Subscription, Window,

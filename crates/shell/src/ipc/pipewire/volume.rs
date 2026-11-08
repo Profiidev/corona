@@ -1,9 +1,9 @@
+use anyhow::{Context, Result};
+use corona_ipc::{IpcCommand, IpcExt};
 use corona_pipewire::{
   PipewireExt,
   volume::{to_linear, to_slider},
 };
-use anyhow::{Context, Result};
-use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 

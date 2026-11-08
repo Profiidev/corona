@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use corona_idle::{Idle, IdleExt};
 use anyhow::{Result, ensure};
+use corona_idle::{Idle, IdleExt};
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, BorrowAppContext};
 use serde::{Deserialize, Serialize};

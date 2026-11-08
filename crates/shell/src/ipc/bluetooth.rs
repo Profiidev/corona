@@ -1,6 +1,6 @@
-use corona_bluez::{BluetoothExt, Device};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
+use corona_bluez::{BluetoothExt, Device};
 use corona_ipc::{IpcCommand, IpcExt, Reply, Switch};
 use corona_utils::error::spawn_logged;
 use gpui_kit::App;

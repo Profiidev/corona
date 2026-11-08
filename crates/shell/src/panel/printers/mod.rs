@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use corona_printing::{PrintingExt, ScanSettings, ScannerCaps};
 use corona_components::components::{card::PageError, segmented};
+use corona_printing::{PrintingExt, ScanSettings, ScannerCaps};
 use corona_surface::control_center::ControlCenterPage;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Render, Styled, Subscription, Window,

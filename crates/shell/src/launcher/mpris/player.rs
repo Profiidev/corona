@@ -2,7 +2,6 @@
 
 use std::{rc::Rc, time::Duration};
 
-use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_ipc::IpcCommand;
 use corona_ipc::Switch;
 use corona_launcher::{
@@ -10,6 +9,7 @@ use corona_launcher::{
   kit::{switch_arg, switch_target},
   registry, simple,
 };
+use corona_mpris::{LoopStatus, MprisExt, PlaybackStatus, Player};
 use corona_utils::{
   error::{ErrorLogExt, spawn_logged},
   ticker::TickerExt,
@@ -26,8 +26,8 @@ use gpui_kit::{
 use rust_i18n::t;
 
 use crate::ipc::mpris::player::{Loop, LoopMode, Seek, SetPlayer, Shuffle, parse_seek};
-use corona_mpris::fmt_time;
 use crate::panel::media::next_loop;
+use corona_mpris::fmt_time;
 
 struct NowPlaying {
   _subscriptions: Vec<Subscription>,

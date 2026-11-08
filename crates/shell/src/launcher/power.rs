@@ -5,13 +5,13 @@ use std::rc::Rc;
 
 use crate::ipc::power::{CycleProfile, SetProfile};
 use crate::panel::power::icons::power_profile as profile_label;
-use corona_power::PowerExt;
 use corona_ipc::IpcCommand;
 use corona_launcher::{
   Action, DetailView, Icon, Meta, Outcome, View, detail_row,
   kit::{Choices, Group, opener, pick_or_list, watch},
   registry, simple,
 };
+use corona_power::PowerExt;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 

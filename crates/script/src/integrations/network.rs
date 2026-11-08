@@ -1,8 +1,8 @@
-use corona_network_manager as nm;
-use corona_network_manager::NetworkManagerExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, Opt, PluginRef, ScriptModule, Throws, host_module, json,
 };
+use corona_network_manager as nm;
+use corona_network_manager::NetworkManagerExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};

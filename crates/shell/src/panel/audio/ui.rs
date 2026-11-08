@@ -1,6 +1,6 @@
-use corona_pipewire::{AudioNode, PipewireExt};
 use corona_components::components::window_icon::WindowIcon;
 use corona_desktop::entry::name_for_names;
+use corona_pipewire::{AudioNode, PipewireExt};
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
   Div, IntoElement, ParentElement, Styled,

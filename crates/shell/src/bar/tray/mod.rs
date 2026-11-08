@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
-use corona_tray::{Orientation, TrayExt, TrayItem};
 use corona_surface::bar::{BarStyle, Widget};
+use corona_tray::{Orientation, TrayExt, TrayItem};
 use gpui_kit::{
   Bounds, Context, Empty, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
   ParentElement, Pixels, Render, ScrollEvent, Styled, StyledImage, Subscription, Window,

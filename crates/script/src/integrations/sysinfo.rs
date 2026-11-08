@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use corona_js::{ModuleBuilder, PluginRef, ScriptModule, json};
 use corona_sysinfo as si;
 use corona_sysinfo::SystemMonitorExt;
-use corona_js::{ModuleBuilder, PluginRef, ScriptModule, json};
 use gpui_kit::App;
 use serde::Serialize;
 use specta::Type;

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fs};
 
+use anyhow::{Context, Result, bail};
 use corona_capture::{
   Frame, RgbaImageExt,
   image::{
@@ -7,7 +8,6 @@ use corona_capture::{
     imageops::{self, FilterType},
   },
 };
-use anyhow::{Context, Result, bail};
 use corona_config::{ConfigProvider, ScreenshotConfig};
 use gpui_kit::{App, AppContext, Bounds, ClipboardItem, Image as GpuiImage, ImageFormat, Pixels};
 use jiff::Zoned;

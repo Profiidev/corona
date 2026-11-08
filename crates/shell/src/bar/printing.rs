@@ -41,11 +41,7 @@ mod tests {
       .update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
           cx.new(|cx| {
-            IdlePageButton::<PrintersPanel>::init(
-              cx,
-              Uuid::nil(),
-              IdleOptions { hide_when_idle },
-            )
+            IdlePageButton::<PrintersPanel>::init(cx, Uuid::nil(), IdleOptions { hide_when_idle })
           })
         })
       })

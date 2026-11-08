@@ -6,8 +6,8 @@ mod clipboard;
 mod idle_session;
 mod night_light;
 mod notifications;
-mod session_control;
 mod power_warnings;
+mod session_control;
 mod weather_location;
 
 pub(crate) fn wire_all(cx: &mut App) {

@@ -8,12 +8,14 @@ pub(super) fn init(cx: &mut App) {
   let events = cx.location().events.clone();
   cx.subscribe(&events, |_, event, cx| {
     if let LocationEvent::Changed(place) = event {
-      cx.brightness().set_location(Some((place.latitude, place.longitude)));
+      cx.brightness()
+        .set_location(Some((place.latitude, place.longitude)));
     }
   })
   .detach();
   // the cached place is there before the first lookup
   if let Some(place) = cx.location().current(cx) {
-    cx.brightness().set_location(Some((place.latitude, place.longitude)));
+    cx.brightness()
+      .set_location(Some((place.latitude, place.longitude)));
   }
 }

@@ -4,8 +4,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use corona_utils::error::spawn_logged;
 
-use corona_notifications::{Action, Notifications, NotificationsExt, Notify, Urgency};
 use corona_launcher::hooks::LauncherEvent;
+use corona_notifications::{Action, Notifications, NotificationsExt, Notify, Urgency};
 use corona_script::hooks::{self, Click, Notice, ScriptEvent};
 use futures_lite::StreamExt;
 use gpui_kit::App;
@@ -25,10 +25,13 @@ pub(super) fn init(cx: &mut App) {
   })
   .detach();
   let launcher = corona_launcher::hooks::events(cx);
-  cx.subscribe(&launcher, |_, LauncherEvent::Notify { summary, body }, cx| {
-    let send = cx.notifications().send(summary.clone(), body.clone());
-    spawn_logged(cx, send);
-  })
+  cx.subscribe(
+    &launcher,
+    |_, LauncherEvent::Notify { summary, body }, cx| {
+      let send = cx.notifications().send(summary.clone(), body.clone());
+      spawn_logged(cx, send);
+    },
+  )
   .detach();
 }
 

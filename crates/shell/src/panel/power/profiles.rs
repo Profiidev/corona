@@ -1,5 +1,5 @@
-use corona_power::PowerExt;
 use corona_components::async_listener::AsyncListenerExt;
+use corona_power::PowerExt;
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   base::StyledExt,

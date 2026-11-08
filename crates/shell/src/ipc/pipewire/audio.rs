@@ -1,8 +1,8 @@
-use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_compositor::CompositorExt;
 use corona_ipc::{IpcCommand, IpcExt};
+use corona_pipewire::{AudioNode, PipewireExt, volume::to_slider};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 

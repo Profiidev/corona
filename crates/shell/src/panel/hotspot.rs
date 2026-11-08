@@ -1,9 +1,11 @@
 use std::{pin::Pin, time::Duration};
 
-use corona_network_manager::{DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt};
 use anyhow::{Context as _, Result};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::card::{CardExt, PageError};
+use corona_network_manager::{
+  DeviceState, HotspotBand, HotspotClient, HotspotConfig, NetworkManagerExt,
+};
 use corona_surface::control_center::ControlCenterPage;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{
@@ -593,7 +595,9 @@ impl HotspotPanel {
 
 #[cfg(test)]
 mod tests {
-  use corona_network_manager::{HotspotClient, HotspotInfo, Interface, InterfaceType, NetworkManager};
+  use corona_network_manager::{
+    HotspotClient, HotspotInfo, Interface, InterfaceType, NetworkManager,
+  };
   use corona_utils::test_bus::TestBus;
   use futures::executor::block_on;
   use gpui_kit::{

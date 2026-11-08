@@ -1,8 +1,8 @@
-use corona_tray as tray;
-use corona_tray::TrayExt;
 use corona_js::{
   Cx, Glob, Json, ModuleBuilder, PluginRef, ScriptModule, Throws, host_module, json,
 };
+use corona_tray as tray;
+use corona_tray::TrayExt;
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 use specta::{Type, specta};

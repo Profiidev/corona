@@ -4,8 +4,8 @@ use corona_surface::dashboard::DashboardExt;
 use gpui_kit::{App, AppContext};
 
 mod cards;
-mod session;
 pub(crate) mod quick_actions;
+mod session;
 pub(crate) mod sliders;
 
 pub(crate) fn register_all(cx: &mut App) {

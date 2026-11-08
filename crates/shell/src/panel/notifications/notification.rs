@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use corona_notifications::{Notification, NotificationImage, NotificationsExt, Urgency};
 use corona_components::components::{card::CardExt, window_icon::WindowIcon};
+use corona_notifications::{Notification, NotificationImage, NotificationsExt, Urgency};
 use gpui_kit::{
   AnyElement, App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement,
   ParentElement, Stateful, StatefulInteractiveElement, Styled, StyledImage, Subscription, Window,

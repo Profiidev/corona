@@ -150,22 +150,22 @@ impl IpcCommands {
 #[cfg(test)]
 pub(crate) mod tests {
   use clap::Parser;
+  use corona_ipc::{IpcCommand, cli::testing::request};
+  use corona_script::commands::PluginCall;
+  use corona_settings::commands::SettingsWindow;
   use corona_shell::ipc::auth::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_shell::ipc::brightness::{display::SetBrightness, nightlight::Nightlight};
   use corona_shell::ipc::capture::{ColorPicker, Screenshot};
   use corona_shell::ipc::idle::StayAwake;
-  use corona_ipc::{IpcCommand, cli::testing::request};
   use corona_shell::ipc::mpris::media::Media;
   use corona_shell::ipc::network::radio::Wifi;
   use corona_shell::ipc::notifications::{ClearHistory, DoNotDisturb, Show};
   use corona_shell::ipc::pipewire::volume::Volume;
   use corona_shell::ipc::power::{CycleProfile, SetProfile};
-  use corona_script::commands::PluginCall;
-  use corona_settings::commands::SettingsWindow;
+  use corona_shell::ipc::windows::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
   use corona_surface::commands::{ClosePanel, OpenPage, OpenPanel, TogglePanel};
   use corona_surface::theme::{SetMode, SetTheme};
-  use corona_shell::ipc::windows::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
   use serde_json::{Value, json};
 
   use super::*;

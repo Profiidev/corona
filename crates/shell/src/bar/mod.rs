@@ -9,14 +9,14 @@ mod bluetooth;
 pub(crate) mod clock;
 mod disks;
 mod hotspot;
-mod network;
-pub(crate) mod privacy;
-pub(crate) mod tray;
-mod notifications;
 pub(crate) mod mpris;
+mod network;
+mod notifications;
 mod power;
 mod printing;
+pub(crate) mod privacy;
 pub(crate) mod sysinfo;
+pub(crate) mod tray;
 mod workspaces;
 
 pub(crate) fn register_all(cx: &mut App) {

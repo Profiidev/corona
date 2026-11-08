@@ -4,13 +4,13 @@ use std::{
   time::{Duration, Instant},
 };
 
-use corona_auth::AuthExt;
 use anyhow::{Result, anyhow};
-use corona_components::auth_screen::Fingerprint;
+use corona_auth::AuthExt;
 use corona_capture::{
   Frame, RgbaImageExt, capture_all,
   image::imageops::{self, FilterType},
 };
+use corona_components::auth_screen::Fingerprint;
 use corona_compositor::CompositorExt;
 use corona_config::{APP_NAME, ConfigProvider};
 use corona_surface::overlay::{layer_options, root};

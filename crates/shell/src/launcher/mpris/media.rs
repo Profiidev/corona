@@ -1,11 +1,11 @@
 //! Play, pause, next and previous on the active player
 
-use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_launcher::{
   Action, Command, Icon, Meta, Outcome,
   kit::{Group, watch},
   simple,
 };
+use corona_mpris::{MprisExt, PlaybackStatus};
 use corona_utils::error::spawn_logged;
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;

@@ -1,6 +1,6 @@
-use corona_network_manager::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::ListCard;
+use corona_network_manager::{ActiveConnectionState, NetworkManagerExt, Vpn, VpnKind};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,

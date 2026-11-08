@@ -1,6 +1,6 @@
-use corona_network_manager::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use corona_components::async_listener::AsyncListenerExt;
 use corona_components::components::list::ListCard;
+use corona_network_manager::{DeviceState, Interface, InterfaceType, NetworkManagerExt};
 use gpui_kit::{
   Context, IntoElement, ParentElement, Styled,
   assets::IconName,

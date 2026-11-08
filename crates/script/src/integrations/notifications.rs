@@ -1,12 +1,12 @@
 use rust_i18n::t;
 use std::{collections::HashMap, io::Cursor, mem, pin::pin, time::UNIX_EPOCH};
 
+use crate::{ActionEvent, ScriptManager};
 use anyhow::{bail, ensure};
 use corona_js::{
   Cx, Glob, Json, Listener, ModuleBuilder, Plugin, PluginRef, ScriptModule, Throws, Unsubscribe,
   host_module, json,
 };
-use crate::{ActionEvent, ScriptManager};
 use futures_lite::{StreamExt, future::try_zip, stream};
 use gpui_kit::App;
 use image::{ImageError, ImageReader, Limits};

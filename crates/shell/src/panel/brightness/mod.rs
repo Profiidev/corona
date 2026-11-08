@@ -1,8 +1,8 @@
 use corona_components::components::list::card;
 use std::{collections::HashMap, pin::Pin, time::Duration};
 
-use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use anyhow::Result;
+use corona_brightness::{BrightnessExt, Display, DisplayKind};
 use corona_components::components::{
   card::PageError,
   throttled_slider::{Moved, ThrottledSlider},

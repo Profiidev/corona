@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
-use corona_capture::{Frame, capture_all};
 use anyhow::{Result, bail};
+use corona_capture::{Frame, capture_all};
 use corona_components::animation::bounds::BoundsAnimation;
 use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;

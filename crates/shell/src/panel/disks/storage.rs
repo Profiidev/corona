@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use corona_udisks::{Block, UdisksExt};
 use corona_components::components::list::{Tone, empty_note, section, tag};
+use corona_udisks::{Block, UdisksExt};
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,

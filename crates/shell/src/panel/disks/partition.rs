@@ -2,9 +2,9 @@
 
 use std::rc::Rc;
 
-use corona_udisks::UdisksExt;
 use corona_components::components::list::{kv, section};
 use corona_config::ConfigProvider;
+use corona_udisks::UdisksExt;
 use gpui_kit::{
   AnyElement, Context, IntoElement, ParentElement, Styled,
   assets::IconName,

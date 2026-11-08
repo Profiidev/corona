@@ -2,10 +2,10 @@
 
 use std::time::Duration;
 
-use corona_mpris::{LoopStatus, MprisExt, seek_target};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use corona_ipc::{IpcCommand, IpcExt, Reply};
+use corona_mpris::{LoopStatus, MprisExt, seek_target};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 

@@ -1,8 +1,8 @@
 use std::{collections::HashMap, os::fd::OwnedFd, sync::Arc, thread, time::Duration};
 
 use anyhow::{Context, Result};
-use corona_utils::entity::WriteChangedExt;
 use corona_config::IdleAction;
+use corona_utils::entity::WriteChangedExt;
 use gpui_kit::{App, AppContext, BorrowAppContext, Entity, EventEmitter, Global, Task};
 use rustix::{
   event::{EventfdFlags, PollFd, PollFlags, eventfd, poll},

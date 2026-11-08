@@ -207,7 +207,8 @@ fn command_row(id: &str, window: &mut Window, cx: &mut App) -> Div {
     {
       let id = id.to_string();
       move |value, cx| {
-        if let Err(e) = corona_launcher::common::update_command(&id, cx, |e| e.alias = some(&value)) {
+        if let Err(e) = corona_launcher::common::update_command(&id, cx, |e| e.alias = some(&value))
+        {
           tracing::warn!("{e:#}");
         }
       }
