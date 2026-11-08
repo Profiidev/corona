@@ -8,6 +8,14 @@ use std::{
 
 use rquickjs::{AsyncContext, Ctx};
 
+/// Where the host shows a tooltip itself, as gpui draws its own inside the window, which a bar
+/// clips. It gives the view that lives as long as the hover, or none to leave it to gpui.
+pub struct TooltipHost(
+  pub fn(&str, &mut gpui_kit::Window, &mut gpui_kit::App) -> Option<gpui_kit::AnyView>,
+);
+
+impl gpui_kit::Global for TooltipHost {}
+
 pub use element::{
   Child, El, Frame, Id, Named, Node, On, Payload, TsType,
   components::constructor,
