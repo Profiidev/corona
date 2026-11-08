@@ -6,57 +6,57 @@ pub enum IpcCommands {
   /// Window commands: toggle, move, layout, close all, show desktop, switcher
   Window {
     #[command(subcommand)]
-    command: corona_windows::cli::WindowCommands,
+    command: crate::windows::WindowCommands,
   },
   /// Monitor commands: focus, configure, dpms
   Monitor {
     #[command(subcommand)]
-    command: corona_windows::cli::MonitorCommands,
+    command: crate::windows::MonitorCommands,
   },
   /// Keyboard layouts and lock keys
   Keyboard {
     #[command(subcommand)]
-    command: corona_windows::cli::KeyboardCommands,
+    command: crate::windows::KeyboardCommands,
   },
   /// Audio devices, app streams, output and microphone volume
   Audio {
     #[command(subcommand)]
-    command: corona_pipewire::cli::Commands,
+    command: crate::pipewire::Commands,
   },
   /// Wi-Fi radio and networks, VPNs, hotspot and captive portal
   Network {
     #[command(subcommand)]
-    command: corona_network_manager::cli::Commands,
+    command: crate::network::Commands,
   },
   /// The Bluetooth adapter and devices
   Bluetooth {
     #[command(subcommand)]
-    command: corona_bluez::cli::Commands,
+    command: crate::bluetooth::Commands,
   },
   /// The active media player: play, pause, seek, shuffle, loop, which one
   Media {
     #[command(subcommand)]
-    command: corona_mpris::cli::Commands,
+    command: crate::mpris::Commands,
   },
   /// The clipboard history
   Clipboard {
     #[command(subcommand)]
-    command: corona_clipboard::cli::Commands,
+    command: crate::clipboard::Commands,
   },
   /// Removable drives
   Drive {
     #[command(subcommand)]
-    command: corona_udisks::cli::Commands,
+    command: crate::udisks::Commands,
   },
   /// Kill processes
   Process {
     #[command(subcommand)]
-    command: corona_sysinfo::cli::Commands,
+    command: crate::sysinfo::Commands,
   },
   /// Tray items and their menus
   Tray {
     #[command(subcommand)]
-    command: corona_tray::cli::Commands,
+    command: crate::tray::Commands,
   },
   /// Open, close or toggle the launcher, the trash, timers and the calculator
   Launcher {
@@ -78,27 +78,27 @@ pub enum IpcCommands {
   /// Screenshots and the color picker
   Capture {
     #[command(subcommand)]
-    command: corona_capture::cli::Commands,
+    command: crate::capture::Commands,
   },
   /// Notification commands
   Notification {
     #[command(subcommand)]
-    command: corona_notifications::cli::Commands,
+    command: crate::notifications::Commands,
   },
   /// Brightness and nightlight commands
   Brightness {
     #[command(subcommand)]
-    command: corona_brightness::cli::Commands,
+    command: crate::brightness::Commands,
   },
   /// Keep the session awake
   Idle {
     #[command(subcommand)]
-    command: corona_idle::cli::Commands,
+    command: crate::idle::Commands,
   },
   /// Power profile commands
   PowerProfile {
     #[command(subcommand)]
-    command: corona_power::cli::Commands,
+    command: crate::power::Commands,
   },
   /// Theme commands
   Theme {
@@ -108,7 +108,7 @@ pub enum IpcCommands {
   /// Call a method of a plugin's service and print its answer as JSON
   Plugin(corona_script::cli::PluginArgs),
   /// Lock, suspend, log out, reboot or shut down
-  Session(corona_auth::cli::SessionArgs),
+  Session(crate::session::SessionArgs),
   /// The settings window: open, close or toggle
   Settings(corona_settings::cli::SettingsArgs),
 }
@@ -150,22 +150,22 @@ impl IpcCommands {
 #[cfg(test)]
 pub(crate) mod tests {
   use clap::Parser;
-  use corona_auth::commands::Session;
-  use corona_bluez::commands::{Bluetooth, DeviceAction, Discover};
-  use corona_brightness::commands::{brightness::SetBrightness, nightlight::Nightlight};
-  use corona_capture::commands::{ColorPicker, Screenshot};
-  use corona_idle::commands::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};
-  use corona_mpris::commands::media::Media;
-  use corona_network_manager::commands::radio::Wifi;
-  use corona_notifications::commands::{ClearHistory, DoNotDisturb, Show};
-  use corona_pipewire::commands::volume::Volume;
-  use corona_power::commands::{CycleProfile, SetProfile};
   use corona_script::commands::PluginCall;
   use corona_settings::commands::SettingsWindow;
+  use corona_shell::ipc::auth::Session;
+  use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
+  use corona_shell::ipc::brightness::{display::SetBrightness, nightlight::Nightlight};
+  use corona_shell::ipc::capture::{ColorPicker, Screenshot};
+  use corona_shell::ipc::idle::StayAwake;
+  use corona_shell::ipc::mpris::media::Media;
+  use corona_shell::ipc::network::radio::Wifi;
+  use corona_shell::ipc::notifications::{ClearHistory, DoNotDisturb, Show};
+  use corona_shell::ipc::pipewire::volume::Volume;
+  use corona_shell::ipc::power::{CycleProfile, SetProfile};
+  use corona_shell::ipc::windows::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
   use corona_surface::commands::{ClosePanel, OpenPage, OpenPanel, TogglePanel};
   use corona_surface::theme::{SetMode, SetTheme};
-  use corona_windows::commands::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
   use serde_json::{Value, json};
 
   use super::*;
@@ -273,37 +273,37 @@ pub(crate) mod tests {
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
       (&["control-center", "audio"], json!(null), OpenPage::COMMAND, json!("audio")),
-      (&["window", "toggle", "floating"], json!(null), corona_windows::commands::window::Toggle::COMMAND, json!(["Floating", null])),
-      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_windows::commands::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
-      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_windows::commands::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
-      (&["window", "close-all", "--keep-focused"], json!(2), corona_windows::commands::window::CloseAll::COMMAND, json!(true)),
-      (&["monitor", "focus", "next"], json!(null), corona_windows::commands::window::FocusMonitor::COMMAND, json!("next")),
-      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_windows::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
-      (&["window", "show-desktop"], json!(null), corona_windows::commands::window::ShowDesktop::COMMAND, json!(null)),
-      (&["keyboard", "layout", "next"], json!(["de", "us"]), corona_windows::commands::window::KeyboardLayout::COMMAND, json!("next")),
-      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_pipewire::commands::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
-      (&["audio", "stream", "firefox", "40"], json!(null), corona_pipewire::commands::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
-      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_pipewire::commands::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
-      (&["network", "connect", "home"], json!(null), corona_network_manager::commands::network::ConnectWifi::COMMAND, json!("home")),
-      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_network_manager::commands::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
-      (&["network", "vpn", "work", "on"], json!(true), corona_network_manager::commands::network::SwitchVpn::COMMAND, json!(["work", "On"])),
-      (&["network", "hotspot", "toggle"], json!(true), corona_network_manager::commands::network::Hotspot::COMMAND, json!("Toggle")),
+      (&["window", "toggle", "floating"], json!(null), corona_shell::ipc::windows::window::Toggle::COMMAND, json!(["Floating", null])),
+      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_shell::ipc::windows::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
+      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_shell::ipc::windows::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
+      (&["window", "close-all", "--keep-focused"], json!(2), corona_shell::ipc::windows::window::CloseAll::COMMAND, json!(true)),
+      (&["monitor", "focus", "next"], json!(null), corona_shell::ipc::windows::window::FocusMonitor::COMMAND, json!("next")),
+      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_shell::ipc::windows::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
+      (&["window", "show-desktop"], json!(null), corona_shell::ipc::windows::window::ShowDesktop::COMMAND, json!(null)),
+      (&["keyboard", "layout", "next"], json!(["de", "us"]), corona_shell::ipc::windows::window::KeyboardLayout::COMMAND, json!("next")),
+      (&["audio", "default", "outputs", "Speakers"], json!(null), corona_shell::ipc::pipewire::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
+      (&["audio", "stream", "firefox", "40"], json!(null), corona_shell::ipc::pipewire::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
+      (&["audio", "move", "firefox", "Headphones"], json!(null), corona_shell::ipc::pipewire::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
+      (&["network", "connect", "home"], json!(null), corona_shell::ipc::network::connection::ConnectWifi::COMMAND, json!("home")),
+      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_shell::ipc::network::connection::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
+      (&["network", "vpn", "work", "on"], json!(true), corona_shell::ipc::network::connection::SwitchVpn::COMMAND, json!(["work", "On"])),
+      (&["network", "hotspot", "toggle"], json!(true), corona_shell::ipc::network::connection::Hotspot::COMMAND, json!("Toggle")),
       (&["bluetooth", "device", "connect", "Buds"], json!(null), DeviceAction::COMMAND, json!(["Connect", "Buds"])),
       (&["bluetooth", "discover", "on"], json!(null), Discover::COMMAND, json!(true)),
-      (&["media", "seek", "-10"], json!(null), corona_mpris::commands::player::Seek::COMMAND, json!({ "By": -10.0 })),
-      (&["media", "loop", "track"], json!(null), corona_mpris::commands::player::Loop::COMMAND, json!("Track")),
-      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_tray::commands::Activate::COMMAND, json!([":1.2/item", 4])),
+      (&["media", "seek", "-10"], json!(null), corona_shell::ipc::mpris::player::Seek::COMMAND, json!({ "By": -10.0 })),
+      (&["media", "loop", "track"], json!(null), corona_shell::ipc::mpris::player::Loop::COMMAND, json!("Track")),
+      (&["tray", "activate", ":1.2/item", "--menu", "4"], json!(null), corona_shell::ipc::tray::Activate::COMMAND, json!([":1.2/item", 4])),
       (&["launcher", "calc", "2", "+", "2"], json!("4"), corona_launcher::ipc::Evaluate::COMMAND, json!("2 + 2")),
-      (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_clipboard::commands::ListClipboard::COMMAND, json!(["foo", 5])),
-      (&["clipboard", "clear"], json!(3), corona_clipboard::commands::ClearClipboard::COMMAND, json!(null)),
+      (&["clipboard", "list", "foo", "--limit", "5"], json!([]), corona_shell::ipc::clipboard::ListClipboard::COMMAND, json!(["foo", 5])),
+      (&["clipboard", "clear"], json!(3), corona_shell::ipc::clipboard::ClearClipboard::COMMAND, json!(null)),
       (&["launcher", "trash", "count"], json!(3), corona_launcher::ipc::TrashCount::COMMAND, json!(null)),
-      (&["drive", "eject", "USB"], json!(null), corona_udisks::commands::DriveAction::COMMAND, json!(["Eject", "USB"])),
-      (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_udisks::commands::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
-      (&["process", "kill", "42", "--force"], json!(null), corona_sysinfo::commands::KillProcess::COMMAND, json!([42, true])),
-      (&["process", "kill-port", "8080"], json!([1]), corona_sysinfo::commands::KillPort::COMMAND, json!(8080)),
+      (&["drive", "eject", "USB"], json!(null), corona_shell::ipc::disks::DriveAction::COMMAND, json!(["Eject", "USB"])),
+      (&["drive", "password-prompt", "--device", "USB (/dev/sdb1)"], json!("pw"), corona_shell::ipc::disks::DrivePasswordPrompt::COMMAND, json!("USB (/dev/sdb1)")),
+      (&["process", "kill", "42", "--force"], json!(null), corona_shell::ipc::sysinfo::KillProcess::COMMAND, json!([42, true])),
+      (&["process", "kill-port", "8080"], json!([1]), corona_shell::ipc::sysinfo::KillPort::COMMAND, json!(8080)),
       (&["launcher", "timer", "start", "5m", "tea"], json!(1), corona_launcher::ipc::StartTimer::COMMAND, json!({ "seconds": 300, "label": "tea" })),
       (&["launcher", "timer", "stop", "7"], json!(null), corona_launcher::ipc::StopTimer::COMMAND, json!(7)),
-      (&["notification", "dismiss"], json!(null), corona_notifications::commands::DismissToasts::COMMAND, json!(null)),
+      (&["notification", "dismiss"], json!(null), corona_shell::ipc::notifications::DismissToasts::COMMAND, json!(null)),
       (&["launcher", "toggle"], json!(null), corona_launcher::ipc::Toggle::COMMAND, json!({ "command": null, "query": null, "prefill": false })),
       (&["launcher", "close"], json!(null), corona_launcher::ipc::Close::COMMAND, json!(null)),
       (&["launcher", "open", "--command", "volume", "--query", "40"], json!(null), corona_launcher::ipc::Open::COMMAND, json!({ "command": "volume", "query": "40", "prefill": false })),

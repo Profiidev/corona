@@ -2,8 +2,6 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use corona_config::{ConfigProvider, observe_section};
-use corona_js::ScriptExt;
-use corona_location::LocationExt;
 use corona_utils::{
   Buses,
   error::ErrorLogExt,
@@ -16,13 +14,7 @@ pub use crate::state::{Condition, Current, Day, Hour, Location, Weather, compass
 pub use corona_config::Units;
 
 mod api;
-mod launcher;
-pub mod script;
-pub mod settings;
 mod state;
-pub mod ui;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const RETRY: Duration = Duration::from_secs(5 * 60);
 
@@ -30,6 +22,10 @@ const RETRY: Duration = Duration::from_secs(5 * 60);
 pub struct WeatherService {
   pub weather: Entity<Option<Weather>>,
   pub error: Entity<Option<String>>,
+  /// Where the forecast is for, set by [`set_location`](WeatherService::set_location)
+  place: Entity<Option<Location>>,
+  /// Why there is no place
+  place_error: Entity<Option<String>>,
   refresh: flume::Sender<()>,
 }
 
@@ -48,6 +44,17 @@ impl WeatherService {
 
   pub fn refresh(&self) {
     let _ = self.refresh.send(());
+  }
+
+  /// Moves the forecast to `place` and fetches it again
+  pub fn set_location(&self, place: Location, cx: &mut App) {
+    self.place.write(cx, Some(place));
+    self.refresh();
+  }
+
+  /// Why the place is unknown, shown while there is none
+  pub fn set_location_error(&self, error: String, cx: &mut App) {
+    self.place_error.write(cx, Some(error));
   }
 }
 
@@ -75,18 +82,9 @@ fn save_cache(weather: &Weather) -> Result<()> {
   save_cache_to(cache_path(), weather)
 }
 
-/// Starts the forecast, registers its UI, commands and script module
+/// Starts the forecast
 pub fn init(cx: &mut App, _: &Buses) {
   start(cx);
-  ui::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::WeatherModule>();
 }
 
 fn start(cx: &mut App) {
@@ -94,21 +92,26 @@ fn start(cx: &mut App) {
   let state = WeatherService {
     weather: cx.new(|_| load_cache()),
     error: cx.new(|_| None),
+    place: cx.new(|_| None),
+    place_error: cx.new(|_| None),
     refresh,
   };
 
   let (weather, error) = (state.weather.clone(), state.error.clone());
+  let (place, place_error) = (state.place.clone(), state.place_error.clone());
   let client: Arc<dyn HttpClient> = cx.http_client();
   cx.spawn(async move |cx| {
     loop {
       // this fetch reads the latest place and units, earlier requests are answered by it
       requests.drain();
       let (config, place) = cx.update(|cx| {
-        let location = cx.location();
-        let place = location
-          .current(cx)
-          .cloned()
-          .with_context(|| location.error(cx).unwrap_or("locating").to_string());
+        let place = place.read(cx).clone().with_context(|| {
+          place_error
+            .read(cx)
+            .as_deref()
+            .unwrap_or("locating")
+            .to_string()
+        });
         (cx.config().weather.clone(), place)
       });
       let fetched = match place {
@@ -138,10 +141,7 @@ fn start(cx: &mut App) {
   .detach();
 
   cx.set_global(state);
-  // fetch again right away for a new place or units
-  let place = cx.location().location.clone();
-  cx.observe(&place, |_, cx| cx.global::<WeatherService>().refresh())
-    .detach();
+  // fetch again right away for new units
   observe_section(
     cx,
     |c| &c.weather,
@@ -241,6 +241,23 @@ mod tests {
     assert!(save_cache(&sample()).is_err());
   }
 
+  /// What the shell's wiring does
+  fn follow_location(cx: &mut App) {
+    use corona_location::{LocationEvent, LocationExt};
+    let events = cx.location().events.clone();
+    cx.subscribe(&events, |_, event, cx| {
+      let weather = cx.weather().clone();
+      match event {
+        LocationEvent::Changed(place) => weather.set_location(place.clone(), cx),
+        LocationEvent::Failed(e) => weather.set_location_error(e.clone(), cx),
+      }
+    })
+    .detach();
+    if let Some(place) = cx.location().current(cx).cloned() {
+      cx.weather().clone().set_location(place, cx);
+    }
+  }
+
   struct Running {
     _bus: TestBus,
     _cache: tempfile::TempDir,
@@ -268,6 +285,7 @@ mod tests {
       cx.set_global(config);
       corona_location::init(cx, &conn);
       super::start(cx);
+      follow_location(cx);
     });
     cx.run_until_parked();
     Running {
@@ -370,6 +388,7 @@ mod tests {
       cx.set_global(berlin());
       corona_location::init(cx, &conn);
       super::start(cx);
+      follow_location(cx);
     });
     cx.run_until_parked();
     cx.read(|cx| assert_eq!(cx.weather().current(cx), Some(&sample())));
@@ -453,6 +472,8 @@ mod tests {
       let dummy_service = WeatherService {
         weather: cx.new(|_| None),
         error: cx.new(|_| None),
+        place: cx.new(|_| None),
+        place_error: cx.new(|_| None),
         refresh: dummy_tx,
       };
       cx.set_global(dummy_service);

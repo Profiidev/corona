@@ -1,8 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use corona_js::ScriptExt;
-use corona_surface::bar::BarExt;
 use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 use zbus::{Connection, proxy::CacheProperties, zvariant::Value};
@@ -15,19 +13,11 @@ use crate::{
 
 pub use crate::state::{Category, MenuItem, Status, Toggle, TrayItem};
 
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
 mod proxy;
-pub mod script;
-mod settings;
 mod snapshot;
 mod state;
-pub mod ui;
 mod watcher;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 #[derive(Clone)]
 pub struct Tray {
@@ -215,20 +205,10 @@ impl Tray {
   }
 }
 
-/// Hosts the tray on the session bus, registers its widget, commands and script module
+/// Hosts the tray on the session bus
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   connect(cx, &buses.session).await?;
-  cx.bar_mut().register::<ui::widget::Tray>();
-  settings::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::TrayModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

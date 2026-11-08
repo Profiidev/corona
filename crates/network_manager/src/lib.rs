@@ -9,7 +9,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, AsyncApp, BackgroundExecutor, Entity, Global, Task};
@@ -28,21 +27,14 @@ pub use cosmic_dbus_networkmanager::interface::enums::{
 
 mod actions;
 mod agent;
-pub mod cli;
-pub mod commands;
 mod forwarding;
-mod launcher;
 mod listener;
 #[cfg(test)]
 mod mock;
 pub mod nl80211;
 pub mod root;
-pub mod script;
 mod snapshot;
 mod state;
-pub mod ui;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const PORTAL_FALLBACK_URL: &str = "http://nmcheck.gnome.org/check_network_status.txt";
@@ -726,25 +718,16 @@ impl NetworkManager {
   }
 
   /// Without listening to NetworkManager; tests write the entities themselves
-  #[cfg(test)]
-  pub(crate) fn fake(conn: &Connection, cx: &mut App) -> Self {
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn fake(conn: &Connection, cx: &mut App) -> Self {
     Self::new(conn, cx)
   }
 }
 
-/// Follows NetworkManager, registers the network UI, commands and script module
+/// Follows NetworkManager
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   connect(cx, &buses.system).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::NetworkModule>();
 }
 
 async fn connect(cx: &mut App, conn: &Connection) -> Result<()> {

@@ -5,29 +5,29 @@ use crate::{
   config::ConfigCommands, ipc::IpcCommands, schema::SchemaCommands, types::TypesCommand,
 };
 
+mod bluetooth;
+mod brightness;
+mod capture;
+mod clipboard;
 mod config;
+mod idle;
 mod ipc;
+mod mpris;
+mod network;
+mod notifications;
+mod pipewire;
+mod power;
 mod schema;
+mod session;
+mod sysinfo;
+mod tray;
 mod types;
+mod udisks;
+mod windows;
 
 /// Every `corona/*` module a plugin may be granted: corona_script's and the integrations'
 fn script_modules(registry: &mut corona_js::ScriptRegistry) {
   corona_script::register_modules(registry);
-  corona_desktop::register_script(registry);
-  corona_idle::register_script(registry);
-  corona_windows::register_script(registry);
-  corona_auth::register_script(registry);
-  corona_network_manager::register_script(registry);
-  corona_brightness::register_script(registry);
-  corona_power::register_script(registry);
-  corona_notifications::register_script(registry);
-  corona_pipewire::register_script(registry);
-  corona_bluez::register_script(registry);
-  corona_mpris::register_script(registry);
-  corona_printing::register_script(registry);
-  corona_sysinfo::register_script(registry);
-  corona_tray::register_script(registry);
-  corona_weather::register_script(registry);
 }
 
 /// Corona Shell CLI

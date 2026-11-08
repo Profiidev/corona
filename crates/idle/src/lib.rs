@@ -1,8 +1,9 @@
 use std::{collections::HashMap, os::fd::OwnedFd, sync::Arc, thread, time::Duration};
 
 use anyhow::{Context, Result};
+use corona_config::IdleAction;
 use corona_utils::entity::WriteChangedExt;
-use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
+use gpui_kit::{App, AppContext, BorrowAppContext, Entity, EventEmitter, Global, Task};
 use rustix::{
   event::{EventfdFlags, PollFd, PollFlags, eventfd, poll},
   io::Errno,
@@ -18,30 +19,11 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 mod behavior;
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod screensaver;
-pub mod script;
-pub mod settings;
-pub mod ui;
 
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
-
-/// Watches input and runs the `[idle]` behaviors, serves the D-Bus idle inhibits, and
-/// registers stay awake's OSD, tile, commands, the idle settings page and the script module
+/// Watches input and runs the `[idle]` behaviors and serves the D-Bus idle inhibits
 pub fn init(cx: &mut App, buses: &corona_utils::Buses) {
   behavior::init(cx, &buses.session);
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(corona_js::ScriptExt::script_mut(cx));
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::IdleModule>();
 }
 
 /// Wakes the watcher's poll when dropped, so it sees the sender gone
@@ -89,8 +71,23 @@ pub(crate) fn channel() -> Result<(Timeouts, Inbox)> {
   Ok((timeouts, Inbox { rx, wake }))
 }
 
+/// What the idle behaviors report, see [`Idle::events`]
+#[derive(Clone, Debug, PartialEq)]
+pub enum IdleEvent {
+  /// The behavior `name` went idle and its `action` is a lock or power one; the screen off
+  /// and command actions run in here
+  Fired { name: String, action: IdleAction },
+}
+
+/// Emits the [`IdleEvent`]s
+pub struct IdleEvents;
+
+impl EventEmitter<IdleEvent> for IdleEvents {}
+
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
+  /// Subscribe to learn which lock or power action is due
+  pub events: Entity<IdleEvents>,
   /// The user keeps the session awake, changed by [`set_stay_awake`](Idle::set_stay_awake)
   pub stay_awake: Entity<bool>,
   /// Nothing is watched: staying awake, or an app holds an
@@ -111,7 +108,7 @@ impl Global for Idle {}
 /// Starts watching, `on_change(name, idle)` runs when the time named `name`
 /// passes without input (`true`) and when input follows (`false`).
 /// `session` serves the D-Bus idle inhibits.
-pub(crate) fn start(
+pub fn start(
   cx: &mut App,
   session: &zbus::Connection,
   on_change: impl Fn(&str, bool, &mut App) + 'static,
@@ -149,6 +146,7 @@ pub(crate) fn start(
   })
   .detach();
   let idle = Idle {
+    events: cx.new(|_| IdleEvents),
     stay_awake: cx.new(|_| false),
     inhibited: cx.new(|_| false),
     timeouts,

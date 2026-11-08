@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::{Result, bail};
 use corona_config::APP_NAME;
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use futures::channel::oneshot;
 use futures_lite::{FutureExt, StreamExt};
@@ -14,15 +13,7 @@ use gpui_kit::{App, BackgroundExecutor, Global, Task};
 use pam_client::{Context, ErrorCode, Flag, conv_mock::Conversation};
 use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
 
-pub mod cli;
-pub mod commands;
-mod launcher;
 pub mod polkit;
-pub mod script;
-pub mod settings;
-pub mod ui;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 /// A scan nobody touched ran out; not a fault, scan again
 #[derive(Debug)]
@@ -244,19 +235,9 @@ async fn verify(device: &DeviceProxy<'_>, listening: oneshot::Sender<()>) -> Res
 /// dialog, the session commands and the script module
 pub fn init(cx: &mut App, buses: &Buses) {
   connect(cx, &buses.system);
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
 }
 
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::AuthModule>();
-}
-
-pub(crate) fn connect(cx: &mut App, conn: &Connection) {
+pub fn connect(cx: &mut App, conn: &Connection) {
   cx.set_global(Auth {
     conn: conn.clone(),
     releasing: Releasing::default(),

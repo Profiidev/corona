@@ -9,7 +9,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-corona_auth_screen.workspace = true
 corona_components.workspace = true
 corona_config.workspace = true
 corona_power.workspace = true

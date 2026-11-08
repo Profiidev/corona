@@ -117,7 +117,7 @@ pub(crate) fn pick_active(
     .map(|p| p.name.clone())
 }
 
-pub(crate) fn fmt_time(d: Duration) -> String {
+pub fn fmt_time(d: Duration) -> String {
   let s = d.as_secs();
   format!("{}:{:02}", s / 60, s % 60)
 }

@@ -3,8 +3,7 @@ use std::env;
 use anyhow::{Context, Result};
 use corona_utils::error::ErrorLogExt;
 use futures_lite::StreamExt;
-use gpui_kit::{AsyncApp, SharedString, Task, assets::IconName};
-use rust_i18n::t;
+use gpui_kit::{AsyncApp, Task};
 use zbus::{Connection, proxy::CacheProperties, zvariant::OwnedObjectPath};
 
 #[zbus::proxy(
@@ -68,69 +67,7 @@ pub(crate) trait LoginSession {
   fn unlock(&self) -> zbus::Result<()>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SessionAction {
-  Logout,
-  Suspend,
-  Hibernate,
-  SuspendThenHibernate,
-  Reboot,
-  PowerOff,
-  RebootToFirmware,
-}
-
-impl SessionAction {
-  pub fn label(self) -> SharedString {
-    match self {
-      SessionAction::Logout => t!("app.session.logout"),
-      SessionAction::Suspend => t!("app.session.suspend"),
-      SessionAction::Hibernate => t!("app.session.hibernate"),
-      SessionAction::SuspendThenHibernate => t!("app.session.suspend_then_hibernate"),
-      SessionAction::Reboot => t!("app.session.reboot"),
-      SessionAction::PowerOff => t!("app.session.shutdown"),
-      SessionAction::RebootToFirmware => t!("app.session.reboot_to_firmware"),
-    }
-    .into()
-  }
-
-  pub fn icon(self) -> IconName {
-    match self {
-      SessionAction::Logout => IconName::LogOut,
-      SessionAction::Suspend => IconName::Pause,
-      SessionAction::Hibernate => IconName::Snowflake,
-      SessionAction::SuspendThenHibernate => IconName::Moon,
-      SessionAction::Reboot => IconName::RotateCw,
-      SessionAction::PowerOff => IconName::Power,
-      SessionAction::RebootToFirmware => IconName::Cpu,
-    }
-  }
-
-  /// Whether this machine lets the action run
-  pub fn allowed(self, capabilities: &SessionCapabilities) -> bool {
-    match self {
-      SessionAction::Logout => true,
-      SessionAction::Suspend => capabilities.suspend,
-      SessionAction::Hibernate => capabilities.hibernate,
-      SessionAction::SuspendThenHibernate => capabilities.suspend_then_hibernate,
-      SessionAction::Reboot => capabilities.reboot,
-      SessionAction::PowerOff => capabilities.power_off,
-      SessionAction::RebootToFirmware => capabilities.reboot_to_firmware,
-    }
-  }
-}
-
-/// What this machine allows, read when the session menu opens
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct SessionCapabilities {
-  pub suspend: bool,
-  pub hibernate: bool,
-  pub suspend_then_hibernate: bool,
-  pub reboot: bool,
-  pub power_off: bool,
-  pub reboot_to_firmware: bool,
-  /// empty when the boot loader can't be told the next entry
-  pub boot_entries: Vec<String>,
-}
+pub use corona_utils::session::{SessionAction, SessionCapabilities};
 
 async fn manager(conn: &Connection) -> Result<LoginManagerProxy<'_>> {
   Ok(

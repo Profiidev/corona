@@ -3,23 +3,16 @@
 
 use std::{cell::RefCell, collections::HashMap, process::Command, time::Duration};
 
-use crate::{Idle, IdleExt};
+use crate::{Idle, IdleEvent, IdleExt};
 use corona_compositor::CompositorExt;
 use corona_config::{ConfigProvider, IdleAction, IdleConfig, observe_section};
-use corona_ipc::IpcCommand;
-use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, BorrowAppContext};
-
-use corona_auth::commands::{Action, Session};
 
 pub(crate) fn init(cx: &mut App, session: &zbus::Connection) {
   crate::start(cx, session, changed);
   watch(cx);
   observe_section(cx, |c| &c.idle, |_, cx| watch(cx));
-  // logind's own idle action and sleep wait too
-  let stay_awake = cx.idle().stay_awake.clone();
-  cx.power().clone().stay_awake_while(&stay_awake, cx);
 }
 
 fn watch(cx: &mut App) {
@@ -54,13 +47,13 @@ fn changed(name: &str, idle: bool, cx: &mut App) {
       )
     });
     match behavior.action {
-      IdleAction::Lock => session(Action::Lock, cx),
+      IdleAction::Lock
+      | IdleAction::Suspend
+      | IdleAction::LockAndSuspend
+      | IdleAction::LockAndSuspendThenHibernate => session(name, behavior.action, cx),
       IdleAction::ScreenOff => {
         let _ = cx.compositor().set_dpms(false).log_err();
       }
-      IdleAction::Suspend => session(Action::Suspend, cx),
-      IdleAction::LockAndSuspend => session(Action::LockAndSuspend, cx),
-      IdleAction::LockAndSuspendThenHibernate => session(Action::LockAndSuspendThenHibernate, cx),
       IdleAction::Command => run(&behavior.command),
     }
   } else if let Some((action, resume_command)) = FIRED.with_borrow_mut(|f| f.remove(name)) {
@@ -74,8 +67,13 @@ fn changed(name: &str, idle: bool, cx: &mut App) {
   }
 }
 
-fn session(action: Action, cx: &mut App) {
-  let _ = Session::handle(action, cx).log_err();
+/// Tells the subscribers of [`Idle::events`] that a lock or power action is due
+fn session(name: &str, action: IdleAction, cx: &mut App) {
+  let event = IdleEvent::Fired {
+    name: name.to_string(),
+    action,
+  };
+  cx.idle().events.clone().update(cx, |_, cx| cx.emit(event));
 }
 
 /// Runs `command` in a shell, waited on in its own thread so it leaves no zombie

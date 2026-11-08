@@ -4,7 +4,9 @@ pub mod display;
 pub mod entity;
 pub mod error;
 pub mod level;
+pub mod location;
 pub mod persist;
+pub mod session;
 pub mod stream;
 #[cfg(feature = "test-support")]
 pub mod test_bus;
@@ -13,6 +15,7 @@ pub mod uri;
 
 pub use bus::Buses;
 pub use level::parse_level;
+pub use location::Location;
 
 #[doc(hidden)]
 pub use gpui_kit as __gpui_kit;

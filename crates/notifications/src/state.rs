@@ -137,7 +137,7 @@ fn unescape(text: &str) -> String {
 }
 
 /// more buttons than this are dropped
-pub(crate) const MAX_ACTIONS: usize = 8;
+pub const MAX_ACTIONS: usize = 8;
 
 pub(crate) fn actions(flat: Vec<String>) -> Vec<Action> {
   flat
@@ -185,7 +185,7 @@ pub(crate) fn insert(
 }
 
 /// Whether a sound may play now; records it when so
-pub(crate) fn sound_due(last: &mut Option<std::time::Instant>, now: std::time::Instant) -> bool {
+pub fn sound_due(last: &mut Option<std::time::Instant>, now: std::time::Instant) -> bool {
   let due = last.is_none_or(|t| now.duration_since(t) >= SOUND_INTERVAL);
   if due {
     *last = Some(now);

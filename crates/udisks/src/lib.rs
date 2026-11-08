@@ -15,23 +15,16 @@ pub use crate::{
   state::{
     Ata, AtaAttribute, Block, Drive, Encrypted, Filesystem, Job, JobCompleted, Lock, Loop,
     NvmeController, NvmeHealth, Partition, PartitionTable, Smart, SmartAttributes, Swapspace,
-    Volume,
+    Volume, system_block,
   },
 };
 
 mod actions;
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
 mod options;
 mod proxy;
-mod settings;
 mod snapshot;
 mod state;
-pub mod ui;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 const SERVICE: &str = "org.freedesktop.UDisks2";
 
@@ -172,8 +165,7 @@ impl Udisks {
         .as_ref()
         .and_then(|e| e.cleartext_device.as_ref())
         .and_then(|path| blocks.iter().find(|b| &b.path == path));
-      system |= ui::page::model::system_block(block)
-        || cleartext.is_some_and(ui::page::model::system_block);
+      system |= system_block(block) || cleartext.is_some_and(system_block);
       if let Some(cleartext) = cleartext {
         if cleartext.is_mounted() {
           steps.push(Step::Unmount(cleartext.path.clone()));
@@ -308,10 +300,6 @@ pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   // no method timeout: Format, Check, Repair and Unmount run as long as udisksd needs
   let actions = zbus::connection::Builder::system()?.build().await?;
   connect(cx, &buses.system, &actions).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  settings::register(cx);
   Ok(())
 }
 

@@ -25,6 +25,7 @@ pub mod cli;
 pub mod commands;
 pub mod hooks;
 mod host;
+mod integrations;
 mod manager;
 mod module;
 pub mod plugin;
@@ -81,7 +82,7 @@ pub(crate) mod test_support {
   use corona_surface::testing::{FakeCompositor, workspace};
   use gpui_kit::TestAppContext;
 
-  /// `corona/compositor` as the manager's tests use it, the module itself is corona_windows':
+  /// `corona/compositor` as the manager's tests use it, the module itself is in the shell
   /// the workspaces, and focusing one, which views report through
   pub struct TestCompositor;
 

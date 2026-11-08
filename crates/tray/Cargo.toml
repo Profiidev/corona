@@ -9,17 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-corona_components.workspace = true
-corona_config.workspace = true
-corona_surface.workspace = true
-corona_settings.workspace = true
-corona_launcher.workspace = true
-corona_ipc.workspace = true
-corona_js.workspace = true
 specta.workspace = true
-rust-i18n.workspace = true
-regex.workspace = true
-serde.workspace = true
 uuid.workspace = true
 corona_desktop.workspace = true
 corona_utils.workspace = true
@@ -32,8 +22,6 @@ futures.workspace = true
 smol.workspace = true
 tracing.workspace = true
 image.workspace = true
-clap.workspace = true
-clap_complete.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

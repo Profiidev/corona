@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use corona_config::Units;
 use serde::{Deserialize, Serialize};
 
-pub use corona_location::Location;
+pub use corona_utils::Location;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Condition {

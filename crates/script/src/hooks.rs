@@ -1,13 +1,14 @@
-//! What the plugin host asks of the shell it runs in
+//! What the plugin host tells the shell it runs in
 
 use std::rc::Rc;
 
-use gpui_kit::{App, Global};
+use gpui_kit::{App, AppContext, Entity, EventEmitter, Global};
 
 /// What clicking a notification does
-pub type Click = Box<dyn FnOnce(&mut App)>;
+pub type Click = Rc<dyn Fn(&mut App)>;
 
 /// A desktop notification of the plugin host
+#[derive(Clone)]
 pub struct Notice {
   pub summary: String,
   pub body: String,
@@ -15,22 +16,31 @@ pub struct Notice {
   pub action: Option<(String, Click)>,
 }
 
-type Notify = Rc<dyn Fn(Notice, &mut App)>;
-
-#[derive(Default)]
-struct Hooks {
-  notify: Option<Notify>,
+/// Plugin updates and plugins waiting for approval ask to be notified about
+#[derive(Clone)]
+pub enum ScriptEvent {
+  Notify(Notice),
 }
 
-impl Global for Hooks {}
+/// Emits the [`ScriptEvent`]s
+pub struct ScriptEvents;
 
-/// Sends the notifications of plugin updates and of plugins waiting for approval
-pub fn set_notify(notify: impl Fn(Notice, &mut App) + 'static, cx: &mut App) {
-  cx.default_global::<Hooks>().notify = Some(Rc::new(notify));
+impl EventEmitter<ScriptEvent> for ScriptEvents {}
+
+struct Events(Entity<ScriptEvents>);
+
+impl Global for Events {}
+
+/// Subscribe to send the notifications of plugin updates and of plugins waiting for approval
+pub fn events(cx: &mut App) -> Entity<ScriptEvents> {
+  if let Some(events) = cx.try_global::<Events>() {
+    return events.0.clone();
+  }
+  let events = cx.new(|_| ScriptEvents);
+  cx.set_global(Events(events.clone()));
+  events
 }
 
 pub(crate) fn notify(notice: Notice, cx: &mut App) {
-  if let Some(notify) = cx.try_global::<Hooks>().and_then(|h| h.notify.clone()) {
-    notify(notice, cx);
-  }
+  events(cx).update(cx, |_, cx| cx.emit(ScriptEvent::Notify(notice)));
 }

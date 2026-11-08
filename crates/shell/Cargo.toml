@@ -37,9 +37,21 @@ corona_ipc.workspace = true
 corona_capture.workspace = true
 corona_launcher.workspace = true
 corona_osk.workspace = true
-corona_windows.workspace = true
 corona_clipboard.workspace = true
 gpui-kit.workspace = true
+serde.workspace = true
+futures.workspace = true
+futures-lite.workspace = true
+jiff.workspace = true
+qrcode.workspace = true
+regex.workspace = true
+rodio.workspace = true
+rustix.workspace = true
+zbus.workspace = true
+zstd.workspace = true
+clap.workspace = true
+uuid.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 rust-i18n.workspace = true
@@ -47,4 +59,8 @@ rust-i18n.workspace = true
 [dev-dependencies]
 corona_udisks = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
-regex.workspace = true
+corona_printing = { workspace = true, features = ["test-support"] }
+corona_auth = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+corona_surface = { workspace = true, features = ["test-support"] }
+corona_network_manager = { workspace = true, features = ["test-support"] }

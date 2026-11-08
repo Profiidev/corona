@@ -1,6 +1,5 @@
 use anyhow::Result;
 use corona_config::{ConfigProvider, observe_section};
-use corona_js::ScriptExt;
 use corona_notifications::NotificationsExt;
 use corona_surface::bar::BarState;
 use corona_utils::{Buses, error::ErrorLogExt};
@@ -9,8 +8,17 @@ use rust_i18n::t;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
+mod bar;
+pub(crate) mod dashboard;
+mod desktop;
+pub mod ipc;
+mod launcher;
 mod locale_keys;
+mod osd;
+mod overlay;
+mod panel;
 mod settings;
+mod wiring;
 
 /// What has to happen before any thread starts
 pub fn pre_start() {
@@ -20,6 +28,7 @@ pub fn pre_start() {
 pub fn init(cx: &mut App) {
   init_ipc(cx);
   init_integrations(cx);
+  register_ui(cx);
   register_variants(cx);
   // made once, from the settings and control center pages registered by now
   corona_launcher::commands::init(cx);
@@ -84,10 +93,23 @@ fn init_integrations(cx: &mut App) {
   }
 }
 
+/// The integrations' bar widgets, panels, IPC commands and launcher rows; their state is set
+fn register_ui(cx: &mut App) {
+  ipc::register_all(cx);
+  bar::register_all(cx);
+  panel::register_all(cx);
+  dashboard::register_all(cx);
+  osd::register_all(cx);
+  desktop::register_all(cx);
+  overlay::register_all(cx);
+  launcher::register_all(cx);
+  settings::register_all(cx);
+  wiring::wire_all(cx);
+}
+
 fn register_variants(cx: &mut App) {
   corona_surface::control_center::warn_bad_ids(cx);
   corona_surface::dashboard::warn_bad_ids(cx);
-  corona_desktop::register_script(cx.script_mut());
   corona_script::init(cx);
 }
 
@@ -100,10 +122,8 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   if let Err(err) = corona_pipewire::init(cx, &buses) {
     tracing::error!("Failed to start pipewire: {err:#}");
   }
-  corona_capture::init(cx, &buses);
   corona_clipboard::init(cx, &buses);
   corona_osk::init(cx, &buses);
-  corona_windows::init(cx, &buses);
   corona_sysinfo::init(cx, &buses)?;
   corona_bluez::init(cx, &buses).await?;
   corona_network_manager::init(cx, &buses).await?;

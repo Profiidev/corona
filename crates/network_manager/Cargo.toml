@@ -8,16 +8,11 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 futures.workspace = true
-qrcode.workspace = true
-corona_bluez.workspace = true
-corona_components.workspace = true
-corona_surface.workspace = true
-corona_launcher.workspace = true
-corona_ipc.workspace = true
-corona_js.workspace = true
-rust-i18n.workspace = true
 dirs.workspace = true
 uuid.workspace = true
 clap.workspace = true
@@ -33,7 +28,6 @@ serde.workspace = true
 specta.workspace = true
 corona-zbus-networkmanager.workspace = true
 corona-zbus-nm-secret-agent-manager.workspace = true
-clap_complete.workspace = true
 
 [dev-dependencies]
 corona_config.workspace = true

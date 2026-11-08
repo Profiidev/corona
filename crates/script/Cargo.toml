@@ -18,10 +18,27 @@ corona_surface.workspace = true
 corona_settings.workspace = true
 corona_components.workspace = true
 corona_utils.workspace = true
+corona_auth.workspace = true
+corona_bluez.workspace = true
+corona_compositor.workspace = true
+corona_desktop.workspace = true
+smol.workspace = true
+corona_brightness.workspace = true
+corona_idle.workspace = true
+corona_sysinfo.workspace = true
+corona_tray.workspace = true
+corona_weather.workspace = true
+corona_printing.workspace = true
+corona_mpris.workspace = true
+corona_network_manager.workspace = true
+corona_pipewire.workspace = true
+corona_power.workspace = true
+corona_notifications.workspace = true
 corona_ipc.workspace = true
 gpui-kit.workspace = true
 corona_js.workspace = true
 specta.workspace = true
+specta-typescript.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -46,8 +63,6 @@ clap.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
-corona_compositor.workspace = true
 corona_surface = { workspace = true, features = ["test-support"] }
-corona_desktop.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 corona_utils = { workspace = true, features = ["test-support"] }

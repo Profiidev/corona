@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use corona_utils::error::ErrorLogExt;
 use gpui_kit::{App, AppContext, Entity, Global, Task};
@@ -19,18 +18,11 @@ pub use crate::state::{
 };
 
 mod charge;
-pub mod cli;
-pub mod commands;
-mod launcher;
 mod listener;
 mod profiles;
-pub mod script;
 mod session;
 mod snapshot;
 mod state;
-pub mod ui;
-
-rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 /// how long before a session watch that failed starts over
 const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
@@ -194,16 +186,7 @@ impl Power {
 /// Follows UPower and power-profiles-daemon, registers the power UI, commands and script module
 pub async fn init(cx: &mut App, buses: &Buses) -> Result<()> {
   connect(cx, &buses.system).await?;
-  ui::register(cx);
-  commands::register(cx);
-  launcher::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::PowerModule>();
 }
 
 /// Only the backend, without the shell's UI, e.g. for the greeter

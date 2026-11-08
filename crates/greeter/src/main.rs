@@ -1,7 +1,9 @@
 use std::{path::Path, rc::Rc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow};
-use corona_auth_screen::{AuthScreen, Check, MenuItem, Purpose, User, corner_menu};
+use corona_components::auth_screen::{
+  AuthScreen, Check, MenuItem, Purpose, SessionControl, User, corner_menu,
+};
 use gpui_kit::{
   Anchor, App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Render,
   SharedString, Size, Styled, Task, Window, WindowBackgroundAppearance, WindowDecorations,
@@ -15,6 +17,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
+use corona_power::PowerExt;
 use corona_utils::error::ErrorLogExt;
 use greetd::Session;
 
@@ -205,7 +208,18 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
     .method_timeout(Duration::from_secs(5))
     .build()
     .await?;
-  corona_power::connect(cx, &system).await
+  corona_power::connect(cx, &system).await?;
+  cx.set_global(SessionControl {
+    capabilities: Rc::new(|cx| {
+      let capabilities = cx.power().session_capabilities();
+      cx.background_executor().spawn(capabilities)
+    }),
+    run: Rc::new(|action, cx| {
+      let run = cx.power().session_action(action);
+      cx.background_executor().spawn(run)
+    }),
+  });
+  Ok(())
 }
 
 fn main() {

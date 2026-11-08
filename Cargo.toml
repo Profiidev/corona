@@ -27,15 +27,13 @@ members = [
   "crates/tray",
   "crates/idle",
   "crates/auth",
-  "crates/auth_screen",
   "crates/greeter",
   "crates/launcher",
   "crates/clipboard",
   "crates/udisks",
   "crates/osk",
   "crates/settings",
-  "crates/js",
-  "crates/windows"
+  "crates/js"
 ]
 
 [workspace.package]
@@ -49,7 +47,6 @@ categories = []
 [workspace.dependencies]
 # Workspace crates
 corona_auth = { path = "crates/auth" }
-corona_auth_screen = { path = "crates/auth_screen" }
 corona_bluez = { path = "crates/bluez" }
 corona_brightness = { path = "crates/brightness" }
 corona_capture = { path = "crates/capture" }
@@ -81,7 +78,6 @@ corona_tray = { path = "crates/tray" }
 corona_udisks = { path = "crates/udisks" }
 corona_utils = { path = "crates/utils" }
 corona_weather = { path = "crates/weather" }
-corona_windows = { path = "crates/windows" }
 
 # First-party / Corona crates
 corona-freedesktop-icons = "0.1.0"

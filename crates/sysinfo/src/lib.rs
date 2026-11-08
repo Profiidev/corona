@@ -2,24 +2,18 @@ use std::time::Duration;
 
 use anyhow::Result;
 use corona_config::{Config, ConfigProvider, observe_section};
-use corona_js::ScriptExt;
 use corona_utils::Buses;
 use gpui_kit::{App, AppContext, Entity, Global};
 
 use crate::sampler::Update;
 
+pub use crate::sampler::unique_disks;
 pub use crate::state::{Disk, Gpu, GpuSample, GpuVendor, History, Sample, SystemInfo};
 
-pub mod cli;
-pub mod commands;
 mod gpu;
-mod launcher;
-mod processes;
+pub mod processes;
 mod sampler;
-pub mod script;
-mod settings;
 mod state;
-pub mod ui;
 
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
@@ -65,21 +59,10 @@ fn interval(config: &Config) -> Duration {
   Duration::from_secs(config.system.monitor.poll_seconds.max(1))
 }
 
-/// Starts sampling, registers its UI, commands and script module
+/// Starts sampling
 pub fn init(cx: &mut App, _: &Buses) -> Result<()> {
   start(cx)?;
-  ui::register(cx);
-  launcher::register(cx);
-  processes::register(cx);
-  commands::register(cx);
-  settings::register(cx);
-  register_script(cx.script_mut());
   Ok(())
-}
-
-/// Registers this integration's script modules, for the shell and the CLI
-pub fn register_script(registry: &mut corona_js::ScriptRegistry) {
-  registry.register::<script::SysinfoModule>();
 }
 
 fn start(cx: &mut App) -> Result<()> {
