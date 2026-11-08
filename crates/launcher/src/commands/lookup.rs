@@ -1,9 +1,9 @@
-//! Translate through DeepL and define words through Wiktionary
+//! Translate through Google Translate and define words through Wiktionary
 
 use std::{rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, bail};
-use corona_config::{ConfigProvider, launcher::TranslateConfig};
+use corona_config::ConfigProvider;
 use corona_utils::uri::percent_encode;
 use futures::AsyncReadExt;
 use gpui_kit::{
@@ -20,20 +20,6 @@ use crate::{
   registry,
   view::{DetailView, View},
 };
-
-/// The key from its file, else from the config
-fn deepl_key(config: &TranslateConfig) -> Result<String> {
-  match &config.deepl_key_file {
-    Some(file) => corona_config::read_secret_file(file),
-    None => config
-      .deepl_key
-      .as_deref()
-      .map(str::trim)
-      .filter(|k| !k.is_empty())
-      .map(str::to_string)
-      .context(t!("app.launcher.lookup.no_key").to_string()),
-  }
-}
 
 const MAX_BODY: u64 = 2 * 1024 * 1024;
 
@@ -66,46 +52,37 @@ async fn fetch(client: &Arc<dyn HttpClient>, request: Request<AsyncBody>) -> Res
   Ok(bytes)
 }
 
-#[derive(Deserialize)]
-struct Translations {
-  translations: Vec<Translation>,
-}
-
-#[derive(Deserialize)]
-struct Translation {
-  detected_source_language: String,
-  text: String,
+/// The translated text and detected source language of a `translate_a/single` response
+fn parse_translation(json: &[u8]) -> Result<(String, String)> {
+  let value: serde_json::Value = serde_json::from_slice(json)?;
+  // the text arrives split into sentences
+  let text: String = value
+    .get(0)
+    .and_then(|v| v.as_array())
+    .context("no translation")?
+    .iter()
+    .filter_map(|s| s.get(0)?.as_str())
+    .collect();
+  let source = value.get(2).and_then(|v| v.as_str()).unwrap_or_default();
+  Ok((text, source.to_string()))
 }
 
 async fn translate(
   client: Arc<dyn HttpClient>,
-  key: String,
   text: String,
   target: String,
 ) -> Result<(String, String)> {
-  // free keys end in `:fx` and have their own host
-  let host = match key.ends_with(":fx") {
-    true => "api-free.deepl.com",
-    false => "api.deepl.com",
-  };
-  let form = format!(
-    "text={}&target_lang={}",
-    percent_encode(&text),
-    percent_encode(&target.to_uppercase())
-  );
   let request = Request::builder()
     .method(Method::POST)
-    .uri(format!("https://{host}/v2/translate"))
-    .header("Authorization", format!("DeepL-Auth-Key {key}"))
+    .uri(format!(
+      "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl={}&dt=t",
+      percent_encode(&target.to_lowercase())
+    ))
+    .header("User-Agent", "curl/8.22.0")
+    .header("Accept", "*/*")
     .header("Content-Type", "application/x-www-form-urlencoded")
-    .body(AsyncBody::from(form))?;
-  let parsed: Translations = serde_json::from_slice(&body(&client, request).await?)?;
-  let first = parsed
-    .translations
-    .into_iter()
-    .next()
-    .context("no translation")?;
-  Ok((first.text, first.detected_source_language))
+    .body(AsyncBody::from(format!("q={}", percent_encode(&text))))?;
+  parse_translation(&body(&client, request).await?)
 }
 
 /// Wiktionary's definitions: part of speech, then the definitions without markup
@@ -221,7 +198,7 @@ fn translate_command() -> Rc<dyn Command> {
     |_| Meta {
       title: t!("app.launcher.lookup.translate").into(),
       icon: Icon::Tile(IconName::Languages, 230.),
-      keywords: vec!["deepl".into(), "language".into()],
+      keywords: vec!["google".into(), "language".into()],
       args: vec![
         ArgSpec::text(t!("app.launcher.lookup.text")).optional(),
         ArgSpec::text(t!("app.launcher.lookup.target")).optional(),
@@ -239,12 +216,11 @@ fn translate_command() -> Rc<dyn Command> {
             .text(1)
             .map(str::to_string)
             .unwrap_or(config.target.clone());
-          let (key, text) = (deepl_key(&config), input(args, cx));
+          let text = input(args, cx);
           let client = cx.http_client();
           async move {
             let text = text.context(t!("app.launcher.lookup.nothing").to_string())?;
-            let (translated, source) =
-              translate(client, key?, text.clone(), target.clone()).await?;
+            let (translated, source) = translate(client, text.clone(), target.clone()).await?;
             let copy = translated.clone();
             Ok(Outcome::Push(View::Detail(DetailView {
               title: t!("app.launcher.lookup.translate").into(),
@@ -346,15 +322,12 @@ mod tests {
   }
 
   #[test]
-  fn keys() {
-    let mut config = TranslateConfig::default();
-    assert!(deepl_key(&config).is_err());
-    config.deepl_key = Some("abc:fx".into());
-    assert_eq!(deepl_key(&config).unwrap(), "abc:fx");
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("key");
-    std::fs::write(&file, "fromfile\n").unwrap();
-    config.deepl_key_file = Some(file);
-    assert_eq!(deepl_key(&config).unwrap(), "fromfile");
+  fn translation_is_stitched() {
+    let json = br#"[[["Hallo Welt. ","Hello world.",null,null,10],["Wie geht es?","How are you?",null,null,10]],null,"en"]"#;
+    assert_eq!(
+      parse_translation(json).unwrap(),
+      ("Hallo Welt. Wie geht es?".into(), "en".into())
+    );
+    assert!(parse_translation(b"[]").is_err());
   }
 }

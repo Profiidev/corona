@@ -2,15 +2,15 @@ use std::{ops::Range, rc::Rc, time::Duration};
 
 use corona_components::{animation::animation_duration, components::window_icon::WindowIcon};
 use gpui_kit::{
-  Animation, AnimationExt, AnyElement, AnyImageCache, App, Context, Entity, FontWeight,
+  Animation, AnimationExt, AnyElement, AnyImageCache, App, Context, Entity, Focusable, FontWeight,
   HighlightStyle, ImageCacheProvider, InteractiveElement, IntoElement, ObjectFit, ParentElement,
-  RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled, StyledImage, StyledText,
-  Window,
+  Pixels, RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled, StyledImage,
+  StyledText, TextRun, Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
   },
-  div, image_cache, img, list,
+  div, font, image_cache, img, list,
   prelude::FluentBuilder,
   px, relative,
 };
@@ -45,7 +45,7 @@ pub(super) fn frame(
     .overflow_hidden()
     .text_color(theme.foreground)
     .font_family(theme.font_family.clone())
-    .child(search_bar(this, page, cx))
+    .child(search_bar(this, page, window, cx))
     .child(
       // dropped with the launcher so decoded images do not outlive it
       image_cache(BoundedImages)
@@ -83,8 +83,36 @@ impl ImageCacheProvider for BoundedImages {
   }
 }
 
-fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl IntoElement {
+/// Width of `text` in the search bar, for argument fields to sit right after it
+fn text_width(text: &str, window: &Window, cx: &App) -> Pixels {
   let theme = cx.theme();
+  let size = px(18.);
+  let run = TextRun {
+    len: text.len(),
+    font: font(theme.font_family.clone()),
+    color: theme.foreground,
+    background_color: None,
+    underline: None,
+    strikethrough: None,
+  };
+  window
+    .text_system()
+    .layout_line(text, size, &[run], None)
+    .width
+}
+
+fn search_bar(
+  this: &Launcher,
+  page: &Page,
+  window: &Window,
+  cx: &mut Context<Launcher>,
+) -> impl IntoElement {
+  let theme = cx.theme();
+  // with argument fields the search keeps only its text's width, so they follow it
+  let search_width = page.args.is_some().then(|| {
+    // padding and caret
+    (text_width(this.input.read(cx).value().as_ref(), window, cx) + px(20.)).max(px(48.))
+  });
   let muted = theme.colors.muted_foreground;
   let nested = this.pages().len() > 1;
   let loading = this.busy > 0
@@ -148,7 +176,8 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
     })
     .child(
       div()
-        .flex_1()
+        .when_some(search_width, |el, w| el.flex_none().w(w))
+        .when(search_width.is_none(), |el| el.flex_1())
         .min_w_0()
         .text_size(px(18.))
         .when(!page.searches(), |el| el.invisible())
@@ -187,7 +216,7 @@ fn search_bar(this: &Launcher, page: &Page, cx: &mut Context<Launcher>) -> impl 
     .when_some(page.args.as_ref(), |el, args| {
       el.children(args.inputs.iter().enumerate().map(|(i, input)| {
         let error = args.error.as_ref().filter(|(e, _)| *e == i);
-        let focused = args.focused == i;
+        let focused = input.read(cx).focus_handle(cx).is_focused(window);
         div()
           .h(px(30.))
           // all inputs share the bar; extra ones narrow the rest instead of being dropped
@@ -771,6 +800,7 @@ fn preview_pane(detail: Detail, cx: &App) -> AnyElement {
         .into_any_element(),
     ),
   };
+  let content_above = body.is_some() || !detail.tags.is_empty();
   div()
     .id("launcher-preview")
     .size_full()
@@ -791,20 +821,21 @@ fn preview_pane(detail: Detail, cx: &App) -> AnyElement {
       )
     })
     .when(!detail.metadata.is_empty(), |el| {
-      el.child(metadata(&detail.metadata, cx))
+      el.child(metadata(&detail.metadata, content_above, cx))
     })
     .into_any_element()
 }
 
-fn metadata(rows: &[(SharedString, SharedString)], cx: &App) -> AnyElement {
+/// `divider` draws a rule above, to set the rows off from content over them
+fn metadata(rows: &[(SharedString, SharedString)], divider: bool, cx: &App) -> AnyElement {
   let theme = cx.theme();
   div()
     .flex()
     .flex_col()
     .gap_1()
-    .pt_2()
-    .border_t_1()
-    .border_color(theme.colors.border)
+    .when(divider, |el| {
+      el.pt_2().border_t_1().border_color(theme.colors.border)
+    })
     .children(rows.iter().map(|(k, v)| {
       div()
         .flex()
@@ -847,7 +878,7 @@ fn detail_view(
           .p(px(16.))
           .border_l_1()
           .border_color(theme.colors.border)
-          .child(metadata(meta, cx)),
+          .child(metadata(meta, false, cx)),
       )
     })
     .into_any_element()

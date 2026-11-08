@@ -25,9 +25,7 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use corona_components::settings_fields::{
-  Choice, number, optional_text, save, searchable, switch, text,
-};
+use corona_components::settings_fields::{Choice, number, save, searchable, switch, text};
 
 use corona_launcher::registry::Registry;
 
@@ -290,32 +288,6 @@ fn sources(cx: &App) -> SettingGroup {
     ),
   ];
   let rest = [
-    item(
-      t!("app.settings.launcher.deepl_key.title"),
-      t!("app.settings.launcher.deepl_key.description"),
-      optional_text(
-        "launcher.translate.deepl_key",
-        |c| c.launcher.translate.deepl_key.clone(),
-        |c, v| c.launcher.translate.deepl_key = v,
-        |_| String::new(),
-      ),
-    ),
-    item(
-      t!("app.settings.launcher.deepl_key_file.title"),
-      t!("app.settings.launcher.deepl_key_file.description"),
-      optional_text(
-        "launcher.translate.deepl_key_file",
-        |c| {
-          c.launcher
-            .translate
-            .deepl_key_file
-            .as_ref()
-            .map(|p| p.display().to_string())
-        },
-        |c, v| c.launcher.translate.deepl_key_file = v.map(Into::into),
-        |_| String::new(),
-      ),
-    ),
     item(
       t!("app.settings.launcher.translate_target.title"),
       t!("app.settings.launcher.translate_target.description"),
