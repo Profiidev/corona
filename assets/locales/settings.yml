@@ -1409,6 +1409,12 @@ app:
       secret_stored:
         en: Stored in the keyring
         de: Im Schlüsselbund gespeichert
+      secret_file:
+        en: Or read it from a file, e.g. /run/secrets/token
+        de: Oder aus einer Datei lesen, z. B. /run/secrets/token
+      secret_from_file:
+        en: Read from the file below
+        de: Wird aus der Datei unten gelesen
     system:
       title:
         en: System
