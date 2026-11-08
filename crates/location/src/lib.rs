@@ -10,7 +10,7 @@ use corona_utils::{
   persist::{load_json, save_json},
   ticker::wait_or_refresh,
 };
-use gpui_kit::{App, AppContext, Entity, Global, http_client::HttpClient};
+use gpui_kit::{App, AppContext, Entity, EventEmitter, Global, http_client::HttpClient};
 use zbus::Connection;
 
 mod geocode;
@@ -23,8 +23,24 @@ const REFRESH: Duration = Duration::from_secs(30 * 60);
 
 pub use corona_utils::Location;
 
+/// What [`LocationService::events`] tell
+#[derive(Clone, Debug, PartialEq)]
+pub enum LocationEvent {
+  /// The place moved
+  Changed(Location),
+  /// Locating failed, the last place stays
+  Failed(String),
+}
+
+/// Emits the [`LocationEvent`]s
+pub struct LocationEvents;
+
+impl EventEmitter<LocationEvent> for LocationEvents {}
+
 #[derive(Clone)]
 pub struct LocationService {
+  /// Subscribe to follow the place without reading it
+  pub events: Entity<LocationEvents>,
   /// The last known place, from the cache until the first lookup
   pub location: Entity<Option<Location>>,
   pub error: Entity<Option<String>>,
@@ -112,12 +128,17 @@ async fn resolve(
 pub fn init(cx: &mut App, system: &Connection) {
   let (refresh, requests) = flume::unbounded();
   let state = LocationService {
+    events: cx.new(|_| LocationEvents),
     location: cx.new(|_| load_cache()),
     error: cx.new(|_| None),
     refresh,
   };
 
-  let (location, error) = (state.location.clone(), state.error.clone());
+  let (location, error, events) = (
+    state.location.clone(),
+    state.error.clone(),
+    state.events.clone(),
+  );
   let system = system.clone();
   let client: Arc<dyn HttpClient> = cx.http_client();
   cx.spawn(async move |cx| {
@@ -130,7 +151,8 @@ pub fn init(cx: &mut App, system: &Connection) {
           // observers refetch only when the place moved
           if previous.as_ref() != Some(&next) {
             save_cache(&next).log_err().ok();
-            location.write(cx, Some(next));
+            location.write(cx, Some(next.clone()));
+            events.update(cx, |_, cx| cx.emit(LocationEvent::Changed(next)));
           }
           error.write(cx, None);
           REFRESH
@@ -138,6 +160,7 @@ pub fn init(cx: &mut App, system: &Connection) {
         Err(e) => {
           tracing::warn!("location: {e:?}");
           error.write(cx, Some(e.to_string()));
+          events.update(cx, |_, cx| cx.emit(LocationEvent::Failed(e.to_string())));
           RETRY
         }
       };

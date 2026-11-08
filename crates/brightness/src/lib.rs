@@ -84,6 +84,13 @@ impl Brightness {
     Ok(kelvin)
   }
 
+  /// Where the sun is looked up for the solar mode: latitude and longitude, None: unknown
+  pub fn set_location(&self, coordinates: Option<(f64, f64)>) {
+    let _ = self
+      .nightlight_changes
+      .send(nightlight::Change::Location(coordinates));
+  }
+
   pub fn set_brightness(
     &self,
     id: &str,

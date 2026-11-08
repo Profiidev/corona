@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use corona_config::{ConfigProvider, NightlightConfig, NightlightMode, observe_section};
-use corona_location::{LocationExt, LocationService};
 use gpui_kit::{App, AppContext, Entity};
 use jiff::{SignedDuration, Timestamp, civil::Time, tz::TimeZone};
 
@@ -35,7 +34,9 @@ pub(crate) enum Change {
   Temperature(u32),
   /// The `[nightlight]` settings changed: the temperature starts over from them
   Config,
-  /// The location changed
+  /// The place changed: latitude and longitude
+  Location(Option<(f64, f64)>),
+  /// The timer ran out
   Replan,
 }
 
@@ -261,13 +262,6 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
     let changes = changes_tx.clone();
     move |_, _| _ = changes.send(Change::Config)
   });
-  if cx.has_global::<LocationService>() {
-    let changes = changes_tx.clone();
-    cx.observe(&cx.location().location.clone(), move |_, _| {
-      _ = changes.send(Change::Replan)
-    })
-    .detach();
-  }
 
   let entity = state.clone();
   cx.spawn(async move |cx| {
@@ -275,15 +269,11 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
     let mut temperature = temperature;
     let mut sent = None;
     let mut warned = false;
+    let mut coordinates = None;
     loop {
       let now = Timestamp::now();
       let plan = cx.update(|cx| {
         let config = cx.config().nightlight.clone();
-        let coordinates = cx
-          .has_global::<LocationService>()
-          .then(|| cx.location().current(cx))
-          .flatten()
-          .map(|l| (l.latitude, l.longitude));
         let nights = nights(now, &config, coordinates, &TimeZone::system());
         if config.mode == NightlightMode::Solar && nights.is_none() && !warned {
           tracing::warn!("nightlight: sunset is unknown without a valid [location], staying off");
@@ -342,6 +332,10 @@ pub(crate) fn start(cx: &mut App) -> (Entity<Nightlight>, flume::Sender<Change>)
         Some(Change::Config) => {
           temperature = cx.update(|cx| clamp(cx.config().nightlight.temperature));
           manual.until = None;
+          warned = false;
+        }
+        Some(Change::Location(place)) => {
+          coordinates = place;
           warned = false;
         }
         Some(Change::Replan) => warned = false,
