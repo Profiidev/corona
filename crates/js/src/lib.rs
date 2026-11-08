@@ -18,10 +18,10 @@ pub use element::{
 pub use runtime::{
   caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant},
   host::{Cx, Glob, Json, Opt, Throws, json},
+  limits::{Trip, TripHook, take_tripped},
   module::{Data, ModuleBuilder, d_ts},
   plugin::Plugin,
   registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry},
-  limits::{Trip, TripHook, take_tripped},
   reload::{POLL, reload_view, watch},
   scope::{Enter, app, frame, window},
   service::Service,
