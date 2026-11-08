@@ -5,7 +5,7 @@ use std::{
   os::unix::process::ExitStatusExt,
   path::Path,
   process::{ExitStatus, Stdio},
-  sync::Arc,
+  sync::{Arc, PoisonError},
   time::Duration,
 };
 
@@ -27,6 +27,7 @@ use crate::{
   runtime::{
     caps::{Access, CapabilityError},
     plugin::plugin,
+    runtime,
   },
 };
 
@@ -173,6 +174,42 @@ async fn all(stream: impl AsyncRead + Unpin, name: &str) -> Res<String> {
   Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
+/// The process groups of the children a runtime started, ended with it: disabling a plugin
+/// ends what its commands left running. ponytail: a group that emptied and whose id a new
+/// group leader took since is hit too; pidfds or a cgroup if that ever matters
+#[derive(Default)]
+pub(crate) struct ChildGroups(std::sync::Mutex<Vec<i32>>);
+
+fn alive(group: i32) -> bool {
+  unsafe { libc::kill(-group, 0) == 0 }
+}
+
+impl ChildGroups {
+  fn add(&self, pid: u32) {
+    let mut groups = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+    groups.retain(|g| alive(*g));
+    groups.push(pid as i32);
+  }
+
+  /// SIGTERM to every group still alive, SIGKILL after the grace period
+  pub(crate) fn terminate(&self) {
+    let mut groups = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+    let groups: Vec<i32> = groups.drain(..).filter(|g| alive(*g)).collect();
+    if groups.is_empty() {
+      return;
+    }
+    for group in &groups {
+      unsafe { libc::kill(-group, libc::SIGTERM) };
+    }
+    detach(async move {
+      tokio::time::sleep(GRACE).await;
+      for group in groups.into_iter().filter(|g| alive(*g)) {
+        unsafe { libc::kill(-group, libc::SIGKILL) };
+      }
+    });
+  }
+}
+
 /// SIGKILLs the process group of a `run` child that is dropped before it finished
 struct KillGroup(Option<u32>);
 
@@ -192,6 +229,7 @@ fn run<'js>(
 ) -> Result<Promise<'js>> {
   let opts = options(&ctx, opts.0, false).map_err(|f| f.throw(&ctx))?;
   let mut cmd = command(&ctx, &name, args(args_), &opts).map_err(|f| f.throw(&ctx))?;
+  let groups = runtime(&ctx)?.groups.clone();
   cmd
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
@@ -203,6 +241,9 @@ fn run<'js>(
         .spawn()
         .map_err(|e| Fail::Error(format!("starting `{name}` failed: {e}")))?;
       let mut group = KillGroup(child.id());
+      if let Some(pid) = child.id() {
+        groups.add(pid);
+      }
       let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
       let (stdout, stderr) = tokio::try_join!(
         all(stdout.expect("piped"), "stdout"),
@@ -432,6 +473,7 @@ fn spawn<'js>(
     .spawn()
     .map_err(|e| Exception::throw_message(&ctx, &format!("starting `{name}` failed: {e}")))?;
   let pid = child.id().expect("a running child");
+  runtime(&ctx)?.groups.add(pid);
   let (tx, status) = watch::channel(None);
   let process = ChildProcess {
     pid,

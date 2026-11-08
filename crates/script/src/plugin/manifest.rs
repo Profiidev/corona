@@ -41,6 +41,8 @@ pub struct PluginManifest {
   pub modules: BTreeSet<String>,
   /// The bus names `corona/dbus` may reach, which it needs to be importable
   pub dbus: Option<DbusGrant>,
+  /// Found in a dev source: the user's own checkout, where the shell writes `corona.d.ts`
+  pub dev: bool,
 }
 
 impl PluginManifest {
@@ -72,6 +74,7 @@ impl PluginManifest {
       panels: file.panels,
       service: file.service,
       settings: file.settings,
+      dev: false,
     }
   }
 

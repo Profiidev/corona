@@ -592,6 +592,34 @@ fn dropping_a_service_cancels_timers_and_kills_its_process_group(cx: &mut TestAp
 }
 
 #[gpui::test]
+fn dropping_a_service_ends_what_run_left_in_the_background(cx: &mut TestAppContext) {
+  let source = main(
+    r#"import { run } from "process";"#,
+    r#"
+    const out = await run("/bin/sh", ["-c", "sleep 100 </dev/null >/dev/null 2>&1 & echo $!"]);
+    report(`pids:${out.stdout.trim()}`);"#,
+  );
+  let (service, _) = start(
+    cx,
+    "run-leftover",
+    sh().process_env(["PATH".into()]),
+    &source,
+  );
+  let seen = settle(cx, |log| !log.is_empty());
+  let pid = pids(&seen)[0];
+  assert!(alive(pid), "{seen:?}");
+  drop(service);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while alive(pid) {
+    assert!(
+      Instant::now() < deadline,
+      "a background process outlived its service"
+    );
+    thread::sleep(Duration::from_millis(20));
+  }
+}
+
+#[gpui::test]
 fn a_child_that_ignores_sigterm_gets_sigkill_after_the_grace_period(cx: &mut TestAppContext) {
   let source = main(
     r#"import { spawn } from "process";"#,
@@ -684,6 +712,22 @@ fn fetch_reads_a_response_and_refuses_one_over_the_limit(cx: &mut TestAppContext
   assert_eq!(seen[0], "200|true|1, 2|true");
   assert!(seen[1].contains("8388608 byte limit"), "{seen:?}");
   assert!(seen[2].contains("may not set `Host`"), "{seen:?}");
+}
+
+#[gpui::test]
+fn fetch_refuses_method_override_headers(cx: &mut TestAppContext) {
+  let source = main(
+    "",
+    &r#"
+    for (const name of ["X-HTTP-Method-Override", "x-http-method", "X-Method-Override"]) {
+      try { await fetch("http://OK/", { headers: { [name]: "DELETE" } }); } catch (error) { report(error.message); }
+    }"#
+      .replace("OK", &serve_once("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").to_string()),
+  );
+  let (_service, _) = start(cx, "fetch-override", local(), &source);
+  let seen = settle(cx, |log| log.len() >= 3);
+  assert_eq!(seen.len(), 3, "{seen:?}");
+  assert!(seen.iter().all(|m| m.contains("may not set")), "{seen:?}");
 }
 
 #[gpui::test]

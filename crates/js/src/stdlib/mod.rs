@@ -11,6 +11,7 @@ use rquickjs::{
   loader::{BuiltinResolver, ModuleLoader},
 };
 
+pub(crate) use process::ChildGroups;
 pub use storage::Storage;
 
 mod basics;

@@ -253,9 +253,7 @@ impl ScriptManager {
       let plugin = Self::plugin(&manifest, cx);
       let watches = Watches::default();
       let modules = Self::modules(&manifest, &plugin, &watches, load.clone(), cx)?;
-      if let Err(e) = write_d_ts(&manifest.dir, &modules) {
-        tracing::debug!("types of `{}` not written: {e:#}", manifest.id);
-      }
+      write_types_for_dev(&manifest, &modules);
       ScriptView::load(&path, plugin, modules, watches, window, cx)
     };
 
@@ -300,14 +298,24 @@ impl ScriptManager {
         ..Load::default()
       };
       let modules = Self::modules(&manifest, &plugin, &watches, load, cx)?;
-      if let Err(e) = write_d_ts(&manifest.dir, &modules) {
-        tracing::debug!("types of `{}` not written: {e:#}", manifest.id);
-      }
+      write_types_for_dev(&manifest, &modules);
       corona_js::Service::start(&entry, plugin, modules, watches, cx)
     };
     Ok(Service {
       _watch: corona_js::Service::watch(&dir, start, cx),
     })
+  }
+}
+
+/// Loading writes `corona.d.ts` only into a dev source, the user's own checkout. Other
+/// plugin directories are not the shell's to write: a link there would send the write
+/// anywhere. `corona plugin types` still writes where the user points it.
+fn write_types_for_dev(manifest: &PluginManifest, modules: &[ModuleBuilder]) {
+  if !manifest.dev {
+    return;
+  }
+  if let Err(e) = write_d_ts(&manifest.dir, modules) {
+    tracing::debug!("types of `{}` not written: {e:#}", manifest.id);
   }
 }
 
@@ -408,14 +416,22 @@ export default class Main extends View {
       }
     }
 
-    /// Every plugin in the local directory, all enabled
+    /// Every plugin in the local directory, all enabled, as if found in a dev source
     fn manager(&self) -> ScriptManager {
+      self.manager_as(true)
+    }
+
+    fn manager_as(&self, dev: bool) -> ScriptManager {
       let mut manager = ScriptManager::new(self.paths.clone());
       let root = &registry::roots(&self.paths, &Default::default())[1];
       manager.set_plugins(
         registry::scan_root(&self.paths, root, &Default::default())
           .into_iter()
-          .map(|found| (found.manifest.id.clone(), found.manifest))
+          .map(|found| {
+            let mut manifest = found.manifest;
+            manifest.dev = dev;
+            (manifest.id.clone(), manifest)
+          })
           .collect(),
       );
       manager
@@ -1697,6 +1713,17 @@ export default class Main extends View {
       fs::read_to_string(dir.join("tsconfig.json")).unwrap(),
       tsconfig
     );
+  }
+
+  #[gpui::test]
+  fn loading_writes_types_only_for_dev_sources(cx: &mut TestAppContext) {
+    let plugins = Plugins::new();
+    plugins.add("a", &manifest("a", ""), &[("main.js", VIEW)]);
+    running(cx, &plugins);
+    cx.set_global(plugins.manager_as(false));
+    let (host, cx) = window(cx);
+    show(cx, &host, "a").unwrap();
+    assert!(!plugins.paths.local.join("a/corona.d.ts").exists());
   }
 
   #[gpui::test]

@@ -103,10 +103,13 @@ pub fn scan_root(paths: &Paths, root: &Root, settings: &PluginSettings) -> Vec<F
       Ok(file) => {
         let id = file.id.clone();
         let data = paths.data(&id);
+        let capabilities = file.capabilities.clone();
+        let mut manifest = PluginManifest::new(file, dir, &data, settings.get(&id));
+        manifest.dev = root.origin.kind == SourceKind::Dev;
         Some(Found {
           origin: root.origin.clone(),
-          capabilities: file.capabilities.clone(),
-          manifest: PluginManifest::new(file, dir, &data, settings.get(&id)),
+          capabilities,
+          manifest,
         })
       }
       Err(e) => {

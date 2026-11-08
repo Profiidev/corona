@@ -7,6 +7,7 @@ use std::{
   collections::HashMap,
   path::{Path, PathBuf},
   rc::{Rc, Weak},
+  sync::Arc,
 };
 
 use anyhow::{Result, anyhow};
@@ -68,6 +69,8 @@ pub(crate) struct Runtime {
   /// What retained states' `.on` subscribed, and the view they did it for
   subs: RefCell<HashMap<u32, (Option<EntityId>, Subscription)>>,
   pub(crate) watches: Watches,
+  /// The process groups of its children, ended with it
+  pub(crate) groups: Arc<stdlib::ChildGroups>,
   /// The id of the plugin it runs
   pub(crate) plugin_id: String,
   /// Unique per runtime, tags the key bindings it installs
@@ -85,6 +88,7 @@ impl Drop for Runtime {
     self.panels.get_mut().clear();
     self.subs.get_mut().clear();
     self.watches.clear();
+    self.groups.terminate();
   }
 }
 
@@ -298,6 +302,7 @@ pub(crate) fn new(
     panels: Default::default(),
     subs: Default::default(),
     watches,
+    groups: Default::default(),
     plugin_id: plugin.id.clone(),
     owner: NEXT_OWNER.with(|n| {
       n.set(n.get() + 1);

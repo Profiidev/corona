@@ -53,6 +53,10 @@ fn prohibited(name: &str) -> bool {
       | "transfer-encoding"
       | "upgrade"
       | "origin"
+      // many servers run the override instead of the method a `network.http` grant allowed
+      | "x-http-method"
+      | "x-http-method-override"
+      | "x-method-override"
   )
 }
 
