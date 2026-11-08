@@ -215,6 +215,8 @@ impl ScriptModule for BluetoothModule {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit as gpui;
+
   use super::*;
 
   fn device(path: &str, address: &str, name: &str) -> bt::Device {
@@ -332,5 +334,46 @@ mod tests {
     assert_eq!(converted["powered"], true);
     assert_eq!(converted["discoverable"], false);
     assert_eq!(converted["discovering"], true);
+  }
+
+  #[gpui::test]
+  fn module_watches_and_calls(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(bt::init(cx, &buses)).unwrap();
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.answerPairing(false);
+      m.answerPairing(true, "1234");
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.setPowered(true)),
+        fail(m.setDiscoverable(true)),
+        fail(m.startDiscovery()),
+        fail(m.stopDiscovery()),
+        fail(m.connect("00:11")),
+        fail(m.disconnect("00:11")),
+        fail(m.pair("00:11")),
+        fail(m.forget("00:11")),
+      ]).then((res) => report([m.adapter(), m.listDevices(), m.pairingRequest(), res]));
+    }"#;
+    let (view, cx) = crate::harness::module::<BluetoothModule>(cx, body);
+    corona_utils::test_bus::wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!([
+        null,
+        [],
+        null,
+        ["err", "err", "err", "err", "err", "err", "err", "err"]
+      ])
+    );
   }
 }

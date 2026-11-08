@@ -100,4 +100,20 @@ mod tests {
       }
     }
   }
+
+  #[gpui_kit::test]
+  fn media_command_replies(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_mpris::init(cx, &buses)).unwrap();
+      assert!(Media::handle(Action::Play, cx).is_err());
+      assert!(ex.block_on(Media::reply(Action::Play, cx)).is_err());
+    });
+  }
 }

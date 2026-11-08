@@ -33,4 +33,13 @@ mod tests {
     assert_eq!(Ok::<_, &str>(1).log_err(), Ok(1));
     assert_eq!(Err::<i32, _>("boom").log_err(), Err("boom"));
   }
+
+  #[gpui_kit::test]
+  fn spawns_and_logs(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+      spawn_logged(cx, async { Ok(()) });
+      spawn_logged(cx, async { anyhow::bail!("failed") });
+    });
+    cx.run_until_parked();
+  }
 }

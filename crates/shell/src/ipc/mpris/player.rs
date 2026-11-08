@@ -178,3 +178,30 @@ impl IpcCommand for ListPlayers {
     )
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[gpui_kit::test]
+  fn player_commands(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_mpris::init(cx, &buses)).unwrap();
+      assert!(ListPlayers::handle((), cx).unwrap().is_empty());
+      assert!(SetPlayer::handle("Spotify".into(), cx).is_err());
+      assert!(Seek::handle(SeekTo::At(10.), cx).is_err());
+      assert!(Shuffle::handle(Switch::On, cx).is_err());
+      assert!(Loop::handle(LoopMode::Track, cx).is_err());
+      assert!(ex.block_on(Seek::reply(SeekTo::At(10.), cx)).is_err());
+      assert!(ex.block_on(Shuffle::reply(Switch::On, cx)).is_err());
+      assert!(ex.block_on(Loop::reply(LoopMode::Track, cx)).is_err());
+    });
+  }
+}

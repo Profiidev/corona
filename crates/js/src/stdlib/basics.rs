@@ -65,9 +65,8 @@ fn normalize_base64(text: &str) -> String {
     .collect()
 }
 
-fn encode(ctx: Ctx<'_>, text: String, encoding: Opt<String>) -> Result<ArrayBuffer<'_>> {
+fn encode(ctx: Ctx<'_>, text: String, encoding: Option<String>) -> Result<ArrayBuffer<'_>> {
   let encoding = encoding
-    .0
     .unwrap_or_else(|| "utf8".into())
     .to_ascii_lowercase();
   let invalid = |_| Exception::throw_type(&ctx, &format!("invalid {encoding} string"));
@@ -91,11 +90,10 @@ fn encode(ctx: Ctx<'_>, text: String, encoding: Opt<String>) -> Result<ArrayBuff
   ArrayBuffer::new(ctx.clone(), out)
 }
 
-fn decode(ctx: Ctx<'_>, data: Value<'_>, encoding: Opt<String>) -> Result<String> {
+fn decode(ctx: Ctx<'_>, data: Value<'_>, encoding: Option<String>) -> Result<String> {
   let data = bytes(&data, "buffer.toString()")?;
   Ok(
     match encoding
-      .0
       .unwrap_or_else(|| "utf8".into())
       .to_ascii_lowercase()
       .as_str()

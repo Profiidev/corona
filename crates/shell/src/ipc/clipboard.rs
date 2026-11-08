@@ -81,3 +81,17 @@ impl IpcCommand for ClearClipboard {
     history(cx)?.clear(cx)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[gpui_kit::test]
+  fn fails_when_history_is_off(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+      assert!(ListClipboard::handle((None, 10), cx).is_err());
+      assert!(DeleteClip::handle(1, cx).is_err());
+      assert!(ClearClipboard::handle((), cx).is_err());
+    });
+  }
+}

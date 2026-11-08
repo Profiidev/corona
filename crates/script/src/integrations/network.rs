@@ -540,6 +540,7 @@ impl ScriptModule for NetworkModule {
 #[cfg(test)]
 mod tests {
   use corona_network_manager as nm;
+  use gpui_kit as gpui;
 
   use super::*;
 
@@ -719,5 +720,73 @@ mod tests {
       assert_eq!(nm::HiddenSecurity::from(parsed), security);
     }
     assert!(serde_json::from_value::<HiddenSecurity>("wep".into()).is_err());
+  }
+
+  #[gpui::test]
+  fn module_watches_and_calls(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(nm::init(cx, &buses)).unwrap();
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.answerSecret(null);
+      m.answerSecret("pw", "user");
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.checkConnectivity()),
+        fail(m.connectVpn("u")),
+        fail(m.disconnectVpn("u")),
+        fail(m.joinHiddenWifi("ssid", "wpa", "password123")),
+        fail(m.setWifiEnabled(true)),
+        fail(m.rescan()),
+        fail(m.connectWifi("ssid")),
+        fail(m.forgetWifi("ssid")),
+        fail(m.connect("wlan0")),
+        fail(m.disconnect("wlan0")),
+        fail(m.stopHotspot()),
+        fail(m.hotspotConfig()),
+      ]).then((res) => report([
+        m.listInterfaces(),
+        m.primaryInterface(),
+        m.connectivity(),
+        m.connectivityCheckEnabled(),
+        m.wifiSupported(),
+        m.wifiEnabled(),
+        m.primaryWifi(),
+        m.listWifiNetworks(),
+        m.wifiFailure(),
+        m.secretRequest(),
+        m.listVpns(),
+        m.hotspot(),
+        res.length,
+      ]));
+    }"#;
+    let (view, cx) = crate::harness::module::<NetworkModule>(cx, body);
+    corona_utils::test_bus::wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!([
+        [],
+        null,
+        "unknown",
+        false,
+        false,
+        false,
+        null,
+        [],
+        null,
+        null,
+        [],
+        null,
+        12
+      ])
+    );
   }
 }

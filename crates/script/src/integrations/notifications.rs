@@ -695,4 +695,26 @@ mod tests {
     let json = serde_json::json!({ "summary": "s", "image": { "0": 1, "2": 3 } });
     assert!(serde_json::from_value::<NotifyOptions>(json).is_err());
   }
+
+  #[gpui::test]
+  fn notification_center_watches_and_controls(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = TestBus::with_conn();
+    cx.update(|cx| {
+      let executor = cx.foreground_executor().clone();
+      executor.block_on(nt::connect(cx, &conn, true)).unwrap()
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.setDoNotDisturb(true);
+      m.markRead(1);
+      m.markAllRead();
+      m.invokeAction(1, "default");
+      m.dismiss(1);
+      m.clearAll();
+      report([m.listNotifications(), m.hasUnread(), m.doNotDisturb(), m.active()]);
+    }"#;
+    let (view, cx) = harness::module::<NotificationCenterModule>(cx, body);
+    assert_eq!(view.last(cx), serde_json::json!([[], false, true, true]));
+  }
 }

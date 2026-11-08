@@ -56,3 +56,30 @@ impl IpcCommand for Wifi {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use corona_utils::{Buses, test_bus::TestBus};
+  use gpui_kit::{self as gpui, TestAppContext};
+
+  #[gpui::test]
+  async fn wifi_switch_without_device(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = TestBus::with_conn();
+    let buses = Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      register(cx);
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_network_manager::init(cx, &buses))
+        .unwrap();
+
+      assert!(Wifi::handle(Switch::Status, cx).is_err());
+    });
+    let reply = cx.update(|cx| Wifi::reply(Switch::On, cx)).await;
+    assert!(reply.is_err());
+  }
+}

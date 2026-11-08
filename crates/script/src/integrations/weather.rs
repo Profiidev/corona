@@ -184,6 +184,7 @@ mod tests {
   use std::time::{Duration, UNIX_EPOCH};
 
   use corona_weather as wt;
+  use gpui_kit as gpui;
 
   use super::Forecast;
 
@@ -258,5 +259,27 @@ mod tests {
       }],
       fetched: UNIX_EPOCH + Duration::from_secs(100),
     }
+  }
+
+  #[gpui::test]
+  fn module_watches_and_refreshes(cx: &mut gpui_kit::TestAppContext) {
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      cx.set_global(corona_config::Config::default());
+      wt::init(cx, &buses);
+      let weather = cx.global::<wt::WeatherService>().weather.clone();
+      weather.write(cx, Some(sample()));
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      m.refresh();
+      report([m.current()?.current.temperature, m.error()]);
+    }"#;
+    let (view, cx) = crate::harness::module::<super::WeatherModule>(cx, body);
+    assert_eq!(view.last(cx), serde_json::json!([12.5, null]));
   }
 }

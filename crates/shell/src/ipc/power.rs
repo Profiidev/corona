@@ -92,4 +92,33 @@ mod tests {
     assert!(check("Balanced", &available).is_err());
     assert!(check("", &[]).is_err());
   }
+
+  #[gpui_kit::test]
+  fn handles_profile_commands(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_power::connect(cx, &conn)).unwrap();
+      assert_eq!(ListProfiles::handle((), cx).unwrap(), Vec::<String>::new());
+      assert!(SetProfile::handle("balanced".into(), cx).is_err());
+      assert!(CycleProfile::handle((), cx).is_err());
+      let profiles = cx.power().profiles.clone();
+      profiles.write(
+        cx,
+        Some(corona_power::Profiles {
+          active: "balanced".into(),
+          available: vec!["power-saver".into(), "balanced".into()],
+          degraded: None,
+        }),
+      );
+      assert_eq!(
+        ListProfiles::handle((), cx).unwrap(),
+        vec!["power-saver", "balanced"]
+      );
+      assert!(SetProfile::handle("balanced".into(), cx).is_ok());
+      assert!(SetProfile::handle("unknown".into(), cx).is_err());
+      assert!(CycleProfile::handle((), cx).is_ok());
+    });
+  }
 }

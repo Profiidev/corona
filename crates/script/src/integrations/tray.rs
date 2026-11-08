@@ -194,6 +194,8 @@ impl ScriptModule for TrayModule {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit::{self as gpui, TestAppContext};
+
   use super::*;
 
   fn item(id: i32, toggle: tray::Toggle, children: Vec<tray::MenuItem>) -> tray::MenuItem {
@@ -260,5 +262,37 @@ mod tests {
     assert_eq!(from("vertical"), tray::Orientation::Vertical);
     assert_eq!(from("horizontal"), tray::Orientation::Horizontal);
     assert!(parse("diagonal").is_err());
+  }
+
+  #[gpui::test]
+  fn items_and_module(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(tray::init(cx, &buses)).unwrap();
+    });
+    let body = r#"if (!globalThis.started) {
+      globalThis.started = true;
+      const fail = (p) => p.then(() => "ok", () => "err");
+      Promise.all([
+        fail(m.activate(":1.99/Item", 0, 0)),
+        fail(m.secondaryActivate(":1.99/Item", 0, 0)),
+        fail(m.contextMenu(":1.99/Item", 0, 0)),
+        fail(m.scroll(":1.99/Item", 1, "vertical")),
+        fail(m.aboutToShow(":1.99/Item", 0)),
+        fail(m.menuClick(":1.99/Item", 1)),
+      ]).then((res) => report([m.listItems(), res]));
+    }"#;
+    let (view, cx) = crate::harness::module::<TrayModule>(cx, body);
+    corona_utils::test_bus::wait_until(cx, |cx| !view.reports(cx).is_empty());
+    assert_eq!(
+      view.last(cx),
+      serde_json::json!([[], ["err", "err", "err", "err", "err", "err"]])
+    );
   }
 }

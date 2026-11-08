@@ -680,3 +680,224 @@ fn closing_frees_children_timers_and_states(cx: &mut TestAppContext) {
     assert!(rt.upgrade().is_none(), "the runtime leaked");
   }
 }
+
+const BACKGROUNDS_PATHS_THEME_SCROLL: &str = r##"
+import { View, div, Background, PathBuilder, ScrollHandle } from "corona/kit";
+import { set_theme } from "corona/base";
+import { TestState } from "corona/component";
+
+globalThis.log = [];
+
+export default class Main extends View {
+  init(_props, cx) {
+    const errs = [];
+    for (const fn of [
+      () => Background.solid("#112233").color_space("xyz"),
+      () => PathBuilder.stroke(NaN).build(),
+      () => PathBuilder.stroke(1).dash_array([0.1]),
+      () => PathBuilder.stroke(1).dash_array([NaN]),
+      () => set_theme({ appearance: "sepia", tokens: {} }),
+      () => set_theme({ tokens: { colors: { background: "not-a-color" } } }),
+      () => set_theme({ tokens: { colors: { unknown_token: "#112233" } } }),
+      () => set_theme({ tokens: { spacing: { unknown_spacing: 4 } } }),
+      () => set_theme({ tokens: { radius: { unknown_radius: 4 } } }),
+      () => set_theme({ tokens: { spacing: { sm: -1 } } }),
+    ]) {
+      try { fn(); errs.push("ok"); } catch (e) { errs.push(e.name); }
+    }
+
+    set_theme({
+      appearance: "light",
+      tokens: {
+        colors: {
+          background: "#101010",
+          foreground: "#f0f0f0",
+          surface: "#202020",
+          surface_foreground: "#e0e0e0",
+          primary: "#303030",
+          primary_foreground: "#ffffff",
+          secondary: "#282828",
+          secondary_foreground: "#cccccc",
+          muted: "#808080",
+          muted_foreground: "#606060",
+          accent: "#3366ff",
+          accent_foreground: "#ffffff",
+          destructive: "#ff3344",
+          destructive_foreground: "#ffffff",
+          border: "#404040",
+          input: "#353535",
+          ring: "#3366ff88",
+          selection: "#3366ff44",
+        },
+        spacing: { xxs: 1, xs: 2, sm: 4, md: 8, lg: 12, xl: 16, xxl: 24 },
+        radius: { none: 0, sm: 2, md: 4, lg: 8, xl: 12, full: 9999 },
+        typography: {
+          sans: "Inter",
+          mono: "JetBrains Mono",
+          xs: { size: 10, line_height: 14, weight: 400 },
+          sm: { size: 12, line_height: 16, weight: 400 },
+          md: { size: 14, line_height: 20, weight: 500 },
+          lg: { size: 16, line_height: 24, weight: 600 },
+          xl: { size: 20, line_height: 28, weight: 700 },
+          mono_md: { size: 13, line_height: 18, weight: 400 },
+        },
+      },
+    });
+    const t = cx.theme();
+
+    const sh = new ScrollHandle();
+    sh.set_offset(0, 10);
+    sh.scroll_to_item(2);
+    sh.scroll_to_bottom();
+    const shInfo = `${typeof sh.offset().x},${typeof sh.max_offset().x},${typeof sh.top_item()}`;
+
+    const c = new TestState();
+    c.release();
+    try { c.emit(1); errs.push("ok"); } catch (e) { errs.push(e.name); }
+
+    log.push(`init:${t.appearance}:${t.spacing.xxl}:${t.radius.full}:${t.typography.sans}:${shInfo}:${errs.join(",")}`);
+  }
+
+  render(_cx) {
+    let renderThemeErr = "ok";
+    try { set_theme({ appearance: "dark", tokens: {} }); } catch (e) { renderThemeErr = e.message.includes("rendering") ? "blocked" : e.message; }
+
+    const bg1 = Background.solid("#112233");
+    const bg2 = Background.linear_gradient(45, Background.stop("#000000", 0), Background.stop("#ffffff", 1)).color_space("srgb");
+    const bg3 = Background.linear_gradient(90, "#111111", "#222222").color_space("oklab");
+    const bg4 = Background.pattern_slash("#334455", 4, 8);
+    const bg5 = Background.checkerboard("#445566", 10);
+
+    const fill = PathBuilder.fill()
+      .move_to(0, 0)
+      .line_to(10, 0)
+      .curve_to(10, 10, 5, 5)
+      .cubic_bezier_to(0, 10, 8, 10, 2, 10)
+      .arc_to(4, 4, 0, false, true, 0, 0)
+      .close()
+      .add_polygon([[0, 0], [5, 0], [5, 5]])
+      .build();
+    const stroke = PathBuilder.stroke(2)
+      .dash_array([2, 2])
+      .move_to(0, 0)
+      .line_to(10, 10)
+      .build();
+
+    return div()
+      .size_full()
+      .bg(bg1)
+      .child(div().bg(bg2))
+      .child(div().bg(bg3))
+      .child(div().bg(bg4))
+      .child(div().bg(bg5))
+      .child(window.paint_path(fill, "#ff0000").w(20).h(20))
+      .child(window.paint_path(stroke, "#00ff00").w(20).h(20))
+      .child(renderThemeErr);
+  }
+}
+"##;
+
+#[gpui::test]
+fn backgrounds_paths_theme_scroll_and_release(cx: &mut TestAppContext) {
+  let (view, cx) = open(cx, BACKGROUNDS_PATHS_THEME_SCROLL);
+  assert_eq!(text(&view, cx), "blocked");
+  let log = eval(&view, cx, "log.join()");
+  assert_eq!(
+    log,
+    "init:light:24:9999:Inter:number,number,number:TypeError,RangeError,RangeError,RangeError,TypeError,TypeError,TypeError,TypeError,TypeError,TypeError,TypeError"
+  );
+}
+
+const WINDOW_FULL: &str = r##"
+import { View, div } from "corona/kit";
+
+globalThis.log = [];
+
+export default class Main extends View {
+  render(_cx) {
+    return div()
+      .size_full()
+      .on_click((_e, _cx) => {
+        window.open_dialog(() => div().child("d1"));
+        window.close_dialog();
+        window.open_dialog(() => div().child("d2"));
+        window.close_all_dialogs();
+
+        window.open_sheet(() => div().child("s1"));
+        const sheetOpen = window.has_active_sheet();
+        window.close_sheet();
+        for (const side of ["top", "bottom", "left", "right"]) {
+          window.open_sheet_at(side, () => div().child(side));
+          window.close_sheet();
+        }
+        let badSide = "ok";
+        try { window.open_sheet_at("middle", () => div()); } catch (e) { badSide = e.name; }
+
+        const tAuto = window.push_toast({ title: "auto", description: "desc", level: "success", timeout: null });
+        window.push_toast({ title: "w", level: "warning" });
+        window.push_toast({ title: "e", level: "error" });
+        window.push_toast({ title: "i", level: "info" });
+        let badLevel = "ok";
+        try { window.push_toast({ title: "bad", level: "critical" }); } catch (e) { badLevel = e.name; }
+        window.remove_toast(tAuto);
+        window.clear_toasts();
+
+        const rem0 = window.rem_size();
+        window.set_rem_size(18);
+        const rem1 = window.rem_size();
+        let badRem = "ok";
+        try { window.set_rem_size(-1); } catch (e) { badRem = e.name; }
+
+        const lh = window.line_height() > 0;
+        const b = window.bounds().width >= 0;
+        const mp = window.mouse_position();
+        const app = window.appearance();
+        const act = typeof window.is_window_active();
+        const fs = window.is_fullscreen();
+        const max = window.is_maximized();
+        window.refresh();
+        window.focus_next();
+        window.focus_prev();
+        window.activate_window();
+
+        log.push([
+          sheetOpen, window.has_active_sheet(), badSide,
+          tAuto.startsWith("toast-"), badLevel,
+          rem0 > 0, rem1, badRem,
+          lh, b, typeof mp.x, app, act, fs, max,
+        ].join("|"));
+      });
+  }
+}
+"##;
+
+#[gpui::test]
+fn window_sheets_toasts_and_controls(cx: &mut TestAppContext) {
+  cx.update(gpui::init);
+  let (root, cx) = cx.add_window_view(|window, cx| {
+    let watches = Watches::default();
+    let modules = modules(&watches, cx);
+    let view = cx.new(|cx| ScriptView::new(WINDOW_FULL, modules, watches, window, cx).unwrap());
+    let content = cx.new(|cx| {
+      let mut root = ScriptRoot::new(view);
+      root.set_fill(false, cx);
+      assert!(!root.fills());
+      root.set_fill(true, cx);
+      assert!(root.fills());
+      root
+    });
+    let _ = content.read(cx).background();
+    gpui::base::Root::new(content, window, cx)
+  });
+  cx.run_until_parked();
+  cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+  cx.run_until_parked();
+  let content = root.read_with(cx, |root, _| root.view().clone());
+  let content = content.downcast::<ScriptRoot>().ok().unwrap();
+  let view = content.read_with(cx, |root, _| root.view().clone());
+  let log = eval(&view, cx, "log.join()");
+  assert_eq!(
+    log,
+    "true|false|TypeError|true|TypeError|true|18|TypeError|true|true|number|light|boolean|false|false"
+  );
+}

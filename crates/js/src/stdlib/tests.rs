@@ -1201,3 +1201,138 @@ fn an_error_names_the_typescript_line_and_column(cx: &mut TestAppContext) {
   let error = start_error(cx, "ts-enum", &[("main.ts", "\nenum Color { Red }\n")]);
   assert!(error.contains("main.ts:2:1:"), "{error}");
 }
+
+// --- basics (buffer, path, url, crypto, zlib, console)
+
+#[gpui::test]
+fn buffer_encodings_alloc_and_concat(cx: &mut TestAppContext) {
+  let source = main(
+    r#"import { Buffer } from "buffer";"#,
+    r#"
+    const b1 = Buffer.from("hello", "utf8");
+    const b2 = Buffer.from(b1.toString("hex"), "hex");
+    const b3 = Buffer.from(b1.toString("base64"), "base64");
+    const b4 = Buffer.from(b1.toString("base64url"), "base64url");
+    const b5 = Buffer.from("\x00\xff", "latin1");
+    const b6 = Buffer.from([65, 66]);
+    const b7 = Buffer.from(new Uint8Array([67, 68]).buffer);
+    const z = Buffer.alloc(3);
+    const c = Buffer.concat([b6, b7]);
+    const errs = [];
+    for (const fn of [
+      () => Buffer.from("hello", "bogus"),
+      () => Buffer.from("zz", "hex"),
+      () => Buffer.from("!!!", "base64"),
+      () => b1.toString("bogus"),
+    ]) {
+      try { fn(); errs.push("ok"); } catch (e) { errs.push(e.name); }
+    }
+    report([
+      b2.toString(),
+      b3.toString("utf-8"),
+      b4.toString("ascii"),
+      b5.toString("binary").length,
+      b6.toString(),
+      b7.toString(),
+      [...z].join(","),
+      c.toString(),
+      Buffer.isBuffer(b1),
+      Buffer.isBuffer(new Uint8Array(1)),
+      Buffer.isBuffer("no"),
+      Buffer.byteLength("é", "utf8"),
+      Buffer.byteLength(b5),
+      errs.join(","),
+    ].join("|"));"#,
+  );
+  let (_service, _) = start(cx, "buffer-ops", Capabilities::new(), &source);
+  assert_eq!(
+    first(cx),
+    "hello|hello|hello|2|AB|CD|0,0,0|ABCD|true|false|false|2|2|TypeError,TypeError,TypeError,TypeError"
+  );
+}
+
+#[gpui::test]
+fn path_url_crypto_zlib_and_console(cx: &mut TestAppContext) {
+  let source = main(
+    r#"
+    import path from "path";
+    import { URL, URLSearchParams } from "url";
+    import crypto from "crypto";
+    import zlib from "zlib";
+    import consoleMod from "console";
+    "#,
+    r#"
+    const p = [
+      path.join("/a", "b", "c"),
+      path.join(),
+      path.normalize("/a/b/../c/./d"),
+      path.dirname("/a/b/c.txt"),
+      path.basename("/a/b/c.txt"),
+      path.basename("/a/b/c.txt", ".txt"),
+      path.extname("/a/b/c.txt"),
+      path.extname("/a/b/c"),
+      path.isAbsolute("/a"),
+      path.isAbsolute("a"),
+      path.resolve("/a/b", "../c").endsWith("/a/c"),
+      path.sep,
+    ].join(",");
+
+    const u = new URL("https://user:pass@example.com:8443/p/q?x=1&y=2#frag");
+    const rel = new URL("../other?k=v", "https://example.com/a/b/c");
+    let badUrl = "ok";
+    try { new URL("://bad"); } catch (e) { badUrl = e.name; }
+    const spArr = new URLSearchParams([["a", "1"], ["a", "2"], ["b", "3"]]);
+    const spObj = new URLSearchParams({ k: "v" });
+    spArr.set("b", "4");
+    spArr.delete("nonexistent");
+    const seen = [];
+    spArr.forEach((v, k) => seen.push(`${k}=${v}`));
+    for (const [k, v] of spObj) seen.push(`it:${k}=${v}`);
+    const uInfo = [
+      u.protocol, u.username, u.password, u.host, u.hostname, u.port,
+      u.pathname, u.search, u.hash, u.origin, u.toString() === u.href, u.toJSON() === u.href,
+      rel.pathname, badUrl,
+      spArr.getAll("a").join("+"), spArr.has("b"), spArr.get("missing") === null,
+      seen.join(";"),
+    ].join(",");
+
+    const h256 = crypto.createHash("sha256").update("abc").digest("hex");
+    const h512 = crypto.createHash("sha512").update(new Uint8Array([1, 2])).digest("base64");
+    const h1 = crypto.createHash("sha1").update("x").digest("base64url");
+    const hmd5 = crypto.createHash("md5").update("x").digest();
+    const errs = [];
+    const used = crypto.createHash("sha256");
+    used.digest("hex");
+    for (const fn of [
+      () => crypto.createHash("bogus"),
+      () => used.update("more"),
+      () => used.digest("hex"),
+      () => crypto.createHash("sha256").digest("bogus"),
+      () => crypto.randomBytes(70000),
+    ]) {
+      try { fn(); errs.push("ok"); } catch (e) { errs.push(e.name); }
+    }
+    const rb = crypto.randomBytes(16);
+    const uuid = crypto.randomUUID();
+
+    const z1 = zlib.deflateSync("hellohellohello");
+    const gz = zlib.gzipSync("hellohellohello");
+    const unZ1 = Buffer.from(zlib.inflateSync(z1)).toString();
+    const unGz = Buffer.from(zlib.gunzipSync(gz)).toString();
+    const unRaw = Buffer.from(zlib.inflateRawSync(z1.slice(2, z1.length - 4))).toString();
+    try { zlib.gunzipSync(new Uint8Array([1, 2, 3])); errs.push("ok"); } catch (e) { errs.push(e.name); }
+
+    console.debug("dbg", 1, true, null, undefined, { a: 1 }, new Error("err"));
+    console.log("log");
+    console.info("info");
+    console.warn("warn");
+    consoleMod.error("err");
+
+    report(`${p}|${uInfo}|${h256.length},${h512.length > 10},${h1.length > 5},${hmd5.byteLength},${rb.byteLength},${uuid.length}|${unRaw},${unZ1},${unGz}|${errs.join(",")}`);"#,
+  );
+  let (_service, _) = start(cx, "basics-all", Capabilities::new(), &source);
+  assert_eq!(
+    first(cx),
+    "/a/b/c,.,/a/c/d,/a/b,c.txt,c,.txt,,true,false,true,/|https:,user,pass,example.com:8443,example.com,8443,/p/q,?x=1&y=2,#frag,https://example.com:8443,true,true,/a/other,TypeError,1+2,true,true,a=1;a=2;b=4;it:k=v|64,true,true,16,16,36|hellohellohello,hellohellohello,hellohellohello|TypeError,Error,Error,TypeError,RangeError,Error"
+  );
+}

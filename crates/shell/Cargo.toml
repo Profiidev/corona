@@ -64,3 +64,4 @@ corona_auth = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 corona_surface = { workspace = true, features = ["test-support"] }
 corona_network_manager = { workspace = true, features = ["test-support"] }
+corona_utils = { workspace = true, features = ["test-support"] }

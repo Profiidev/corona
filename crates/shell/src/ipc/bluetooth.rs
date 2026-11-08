@@ -151,3 +151,33 @@ impl IpcCommand for Bluetooth {
     Ok(powered)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use corona_ipc::Switch;
+
+  #[gpui_kit::test]
+  fn handles_bluetooth_commands(cx: &mut gpui_kit::TestAppContext) {
+    cx.executor().allow_parking();
+    let (_bus, conn) = corona_utils::test_bus::TestBus::with_conn();
+    let buses = corona_utils::Buses {
+      system: conn.clone(),
+      session: conn,
+    };
+    cx.update(|cx| {
+      let ex = cx.foreground_executor().clone();
+      ex.block_on(corona_bluez::init(cx, &buses)).unwrap();
+      assert!(ListDevices::handle((), cx).unwrap().is_empty());
+      assert!(Bluetooth::handle(Switch::Status, cx).is_err());
+      assert!(DeviceAction::handle((Action::Connect, "00:11".into()), cx).is_err());
+      assert!(Discover::handle(true, cx).is_err());
+      let r1 = DeviceAction::reply((Action::Connect, "00:11".into()), cx);
+      let r2 = Discover::reply(true, cx);
+      let r3 = Discover::reply(false, cx);
+      assert!(ex.block_on(r1).is_err());
+      assert!(ex.block_on(r2).is_err());
+      assert!(ex.block_on(r3).is_err());
+    });
+  }
+}
