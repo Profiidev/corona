@@ -112,20 +112,28 @@ fn updates(
   updated
 }
 
-/// Warns that plugin `id` hit a resource limit and restarts
-fn limit_hit(id: &str, trip: corona_js::Trip, cx: &mut App) {
+/// Warns that plugin `id` hit a resource limit; it restarts, or is disabled when it keeps
+/// hitting one
+fn limit_hit(id: &str, trip: corona_js::Trip, give_up: bool, cx: &mut App) {
   let name = (cx.global::<PluginManager>().active().get(id))
     .map_or_else(|| id.to_string(), |p| p.manifest.name.clone());
   let body = match trip {
     corona_js::Trip::Time => t!("app.settings.plugins.limit.time"),
     corona_js::Trip::Memory => t!("app.settings.plugins.limit.memory"),
   };
+  let summary = match give_up {
+    true => t!("app.settings.plugins.limit.disabled", name = name),
+    false => t!("app.settings.plugins.limit.title", name = name),
+  };
   let notice = Notice {
-    summary: t!("app.settings.plugins.limit.title", name = name).into(),
+    summary: summary.into(),
     body: body.into(),
     action: None,
   };
   hooks::notify(notice, cx);
+  if give_up {
+    PluginManager::disable(id, cx);
+  }
 }
 
 /// Asks to review plugin `id` with a notification

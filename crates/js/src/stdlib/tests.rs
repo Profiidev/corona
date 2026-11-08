@@ -2,6 +2,7 @@
 //! `corona/probe`.
 
 use std::{
+  cell::RefCell,
   io::{Read, Write},
   net::TcpListener,
   os::unix::net::UnixListener,
@@ -1018,6 +1019,26 @@ fn a_spinning_service_is_interrupted_and_tripped(cx: &mut TestAppContext) {
   let started = cx.update(|cx| Service::start(&entry, plugin, Vec::new(), Watches::default(), cx));
   assert!(started.is_ok());
   assert_eq!(crate::take_tripped("spin"), Some(crate::Trip::Time));
+}
+
+#[gpui::test]
+fn a_service_that_keeps_tripping_is_given_up_on(cx: &mut TestAppContext) {
+  crate::runtime::limits::set_budget(Duration::from_millis(20));
+  let calls = Rc::new(RefCell::new(Vec::new()));
+  let seen = calls.clone();
+  cx.update(|cx| {
+    cx.set_global(crate::TripHook(Rc::new(move |_, _, give_up, _| {
+      seen.borrow_mut().push(give_up)
+    })))
+  });
+  let entry = dir("service-giveup").join("service.js");
+  std::fs::write(&entry, "export default function main() { while (true) {} }").unwrap();
+  let _watcher = watched(cx, "giveup", &entry);
+  for _ in 0..8 {
+    cx.executor().advance_clock(crate::POLL * 2);
+    cx.run_until_parked();
+  }
+  assert_eq!(*calls.borrow(), [false, false, true]);
 }
 
 #[gpui::test]

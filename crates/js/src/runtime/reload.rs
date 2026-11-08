@@ -3,7 +3,7 @@
 
 use std::{
   path::{Path, PathBuf},
-  time::{Duration, SystemTime},
+  time::{Duration, Instant, SystemTime},
 };
 
 use anyhow::Result;
@@ -85,16 +85,26 @@ pub fn watch(
   let mut last = scan(&dir);
   cx.spawn(async move |cx| {
     let mut pending = None;
+    let mut trips = Vec::new();
     loop {
       cx.background_executor().timer(POLL).await;
       if let Some(trip) = limits::take_tripped(&id) {
+        let now = Instant::now();
+        trips.retain(|t| now.duration_since(*t) < limits::WINDOW);
+        trips.push(now);
+        let give_up = trips.len() >= limits::MAX_TRIPS;
         cx.update(|cx| {
-          tracing::warn!("plugin `{id}` hit a limit ({trip:?}), restarting it");
+          tracing::warn!("plugin `{id}` hit a limit ({trip:?}), giving up: {give_up}");
           if let Some(hook) = cx.try_global::<limits::TripHook>().map(|h| h.0.clone()) {
-            hook(&id, trip, cx);
+            hook(&id, trip, give_up, cx);
           }
-          on_change(cx);
+          if !give_up {
+            on_change(cx);
+          }
         });
+        if give_up {
+          break;
+        }
         continue;
       }
       let now = scan(&dir);

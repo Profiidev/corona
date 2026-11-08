@@ -19,6 +19,10 @@ const STACK: usize = 1 << 20;
 /// debug builds with heavy probes, see [`set_budget`].
 const BUDGET: Duration = Duration::from_secs(if cfg!(test) { 30 } else { 1 });
 
+/// A plugin that hits a limit this often within [`WINDOW`] is given up on
+pub(crate) const MAX_TRIPS: usize = 3;
+pub(crate) const WINDOW: Duration = Duration::from_secs(60);
+
 /// Which limit a plugin hit
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Trip {
@@ -32,10 +36,11 @@ thread_local! {
   static TRIPPED: RefCell<Vec<(String, Trip)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Called with the id of a plugin that hit a limit, when [`crate::watch`] restarts it
+/// Called when a plugin hit a limit, by [`crate::watch`]
 pub struct TripHook(pub Rc<TripFn>);
 
-pub type TripFn = dyn Fn(&str, Trip, &mut App);
+/// Plugin id, the limit it hit, and whether it is given up on instead of restarted
+pub type TripFn = dyn Fn(&str, Trip, bool, &mut App);
 
 impl Global for TripHook {}
 

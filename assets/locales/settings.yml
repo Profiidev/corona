@@ -1314,6 +1314,9 @@ app:
           title:
             en: '%{name} was restarted'
             de: '%{name} wurde neu gestartet'
+          disabled:
+            en: '%{name} was disabled'
+            de: '%{name} wurde deaktiviert'
           time:
             en: 'It ran too long without returning.'
             de: 'Es lief zu lange, ohne zurückzukehren.'
