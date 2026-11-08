@@ -16,7 +16,7 @@ use rust_i18n::t;
 use crate::{
   dashboard::sliders::brightness::display,
   ipc::brightness::{
-    brightness::{Action as BrightnessAction, SetBrightness},
+    display::{Action as BrightnessAction, SetBrightness},
     nightlight::{Nightlight, Request as NightlightRequest},
   },
 };

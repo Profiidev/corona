@@ -4,9 +4,9 @@
 use gpui_kit::App;
 
 mod ip;
-mod network;
+mod networks;
 
 pub(crate) fn register(cx: &mut App) {
-  network::register(cx);
+  networks::register(cx);
   ip::register(cx);
 }

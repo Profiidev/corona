@@ -1,4 +1,4 @@
-use super::network::later;
+use super::connection::later;
 use corona_network_manager::NetworkManagerExt;
 use anyhow::{Result, bail};
 use corona_ipc::{IpcCommand, IpcExt, Reply, Switch};

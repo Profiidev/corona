@@ -2,10 +2,10 @@
 
 use gpui_kit::App;
 
-pub mod network;
+pub mod connection;
 pub mod radio;
 
 pub(crate) fn register(cx: &mut App) {
-  network::register(cx);
+  connection::register(cx);
   radio::register(cx);
 }

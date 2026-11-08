@@ -2,10 +2,10 @@
 
 use gpui_kit::App;
 
-pub mod brightness;
+pub mod display;
 pub mod nightlight;
 
 pub(crate) fn register(cx: &mut App) {
-  brightness::register(cx);
+  display::register(cx);
   nightlight::register(cx);
 }

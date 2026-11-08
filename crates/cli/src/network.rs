@@ -8,7 +8,7 @@ use corona_ipc::{
 };
 
 use corona_shell::ipc::network::{
-  network::{
+  connection::{
     ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, ListVpns,
     ListWifi, Portal, Rescan, Security, SwitchVpn,
   },

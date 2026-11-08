@@ -17,7 +17,7 @@ use rust_i18n::t;
 
 use crate::dashboard::quick_actions::network::{airplane_state, set_airplane};
 use crate::ipc::network::{
-  network::{
+  connection::{
     ConnectWifi, DisconnectWifi, ForgetWifi, HiddenRequest, Hotspot, JoinHidden, Portal, Rescan,
     Security, SwitchVpn,
   },

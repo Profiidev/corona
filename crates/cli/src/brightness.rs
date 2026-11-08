@@ -8,7 +8,7 @@ use corona_ipc::{
 };
 
 use corona_shell::ipc::brightness::{
-  brightness::{Action, ListMonitors, SetBrightness},
+  display::{Action, ListMonitors, SetBrightness},
   nightlight::{Nightlight, Request},
 };
 

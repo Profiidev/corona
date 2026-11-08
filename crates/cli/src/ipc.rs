@@ -152,7 +152,7 @@ pub(crate) mod tests {
   use clap::Parser;
   use corona_shell::ipc::auth::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
-  use corona_shell::ipc::brightness::{brightness::SetBrightness, nightlight::Nightlight};
+  use corona_shell::ipc::brightness::{display::SetBrightness, nightlight::Nightlight};
   use corona_shell::ipc::capture::{ColorPicker, Screenshot};
   use corona_shell::ipc::idle::StayAwake;
   use corona_ipc::{IpcCommand, cli::testing::request};
@@ -284,10 +284,10 @@ pub(crate) mod tests {
       (&["audio", "default", "outputs", "Speakers"], json!(null), corona_shell::ipc::pipewire::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
       (&["audio", "stream", "firefox", "40"], json!(null), corona_shell::ipc::pipewire::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
       (&["audio", "move", "firefox", "Headphones"], json!(null), corona_shell::ipc::pipewire::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),
-      (&["network", "connect", "home"], json!(null), corona_shell::ipc::network::network::ConnectWifi::COMMAND, json!("home")),
-      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_shell::ipc::network::network::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
-      (&["network", "vpn", "work", "on"], json!(true), corona_shell::ipc::network::network::SwitchVpn::COMMAND, json!(["work", "On"])),
-      (&["network", "hotspot", "toggle"], json!(true), corona_shell::ipc::network::network::Hotspot::COMMAND, json!("Toggle")),
+      (&["network", "connect", "home"], json!(null), corona_shell::ipc::network::connection::ConnectWifi::COMMAND, json!("home")),
+      (&["network", "join-hidden", "x", "--password", "pw"], json!(null), corona_shell::ipc::network::connection::JoinHidden::COMMAND, json!({ "ssid": "x", "security": "Wpa", "password": "pw" })),
+      (&["network", "vpn", "work", "on"], json!(true), corona_shell::ipc::network::connection::SwitchVpn::COMMAND, json!(["work", "On"])),
+      (&["network", "hotspot", "toggle"], json!(true), corona_shell::ipc::network::connection::Hotspot::COMMAND, json!("Toggle")),
       (&["bluetooth", "device", "connect", "Buds"], json!(null), DeviceAction::COMMAND, json!(["Connect", "Buds"])),
       (&["bluetooth", "discover", "on"], json!(null), Discover::COMMAND, json!(true)),
       (&["media", "seek", "-10"], json!(null), corona_shell::ipc::mpris::player::Seek::COMMAND, json!({ "By": -10.0 })),

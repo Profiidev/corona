@@ -28,11 +28,14 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
+type Capabilities = Rc<dyn Fn(&App) -> Task<Result<SessionCapabilities>>>;
+type RunAction = Rc<dyn Fn(SessionAction, &App) -> Task<Result<()>>>;
+
 /// What reads and runs the session actions, set by whoever has the machine's session manager
 #[derive(Clone)]
 pub struct SessionControl {
-  pub capabilities: Rc<dyn Fn(&App) -> Task<Result<SessionCapabilities>>>,
-  pub run: Rc<dyn Fn(SessionAction, &App) -> Task<Result<()>>>,
+  pub capabilities: Capabilities,
+  pub run: RunAction,
 }
 
 impl Global for SessionControl {}
