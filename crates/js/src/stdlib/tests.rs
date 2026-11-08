@@ -998,6 +998,7 @@ fn watched(cx: &mut TestAppContext, id: &str, entry: &Path) -> gpui::Task<()> {
   cx.update(|cx| {
     Service::watch(
       &dir,
+      id.to_string(),
       move |cx| {
         let watches = Watches::default();
         let modules = modules(&plugin, &watches, cx);
@@ -1006,6 +1007,17 @@ fn watched(cx: &mut TestAppContext, id: &str, entry: &Path) -> gpui::Task<()> {
       cx,
     )
   })
+}
+
+#[gpui::test]
+fn a_spinning_service_is_interrupted_and_tripped(cx: &mut TestAppContext) {
+  crate::runtime::limits::set_budget(Duration::from_millis(50));
+  let entry = dir("service-spin").join("service.js");
+  std::fs::write(&entry, "export default function main() { while (true) {} }").unwrap();
+  let plugin = plugin("spin", entry.parent().unwrap(), Capabilities::new());
+  let started = cx.update(|cx| Service::start(&entry, plugin, Vec::new(), Watches::default(), cx));
+  assert!(started.is_ok());
+  assert_eq!(crate::take_tripped("spin"), Some(crate::Trip::Time));
 }
 
 #[gpui::test]
@@ -1135,7 +1147,7 @@ fn a_typescript_view_loads_and_reloads(cx: &mut TestAppContext) {
   assert_eq!(view.read_with(vcx, |v, _| v.text.clone()), "v1");
 
   let handle = vcx.update(|window, _| window.window_handle());
-  let _task = vcx.update(|_, cx| reload_view(&view, handle, root.clone(), make, cx));
+  let _task = vcx.update(|_, cx| reload_view(&view, handle, root.clone(), "view".into(), make, cx));
   std::thread::sleep(Duration::from_millis(20));
   std::fs::write(&entry, source("v2")).unwrap();
   for _ in 0..2 {

@@ -1,10 +1,10 @@
 //! What host functions reach while JS runs: raw pointers set only by [`Enter`].
 
-use std::{cell::Cell, marker::PhantomData, ptr};
+use std::{cell::Cell, marker::PhantomData, ptr, time::Instant};
 
 use gpui_kit::{App, Window};
 
-use crate::Frame;
+use crate::{Frame, runtime::limits};
 
 type Ptrs = (*mut App, *mut Window, *mut Frame);
 
@@ -17,6 +17,7 @@ thread_local! {
 /// nothing else touches it meanwhile.
 pub struct Enter<'a> {
   outer: Ptrs,
+  deadline: Option<Instant>,
   _borrow: PhantomData<&'a mut ()>,
 }
 
@@ -30,6 +31,7 @@ impl<'a> Enter<'a> {
     let frame = frame.map_or(ptr::null_mut(), ptr::from_mut);
     Self {
       outer: SCOPE.replace((app, window, frame)),
+      deadline: limits::start(),
       _borrow: PhantomData,
     }
   }
@@ -38,6 +40,7 @@ impl<'a> Enter<'a> {
 impl Drop for Enter<'_> {
   fn drop(&mut self) {
     SCOPE.set(self.outer);
+    limits::restore(self.deadline);
   }
 }
 

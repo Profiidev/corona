@@ -240,6 +240,7 @@ impl ScriptManager {
 
     let path = manifest.dir.join(view);
     let dir = manifest.dir.clone();
+    let manifest_id = manifest.id.clone();
     let opener = Rc::new(Cell::new(None));
     let load = Load {
       opener: opener.clone(),
@@ -268,7 +269,7 @@ impl ScriptManager {
     if let Some(e) = failed {
       return Err(e);
     }
-    let reload = reload_view(&view, window.window_handle(), dir, make, cx);
+    let reload = reload_view(&view, window.window_handle(), dir, manifest_id, make, cx);
     let root = cx.new(|_| ScriptRoot::new(view));
     root.update(cx, |root, cx| {
       root.set_background(Some(transparent_black()), cx);
@@ -302,7 +303,7 @@ impl ScriptManager {
       corona_js::Service::start(&entry, plugin, modules, watches, cx)
     };
     Ok(Service {
-      _watch: corona_js::Service::watch(&dir, start, cx),
+      _watch: corona_js::Service::watch(&dir, id.to_string(), start, cx),
     })
   }
 }

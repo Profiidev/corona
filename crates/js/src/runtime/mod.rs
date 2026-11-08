@@ -25,6 +25,7 @@ use plugin::PluginData;
 
 pub(crate) mod caps;
 pub(crate) mod host;
+pub(crate) mod limits;
 pub(crate) mod module;
 pub(crate) mod plugin;
 pub(crate) mod registry;
@@ -288,6 +289,7 @@ pub(crate) fn new(
   let files = Files(plugin.dir.canonicalize().ok());
   let loader = (HostLoader, kit::loader(stdlib::loader()), files.clone());
   let rt = AsyncRuntime::new()?;
+  limits::apply(&rt, plugin.id.clone());
   now(rt.set_loader((builtin, files), loader));
   now(rt.set_host_promise_rejection_tracker(Some(Box::new(rejected))));
   let ctx = now(AsyncContext::full(&rt))?;
@@ -308,7 +310,7 @@ pub(crate) fn new(
       n.set(n.get() + 1);
       n.get()
     }),
-    _drive: drive(&rt, cx),
+    _drive: drive(&rt, plugin.id.clone(), cx),
     ctx: ctx.clone(),
   });
   let setup = with(&ctx, |ctx| -> rquickjs::Result<()> {
@@ -328,13 +330,16 @@ pub(crate) fn new(
 
 /// Drives async host fns, timers and the promise jobs they resolve, inside a scope of the
 /// app, until the task is dropped.
-fn drive(rt: &AsyncRuntime, cx: &App) -> Task<()> {
+fn drive(rt: &AsyncRuntime, id: String, cx: &App) -> Task<()> {
   let mut drive = Box::pin(rt.drive());
+  let rt = rt.clone();
   cx.spawn(async move |cx| {
     std::future::poll_fn(|task| {
       cx.update(|cx| {
         let _enter = Enter::new(cx, None, None);
-        drive.as_mut().poll(task)
+        let polled = drive.as_mut().poll(task);
+        limits::check_memory(&rt, &id);
+        polled
       })
     })
     .await

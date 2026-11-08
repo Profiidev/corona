@@ -1310,6 +1310,16 @@ app:
         deny_disable:
           en: 'Deny and disable'
           de: 'Ablehnen und deaktivieren'
+        limit:
+          title:
+            en: '%{name} was restarted'
+            de: '%{name} wurde neu gestartet'
+          time:
+            en: 'It ran too long without returning.'
+            de: 'Es lief zu lange, ohne zurückzukehren.'
+          memory:
+            en: 'It used too much memory.'
+            de: 'Es hat zu viel Speicher belegt.'
         changed_title:
           en: '%{name} changed'
           de: '%{name} hat sich geändert'

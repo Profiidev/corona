@@ -21,6 +21,7 @@ pub use runtime::{
   module::{Data, ModuleBuilder, d_ts},
   plugin::Plugin,
   registry::{PluginRef, Registered, ScriptExt, ScriptModule, ScriptRegistry},
+  limits::{Trip, TripHook, take_tripped},
   reload::{POLL, reload_view, watch},
   scope::{Enter, app, frame, window},
   service::Service,

@@ -70,6 +70,7 @@ impl Service {
   /// failed start is logged and retried on the next change.
   pub fn watch(
     dir: &Path,
+    id: String,
     start: impl Fn(&mut App) -> Result<Service> + 'static,
     cx: &mut App,
   ) -> Task<()> {
@@ -83,7 +84,7 @@ impl Service {
       }
     };
     restart(cx);
-    watch(dir.to_path_buf(), cx, restart)
+    watch(dir.to_path_buf(), id, cx, restart)
   }
 }
 

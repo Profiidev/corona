@@ -34,6 +34,7 @@ struct Registration {
 }
 
 pub(crate) fn init(cx: &mut App) {
+  cx.set_global(corona_js::TripHook(Rc::new(limit_hit)));
   watch_approvals(cx);
   let mut registered = Registered::new();
   sync(&mut registered, cx);
@@ -109,6 +110,22 @@ fn updates(
   versions.retain(|id, _| waiting.contains(id));
   versions.extend(running);
   updated
+}
+
+/// Warns that plugin `id` hit a resource limit and restarts
+fn limit_hit(id: &str, trip: corona_js::Trip, cx: &mut App) {
+  let name = (cx.global::<PluginManager>().active().get(id))
+    .map_or_else(|| id.to_string(), |p| p.manifest.name.clone());
+  let body = match trip {
+    corona_js::Trip::Time => t!("app.settings.plugins.limit.time"),
+    corona_js::Trip::Memory => t!("app.settings.plugins.limit.memory"),
+  };
+  let notice = Notice {
+    summary: t!("app.settings.plugins.limit.title", name = name).into(),
+    body: body.into(),
+    action: None,
+  };
+  hooks::notify(notice, cx);
 }
 
 /// Asks to review plugin `id` with a notification

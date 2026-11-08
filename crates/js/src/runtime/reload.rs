@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use gpui_kit::{AnyWindowHandle, App, Context, Entity, Task, Window};
 
-use crate::ScriptView;
+use crate::{ScriptView, runtime::limits};
 
 pub const POLL: Duration = Duration::from_millis(250);
 
@@ -73,10 +73,12 @@ fn scan(dir: &Path) -> Stamp {
   out
 }
 
-/// Calls `on_change` after a source below `dir` changed, until the task is dropped.
+/// Calls `on_change` after a source below `dir` changed or plugin `id` hit a limit, until
+/// the task is dropped.
 /// ponytail: scans on the foreground every poll, fine for plugin-sized trees
 pub fn watch(
   dir: PathBuf,
+  id: String,
   cx: &mut App,
   mut on_change: impl FnMut(&mut App) + 'static,
 ) -> Task<()> {
@@ -85,6 +87,16 @@ pub fn watch(
     let mut pending = None;
     loop {
       cx.background_executor().timer(POLL).await;
+      if let Some(trip) = limits::take_tripped(&id) {
+        cx.update(|cx| {
+          tracing::warn!("plugin `{id}` hit a limit ({trip:?}), restarting it");
+          if let Some(hook) = cx.try_global::<limits::TripHook>().map(|h| h.0.clone()) {
+            hook(&id, trip, cx);
+          }
+          on_change(cx);
+        });
+        continue;
+      }
       let now = scan(&dir);
       if now == last {
         pending = None;
@@ -105,11 +117,12 @@ pub fn reload_view(
   view: &Entity<ScriptView>,
   window: AnyWindowHandle,
   dir: PathBuf,
+  id: String,
   make: impl Fn(&mut Window, &mut Context<ScriptView>) -> Result<ScriptView> + 'static,
   cx: &mut App,
 ) -> Task<()> {
   let view = view.downgrade();
-  watch(dir, cx, move |cx| {
+  watch(dir, id, cx, move |cx| {
     let Some(view) = view.upgrade() else {
       return;
     };
