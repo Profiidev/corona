@@ -81,7 +81,7 @@ impl Watches {
       // cloned out, the fn may unsubscribe
       let callback = watches.0.borrow().subs.get(&id).map(|(_, cb)| cb.clone());
       if let Some(callback) = callback {
-        callback.call(cx, |ctx| read(crate::app()).into_js(&ctx));
+        callback.call(cx, |ctx| read(&crate::app()).into_js(&ctx));
       }
     });
     self.0.borrow_mut().subs.insert(id, (sub, callback));
@@ -191,7 +191,7 @@ impl Type for Unsubscribe {
 /// Renders the view that is rendering again once `entity` changes. Does nothing outside a
 /// render.
 pub fn track<T: 'static>(entity: &Entity<T>) {
-  if let Some(frame) = try_frame() {
+  if let Some(mut frame) = try_frame() {
     frame.reads.entry(entity.entity_id()).or_insert_with(|| {
       let entity = entity.clone();
       Box::new(move |cx| cx.observe(&entity, |_, _, cx| cx.notify()))

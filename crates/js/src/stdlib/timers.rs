@@ -39,7 +39,8 @@ fn schedule<'js>(
   };
   ctx.spawn(async move {
     loop {
-      app().background_executor().timer(delay).await;
+      let timer = app().background_executor().timer(delay);
+      timer.await;
       if cancelled.get() {
         break;
       }
@@ -94,7 +95,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>) -> Result<()> {
 pub(crate) fn sleep<'js>(ctx: Ctx<'js>, ms: Opt<f64>) -> Result<Promise<'js>> {
   let delay = duration(ms.0);
   promise(&ctx, async move {
-    app().background_executor().timer(delay).await;
+    let timer = app().background_executor().timer(delay);
+    timer.await;
     Ok(())
   })
 }

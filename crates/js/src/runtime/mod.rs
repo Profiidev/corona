@@ -100,6 +100,7 @@ thread_local! {
 /// The context's [`Runtime`], in its userdata
 struct RuntimeRef(Weak<Runtime>);
 
+// SAFETY: holds no JS value, so it is the same type for every `'js`
 unsafe impl<'js> JsLifetime<'js> for RuntimeRef {
   type Changed<'to> = RuntimeRef;
 }

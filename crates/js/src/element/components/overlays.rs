@@ -489,9 +489,9 @@ impl Kept {
           Some(arg) => args.push_arg(arg),
           None => Ok(()),
         },
-        |ctx, frame, value| match value.is_undefined() {
+        |ctx, value| match value.is_undefined() {
           true => Ok(None),
-          false => frame.child(ctx, Child::from_js(ctx, value)?).map(Some),
+          false => crate::element::frame_child(ctx, Child::from_js(ctx, value)?).map(Some),
         },
       )
     });
@@ -519,7 +519,7 @@ struct Note;
 
 /// Opens the window effect `spec` describes, from its button's click.
 fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
-  let window = window_or_throw(ctx)?;
+  let mut window = window_or_throw(ctx)?;
   let view = current_view().ok_or_else(|| Exception::throw_type(ctx, "no view here"))?;
   let rt = runtime(ctx)?;
   let keep = |key: &str| -> Result<Option<u64>> {
@@ -539,7 +539,7 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
     error: keep("on_effect_error")?,
     failed: Rc::default(),
   };
-  let app = crate::app();
+  let mut app = crate::app();
   match kind.as_str() {
     "Dialog" => {
       let content = keep("content")?;
@@ -548,7 +548,7 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
         view.entity_id(),
         [ok, cancel, close, kept.error, content],
       );
-      window.open_dialog(app, move |mut dialog, window, cx| {
+      window.open_dialog(&mut app, move |mut dialog, window, cx| {
         let _ = &guard;
         if let Some(title) = title.clone() {
           dialog = dialog.title(title);
@@ -570,7 +570,7 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
     "AlertDialog" => {
       let show_cancel = flag("show_cancel", false)?;
       let guard = SlotGuard::new(&rt, view.entity_id(), [ok, cancel, close, kept.error]);
-      window.open_alert_dialog(app, move |mut alert, _, _| {
+      window.open_alert_dialog(&mut app, move |mut alert, _, _| {
         let _ = &guard;
         if let Some(title) = title.clone() {
           alert = alert.title(title);
@@ -601,7 +601,7 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
         view.entity_id(),
         [ok, cancel, close, kept.error, content],
       );
-      window.open_sheet_at(at, app, move |mut sheet, window, cx| {
+      window.open_sheet_at(at, &mut app, move |mut sheet, window, cx| {
         let _ = &guard;
         if let Some(title) = title.clone() {
           sheet = sheet.title(title);
@@ -639,7 +639,7 @@ fn open_effect<'js>(ctx: &Ctx<'js>, spec: &Object<'js>) -> Result<()> {
           let _ = &guard;
           kept.fire(close, window, cx)
         });
-      window.push_notification(note, app);
+      window.push_notification(note, &mut app);
     }
   }
   Ok(())
@@ -661,12 +661,14 @@ fn effect<'js>(
   let s = spec.clone();
   let open = Function::new(ctx.clone(), move |ctx: Ctx<'js>| open_effect(&ctx, &s))?;
   open.set("spec", spec)?;
-  let frame = frame_or_throw(&ctx)?;
-  let click = frame.listener(open, |_: &ClickEvent| ());
-  let effect = Effect {
-    kind,
-    spec: frame.handlers.len() - 1,
-    button: Button::new(id).label(label).on_click(click),
+  let effect = {
+    let mut frame = frame_or_throw(&ctx)?;
+    let click = frame.listener(open, |_: &ClickEvent| ());
+    Effect {
+      kind,
+      spec: frame.handlers.len() - 1,
+      button: Button::new(id).label(label).on_click(click),
+    }
   };
   new_el(&ctx, Overlay::Effect(effect))
 }

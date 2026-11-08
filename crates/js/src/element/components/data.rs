@@ -191,7 +191,7 @@ mod children {
     let Child::El(el) = child else {
       return Ok(None);
     };
-    let frame = frame_or_throw(c)?;
+    let mut frame = frame_or_throw(c)?;
     let node = frame.take(c, &el.borrow())?;
     match node.into_any().downcast::<T>() {
       Ok(t) => Ok(Some(*t)),
@@ -502,8 +502,8 @@ fn render_row(slot: &Slot, index: usize, window: &mut Window, cx: &mut App) -> A
   view
     .update(cx, |view, cx| {
       let args = |a: &mut rquickjs::function::Args<'_>| a.push_arg(index);
-      view.render_content(key, Some(index), window, cx, args, |ctx, frame, value| {
-        frame.child(ctx, Child::from_js(ctx, value)?)
+      view.render_content(key, Some(index), window, cx, args, |ctx, value| {
+        crate::element::frame_child(ctx, Child::from_js(ctx, value)?)
       })
     })
     .unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
@@ -629,7 +629,7 @@ pub(crate) struct DataTableEl {
 
 impl DataTableEl {
   fn state(self, f: impl FnOnce(&mut TableState<Cells>)) -> Self {
-    self.state.update(app(), |s, cx| {
+    self.state.update(&mut *app(), |s, cx| {
       f(s);
       cx.notify();
     });
@@ -767,11 +767,11 @@ impl Named for JsCalendarState {
 
 impl JsCalendarState {
   fn read<R>(&self, ctx: &Ctx<'_>, f: impl FnOnce(&CalendarState) -> R) -> Result<R> {
-    Ok(f(self.state.entity(ctx)?.read(app())))
+    Ok(f(self.state.entity(ctx)?.read(&app())))
   }
 
   fn update(&self, ctx: &Ctx<'_>, f: impl FnOnce(&mut CalendarState)) -> Result<()> {
-    self.state.entity(ctx)?.update(app(), |s, cx| {
+    self.state.entity(ctx)?.update(&mut *app(), |s, cx| {
       f(s);
       cx.notify();
     });
@@ -783,8 +783,8 @@ impl JsCalendarState {
 impl JsCalendarState {
   #[qjs(constructor)]
   pub fn new(ctx: Ctx<'_>) -> Result<Self> {
-    let window = window_or_throw(&ctx)?;
-    let entity = app().new(|cx| CalendarState::new(window, cx));
+    let mut window = window_or_throw(&ctx)?;
+    let entity = app().new(|cx| CalendarState::new(&mut window, cx));
     Ok(Self {
       state: Retained::new(&ctx, entity)?,
     })
@@ -863,7 +863,7 @@ impl JsCarouselState {
     ctx: &Ctx<'_>,
     f: impl FnOnce(&mut CarouselState, &mut gpui_kit::Context<CarouselState>) -> R,
   ) -> Result<R> {
-    Ok(self.state.entity(ctx)?.update(app(), f))
+    Ok(self.state.entity(ctx)?.update(&mut *app(), f))
   }
 }
 
@@ -959,7 +959,7 @@ impl Named for JsDataTableState {
 impl JsDataTableState {
   #[qjs(constructor)]
   pub fn new(ctx: Ctx<'_>, columns: Vec<String>) -> Result<Self> {
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let cells = Cells {
       slot: None,
       rows: 0,
@@ -968,7 +968,7 @@ impl JsDataTableState {
         .map(|c| Column::new(c.clone(), c.clone()))
         .collect(),
     };
-    let entity = app().new(|cx| TableState::new(cells, window, cx));
+    let entity = app().new(|cx| TableState::new(cells, &mut window, cx));
     Ok(Self {
       state: Retained::new(&ctx, entity)?,
     })
@@ -1024,7 +1024,7 @@ fn data_table<'js>(
   render: Function<'js>,
 ) -> Result<Class<'js, El>> {
   let state = entity(&ctx, &state.borrow().state)?;
-  let keys: Vec<String> = (state.read(app()).delegate().columns)
+  let keys: Vec<String> = (state.read(&app()).delegate().columns)
     .iter()
     .map(|c| c.key.to_string())
     .collect();
@@ -1033,7 +1033,7 @@ fn data_table<'js>(
   )?;
   let count = rows.0.len();
   let slot = slot(&ctx, wrap.call((rows.0, keys, render))?)?;
-  state.update(app(), |s, cx| {
+  state.update(&mut *app(), |s, cx| {
     let cells = s.delegate_mut();
     (cells.slot, cells.rows) = (slot, count);
     cx.notify();

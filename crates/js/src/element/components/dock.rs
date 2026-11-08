@@ -239,7 +239,7 @@ fn call_view<'js>(
   method: &str,
   arg: Option<Value<'js>>,
 ) -> Result<Option<Value<'js>>> {
-  let instance = view.read(app()).instance().clone().restore(ctx)?;
+  let instance = view.read(&app()).instance().clone().restore(ctx)?;
   let Ok(f) = instance.get::<_, Function>(method) else {
     return Ok(None);
   };
@@ -305,17 +305,12 @@ impl Skin {
         let payload = a.ctx().json_parse(json)?;
         a.push_arg(payload)
       };
-      view.render_content(
-        key,
-        Some(index),
-        window,
-        cx,
-        args,
-        |ctx, frame, value| match value.is_null() || value.is_undefined() {
+      view.render_content(key, Some(index), window, cx, args, |ctx, value| {
+        match value.is_null() || value.is_undefined() {
           true => Ok(None),
-          false => frame.child(ctx, Child::from_js(ctx, value)?).map(Some),
-        },
-      )
+          false => crate::element::frame_child(ctx, Child::from_js(ctx, value)?).map(Some),
+        }
+      })
     });
     drawn.unwrap_or_else(|e| Some(format!("dock chrome failed: {e}").into_any_element()))
   }
@@ -550,10 +545,10 @@ fn dock_area_new<'js>(
     Some(o) => o.get::<_, Option<u32>>("version")?.map(|v| v as usize),
     None => None,
   };
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let skin = Rc::new(Skin::default());
   let renderer = Rc::new(SkinRef(skin.clone()));
-  let area = app().new(|cx| DockArea::new(id, version, window, cx).with_renderer(renderer));
+  let area = app().new(|cx| DockArea::new(id, version, &mut window, cx).with_renderer(renderer));
   let key = area.entity_id().as_u64();
   skin.area.set(key);
   SKINS.with(|s| {
@@ -571,7 +566,9 @@ fn register<'js>(ctx: Ctx<'js>, name: String, class: Function<'js>) -> Result<St
   let rt = runtime(&ctx)?;
   let class = rquickjs::Persistent::save(&ctx, class);
   rt.panels.borrow_mut().insert(name.into(), class);
-  register_panel(app(), name, move |context, _, cx| build(name, context, cx));
+  register_panel(&mut app(), name, move |context, _, cx| {
+    build(name, context, cx)
+  });
   Ok(name.into())
 }
 
@@ -587,13 +584,15 @@ impl JsDockArea {
     f: impl FnOnce(&mut DockArea, &mut Window, &mut Context<DockArea>),
   ) -> Result<()> {
     not_in_render(ctx, what)?;
-    let window = window_or_throw(ctx)?;
-    self.area(ctx)?.update(app(), |a, cx| f(a, window, cx));
+    let mut window = window_or_throw(ctx)?;
+    self
+      .area(ctx)?
+      .update(&mut *app(), |a, cx| f(a, &mut window, cx));
     Ok(())
   }
 
   fn read<R>(&self, ctx: &Ctx<'_>, f: impl FnOnce(&DockArea) -> R) -> Result<R> {
-    Ok(f(self.area(ctx)?.read(app())))
+    Ok(f(self.area(ctx)?.read(&app())))
   }
 
   /// The panels of every region, as `walk` meets them: `(placement, node, index, active, id)`
@@ -685,20 +684,20 @@ impl JsDockArea {
     not_in_render(&ctx, "remove_panel(id)")?;
     let area = self.area(&ctx)?;
     let Some(view) = area
-      .read(app())
+      .read(&app())
       .panel(PanelId::from_u64(id as u64))
       .cloned()
     else {
       return Ok(false);
     };
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let any = view.as_any();
     if let Some(p) = any.downcast_ref::<Entity<ScriptPanel>>() {
       let p = p.clone();
-      area.update(app(), |a, cx| a.remove_panel(p, window, cx));
+      area.update(&mut *app(), |a, cx| a.remove_panel(p, &mut window, cx));
     } else if let Some(p) = any.downcast_ref::<Entity<RetainedPanel>>() {
       let p = p.clone();
-      area.update(app(), |a, cx| a.remove_panel(p, window, cx));
+      area.update(&mut *app(), |a, cx| a.remove_panel(p, &mut window, cx));
     } else {
       return Ok(false);
     }
@@ -708,8 +707,11 @@ impl JsDockArea {
   /// Every panel, in tree order.
   pub fn panels<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let mut out = Vec::new();
-    self.read(&ctx, |area| {
-      let cx: &App = app();
+    let entity = self.area(&ctx)?;
+    {
+      let cx = app();
+      let area = entity.read(&cx);
+      let cx: &App = &cx;
       Self::each_panel(area, |at, node, index, active, id| {
         if let Some(p) = area.panel(id) {
           out.push(json!({
@@ -725,7 +727,7 @@ impl JsDockArea {
           }));
         }
       })
-    })?;
+    }
     ctx.json_parse(Json::Array(out).to_string())
   }
 
@@ -733,15 +735,15 @@ impl JsDockArea {
   pub fn dump<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let area = self.area(&ctx)?;
     let mut panels = Vec::new();
-    Self::each_panel(area.read(app()), |_, _, _, _, id| panels.push(id));
+    Self::each_panel(area.read(&app()), |_, _, _, _, id| panels.push(id));
     for id in panels {
-      let panel = area.read(app()).panel(id).cloned();
+      let panel = area.read(&app()).panel(id).cloned();
       let Some(panel) =
         panel.and_then(|p| p.as_any().downcast_ref::<Entity<ScriptPanel>>().cloned())
       else {
         continue;
       };
-      let view = panel.read(app()).view.clone();
+      let view = panel.read(&app()).view.clone();
       let payload = (|| match call_view(&ctx, &view, "serialize", None)? {
         Some(v) if !v.is_undefined() => {
           let json = ctx.json_stringify(v)?.map(|s| s.to_string()).transpose()?;
@@ -754,9 +756,10 @@ impl JsDockArea {
         tracing::warn!("a dock panel's serialize(): {e}");
         None
       });
-      panel.update(app(), |p, _| p.payload = payload);
+      panel.update(&mut *app(), |p, _| p.payload = payload);
     }
-    let state = area.read(app()).dump(app());
+    let cx = app();
+    let state = area.read(&cx).dump(&cx);
     let json = serde_json::to_string(&state)
       .map_err(|e| Exception::throw_type(&ctx, &format!("dump(): {e}")))?;
     ctx.json_parse(json)
@@ -800,11 +803,11 @@ impl JsDockArea {
         let entry = (Rc::downgrade(&rt), handle.id(), view);
         PREBUILT.with(|p| p.borrow_mut().entry(key).or_default().push_back(entry));
       }
-      let window = window_or_throw(&ctx)?;
+      let mut window = window_or_throw(&ctx)?;
       Ok(
         self
           .area(&ctx)?
-          .update(app(), |a, cx| a.load(state, window, cx)),
+          .update(&mut *app(), |a, cx| a.load(state, &mut window, cx)),
       )
     })();
     // views base did not take, and the data of those it did
@@ -1180,7 +1183,7 @@ mod commands {
     });
     /// Makes this element the drag source of tab `index` of `group`.
     fn drag_tab(group: Target, index: u32) |c, n| {
-      let drag = group_of(&group).and_then(|g| g.drag_panel(index as usize, app()));
+      let drag = group_of(&group).and_then(|g| g.drag_panel(index as usize, &app()));
       let Some(drag) = drag else {
         tracing::warn!("drag_tab(group, {index}) names no panel; the layout changed");
         return Ok(());

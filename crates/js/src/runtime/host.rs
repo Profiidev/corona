@@ -19,7 +19,7 @@ use specta::{
   function::FunctionArg,
 };
 
-use crate::app;
+use crate::{app, runtime::scope::app_unchecked};
 
 /// The app, injected into a host fn without taking a JS argument. Usable in sync fns and
 /// in the polls of async ones, which run in the runtime driver.
@@ -28,13 +28,15 @@ pub struct Cx;
 impl Deref for Cx {
   type Target = App;
   fn deref(&self) -> &App {
-    app()
+    // SAFETY: lives for the borrow of the `Cx`, which a host fn holds only inside one call
+    unsafe { app_unchecked() }
   }
 }
 
 impl DerefMut for Cx {
   fn deref_mut(&mut self) -> &mut App {
-    app()
+    // SAFETY: as in `deref`
+    unsafe { app_unchecked() }
   }
 }
 
@@ -60,7 +62,8 @@ pub struct Glob<G>(PhantomData<G>);
 impl<G: Global> Deref for Glob<G> {
   type Target = G;
   fn deref(&self) -> &G {
-    app().global::<G>()
+    // SAFETY: as in `Cx::deref`
+    unsafe { app_unchecked() }.global::<G>()
   }
 }
 

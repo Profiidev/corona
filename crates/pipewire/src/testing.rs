@@ -31,9 +31,10 @@ pub(crate) fn pod(bytes: &[u8]) -> &Pod {
 
 /// the receiving end of the commands the shell sends to the PipeWire thread
 pub(crate) struct Commands {
-  main_loop: MainLoopRc,
-  received: Rc<RefCell<Vec<Command>>>,
+  // dropped first: the receiver is attached to the loop below it
   _attached: Option<AttachedReceiver<'static, Command>>,
+  received: Rc<RefCell<Vec<Command>>>,
+  main_loop: MainLoopRc,
 }
 
 impl Commands {
@@ -44,6 +45,7 @@ impl Commands {
     let received = Rc::<RefCell<Vec<Command>>>::default();
     let sink = received.clone();
     // the loop lives as long as the receiver, both are dropped together
+    // SAFETY: `_attached` is declared before `main_loop`, so it drops first
     let loop_: &'static pipewire::loop_::Loop =
       unsafe { &*(main_loop.loop_() as *const pipewire::loop_::Loop) };
     let attached = rx.attach(loop_, move |command| sink.borrow_mut().push(command));

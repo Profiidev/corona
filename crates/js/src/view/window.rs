@@ -38,7 +38,7 @@ fn keep<'js>(
 ) -> Result<(WeakEntity<ScriptView>, u64, SlotGuard)> {
   let view = current_view()
     .ok_or_else(|| Exception::throw_type(ctx, "no view here: call this from an event handler"))?;
-  if crate::runtime::scope::try_frame().is_some() {
+  if crate::runtime::scope::rendering() {
     return Err(Exception::throw_type(
       ctx,
       "overlays open from event handlers, not render",
@@ -68,7 +68,7 @@ fn content(
         window,
         cx,
         |_| Ok(()),
-        |ctx, frame, value| frame.child(ctx, Child::from_js(ctx, value)?),
+        |ctx, value| crate::element::frame_child(ctx, Child::from_js(ctx, value)?),
       )
     })
     .unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
@@ -118,7 +118,7 @@ impl ScriptWindow {
     content_fn: Function<'js>,
     options: Opt<Object<'js>>,
   ) -> Result<()> {
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let (view, key, guard) = keep(&ctx, content_fn)?;
     let get = |name: &str| -> Result<bool> {
       Ok(match &options.0 {
@@ -127,7 +127,7 @@ impl ScriptWindow {
       })
     };
     let (escape, backdrop) = (get("escape_dismissable")?, get("backdrop_dismissable")?);
-    window.open_dialog(crate::app(), move |dialog, window, cx| {
+    window.open_dialog(&mut crate::app(), move |dialog, window, cx| {
       let _ = &guard;
       dialog
         .keyboard(escape)
@@ -138,17 +138,17 @@ impl ScriptWindow {
   }
 
   pub fn close_dialog(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.close_dialog(crate::app());
+    window_or_throw(&ctx)?.close_dialog(&mut crate::app());
     Ok(())
   }
 
   pub fn close_all_dialogs(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.close_all_dialogs(crate::app());
+    window_or_throw(&ctx)?.close_all_dialogs(&mut crate::app());
     Ok(())
   }
 
   pub fn has_active_dialog(&self, ctx: Ctx<'_>) -> Result<bool> {
-    Ok(window_or_throw(&ctx)?.has_active_dialog(crate::app()))
+    Ok(window_or_throw(&ctx)?.has_active_dialog(&mut crate::app()))
   }
 
   /// Opens the sheet on the right with what `content()` renders.
@@ -163,10 +163,10 @@ impl ScriptWindow {
     at: String,
     content_fn: Function<'js>,
   ) -> Result<()> {
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let at = placement(&ctx, &at)?;
     let (view, key, guard) = keep(&ctx, content_fn)?;
-    window.open_sheet_at(at, crate::app(), move |sheet, window, cx| {
+    window.open_sheet_at(at, &mut crate::app(), move |sheet, window, cx| {
       let _ = &guard;
       sheet.child(content(&view, key, window, cx))
     });
@@ -174,17 +174,17 @@ impl ScriptWindow {
   }
 
   pub fn close_sheet(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.close_sheet(crate::app());
+    window_or_throw(&ctx)?.close_sheet(&mut crate::app());
     Ok(())
   }
 
   pub fn has_active_sheet(&self, ctx: Ctx<'_>) -> Result<bool> {
-    Ok(window_or_throw(&ctx)?.has_active_sheet(crate::app()))
+    Ok(window_or_throw(&ctx)?.has_active_sheet(&mut crate::app()))
   }
 
   /// Posts a toast `{ title, description?, level?, timeout?: null, id? }`; returns its id.
   pub fn push_toast<'js>(&self, ctx: Ctx<'js>, options: Object<'js>) -> Result<String> {
-    let window = window_or_throw(&ctx)?;
+    let mut window = window_or_throw(&ctx)?;
     let title: String = options.get("title")?;
     let level = match options.get::<_, Option<String>>("level")?.as_deref() {
       None | Some("info") => NotificationType::Info,
@@ -216,17 +216,17 @@ impl ScriptWindow {
     // `timeout: null` keeps it up; gpui-component hides it after 5 s otherwise
     let keep_up =
       options.contains_key("timeout")? && options.get::<_, rquickjs::Value>("timeout")?.is_null();
-    window.push_notification(note.autohide(!keep_up), crate::app());
+    window.push_notification(note.autohide(!keep_up), &mut crate::app());
     Ok(id)
   }
 
   pub fn remove_toast(&self, ctx: Ctx<'_>, id: String) -> Result<()> {
-    window_or_throw(&ctx)?.remove_notification1::<ScriptToast>(id, crate::app());
+    window_or_throw(&ctx)?.remove_notification1::<ScriptToast>(id, &mut crate::app());
     Ok(())
   }
 
   pub fn clear_toasts(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.clear_notifications(crate::app());
+    window_or_throw(&ctx)?.clear_notifications(&mut crate::app());
     Ok(())
   }
 
@@ -234,7 +234,7 @@ impl ScriptWindow {
   /// binding would. `::` in the name throws.
   pub fn dispatch_action(&self, ctx: Ctx<'_>, action: String) -> Result<()> {
     let action = Box::new(ScriptAction(scoped(&ctx, &action)?.into(), 0));
-    window_or_throw(&ctx)?.dispatch_action(action, crate::app());
+    window_or_throw(&ctx)?.dispatch_action(action, &mut crate::app());
     Ok(())
   }
 
@@ -304,12 +304,12 @@ impl ScriptWindow {
   }
 
   pub fn focus_next(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.focus_next(crate::app());
+    window_or_throw(&ctx)?.focus_next(&mut crate::app());
     Ok(())
   }
 
   pub fn focus_prev(&self, ctx: Ctx<'_>) -> Result<()> {
-    window_or_throw(&ctx)?.focus_prev(crate::app());
+    window_or_throw(&ctx)?.focus_prev(&mut crate::app());
     Ok(())
   }
 

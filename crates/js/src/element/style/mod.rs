@@ -56,7 +56,7 @@ pub(crate) const RADIUS_TOKENS: &[&str] = &["none", "sm", "md", "lg", "xl", "ful
 /// The active theme
 pub(crate) fn theme() -> Theme {
   crate::runtime::scope::try_app()
-    .map(|cx| Theme::global(cx))
+    .map(|cx| Theme::global(&cx))
     .unwrap_or_default()
 }
 

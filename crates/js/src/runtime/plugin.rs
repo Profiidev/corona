@@ -13,6 +13,7 @@ use crate::PluginRef;
 /// Kept in the context of each runtime
 pub(crate) struct PluginData(pub Rc<PluginRef>);
 
+// SAFETY: holds no JS value, so it is the same type for every `'js`
 unsafe impl<'js> JsLifetime<'js> for PluginData {
   type Changed<'to> = PluginData;
 }

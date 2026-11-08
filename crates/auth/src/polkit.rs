@@ -8,7 +8,7 @@ use std::{
   os::unix::net::UnixStream,
   path::PathBuf,
   process::{Command, Stdio},
-  sync::mpsc as std_mpsc,
+  sync::{Arc, Mutex, mpsc as std_mpsc},
   thread,
   time::Duration,
 };
@@ -148,6 +148,7 @@ impl Agent {
     cookie: String,
     identities: Vec<Identity>,
   ) -> Result<(), AgentError> {
+    // SAFETY: getuid cannot fail
     let me = unsafe { libc::getuid() };
     let user = pick_user(&identities, me)
       .and_then(user_name)
@@ -235,26 +236,40 @@ fn authenticate(helper: &Helper, user: &str, cookie: &str, password: &str) -> Re
     .iter()
     .find(|path| path.exists())
     .context("polkit has neither its helper socket nor polkit-agent-helper-1")?;
-  let mut child = Command::new(setuid)
+  let child = Command::new(setuid)
     .arg(user)
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .spawn()?;
-  let mut stdin = child.stdin.take().context("no helper stdin")?;
+  let child = Arc::new(Mutex::new(child));
+  let mut stdin = child
+    .lock()
+    .unwrap()
+    .stdin
+    .take()
+    .context("no helper stdin")?;
   writeln!(stdin, "{cookie}")?;
-  let stdout = child.stdout.take().context("no helper stdout")?;
+  let stdout = child
+    .lock()
+    .unwrap()
+    .stdout
+    .take()
+    .context("no helper stdout")?;
   // kills a wedged helper, which ends the conversation with its closed output
   let (finished, finishing) = std_mpsc::channel::<()>();
-  let pid = child.id() as libc::pid_t;
+  let killer = child.clone();
   thread::spawn(move || {
     if finishing.recv_timeout(HELPER_TIMEOUT) == Err(std_mpsc::RecvTimeoutError::Timeout) {
-      // SAFETY: the child is not reaped before `finished` is dropped
-      unsafe { libc::kill(pid, libc::SIGKILL) };
+      // std does not signal a child it has already reaped
+      let _ = killer.lock().unwrap().kill();
     }
   });
-  // stdin closes with the conversation, so the helper exits before the wait
+  // stdin closes with the conversation, so the helper exits before the wait; polled so
+  // the killer can take the lock
   let result = converse(BufReader::new(stdout), stdin, password);
-  let _ = child.wait();
+  while !matches!(child.lock().unwrap().try_wait(), Ok(Some(_)) | Err(_)) {
+    thread::sleep(Duration::from_millis(10));
+  }
   drop(finished);
   result
 }

@@ -175,36 +175,60 @@ async fn all(stream: impl AsyncRead + Unpin, name: &str) -> Res<String> {
 }
 
 /// The process groups of the children a runtime started, ended with it: disabling a plugin
-/// ends what its commands left running. ponytail: a group that emptied and whose id a new
-/// group leader took since is hit too; pidfds or a cgroup if that ever matters
+/// ends what its commands left running. Each is kept with the start time of its leader: a
+/// group id is only free again once the group is empty, and a new group with that id has a
+/// leader of that pid, which started later. ponytail: a leader that is gone is taken for
+/// the original group; pidfds or a cgroup if that ever matters
 #[derive(Default)]
-pub(crate) struct ChildGroups(std::sync::Mutex<Vec<i32>>);
+pub(crate) struct ChildGroups(std::sync::Mutex<Vec<(i32, Option<u64>)>>);
 
-fn alive(group: i32) -> bool {
-  unsafe { libc::kill(-group, 0) == 0 }
+/// Clock ticks after boot at which `pid` started, from `/proc`; `None` when it is gone
+fn started(pid: i32) -> Option<u64> {
+  let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+  // after the `comm` field, which may hold spaces and parens; starttime is field 22
+  stat
+    .get(stat.rfind(')')? + 1..)?
+    .split_whitespace()
+    .nth(19)?
+    .parse()
+    .ok()
+}
+
+/// Whether the group still holds processes and is the one recorded
+fn alive((group, start): &(i32, Option<u64>)) -> bool {
+  // SAFETY: kill takes no pointers; signal 0 only checks that the group exists
+  if unsafe { libc::kill(-group, 0) } != 0 {
+    return false;
+  }
+  match (start, started(*group)) {
+    (Some(was), Some(now)) => *was == now,
+    _ => true,
+  }
 }
 
 impl ChildGroups {
   fn add(&self, pid: u32) {
     let mut groups = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-    groups.retain(|g| alive(*g));
-    groups.push(pid as i32);
+    groups.retain(alive);
+    groups.push((pid as i32, started(pid as i32)));
   }
 
   /// SIGTERM to every group still alive, SIGKILL after the grace period
   pub(crate) fn terminate(&self) {
     let mut groups = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-    let groups: Vec<i32> = groups.drain(..).filter(|g| alive(*g)).collect();
+    let groups: Vec<_> = groups.drain(..).filter(alive).collect();
     if groups.is_empty() {
       return;
     }
-    for group in &groups {
+    for (group, _) in &groups {
+      // SAFETY: kill takes no pointers; `alive` just checked the group is ours
       unsafe { libc::kill(-group, libc::SIGTERM) };
     }
     detach(async move {
       tokio::time::sleep(GRACE).await;
-      for group in groups.into_iter().filter(|g| alive(*g)) {
-        unsafe { libc::kill(-group, libc::SIGKILL) };
+      for entry in groups.iter().filter(|g| alive(g)) {
+        // SAFETY: as above
+        unsafe { libc::kill(-entry.0, libc::SIGKILL) };
       }
     });
   }
@@ -570,5 +594,20 @@ impl ModuleDef for OsModule {
     }
     exports.export("default", o)?;
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod group_tests {
+  use super::*;
+
+  #[test]
+  fn a_group_with_another_start_time_is_not_ours() {
+    // our own pid leads no group of ours, but kill(-pid, 0) works for our own group
+    let me = unsafe { libc::getpgrp() };
+    let start = started(me);
+    assert!(start.is_some());
+    assert!(alive(&(me, start)));
+    assert!(!alive(&(me, start.map(|s| s + 1))));
   }
 }

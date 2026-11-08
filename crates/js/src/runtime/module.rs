@@ -205,13 +205,14 @@ fn signal<'js, E: 'static, R: for<'a> IntoJs<'a> + 'static>(
   let (e, r) = (entity.clone(), read.clone());
   let get = Function::new(ctx.clone(), move || {
     let cx = app();
-    track(&e(cx));
-    r(cx)
+    track(&e(&cx));
+    r(&cx)
   })?;
   let (e, r, watches) = (entity.clone(), read.clone(), watches.clone());
   let subscribe = Function::new(ctx.clone(), move |cb: Function<'js>| {
     let r = r.clone();
-    watches.subscribe(&e(app()), cb, move |cx| r(cx))
+    let entity = e(&app());
+    watches.subscribe(&entity, cb, move |cx| r(cx))
   })?;
   get.set("subscribe", subscribe)?;
   Ok(get.into_value())
@@ -246,6 +247,7 @@ pub(crate) struct HostModules(
   HashMap<TypeId, Rc<dyn Any>>,
 );
 
+// SAFETY: the exports are `for<'js>` closures and the data is `dyn Any`, no `'js` value inside
 unsafe impl<'js> JsLifetime<'js> for HostModules {
   type Changed<'to> = HostModules;
 }

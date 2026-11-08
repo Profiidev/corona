@@ -26,7 +26,7 @@ use crate::{
     self, Main, Runtime, Slot,
     plugin::plugin,
     runtime,
-    scope::{try_frame, try_window},
+    scope::{Scoped, frame, has_window, rendering, try_window},
   },
   with,
 };
@@ -256,14 +256,12 @@ impl ScriptView {
     slot: u64,
     window: &mut Window,
     cx: &mut Context<Self>,
-    f: impl for<'js> FnOnce(&Ctx<'js>, Object<'js>, &mut Frame) -> Result<R>,
+    f: impl for<'js> FnOnce(&Ctx<'js>, Object<'js>) -> Result<R>,
   ) -> anyhow::Result<R> {
     let id = cx.entity_id();
     (self.rt).drop_slots(id, |_, s| s.transient && s.owner == slot);
     let mut frame = Frame::new(cx.entity().downgrade(), slot);
-    let out = self.call(Some(window), Some(&mut frame), cx, |ctx, instance| {
-      f(ctx, instance, try_frame().expect("frame set"))
-    });
+    let out = self.call(Some(window), Some(&mut frame), cx, f);
     #[cfg(test)]
     if slot == 0 {
       self.text = std::mem::take(&mut frame.text);
@@ -298,7 +296,7 @@ impl ScriptView {
     window: &mut Window,
     cx: &mut Context<Self>,
     args: impl for<'js> FnOnce(&mut Args<'js>) -> Result<()>,
-    read: impl for<'js> FnOnce(&Ctx<'js>, &mut Frame, Value<'js>) -> Result<R>,
+    read: impl for<'js> FnOnce(&Ctx<'js>, Value<'js>) -> Result<R>,
   ) -> anyhow::Result<R> {
     let id = cx.entity_id();
     let content = (self.rt.slots.borrow())
@@ -307,12 +305,12 @@ impl ScriptView {
       .ok_or_else(|| anyhow!("the content is gone"))?;
     let view = cx.entity().downgrade();
     let slot = key | index.map_or(0, |i| i as u64 + 1);
-    self.render_slot(slot, window, cx, |ctx, _, frame| {
+    self.render_slot(slot, window, cx, |ctx, _| {
       let mut call = Args::new_unsized(ctx.clone());
       args(&mut call)?;
       call.push_arg(ViewCx { view })?;
       let value = content.restore(ctx)?.call_arg::<Value>(call)?;
-      read(ctx, frame, value)
+      read(ctx, value)
     })
   }
 }
@@ -335,10 +333,10 @@ impl Render for ScriptView {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let view = cx.entity().downgrade();
     self
-      .render_slot(0, window, cx, |ctx, instance, frame| {
+      .render_slot(0, window, cx, |ctx, instance| {
         let render: Function = instance.get("render")?;
         let root: Child = render.call((This(instance), ViewCx { view }))?;
-        frame.child(ctx, root)
+        frame().child(ctx, root)
       })
       .unwrap_or_else(|e| format!("render failed: {e}").into_any_element())
   }
@@ -420,7 +418,7 @@ impl ViewHandle {
       });
       return Ok(());
     }
-    entity.update(app(), |view, cx| {
+    entity.update(&mut *app(), |view, cx| {
       let _current = Current::new(cx.entity().downgrade());
       let instance = view.instance.clone().restore(&ctx)?;
       if let Ok(update) = instance.get::<_, Function>("update") {
@@ -484,7 +482,7 @@ impl FocusHandle {
 }
 
 /// The window of the current call, or a JS error
-pub(crate) fn window_or_throw(ctx: &Ctx<'_>) -> Result<&'static mut Window> {
+pub(crate) fn window_or_throw(ctx: &Ctx<'_>) -> Result<Scoped<Window>> {
   try_window().ok_or_else(|| {
     Exception::throw_type(
       ctx,
@@ -498,14 +496,14 @@ impl FocusHandle {
   /// Moves the keyboard onto the element tracking this handle.
   pub fn focus(&self, ctx: Ctx<'_>) -> Result<()> {
     let handle = self.handle(&ctx)?;
-    handle.focus(window_or_throw(&ctx)?, app());
+    handle.focus(&mut *window_or_throw(&ctx)?, &mut app());
     Ok(())
   }
 
   /// Whether the element tracking this handle has the keyboard.
   pub fn is_focused(&self) -> bool {
     match (&self.handle, try_window()) {
-      (Some(handle), Some(window)) => handle.is_focused(window),
+      (Some(handle), Some(window)) => handle.is_focused(&window),
       _ => false,
     }
   }
@@ -560,7 +558,7 @@ impl ViewCx {
 impl ViewCx {
   /// Renders the view again, or the retained child `target`. Throws while rendering.
   pub fn notify<'js>(&self, ctx: Ctx<'js>, target: Opt<Class<'js, ViewHandle>>) -> Result<()> {
-    if try_frame().is_some() {
+    if rendering() {
       return Err(Exception::throw_type(
         &ctx,
         "cx.notify() while rendering would loop",
@@ -595,7 +593,7 @@ impl ViewCx {
           Some(Rc::new(context)),
           false,
           None,
-          app(),
+          &app(),
         )
         .map_err(|e| anyhow!("{}: {e}", b.keystroke))
       })
@@ -618,10 +616,10 @@ impl ViewCx {
 
   /// `"render"`, `"event"` (with a window) or `"task"`
   pub fn phase(&self) -> &'static str {
-    match (try_frame(), try_window()) {
-      (Some(_), _) => "render",
-      (None, Some(_)) => "event",
-      (None, None) => "task",
+    match (rendering(), has_window()) {
+      (true, _) => "render",
+      (false, true) => "event",
+      (false, false) => "task",
     }
   }
 
@@ -673,7 +671,7 @@ impl ViewCx {
 
   /// A focus target to keep on the view and hand to `track_focus`. Not in `render`.
   pub fn focus_handle(&self, ctx: Ctx<'_>) -> Result<FocusHandle> {
-    if try_frame().is_some() {
+    if rendering() {
       return Err(Exception::throw_type(
         &ctx,
         "cx.focus_handle() in render makes a new one every frame",
@@ -692,7 +690,7 @@ impl ViewCx {
     class: Constructor<'js>,
     props: Opt<Value<'js>>,
   ) -> Result<ViewHandle> {
-    if try_frame().is_some() {
+    if rendering() {
       return Err(Exception::throw_type(
         &ctx,
         "cx.new() in render; create child views in init or a handler",

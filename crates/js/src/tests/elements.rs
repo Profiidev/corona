@@ -78,7 +78,7 @@ impl TestState {
 
   pub fn emit(&self, ctx: Ctx<'_>, n: u32) -> Result<()> {
     let entity = self.state.entity(&ctx)?.clone();
-    entity.update(app(), |_, cx| cx.emit(n));
+    entity.update(&mut *app(), |_, cx| cx.emit(n));
     Ok(())
   }
 

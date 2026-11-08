@@ -632,8 +632,8 @@ mod methods {
     /// Draws a `Label`'s text as a password.
     fn masked(value: bool) for ["Input", "Label"] |c, n| {
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
-        let window = window_or_throw(c)?;
-        st.update(app(), |s, cx| s.set_masked(value, window, cx));
+        let mut window = window_or_throw(c)?;
+        st.update(&mut *app(), |s, cx| s.set_masked(value, &mut window, cx));
         return Ok(());
       }
       pick!(c, n, LabelEl => |b: LabelEl| b.with(|l| l.masked(value)))
@@ -652,25 +652,25 @@ mod methods {
     fn value(value: Scalar<'js> as "string") for ["Clipboard", "Input", "Select", "Textarea"] |c, n| {
       if let Some(st) = text_state::<Sel, _>(&**n, |t| &t.state) {
         let id = SharedString::from(Coerced::<String>::from_js(c, value.0)?.0);
-        if st.read(app()).selected_value() != Some(&id) {
-          let window = window_or_throw(c)?;
-          st.update(app(), |s, cx| s.set_selected_value(&id, window, cx));
+        if st.read(&app()).selected_value() != Some(&id) {
+          let mut window = window_or_throw(c)?;
+          st.update(&mut *app(), |s, cx| s.set_selected_value(&id, &mut window, cx));
         }
         return Ok(());
       }
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
         let text = String::from_js(c, value.0)?;
-        if st.read(app()).value() != text.as_str() {
-          let window = window_or_throw(c)?;
-          st.update(app(), |s, cx| s.set_value(text, window, cx));
+        if st.read(&app()).value() != text.as_str() {
+          let mut window = window_or_throw(c)?;
+          st.update(&mut *app(), |s, cx| s.set_value(text, &mut window, cx));
         }
         return Ok(());
       }
       if let Some(st) = text_state::<TextArea, _>(&**n, |t| &t.state) {
         let text = String::from_js(c, value.0)?;
-        if st.read(app()).value() != text.as_str() {
-          let window = window_or_throw(c)?;
-          st.update(app(), |s, cx| s.set_value(text, window, cx));
+        if st.read(&app()).value() != text.as_str() {
+          let mut window = window_or_throw(c)?;
+          st.update(&mut *app(), |s, cx| s.set_value(text, &mut window, cx));
         }
         return Ok(());
       }
@@ -696,13 +696,13 @@ mod methods {
     /// The prompt shown while empty.
     fn placeholder(text: String) for ["Combobox", "DatePicker", "Input", "NumberInput", "Select", "Textarea"] |c, n| {
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
-        let window = window_or_throw(c)?;
-        st.update(app(), |s, cx| s.set_placeholder(text, window, cx));
+        let mut window = window_or_throw(c)?;
+        st.update(&mut *app(), |s, cx| s.set_placeholder(text, &mut window, cx));
         return Ok(());
       }
       if let Some(st) = text_state::<TextArea, _>(&**n, |t| &t.state) {
-        let window = window_or_throw(c)?;
-        st.update(app(), |s, cx| s.set_placeholder(text, window, cx));
+        let mut window = window_or_throw(c)?;
+        st.update(&mut *app(), |s, cx| s.set_placeholder(text, &mut window, cx));
         return Ok(());
       }
       pick!(c, n,
@@ -871,12 +871,12 @@ mod methods {
       };
       // the range needs the text as it is when clicked
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
-        let text = st.read(app()).value().to_string();
+        let text = st.read(&app()).value().to_string();
         return map(c, n, |b: TextIn| b.with(|b| b.on_token_click(click(text))));
       }
       match text_state::<TextArea, _>(&**n, |t| &t.state) {
         Some(st) => {
-          let text = st.read(app()).value().to_string();
+          let text = st.read(&app()).value().to_string();
           map(c, n, |b: TextArea| b.with(|b| b.on_token_click(click(text))))
         }
         None => Err(miss(c, n.kind())),
@@ -898,12 +898,12 @@ mod methods {
         }
       };
       if let Some(st) = text_state::<TextIn, _>(&**n, |t| &t.state) {
-        let text = st.read(app()).value().to_string();
+        let text = st.read(&app()).value().to_string();
         return map(c, n, |b: TextIn| b.with(|b| b.on_token_hover(hover(text))));
       }
       match text_state::<TextArea, _>(&**n, |t| &t.state) {
         Some(st) => {
-          let text = st.read(app()).value().to_string();
+          let text = st.read(&app()).value().to_string();
           map(c, n, |b: TextArea| b.with(|b| b.on_token_hover(hover(text))))
         }
         None => Err(miss(c, n.kind())),
@@ -921,13 +921,13 @@ mod methods {
     /// The number of rows a `Textarea` shows, on its state.
     fn rows(rows: u32) for ["Textarea"] |c, n| {
       let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
-      st.update(app(), |s, cx| s.set_rows(rows as usize, cx));
+      st.update(&mut *app(), |s, cx| s.set_rows(rows as usize, cx));
       Ok(())
     };
     /// Grows a `Textarea` between two row counts, on its state.
     fn auto_grow(min_rows: u32, max_rows: u32) for ["Textarea"] |c, n| {
       let st = text_state::<TextArea, _>(&**n, |t| &t.state).ok_or_else(|| miss(c, n.kind()))?;
-      st.update(app(), |s, cx| s.set_auto_grow(min_rows as usize, max_rows as usize, cx));
+      st.update(&mut *app(), |s, cx| s.set_auto_grow(min_rows as usize, max_rows as usize, cx));
       Ok(())
     };
     /// `handler(event, cx)` on activation.
@@ -1278,10 +1278,10 @@ fn token_renderer<'js, M: gpui_kit::component::input::InputModeKind + 'static>(
           let payload = a.ctx().json_parse(json)?;
           a.push_arg(payload)
         };
-        view.render_content(key, None, window, cx, args, |ctx, frame, value| {
+        view.render_content(key, None, window, cx, args, |ctx, value| {
           match value.is_null() || value.is_undefined() {
             true => Ok(None),
-            false => frame.child(ctx, Child::from_js(ctx, value)?).map(Some),
+            false => crate::element::frame_child(ctx, Child::from_js(ctx, value)?).map(Some),
           }
         })
       });
@@ -1297,15 +1297,22 @@ fn token_renderer<'js, M: gpui_kit::component::input::InputModeKind + 'static>(
 // Retained states
 
 /// Updates a state with the window of the current call, or the active window if called outside one
+/// Bound apart, so the app is not held through the branch that uses it
+fn windows_first() -> Option<gpui_kit::AnyWindowHandle> {
+  app().windows().first().copied()
+}
+
 fn update<T: 'static>(
   ctx: &Ctx<'_>,
   state: &crate::Retained<T>,
   f: impl FnOnce(&mut T, &mut Window, &mut gpui_kit::Context<T>),
 ) -> Result<()> {
-  if let Some(window) = crate::runtime::scope::try_window() {
-    state.entity(ctx)?.update(app(), |s, cx| f(s, window, cx));
+  if let Some(mut window) = crate::runtime::scope::try_window() {
+    state
+      .entity(ctx)?
+      .update(&mut *app(), |s, cx| f(s, &mut window, cx));
     Ok(())
-  } else if let Some(handle) = app().windows().first().copied() {
+  } else if let Some(handle) = windows_first() {
     let entity = state.entity(ctx)?;
     app()
       .update_window(handle, |_, window, cx| {
@@ -1364,9 +1371,9 @@ fn input_state<'js>(
   value: Opt<String>,
 ) -> Result<Class<'js, JsInputState>> {
   let (placeholder, value, _) = text_options(&ctx, first, value)?;
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let state = app().new(|cx| {
-    let state = InputState::new(window, cx).placeholder(placeholder.unwrap_or_default());
+    let state = InputState::new(&mut window, cx).placeholder(placeholder.unwrap_or_default());
     state.default_value(value.unwrap_or_default())
   });
   JsInputState::instance(&ctx, state)
@@ -1376,12 +1383,13 @@ fn input_state<'js>(
 impl JsInputState {
   /// The text with its tokens, ranges in UTF-16 offsets.
   pub fn content<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let content = self.state.entity(&ctx)?.read(app()).content();
+    let content = self.state.entity(&ctx)?.read(&app()).content();
     JsonOut(content_json(&content)).into_js(&ctx)
   }
 
   pub fn tokens<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let state = self.state.entity(&ctx)?.read(app());
+    let cx = app();
+    let state = self.state.entity(&ctx)?.read(&cx);
     let text = state.value();
     let spans = state.tokens().iter().map(|s| span_json(&text, s)).collect();
     JsonOut(Json::Array(spans)).into_js(&ctx)
@@ -1404,7 +1412,7 @@ impl JsInputState {
     range: Object<'js>,
     token: Object<'js>,
   ) -> Result<()> {
-    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let text = self.state.entity(&ctx)?.read(&app()).value().to_string();
     let range = parse_range(&text, &range)?;
     let token = parse_token(&token)?;
     let mut out = Ok(());
@@ -1416,14 +1424,14 @@ impl JsInputState {
 
   /// Selects a UTF-16 range.
   pub fn set_selected_range<'js>(&self, ctx: Ctx<'js>, range: Object<'js>) -> Result<()> {
-    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let text = self.state.entity(&ctx)?.read(&app()).value().to_string();
     let range = parse_range(&text, &range)?;
     update(&ctx, &self.state, |s, _, cx| {
       s.set_selected_range(range, cx)
     })
   }
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
-    Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
+    Ok(self.state.entity(&ctx)?.read(&app()).value().to_string())
   }
 
   /// Replaces the text; emits no `change`.
@@ -1488,9 +1496,9 @@ fn textarea_state<'js>(
     Some(v) if !v.is_object() => (None, Option::from_js(&ctx, v)?, None),
     first => text_options(&ctx, Opt(first), Opt(None))?,
   };
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let state = app().new(|cx| {
-    let state = TextareaState::new(window, cx).placeholder(placeholder.unwrap_or_default());
+    let state = TextareaState::new(&mut window, cx).placeholder(placeholder.unwrap_or_default());
     let state = state.default_value(value.unwrap_or_default());
     match rows {
       Some(rows) => state.rows(rows as usize),
@@ -1504,12 +1512,13 @@ fn textarea_state<'js>(
 impl JsTextareaState {
   /// The text with its tokens, ranges in UTF-16 offsets.
   pub fn content<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let content = self.state.entity(&ctx)?.read(app()).content();
+    let content = self.state.entity(&ctx)?.read(&app()).content();
     JsonOut(content_json(&content)).into_js(&ctx)
   }
 
   pub fn tokens<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let state = self.state.entity(&ctx)?.read(app());
+    let cx = app();
+    let state = self.state.entity(&ctx)?.read(&cx);
     let text = state.value();
     let spans = state.tokens().iter().map(|s| span_json(&text, s)).collect();
     JsonOut(Json::Array(spans)).into_js(&ctx)
@@ -1532,7 +1541,7 @@ impl JsTextareaState {
     range: Object<'js>,
     token: Object<'js>,
   ) -> Result<()> {
-    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let text = self.state.entity(&ctx)?.read(&app()).value().to_string();
     let range = parse_range(&text, &range)?;
     let token = parse_token(&token)?;
     let mut out = Ok(());
@@ -1544,14 +1553,14 @@ impl JsTextareaState {
 
   /// Selects a UTF-16 range.
   pub fn set_selected_range<'js>(&self, ctx: Ctx<'js>, range: Object<'js>) -> Result<()> {
-    let text = self.state.entity(&ctx)?.read(app()).value().to_string();
+    let text = self.state.entity(&ctx)?.read(&app()).value().to_string();
     let range = parse_range(&text, &range)?;
     update(&ctx, &self.state, |s, _, cx| {
       s.set_selected_range(range, cx)
     })
   }
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
-    Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
+    Ok(self.state.entity(&ctx)?.read(&app()).value().to_string())
   }
 
   pub fn set_value<'js>(&self, ctx: Ctx<'js>, value: Value<'js>) -> Result<()> {
@@ -1654,7 +1663,7 @@ fn slider_state<'js>(ctx: Ctx<'js>, first: Opt<Value<'js>>) -> Result<Class<'js,
 impl JsSliderState {
   /// A number, or `[start, end]` for a range.
   pub fn value(&self, ctx: Ctx<'_>) -> Result<SliderVal> {
-    Ok(SliderVal(self.state.entity(&ctx)?.read(app()).value()))
+    Ok(SliderVal(self.state.entity(&ctx)?.read(&app()).value()))
   }
 
   pub fn set_value(&self, ctx: Ctx<'_>, value: SliderVal) -> Result<()> {
@@ -1662,15 +1671,15 @@ impl JsSliderState {
   }
 
   pub fn min_value(&self, ctx: Ctx<'_>) -> Result<f32> {
-    Ok(self.state.entity(&ctx)?.read(app()).min_value())
+    Ok(self.state.entity(&ctx)?.read(&app()).min_value())
   }
 
   pub fn max_value(&self, ctx: Ctx<'_>) -> Result<f32> {
-    Ok(self.state.entity(&ctx)?.read(app()).max_value())
+    Ok(self.state.entity(&ctx)?.read(&app()).max_value())
   }
 
   pub fn step_value(&self, ctx: Ctx<'_>) -> Result<f32> {
-    Ok(self.state.entity(&ctx)?.read(app()).step_value())
+    Ok(self.state.entity(&ctx)?.read(&app()).step_value())
   }
 
   pub fn on<'js>(&mut self, ctx: Ctx<'js>, name: String, f: Function<'js>) -> Result<bool> {
@@ -1715,9 +1724,9 @@ fn otp_state<'js>(
     Some(o) => (o.get::<_, Option<String>>("value")?, o.get("masked")?),
     None => (None, None),
   };
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let state = app().new(|cx| {
-    let state = OtpState::new(length as usize, window, cx).masked(masked.unwrap_or(false));
+    let state = OtpState::new(length as usize, &mut window, cx).masked(masked.unwrap_or(false));
     state.default_value(value.unwrap_or_default())
   });
   JsOtpState::instance(&ctx, state)
@@ -1726,7 +1735,7 @@ fn otp_state<'js>(
 #[rquickjs::methods]
 impl JsOtpState {
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
-    Ok(self.state.entity(&ctx)?.read(app()).value().to_string())
+    Ok(self.state.entity(&ctx)?.read(&app()).value().to_string())
   }
 
   pub fn set_value(&self, ctx: Ctx<'_>, value: String) -> Result<()> {
@@ -1734,11 +1743,11 @@ impl JsOtpState {
   }
 
   pub fn len(&self, ctx: Ctx<'_>) -> Result<u32> {
-    Ok(self.state.entity(&ctx)?.read(app()).len() as u32)
+    Ok(self.state.entity(&ctx)?.read(&app()).len() as u32)
   }
 
   pub fn is_masked(&self, ctx: Ctx<'_>) -> Result<bool> {
-    Ok(self.state.entity(&ctx)?.read(app()).is_masked())
+    Ok(self.state.entity(&ctx)?.read(&app()).is_masked())
   }
 
   pub fn set_masked(&self, ctx: Ctx<'_>, masked: bool) -> Result<()> {
@@ -1774,8 +1783,8 @@ fn hex(color: Option<Hsla>) -> Option<String> {
 state!(JsColorPickerState, ColorPickerState, "ColorPickerState");
 
 fn color_picker_state(ctx: Ctx<'_>) -> Result<Class<'_, JsColorPickerState>> {
-  let window = window_or_throw(&ctx)?;
-  let state = app().new(|cx| ColorPickerState::new(window, cx));
+  let mut window = window_or_throw(&ctx)?;
+  let state = app().new(|cx| ColorPickerState::new(&mut window, cx));
   JsColorPickerState::instance(&ctx, state)
 }
 
@@ -1783,7 +1792,7 @@ fn color_picker_state(ctx: Ctx<'_>) -> Result<Class<'_, JsColorPickerState>> {
 impl JsColorPickerState {
   /// The color as `#rrggbb[aa]`.
   pub fn value(&self, ctx: Ctx<'_>) -> Result<Option<String>> {
-    Ok(hex(self.state.entity(&ctx)?.read(app()).value()))
+    Ok(hex(self.state.entity(&ctx)?.read(&app()).value()))
   }
 
   pub fn set_value(&self, ctx: Ctx<'_>, color: Option<Color>) -> Result<()> {
@@ -1808,8 +1817,8 @@ impl JsColorPickerState {
 state!(JsDatePickerState, DatePickerState, "DatePickerState");
 
 fn date_picker_state(ctx: Ctx<'_>) -> Result<Class<'_, JsDatePickerState>> {
-  let window = window_or_throw(&ctx)?;
-  let state = app().new(|cx| DatePickerState::new(window, cx));
+  let mut window = window_or_throw(&ctx)?;
+  let state = app().new(|cx| DatePickerState::new(&mut window, cx));
   JsDatePickerState::instance(&ctx, state)
 }
 
@@ -1819,7 +1828,7 @@ const DATE: &str = "%Y-%m-%d";
 impl JsDatePickerState {
   /// The picked date as `YYYY-MM-DD`.
   pub fn value(&self, ctx: Ctx<'_>) -> Result<Option<String>> {
-    let date = self.state.entity(&ctx)?.read(app()).date_time();
+    let date = self.state.entity(&ctx)?.read(&app()).date_time();
     Ok(date.format(DATE).map(Into::into))
   }
 
@@ -1838,8 +1847,8 @@ impl JsDatePickerState {
 state!(JsTimeFieldState, TimeFieldState, "TimeFieldState");
 
 fn time_field_state(ctx: Ctx<'_>) -> Result<Class<'_, JsTimeFieldState>> {
-  let window = window_or_throw(&ctx)?;
-  let state = app().new(|cx| TimeFieldState::new(window, cx));
+  let mut window = window_or_throw(&ctx)?;
+  let state = app().new(|cx| TimeFieldState::new(&mut window, cx));
   JsTimeFieldState::instance(&ctx, state)
 }
 
@@ -1847,7 +1856,7 @@ fn time_field_state(ctx: Ctx<'_>) -> Result<Class<'_, JsTimeFieldState>> {
 impl JsTimeFieldState {
   /// The time as `HH:MM:SS`.
   pub fn value(&self, ctx: Ctx<'_>) -> Result<String> {
-    Ok(self.state.entity(&ctx)?.read(app()).time().to_string())
+    Ok(self.state.entity(&ctx)?.read(&app()).time().to_string())
   }
 
   pub fn on<'js>(&mut self, ctx: Ctx<'js>, name: String, f: Function<'js>) -> Result<bool> {
@@ -1897,10 +1906,10 @@ impl SelectItem for Item {
           let row = a.ctx().json_parse(json)?;
           a.push_arg(row)
         };
-        view.render_content(*key, None, window, cx, args, |ctx, frame, value| {
+        view.render_content(*key, None, window, cx, args, |ctx, value| {
           match value.is_null() || value.is_undefined() {
             true => Ok(None),
-            false => frame.child(ctx, Child::from_js(ctx, value)?).map(Some),
+            false => crate::element::frame_child(ctx, Child::from_js(ctx, value)?).map(Some),
           }
         })
       });
@@ -1954,14 +1963,15 @@ fn select<'js>(
   let rt = runtime(&ctx)?;
   let key = rt.slot(view.entity_id(), render_row, true);
   let items = items(&ctx, rows, Some((view.clone(), key)))?;
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   let state: Entity<SelectState<Items>> =
     rt.keyed(view.entity_id(), format!("Select:{id}"), || {
-      app().new(|cx| SelectState::new(SearchableVec::new(Vec::new()), None, window, cx))
+      app().new(|cx| SelectState::new(SearchableVec::new(Vec::new()), None, &mut window, cx))
     });
-  state.update(app(), |s, cx| {
-    s.set_items(SearchableVec::new(items), window, cx)
+  state.update(&mut *app(), |s, cx| {
+    s.set_items(SearchableVec::new(items), &mut window, cx)
   });
+  drop(window);
   on_entity(
     &ctx,
     &state,
@@ -1995,7 +2005,7 @@ fn combobox<'js>(
   let view = frame_or_throw(&ctx)?.view.entity_id();
   let rt = runtime(&ctx)?;
   let items = items(&ctx, rows, None)?;
-  let window = window_or_throw(&ctx)?;
+  let mut window = window_or_throw(&ctx)?;
   // a state is searchable or not from the start: one per setting, the last render's wins
   let searchable = rt.keyed(view, format!("Combobox-searchable:{id}"), || {
     Rc::new(Cell::new(true))
@@ -2003,13 +2013,14 @@ fn combobox<'js>(
   let on = searchable.get();
   let state: Entity<ComboboxState<Items>> = rt.keyed(view, format!("Combobox:{id}:{on}"), || {
     app().new(|cx| {
-      let state = ComboboxState::new(SearchableVec::new(Vec::new()), Vec::new(), window, cx);
+      let state = ComboboxState::new(SearchableVec::new(Vec::new()), Vec::new(), &mut window, cx);
       state.searchable(on)
     })
   });
-  state.update(app(), |s, cx| {
-    s.set_items(SearchableVec::new(items), window, cx)
+  state.update(&mut *app(), |s, cx| {
+    s.set_items(SearchableVec::new(items), &mut window, cx)
   });
+  drop(window);
   let first = |v: &Vec<SharedString>| v.first().map(|v| v.to_string()).unwrap_or_default();
   on_entity(
     &ctx,
