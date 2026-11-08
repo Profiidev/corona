@@ -1931,7 +1931,6 @@ dependencies = [
  "anyhow",
  "corona_compositor",
  "corona_config",
- "corona_power",
  "corona_surface",
  "corona_utils",
  "flume",

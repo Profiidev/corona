@@ -2,7 +2,8 @@ use std::{collections::HashMap, os::fd::OwnedFd, sync::Arc, thread, time::Durati
 
 use anyhow::{Context, Result};
 use corona_utils::entity::WriteChangedExt;
-use gpui_kit::{App, AppContext, BorrowAppContext, Entity, Global, Task};
+use corona_config::IdleAction;
+use gpui_kit::{App, AppContext, BorrowAppContext, Entity, EventEmitter, Global, Task};
 use rustix::{
   event::{EventfdFlags, PollFd, PollFlags, eventfd, poll},
   io::Errno,
@@ -18,7 +19,6 @@ use wayland_protocols::ext::idle_notify::v1::client::{
 };
 
 mod behavior;
-pub use behavior::SessionHook;
 mod screensaver;
 
 /// Watches input and runs the `[idle]` behaviors and serves the D-Bus idle inhibits
@@ -71,8 +71,23 @@ pub(crate) fn channel() -> Result<(Timeouts, Inbox)> {
   Ok((timeouts, Inbox { rx, wake }))
 }
 
+/// What the idle behaviors report, see [`Idle::events`]
+#[derive(Clone, Debug, PartialEq)]
+pub enum IdleEvent {
+  /// The behavior `name` went idle and its `action` is a lock or power one; the screen off
+  /// and command actions run in here
+  Fired { name: String, action: IdleAction },
+}
+
+/// Emits the [`IdleEvent`]s
+pub struct IdleEvents;
+
+impl EventEmitter<IdleEvent> for IdleEvents {}
+
 /// The idle watcher; [`set_timeouts`](Idle::set_timeouts) says what to watch
 pub struct Idle {
+  /// Subscribe to learn which lock or power action is due
+  pub events: Entity<IdleEvents>,
   /// The user keeps the session awake, changed by [`set_stay_awake`](Idle::set_stay_awake)
   pub stay_awake: Entity<bool>,
   /// Nothing is watched: staying awake, or an app holds an
@@ -131,6 +146,7 @@ pub fn start(
   })
   .detach();
   let idle = Idle {
+    events: cx.new(|_| IdleEvents),
     stay_awake: cx.new(|_| false),
     inhibited: cx.new(|_| false),
     timeouts,
