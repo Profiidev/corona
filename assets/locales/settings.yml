@@ -898,20 +898,6 @@ app:
         description:
           en: 'Days; text is kept until deleted.'
           de: 'Tage; Text bleibt, bis er gelöscht wird.'
-      deepl_key:
-        title:
-          en: 'DeepL key'
-          de: 'DeepL-Schlüssel'
-        description:
-          en: 'API key for Translate.'
-          de: 'API-Schlüssel für Übersetzen.'
-      deepl_key_file:
-        title:
-          en: 'DeepL key file'
-          de: 'DeepL-Schlüsseldatei'
-        description:
-          en: 'A file holding the key, for secret managers; wins over the key.'
-          de: 'Datei mit dem Schlüssel, für Secret-Manager; hat Vorrang vor dem Schlüssel.'
       translate_target:
         title:
           en: 'Translate to'

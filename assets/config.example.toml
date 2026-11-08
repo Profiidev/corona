@@ -234,9 +234,6 @@ image_max_mb = 10.0
 image_retention_days = 30
 
 [launcher.translate]
-# deepl_key = "..."
-# A file holding the key wins over deepl_key.
-# deepl_key_file = "/run/secrets/deepl"
 target = "EN"
 
 [taskbar]

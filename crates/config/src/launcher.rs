@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -202,10 +202,6 @@ impl Default for ClipboardConfig {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct TranslateConfig {
-  /// DeepL API key
-  pub deepl_key: Option<String>,
-  /// File holding the DeepL API key, for secret managers; wins over `deepl_key`
-  pub deepl_key_file: Option<PathBuf>,
   /// Language code translations go to
   pub target: String,
 }
@@ -213,8 +209,6 @@ pub struct TranslateConfig {
 impl Default for TranslateConfig {
   fn default() -> Self {
     Self {
-      deepl_key: None,
-      deepl_key_file: None,
       target: "EN".to_string(),
     }
   }
