@@ -260,7 +260,7 @@ impl Render for Preview {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ui::taskbar::tests::window;
+  use crate::desktop::taskbar::tests::window;
 
   #[test]
   fn width_follows_aspect_within_limits() {

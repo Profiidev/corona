@@ -5,11 +5,9 @@ use corona_launcher::{Action, Icon, Meta, Outcome, kit::Group, simple};
 use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
-use crate::commands::dpms::{Dpms, Power};
+use crate::ipc::windows::dpms::{Dpms, Power};
 
-mod monitors;
-mod windows;
-
+use super::{monitors, windows};
 pub(crate) fn register(cx: &mut App) {
   windows::register(cx);
   windows::register_actions(cx);

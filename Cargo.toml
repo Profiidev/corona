@@ -33,8 +33,7 @@ members = [
   "crates/udisks",
   "crates/osk",
   "crates/settings",
-  "crates/js",
-  "crates/windows"
+  "crates/js"
 ]
 
 [workspace.package]
@@ -79,7 +78,6 @@ corona_tray = { path = "crates/tray" }
 corona_udisks = { path = "crates/udisks" }
 corona_utils = { path = "crates/utils" }
 corona_weather = { path = "crates/weather" }
-corona_windows = { path = "crates/windows" }
 
 # First-party / Corona crates
 corona-freedesktop-icons = "0.1.0"

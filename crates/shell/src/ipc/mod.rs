@@ -16,8 +16,10 @@ pub mod network;
 pub mod notifications;
 pub mod sysinfo;
 pub mod tray;
+pub mod windows;
 
 pub(crate) fn register_all(cx: &mut App) {
+  windows::register(cx);
   auth::register(cx);
   bluetooth::register(cx);
   capture::register(cx);

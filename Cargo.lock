@@ -1791,7 +1791,6 @@ dependencies = [
  "corona_shell",
  "corona_surface",
  "corona_utils",
- "corona_windows",
  "gpui-kit",
  "serde_json",
  "tempfile",
@@ -2319,7 +2318,6 @@ dependencies = [
  "corona_udisks",
  "corona_utils",
  "corona_weather",
- "corona_windows",
  "futures",
  "futures-lite",
  "gpui-kit",
@@ -2445,30 +2443,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
-]
-
-[[package]]
-name = "corona_windows"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "clap",
- "clap_complete",
- "corona_capture",
- "corona_components",
- "corona_compositor",
- "corona_config",
- "corona_ipc",
- "corona_launcher",
- "corona_settings",
- "corona_surface",
- "corona_utils",
- "gpui-kit",
- "rust-i18n",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
 ]
 
 [[package]]

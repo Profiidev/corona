@@ -4,7 +4,7 @@ use clap::ValueEnum;
 use gpui_kit::{App, assets::IconName};
 use serde::{Deserialize, Serialize};
 
-use crate::ui::osd::{LockKeysOsd, show};
+use crate::osd::keys::{LockKeysOsd, show};
 use corona_surface::osd::ToggleOsd;
 use rust_i18n::t;
 

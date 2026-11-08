@@ -16,8 +16,10 @@ mod printing;
 mod sysinfo;
 mod tray;
 pub(crate) mod weather;
+pub(crate) mod windows;
 
 pub(crate) fn register_all(cx: &mut App) {
+  windows::register(cx);
   sysinfo::register(cx);
   tray::register(cx);
   weather::register(cx);
@@ -53,8 +55,8 @@ mod tests {
         .register::<crate::settings::capture::ScreenshotSettings>()
         .register::<crate::settings::osk::OskSettings>()
         .register::<crate::settings::auth::LockscreenSettings>()
-        .register::<corona_windows::settings::TaskbarSettings>()
-        .register::<corona_windows::settings::WindowSwitcherSettings>()
+        .register::<crate::settings::windows::TaskbarSettings>()
+        .register::<crate::settings::windows::WindowSwitcherSettings>()
         .register::<crate::settings::idle::IdleSettings>();
     });
   }

@@ -31,7 +31,7 @@ use gpui_kit::{
 };
 use tracing::error;
 
-use crate::ui::taskbar::{menu::TaskbarMenu, preview::Preview};
+use crate::desktop::taskbar::{menu::TaskbarMenu, preview::Preview};
 
 const NAMESPACE: &str = "corona_taskbar";
 const PADDING: f32 = 10.;

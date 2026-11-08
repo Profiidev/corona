@@ -6,11 +6,13 @@ pub(crate) mod audio;
 mod bluetooth;
 mod brightness;
 mod idle;
+pub(crate) mod keys;
 mod network;
 mod notifications;
 mod power;
 
 pub(crate) fn register_all(cx: &mut App) {
+  keys::init(cx);
   audio::init(cx);
   bluetooth::init(cx);
   brightness::init(cx);

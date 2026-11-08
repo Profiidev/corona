@@ -4,7 +4,7 @@ use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::{App, Modifiers};
 use serde::{Deserialize, Serialize};
 
-use crate::ui::switcher::SwitcherState;
+use crate::desktop::switcher::SwitcherState;
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Cycle>();

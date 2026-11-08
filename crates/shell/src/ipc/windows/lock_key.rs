@@ -2,7 +2,7 @@ use anyhow::Result;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
 
-pub use crate::ui::osd::lock_keys::LockKey;
+pub use crate::osd::keys::lock_keys::LockKey;
 
 pub(crate) fn register(cx: &mut App) {
   cx.ipc_mut().register::<Pressed>();
@@ -19,7 +19,7 @@ impl IpcCommand for Pressed {
   type Response = ();
 
   fn handle(key: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    crate::ui::osd::lock_keys::pressed(key, cx);
+    crate::osd::keys::lock_keys::pressed(key, cx);
     Ok(())
   }
 }

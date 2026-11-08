@@ -18,6 +18,7 @@ mod notifications;
 mod pipewire;
 mod power;
 mod schema;
+mod windows;
 mod session;
 mod sysinfo;
 mod tray;

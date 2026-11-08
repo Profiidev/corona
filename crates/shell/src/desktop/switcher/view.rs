@@ -14,8 +14,8 @@ use gpui_kit::{
 use tracing::error;
 
 use crate::{
-  commands::switcher::{Mode, Modifier, Options},
-  ui::switcher::SwitcherState,
+  ipc::windows::switcher::{Mode, Modifier, Options},
+  desktop::switcher::SwitcherState,
 };
 use corona_surface::overlay::OverlayState;
 use rust_i18n::t;
@@ -471,7 +471,7 @@ impl Render for Switcher {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ui::taskbar::tests::window;
+  use crate::desktop::taskbar::tests::window;
   use corona_surface::testing::{FakeCompositor, setup, workspace};
   use gpui_kit::{
     self as gpui, AnyWindowHandle, TestAppContext, WindowHandle, WindowOptions, base::Root,

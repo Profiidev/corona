@@ -6,17 +6,17 @@ pub enum IpcCommands {
   /// Window commands: toggle, move, layout, close all, show desktop, switcher
   Window {
     #[command(subcommand)]
-    command: corona_windows::cli::WindowCommands,
+    command: crate::windows::WindowCommands,
   },
   /// Monitor commands: focus, configure, dpms
   Monitor {
     #[command(subcommand)]
-    command: corona_windows::cli::MonitorCommands,
+    command: crate::windows::MonitorCommands,
   },
   /// Keyboard layouts and lock keys
   Keyboard {
     #[command(subcommand)]
-    command: corona_windows::cli::KeyboardCommands,
+    command: crate::windows::KeyboardCommands,
   },
   /// Audio devices, app streams, output and microphone volume
   Audio {
@@ -165,7 +165,7 @@ pub(crate) mod tests {
   use corona_settings::commands::SettingsWindow;
   use corona_surface::commands::{ClosePanel, OpenPage, OpenPanel, TogglePanel};
   use corona_surface::theme::{SetMode, SetTheme};
-  use corona_windows::commands::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
+  use corona_shell::ipc::windows::{dpms::Dpms, lock_key::Pressed, switcher::Cycle};
   use serde_json::{Value, json};
 
   use super::*;
@@ -273,14 +273,14 @@ pub(crate) mod tests {
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
       (&["control-center", "audio"], json!(null), OpenPage::COMMAND, json!("audio")),
-      (&["window", "toggle", "floating"], json!(null), corona_windows::commands::window::Toggle::COMMAND, json!(["Floating", null])),
-      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_windows::commands::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
-      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_windows::commands::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
-      (&["window", "close-all", "--keep-focused"], json!(2), corona_windows::commands::window::CloseAll::COMMAND, json!(true)),
-      (&["monitor", "focus", "next"], json!(null), corona_windows::commands::window::FocusMonitor::COMMAND, json!("next")),
-      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_windows::commands::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
-      (&["window", "show-desktop"], json!(null), corona_windows::commands::window::ShowDesktop::COMMAND, json!(null)),
-      (&["keyboard", "layout", "next"], json!(["de", "us"]), corona_windows::commands::window::KeyboardLayout::COMMAND, json!("next")),
+      (&["window", "toggle", "floating"], json!(null), corona_shell::ipc::windows::window::Toggle::COMMAND, json!(["Floating", null])),
+      (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_shell::ipc::windows::window::Place::COMMAND, json!(["LeftThird", "0xa"])),
+      (&["window", "move-to-workspace", "3", "--follow"], json!(null), corona_shell::ipc::windows::window::MoveToWorkspace::COMMAND, json!({ "address": null, "workspace": "3", "follow": true })),
+      (&["window", "close-all", "--keep-focused"], json!(2), corona_shell::ipc::windows::window::CloseAll::COMMAND, json!(true)),
+      (&["monitor", "focus", "next"], json!(null), corona_shell::ipc::windows::window::FocusMonitor::COMMAND, json!("next")),
+      (&["monitor", "configure", "DP-1", "mirror", "eDP-1"], json!(null), corona_shell::ipc::windows::monitor::Configure::COMMAND, json!(["DP-1", "Mirror", "eDP-1"])),
+      (&["window", "show-desktop"], json!(null), corona_shell::ipc::windows::window::ShowDesktop::COMMAND, json!(null)),
+      (&["keyboard", "layout", "next"], json!(["de", "us"]), corona_shell::ipc::windows::window::KeyboardLayout::COMMAND, json!("next")),
       (&["audio", "default", "outputs", "Speakers"], json!(null), corona_shell::ipc::pipewire::audio::SetDefault::COMMAND, json!(["Outputs", "Speakers"])),
       (&["audio", "stream", "firefox", "40"], json!(null), corona_shell::ipc::pipewire::audio::StreamVolume::COMMAND, json!(["firefox", { "Set": 0.4 }])),
       (&["audio", "move", "firefox", "Headphones"], json!(null), corona_shell::ipc::pipewire::audio::MoveStream::COMMAND, json!(["firefox", "Headphones"])),

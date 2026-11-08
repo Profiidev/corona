@@ -13,8 +13,8 @@ use gpui_kit::{App, assets::IconName};
 use rust_i18n::t;
 
 use crate::{
-  commands::monitor::{Change, Configure},
-  ui::displays::mirror_source,
+  ipc::windows::monitor::{Change, Configure},
+  panel::displays::mirror_source,
 };
 
 fn row(monitor: &Monitor, all: &[Monitor]) -> Rc<dyn corona_launcher::Command> {

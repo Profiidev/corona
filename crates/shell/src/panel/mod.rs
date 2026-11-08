@@ -9,6 +9,7 @@ pub(crate) mod brightness;
 pub(crate) mod calendar;
 pub(crate) mod clipboard;
 pub(crate) mod disks;
+pub(crate) mod displays;
 pub(crate) mod hotspot;
 pub(crate) mod media;
 pub(crate) mod network;
@@ -22,6 +23,7 @@ pub(crate) fn register_all(cx: &mut App) {
   disks::init(cx);
   // the order the pages are listed in
   cx.control_center_mut()
+    .register::<displays::DisplaysPanel>()
     .register::<notifications::NotificationsPanel>()
     .register::<audio::AudioPanel>()
     .register::<clipboard::ClipboardPanel>()

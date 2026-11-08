@@ -7,7 +7,7 @@ use corona_ipc::{
   cli::{described, done, plain, print_lines},
 };
 
-use crate::commands::{
+use corona_shell::ipc::windows::{
   dpms::{Dpms, Power},
   lock_key::{LockKey, Pressed},
   monitor::{Change, Configure},

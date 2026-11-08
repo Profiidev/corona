@@ -1,7 +1,7 @@
 use corona_compositor::CompositorExt;
 use gpui_kit::{App, assets::IconName};
 
-use crate::ui::osd::{KeyboardLayoutOsd, show};
+use crate::osd::keys::{KeyboardLayoutOsd, show};
 use corona_surface::osd::{ToggleOsd, on_change};
 use rust_i18n::t;
 

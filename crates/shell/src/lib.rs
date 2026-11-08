@@ -9,6 +9,7 @@ use rust_i18n::t;
 rust_i18n::i18n!("../../assets/locales", fallback = "en");
 
 mod bar;
+mod desktop;
 pub(crate) mod dashboard;
 pub mod ipc;
 mod launcher;
@@ -99,6 +100,7 @@ fn register_ui(cx: &mut App) {
   panel::register_all(cx);
   dashboard::register_all(cx);
   osd::register_all(cx);
+  desktop::register_all(cx);
   overlay::register_all(cx);
   launcher::register_all(cx);
   settings::register_all(cx);
@@ -122,7 +124,6 @@ async fn init_dbus(cx: &mut App) -> Result<()> {
   }
   corona_clipboard::init(cx, &buses);
   corona_osk::init(cx, &buses);
-  corona_windows::init(cx, &buses);
   corona_sysinfo::init(cx, &buses)?;
   corona_bluez::init(cx, &buses).await?;
   corona_network_manager::init(cx, &buses).await?;

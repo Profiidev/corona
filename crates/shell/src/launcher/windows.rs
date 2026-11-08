@@ -227,7 +227,7 @@ pub(crate) fn register(cx: &mut App) {
 
 /// The focused window's toggles, layouts, moves; close all; show desktop; monitors; layouts
 pub(crate) fn register_actions(cx: &mut App) {
-  use crate::commands::window::{
+  use crate::ipc::windows::window::{
     CloseAll, FocusMonitor, KeyboardLayout, Layout, MoveRequest, MoveToMonitor, MoveToWorkspace,
     Place, ShowDesktop, Toggle, WindowToggle,
   };

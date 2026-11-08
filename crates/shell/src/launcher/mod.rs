@@ -6,6 +6,7 @@ mod auth;
 mod bluetooth;
 mod capture;
 mod disks;
+mod displays;
 mod idle;
 mod brightness;
 pub(crate) mod clipboard;
@@ -18,8 +19,11 @@ mod processes;
 mod sysinfo;
 mod tray;
 mod weather;
+mod windows;
+mod monitors;
 
 pub(crate) fn register_all(cx: &mut App) {
+  displays::register(cx);
   auth::register(cx);
   bluetooth::register(cx);
   capture::register(cx);
