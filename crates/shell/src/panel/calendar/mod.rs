@@ -28,7 +28,7 @@ pub struct CalendarPanel {
 
 impl ControlCenterPage for CalendarPanel {
   const ID: &'static str = "calendar";
-  const HEIGHT: f32 = 432.0;
+  const HEIGHT: f32 = 427.0;
 
   fn icon() -> gpui_kit::assets::IconName {
     gpui_kit::assets::IconName::CalendarDays
