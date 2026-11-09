@@ -18,6 +18,7 @@
   git,
   dconf,
   aws-lc,
+  zstd,
 }:
 
 let
@@ -76,6 +77,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     libgbm
     linux-pam
     aws-lc
+    zstd
   ];
 
   postPatch = ''
