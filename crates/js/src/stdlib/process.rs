@@ -77,6 +77,9 @@ fn options(ctx: &Ctx<'_>, options: Option<Object<'_>>, spawn: bool) -> Res<Optio
           if !caps.may_pass_env(&name) {
             return Err(CapabilityError::EnvDenied(name).into());
           }
+          if !caps.may_set_env(&name) {
+            return Err(CapabilityError::EnvHostOnly(name).into());
+          }
           out.env.push((name, value.to_string().map_err(js)?));
         }
       }

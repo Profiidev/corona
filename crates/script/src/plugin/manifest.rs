@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context as _, Result, ensure};
 use corona_config::plugins::is_flat_name;
-use corona_js::{Capabilities, ExecuteGrant, HttpRequestGrant, ScriptModule};
+use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV, HttpRequestGrant, ScriptModule};
 use corona_launcher::{ArgSpec, Section, icon_by_name};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
@@ -979,13 +979,16 @@ const DENIED_ENV: &[&str] = &[
 
 /// Loader and interpreter variables would run the plugin's own code in any
 /// granted command, the plugin sets their values. `PATH` passes the host's
-/// only, the runtime refuses one a script sets.
+/// only, the runtime refuses one a script sets. The same goes for home and the
+/// XDG base directories (`HOST_ONLY_ENV`): children get the user's, never the
+/// plugin's.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
   let denied = |name: &&String| {
-    (name.ends_with("PATH") && *name != "PATH")
-      || name.contains('=')
-      || DENIED_ENV.iter().any(|d| name.starts_with(d))
+    !HOST_ONLY_ENV.contains(&name.as_str())
+      && ((name.ends_with("PATH") && *name != "PATH")
+        || name.contains('=')
+        || DENIED_ENV.iter().any(|d| name.starts_with(d)))
   };
   if let Some(name) = names.iter().find(denied) {
     return Err(D::Error::custom(format!(
@@ -1006,7 +1009,7 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use corona_js::{Capabilities, ExecuteGrant};
+  use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV};
   use serde_json::{Map, json};
 
   use super::{ManifestFile, PluginManifest, expand};
@@ -1347,9 +1350,9 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       "BASH_ENV",
       "PERL5OPT",
       "DYLD_INSERT_LIBRARIES",
-      "HOME",
-      "XDG_CONFIG_HOME",
+      "XDG_CONFIG_DIRS",
       "XDG_DATA_DIRS",
+      "HOME_X",
       "EDITOR",
       "OPENSSL_CONF",
       "SSL_CERT_FILE",
@@ -1359,6 +1362,23 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");
     }
+  }
+
+  #[test]
+  fn home_and_the_xdg_base_dirs_pass_the_hosts() {
+    let names = HOST_ONLY_ENV
+      .iter()
+      .map(|n| format!("\"{n}\""))
+      .collect::<Vec<_>>()
+      .join(", ");
+    let capabilities = grant(&format!("process = {{ env = [{names}] }}"));
+    for name in HOST_ONLY_ENV {
+      assert!(capabilities.may_pass_env(name), "{name}");
+      // a script cannot give them a value of its own
+      assert!(!capabilities.may_set_env(name), "{name}");
+    }
+    let capabilities = grant(r#"process = { env = ["PATH", "LANG"] }"#);
+    assert!(capabilities.may_set_env("LANG") && capabilities.may_set_env("PATH"));
   }
 
   #[test]
