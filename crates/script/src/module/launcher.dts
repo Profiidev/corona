@@ -1,0 +1,122 @@
+  type Tone = "ok" | "off" | "warn" | "err";
+
+  type Icon =
+    | { name: string }
+    | { app: string[] }
+    | { image: string }
+    | { glyph: string }
+    | { swatch: string };
+
+  type Accessory =
+    | { tag: { text: string; tone?: Tone } }
+    | { text: string }
+    | { icon: string }
+    | { progress: number };
+
+  /** What a handler returns: the first key set counts. Nothing closes the launcher. */
+  type Reply =
+    | void
+    | { push: Page }
+    | { pop: true }
+    | { keepOpen: true }
+    | { toast: { title: string; message?: string; kind?: "success" | "failure" | "progress" } }
+    | { copy: { text: string } | { image: string; mime?: string } }
+    | { paste: { text: string } | { image: string; mime?: string } }
+    | { hud: { text: string; icon?: string } };
+
+  type Handler<A = unknown> = (args: A) => Reply | Promise<Reply>;
+
+  interface Action {
+    title: string;
+    run: Handler<{}>;
+    icon?: string;
+    /** Like `ctrl-enter`. */
+    shortcut?: string;
+    destructive?: boolean;
+    /** Stays open after running. */
+    keepOpen?: boolean;
+    confirm?: { title: string; message: string; button: string; skippable?: boolean };
+  }
+
+  interface Row {
+    /** Stable across updates. */
+    id: string;
+    title: string;
+    subtitle?: string;
+    /** Found by these after the title, not shown. */
+    keywords?: string[];
+    icon?: Icon;
+    accessories?: Accessory[];
+    /** The preview pane; shown for lists with `preview: true`. */
+    detail?: {
+      text?: string;
+      code?: string;
+      image?: string;
+      metadata?: [string, string][];
+      tags?: [string, Tone | null][];
+    };
+    /** The first one is Enter, the rest go to the action panel. */
+    actions: Action[];
+  }
+
+  interface Page {
+    /** Frees the page's handlers and rows. */
+    close(): void;
+  }
+
+  interface ListPage extends Page {
+    /** Replaces the rows; the launcher filters them by the typed query. */
+    setRows(rows: Row[]): void;
+    setLoading(loading: boolean): void;
+    /** The plugin ranks and filters: `fn` answers each typed query with rows. */
+    onQuery(fn: (query: string) => Row[] | Promise<Row[]>): void;
+    /** Runs when another option of the filter dropdown is picked. */
+    onFilter(fn: (index: number) => Row[] | void | Promise<Row[] | void>): void;
+  }
+
+  export function list(spec: {
+    title: string;
+    placeholder?: string;
+    rows?: Row[];
+    /** Cells instead of rows. */
+    grid?: { columns: number; cell: number; titles: boolean };
+    /** Has a preview pane, toggled with Ctrl+P. */
+    preview?: boolean;
+    /** A dropdown in the search bar. */
+    filter?: { label: string; options: { id: string; title: string }[] };
+    /** Shown when no rows match. */
+    empty?: string;
+    /** The query the page opens with. */
+    query?: string;
+  }): ListPage;
+
+  export function form(spec: {
+    title: string;
+    fields: {
+      id: string;
+      label: string;
+      kind?: "text" | "password" | "textarea" | "dropdown";
+      placeholder?: string;
+      value?: string;
+      required?: boolean;
+      options?: (string | { id: string; title: string })[];
+    }[];
+    submitLabel?: string;
+    message?: string;
+    /** Gets the field values by id. */
+    onSubmit: Handler<Record<string, string>>;
+    onCancel?: Handler<{}>;
+  }): Page;
+
+  export function detail(spec: {
+    title: string;
+    markdown: string;
+    metadata?: [string, string][];
+    actions?: Action[];
+  }): Page;
+
+  /**
+   * Answers the `[commands.<name>]` of `plugin.toml`. The handler gets the typed arguments in
+   * order, and returns what the launcher does next, like `{ push: page }`. The service only.
+   */
+  export function onRun(name: string, handler: Handler<(string | number | null)[]>): void;

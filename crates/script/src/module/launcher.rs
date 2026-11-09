@@ -44,7 +44,7 @@ fn build(port: Port, dir: PathBuf, m: &mut ModuleBuilder) {
     dir,
     started: Cell::new(false),
   });
-  m.declarations(include_str!("launcher.d.ts"));
+  m.declarations(include_str!("launcher.dts"));
   let this = module.clone();
   m.value("onRun", move |ctx| on_run(ctx, &this));
   for kind in ["list", "form", "detail"] {
