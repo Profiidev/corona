@@ -17,6 +17,7 @@
   makeWrapper,
   git,
   dconf,
+  aws-lc,
 }:
 
 let
@@ -74,6 +75,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     alsa-lib
     libgbm
     linux-pam
+    aws-lc
   ];
 
   postPatch = ''
