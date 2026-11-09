@@ -86,15 +86,6 @@ impl ModuleBuilder {
     self.export(name, export)
   }
 
-  /// Exports any JS value under `name`, typed by [`declarations`](Self::declarations)
-  pub fn value(
-    &mut self,
-    name: &str,
-    make: impl for<'js> Fn(&Ctx<'js>) -> Result<Value<'js>> + 'static,
-  ) -> &mut Self {
-    self.export(name.into(), make)
-  }
-
   fn export(
     &mut self,
     name: String,

@@ -9,76 +9,32 @@ use corona_launcher::{
   View, command::Scope, detail_row, icon_by_name, kit::Notify,
 };
 use gpui_kit::{App, SharedString, Subscription, Window};
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{
   Port,
-  page::{AccessorySpec, ActionSpec, DetailSpec, FieldSpec, IconSpec, Page, Row},
+  page::Page,
+  spec::{self, PageSpec, Row},
 };
 
-/// What a handler answers with: the first key that is set; none closes
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-struct Reply {
-  push: Option<PageRef>,
-  pop: bool,
-  keep_open: bool,
-  toast: Option<ToastSpec>,
-  copy: Option<ClipSpec>,
-  paste: Option<ClipSpec>,
-  hud: Option<HudSpec>,
-}
-
-/// A page handle's `id`
-#[derive(Deserialize)]
-struct PageRef {
-  id: u32,
-}
-
-#[derive(Deserialize)]
-struct HudSpec {
-  text: String,
-  icon: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ToastSpec {
-  title: String,
-  message: Option<String>,
-  kind: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ClipSpec {
-  text: Option<String>,
-  /// Base64
-  image: Option<String>,
-  mime: Option<String>,
-}
-
-impl ClipSpec {
-  fn clip(self) -> Result<Clip> {
-    use base64::{Engine, engine::general_purpose::STANDARD};
-    match (self.text, self.image) {
-      (Some(text), _) => Ok(Clip::Text(text)),
-      (None, Some(image)) => Ok(Clip::Image {
-        bytes: std::sync::Arc::new(STANDARD.decode(image)?),
-        mime: self.mime.unwrap_or_else(|| "image/png".into()),
-      }),
-      _ => anyhow::bail!("nothing to copy"),
-    }
-  }
-}
-
-fn tone(name: Option<&str>) -> Tone {
-  match name {
-    Some("ok") => Tone::Ok,
-    Some("warn") => Tone::Warn,
-    Some("err") => Tone::Err,
+fn tone(tone: Option<spec::Tone>) -> Tone {
+  match tone {
+    Some(spec::Tone::Ok) => Tone::Ok,
+    Some(spec::Tone::Warn) => Tone::Warn,
+    Some(spec::Tone::Err) => Tone::Err,
     _ => Tone::Off,
   }
+}
+
+fn clip(clip: spec::Clip) -> Result<Clip> {
+  use base64::{Engine, engine::general_purpose::STANDARD};
+  Ok(match clip {
+    spec::Clip::Text { text } => Clip::Text(text),
+    spec::Clip::Image { image, mime } => Clip::Image {
+      bytes: std::sync::Arc::new(STANDARD.decode(image)?),
+      mime: mime.unwrap_or_else(|| "image/png".into()),
+    },
+  })
 }
 
 fn failure(error: impl std::fmt::Display) -> Outcome {
@@ -91,56 +47,55 @@ fn failure(error: impl std::fmt::Display) -> Outcome {
 }
 
 /// What the launcher does for the answer of a handler; a failure is a toast
-pub(super) fn outcome(answer: Result<Value>, port: &Port) -> Outcome {
+pub(crate) fn outcome(answer: Result<Value>, port: &Port) -> Outcome {
+  use spec::Reply;
   let run = || -> Result<Outcome> {
     let answer = answer?;
-    let reply = match answer.is_null() {
-      true => Reply::default(),
-      false => serde_json::from_value::<Reply>(answer)?,
-    };
-    Ok(if let Some(PageRef { id }) = reply.push {
-      let page = port
-        .page(id)
-        .ok_or_else(|| anyhow::anyhow!("the page is closed"))?;
-      Outcome::Push(view(page))
-    } else if reply.pop {
-      Outcome::Pop
-    } else if reply.keep_open {
-      Outcome::KeepOpen
-    } else if let Some(toast) = reply.toast {
-      Outcome::Toast(Toast {
-        kind: match toast.kind.as_deref() {
-          Some("failure") => ToastKind::Failure,
-          Some("progress") => ToastKind::Progress,
+    // nothing, or an empty object
+    if answer.is_null() || answer.as_object().is_some_and(|o| o.is_empty()) {
+      return Ok(Outcome::close());
+    }
+    Ok(match serde_json::from_value::<Reply>(answer)? {
+      Reply::Push(page) => {
+        let page = port
+          .page(page.id)
+          .ok_or_else(|| anyhow::anyhow!("the page is closed"))?;
+        Outcome::Push(view(page))
+      }
+      Reply::Pop(true) => Outcome::Pop,
+      Reply::KeepOpen(true) => Outcome::KeepOpen,
+      Reply::Pop(false) | Reply::KeepOpen(false) => Outcome::close(),
+      Reply::Toast(toast) => Outcome::Toast(Toast {
+        kind: match toast.kind {
+          Some(spec::ToastKind::Failure) => ToastKind::Failure,
+          Some(spec::ToastKind::Progress) => ToastKind::Progress,
           _ => ToastKind::Success,
         },
         title: toast.title.into(),
         message: toast.message.map(Into::into),
         action: None,
-      })
-    } else if let Some(clip) = reply.copy {
-      Outcome::Copy(clip.clip()?)
-    } else if let Some(clip) = reply.paste {
-      Outcome::Paste(clip.clip()?)
-    } else if let Some(hud) = reply.hud {
-      let mut pill = Hud::new(hud.text);
-      pill.icon = hud.icon.as_deref().and_then(icon_by_name);
-      Outcome::Close(Some(pill))
-    } else {
-      Outcome::close()
+      }),
+      Reply::Copy(c) => Outcome::Copy(clip(c)?),
+      Reply::Paste(c) => Outcome::Paste(clip(c)?),
+      Reply::Hud(hud) => {
+        let mut pill = Hud::new(hud.text);
+        pill.icon = hud.icon.as_deref().and_then(icon_by_name);
+        Outcome::Close(Some(pill))
+      }
     })
   };
   run().unwrap_or_else(failure)
 }
 
-fn icon(spec: &IconSpec, dir: &Path) -> Icon {
+fn icon(spec: &spec::Icon, dir: &Path) -> Icon {
+  use spec::Icon as I;
   match spec {
-    IconSpec::Name(name) => icon_by_name(name).map_or(Icon::None, Icon::Named),
-    IconSpec::App(names) => Icon::App(names.iter().map(|n| n.clone().into()).collect()),
-    IconSpec::Glyph(glyph) => Icon::Glyph(glyph.clone().into()),
-    IconSpec::Swatch(hex) => u32::from_str_radix(hex.trim_start_matches('#'), 16)
+    I::Name(name) => icon_by_name(name).map_or(Icon::None, Icon::Named),
+    I::App(names) => Icon::App(names.iter().map(|n| n.clone().into()).collect()),
+    I::Glyph(glyph) => Icon::Glyph(glyph.clone().into()),
+    I::Swatch(hex) => u32::from_str_radix(hex.trim_start_matches('#'), 16)
       .map_or(Icon::None, |rgb| Icon::Swatch(gpui_kit::rgb(rgb).into())),
-    IconSpec::Image(path) => inside(dir, path).map_or(Icon::None, |p| Icon::Image(p.into())),
+    I::Image(path) => inside(dir, path).map_or(Icon::None, |p| Icon::Image(p.into())),
   }
 }
 
@@ -151,7 +106,7 @@ fn inside(dir: &Path, path: &str) -> Option<std::path::PathBuf> {
   full.starts_with(dir.canonicalize().ok()?).then_some(full)
 }
 
-fn detail(spec: &DetailSpec, dir: &Path) -> Detail {
+fn preview(spec: &spec::Preview, dir: &Path) -> Detail {
   let body = match (&spec.text, &spec.code, &spec.image) {
     (Some(text), ..) => DetailBody::Text(text.clone().into()),
     (_, Some(code), _) => DetailBody::Code(code.clone().into()),
@@ -166,16 +121,20 @@ fn detail(spec: &DetailSpec, dir: &Path) -> Detail {
       .map(|(k, v)| detail_row(k.clone(), v.clone()))
       .collect(),
     tags: (spec.tags.iter())
-      .map(|(text, t)| (text.clone().into(), tone(t.as_deref())))
+      .map(|(text, t)| (text.clone().into(), tone(*t)))
       .collect(),
   }
 }
 
 /// The action that asks the plugin's handler and does what it answers with
-pub(super) fn action(spec: &ActionSpec, args: impl Fn() -> Value + 'static, port: &Port) -> Action {
-  let (handler, port) = (spec.run, port.clone());
+pub(super) fn action(
+  spec: &spec::Action,
+  args: impl Fn() -> Value + 'static,
+  port: &Port,
+) -> Action {
+  let (handler, port) = (spec.run.id, port.clone());
   let mut action = Action::spawn(
-    format!("handler-{}", spec.run),
+    format!("handler-{}", spec.run.id),
     spec.title.clone(),
     move |_, cx| {
       let answer = port.request(handler, args(), cx);
@@ -228,12 +187,10 @@ impl Command for RowCommand {
         .iter()
         .filter_map(|a| {
           Some(match a {
-            AccessorySpec::Tag { text, tone: t } => {
-              Accessory::Tag(text.clone().into(), tone(t.as_deref()))
-            }
-            AccessorySpec::Text(text) => Accessory::Text(text.clone().into()),
-            AccessorySpec::Icon(name) => Accessory::Icon(icon_by_name(name)?),
-            AccessorySpec::Progress(p) => Accessory::Progress(*p),
+            spec::Accessory::Tag { text, tone: t } => Accessory::Tag(text.clone().into(), tone(*t)),
+            spec::Accessory::Text(text) => Accessory::Text(text.clone().into()),
+            spec::Accessory::Icon(name) => Accessory::Icon(icon_by_name(name)?),
+            spec::Accessory::Progress(p) => Accessory::Progress(*p),
           })
         })
         .collect(),
@@ -249,7 +206,7 @@ impl Command for RowCommand {
 
   fn detail(&self, _: &App) -> Option<Detail> {
     let dir = self.port.dir();
-    self.row.detail.as_ref().map(|d| detail(d, &dir))
+    self.row.detail.as_ref().map(|d| preview(d, &dir))
   }
 }
 
@@ -293,13 +250,12 @@ impl CommandSource for PageSource {
 
 /// The page as a launcher view
 pub(super) fn view(page: Rc<Page>) -> View {
-  let spec = page.spec.clone();
   let port = page.port.clone();
-  match spec.kind.as_str() {
-    "form" => View::Form(form(&spec, port)),
-    "detail" => View::Detail(DetailView {
-      title: spec.title.into(),
-      markdown: spec.markdown.into(),
+  match &page.spec {
+    PageSpec::Form(spec) => View::Form(form(spec, port)),
+    PageSpec::Detail(spec) => View::Detail(DetailView {
+      title: spec.title.clone().into(),
+      markdown: spec.markdown.clone().into(),
       metadata: (spec.metadata.iter())
         .map(|(k, v)| detail_row(k.clone(), v.clone()))
         .collect(),
@@ -307,14 +263,15 @@ pub(super) fn view(page: Rc<Page>) -> View {
         .map(|a| action(a, || json!({}), &port))
         .collect(),
     }),
-    _ => {
+    PageSpec::List(spec) => {
       let source = Rc::new(PageSource {
         plugin: page.port.id().into(),
         page: page.clone(),
       });
-      let mut list = ListView::new(spec.title, spec.placeholder, source);
+      let placeholder = spec.placeholder.clone().unwrap_or_default();
+      let mut list = ListView::new(spec.title.clone(), placeholder, source);
       if let Some(grid) = &spec.grid {
-        list = list.grid(grid.columns.max(1), grid.cell, grid.titles);
+        list = list.grid((grid.columns as usize).max(1), grid.cell, grid.titles);
       }
       if spec.preview {
         list = list.preview();
@@ -328,18 +285,20 @@ pub(super) fn view(page: Rc<Page>) -> View {
           selected: page.filter.clone(),
         });
       }
-      if let Some(empty) = spec.empty {
-        list = list.empty(empty);
+      if let Some(empty) = &spec.empty {
+        list = list.empty(empty.clone());
       }
-      list.query(spec.query).into_view()
+      list
+        .query(spec.query.clone().unwrap_or_default())
+        .into_view()
     }
   }
 }
 
-fn form(spec: &super::PageSpec, port: Port) -> FormView {
+fn form(spec: &spec::FormSpec, port: Port) -> FormView {
   let fields = spec.fields.iter().map(field).collect();
   let submit_port = port.clone();
-  let on_submit = spec.on_submit;
+  let on_submit = spec.on_submit.id;
   let submit: corona_launcher::view::Submit =
     Rc::new(move |values, _: &mut Window, cx: &mut App| {
       let port = submit_port.clone();
@@ -347,10 +306,7 @@ fn form(spec: &super::PageSpec, port: Port) -> FormView {
         .into_iter()
         .map(|(k, v)| (k.to_string(), Value::String(v)))
         .collect();
-      let answer = match on_submit {
-        Some(handler) => port.request(handler, Value::Object(values), cx),
-        None => Err(anyhow::anyhow!("the form has no submit handler")),
-      };
+      let answer = port.request(on_submit, Value::Object(values), cx);
       cx.spawn(async move |_| {
         let answer = match answer {
           Ok(answer) => answer.await,
@@ -362,23 +318,27 @@ fn form(spec: &super::PageSpec, port: Port) -> FormView {
   let cancel = spec
     .on_cancel
     .map(|handler| -> corona_launcher::view::Cancel {
-      Rc::new(move |_| port.call(handler, json!({}), Box::new(|_, _| {})))
+      Rc::new(move |_| port.call(handler.id, json!(null), Box::new(|_, _| {})))
     });
   FormView {
     title: spec.title.clone().into(),
     fields,
-    submit_label: spec.submit_label.clone().into(),
+    submit_label: spec
+      .submit_label
+      .clone()
+      .unwrap_or_else(|| "Submit".into())
+      .into(),
     submit,
     cancel,
     message: spec.message.clone().map(Into::into),
   }
 }
 
-fn field(spec: &FieldSpec) -> Field {
-  let kind = match spec.kind.as_str() {
-    "password" => FieldKind::Password,
-    "textarea" => FieldKind::TextArea,
-    "dropdown" => FieldKind::Dropdown(
+fn field(spec: &spec::Field) -> Field {
+  let kind = match spec.kind {
+    Some(spec::FieldKind::Password) => FieldKind::Password,
+    Some(spec::FieldKind::Textarea) => FieldKind::TextArea,
+    Some(spec::FieldKind::Dropdown) => FieldKind::Dropdown(
       (spec.options.iter())
         .map(|o| (o.id.clone().into(), o.title.clone().into()))
         .collect(),
@@ -386,8 +346,8 @@ fn field(spec: &FieldSpec) -> Field {
     _ => FieldKind::Text,
   };
   let mut field = Field::new(spec.id.clone(), spec.label.clone(), kind)
-    .value(spec.value.clone())
-    .placeholder(spec.placeholder.clone());
+    .value(spec.value.clone().unwrap_or_default())
+    .placeholder(spec.placeholder.clone().unwrap_or_default());
   if spec.required {
     field = field.required();
   }
@@ -430,8 +390,10 @@ impl PluginCommand {
     let port = port.clone();
     async move {
       let value = answer?.ok()?.await.ok()?;
-      let reply: Reply = serde_json::from_value(value).ok()?;
-      port.page(reply.push?.id)
+      match serde_json::from_value(value).ok()? {
+        spec::Reply::Push(page) => port.page(page.id),
+        _ => None,
+      }
     }
   }
 }
@@ -565,9 +527,14 @@ mod tests {
       Outcome::Copy(Clip::Text(_))
     ));
     // a page that is gone, a reply that is nonsense, and a handler that failed are toasts
-    for bad in [json!({"push": {"id": 9}}), json!({"toast": 3})] {
+    for bad in [
+      json!({"push": {"id": 9}}),
+      json!({"toast": 3}),
+      json!({"pop": true, "keepOpen": true}),
+    ] {
+      let shown = bad.to_string();
       let Outcome::Toast(toast) = outcome(bad) else {
-        panic!()
+        panic!("{shown} is not a failure")
       };
       assert_eq!(toast.kind, ToastKind::Failure);
     }

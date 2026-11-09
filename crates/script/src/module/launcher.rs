@@ -3,17 +3,20 @@
 //! The plugin's functions stay in its runtime's [`Watches`] as handlers; the launcher calls
 //! them by id and gets JSON back.
 
-use std::{cell::Cell, cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::Cell, marker::PhantomData, path::PathBuf};
 
 use corona_js::{
-  Cx, ModuleBuilder, PluginRef, ScriptModule, Watches,
-  rquickjs::{Ctx, Exception, Function, Object, Result, Value, object::Property},
+  Cx, Data, Handler, ModuleBuilder, PluginRef, ScriptModule, Spec, Throws, Watches, encode,
+  host_module,
+  rquickjs::{Ctx, Function, IntoJs, Object, Result, Value, object::Property},
 };
 use gpui_kit::{App, Subscription};
+use specta::{Type, Types, datatype::DataType, specta};
+use specta_typescript::{Typescript, define, primitives};
 
 use crate::{
   ScriptManager,
-  launcher::{Answer, Call, Done, PageSpec, Port},
+  launcher::{Answer, Arg, Call, DetailSpec, Done, FormSpec, ListSpec, PageSpec, Port, Reply, Row},
 };
 
 pub struct Launcher;
@@ -38,19 +41,13 @@ struct Module {
 }
 
 fn build(port: Port, dir: PathBuf, m: &mut ModuleBuilder) {
-  let module = Rc::new(Module {
+  m.provide(Module {
     port,
     watches: m.watches().clone(),
     dir,
     started: Cell::new(false),
   });
-  m.declarations(include_str!("launcher.dts"));
-  let this = module.clone();
-  m.value("onRun", move |ctx| on_run(ctx, &this));
-  for kind in ["list", "form", "detail"] {
-    let this = module.clone();
-    m.value(kind, move |ctx| page_fn(ctx, &this, kind));
-  }
+  host_module!(m, { sync: [on_run, list, form, detail] });
 }
 
 /// Stops the service's run of the port with the runtime
@@ -88,6 +85,23 @@ impl Module {
       drop(stop);
     }));
   }
+
+  /// Opens a page; `handlers` are all the functions its spec registered
+  fn open<K: Kind>(
+    &self,
+    spec: PageSpec,
+    mut handlers: Vec<u32>,
+    module: &Data<Module>,
+  ) -> Handle<K> {
+    let rows: Vec<u32> = spec.rows().iter().flat_map(Row::handlers).collect();
+    handlers.retain(|h| !rows.contains(h));
+    let id = self.port.open_page(spec, handlers, rows);
+    Handle {
+      module: module.clone(),
+      id,
+      _kind: PhantomData,
+    }
+  }
 }
 
 /// Encodes what a handler returned and hands it to `done`
@@ -99,8 +113,8 @@ fn settle<'js>(
   cx: &mut App,
 ) {
   let answer = result.and_then(|value| {
-    let sink = Rc::default();
-    let json = encode(ctx, watches, value, &sink, false).map_err(|e| e.to_string())?;
+    let sink = std::rc::Rc::default();
+    let json = encode(ctx, watches, value, &sink).map_err(|e| e.to_string())?;
     Ok(Answer {
       json,
       handlers: sink.take(),
@@ -109,125 +123,136 @@ fn settle<'js>(
   done(answer, cx);
 }
 
-/// `value` as JSON. JSON has no functions: each one is registered as a handler and written
-/// as its id, and the id is added to `sink`. `rows` is left out when `drop_rows`, to be
-/// encoded on its own.
-fn encode<'js>(
-  ctx: &Ctx<'js>,
-  watches: &Watches,
-  value: Value<'js>,
-  sink: &Rc<RefCell<Vec<u32>>>,
-  drop_rows: bool,
-) -> Result<String> {
-  let (watches, sink) = (watches.clone(), sink.clone());
-  let replacer = Function::new(
-    ctx.clone(),
-    move |ctx: Ctx<'js>, key: String, value: Value<'js>| -> Result<Value<'js>> {
-      if drop_rows && key == "rows" {
-        return Ok(Value::new_undefined(ctx));
-      }
-      let Some(f) = value.as_function() else {
-        return Ok(value);
-      };
-      let id = watches.register_handler(f.clone());
-      sink.borrow_mut().push(id);
-      Ok(Value::new_int(ctx, id as i32))
-    },
-  )?;
-  let stringify: Function = ctx.globals().get::<_, Object>("JSON")?.get("stringify")?;
-  let text: Option<String> = stringify.call((value, replacer))?;
-  Ok(text.unwrap_or_else(|| "null".into()))
+/// Answers the command `name` of `plugin.toml`. `handler` gets the typed arguments in the
+/// order of the command's `args`, `null` for a skipped optional one, and returns what the
+/// launcher does next. Service only.
+#[specta]
+fn on_run(module: Data<Module>, name: String, handler: Handler<Vec<Option<Arg>>, Reply>) {
+  module.start();
+  if let Some(old) = module.port.register_command(name, handler.id) {
+    module.watches.release_handler(old);
+  }
 }
 
-fn throw(ctx: &Ctx<'_>, error: impl std::fmt::Display) -> corona_js::rquickjs::Error {
-  Exception::throw_message(ctx, &error.to_string())
+/// A page of rows, to push with `{ push: page }`.
+#[specta]
+fn list(module: Data<Module>, spec: Spec<ListSpec>) -> Throws<Handle<ListKind>> {
+  module.start();
+  Throws(Ok(module.open(
+    PageSpec::List(spec.value),
+    spec.handlers,
+    &module,
+  )))
 }
 
-/// `onRun(name, handler)`
-fn on_run<'js>(ctx: &Ctx<'js>, module: &Rc<Module>) -> Result<Value<'js>> {
-  let module = module.clone();
-  let f = Function::new(ctx.clone(), move |name: String, handler: Function<'js>| {
-    module.start();
-    let id = module.watches.register_handler(handler);
-    if let Some(old) = module.port.register_command(name, id) {
-      module.watches.release_handler(old);
-    }
-  })?;
-  Ok(f.into_value())
+/// A page with fields to fill in, to push with `{ push: page }`.
+#[specta]
+fn form(module: Data<Module>, spec: Spec<FormSpec>) -> Throws<Handle<FormKind>> {
+  module.start();
+  Throws(Ok(module.open(
+    PageSpec::Form(spec.value),
+    spec.handlers,
+    &module,
+  )))
 }
 
-/// `list(spec)`, `form(spec)` or `detail(spec)`
-fn page_fn<'js>(ctx: &Ctx<'js>, module: &Rc<Module>, kind: &'static str) -> Result<Value<'js>> {
-  let module = module.clone();
-  let f = Function::new(
-    ctx.clone(),
-    move |ctx: Ctx<'js>, spec: Object<'js>| -> Result<Object<'js>> {
-      module.start();
-      let rows: Value = spec.get("rows")?;
-      let (spec_sink, row_sink) = (Rc::default(), Rc::default());
-      let open = || -> std::result::Result<u32, String> {
-        let json = encode(
-          &ctx,
-          &module.watches,
-          spec.clone().into_value(),
-          &spec_sink,
-          true,
-        )
-        .map_err(|e| e.to_string())?;
-        let mut spec: PageSpec = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-        spec.kind = kind.into();
-        if !rows.is_undefined() {
-          let json = encode(&ctx, &module.watches, rows.clone(), &row_sink, false)
-            .map_err(|e| e.to_string())?;
-          spec.rows = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-        }
-        Ok(
-          module
-            .port
-            .open_page(spec, spec_sink.take(), row_sink.take()),
-        )
-      };
-      match open() {
-        Ok(id) => handle(&ctx, &module, id),
-        Err(e) => {
-          module.port.release(&spec_sink.take());
-          module.port.release(&row_sink.take());
-          Err(throw(&ctx, e))
-        }
-      }
-    },
-  )?;
-  Ok(f.into_value())
+/// A page of text with key-value rows and actions, to push with `{ push: page }`.
+#[specta]
+fn detail(module: Data<Module>, spec: Spec<DetailSpec>) -> Throws<Handle<DetailKind>> {
+  module.start();
+  Throws(Ok(module.open(
+    PageSpec::Detail(spec.value),
+    spec.handlers,
+    &module,
+  )))
+}
+
+/// The kind of a page, for the type of its handle
+trait Kind {
+  /// Has the methods of a list
+  const LIST: bool;
+  fn ts(types: &mut Types) -> String;
+}
+
+struct ListKind;
+struct FormKind;
+struct DetailKind;
+
+/// `Row[]` as TypeScript
+fn rows_ts(types: &mut Types) -> String {
+  let dt = <Vec<Row>>::definition(types);
+  primitives::reference(&Typescript::default(), types, &dt).expect("host type")
+}
+
+impl Kind for ListKind {
+  const LIST: bool = true;
+  fn ts(types: &mut Types) -> String {
+    let rows = rows_ts(types);
+    format!(
+      "{{\n    /** Identifies the page. */\n    id: number;\n    /** Replaces the rows; the launcher filters them by the typed query. */\n    setRows(rows: {rows}): void;\n    /** Shows the loading bar. */\n    setLoading(loading: boolean): void;\n    /** The plugin ranks and filters: `fn` answers each typed query with rows. */\n    onQuery(fn: (query: string) => {rows} | Promise<{rows}>): void;\n    /** Runs when another option of the filter dropdown is picked; return the rows or call `setRows`. */\n    onFilter(fn: (index: number) => {rows} | void | Promise<{rows} | void>): void;\n    /** Frees the page's handlers and rows. */\n    close(): void;\n  }}"
+    )
+  }
+}
+
+impl Kind for FormKind {
+  const LIST: bool = false;
+  fn ts(_: &mut Types) -> String {
+    "{ id: number; /** Frees the page's handlers. */ close(): void }".into()
+  }
+}
+
+impl Kind for DetailKind {
+  const LIST: bool = false;
+  fn ts(_: &mut Types) -> String {
+    "{ id: number; /** Frees the page's handlers. */ close(): void }".into()
+  }
+}
+
+/// What a plugin holds for its page
+struct Handle<K> {
+  module: Data<Module>,
+  id: u32,
+  _kind: PhantomData<K>,
+}
+
+impl<K: Kind> Type for Handle<K> {
+  fn definition(types: &mut Types) -> DataType {
+    DataType::Reference(define(K::ts(types)))
+  }
+}
+
+impl<'js, K: Kind> IntoJs<'js> for Handle<K> {
+  fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
+    handle(ctx, &self.module, self.id, K::LIST).map(Object::into_value)
+  }
 }
 
 /// The object a plugin holds for its page. Its methods are not enumerable, so the page
 /// stays `{ id }` in a reply.
-fn handle<'js>(ctx: &Ctx<'js>, module: &Rc<Module>, id: u32) -> Result<Object<'js>> {
+fn handle<'js>(ctx: &Ctx<'js>, module: &Data<Module>, id: u32, list: bool) -> Result<Object<'js>> {
   let handle = Object::new(ctx.clone())?;
   handle.set("id", id)?;
   let method = |name: &str, f: Function<'js>| handle.prop(name, Property::from(f));
 
   let m = module.clone();
   method(
+    "close",
+    Function::new(ctx.clone(), move || m.port.close_page(id))?,
+  )?;
+  if !list {
+    return Ok(handle);
+  }
+
+  let m = module.clone();
+  method(
     "setRows",
-    Function::new(
-      ctx.clone(),
-      move |ctx: Ctx<'js>, rows: Value<'js>| -> Result<()> {
-        let Some(page) = m.port.page(id) else {
-          return Ok(());
-        };
-        let sink = Rc::default();
-        let json = encode(&ctx, &m.watches, rows, &sink, false)?;
-        match serde_json::from_str(&json) {
-          Ok(rows) => page.set_rows(rows, sink.take(), None, &mut Cx),
-          Err(e) => {
-            m.port.release(&sink.take());
-            return Err(throw(&ctx, e));
-          }
-        }
-        Ok(())
-      },
-    )?,
+    Function::new(ctx.clone(), move |rows: Spec<Vec<Row>>| {
+      if let Some(page) = m.port.page(id) {
+        page.set_rows(rows.value, rows.handlers, None, &mut Cx);
+      } else {
+        m.port.release(&rows.handlers);
+      }
+    })?,
   )?;
 
   let m = module.clone();
@@ -243,11 +268,10 @@ fn handle<'js>(ctx: &Ctx<'js>, module: &Rc<Module>, id: u32) -> Result<Object<'j
   let m = module.clone();
   method(
     "onQuery",
-    Function::new(ctx.clone(), move |f: Function<'js>| {
-      let handler = m.watches.register_handler(f);
+    Function::new(ctx.clone(), move |f: Handler<String, Vec<Row>>| {
       match m.port.page(id) {
-        Some(page) => page.set_on_query(handler),
-        None => m.watches.release_handler(handler),
+        Some(page) => page.set_on_query(f.id),
+        None => m.watches.release_handler(f.id),
       }
     })?,
   )?;
@@ -255,22 +279,16 @@ fn handle<'js>(ctx: &Ctx<'js>, module: &Rc<Module>, id: u32) -> Result<Object<'j
   let m = module.clone();
   method(
     "onFilter",
-    Function::new(ctx.clone(), move |f: Function<'js>| {
-      let handler = m.watches.register_handler(f);
+    Function::new(ctx.clone(), move |f: Handler<u32, Vec<Row>>| {
       match m.port.page(id) {
-        Some(page) => page.set_on_filter(handler),
-        None => m.watches.release_handler(handler),
+        Some(page) => page.set_on_filter(f.id),
+        None => m.watches.release_handler(f.id),
       }
     })?,
   )?;
-
-  let m = module.clone();
-  method(
-    "close",
-    Function::new(ctx.clone(), move || m.port.close_page(id))?,
-  )?;
   Ok(handle)
 }
+
 #[cfg(test)]
 mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
@@ -303,6 +321,54 @@ mod tests {
   ) -> anyhow::Result<Value> {
     let handler = port.command(name).expect("command not registered");
     ask(cx, port, handler, args)
+  }
+
+  /// The declarations plugins get
+  fn declarations() -> String {
+    let watches = corona_js::Watches::default();
+    let mut m = corona_js::ModuleBuilder::new("corona/launcher", &watches);
+    super::build(Port::new("p"), "/p".into(), &mut m);
+    corona_js::d_ts([&m])
+  }
+
+  #[test]
+  fn the_declarations_are_generated_from_the_types() {
+    let dts = declarations();
+    for expected in [
+      "declare module \"corona/launcher\"",
+      "export function list(spec: ListSpec): {",
+      "export function form(spec: FormSpec):",
+      "export function detail(spec: DetailSpec):",
+      "export function onRun(name: string, handler: ((arg: (Arg | null)[]) => Reply | void | Promise<Reply | void>)): void;",
+      // a function in a spec is typed as one
+      "run: (() => Reply | void | Promise<Reply | void>),",
+      "onSubmit: ((arg: { [key in string]: string }) =>",
+      // an optional handler is optional, not part of the return type
+      "onCancel?: (() => Reply | void | Promise<Reply | void>) | null,",
+      "export type Row = {",
+      "metadata?: ([string, string])[],",
+      "setRows(rows: Row[]): void;",
+      // docs become JSDoc
+      "A page of rows, searched by the search bar.",
+    ] {
+      assert!(dts.contains(expected), "missing {expected:?} in\n{dts}");
+    }
+  }
+
+  #[gpui::test]
+  fn a_reply_with_two_keys_is_an_error(cx: &mut TestAppContext) {
+    let port = Port::new("p");
+    let _view = run(
+      cx,
+      &port,
+      r#"m.onRun("both", () => ({ pop: true, keepOpen: true }));"#,
+    );
+    let answer = command(cx, &port, "both", json!([])).unwrap();
+    let outcome = crate::launcher::outcome(Ok(answer), &port);
+    let corona_launcher::Outcome::Toast(toast) = outcome else {
+      panic!("a reply with two keys must fail")
+    };
+    assert_eq!(toast.kind, corona_launcher::ToastKind::Failure);
   }
 
   #[gpui::test]
@@ -350,7 +416,7 @@ mod tests {
     let page = port.page(page).unwrap();
     let rows = page.rows();
     assert_eq!((rows.len(), rows[0].title.as_str()), (1, "A"));
-    let answer = ask(cx, &port, rows[0].actions[0].run, json!({})).unwrap();
+    let answer = ask(cx, &port, rows[0].actions[0].run.id, json!({})).unwrap();
     assert_eq!(answer, json!({ "toast": { "title": "opened" } }));
   }
 
@@ -369,7 +435,7 @@ mod tests {
     command(cx, &port, "fill", json!([])).unwrap();
     assert_eq!(page.rows()[0].id, "b");
     // the row's handler is there until the rows change or the page closes
-    let run = page.rows()[0].actions[0].run;
+    let run = page.rows()[0].actions[0].run.id;
     assert!(ask(cx, &port, run, json!({})).is_ok());
     command(cx, &port, "close", json!([])).unwrap();
     assert!(page.rows().is_empty() && port.page(1).is_none());
@@ -386,7 +452,7 @@ mod tests {
       m.onRun("swap", () => { globalThis.page.setRows([]); });"#,
     );
     let page = port.page(1).unwrap();
-    let old = page.rows()[0].actions[0].run;
+    let old = page.rows()[0].actions[0].run.id;
     assert!(ask(cx, &port, old, json!({})).is_ok());
     command(cx, &port, "swap", json!([])).unwrap();
     assert!(ask(cx, &port, old, json!({})).is_err());

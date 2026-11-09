@@ -3,6 +3,7 @@
 
 mod page;
 mod source;
+mod spec;
 mod view;
 
 use std::{
@@ -18,8 +19,11 @@ use corona_js::Watches;
 use gpui_kit::App;
 use serde_json::Value;
 
-pub use page::{Page, PageSpec};
+pub use page::Page;
 pub use source::{init, remove, set_commands};
+pub use spec::{Arg, DetailSpec, FormSpec, ListSpec, PageSpec, Reply, Row};
+#[cfg(test)]
+pub(crate) use view::outcome;
 
 /// How long a handler has to answer
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -212,10 +216,16 @@ mod tests {
     let (calls, run) = port.start(Path::new("/p"), Watches::default());
     let waiting = cx.update(|cx| port.request(1, Value::Null, cx)).unwrap();
     assert_eq!(calls.try_recv().unwrap().handler, 1);
-    let spec = PageSpec {
+    let spec = PageSpec::List(ListSpec {
+      title: "T".into(),
+      placeholder: None,
       rows: vec![Default::default()],
-      ..Default::default()
-    };
+      grid: None,
+      preview: false,
+      filter: None,
+      empty: None,
+      query: None,
+    });
     let id = port.open_page(spec, vec![], vec![]);
     let page = port.page(id).unwrap();
     assert_eq!(page.rows().len(), 1);

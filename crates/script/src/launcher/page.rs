@@ -1,4 +1,4 @@
-//! A page a handler pushed, as the plugin described it, and the rows it keeps up to date
+//! A page a handler pushed, and the rows it keeps up to date
 
 use std::{
   cell::{Cell, RefCell},
@@ -7,143 +7,12 @@ use std::{
 
 use corona_launcher::kit::Notify;
 use gpui_kit::App;
-use serde::Deserialize;
 use serde_json::json;
 
-use super::{Done, Port};
-
-/// The wire form of a row, which `corona/launcher` writes
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Row {
-  pub id: String,
-  pub title: String,
-  pub subtitle: Option<String>,
-  pub keywords: Vec<String>,
-  pub icon: Option<IconSpec>,
-  pub accessories: Vec<AccessorySpec>,
-  pub detail: Option<DetailSpec>,
-  pub actions: Vec<ActionSpec>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum IconSpec {
-  /// A bundled icon's kebab-case name
-  Name(String),
-  /// Desktop entry or window class names
-  App(Vec<String>),
-  /// A file in the plugin's directory
-  Image(String),
-  Glyph(String),
-  /// `#rrggbb`
-  Swatch(String),
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum AccessorySpec {
-  Tag { text: String, tone: Option<String> },
-  Text(String),
-  Icon(String),
-  Progress(f32),
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct DetailSpec {
-  pub text: Option<String>,
-  pub code: Option<String>,
-  pub image: Option<String>,
-  pub metadata: Vec<(String, String)>,
-  pub tags: Vec<(String, Option<String>)>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActionSpec {
-  /// The handler's id in the runtime
-  pub run: u32,
-  pub title: String,
-  #[serde(default)]
-  pub icon: Option<String>,
-  #[serde(default)]
-  pub shortcut: Option<String>,
-  #[serde(default)]
-  pub destructive: bool,
-  #[serde(default)]
-  pub keep_open: bool,
-  #[serde(default)]
-  pub confirm: Option<ConfirmSpec>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ConfirmSpec {
-  pub title: String,
-  pub message: String,
-  pub button: String,
-  pub skippable: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Choice {
-  pub id: String,
-  pub title: String,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct FieldSpec {
-  pub id: String,
-  pub label: String,
-  /// `text`, `password`, `textarea` or `dropdown`
-  pub kind: String,
-  pub placeholder: String,
-  pub value: String,
-  pub required: bool,
-  pub options: Vec<Choice>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct GridSpec {
-  pub columns: usize,
-  pub cell: f32,
-  pub titles: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct FilterSpec {
-  pub label: String,
-  pub options: Vec<Choice>,
-}
-
-/// What a plugin described; the parts that change are [`Page`]'s
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct PageSpec {
-  /// `list`, `form` or `detail`
-  pub kind: String,
-  pub title: String,
-  pub placeholder: String,
-  pub grid: Option<GridSpec>,
-  pub preview: bool,
-  pub filter: Option<FilterSpec>,
-  pub empty: Option<String>,
-  pub query: String,
-  pub rows: Vec<Row>,
-  pub fields: Vec<FieldSpec>,
-  pub submit_label: String,
-  pub message: Option<String>,
-  pub on_submit: Option<u32>,
-  pub on_cancel: Option<u32>,
-  pub markdown: String,
-  pub metadata: Vec<(String, String)>,
-  pub actions: Vec<ActionSpec>,
-}
+use super::{
+  Done, Port,
+  spec::{PageSpec, Row},
+};
 
 pub struct Page {
   pub spec: PageSpec,
@@ -174,7 +43,7 @@ impl Page {
     row_handlers: Vec<u32>,
   ) -> Rc<Self> {
     Rc::new_cyclic(|me| Self {
-      rows: RefCell::new(spec.rows.clone()),
+      rows: RefCell::new(spec.rows().to_vec()),
       spec,
       port,
       me: me.clone(),

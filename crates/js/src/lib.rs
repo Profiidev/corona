@@ -25,6 +25,7 @@ pub use element::{
 };
 pub use runtime::{
   caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant},
+  handler::{Handler, Spec, encode},
   host::{Cx, Glob, Json, Opt, Throws, json},
   limits::{Trip, TripHook, take_tripped},
   module::{Data, ModuleBuilder, d_ts},

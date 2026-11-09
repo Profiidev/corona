@@ -24,6 +24,7 @@ use module::{HostLoader, HostModules};
 use plugin::PluginData;
 
 pub(crate) mod caps;
+pub(crate) mod handler;
 pub(crate) mod host;
 pub(crate) mod limits;
 pub(crate) mod module;
