@@ -1,4 +1,4 @@
-use std::{cell::RefCell, cmp::Ordering, collections::HashSet, rc::Rc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use corona_config::{ConfigProvider, launcher::LauncherConfig};
 use gpui_kit::{App, Global, SharedString};
@@ -177,14 +177,48 @@ impl Results {
   }
 }
 
-/// Best first: tier, then use, then match score, then title
-pub fn compare(a: &Row, b: &Row) -> Ordering {
-  a.found
-    .tier
-    .cmp(&b.found.tier)
-    .then(b.frecency.total_cmp(&a.frecency))
-    .then(b.found.score.cmp(&a.found.score))
-    .then_with(|| a.meta.title.cmp(&b.meta.title))
+/// The weight of a tier. Alias and exact matches are far enough apart from the rest that
+/// use never lifts anything over them; the others are [`TIER_STEP`] apart.
+fn tier_weight(tier: Tier) -> f64 {
+  match tier {
+    Tier::Alias => 1000.,
+    Tier::Exact => 800.,
+    Tier::Prefix => 500.,
+    Tier::WordPrefix => 400.,
+    Tier::Substring => 300.,
+    Tier::Keyword => 200.,
+    Tier::Fuzzy => 100.,
+  }
+}
+
+/// The gap between the tiers below exact
+const TIER_STEP: f64 = 100.;
+/// The most use is worth: more than a step, less than two, so a command used much more than
+/// the others passes the one tier above it and no further
+const USE_CAP: f64 = 1.5 * TIER_STEP;
+/// The decayed uses that are worth the whole cap, unless a row has more: a command used once
+/// does not pass a tier on its own
+const USE_FULL: f64 = 10.;
+/// The most the match score within a tier is worth, below one use
+const SCORE_CAP: f64 = 10.;
+
+/// How high a row ranks: the tier it matched in, how much it is used next to the most used
+/// row (`most`, decayed uses) and how well it matched within its tier. Use is relative, so a
+/// command used more than the one a tier above it passes it, however much both are used.
+pub fn rank_score(row: &Row, most: f64) -> f64 {
+  let uses = USE_CAP * (row.frecency / most.max(USE_FULL)).min(1.);
+  let within = (f64::from(row.found.score) * 0.1).min(SCORE_CAP);
+  tier_weight(row.found.tier) + uses + within
+}
+
+/// Sorts best first: by [`rank_score`], then title
+pub fn sort(rows: &mut [Row]) {
+  let most = rows.iter().map(|r| r.frecency).fold(0., f64::max);
+  rows.sort_by(|a, b| {
+    rank_score(b, most)
+      .total_cmp(&rank_score(a, most))
+      .then_with(|| a.meta.title.cmp(&b.meta.title))
+  });
 }
 
 fn row(command: Rc<dyn Command>, found: Match, registry: &Registry, cx: &App) -> Row {
@@ -220,7 +254,7 @@ pub fn rank_commands(
     })
     .collect();
   if !query.is_empty() {
-    rows.sort_by(compare);
+    sort(&mut rows);
   }
   rows
 }
@@ -286,7 +320,7 @@ pub fn rank(query: &Query, cx: &App) -> Results {
     return results;
   }
 
-  rows.sort_by(compare);
+  sort(&mut rows);
   results.sections = group(rows, config.section_limit.max(1));
   if results.sections.is_empty() && results.evaluated.is_empty() {
     let order = |r: &Row| {
@@ -411,6 +445,94 @@ mod tests {
     // both apps are prefixes, Files is shorter; the command section follows
     assert_eq!(titles(&results), ["Files", "Firefox", "Fire alarm"]);
     assert_eq!(results.sections[0].0, Section::Applications);
+  }
+
+  /// Records `times` runs of command `id`
+  fn use_it(cx: &mut TestAppContext, id: &str, times: usize) {
+    cx.update(|cx| {
+      for _ in 0..times {
+        cx.global_mut::<Registry>()
+          .frecency
+          .record(id, state::now());
+      }
+    });
+  }
+
+  /// The `of` titles that `query` finds, in the order it ranks them
+  fn order(cx: &mut TestAppContext, query: &str, of: &[&str]) -> Vec<String> {
+    let results = cx.update(|cx| rank(&Query::new(query), cx));
+    let mut titles = titles(&results);
+    titles.retain(|t| of.contains(&t.as_str()));
+    titles
+  }
+
+  #[gpui::test]
+  fn use_lifts_a_command_over_the_next_tier_only(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      register_all(
+        [
+          command("files", "Recent files", Section::Commands),
+          command("zed", "Zed recent projects", Section::Commands),
+          command("share", "Share", Section::Commands),
+        ],
+        cx,
+      );
+    });
+    let of = ["Recent files", "Zed recent projects", "Share"];
+    // prefix, word prefix, substring
+    assert_eq!(order(cx, "re", &of), of);
+    // a word prefix that is used a lot passes the prefix above it
+    use_it(cx, "zed", 8);
+    assert_eq!(
+      order(cx, "re", &of),
+      ["Zed recent projects", "Recent files", "Share"]
+    );
+    // a substring match, two tiers below the prefix, stays below it however much it is used
+    use_it(cx, "share", 1000);
+    assert_eq!(
+      order(cx, "re", &of),
+      ["Recent files", "Share", "Zed recent projects"]
+    );
+  }
+
+  #[gpui::test]
+  fn the_more_used_of_two_adjacent_tiers_wins(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| {
+      register_all(
+        [
+          command("files", "Recent files", Section::Commands),
+          command("zed", "Zed recent projects", Section::Commands),
+        ],
+        cx,
+      );
+    });
+    let of = ["Recent files", "Zed recent projects"];
+    // both used, the word prefix much more: it wins, which a capped bonus could not do
+    use_it(cx, "files", 5);
+    use_it(cx, "zed", 33);
+    assert_eq!(
+      order(cx, "re", &of),
+      ["Zed recent projects", "Recent files"]
+    );
+    // used about the same, the better match wins
+    use_it(cx, "files", 25);
+    assert_eq!(
+      order(cx, "re", &of),
+      ["Recent files", "Zed recent projects"]
+    );
+  }
+
+  #[gpui::test]
+  fn use_never_passes_an_exact_match(cx: &mut TestAppContext) {
+    setup(cx);
+    cx.update(|cx| register(command("lock-screen", "Lock screen", Section::Commands), cx));
+    use_it(cx, "lock-screen", 1000);
+    assert_eq!(
+      order(cx, "lock", &["Lock", "Lock screen"]),
+      ["Lock", "Lock screen"]
+    );
   }
 
   #[gpui::test]
