@@ -70,6 +70,11 @@ impl ModuleBuilder {
     &self.name
   }
 
+  /// The plugin's [`Watches`]
+  pub fn watches(&self) -> &Watches {
+    &self.watches
+  }
+
   /// Exports a host fn under the camelCase of its name; [`host_module!`](crate::host_module)
   /// calls this.
   pub fn func(
@@ -79,6 +84,15 @@ impl ModuleBuilder {
   ) -> &mut Self {
     let name = self.declare(datatype);
     self.export(name, export)
+  }
+
+  /// Exports any JS value under `name`, typed by [`declarations`](Self::declarations)
+  pub fn value(
+    &mut self,
+    name: &str,
+    make: impl for<'js> Fn(&Ctx<'js>) -> Result<Value<'js>> + 'static,
+  ) -> &mut Self {
+    self.export(name.into(), make)
   }
 
   fn export(

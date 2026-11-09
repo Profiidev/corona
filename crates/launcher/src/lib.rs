@@ -8,6 +8,7 @@ pub mod hooks;
 pub mod ipc;
 pub mod kit;
 pub mod matching;
+pub mod names;
 pub mod paste;
 pub mod registry;
 pub mod state;
@@ -25,6 +26,7 @@ pub use command::{
   Icon, Meta, Outcome, Scope, Section, SimpleCommand, SourceKind, Toast, ToastKind, Tone, simple,
 };
 pub use matching::{Match, Query, Tier};
+pub use names::icon_by_name;
 pub use view::{
   CustomView, DetailView, Field, FieldKind, Filter, FormView, Layout, ListView, View, detail_row,
 };

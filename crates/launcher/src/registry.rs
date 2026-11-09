@@ -50,6 +50,11 @@ pub fn register_source(source: Rc<dyn CommandSource>, cx: &mut App) {
   registry.scopes.take();
 }
 
+/// Drops the cached prefixes, for commands that came or went
+pub fn invalidate_scopes(cx: &App) {
+  cx.global::<Registry>().scopes.take();
+}
+
 impl Registry {
   pub fn sources(&self) -> &[Rc<dyn CommandSource>] {
     &self.sources

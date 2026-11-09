@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 use specta::{Type, specta};
 
 use crate::{
+  launcher::Port,
   module::settings::{Change, Settings},
   plugin::settings::Setting,
 };
@@ -109,6 +110,8 @@ pub struct Hub {
   calls: Rc<RefCell<Calls>>,
   pub settings: Entity<Settings>,
   pub actions: Entity<Actions>,
+  /// What the launcher asks the service and shows of it
+  pub launcher: Port,
 }
 
 impl Hub {
@@ -118,6 +121,7 @@ impl Hub {
       calls: Rc::default(),
       settings: Settings::new(id, settings, cx),
       actions: cx.new(|_| Actions),
+      launcher: Port::new(id),
     }
   }
 

@@ -26,6 +26,7 @@ pub mod commands;
 pub mod hooks;
 mod host;
 mod integrations;
+mod launcher;
 mod manager;
 mod module;
 pub mod plugin;
@@ -41,6 +42,7 @@ pub fn init(cx: &mut App) {
   PluginManager::init(paths, cx);
   commands::register(cx);
   settings::register(cx);
+  launcher::init(cx);
   host::init(cx);
   tooltip::init(cx);
 }
