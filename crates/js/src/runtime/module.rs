@@ -70,6 +70,11 @@ impl ModuleBuilder {
     &self.name
   }
 
+  /// The plugin's [`Watches`]
+  pub fn watches(&self) -> &Watches {
+    &self.watches
+  }
+
   /// Exports a host fn under the camelCase of its name; [`host_module!`](crate::host_module)
   /// calls this.
   pub fn func(

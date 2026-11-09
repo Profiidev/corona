@@ -2214,6 +2214,7 @@ name = "corona_script"
 version = "0.1.5"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "clap",
  "corona_auth",
  "corona_bluez",
@@ -2225,6 +2226,7 @@ dependencies = [
  "corona_idle",
  "corona_ipc",
  "corona_js",
+ "corona_launcher",
  "corona_mpris",
  "corona_network_manager",
  "corona_notifications",

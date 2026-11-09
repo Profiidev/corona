@@ -7,7 +7,8 @@ use nucleo_matcher::{
 
 use crate::command::Meta;
 
-/// How a command matched, best first; ranking never lets a lower tier outrank a higher one
+/// How a command matched, best first. Ranking weighs the tier most, but use can lift a command
+/// over the tier above it (see `registry::rank_score`), never over an alias or an exact match
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Tier {
   Alias,

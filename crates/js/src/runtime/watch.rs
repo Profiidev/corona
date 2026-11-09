@@ -48,6 +48,11 @@ pub struct Watches(Rc<RefCell<State>>);
 struct State {
   next: u32,
   subs: HashMap<u32, (Subscription, Callback)>,
+  /// JS fns a host module calls itself, by id
+  handlers: HashMap<u32, Callback>,
+  next_handler: u32,
+  /// Kept until the runtime ends
+  held: Vec<Subscription>,
   ctx: Option<AsyncContext>,
 }
 
@@ -64,6 +69,76 @@ impl Watches {
       f: Persistent::save(&f.ctx().clone(), f),
       ctx: ctx.expect("watches used before their runtime exists"),
     }
+  }
+
+  /// Keeps `f` for [`call_handler`](Self::call_handler) until released or the runtime ends.
+  pub fn register_handler(&self, f: Function<'_>) -> u32 {
+    let callback = self.callback(f);
+    let mut state = self.0.borrow_mut();
+    state.next_handler += 1;
+    let id = state.next_handler;
+    state.handlers.insert(id, callback);
+    id
+  }
+
+  pub fn release_handler(&self, id: u32) {
+    let removed = self.0.borrow_mut().handlers.remove(&id);
+    drop(removed);
+  }
+
+  /// Keeps `sub` until the runtime ends.
+  pub fn hold(&self, sub: Subscription) {
+    self.0.borrow_mut().held.push(sub);
+  }
+
+  /// Calls handler `id` with `arg`, JSON, and waits for a promise it returns. `settle` gets
+  /// the value, or the error, in the runtime's context; it never runs when the runtime is
+  /// gone first.
+  pub fn call_handler(
+    &self,
+    id: u32,
+    arg: &str,
+    cx: &mut App,
+    settle: impl for<'js> FnOnce(&Ctx<'js>, std::result::Result<Value<'js>, String>, &mut App) + 'static,
+  ) {
+    let (callback, ctx) = {
+      let state = self.0.borrow();
+      (state.handlers.get(&id).cloned(), state.ctx.clone())
+    };
+    let Some(ctx) = ctx else {
+      return;
+    };
+    let _enter = Enter::new(cx, None, None);
+    with(&ctx, |ctx| {
+      let call = || -> Result<Value<'_>> {
+        let Some(callback) = &callback else {
+          return Err(rquickjs::Exception::throw_message(
+            &ctx,
+            "the handler is gone",
+          ));
+        };
+        let f = callback.f.clone().restore(&ctx)?;
+        f.call((ctx.json_parse(arg)?,))
+      };
+      let value = match call().catch(&ctx) {
+        Ok(value) => value,
+        Err(e) => return settle(&ctx, Err(e.to_string()), &mut crate::app()),
+      };
+      let Some(promise) = value.as_promise().cloned() else {
+        return settle(&ctx, Ok(value), &mut crate::app());
+      };
+      let ctx2 = ctx.clone();
+      ctx.spawn(async move {
+        let settled = promise
+          .into_future::<Value>()
+          .await
+          .catch(&ctx2)
+          .map_err(|e| e.to_string());
+        if let Some(mut cx) = crate::runtime::scope::try_app() {
+          settle(&ctx2, settled, &mut cx);
+        }
+      });
+    });
   }
 
   /// Calls `cb(read(cx))` on every change of `entity`, until the returned fn is called.

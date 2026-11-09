@@ -30,6 +30,7 @@ struct Registration {
   signature: String,
   widgets: Vec<String>,
   panels: Vec<String>,
+  commands: bool,
   _service: Option<Service>,
 }
 
@@ -176,6 +177,9 @@ fn sync(registered: &mut Registered, cx: &mut App) -> bool {
     for name in &old.panels {
       PanelState::unregister(name, cx);
     }
+    if old.commands {
+      crate::launcher::remove(id, cx);
+    }
     // dropping `old` stops its service, failing what waits for it
     false
   });
@@ -200,6 +204,7 @@ fn register(manifest: &PluginManifest, signature: String, cx: &mut App) -> Regis
     signature,
     widgets: Vec::new(),
     panels: Vec::new(),
+    commands: false,
     _service: None,
   };
   if manifest.service.is_some() {
@@ -207,6 +212,11 @@ fn register(manifest: &PluginManifest, signature: String, cx: &mut App) -> Regis
       Ok(service) => registered._service = Some(service),
       Err(e) => tracing::error!("plugin service `{}`: {e:#}", manifest.id),
     }
+  }
+  if !manifest.commands.is_empty() {
+    let port = ScriptManager::hub(&manifest.id, cx).launcher.clone();
+    crate::launcher::set_commands(&manifest.id, &manifest.commands, &port, cx);
+    registered.commands = true;
   }
   for key in manifest.widgets.keys() {
     let name = format!("{}:{key}", manifest.id);
@@ -284,13 +294,13 @@ impl Render for PluginError {
 
 #[cfg(test)]
 mod tests {
-  use std::fs;
-
-  use std::{cell::Cell, rc::Rc};
+  use std::{cell::Cell, fs, rc::Rc, time::Duration};
 
   use corona_components::components::tracked::Tracked;
   use corona_config::{Config, plugins::LOCAL_SOURCE};
   use gpui_kit::{self as gpui, Bounds, Pixels, TestAppContext, px};
+
+  use corona_js::ScriptExt;
 
   use super::*;
   use crate::{plugin::paths::Paths, test_support::setup};
@@ -418,6 +428,91 @@ export default class Main extends View {
       assert!(names.iter().all(|n| !n.contains(':')), "{names:?}");
       assert!(!PanelState::names(cx).contains(&"com.clock:main".to_string()));
     });
+  }
+
+  #[gpui::test]
+  fn a_running_plugin_answers_its_launcher_commands(cx: &mut TestAppContext) {
+    use corona_launcher::registry::Registry;
+
+    setup(cx);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("cmd");
+    fs::create_dir_all(&dir).unwrap();
+    let capabilities = "corona = [\"launcher\"]\n";
+    fs::write(
+      dir.join("plugin.toml"),
+      format!(
+        "id = \"com.cmd\"\nname = \"Cmd\"\napi = 2\nservice = \"service.js\"\n[capabilities]\n{capabilities}[commands.go]\ntitle = \"Go\"\n"
+      ),
+    )
+    .unwrap();
+    fs::write(
+      dir.join("service.js"),
+      r#"
+import { onRun } from "corona/launcher";
+export default async function main() {
+  onRun("go", () => ({ hud: { text: "gone" } }));
+}
+"#,
+    )
+    .unwrap();
+
+    cx.update(|cx| {
+      corona_surface::init(cx).unwrap();
+      corona_launcher::init(cx);
+      crate::register_modules(cx.script_mut());
+      let mut config = Config::default();
+      config.plugins.enabled = vec!["com.cmd".into()];
+      config.plugins.approved.insert(
+        "com.cmd".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          capabilities: capabilities.into(),
+        },
+      );
+      config.plugins.source.clear();
+      cx.set_global(config);
+      cx.set_global(ScriptManager::new(paths.clone()));
+      PluginManager::init(paths.clone(), cx);
+      crate::launcher::init(cx);
+      init(cx);
+    });
+    cx.run_until_parked();
+    let command = cx.update(|cx| cx.global::<Registry>().find("com.cmd:go", cx));
+    assert!(command.is_some());
+
+    // the service answers it
+    let port = cx.update(|cx| ScriptManager::hub("com.cmd", cx).launcher);
+    // the service starts on the executor
+    let mut asked = None;
+    for _ in 0..50 {
+      cx.executor().advance_clock(Duration::from_millis(100));
+      cx.run_until_parked();
+      asked = port.command("go").and_then(|h| {
+        cx.update(|cx| port.request(h, serde_json::json!([]), cx))
+          .ok()
+      });
+      if asked.is_some() {
+        break;
+      }
+      std::thread::sleep(Duration::from_millis(20));
+    }
+    let answer = asked.expect("the service did not start");
+    cx.run_until_parked();
+    let answer = futures::executor::block_on(answer).unwrap();
+    assert_eq!(answer["hud"]["text"], "gone");
+
+    // disabled: gone again
+    cx.update(|cx| cx.global_mut::<Config>().plugins.enabled.clear());
+    cx.run_until_parked();
+    assert!(
+      cx.update(|cx| cx.global::<Registry>().find("com.cmd:go", cx))
+        .is_none()
+    );
   }
 
   /// Lays `view` out in a bar-sized row, like a bar does, and measures it

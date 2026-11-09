@@ -253,6 +253,12 @@ impl Capabilities {
     self.process_env.iter().any(|n| n == name)
   }
 
+  /// Whether a script may give the variable its own value: granted, and not one of
+  /// [`HOST_ONLY_ENV`]
+  pub fn may_set_env(&self, name: &str) -> bool {
+    self.may_pass_env(name) && !HOST_ONLY_ENV.contains(&name)
+  }
+
   pub fn process_env_names(&self) -> &[String] {
     &self.process_env
   }
@@ -415,12 +421,27 @@ impl fmt::Display for Access {
   }
 }
 
+/// Variables of the user's home a child may be given, never set by a script: tools read their
+/// config and code from them, so a script that set them could run what it wrote
+pub const HOST_ONLY_ENV: &[&str] = &[
+  "HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+];
+
 #[derive(Debug, PartialEq)]
 pub enum CapabilityError {
   NotGranted(Access),
-  OutsideRoots { path: PathBuf, access: Access },
+  OutsideRoots {
+    path: PathBuf,
+    access: Access,
+  },
   ExecuteDenied(String),
   EnvDenied(String),
+  /// A script tried to set a variable that passes the host's value only
+  EnvHostOnly(String),
   StorageDenied,
 }
 
@@ -443,6 +464,10 @@ impl fmt::Display for CapabilityError {
       Self::EnvDenied(name) => write!(
         f,
         "environment variable `{name}` is not granted; add it to capabilities.process.env in the manifest"
+      ),
+      Self::EnvHostOnly(name) => write!(
+        f,
+        "environment variable `{name}` passes the host's value, a script cannot set it"
       ),
       Self::StorageDenied => {
         f.write_str("storage is not granted; set capabilities.storage to true")

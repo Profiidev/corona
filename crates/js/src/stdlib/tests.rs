@@ -418,6 +418,25 @@ fn run_rejects_a_start_failure_and_bounds_output(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn home_passes_the_hosts_and_a_script_cannot_set_it(cx: &mut TestAppContext) {
+  let source = main(
+    r#"import { run } from "process";"#,
+    r#"
+    const home = await run("/bin/sh", ["-c", "printf %s \"$HOME\""]);
+    report(home.stdout);
+    try { await run("/bin/sh", ["-c", "true"], { env: { HOME: "/tmp" } }); report("allowed"); }
+    catch (error) { report(error.message); }"#,
+  );
+  let caps = Capabilities::new()
+    .execute(ExecuteGrant::Allowed(vec!["/bin/sh".into()]))
+    .process_env(["HOME".into()]);
+  let (_service, _) = start(cx, "home-env", caps, &source);
+  let seen = settle(cx, |log| log.len() >= 2);
+  assert_eq!(seen[0], std::env::var("HOME").unwrap());
+  assert!(seen[1].contains("passes the host's value"), "{seen:?}");
+}
+
+#[gpui::test]
 fn process_is_denied_and_ambient_authority_is_absent(cx: &mut TestAppContext) {
   let source = main(
     r#"import process from "process";"#,

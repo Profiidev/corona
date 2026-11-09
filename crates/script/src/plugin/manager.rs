@@ -52,6 +52,7 @@ pub struct PluginManager {
   /// Per running plugin, what [`signatures`] says of it
   signatures: BTreeMap<String, String>,
   _auto_update: Option<Task<()>>,
+  _manifests: Option<Task<()>>,
 }
 
 impl Global for PluginManager {}
@@ -92,6 +93,7 @@ impl PluginManager {
       revision: 0,
       signatures: BTreeMap::new(),
       _auto_update: None,
+      _manifests: None,
     });
     Self::rescan(cx);
     observe_section(cx, |c| &c.plugins, |_, cx| Self::rescan(cx));
@@ -106,6 +108,8 @@ impl PluginManager {
       }
     });
     cx.global_mut::<Self>()._auto_update = Some(task);
+    let manifests = watch_manifests(cx);
+    cx.global_mut::<Self>()._manifests = Some(manifests);
   }
 
   pub fn paths(&self) -> &Paths {
@@ -762,7 +766,7 @@ pub fn in_scope(scope: AutoUpdate, source: &SourceConfig) -> bool {
 }
 
 /// What the shell builds from the running plugins: ids, where they are and
-/// their widgets, panels, services and grants, by id; settings are read live
+/// their widgets, panels, commands, services and grants, by id; settings are read live
 fn signatures(active: &HashMap<String, Found>) -> BTreeMap<String, String> {
   active
     .iter()
@@ -773,16 +777,64 @@ fn signatures(active: &HashMap<String, Found>) -> BTreeMap<String, String> {
 fn signature(found: &Found) -> String {
   let m = &found.manifest;
   format!(
-    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
     m.dir.display(),
     m.version,
     m.widgets,
     m.panels,
+    m.commands,
     m.service,
     m.capabilities,
     m.modules,
     m.dbus
   )
+}
+
+/// The manifests of the plugins in the dev sources, with their time and size
+type ManifestStamp = Vec<(PathBuf, std::time::SystemTime, u64)>;
+
+fn manifest_stamp(cx: &App) -> ManifestStamp {
+  let this = cx.global::<PluginManager>();
+  let mut stamp = ManifestStamp::new();
+  for root in registry::roots(&this.worker.paths, &cx.config().plugins) {
+    if root.origin.kind != SourceKind::Dev {
+      continue;
+    }
+    for entry in std::fs::read_dir(&root.dir).into_iter().flatten().flatten() {
+      let path = entry.path().join(crate::PLUGIN_MANIFEST_FILENAME);
+      if let Ok(meta) = std::fs::metadata(&path) {
+        let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        stamp.push((path, modified, meta.len()));
+      }
+    }
+  }
+  stamp.sort();
+  stamp
+}
+
+/// Reads the plugins again when a manifest in a dev source changed and held still for a
+/// poll. The scripts' watchers only see sources, so nothing else notices `plugin.toml`.
+/// ponytail: stats every dev plugin's manifest each poll, fine for a handful of plugins
+fn watch_manifests(cx: &mut App) -> Task<()> {
+  let mut last = manifest_stamp(cx);
+  let mut pending = None;
+  cx.spawn(async move |cx| {
+    loop {
+      cx.background_executor().timer(corona_js::POLL).await;
+      cx.update(|cx| {
+        let now = manifest_stamp(cx);
+        if now == last {
+          pending = None;
+        } else if pending.as_ref() == Some(&now) {
+          last = now;
+          pending = None;
+          PluginManager::rescan(cx);
+        } else {
+          pending = Some(now);
+        }
+      });
+    }
+  })
 }
 
 #[cfg(test)]
@@ -999,6 +1051,42 @@ mod tests {
     approve_again(cx, "com.a");
     assert_eq!(active(cx), from("dev"));
     assert_eq!(config(cx).approved["com.a"].source, "local");
+  }
+
+  #[gpui::test]
+  fn a_changed_dev_manifest_is_read_again(cx: &mut TestAppContext) {
+    let env = env(cx, |_, base| {
+      format!(
+        "[[plugins.source]]\nname = \"dev\"\nkind = \"dev\"\nlocation = \"{}\"\n",
+        base.join("dev").display()
+      )
+    });
+    let work = env.base.join("dev/a-work");
+    plugin(&work, "com.a", "1");
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
+    cx.run_until_parked();
+    let revision =
+      |cx: &mut TestAppContext| cx.update(|cx| cx.global::<PluginManager>().revision());
+    let before = revision(cx);
+
+    fs::write(work.join("plugin.toml"), manifest("com.a", "2")).unwrap();
+    // the poll sees it, and sees it hold still for the next one
+    for _ in 0..3 {
+      cx.executor().advance_clock(corona_js::POLL);
+      cx.run_until_parked();
+    }
+    let version = cx.update(|cx| {
+      cx.global::<PluginManager>().active()["com.a"]
+        .manifest
+        .version
+        .clone()
+    });
+    assert_eq!(
+      version.as_deref(),
+      Some("2"),
+      "the manifest was not read again"
+    );
+    assert!(revision(cx) > before, "the plugin was not restarted");
   }
 
   /// Approves what plugin `id` asks for now, when it waits for that

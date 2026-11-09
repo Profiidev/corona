@@ -5,14 +5,15 @@ use std::{
 
 use anyhow::{Context as _, Result, ensure};
 use corona_config::plugins::is_flat_name;
-use corona_js::{Capabilities, ExecuteGrant, HttpRequestGrant, ScriptModule};
+use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV, HttpRequestGrant, ScriptModule};
+use corona_launcher::{ArgSpec, Section, icon_by_name};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, de::Error as _};
 use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  module::{dbus::DbusGrant, secrets::Secrets},
+  module::{dbus::DbusGrant, launcher::Launcher, secrets::Secrets},
   plugin::{
     catalog::is_relative_file,
     settings::{self, Setting, SettingKind},
@@ -30,6 +31,8 @@ pub struct PluginManifest {
   pub description: Option<String>,
   pub widgets: BTreeMap<String, WidgetFile>,
   pub panels: BTreeMap<String, PanelFile>,
+  /// Launcher commands by name, id `<id>:<name>`; their handlers live in the service
+  pub commands: BTreeMap<String, CommandFile>,
   /// The service's script, relative to the plugin directory
   pub service: Option<String>,
   pub settings: Vec<Setting>,
@@ -72,6 +75,7 @@ impl PluginManifest {
       description: file.description,
       widgets: file.widgets,
       panels: file.panels,
+      commands: file.commands,
       service: file.service,
       settings: file.settings,
       dev: false,
@@ -135,6 +139,10 @@ pub struct ManifestFile {
   /// Panels by name, opened as `<id>:<name>`.
   #[serde(default, deserialize_with = "flat_keys")]
   pub panels: BTreeMap<String, PanelFile>,
+  /// Launcher commands by name, searched as `<id>:<name>`. The service answers
+  /// them through `corona/launcher`, which needs `corona = ["launcher"]`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub commands: BTreeMap<String, CommandFile>,
   /// A script that runs in the background while the plugin is enabled,
   /// relative to the plugin directory, e.g. `service.js`. It default-exports
   /// `async function main(cx)` and answers `call` from `corona/plugin` and
@@ -183,6 +191,7 @@ impl ManifestFile {
         );
       }
     }
+    self.check_commands()?;
     for host in self.capabilities.hosts() {
       let Some(key) = setting_key(host) else {
         ensure!(
@@ -208,6 +217,149 @@ impl ManifestFile {
     }
     Ok(())
   }
+}
+
+impl ManifestFile {
+  fn check_commands(&self) -> Result<()> {
+    if self.commands.is_empty() {
+      return Ok(());
+    }
+    ensure!(
+      self.service.is_some(),
+      "`[commands]` are answered by the service, which is not set"
+    );
+    ensure!(
+      self.capabilities.corona.contains(Launcher::NAME),
+      "`[commands]` need `corona = [\"launcher\"]`"
+    );
+    let mut prefixes = BTreeSet::new();
+    for (key, command) in &self.commands {
+      command
+        .check()
+        .with_context(|| format!("command `{key}`"))?;
+      if let Some(scope) = &command.scope {
+        ensure!(
+          prefixes.insert(&scope.prefix),
+          "command `{key}`: prefix `{}` is used twice",
+          scope.prefix
+        );
+      }
+    }
+    Ok(())
+  }
+}
+
+/// A launcher command, found in the root search
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CommandFile {
+  pub title: String,
+  #[serde(default)]
+  pub subtitle: Option<String>,
+  /// A bundled icon's kebab-case name, like `folder-open`.
+  #[serde(default)]
+  pub icon: Option<String>,
+  /// Found by these after the title, not shown.
+  #[serde(default)]
+  pub keywords: Vec<String>,
+  /// The root list section: `favorites`, `recent`, `suggestions`, `applications`,
+  /// `commands` (the default), `results` or `fallback`.
+  #[serde(default)]
+  pub section: Option<String>,
+  /// Typed after the title, the handler gets them as `args`.
+  #[serde(default)]
+  pub args: Vec<ArgFile>,
+  /// A prefix that scopes the search to this command's page, like `g `.
+  #[serde(default)]
+  pub scope: Option<ScopeFile>,
+}
+
+impl CommandFile {
+  fn check(&self) -> Result<()> {
+    ensure!(!self.title.trim().is_empty(), "the title is empty");
+    if let Some(icon) = &self.icon {
+      ensure!(icon_by_name(icon).is_some(), "unknown icon `{icon}`");
+    }
+    if let Some(section) = &self.section {
+      ensure!(
+        Section::from_name(section).is_some(),
+        "unknown section `{section}`"
+      );
+    }
+    for arg in &self.args {
+      ensure!(!arg.name.trim().is_empty(), "an argument has no name");
+      ensure!(
+        (arg.kind == ArgFileKind::Choice) == !arg.choices.is_empty(),
+        "argument `{}`: `choices` go with kind `choice` and only with it",
+        arg.name
+      );
+    }
+    if let Some(scope) = &self.scope {
+      ensure!(
+        !scope.prefix.is_empty() && !scope.prefix.contains(char::is_whitespace),
+        "the prefix `{}` must be one word",
+        scope.prefix
+      );
+    }
+    Ok(())
+  }
+
+  /// The arguments as the launcher parses them
+  pub fn arg_specs(&self) -> Vec<ArgSpec> {
+    self
+      .args
+      .iter()
+      .map(|arg| {
+        let spec = match arg.kind {
+          ArgFileKind::Text => ArgSpec::text(arg.name.clone()),
+          ArgFileKind::Number => ArgSpec::number(arg.name.clone()),
+          ArgFileKind::Level => ArgSpec::level(arg.name.clone()),
+          ArgFileKind::Duration => ArgSpec::duration(arg.name.clone()),
+          ArgFileKind::Choice => ArgSpec::choice(arg.name.clone(), arg.choices.clone()),
+        };
+        if arg.optional { spec.optional() } else { spec }
+      })
+      .collect()
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArgFile {
+  pub name: String,
+  #[serde(default)]
+  pub kind: ArgFileKind,
+  /// The values of a `choice`.
+  #[serde(default)]
+  pub choices: Vec<String>,
+  #[serde(default)]
+  pub optional: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ArgFileKind {
+  /// Free text; the last text argument takes the rest of the input.
+  #[default]
+  Text,
+  Number,
+  /// `65`, `65%`, `0.65`.
+  Level,
+  /// `5m`, `1h30m`, `90s`.
+  Duration,
+  Choice,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ScopeFile {
+  /// One word; typing it and a space searches only this command's page.
+  pub prefix: String,
+  /// The chip's label; the command's title when unset.
+  #[serde(default)]
+  pub label: Option<String>,
+  #[serde(default)]
+  pub placeholder: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
@@ -827,13 +979,16 @@ const DENIED_ENV: &[&str] = &[
 
 /// Loader and interpreter variables would run the plugin's own code in any
 /// granted command, the plugin sets their values. `PATH` passes the host's
-/// only, the runtime refuses one a script sets.
+/// only, the runtime refuses one a script sets. The same goes for home and the
+/// XDG base directories (`HOST_ONLY_ENV`): children get the user's, never the
+/// plugin's.
 fn env_names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
   let names = Vec::<String>::deserialize(deserializer)?;
   let denied = |name: &&String| {
-    (name.ends_with("PATH") && *name != "PATH")
-      || name.contains('=')
-      || DENIED_ENV.iter().any(|d| name.starts_with(d))
+    !HOST_ONLY_ENV.contains(&name.as_str())
+      && ((name.ends_with("PATH") && *name != "PATH")
+        || name.contains('=')
+        || DENIED_ENV.iter().any(|d| name.starts_with(d)))
   };
   if let Some(name) = names.iter().find(denied) {
     return Err(D::Error::custom(format!(
@@ -854,7 +1009,7 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use corona_js::{Capabilities, ExecuteGrant};
+  use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV};
   use serde_json::{Map, json};
 
   use super::{ManifestFile, PluginManifest, expand};
@@ -1195,9 +1350,9 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       "BASH_ENV",
       "PERL5OPT",
       "DYLD_INSERT_LIBRARIES",
-      "HOME",
-      "XDG_CONFIG_HOME",
+      "XDG_CONFIG_DIRS",
       "XDG_DATA_DIRS",
+      "HOME_X",
       "EDITOR",
       "OPENSSL_CONF",
       "SSL_CERT_FILE",
@@ -1207,6 +1362,23 @@ network = { unix = ["/run/tailscale/tailscaled.sock", "${dataDir}/adb.sock"] }
       let body = format!("process = {{ env = [\"{bad}\"] }}");
       assert!(with_capabilities(&body).is_err(), "{bad}");
     }
+  }
+
+  #[test]
+  fn home_and_the_xdg_base_dirs_pass_the_hosts() {
+    let names = HOST_ONLY_ENV
+      .iter()
+      .map(|n| format!("\"{n}\""))
+      .collect::<Vec<_>>()
+      .join(", ");
+    let capabilities = grant(&format!("process = {{ env = [{names}] }}"));
+    for name in HOST_ONLY_ENV {
+      assert!(capabilities.may_pass_env(name), "{name}");
+      // a script cannot give them a value of its own
+      assert!(!capabilities.may_set_env(name), "{name}");
+    }
+    let capabilities = grant(r#"process = { env = ["PATH", "LANG"] }"#);
+    assert!(capabilities.may_set_env("LANG") && capabilities.may_set_env("PATH"));
   }
 
   #[test]
@@ -1488,5 +1660,65 @@ methods = ["POST"]
         "{bad}"
       );
     }
+  }
+
+  const COMMANDS: &str = r#"
+service = "service.js"
+[capabilities]
+corona = ["launcher"]
+"#;
+
+  #[test]
+  fn commands() {
+    let manifest = with(&format!(
+      r#"{COMMANDS}
+[commands.recent]
+title = "Recent Projects"
+icon = "folder"
+keywords = ["zed"]
+section = "results"
+args = [{{ name = "q", kind = "text", optional = true }}]
+scope = {{ prefix = "rp", label = "Projects" }}
+"#
+    ))
+    .unwrap();
+    manifest.check().unwrap();
+    let command = &manifest.commands["recent"];
+    assert_eq!(command.title, "Recent Projects");
+    assert_eq!(command.scope.as_ref().unwrap().prefix, "rp");
+    assert_eq!(command.arg_specs().len(), 1);
+  }
+
+  #[test]
+  fn commands_are_checked() {
+    let fails = |rest: &str| {
+      let manifest = with(&format!("{COMMANDS}[commands.x]\n{rest}")).unwrap();
+      manifest.check().is_err()
+    };
+    assert!(!fails("title = \"X\""));
+    assert!(fails("title = \" \""));
+    assert!(fails("title = \"X\"\nicon = \"no-such-icon\""));
+    assert!(fails("title = \"X\"\nsection = \"running\""));
+    assert!(fails("title = \"X\"\nscope = { prefix = \"a b\" }"));
+    assert!(fails(
+      "title = \"X\"\nargs = [{ name = \"a\", kind = \"choice\" }]"
+    ));
+    assert!(fails(
+      "title = \"X\"\nargs = [{ name = \"a\", choices = [\"x\"] }]"
+    ));
+    // a prefix is one command's
+    let twice = format!(
+      "{COMMANDS}[commands.x]\ntitle = \"X\"\nscope = {{ prefix = \"p\" }}\n[commands.y]\ntitle = \"Y\"\nscope = {{ prefix = \"p\" }}"
+    );
+    assert!(with(&twice).unwrap().check().is_err());
+  }
+
+  #[test]
+  fn commands_need_a_service_and_the_grant() {
+    let no_service = with("[capabilities]\ncorona = [\"launcher\"]\n[commands.x]\ntitle = \"X\"");
+    assert!(no_service.unwrap().check().is_err());
+    let no_grant = with("service = \"s.js\"\n[commands.x]\ntitle = \"X\"");
+    assert!(no_grant.unwrap().check().is_err());
+    assert!(with("[commands.x]\ntitle = \"X\"\nbogus = 1").is_err());
   }
 }

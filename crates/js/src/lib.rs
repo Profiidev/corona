@@ -24,7 +24,10 @@ pub use element::{
   with_node,
 };
 pub use runtime::{
-  caps::{Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HttpRequestGrant},
+  caps::{
+    Access, Capabilities, CapabilityError, ExecuteGrant, Grant, HOST_ONLY_ENV, HttpRequestGrant,
+  },
+  handler::{Handler, Spec, encode},
   host::{Cx, Glob, Json, Opt, Throws, json},
   limits::{Trip, TripHook, take_tripped},
   module::{Data, ModuleBuilder, d_ts},

@@ -462,9 +462,11 @@ fn render_row(
   cx: &App,
 ) -> AnyElement {
   let theme = cx.theme();
+  // the match stands out by what is around it: the rest of the title is dimmed, so the
+  // match keeps the full text colour whatever the theme
   let highlight = HighlightStyle {
     font_weight: Some(FontWeight::BOLD),
-    color: Some(theme.colors.primary),
+    color: Some(theme.foreground),
     ..Default::default()
   };
   if let Some(evaluation) = &row.evaluation {
@@ -476,6 +478,7 @@ fn render_row(
     .collect::<Vec<_>>();
   let (title_color, sub) = match &row.hint {
     Some((_, true)) => (theme.colors.danger, row.hint.as_ref().map(|h| h.0.clone())),
+    _ if !ranges.is_empty() => (theme.colors.muted_foreground, row.subtitle.clone()),
     _ => (theme.foreground, row.subtitle.clone()),
   };
   div()

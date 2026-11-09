@@ -139,6 +139,6 @@ mod tests {
   fn registers_every_script_module() {
     let mut modules = corona_js::ScriptRegistry::default();
     script_modules(&mut modules);
-    assert_eq!(modules.all().count(), 18);
+    assert_eq!(modules.all().count(), 19);
   }
 }
