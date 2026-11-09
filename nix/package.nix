@@ -17,6 +17,9 @@
   makeWrapper,
   git,
   dconf,
+  aws-lc,
+  zstd,
+  sqlite,
 }:
 
 let
@@ -74,6 +77,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
     alsa-lib
     libgbm
     linux-pam
+    aws-lc
+    zstd
+    sqlite
   ];
 
   postPatch = ''
