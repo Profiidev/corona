@@ -19,6 +19,7 @@
   dconf,
   aws-lc,
   zstd,
+  sqlite,
 }:
 
 let
@@ -78,6 +79,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     linux-pam
     aws-lc
     zstd
+    sqlite
   ];
 
   postPatch = ''
