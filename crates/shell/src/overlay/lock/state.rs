@@ -1,5 +1,6 @@
 use std::{
   cell::Cell,
+  path::PathBuf,
   rc::Rc,
   time::{Duration, Instant},
 };
@@ -43,7 +44,7 @@ const FINGERPRINT_RETRY: Duration = Duration::from_secs(3);
 
 #[derive(Default)]
 pub struct LockState {
-  windows: Vec<AnyWindowHandle>,
+  windows: Vec<(DisplayId, AnyWindowHandle)>,
   /// The lock in progress, kept so a second caller can wait for it too.
   locking: Option<Shared<Task<()>>>,
   /// The display each lock window covers, and what it showed
@@ -68,9 +69,32 @@ pub struct LockState {
 
 impl Global for LockState {}
 
+/// Exists while locked. The compositor keeps the session locked when we die, this
+/// tells the next start to cover it again
+fn marker() -> Option<PathBuf> {
+  let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+  Some(PathBuf::from(dir).join("corona-locked"))
+}
+
 impl LockState {
   /// Resolves once the compositor confirms the lock, or gave up on it.
   pub fn lock(cx: &mut App) -> Task<()> {
+    Self::start(cx, true)
+  }
+
+  /// Covers a session a previous run left locked, if it did. No capture: the
+  /// compositor only shows its own lock screen by now
+  pub fn recover(cx: &mut App) {
+    if marker().is_some_and(|m| m.exists()) {
+      tracing::warn!("lock: session was left locked, locking again");
+      if let Err(e) = cx.compositor().allow_session_lock_restore() {
+        tracing::warn!("lock: cannot allow the lock restore: {e:#}");
+      }
+      Self::start(cx, false).detach();
+    }
+  }
+
+  fn start(cx: &mut App, capture: bool) -> Task<()> {
     if let Some(state) = cx.try_global::<Self>() {
       let locking = state.locking.clone();
       return cx.spawn(async move |_| {
@@ -82,19 +106,25 @@ impl LockState {
     cx.set_global(LockState::default());
     cx.global_mut::<Self>().reader = Some(cx.new(|_| Fingerprint::Off));
 
-    let names: Vec<String> = cx
-      .compositor()
-      .list_monitors(cx)
-      .iter()
-      .filter(|m| !m.disabled)
-      .map(|m| m.name.clone())
-      .collect();
+    let names: Vec<String> = match capture {
+      true => cx
+        .compositor()
+        .list_monitors(cx)
+        .iter()
+        .filter(|m| !m.disabled)
+        .map(|m| m.name.clone())
+        .collect(),
+      false => Vec::new(),
+    };
 
     let sigma = cx.config().lockscreen.blur;
     let locking = cx
       .spawn(async move |cx| {
         // capture and blur share one deadline, the lock must not wait on either
         let work = cx.background_executor().spawn(async move {
+          if names.is_empty() {
+            return Ok(Vec::new());
+          }
           let frames = capture_all(names)?;
           std::thread::scope(|s| {
             frames
@@ -121,6 +151,11 @@ impl LockState {
         };
         match locked.await.map_err(anyhow::Error::from).and_then(|r| r) {
           Ok(()) => cx.update(|cx| {
+            if let Some(marker) = marker()
+              && let Err(e) = std::fs::write(marker, "")
+            {
+              tracing::warn!("lock: cannot mark the session as locked: {e}");
+            }
             Self::open_overlays(cx);
             Self::scan_fingerprints(cx);
           }),
@@ -165,13 +200,19 @@ impl LockState {
 
     let mut windows = Vec::new();
     let mut main_window = None;
-    let opened = open_screens(screens, main, &mut windows, |display, background, login| {
-      let window = Self::open(display, background, login, cx)?;
-      if main == Some(display) {
-        main_window = Some((display, window));
-      }
-      Ok(window)
-    });
+    let opened = open_screens(
+      screens,
+      main,
+      &mut Vec::new(),
+      |display, background, login| {
+        let window = Self::open(display, background, login, cx)?;
+        windows.push((display, window));
+        if main == Some(display) {
+          main_window = Some((display, window));
+        }
+        Ok(window)
+      },
+    );
     // kept even on failure, so the unlock closes what did open
     let state = cx.global_mut::<Self>();
     state.windows = windows;
@@ -184,10 +225,10 @@ impl LockState {
     }
 
     // a failed unlock above removed the state, so only a live lock watches
-    let subscription = cx.observe_displays(|event, cx| {
-      if let DisplayEvent::Added(display) = event {
-        Self::cover(display, cx);
-      }
+    let subscription = cx.observe_displays(|event, cx| match event {
+      DisplayEvent::Added(display) => Self::cover(display, cx),
+      DisplayEvent::Removed(display) => Self::uncover(display, cx),
+      _ => {}
     });
     cx.global_mut::<Self>().displays = Some(subscription);
     Some(locked)
@@ -213,10 +254,54 @@ impl LockState {
       Ok(window) => {
         let state = cx.global_mut::<Self>();
         state.screens.push((display, None));
-        state.windows.push(window);
+        state.windows.push((display, window));
       }
       Err(e) => tracing::error!("lock: no window on the new display: {e:#}"),
     }
+  }
+
+  /// A display unplugged while locked loses its window. The others forward their keys
+  /// to the main display's window, so without it they each get their own login
+  fn uncover(display: DisplayId, cx: &mut App) {
+    let Some(state) = cx.try_global::<Self>() else {
+      return;
+    };
+    let main_gone = state.main.is_some_and(|(d, _)| d == display);
+    let (gone, mut windows): (Vec<_>, Vec<_>) = state
+      .windows
+      .iter()
+      .copied()
+      .partition(|(d, _)| *d == display || main_gone);
+    let mut screens = state.screens.clone();
+    screens.retain(|(d, _)| *d != display);
+    if gone.is_empty() && screens.len() == state.screens.len() {
+      return;
+    }
+    let mut main = state.main;
+    for (_, window) in gone {
+      let _ = window.update(cx, |_, window, _| window.remove_window());
+    }
+    if main_gone {
+      main = None;
+      windows.clear();
+      let reopened = open_screens(
+        screens.clone(),
+        None,
+        &mut Vec::new(),
+        |display, background, login| {
+          let window = Self::open(display, background, login, cx)?;
+          windows.push((display, window));
+          Ok(window)
+        },
+      );
+      if let Err(e) = reopened {
+        tracing::error!("lock: cannot cover the displays left: {e:#}");
+      }
+    }
+    let state = cx.global_mut::<Self>();
+    state.screens = screens;
+    state.windows = windows;
+    state.main = main;
   }
 
   /// Starts the clock on the first display to draw
@@ -340,9 +425,12 @@ impl LockState {
       return;
     }
     cx.unlock_session();
+    if let Some(marker) = marker() {
+      let _ = std::fs::remove_file(marker);
+    }
 
     let state = cx.remove_global::<LockState>();
-    let mut windows = state.windows;
+    let mut windows: Vec<_> = state.windows.into_iter().map(|(_, w)| w).collect();
     // a playing animation closes its overlays itself
     if state.unlock_start.get().is_none() {
       windows.extend(state.overlays);
@@ -541,6 +629,23 @@ mod tests {
     let screens = [(DisplayId::new(1), ())];
     assert!(!is_uncovered(&screens, DisplayId::new(1)));
     assert!(is_uncovered(&screens, DisplayId::new(2)));
+  }
+
+  #[gpui::test]
+  fn recover_only_with_marker(cx: &mut TestAppContext) {
+    no_capture();
+    setup(FakeCompositor::default(), cx);
+    let marker = marker().unwrap();
+    let _ = std::fs::remove_file(&marker);
+    cx.update(LockState::recover);
+    assert!(!cx.update(|cx| cx.has_global::<LockState>()));
+    std::fs::write(&marker, "").unwrap();
+    cx.update(LockState::recover);
+    assert!(cx.update(|cx| cx.has_global::<LockState>()));
+    cx.run_until_parked();
+    // the test platform refuses the lock, which clears the marker again
+    assert!(!cx.update(|cx| cx.has_global::<LockState>()));
+    assert!(!marker.exists());
   }
 
   #[gpui::test]
