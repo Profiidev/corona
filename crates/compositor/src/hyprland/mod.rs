@@ -77,6 +77,15 @@ impl CompositorImpl for Hyprland {
   fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()> {
     self.ipc.configure_monitor(name, change)
   }
+  fn allow_session_lock_restore(&self) -> Result<()> {
+    let res = self
+      .ipc
+      .eval("hl.config({ misc = { allow_session_lock_restore = true } })")?;
+    if res != "ok" {
+      anyhow::bail!("Hyprland refused allow_session_lock_restore: {res}");
+    }
+    Ok(())
+  }
 
   fn keyboard_layout(&self) -> Result<Option<String>> {
     self.ipc.keyboard_layout()

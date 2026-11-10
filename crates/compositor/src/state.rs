@@ -87,6 +87,11 @@ impl Compositor {
     self.inner.set_dpms(on)
   }
 
+  /// Lets a restarted lock screen take over a session whose lock client died
+  pub fn allow_session_lock_restore(&self) -> Result<()> {
+    self.inner.allow_session_lock_restore()
+  }
+
   /// Enables, disables or mirrors monitor `name`, then reads the monitors
   /// again: turning one on or off is not always an event
   pub fn configure_monitor(name: &str, change: types::MonitorChange, cx: &mut App) -> Result<()> {
@@ -237,6 +242,10 @@ pub trait CompositorImpl {
   fn set_dpms(&self, on: bool) -> Result<()>;
 
   fn configure_monitor(&self, name: &str, change: types::MonitorChange) -> Result<()>;
+
+  fn allow_session_lock_restore(&self) -> Result<()> {
+    Ok(())
+  }
 
   fn toggle_floating(&self, _address: &str) -> Result<()> {
     unsupported()
