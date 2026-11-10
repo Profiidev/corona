@@ -1,0 +1,69 @@
+diff --git a/crates/gpui_linux/src/linux/platform.rs b/crates/gpui_linux/src/linux/platform.rs
+--- a/crates/gpui_linux/src/linux/platform.rs
++++ b/crates/gpui_linux/src/linux/platform.rs
+@@ -668,9 +668,7 @@
+             .borrow_mut()
+             .take()
+             .expect("App is already running");
+-        event_loop
+-            .run(None, &mut (), |_| self.apply_pending_mode())
+-            .log_err();
++        let result = event_loop.run(None, &mut (), |_| self.apply_pending_mode());
+ 
+         let quit = self.with_common(|common| common.callbacks.quit.take());
+         if let Some(mut fun) = quit {
+@@ -678,6 +676,13 @@
+         }
+         #[cfg(feature = "x11")]
+         crate::linux::wait_for_clipboard_handovers();
++
++        // An error ends the loop for good (e.g. a dead display connection), so exit
++        // non-zero for a supervisor like systemd's Restart=on-failure to restart the app.
++        if let Err(error) = result {
++            log::error!("event loop failed: {error}");
++            std::process::exit(1);
++        }
+     }
+ 
+     fn quit(&self) {
+diff --git a/crates/gpui_linux/src/linux/wayland/client.rs b/crates/gpui_linux/src/linux/wayland/client.rs
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -23,7 +23,7 @@
+ use gpui_util::ResultExt as _;
+ use http_client::Url;
+ use smallvec::SmallVec;
+-use wayland_backend::client::ObjectId;
++use wayland_backend::client::{ObjectId, WaylandError};
+ use wayland_backend::protocol::WEnum;
+ use wayland_client::event_created_child;
+ use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
+@@ -35,7 +35,7 @@
+     wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_output, wl_region,
+ };
+ use wayland_client::{
+-    Connection, Dispatch, Proxy, QueueHandle, delegate_noop,
++    Connection, Dispatch, DispatchError, Proxy, QueueHandle, delegate_noop,
+     protocol::{
+         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+         wl_shm_pool, wl_surface, wl_touch,
+@@ -1263,9 +1263,17 @@
+             .log_err();
+ 
+         client.register_source(
+-            handle.insert_source(WaylandSource::new(conn, event_queue), {
++            handle.insert_source(WaylandSource::new(conn.clone(), event_queue), {
+                 let mut client = pointer;
+-                move |_, queue, _| queue.dispatch_pending(&mut client)
++                move |_, queue, _| {
++                    let dispatched = queue.dispatch_pending(&mut client)?;
++                    // dispatch_pending swallows a fatal protocol error and calloop-wayland-source
++                    // drops it everywhere else, so without this check the loop spins forever.
++                    if let Some(error) = conn.protocol_error() {
++                        return Err(DispatchError::Backend(WaylandError::Protocol(error)));
++                    }
++                    Ok(dispatched)
++                }
+             }),
+             "failed to register Wayland connection source",
+         )?;
