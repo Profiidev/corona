@@ -235,6 +235,18 @@ impl AudioState {
     }
   }
 
+  /// a cleared key-less property wipes only its subject: 0 holds the defaults, a stream its pin
+  pub fn clear_subject(&self, subject: u32, events: &flume::Sender<AudioEvent>) {
+    match subject {
+      sys::SPA_ID_INVALID => self.clear_metadata(events),
+      0 => {
+        self.set_default(NodeType::Sink, None, events);
+        self.set_default(NodeType::Source, None, events);
+      }
+      _ => self.set_target(subject, None, events),
+    }
+  }
+
   pub fn list(&self, kind: NodeType) -> Vec<AudioNode> {
     let mut nodes: Vec<AudioNode> = self
       .nodes

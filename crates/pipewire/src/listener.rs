@@ -252,7 +252,7 @@ fn metadata_property_listener(
           .set_default(NodeType::Source, value.and_then(metadata_name), &events)
       }
       Some("target.object") => state.audio.set_target(subject, value.map(unquote), &events),
-      None => state.audio.clear_metadata(&events),
+      None => state.audio.clear_subject(subject, &events),
       _ => (),
     }
     0
@@ -507,12 +507,21 @@ pub(crate) mod tests {
     );
     assert!(rx.try_recv().is_err());
 
-    // a cleared everything drops defaults and pins
+    // a cleared stream only drops its own pin, the defaults stay
+    listen(110, None, None, None);
+    assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.is_empty()));
+    assert!(rx.try_recv().is_err());
+    // a cleared subject 0 drops the defaults
     listen(0, None, None, None);
     assert!(matches!(
       rx.try_recv().unwrap(),
       AudioEvent::DefaultSource(None)
     ));
+    assert!(rx.try_recv().is_err());
+    // a cleared everything drops pins too
+    listen(111, Some("target.object"), None, Some("62"));
+    let _ = rx.drain();
+    listen(u32::MAX, None, None, None);
     assert!(matches!(rx.try_recv().unwrap(), AudioEvent::Targets(t) if t.is_empty()));
     assert!(rx.try_recv().is_err());
   }
