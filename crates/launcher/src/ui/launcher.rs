@@ -485,6 +485,8 @@ impl Launcher {
     page.query = text.clone();
     page.args = None;
     page.completion = 0;
+    // a new search starts at its top row, only refreshes keep the selected one
+    page.selected_id = None;
     self.detect_scope(&text, window, cx);
     if let Body::Custom { view, .. } = &self.page().body
       && let Some(on_query) = view.on_query.clone()
@@ -1750,6 +1752,29 @@ mod view_tests {
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
     assert_eq!(runs.get(), 1);
+  }
+
+  #[gpui::test]
+  fn typing_selects_the_top_row(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = open(cx);
+    cx.simulate_input("open list");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("down down");
+    let selected = |cx: &mut VisualTestContext| {
+      view.read_with(cx, |l, _| {
+        let page = l.current();
+        (
+          page.selected,
+          page.rows[page.selected].meta.title.to_string(),
+        )
+      })
+    };
+    assert_eq!(selected(cx), (2, "gamma".into()));
+    // every row still matches, yet the selection goes back to the top
+    cx.simulate_input("a");
+    assert_eq!(selected(cx).0, 0);
   }
 
   #[gpui::test]
