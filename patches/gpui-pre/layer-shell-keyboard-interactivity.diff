@@ -1,0 +1,30 @@
+diff --git a/crates/gpui/src/platform.rs b/crates/gpui/src/platform.rs
+--- a/crates/gpui/src/platform.rs
++++ b/crates/gpui/src/platform.rs
+@@ -1418,6 +1418,8 @@
+     fn set_exclusive_zone(&self, _zone: Pixels) {}
+     #[cfg(all(target_os = "linux", feature = "wayland"))]
+     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
++    #[cfg(all(target_os = "linux", feature = "wayland"))]
++    fn set_keyboard_interactivity(&self, _value: layer_shell::KeyboardInteractivity) {}
+     fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
+     fn window_decorations(&self) -> Decorations {
+         Decorations::Server
+diff --git a/crates/gpui/src/window.rs b/crates/gpui/src/window.rs
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -2728,6 +2728,14 @@
+         self.platform_window.set_exclusive_edge(edge);
+     }
+ 
++    /// Change whether a layer-shell surface takes keyboard focus. A surface mapped
++    /// without it is not focused on map; switched later, the compositor focuses it
++    /// only on click. (Wayland layer-shell windows only)
++    #[cfg(all(target_os = "linux", feature = "wayland"))]
++    pub fn set_keyboard_interactivity(&self, value: crate::layer_shell::KeyboardInteractivity) {
++        self.platform_window.set_keyboard_interactivity(value);
++    }
++
+     /// Start an interactive window resize operation if this window is resizable.
+     pub fn start_window_resize(&self, edge: ResizeEdge) {
+         if self.is_resizable {

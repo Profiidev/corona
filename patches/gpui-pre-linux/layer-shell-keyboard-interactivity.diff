@@ -1,0 +1,46 @@
+diff --git a/crates/gpui_linux/src/linux/wayland/window.rs b/crates/gpui_linux/src/linux/wayland/window.rs
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -44,7 +44,7 @@
+     PromptLevel, RequestFrameOptions, ResizeEdge, Scene, Size, Tiling, WindowAppearance,
+     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowControls, WindowDecorations,
+     WindowKind, WindowParams, WindowVisibility,
+-    layer_shell::{Anchor, LayerShellNotSupportedError},
++    layer_shell::{Anchor, KeyboardInteractivity, LayerShellNotSupportedError},
+     popup::PopupOptions,
+     px, size,
+ };
+@@ -541,6 +541,19 @@
+         }
+     }
+ 
++    fn set_keyboard_interactivity(&self, value: KeyboardInteractivity) -> bool {
++        if let WaylandSurfaceState::LayerShell(WaylandLayerSurfaceState { layer_surface, .. }) =
++            self
++        {
++            layer_surface.set_keyboard_interactivity(
++                super::layer_shell::wayland_keyboard_interactivity(value),
++            );
++            true
++        } else {
++            false
++        }
++    }
++
+     fn set_exclusive_edge(&self, edge: Anchor) -> bool {
+         if let WaylandSurfaceState::LayerShell(WaylandLayerSurfaceState {
+             layer_surface,
+@@ -2248,6 +2261,13 @@
+             state.surface.commit();
+         }
+     }
++
++    fn set_keyboard_interactivity(&self, value: KeyboardInteractivity) {
++        let state = self.borrow();
++        if state.surface_state.set_keyboard_interactivity(value) {
++            state.surface.commit();
++        }
++    }
+ 
+     fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
+         let state = self.borrow();

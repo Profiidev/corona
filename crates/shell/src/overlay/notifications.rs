@@ -364,7 +364,8 @@ impl NotificationPopups {
             margin: Some((px(config.offset), px(0.), px(0.), px(0.))),
             layer: Layer::Overlay,
             namespace: NAMESPACE.to_string(),
-            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+            // OnDemand at map makes Hyprland focus it, taken on first hover instead
+            keyboard_interactivity: KeyboardInteractivity::None,
           },
           display,
           Size::new(px(config.width + config.offset), px(1.)),
@@ -488,7 +489,11 @@ impl Render for Popups {
                       ),
                   )
                 })
-                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                .on_hover(cx.listener(move |this, hovered: &bool, window, cx| {
+                  // mapped by now, so the compositor focuses it only on click, for a reply
+                  if *hovered {
+                    window.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+                  }
                   if let Some(popup) = this.items.iter_mut().find(|p| p.item.id == id) {
                     popup.hovered = *hovered;
                     popup.last_tick = Instant::now();

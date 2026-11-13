@@ -266,6 +266,21 @@ fn open_uri(cx: Cx, uri: String) -> Throws<()> {
   uri_ok(&uri).map(|()| cx.open_url(&uri)).into()
 }
 
+/// Starts an app, `argv[0]` one the plugin may execute, as the launcher does: in its own
+/// scope with the user's whole session environment, not the cleared one of `process`.
+#[specta]
+fn launch(plugin: Plugin, argv: Vec<String>) -> Throws<()> {
+  let launch = || -> Result<()> {
+    let program = argv.first().context("nothing to launch")?;
+    ensure!(
+      plugin.capabilities.may_run(program),
+      "`{program}` may not be executed"
+    );
+    corona_desktop::apps::spawn(&plugin.id, &argv, None)
+  };
+  launch().into()
+}
+
 /// Listens on 127.0.0.1 for one OAuth redirect, for a login opened with `openUri`, on a
 /// free port. Take it with `onRedirect(id, cb)`.
 #[specta]
@@ -352,12 +367,13 @@ pub struct Desktop;
 
 impl ScriptModule for Desktop {
   const NAME: &str = "desktop";
-  const DOC: &str = "The file picker and opening files and URIs in the user's apps.";
+  const DOC: &str =
+    "The file picker, launching apps and opening files and URIs in the user's apps.";
 
   fn module(_: &PluginRef, m: &mut ModuleBuilder, _: &mut App) {
     m.provide(Redirects::default());
     host_module!(m, {
-      sync: [open_path, open_uri, listen_redirect, on_redirect],
+      sync: [open_path, open_uri, launch, listen_redirect, on_redirect],
       async: [pick_files],
     });
   }
@@ -395,6 +411,16 @@ mod tests {
         .contains("not readable")
     );
     assert_eq!(cx.opened_url(), None);
+  }
+
+  #[gpui::test]
+  fn launches_only_granted_programs(cx: &mut TestAppContext) {
+    let body = r#"report([attempt(() => m.launch([])), attempt(() => m.launch(["sh"]))]);"#;
+    let (view, cx) = harness::module::<Desktop>(cx, body);
+    let reports = view.last(cx);
+    let message = |i: usize| reports[i]["message"].as_str().unwrap().to_string();
+    assert!(message(0).contains("nothing to launch"), "{}", message(0));
+    assert!(message(1).contains("may not be executed"), "{}", message(1));
   }
 
   #[gpui::test]
