@@ -190,6 +190,8 @@ pub fn spawn(id: &str, argv: &[String], dir: Option<&Path>) -> Result<()> {
       "--",
     ])
     .args(argv)
+    // set by the shell to name its own sound stream, apps would show as corona with it
+    .env_remove("PIPEWIRE_PROPS")
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null());
