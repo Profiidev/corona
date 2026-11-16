@@ -1,4 +1,5 @@
 mod layout;
+mod settings;
 
 use anyhow::Result;
 use corona_components::components::card::PageError;
