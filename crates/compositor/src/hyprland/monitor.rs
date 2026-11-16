@@ -11,6 +11,27 @@ impl crate::hyprland::command::Ipc {
       types::MonitorChange::Disable => "disabled = true".to_string(),
       types::MonitorChange::Mirror(source) => format!("mirror = {}", lua_string(&source)),
       types::MonitorChange::StopMirroring => "mirror = \"\"".to_string(),
+      types::MonitorChange::Set {
+        mode,
+        scale,
+        position,
+      } => {
+        let mut fields = Vec::new();
+        if let Some(m) = mode {
+          let rate = format!("{:.2}", m.refresh_rate);
+          fields.push(format!("mode = \"{}x{}@{rate}Hz\"", m.width, m.height));
+        }
+        if let Some(scale) = scale {
+          fields.push(format!("scale = \"{scale}\""));
+        }
+        if let Some((x, y)) = position {
+          fields.push(format!("position = \"{x}x{y}\""));
+        }
+        if fields.is_empty() {
+          return Ok(());
+        }
+        fields.join(", ")
+      }
     };
     let res = self.eval(format!(
       "hl.monitor({{ output = {}, {setting} }})",
@@ -67,12 +88,32 @@ pub struct Monitor {
   pub mirror_of: String,
   #[serde(default)]
   pub reserved: [i32; 4],
+  #[serde(default, rename = "physicalWidth")]
+  pub physical_width: u32,
+  #[serde(default, rename = "physicalHeight")]
+  pub physical_height: u32,
+  #[serde(default)]
+  pub transform: i32,
+  #[serde(default, rename = "availableModes")]
+  pub available_modes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct WorkspaceInfo {
   pub address: String,
   pub name: String,
+}
+
+/// The listed modes, each size and rate once, largest and fastest first
+fn modes(listed: &[String]) -> Vec<types::Mode> {
+  let mut modes: Vec<types::Mode> = listed
+    .iter()
+    .filter_map(|m| types::Mode::parse(m))
+    .collect();
+  modes
+    .sort_by(|a, b| (b.width, b.height, b.millihertz()).cmp(&(a.width, a.height, a.millihertz())));
+  modes.dedup_by_key(|m| (m.width, m.height, m.millihertz()));
+  modes
 }
 
 impl From<Monitor> for types::Monitor {
@@ -102,6 +143,11 @@ impl From<Monitor> for types::Monitor {
       disabled: m.disabled,
       mirror_of: m.mirror_of,
       reserved: m.reserved,
+      hardware: types::Hardware {
+        physical_mm: (m.physical_width, m.physical_height),
+        transform: m.transform,
+        modes: modes(&m.available_modes),
+      },
     }
   }
 }
@@ -168,7 +214,16 @@ mod tests {
     use types::MonitorChange::*;
     let hypr = FakeHyprland::start();
     let ipc = hypr.ipc();
-    for change in [Enable, Disable, Mirror("DP-1".into()), StopMirroring] {
+    let set = Set {
+      mode: Some(types::Mode {
+        width: 1920,
+        height: 1200,
+        refresh_rate: 59.95,
+      }),
+      scale: Some(1.25),
+      position: Some((-1920, 0)),
+    };
+    for change in [Enable, Disable, Mirror("DP-1".into()), StopMirroring, set] {
       ipc.configure_monitor("HDMI-A-1", change).unwrap();
     }
     // a name cannot end the Lua string it is put in
@@ -180,6 +235,7 @@ mod tests {
         r#"/eval hl.monitor({ output = "HDMI-A-1", disabled = true })"#,
         r#"/eval hl.monitor({ output = "HDMI-A-1", mirror = "DP-1" })"#,
         r#"/eval hl.monitor({ output = "HDMI-A-1", mirror = "" })"#,
+        r#"/eval hl.monitor({ output = "HDMI-A-1", mode = "1920x1200@59.95Hz", scale = "1.25", position = "-1920x0" })"#,
         r#"/eval hl.monitor({ output = "x\" })", disabled = true })"#,
       ]
     );
@@ -188,6 +244,33 @@ mod tests {
       "error: no such output",
     );
     assert!(ipc.configure_monitor("Z", Disable).is_err());
+  }
+
+  #[test]
+  fn parses_modes_once_and_the_hardware() {
+    let hypr = FakeHyprland::start();
+    hypr.answer(
+      "j/monitors all",
+      r#"[{"id": 0, "name": "A", "width": 1920, "height": 1200, "refreshRate": 60, "x": 0, "y": 0,
+        "specialWorkspace": {"address": "", "name": ""}, "activeWorkspace": {"address": "0x1", "name": "1"},
+        "scale": 1.2, "focused": false, "disabled": false, "mirrorOf": "none",
+        "physicalWidth": 300, "physicalHeight": 190, "transform": 1,
+        "availableModes": ["1920x1200@60.00Hz", "1920x1200@60.00Hz", "1920x1200@48.00Hz", "1280x800@60.00Hz"]}]"#,
+    );
+    let m = hypr.ipc().list_monitors().unwrap().remove(0);
+    let modes: Vec<_> = m
+      .hardware
+      .modes
+      .iter()
+      .map(|m| (m.width, m.millihertz()))
+      .collect();
+    assert_eq!(modes, [(1920, 60000), (1920, 48000), (1280, 60000)]);
+    assert_eq!(
+      (m.hardware.physical_mm, m.hardware.transform),
+      ((300, 190), 1)
+    );
+    // rotated, so the 1920x1200 mode lays out as 1000 wide and 1600 high
+    assert_eq!(m.logical_size(), (1000, 1600));
   }
 
   #[test]

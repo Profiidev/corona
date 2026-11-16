@@ -353,6 +353,7 @@ mod tests {
         disabled: false,
         mirror_of: "none".into(),
         reserved: [0; 4],
+        hardware: Default::default(),
       })
     }
     fn list_windows(&self) -> Result<Vec<types::Window>> {

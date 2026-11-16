@@ -1,3 +1,7 @@
+mod layout;
+mod settings;
+mod ui;
+
 use anyhow::Result;
 use corona_components::components::card::PageError;
 use corona_components::components::list::card;
@@ -31,6 +35,8 @@ pub struct DisplaysPanel {
   /// What the user picked; until then the mirror that is on, or a sensible pair
   picked: (Option<String>, Option<String>),
   error: PageError,
+  dialog: Option<ui::Dialog>,
+  layout: Option<ui::LayoutDraft>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -84,6 +90,8 @@ impl ControlCenterPage for DisplaysPanel {
       target,
       picked: (None, None),
       error: PageError::default(),
+      dialog: None,
+      layout: None,
       _subscriptions: subscriptions,
     };
     panel.sync_selects(window, cx);
@@ -261,6 +269,20 @@ impl DisplaysPanel {
           ),
       )
       .child(
+        Button::new(SharedString::from(format!("display-settings-{name}")))
+          .icon(IconName::MonitorCog)
+          .small()
+          .outline()
+          .cursor_pointer()
+          .tooltip(t!("app.displays.settings"))
+          .when(monitor.disabled, |this| this.cursor_not_allowed())
+          .disabled(monitor.disabled)
+          .on_click(cx.listener({
+            let name = name.clone();
+            move |this, _, window, cx| this.open_dialog(&name, window, cx)
+          })),
+      )
+      .child(
         Switch::new(SharedString::from(format!("display-{name}")))
           .cursor_pointer()
           .when(last, |this| this.cursor_not_allowed())
@@ -355,8 +377,15 @@ impl DisplaysPanel {
 impl Render for DisplaysPanel {
   fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let all = Self::monitors(cx);
+    if self.layout.is_some() {
+      return div()
+        .size_full()
+        .child(self.layout_view(cx))
+        .into_any_element();
+    }
 
     div()
+      .relative()
       .flex()
       .flex_col()
       .size_full()
@@ -374,9 +403,27 @@ impl Render for DisplaysPanel {
           .min_h_0()
           .child(
             div()
-              .text_sm()
-              .font_bold()
-              .child(t!("app.displays.monitors")),
+              .flex()
+              .items_center()
+              .justify_between()
+              .child(
+                div()
+                  .text_sm()
+                  .font_bold()
+                  .child(t!("app.displays.monitors")),
+              )
+              .child({
+                let can = ui::positionable(&all).len() >= 2;
+                Button::new("displays-layout")
+                  .icon(IconName::LayoutGrid)
+                  .label(t!("app.displays.layout"))
+                  .xsmall()
+                  .outline()
+                  .cursor_pointer()
+                  .when(!can, |this| this.cursor_not_allowed())
+                  .disabled(!can)
+                  .on_click(cx.listener(|this, _, window, cx| this.open_layout(window, cx)))
+              }),
           )
           .child(
             div()
@@ -390,12 +437,15 @@ impl Render for DisplaysPanel {
           ),
       )
       .child(self.mirror_card(&all, cx))
+      .children(self.dialog_view(cx))
+      .into_any_element()
   }
 }
 
 #[cfg(test)]
 mod tests {
   use corona_compositor::types::Workspace;
+  use gpui_kit::test::TestWindowExt;
 
   use super::*;
 
@@ -420,6 +470,7 @@ mod tests {
       disabled,
       mirror_of: mirror_of.into(),
       reserved: [0; 4],
+      hardware: Default::default(),
     }
   }
 
@@ -485,8 +536,6 @@ mod tests {
 
   #[gpui_kit::test]
   fn renders_and_changes_monitors(cx: &mut gpui_kit::TestAppContext) {
-    use gpui_kit::test::TestWindowExt;
-
     use corona_surface::testing::{FakeCompositor, setup};
 
     let fake = setup(
@@ -519,5 +568,186 @@ mod tests {
     );
     assert!(panel.read_with(cx, |panel, _| panel.error.message().is_none()));
     cx.update(|window, cx| window.render_frame(cx));
+  }
+
+  fn with_modes(mut m: Monitor) -> Monitor {
+    use corona_compositor::types::Mode;
+    let mode = |width, height, refresh_rate| Mode {
+      width,
+      height,
+      refresh_rate,
+    };
+    m.hardware.modes = vec![
+      mode(1920, 1080, 60.),
+      mode(1920, 1080, 144.),
+      mode(1280, 720, 60.),
+    ];
+    m.hardware.physical_mm = (527, 296);
+    m
+  }
+
+  /// A and B side by side, C mirroring A, D off
+  fn side_by_side() -> Vec<Monitor> {
+    vec![
+      with_modes(monitor(0, "A", 0, false, "none")),
+      with_modes(monitor(1, "B", 1920, false, "none")),
+      monitor(2, "C", 3840, false, "0"),
+      monitor(3, "D", 5760, true, "none"),
+    ]
+  }
+
+  #[test]
+  fn only_monitors_that_are_on_and_not_mirroring_are_positionable() {
+    let all = side_by_side();
+    let names: Vec<_> = ui::positionable(&all)
+      .iter()
+      .map(|m| m.name.as_str())
+      .collect();
+    assert_eq!(names, ["A", "B"]);
+  }
+
+  #[gpui_kit::test]
+  fn the_dialog_applies_mode_and_scale(cx: &mut gpui_kit::TestAppContext) {
+    use corona_surface::testing::{FakeCompositor, setup};
+
+    let fake = setup(
+      FakeCompositor {
+        monitors: side_by_side(),
+        ..Default::default()
+      },
+      cx,
+    );
+    let (panel, cx) = cx.add_window_view(DisplaysPanel::init);
+    cx.update(|window, cx| window.render_frame(cx));
+
+    // a monitor that is off has no dialog
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_dialog("D", window, cx)));
+    assert!(panel.read_with(cx, |p, _| p.dialog.is_none()));
+
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_dialog("B", window, cx)));
+    assert!(panel.read_with(cx, |p, _| p.dialog.is_some()));
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.update(|window, cx| {
+      panel.update(cx, |p, cx| {
+        // 1.33 is not a multiple of 1/120: it is sent snapped
+        p.set_percent(133., false, window, cx);
+      })
+    });
+    panel.update(cx, |p, cx| p.apply_dialog(cx));
+    let calls = fake.calls.borrow().clone();
+    assert_eq!(calls.len(), 1);
+    assert!(
+      calls[0].starts_with("monitor B Set { mode: Some(Mode { width: 1920, height: 1080"),
+      "{}",
+      calls[0]
+    );
+    assert!(calls[0].contains("position: None"));
+    let scale = calls[0]
+      .split("scale: Some(")
+      .nth(1)
+      .unwrap()
+      .split(')')
+      .next()
+      .unwrap()
+      .parse::<f32>()
+      .unwrap();
+    assert!(((scale * 120.).round() - scale * 120.).abs() < 1e-3 && (scale - 1.33).abs() < 0.005);
+    assert!(panel.read_with(cx, |p, _| p.dialog.is_none()));
+  }
+
+  #[gpui_kit::test]
+  fn the_dialog_cancels_without_a_change(cx: &mut gpui_kit::TestAppContext) {
+    use corona_surface::testing::{FakeCompositor, setup};
+
+    let fake = setup(
+      FakeCompositor {
+        monitors: side_by_side(),
+        ..Default::default()
+      },
+      cx,
+    );
+    let (panel, cx) = cx.add_window_view(DisplaysPanel::init);
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_dialog("A", window, cx)));
+    panel.update(cx, |p, cx| p.close_dialog(cx));
+    assert!(panel.read_with(cx, |p, _| p.dialog.is_none()));
+    assert!(fake.calls.borrow().is_empty());
+  }
+
+  #[gpui_kit::test]
+  fn the_layout_writes_only_what_moved(cx: &mut gpui_kit::TestAppContext) {
+    use corona_surface::testing::{FakeCompositor, setup};
+
+    let fake = setup(
+      FakeCompositor {
+        monitors: side_by_side(),
+        ..Default::default()
+      },
+      cx,
+    );
+    let (panel, cx) = cx.add_window_view(DisplaysPanel::init);
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_layout(window, cx)));
+    cx.update(|window, cx| window.render_frame(cx));
+
+    // B onto A: overlap, which blocks Apply in the view
+    panel.update(cx, |p, _| p.layout.as_mut().unwrap().items[1].rect.x = 100);
+    assert_eq!(
+      panel.read_with(cx, |p, _| p.layout.as_ref().unwrap().overlapping()),
+      [0, 1]
+    );
+    // B below A, flush left: touching, so reachable
+    panel.update(cx, |p, _| {
+      let l = p.layout.as_mut().unwrap();
+      l.items[1].rect.x = 0;
+      l.items[1].rect.y = l.items[0].rect.h;
+    });
+    assert!(panel.read_with(cx, |p, _| {
+      p.layout.as_ref().unwrap().overlapping().is_empty()
+    }));
+    assert!(panel.read_with(cx, |p, _| {
+      p.layout.as_ref().unwrap().unreachable().is_empty()
+    }));
+
+    panel.update(cx, |p, cx| p.apply_layout(cx));
+    assert_eq!(
+      *fake.calls.borrow(),
+      ["monitor B Set { mode: None, scale: None, position: Some((0, 1080)) }"]
+    );
+    assert!(panel.read_with(cx, |p, _| p.layout.is_none()));
+  }
+
+  #[gpui_kit::test]
+  fn reset_restores_the_positions_from_opening(cx: &mut gpui_kit::TestAppContext) {
+    use corona_surface::testing::{FakeCompositor, setup};
+
+    let fake = setup(
+      FakeCompositor {
+        monitors: side_by_side(),
+        ..Default::default()
+      },
+      cx,
+    );
+    let (panel, cx) = cx.add_window_view(DisplaysPanel::init);
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_layout(window, cx)));
+    panel.update(cx, |p, _| p.layout.as_mut().unwrap().items[1].rect.y = 999);
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.reset_layout(window, cx)));
+    panel.update(cx, |p, cx| p.apply_layout(cx));
+    assert!(fake.calls.borrow().is_empty(), "nothing moved");
+  }
+
+  #[gpui_kit::test]
+  fn one_positionable_monitor_has_no_layout(cx: &mut gpui_kit::TestAppContext) {
+    use corona_surface::testing::{FakeCompositor, setup};
+
+    setup(
+      FakeCompositor {
+        monitors: three(),
+        ..Default::default()
+      },
+      cx,
+    );
+    let (panel, cx) = cx.add_window_view(DisplaysPanel::init);
+    cx.update(|window, cx| panel.update(cx, |p, cx| p.open_layout(window, cx)));
+    assert!(panel.read_with(cx, |p, _| p.layout.is_none()));
   }
 }

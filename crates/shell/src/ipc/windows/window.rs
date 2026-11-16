@@ -498,6 +498,7 @@ mod tests {
       disabled: false,
       mirror_of: String::new(),
       reserved: [0; 4],
+      hardware: Default::default(),
     };
     let monitors = [monitor(0, "DP-1"), monitor(1, "HDMI-A-1")];
     assert_eq!(neighbour(&monitors, 0, "next").unwrap(), "HDMI-A-1");

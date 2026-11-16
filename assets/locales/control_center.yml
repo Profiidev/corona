@@ -283,6 +283,48 @@ app:
     start_mirroring:
       en: Mirror
       de: Spiegeln
+    settings:
+      en: Display settings
+      de: Bildschirmeinstellungen
+    layout:
+      en: Layout
+      de: Anordnung
+    layout_hint:
+      en: Drag displays to arrange them. Edges snap together.
+      de: Bildschirme ziehen, um sie anzuordnen. Kanten rasten ein.
+    resolution:
+      en: Resolution
+      de: Auflösung
+    refresh_rate:
+      en: Refresh rate
+      de: Bildwiederholrate
+    scale:
+      en: Scale
+      de: Skalierung
+    logical_size:
+      en: 'Logical size %{w}×%{h}'
+      de: 'Logische Größe %{w}×%{h}'
+    physical:
+      en: 'Physical %{w}×%{h} mm · %{dpi} DPI'
+      de: 'Physisch %{w}×%{h} mm · %{dpi} DPI'
+    mirrors_note:
+      en: '%{name} mirrors %{source}'
+      de: '%{name} spiegelt %{source}'
+    overlap:
+      en: Displays overlap
+      de: Bildschirme überlappen sich
+    not_connected:
+      en: Displays do not touch, the cursor cannot cross
+      de: Bildschirme berühren sich nicht, der Zeiger kann nicht wechseln
+    apply:
+      en: Apply
+      de: Anwenden
+    cancel:
+      en: Cancel
+      de: Abbrechen
+    reset:
+      en: Reset
+      de: Zurücksetzen
   brightness:
     displays:
       en: Displays
