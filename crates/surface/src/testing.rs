@@ -30,6 +30,7 @@ pub fn monitor(name: &str) -> types::Monitor {
     disabled: false,
     mirror_of: "none".into(),
     reserved: [0; 4],
+    hardware: Default::default(),
   }
 }
 
