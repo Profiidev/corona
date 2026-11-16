@@ -474,6 +474,9 @@ app:
       search_themes:
         en: 'Search themes…'
         de: 'Designs suchen …'
+      reload_wallpaper:
+        en: 'Reload wallpaper'
+        de: 'Hintergrundbild neu laden'
       power_profile:
         en: 'Power profile'
         de: 'Energieprofil'

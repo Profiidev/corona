@@ -7,7 +7,8 @@ use corona_capture::{
 };
 use corona_components::assets::image_source;
 use corona_config::{Config, ConfigProvider};
-use gpui_kit::{App, Asset, Dmabuf, ImageAssetLoader, ImageSource, RenderImage, Task};
+use corona_ipc::{IpcCommand, IpcExt};
+use gpui_kit::{App, Asset, Dmabuf, Global, ImageAssetLoader, ImageSource, RenderImage, Task};
 use tracing::error;
 
 mod client;
@@ -17,7 +18,8 @@ mod client;
 /// It is plain `wl_shm` surfaces on a Wayland connection of its own: drawn by gpui, two
 /// fullscreen windows cost the GPU about 100 MiB each.
 pub fn init(cx: &mut App) {
-  let mut task = start(cx);
+  reload(cx);
+  cx.ipc_mut().register::<Reload>();
   let mut last = cx.config().wallpaper.clone();
   cx.observe_global::<Config>(move |cx| {
     let now = cx.config().wallpaper.clone();
@@ -25,10 +27,38 @@ pub fn init(cx: &mut App) {
       return;
     }
     last = now;
-    drop(task.take());
-    task = start(cx);
+    reload(cx);
   })
   .detach();
+}
+
+/// Keeps the surfaces of the shown wallpaper up
+#[derive(Default)]
+struct Shown(Option<Task<()>>);
+
+impl Global for Shown {}
+
+/// Reads the configured image again and shows it, as after the file changed
+pub fn reload(cx: &mut App) {
+  // the old surfaces go first, so both are never up at once
+  drop(cx.default_global::<Shown>().0.take());
+  let task = start(cx);
+  cx.global_mut::<Shown>().0 = task;
+}
+
+/// Shows the wallpaper again from its file
+pub struct Reload;
+
+impl IpcCommand for Reload {
+  const COMMAND: &'static str = "wallpaper:reload";
+
+  type Payload = ();
+  type Response = ();
+
+  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    reload(cx);
+    Ok(())
+  }
 }
 
 pub fn configured(cx: &App) -> Option<ImageSource> {

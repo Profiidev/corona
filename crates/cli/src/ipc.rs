@@ -105,6 +105,11 @@ pub enum IpcCommands {
     #[command(subcommand)]
     command: corona_surface::cli::ThemeCommands,
   },
+  /// Wallpaper commands
+  Wallpaper {
+    #[command(subcommand)]
+    command: corona_surface::cli::WallpaperCommands,
+  },
   /// Call a method of a plugin's service and print its answer as JSON
   Plugin(corona_script::cli::PluginArgs),
   /// Lock, suspend, log out, reboot or shut down
@@ -137,6 +142,7 @@ impl IpcCommands {
       IpcCommands::Idle { command } => command.run(),
       IpcCommands::PowerProfile { command } => command.run(),
       IpcCommands::Theme { command } => command.run(),
+      IpcCommands::Wallpaper { command } => command.run(),
       IpcCommands::Plugin(args) => args.run().unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1)
@@ -272,6 +278,7 @@ pub(crate) mod tests {
       (&["theme", "mode", "get"], json!("dark"), SetMode::COMMAND, json!("Get")),
       (&["theme", "mode", "toggle"], json!("dark"), SetMode::COMMAND, json!("Toggle")),
       (&["theme", "set", "nord"], json!(null), SetTheme::COMMAND, json!("nord")),
+      (&["wallpaper", "reload"], json!(null), corona_surface::overlay::wallpaper::Reload::COMMAND, json!(null)),
       (&["control-center", "audio"], json!(null), OpenPage::COMMAND, json!("audio")),
       (&["window", "toggle", "floating"], json!(null), corona_shell::ipc::windows::window::Toggle::COMMAND, json!(["Floating", null])),
       (&["window", "layout", "left-third", "--address", "0xa"], json!(null), corona_shell::ipc::windows::window::Place::COMMAND, json!(["LeftThird", "0xa"])),

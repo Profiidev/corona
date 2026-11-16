@@ -91,6 +91,24 @@ impl ThemeCommands {
   }
 }
 
+#[derive(Subcommand)]
+pub enum WallpaperCommands {
+  /// Read the wallpaper file again and show it
+  Reload,
+}
+
+impl WallpaperCommands {
+  pub fn run(self) {
+    match self {
+      WallpaperCommands::Reload => {
+        if let Err(e) = crate::overlay::wallpaper::Reload::send(()) {
+          tracing::error!("Failed to reload the wallpaper: {}", e);
+        }
+      }
+    }
+  }
+}
+
 #[derive(clap::Args)]
 pub struct ControlCenterArgs {
   #[arg(add = ArgValueCandidates::new(|| candidates(ListPages::send(()))))]
