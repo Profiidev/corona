@@ -13,7 +13,7 @@ use gpui_kit::{App, assets::IconName, component::ActiveTheme};
 use rust_i18n::t;
 
 pub(crate) fn init(cx: &mut App) {
-  Group::new("system", vec![dark_mode(), theme()]).register(cx);
+  Group::new("system", vec![dark_mode(), theme(), reload_wallpaper()]).register(cx);
 }
 
 fn theme() -> Rc<dyn Command> {
@@ -62,6 +62,28 @@ fn dark_mode() -> Rc<dyn Command> {
             true => t!("app.launcher.system.dark_mode"),
             false => t!("app.launcher.system.light_mode"),
           }))))
+        },
+      )]
+    },
+  )
+}
+
+fn reload_wallpaper() -> Rc<dyn Command> {
+  simple(
+    "wallpaper:reload",
+    |_| Meta {
+      title: t!("app.launcher.system.reload_wallpaper").into(),
+      icon: Icon::Tile(IconName::Image, 200.),
+      keywords: vec!["wallpaper".into(), "background".into(), "reload".into()],
+      ..Default::default()
+    },
+    |_| {
+      vec![Action::sync(
+        "reload",
+        t!("app.launcher.system.reload_wallpaper"),
+        |_, _, cx| {
+          corona_surface::overlay::wallpaper::reload(cx);
+          Ok(Outcome::close())
         },
       )]
     },
