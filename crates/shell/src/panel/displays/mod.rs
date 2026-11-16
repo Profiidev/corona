@@ -1,3 +1,5 @@
+mod layout;
+
 use anyhow::Result;
 use corona_components::components::card::PageError;
 use corona_components::components::list::card;
@@ -420,6 +422,7 @@ mod tests {
       disabled,
       mirror_of: mirror_of.into(),
       reserved: [0; 4],
+      hardware: Default::default(),
     }
   }
 
