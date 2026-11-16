@@ -70,13 +70,19 @@ mod tests {
 
   #[test]
   fn resolutions_are_unique_and_largest_first() {
-    assert_eq!(resolutions(&modes()), [(1920, 1200), (1920, 1080), (1280, 800)]);
+    assert_eq!(
+      resolutions(&modes()),
+      [(1920, 1200), (1920, 1080), (1280, 800)]
+    );
     assert!(resolutions(&[]).is_empty());
   }
 
   #[test]
   fn rates_are_fastest_first() {
-    let at: Vec<_> = rates(&modes(), (1920, 1080)).iter().map(|m| m.refresh_rate).collect();
+    let at: Vec<_> = rates(&modes(), (1920, 1080))
+      .iter()
+      .map(|m| m.refresh_rate)
+      .collect();
     assert_eq!(at, [144., 60.]);
     assert!(rates(&modes(), (1, 1)).is_empty());
   }
@@ -84,11 +90,22 @@ mod tests {
   #[test]
   fn a_new_size_keeps_the_rate_when_it_can() {
     // 60 Hz exists at both sizes
-    assert_eq!(mode_for(&modes(), (1920, 1080), 60.).unwrap().refresh_rate, 60.);
+    assert_eq!(
+      mode_for(&modes(), (1920, 1080), 60.).unwrap().refresh_rate,
+      60.
+    );
     // the rate the 59.95 Hz monitor ran at still counts as 60
-    assert_eq!(mode_for(&modes(), (1920, 1080), 59.95).unwrap().refresh_rate, 60.);
+    assert_eq!(
+      mode_for(&modes(), (1920, 1080), 59.95)
+        .unwrap()
+        .refresh_rate,
+      60.
+    );
     // 144 Hz does not exist at the new size: the fastest there
-    assert_eq!(mode_for(&modes(), (1920, 1200), 144.).unwrap().refresh_rate, 60.);
+    assert_eq!(
+      mode_for(&modes(), (1920, 1200), 144.).unwrap().refresh_rate,
+      60.
+    );
     assert!(mode_for(&modes(), (1, 1), 60.).is_none());
   }
 

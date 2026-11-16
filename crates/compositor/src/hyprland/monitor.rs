@@ -106,10 +106,12 @@ pub struct WorkspaceInfo {
 
 /// The listed modes, each size and rate once, largest and fastest first
 fn modes(listed: &[String]) -> Vec<types::Mode> {
-  let mut modes: Vec<types::Mode> = listed.iter().filter_map(|m| types::Mode::parse(m)).collect();
-  modes.sort_by(|a, b| {
-    (b.width, b.height, b.millihertz()).cmp(&(a.width, a.height, a.millihertz()))
-  });
+  let mut modes: Vec<types::Mode> = listed
+    .iter()
+    .filter_map(|m| types::Mode::parse(m))
+    .collect();
+  modes
+    .sort_by(|a, b| (b.width, b.height, b.millihertz()).cmp(&(a.width, a.height, a.millihertz())));
   modes.dedup_by_key(|m| (m.width, m.height, m.millihertz()));
   modes
 }
@@ -256,9 +258,17 @@ mod tests {
         "availableModes": ["1920x1200@60.00Hz", "1920x1200@60.00Hz", "1920x1200@48.00Hz", "1280x800@60.00Hz"]}]"#,
     );
     let m = hypr.ipc().list_monitors().unwrap().remove(0);
-    let modes: Vec<_> = m.hardware.modes.iter().map(|m| (m.width, m.millihertz())).collect();
+    let modes: Vec<_> = m
+      .hardware
+      .modes
+      .iter()
+      .map(|m| (m.width, m.millihertz()))
+      .collect();
     assert_eq!(modes, [(1920, 60000), (1920, 48000), (1280, 60000)]);
-    assert_eq!((m.hardware.physical_mm, m.hardware.transform), ((300, 190), 1));
+    assert_eq!(
+      (m.hardware.physical_mm, m.hardware.transform),
+      ((300, 190), 1)
+    );
     // rotated, so the 1920x1200 mode lays out as 1000 wide and 1600 high
     assert_eq!(m.logical_size(), (1000, 1600));
   }

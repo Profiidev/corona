@@ -27,8 +27,10 @@ impl Rect {
   /// between monitors there; at a corner, or across a gap, it stops.
   pub fn adjoins(&self, o: &Rect) -> bool {
     let side = |a1: i32, a2: i32, b1: i32, b2: i32| a1.max(b1) < a2.min(b2);
-    let vertical = (self.right() == o.x || o.right() == self.x) && side(self.y, self.bottom(), o.y, o.bottom());
-    let horizontal = (self.bottom() == o.y || o.bottom() == self.y) && side(self.x, self.right(), o.x, o.right());
+    let vertical =
+      (self.right() == o.x || o.right() == self.x) && side(self.y, self.bottom(), o.y, o.bottom());
+    let horizontal =
+      (self.bottom() == o.y || o.bottom() == self.y) && side(self.x, self.right(), o.x, o.right());
     vertical || horizontal
   }
 }
@@ -116,7 +118,14 @@ fn snap_axis(v: f32, candidates: &[i32], threshold: f32) -> f32 {
 /// Where a drag puts `me` (at `start` when it began) after the pointer moved
 /// `dx`, `dy` map pixels: moved by `d / k`, then snapped to the edges and
 /// alignments of `others` within 8 map pixels, rounded to whole pixels
-pub(crate) fn drag(me: &Rect, start: (i32, i32), dx: f32, dy: f32, k: f32, others: &[Rect]) -> (i32, i32) {
+pub(crate) fn drag(
+  me: &Rect,
+  start: (i32, i32),
+  dx: f32,
+  dy: f32,
+  k: f32,
+  others: &[Rect],
+) -> (i32, i32) {
   let (x, y) = (start.0 as f32 + dx / k, start.1 as f32 + dy / k);
   let th = 8. / k;
   let (mut cx, mut cy) = (Vec::new(), Vec::new());
@@ -144,7 +153,10 @@ mod tests {
     // touching edges and corners share no area
     assert!(!r(0, 0, 100, 100).overlaps(&r(100, 0, 100, 100)));
     assert!(!r(0, 0, 100, 100).overlaps(&r(100, 100, 100, 100)));
-    assert_eq!(overlapping(&[r(0, 0, 100, 100), r(50, 0, 100, 100), r(500, 0, 10, 10)]), [0, 1]);
+    assert_eq!(
+      overlapping(&[r(0, 0, 100, 100), r(50, 0, 100, 100), r(500, 0, 10, 10)]),
+      [0, 1]
+    );
   }
 
   #[test]
