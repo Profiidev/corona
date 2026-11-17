@@ -541,7 +541,7 @@ fn render_row(
           el.child(
             div()
               .flex_none()
-              .text_size(px(13.))
+              .text_size(px(14.))
               .text_color(theme.colors.muted_foreground)
               .whitespace_nowrap()
               .child(names.clone()),
