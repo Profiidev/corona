@@ -33,3 +33,7 @@ tempfile.workspace = true
 # load libclang itself (from LIBCLANG_PATH) or its build script panics
 [build-dependencies]
 bindgen.workspace = true
+
+[lints.cargo]
+# bindgen above is kept on purpose, see the comment
+unused_dependencies = "allow"
