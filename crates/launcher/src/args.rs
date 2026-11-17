@@ -72,21 +72,6 @@ impl ArgSpec {
     self
   }
 
-  /// Values Tab cycles through for a partial `input`
-  pub fn completions(&self, input: &str) -> Vec<SharedString> {
-    let input = input.to_lowercase();
-    let choices = match &self.kind {
-      ArgKind::Choice(values) => values.as_slice(),
-      _ => &[],
-    };
-    choices
-      .iter()
-      .chain(&self.words)
-      .filter(|v| v.to_lowercase().starts_with(&input))
-      .cloned()
-      .collect()
-  }
-
   pub fn parse(&self, input: &str) -> Result<ArgValue> {
     let input = input.trim();
     if let Some(word) = self.words.iter().find(|w| w.eq_ignore_ascii_case(input)) {
@@ -223,30 +208,7 @@ impl Args {
 
   /// Splits `input` over `specs`: whitespace separated, the last spec takes the rest
   pub fn parse(specs: &[ArgSpec], input: &str) -> Result<Self> {
-    let mut rest = input.trim();
-    let mut values = Vec::with_capacity(specs.len());
-    for (i, spec) in specs.iter().enumerate() {
-      let last = i + 1 == specs.len();
-      let part = match last {
-        true => std::mem::take(&mut rest),
-        false => match rest.split_once(char::is_whitespace) {
-          Some((part, tail)) => {
-            rest = tail.trim_start();
-            part
-          }
-          None => std::mem::take(&mut rest),
-        },
-      };
-      if part.is_empty() {
-        if !spec.optional {
-          return Err(MissingArg(spec.name.to_string()).into());
-        }
-        values.push(None);
-        continue;
-      }
-      values.push(Some(spec.parse(part)?));
-    }
-    Ok(Self(values))
+    Self::from_fields(specs, &split(specs.len(), input)).map_err(|(_, e)| e)
   }
 
   /// Fields filled from the arguments row, one input per spec.
@@ -277,6 +239,23 @@ impl Args {
     }
     Ok(Self(values))
   }
+}
+
+/// `input` as `n` fields: whitespace separated, the last takes the rest
+pub fn split(n: usize, input: &str) -> Vec<String> {
+  let mut rest = input.trim();
+  (0..n)
+    .map(|i| {
+      let part = match rest.split_once(char::is_whitespace) {
+        Some((part, tail)) if i + 1 < n => {
+          rest = tail.trim_start();
+          part
+        }
+        _ => std::mem::take(&mut rest),
+      };
+      part.to_string()
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -311,12 +290,10 @@ mod tests {
   }
 
   #[test]
-  fn choices_and_completion() {
+  fn choices() {
     let spec = ArgSpec::choice("state", ["on", "off", "toggle"]);
     assert_eq!(spec.parse("Off").unwrap(), ArgValue::Choice("off".into()));
     assert!(spec.parse("maybe").is_err());
-    assert_eq!(spec.completions("o"), vec!["on", "off"]);
-    assert_eq!(spec.completions("t"), vec!["toggle"]);
   }
 
   #[test]
@@ -341,6 +318,13 @@ mod tests {
     let args = Args::parse(&specs, "5m").unwrap();
     assert_eq!(args.get(1), None);
     assert!(Args::parse(&specs, "").is_err());
+  }
+
+  #[test]
+  fn split_fields() {
+    assert_eq!(split(2, " 5m  tea is ready "), ["5m", "tea is ready"]);
+    assert_eq!(split(3, "a"), ["a", "", ""]);
+    assert_eq!(split(1, "a b"), ["a b"]);
   }
 
   #[test]

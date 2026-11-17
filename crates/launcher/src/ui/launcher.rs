@@ -18,7 +18,7 @@ use super::{
   ToggleFilter, TogglePreview, form::FormPage, hud, window_size,
 };
 use crate::{
-  args::{ArgSpec, Args, MissingArg},
+  args::{ArgSpec, Args, MissingArg, split},
   command::{
     Action, Command, Confirm, Detail, Hud, Meta, Outcome, Scope, Section, Toast, ToastKind,
   },
@@ -61,8 +61,6 @@ pub(super) struct Page {
   pub list: ListState,
   /// Until the first rows arrive, so the initial selection does not preview
   pub fresh: bool,
-  /// Which completion Tab showed last
-  pub completion: usize,
   /// The command this page belongs to, inherited by the pages it pushes
   pub command: Option<String>,
   _subscriptions: Vec<Subscription>,
@@ -84,7 +82,6 @@ impl Page {
       primary: None,
       list: ListState::new(0, ListAlignment::Top, px(200.)),
       fresh: true,
-      completion: 0,
       command: None,
       _subscriptions: Vec::new(),
     }
@@ -484,7 +481,6 @@ impl Launcher {
     let page = self.page_mut();
     page.query = text.clone();
     page.args = None;
-    page.completion = 0;
     // a new search starts at its top row, only refreshes keep the selected one
     page.selected_id = None;
     self.detect_scope(&text, window, cx);
@@ -691,13 +687,38 @@ impl Launcher {
 
   fn open_args(&mut self, row: &Row, window: &mut Window, cx: &mut Context<Self>) {
     let specs: Vec<ArgSpec> = row.meta.args.clone();
+    let typed = row.found.args.clone().unwrap_or_default();
+    // an args row takes the whole tail as its first field, like `parse_inline`
+    let mut fields = match row.meta.args_row {
+      true => vec![typed.trim().to_string()],
+      false => split(specs.len(), &typed),
+    };
+    fields.resize(specs.len(), String::new());
     let inputs = specs
       .iter()
-      .map(|spec| {
+      .zip(fields)
+      .map(|(spec, value)| {
         let name = spec.name.clone();
-        cx.new(|cx| InputState::new(window, cx).placeholder(name))
+        cx.new(|cx| {
+          let mut input = InputState::new(window, cx).placeholder(name);
+          input.set_value(value, window, cx);
+          input
+        })
       })
       .collect();
+    // the typed values moved into the fields, the search keeps the command name
+    if !typed.is_empty() {
+      let query = &self.page().query;
+      let head = query
+        .strip_suffix(typed.as_str())
+        .unwrap_or(query)
+        .trim_end()
+        .to_string();
+      self
+        .input
+        .update(cx, |input, cx| input.set_value(head.clone(), window, cx));
+      self.page_mut().query = head;
+    }
     self.page_mut().args = Some(ArgsRow {
       command: row.command.clone(),
       specs,
@@ -1033,48 +1054,7 @@ impl Launcher {
     if row.meta.args.is_empty() {
       return;
     }
-    if row.meta.args_row {
-      return self.open_args(&row, window, cx);
-    }
-    let name = row.meta.title.to_lowercase();
-    let text = match &row.found.args {
-      None => format!("{name} "),
-      Some(typed) => {
-        // complete the argument being typed, Tab again cycles
-        let spec = &row.meta.args[arg_index(typed, row.meta.args.len())];
-        let done = typed.rsplit_once(char::is_whitespace);
-        let (before, current) = done.map_or(("", typed.as_str()), |(b, c)| (b, c));
-        let page = self.page_mut();
-        let prefix = if page.completion == 0 {
-          current.to_string()
-        } else {
-          String::new()
-        };
-        let options = spec.completions(&prefix);
-        if options.is_empty() {
-          return;
-        }
-        let pick = &options[page.completion % options.len()];
-        page.completion += 1;
-        let head = self
-          .page()
-          .query
-          .strip_suffix(typed.as_str())
-          .unwrap_or(&self.page().query)
-          .to_string();
-        match before.is_empty() {
-          true => format!("{head}{pick}"),
-          false => format!("{head}{before} {pick}"),
-        }
-      }
-    };
-    let completion = self.page().completion;
-    self
-      .input
-      .update(cx, |input, cx| input.set_value(text.clone(), window, cx));
-    self.page_mut().query = text;
-    self.refresh(cx);
-    self.page_mut().completion = completion;
+    self.open_args(&row, window, cx);
   }
 
   fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1484,17 +1464,6 @@ fn parse_inline(meta: &Meta, typed: &str) -> Result<Args> {
   Args::parse(specs, typed)
 }
 
-/// Index of the argument spec for the word being typed, capped at the last spec
-fn arg_index(typed: &str, specs: usize) -> usize {
-  let words = typed.split_whitespace().count();
-  let idx = if typed.ends_with(char::is_whitespace) {
-    words
-  } else {
-    words.saturating_sub(1)
-  };
-  idx.min(specs.saturating_sub(1))
-}
-
 /// The scope whose prefix `text` starts with, and the text after it
 fn find_scope(scopes: &[Scope], text: &str) -> Option<(Scope, String)> {
   scopes.iter().find_map(|scope| {
@@ -1623,15 +1592,6 @@ mod tests {
       parse_inline(&plain, "hello world").unwrap().text(1),
       Some("world")
     );
-  }
-
-  #[test]
-  fn arg_index_follows_typed_words() {
-    assert_eq!(arg_index("", 2), 0);
-    assert_eq!(arg_index("a", 2), 0);
-    assert_eq!(arg_index("a ", 2), 1);
-    assert_eq!(arg_index("a b", 3), 1);
-    assert_eq!(arg_index("a b c d", 2), 1);
   }
 
   #[test]
