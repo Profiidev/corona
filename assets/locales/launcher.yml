@@ -1175,6 +1175,28 @@ app:
       copy_public:
         en: 'Copy public address'
         de: 'Öffentliche Adresse kopieren'
+    qr:
+      title:
+        en: 'QR Code'
+        de: 'QR-Code'
+      text:
+        en: 'text or link'
+        de: 'Text oder Link'
+      nothing:
+        en: 'No text: type it, select it or copy it first'
+        de: 'Kein Text: erst eingeben, markieren oder kopieren'
+      copy_image:
+        en: 'Copy image'
+        de: 'Bild kopieren'
+      save:
+        en: 'Save image'
+        de: 'Bild speichern'
+      saved:
+        en: 'QR code saved'
+        de: 'QR-Code gespeichert'
+      copy_text:
+        en: 'Copy text'
+        de: 'Text kopieren'
     lookup:
       translate:
         en: 'Translate'

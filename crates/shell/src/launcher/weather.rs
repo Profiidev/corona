@@ -56,6 +56,7 @@ fn weather(cx: &App) -> View {
       .unwrap_or_else(|| t!("app.launcher.info.no_weather").to_string()),
   };
   View::Detail(DetailView {
+    image: None,
     title: t!("app.launcher.info.weather").into(),
     markdown: body.into(),
     metadata: rows,

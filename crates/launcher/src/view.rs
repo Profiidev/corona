@@ -1,7 +1,7 @@
-use std::{cell::Cell, collections::HashMap, rc::Rc};
+use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 
 use anyhow::Result;
-use gpui_kit::{AnyView, App, SharedString, Task, Window};
+use gpui_kit::{AnyView, App, Image, SharedString, Task, Window};
 
 use crate::command::{Action, CommandSource, Outcome};
 
@@ -194,6 +194,8 @@ pub enum FieldKind {
 pub struct DetailView {
   pub title: SharedString,
   pub markdown: SharedString,
+  /// Shown above the markdown, like a generated QR code
+  pub image: Option<Arc<Image>>,
   /// The sidebar
   pub metadata: Vec<(SharedString, SharedString)>,
   pub actions: Vec<Action>,

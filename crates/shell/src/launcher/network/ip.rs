@@ -90,6 +90,7 @@ pub(crate) fn register(cx: &mut App) {
               ));
             }
             Ok(Outcome::Push(View::Detail(DetailView {
+              image: None,
               title: t!("app.launcher.ip.title").into(),
               markdown: markdown.into(),
               metadata: rows,

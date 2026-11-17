@@ -11,7 +11,7 @@ use corona_settings::{
   SettingsExt, SettingsPage, group, item, page, settings_page, shared_groups, shared_items,
 };
 use gpui_kit::{
-  App, AppContext, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
+  App, AppContext, Axis, Div, Entity, Focusable, ParentElement, SharedString, Styled, Subscription,
   Window,
   assets::IconName,
   component::{
@@ -25,7 +25,9 @@ use gpui_kit::{
 };
 use rust_i18n::t;
 
-use corona_components::settings_fields::{Choice, number, save, searchable, switch, text};
+use corona_components::settings_fields::{
+  Choice, number, optional_text, save, searchable, switch, text,
+};
 
 use corona_launcher::registry::Registry;
 
@@ -297,6 +299,28 @@ fn sources(cx: &App) -> SettingGroup {
         |c, v| c.launcher.translate.target = v,
       ),
     ),
+    item(
+      t!("app.settings.launcher.qr_directory.title"),
+      t!("app.settings.launcher.qr_directory.description"),
+      optional_text(
+        "launcher.qr.directory",
+        |c| {
+          c.launcher
+            .qr
+            .directory
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+        },
+        |c, v| c.launcher.qr.directory = v.map(std::path::PathBuf::from),
+        |_| {
+          corona_config::launcher::QrConfig::default()
+            .resolved_directory()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default()
+        },
+      ),
+    )
+    .layout(Axis::Vertical),
     list_item(
       "launcher.close_all_exclude",
       t!("app.settings.launcher.close_all_exclude.title"),

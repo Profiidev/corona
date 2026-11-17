@@ -2027,6 +2027,7 @@ dependencies = [
  "jiff",
  "notify",
  "nucleo-matcher",
+ "qrcode",
  "rust-i18n",
  "serde",
  "serde_json",

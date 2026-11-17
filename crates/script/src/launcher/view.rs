@@ -254,6 +254,7 @@ pub(super) fn view(page: Rc<Page>) -> View {
   match &page.spec {
     PageSpec::Form(spec) => View::Form(form(spec, port)),
     PageSpec::Detail(spec) => View::Detail(DetailView {
+      image: None,
       title: spec.title.clone().into(),
       markdown: spec.markdown.clone().into(),
       metadata: (spec.metadata.iter())
