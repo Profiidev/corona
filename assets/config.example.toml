@@ -236,6 +236,9 @@ image_retention_days = 30
 [launcher.translate]
 target = "EN"
 
+[launcher.qr]
+# directory = "~/Pictures"
+
 [taskbar]
 enabled = true
 icon_size = 36.0

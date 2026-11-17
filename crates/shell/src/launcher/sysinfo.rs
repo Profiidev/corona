@@ -71,6 +71,7 @@ fn sysinfo(cx: &App) -> View {
     }
   }
   View::Detail(DetailView {
+    image: None,
     title: t!("app.launcher.info.system").into(),
     markdown: body.into(),
     metadata: rows,

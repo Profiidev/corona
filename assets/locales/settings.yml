@@ -905,6 +905,13 @@ app:
         description:
           en: 'Language code, like EN or DE.'
           de: 'Sprachcode, etwa EN oder DE.'
+      qr_directory:
+        title:
+          en: 'QR code folder'
+          de: 'Ordner für QR-Codes'
+        description:
+          en: 'Where Save image puts QR codes.'
+          de: 'Wohin Bild speichern QR-Codes legt.'
       close_all_exclude:
         title:
           en: 'Keep open'

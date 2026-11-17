@@ -412,6 +412,7 @@ fn health_view(drive: &Drive, attributes: Option<&SmartAttributes>) -> View {
   row(&mut rows, "app.launcher.drives.size", size(drive.size));
 
   View::Detail(DetailView {
+    image: None,
     title: t!("app.launcher.drives.health").into(),
     markdown: body.into(),
     metadata: rows,

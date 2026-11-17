@@ -99,7 +99,7 @@ struct Definition {
 }
 
 /// `text` with the markdown that could fetch images or links backslash-escaped
-fn escape_markdown(text: &str) -> String {
+pub(super) fn escape_markdown(text: &str) -> String {
   let mut out = String::with_capacity(text.len());
   for c in text.chars() {
     if "\\`*_[]()<>!#|~&".contains(c) {
@@ -183,7 +183,7 @@ async fn define(client: Arc<dyn HttpClient>, word: String) -> Result<String> {
 }
 
 /// The argument, else the selected text, else the clipboard
-fn input(args: &Args, cx: &App) -> Option<String> {
+pub(super) fn input(args: &Args, cx: &App) -> Option<String> {
   args
     .text(0)
     .map(str::to_string)
@@ -223,6 +223,7 @@ fn translate_command() -> Rc<dyn Command> {
             let (translated, source) = translate(client, text.clone(), target.clone()).await?;
             let copy = translated.clone();
             Ok(Outcome::Push(View::Detail(DetailView {
+              image: None,
               title: t!("app.launcher.lookup.translate").into(),
               markdown: format!(
                 "{}\n\n---\n\n{}",
@@ -274,6 +275,7 @@ fn define_command() -> Rc<dyn Command> {
             let markdown = define(client, word.clone()).await?;
             let url = format!("https://en.wiktionary.org/wiki/{}", percent_encode(&word));
             Ok(Outcome::Push(View::Detail(DetailView {
+              image: None,
               title: SharedString::from(word),
               markdown: markdown.into(),
               metadata: Vec::new(),

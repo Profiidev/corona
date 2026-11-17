@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +33,7 @@ pub struct LauncherConfig {
   pub files: FilesConfig,
   pub clipboard: ClipboardConfig,
   pub translate: TranslateConfig,
+  pub qr: QrConfig,
   /// Window classes "Close all windows" leaves open
   pub close_all_exclude: Vec<String>,
   /// How old exchange rates may get before they are fetched again
@@ -57,6 +58,7 @@ impl Default for LauncherConfig {
       files: FilesConfig::default(),
       clipboard: ClipboardConfig::default(),
       translate: TranslateConfig::default(),
+      qr: QrConfig::default(),
       close_all_exclude: Vec::new(),
       currency_refresh_hours: 24,
     }
@@ -204,6 +206,22 @@ impl Default for ClipboardConfig {
 pub struct TranslateConfig {
   /// Language code translations go to
   pub target: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct QrConfig {
+  /// Where saved QR codes go; unset: the pictures directory
+  pub directory: Option<PathBuf>,
+}
+
+impl QrConfig {
+  pub fn resolved_directory(&self) -> Option<PathBuf> {
+    match &self.directory {
+      Some(dir) => Some(crate::expand_home(dir)),
+      None => dirs::picture_dir().or_else(|| dirs::home_dir().map(|h| h.join("Pictures"))),
+    }
+  }
 }
 
 impl Default for TranslateConfig {

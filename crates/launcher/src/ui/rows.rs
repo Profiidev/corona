@@ -1,11 +1,11 @@
-use std::{ops::Range, rc::Rc, time::Duration};
+use std::{ops::Range, rc::Rc, sync::Arc, time::Duration};
 
 use corona_components::{animation::animation_duration, components::window_icon::WindowIcon};
 use gpui_kit::{
   Animation, AnimationExt, AnyElement, AnyImageCache, App, Context, Entity, Focusable, FontWeight,
-  HighlightStyle, ImageCacheProvider, InteractiveElement, IntoElement, ObjectFit, ParentElement,
-  Pixels, RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled, StyledImage,
-  StyledText, TextRun, Window,
+  HighlightStyle, Image, ImageCacheProvider, InteractiveElement, IntoElement, ObjectFit,
+  ParentElement, Pixels, RetainAllImageCache, SharedString, StatefulInteractiveElement, Styled,
+  StyledImage, StyledText, TextRun, Window,
   assets::IconName,
   component::{
     ActiveTheme, Icon as KitIcon, Sizable, input::Input, scroll::ScrollableElement, text::TextView,
@@ -266,7 +266,12 @@ fn body(
   match &page.body {
     Body::Root | Body::List(_) => results(this, page, window, cx),
     Body::Form(form) => form.clone().into_any_element(),
-    Body::Detail(detail) => detail_view(detail.markdown.clone(), &detail.metadata, cx),
+    Body::Detail(detail) => detail_view(
+      detail.image.clone(),
+      detail.markdown.clone(),
+      &detail.metadata,
+      cx,
+    ),
     Body::Custom { element, .. } => element.clone().into_any_element(),
   }
 }
@@ -856,6 +861,7 @@ fn metadata(rows: &[(SharedString, SharedString)], divider: bool, cx: &App) -> A
 }
 
 fn detail_view(
+  image: Option<Arc<Image>>,
   markdown: SharedString,
   meta: &[(SharedString, SharedString)],
   cx: &App,
@@ -871,6 +877,16 @@ fn detail_view(
         .h_full()
         .overflow_y_scrollbar()
         .p(px(20.))
+        .when_some(image, |el, image| {
+          el.child(
+            div().flex().justify_center().pb(px(16.)).child(
+              img(image)
+                .size(px(240.))
+                .object_fit(ObjectFit::Contain)
+                .rounded(px(12.)),
+            ),
+          )
+        })
         .child(TextView::markdown("launcher-detail-md", markdown)),
     )
     .when(!meta.is_empty(), |el| {

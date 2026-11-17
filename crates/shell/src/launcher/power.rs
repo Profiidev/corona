@@ -42,6 +42,7 @@ fn battery(cx: &App) -> View {
     None => t!("app.launcher.info.no_battery").to_string(),
   };
   View::Detail(DetailView {
+    image: None,
     title: t!("app.launcher.info.battery").into(),
     markdown: body.into(),
     metadata: rows,
