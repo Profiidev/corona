@@ -269,6 +269,8 @@ pub enum Outcome {
   Close(Option<Hud>),
   KeepOpen,
   Push(View),
+  /// Swap the current page for a new one, like a regenerated value
+  Replace(View),
   /// Back to the previous view
   Pop,
   /// Close, refocus the previous window and paste

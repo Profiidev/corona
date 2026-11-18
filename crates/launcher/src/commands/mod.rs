@@ -7,6 +7,7 @@ pub mod files;
 pub mod gallery;
 pub mod lookup;
 mod qr;
+mod random;
 pub mod run;
 pub mod storage;
 mod theme;
@@ -27,6 +28,7 @@ pub fn init(cx: &mut App) {
   gallery::init(cx);
   lookup::init(cx);
   qr::init(cx);
+  random::init(cx);
   run::init(cx);
   storage::init(cx);
   timers::init(cx);

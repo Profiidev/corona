@@ -802,7 +802,12 @@ impl Launcher {
         }
         this.busy -= 1;
         // the user left the page that started the action: Push/Pop would hit another page
-        if this.pages.len() != depth && matches!(result, Ok(Outcome::Push(_) | Outcome::Pop)) {
+        if this.pages.len() != depth
+          && matches!(
+            result,
+            Ok(Outcome::Push(_) | Outcome::Replace(_) | Outcome::Pop)
+          )
+        {
           tracing::debug!("launcher action {id} finished on another page, navigation dropped");
           result = Ok(Outcome::KeepOpen);
         }
@@ -877,6 +882,19 @@ impl Launcher {
         let owner = self.page().command.clone();
         self.push(view, window, cx);
         self.page_mut().command = owner.or(command.map(|c| c.id().to_string()));
+      }
+      Outcome::Replace(view) => {
+        let owner = self.page().command.clone();
+        if self.pages.len() > 1 {
+          let page = self.pages.pop().expect("more than one page");
+          close_page(&page, cx);
+        }
+        // push() saves the input into the page below, which still holds the replaced page's query
+        let below = self.page().query.clone();
+        self.push(view, window, cx);
+        self.page_mut().command = owner.or(command.map(|c| c.id().to_string()));
+        let at = self.pages.len() - 2;
+        self.pages[at].query = below;
       }
       Outcome::Pop => self.pop(window, cx),
       Outcome::Paste(clip) => {
