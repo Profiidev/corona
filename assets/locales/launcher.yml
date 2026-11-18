@@ -1197,6 +1197,88 @@ app:
       copy_text:
         en: 'Copy text'
         de: 'Text kopieren'
+    random:
+      generate:
+        en: 'Generate'
+        de: 'Erzeugen'
+      copy:
+        en: 'Copy'
+        de: 'Kopieren'
+      paste:
+        en: 'Paste'
+        de: 'Einfügen'
+      regenerate:
+        en: 'Regenerate'
+        de: 'Neu erzeugen'
+      uuid:
+        en: 'UUID'
+        de: 'UUID'
+      version:
+        en: 'version'
+        de: 'Version'
+      password:
+        en: 'Generate Password'
+        de: 'Passwort erzeugen'
+      length:
+        en: 'length'
+        de: 'Länge'
+      passphrase:
+        en: 'Generate Passphrase'
+        de: 'Passphrase erzeugen'
+      word_count:
+        en: 'words'
+        de: 'Wörter'
+      number:
+        en: 'Random Number'
+        de: 'Zufallszahl'
+      min:
+        en: 'min'
+        de: 'Min'
+      max:
+        en: 'max'
+        de: 'Max'
+      range:
+        en: 'Range'
+        de: 'Bereich'
+      roll:
+        en: 'Roll Dice'
+        de: 'Würfeln'
+      dice:
+        en: 'dice'
+        de: 'Würfel'
+      rolls:
+        en: 'Rolls'
+        de: 'Würfe'
+      bad_dice:
+        en: 'Dice look like 2d6: 1 to 100 dice with 2 to 1000 sides'
+        de: 'Würfel wie 2d6: 1 bis 100 Würfel mit 2 bis 1000 Seiten'
+      coin:
+        en: 'Flip a Coin'
+        de: 'Münze werfen'
+      heads:
+        en: 'Heads'
+        de: 'Kopf'
+      tails:
+        en: 'Tails'
+        de: 'Zahl'
+      lorem:
+        en: 'Lorem Ipsum'
+        de: 'Lorem Ipsum'
+      count:
+        en: 'count'
+        de: 'Anzahl'
+      unit:
+        en: 'unit'
+        de: 'Einheit'
+      words:
+        en: 'words'
+        de: 'Wörter'
+      sentences:
+        en: 'sentences'
+        de: 'Sätze'
+      paragraphs:
+        en: 'paragraphs'
+        de: 'Absätze'
     lookup:
       translate:
         en: 'Translate'

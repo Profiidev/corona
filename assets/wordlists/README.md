@@ -27,3 +27,11 @@ From the 50k file of the language (`word count` per line):
 
 A new language works the same way: add its file here and a `Language` variant in
 `crates/osk/src/predict/mod.rs`.
+
+## Passphrase list
+
+`eff_large_wordlist.txt` holds the 7,776 words of the
+[EFF large wordlist](https://www.eff.org/dice) (`eff_large_wordlist.txt`, 2016), one per line with
+the dice numbers dropped. The launcher's `passphrase` command picks from it. It is by the
+Electronic Frontier Foundation, licensed under
+[CC-BY 3.0 US](https://creativecommons.org/licenses/by/3.0/us/).
