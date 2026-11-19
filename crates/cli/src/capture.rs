@@ -3,7 +3,7 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
 
-use corona_shell::ipc::capture::{ColorPicker, Mode, Screenshot};
+use corona_shell::ipc::capture::{ColorPicker, Mode, Ruler, RulerMode, Screenshot};
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -15,6 +15,12 @@ pub enum Commands {
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
+  /// Open the screen ruler to measure distances and areas in pixels
+  Ruler {
+    /// bounds, spacing, horizontal or vertical
+    #[arg(default_value = "spacing", ignore_case = true)]
+    mode: RulerMode,
+  },
 }
 
 impl Commands {
@@ -28,6 +34,11 @@ impl Commands {
       Commands::ColorPicker => {
         if let Err(e) = ColorPicker::send(()) {
           tracing::error!("Failed to start color picker: {}", e);
+        }
+      }
+      Commands::Ruler { mode } => {
+        if let Err(e) = Ruler::send(mode) {
+          tracing::error!("Failed to start ruler: {}", e);
         }
       }
     }

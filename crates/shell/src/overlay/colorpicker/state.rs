@@ -119,7 +119,7 @@ impl ColorPickerState {
 
 /// The global `cursor` relative to a monitor at `origin` whose frame has `size` device
 /// pixels; none when it is elsewhere
-fn cursor_on(
+pub(crate) fn cursor_on(
   cursor: (i32, i32),
   origin: (i32, i32),
   size: (u32, u32),

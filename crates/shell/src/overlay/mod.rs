@@ -7,6 +7,7 @@ pub(crate) mod drive_password;
 pub(crate) mod lock;
 pub(crate) mod notifications;
 mod polkit;
+pub(crate) mod ruler;
 pub(crate) mod screenshot;
 
 pub(crate) fn register_all(cx: &mut App) {

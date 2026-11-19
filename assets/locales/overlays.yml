@@ -39,6 +39,34 @@ app:
     window_hint:
       en: Window under the cursor (W)
       de: Fenster unter dem Zeiger (W)
+  ruler:
+    bounds:
+      en: Bounds
+      de: Rahmen
+    spacing:
+      en: Spacing
+      de: Abstand
+    horizontal:
+      en: Horizontal
+      de: Horizontal
+    vertical:
+      en: Vertical
+      de: Vertikal
+    bounds_hint:
+      en: Drag a box (1)
+      de: Rahmen aufziehen (1)
+    spacing_hint:
+      en: Distance to the nearest edges in both directions (2)
+      de: Abstand zu den nächsten Kanten in beide Richtungen (2)
+    horizontal_hint:
+      en: Distance to the nearest edges left and right (3)
+      de: Abstand zu den nächsten Kanten links und rechts (3)
+    vertical_hint:
+      en: Distance to the nearest edges above and below (4)
+      de: Abstand zu den nächsten Kanten oben und unten (4)
+    tolerance:
+      en: 'Tolerance %{value} (scroll)'
+      de: 'Toleranz %{value} (scrollen)'
   taskbar:
     close_window:
       en: Close window

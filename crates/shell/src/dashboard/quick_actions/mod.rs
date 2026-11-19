@@ -4,3 +4,4 @@ pub(super) mod idle;
 pub(crate) mod network;
 pub(super) mod notifications;
 pub(super) mod power;
+pub(super) mod ruler;

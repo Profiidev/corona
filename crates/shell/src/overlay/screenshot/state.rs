@@ -16,13 +16,13 @@ use corona_surface::overlay::{OverlayState, fullscreen_options};
 const NAMESPACE: &str = "corona_screenshot";
 
 /// How often to look whether the launcher is gone, and how long to wait for that at most
-const LAUNCHER_POLL: Duration = Duration::from_millis(10);
+pub(crate) const LAUNCHER_POLL: Duration = Duration::from_millis(10);
 const LAUNCHER_TIMEOUT: Duration = Duration::from_millis(500);
 /// The launcher state clears before the compositor unmaps its layer: give it a couple of frames
-const LAUNCHER_SETTLE: Duration = Duration::from_millis(40);
+pub(crate) const LAUNCHER_SETTLE: Duration = Duration::from_millis(40);
 
 /// Whether to stop waiting for the launcher to close
-fn launcher_wait_over(open: bool, waited: Duration) -> bool {
+pub(crate) fn launcher_wait_over(open: bool, waited: Duration) -> bool {
   !open || waited >= LAUNCHER_TIMEOUT
 }
 
