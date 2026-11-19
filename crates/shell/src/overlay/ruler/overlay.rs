@@ -14,8 +14,9 @@ use crate::overlay::ruler::{
   measure::{Measurement, Span},
   mode::RulerMode,
   state::RulerState,
-  toolbar::{RulerToolbar, SLIDE_ANIMATION},
+  toolbar::RulerToolbar,
 };
+use crate::overlay::screenshot::overlay::SLIDE_ANIMATION;
 use corona_surface::overlay::OverlayState;
 
 /// How close (logical px) a right click must be to a pin to remove it

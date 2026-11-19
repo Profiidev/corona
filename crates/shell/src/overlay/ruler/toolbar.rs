@@ -19,8 +19,6 @@ use crate::overlay::{
   screenshot::save::is_empty,
 };
 
-pub const SLIDE_ANIMATION: Duration = Duration::from_millis(100);
-
 /// The mode buttons with a pill sliding to the active one, and the tolerance
 pub struct RulerToolbar {
   toolbar_bounds: Rc<Cell<Bounds<Pixels>>>,

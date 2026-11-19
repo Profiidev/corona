@@ -23,7 +23,7 @@ use crate::{
   panel::{PANEL_NAME, align::Align, state::PanelState, style::PanelStyle, variants::PanelData},
 };
 
-const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
+pub const PANEL_OPEN_SPEED: Duration = Duration::from_millis(250);
 
 pub struct BasePanel {
   name: String,
