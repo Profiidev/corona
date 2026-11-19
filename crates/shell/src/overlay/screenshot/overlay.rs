@@ -21,7 +21,7 @@ use crate::overlay::screenshot::{
 use corona_surface::overlay::OverlayState;
 
 const MIN_SELECTION_SIZE: f32 = 4.;
-const SLIDE_ANIMATION: Duration = Duration::from_millis(100);
+pub(crate) const SLIDE_ANIMATION: Duration = Duration::from_millis(100);
 const DIM_ALPHA: f32 = 0.7;
 
 fn snap(b: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {

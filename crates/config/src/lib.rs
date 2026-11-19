@@ -55,6 +55,7 @@ pub struct Config {
   pub osd: OsdConfig,
   pub lockscreen: LockscreenConfig,
   pub screenshot: ScreenshotConfig,
+  pub ruler: RulerConfig,
   pub window_switcher: WindowSwitcherConfig,
   pub launcher: LauncherConfig,
   pub taskbar: TaskbarConfig,
@@ -86,6 +87,7 @@ impl Default for Config {
       osd: OsdConfig::default(),
       lockscreen: LockscreenConfig::default(),
       screenshot: ScreenshotConfig::default(),
+      ruler: RulerConfig::default(),
       window_switcher: WindowSwitcherConfig::default(),
       launcher: LauncherConfig::default(),
       taskbar: TaskbarConfig::default(),
@@ -414,6 +416,20 @@ impl Default for ScreenshotConfig {
       directory: None,
       filename_pattern: "screenshot-%Y-%m-%d-%H%M%S-%3f.png".to_string(),
     }
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct RulerConfig {
+  /// How much a color channel (0-255) may differ from the one under the cursor
+  /// before the screen ruler sees an edge
+  pub tolerance: u8,
+}
+
+impl Default for RulerConfig {
+  fn default() -> Self {
+    Self { tolerance: 30 }
   }
 }
 

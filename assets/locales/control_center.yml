@@ -85,6 +85,12 @@ app:
     stay_awake:
       en: Stay awake
       de: Wach bleiben
+    ruler:
+      en: Screen ruler
+      de: Bildschirmlineal
+    ruler_status:
+      en: Measure
+      de: Messen
     devices:
       one:
         en: 1 device

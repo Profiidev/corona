@@ -1,4 +1,4 @@
-//! Screenshot, color picker and the saved screenshots as launcher commands
+//! Screenshot, color picker, screen ruler and the saved screenshots as launcher commands
 
 use std::{path::PathBuf, rc::Rc, sync::Arc, time::SystemTime};
 
@@ -13,9 +13,9 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::ipc::capture::{ColorPicker, Mode, Screenshot};
+use crate::ipc::capture::{ColorPicker, Mode, Ruler, RulerMode, Screenshot};
 
-/// Screenshot, color picker and the saved screenshots
+/// Screenshot, color picker, screen ruler and the saved screenshots
 pub(crate) fn register(cx: &mut App) {
   let commands: Vec<Rc<dyn Command>> = vec![
     simple(
@@ -71,6 +71,32 @@ pub(crate) fn register(cx: &mut App) {
             Ok(Outcome::close())
           },
         )]
+      },
+    ),
+    simple(
+      "ruler",
+      |_| Meta {
+        title: t!("app.launcher.tools.ruler").into(),
+        icon: Icon::Tile(IconName::Ruler, 320.),
+        keywords: vec!["measure".into(), "pixels".into(), "distance".into()],
+        ..Default::default()
+      },
+      |_| {
+        // the first action runs on enter
+        [
+          RulerMode::Spacing,
+          RulerMode::Bounds,
+          RulerMode::Horizontal,
+          RulerMode::Vertical,
+        ]
+        .into_iter()
+        .map(|mode| {
+          Action::sync(mode.id(), mode.label(), move |_, _, cx| {
+            Ruler::handle(mode, cx)?;
+            Ok(Outcome::close())
+          })
+        })
+        .collect()
       },
     ),
     opener(

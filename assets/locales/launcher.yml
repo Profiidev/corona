@@ -502,6 +502,9 @@ app:
       color_picker:
         en: 'Color picker'
         de: 'Farbpipette'
+      ruler:
+        en: 'Screen ruler'
+        de: 'Bildschirmlineal'
       settings:
         en: 'Settings'
         de: 'Einstellungen'

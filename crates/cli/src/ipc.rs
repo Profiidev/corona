@@ -162,7 +162,7 @@ pub(crate) mod tests {
   use corona_shell::ipc::auth::Session;
   use corona_shell::ipc::bluetooth::{Bluetooth, DeviceAction, Discover};
   use corona_shell::ipc::brightness::{display::SetBrightness, nightlight::Nightlight};
-  use corona_shell::ipc::capture::{ColorPicker, Screenshot};
+  use corona_shell::ipc::capture::{ColorPicker, Ruler, Screenshot};
   use corona_shell::ipc::idle::StayAwake;
   use corona_shell::ipc::mpris::media::Media;
   use corona_shell::ipc::network::radio::Wifi;
@@ -222,6 +222,8 @@ pub(crate) mod tests {
       .is_ok()
     );
     assert!(ipc(&["capture", "screenshot", "nope"]).is_err());
+    assert!(ipc(&["capture", "ruler", "BOUNDS"]).is_ok());
+    assert!(ipc(&["capture", "ruler", "nope"]).is_err());
     assert!(ipc(&["window", "switcher", "--modifier", "meta"]).is_err());
     assert!(ipc(&["network", "wifi", "maybe"]).is_err());
     assert!(ipc(&["brightness", "nightlight", "temp", "warm"]).is_err());
@@ -250,6 +252,8 @@ pub(crate) mod tests {
       (&["capture", "screenshot"], json!(null), Screenshot::COMMAND, json!("Selection")),
       (&["capture", "screenshot", "Window"], json!(null), Screenshot::COMMAND, json!("Window")),
       (&["capture", "color-picker"], json!(null), ColorPicker::COMMAND, json!(null)),
+      (&["capture", "ruler"], json!(null), Ruler::COMMAND, json!("Spacing")),
+      (&["capture", "ruler", "Vertical"], json!(null), Ruler::COMMAND, json!("Vertical")),
       (&["media", "next"], json!(null), Media::COMMAND, json!("Next")),
       (&["media", "pause"], json!(null), Media::COMMAND, json!("Pause")),
       (&["settings", "open", "network"], json!(null), SettingsWindow::COMMAND, json!(["Open", "network"])),

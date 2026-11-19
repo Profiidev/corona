@@ -1126,6 +1126,9 @@ app:
         saving:
           en: Saving
           de: Speichern
+        ruler:
+          en: Screen ruler
+          de: Bildschirmlineal
       directory:
         title:
           en: Directory
@@ -1140,6 +1143,13 @@ app:
         description:
           en: strftime pattern.
           de: strftime-Muster.
+      ruler_tolerance:
+        title:
+          en: Edge tolerance
+          de: Kantentoleranz
+        description:
+          en: How much a color channel (0-255) may differ before the ruler sees an edge. Scrolling in the ruler changes it until it closes.
+          de: Wie stark ein Farbkanal (0-255) abweichen darf, bevor das Lineal eine Kante erkennt. Scrollen im Lineal ändert sie bis zum Schließen.
     location:
       title:
         en: 'Location & Weather'

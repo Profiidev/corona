@@ -24,5 +24,6 @@ pub(crate) fn register_all(cx: &mut App) {
     .slider::<sliders::brightness::Brightness>()
     .quick_action::<quick_actions::brightness::NightlightToggle>()
     .card::<cards::mpris::MediaCard>()
-    .quick_action::<quick_actions::idle::StayAwakeToggle>();
+    .quick_action::<quick_actions::idle::StayAwakeToggle>()
+    .quick_action::<quick_actions::ruler::RulerLauncher>();
 }
