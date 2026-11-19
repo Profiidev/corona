@@ -149,6 +149,19 @@ impl RulerState {
   }
 }
 
+#[cfg(test)]
+impl RulerState {
+  /// A state without overlays, on `hovered_monitor`
+  pub(crate) fn test(mode: RulerMode, tolerance: u8, hovered_monitor: &str) -> Self {
+    Self {
+      overlays: Vec::new(),
+      mode,
+      tolerance,
+      hovered_monitor: hovered_monitor.into(),
+    }
+  }
+}
+
 fn stepped(tolerance: u8, steps: i32) -> u8 {
   (i32::from(tolerance) + steps * i32::from(TOLERANCE_STEP)).clamp(0, 255) as u8
 }

@@ -26,6 +26,25 @@ const CAP: f32 = 10.;
 const LABEL_OFFSET: f32 = 12.;
 const BOX_FILL_ALPHA: f32 = 0.12;
 
+/// The device pixel under logical `v` on an axis `len` device pixels long
+fn device_pixel(v: Pixels, scale: f32, len: u32) -> u32 {
+  ((v.as_f32() * scale).max(0.) as u32).min(len.saturating_sub(1))
+}
+
+/// The device pixel corner nearest to logical `v` on an axis `len` device pixels long
+fn device_corner(v: Pixels, scale: f32, len: u32) -> u32 {
+  ((v.as_f32() * scale).round().max(0.) as u32).min(len)
+}
+
+/// Whole lines scrolled so far, taken out of `scrolled`; scrolling up (negative `delta`)
+/// counts up
+fn scroll_steps(scrolled: &mut f32, delta: f32, line: f32) -> i32 {
+  *scrolled -= delta;
+  let steps = (*scrolled / line).trunc();
+  *scrolled -= steps * line;
+  steps as i32
+}
+
 pub struct Overlay {
   output: String,
   image: RgbaImage,
@@ -65,19 +84,17 @@ impl Overlay {
 
   /// The device pixel under `p`
   fn pixel(&self, p: Point<Pixels>) -> (u32, u32) {
-    let clamp = |v: Pixels, max: u32| ((v.as_f32() * self.scale).max(0.) as u32).min(max - 1);
     (
-      clamp(p.x, self.image.width()),
-      clamp(p.y, self.image.height()),
+      device_pixel(p.x, self.scale, self.image.width()),
+      device_pixel(p.y, self.scale, self.image.height()),
     )
   }
 
   /// The device pixel corner nearest to `p`
   fn corner(&self, p: Point<Pixels>) -> (u32, u32) {
-    let clamp = |v: Pixels, max: u32| ((v.as_f32() * self.scale).round().max(0.) as u32).min(max);
     (
-      clamp(p.x, self.image.width()),
-      clamp(p.y, self.image.height()),
+      device_corner(p.x, self.scale, self.image.width()),
+      device_corner(p.y, self.scale, self.image.height()),
     )
   }
 
@@ -155,13 +172,11 @@ impl Overlay {
   }
 
   fn on_scroll(&mut self, e: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
-    let line = window.line_height().as_f32();
-    // scrolling up raises the tolerance
-    self.scrolled -= e.delta.pixel_delta(window.line_height()).y.as_f32();
-    let steps = (self.scrolled / line).trunc();
-    if steps != 0. {
-      self.scrolled -= steps * line;
-      RulerState::adjust_tolerance(steps as i32, cx);
+    let line = window.line_height();
+    let delta = e.delta.pixel_delta(line).y.as_f32();
+    let steps = scroll_steps(&mut self.scrolled, delta, line.as_f32());
+    if steps != 0 {
+      RulerState::adjust_tolerance(steps, cx);
     }
   }
 
@@ -287,5 +302,123 @@ impl Render for Overlay {
       .child(img(self.picture.clone()).size_full())
       .children(measurements)
       .children(toolbar)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use corona_capture::image::Rgba;
+  use corona_surface::testing::{FakeCompositor, setup};
+  use gpui_kit::{self as gpui, Entity, Modifiers, TestAppContext, VisualTestContext, point};
+
+  use super::*;
+
+  const WHITE: Rgba<u8> = Rgba([255, 255, 255, 255]);
+  const BLACK: Rgba<u8> = Rgba([0, 0, 0, 255]);
+
+  #[test]
+  fn logical_to_device_at_scale() {
+    // 1.5: logical 10 is device 15
+    assert_eq!(device_pixel(px(10.), 1.5, 100), 15);
+    assert_eq!(device_pixel(px(10.3), 1.5, 100), 15);
+    // past the edge is the last pixel, before it the first
+    assert_eq!(device_pixel(px(80.), 1.5, 100), 99);
+    assert_eq!(device_pixel(px(-3.), 1.5, 100), 0);
+    // corners round and may sit on the far edge
+    assert_eq!(device_corner(px(10.3), 1.5, 100), 15);
+    assert_eq!(device_corner(px(10.4), 1.5, 100), 16);
+    assert_eq!(device_corner(px(80.), 1.5, 100), 100);
+    assert_eq!(device_corner(px(-3.), 1.5, 100), 0);
+  }
+
+  #[test]
+  fn scrolling_steps_by_whole_lines() {
+    let mut scrolled = 0.;
+    // half a line up: nothing yet
+    assert_eq!(scroll_steps(&mut scrolled, -10., 20.), 0);
+    // the other half completes a step up
+    assert_eq!(scroll_steps(&mut scrolled, -10., 20.), 1);
+    assert_eq!(scrolled, 0.);
+    assert_eq!(scroll_steps(&mut scrolled, 45., 20.), -2);
+    assert_eq!(scrolled, -5.);
+  }
+
+  /// 200×100 device pixels at scale 2, white with a black column at x = 150 and a
+  /// black row at y = 20
+  fn open(mode: RulerMode, cx: &mut TestAppContext) -> (Entity<Overlay>, &mut VisualTestContext) {
+    setup(FakeCompositor::default(), cx);
+    cx.update(|cx| cx.set_global(RulerState::test(mode, 30, "DP-1")));
+    let image = RgbaImage::from_fn(
+      200,
+      100,
+      |x, y| if x == 150 || y == 20 { BLACK } else { WHITE },
+    );
+    let (view, vcx) = cx.add_window_view(|_, cx| Overlay::new("DP-1".into(), image, 2., None, cx));
+    vcx.update(|window, cx| window.focus(&view.read(cx).focus.clone(), cx));
+    (view, vcx)
+  }
+
+  fn at(x: f32, y: f32) -> Point<Pixels> {
+    point(px(x), px(y))
+  }
+
+  fn labels(view: &Entity<Overlay>, cx: &mut VisualTestContext) -> Vec<String> {
+    view.read_with(cx, |o, _| o.pins.iter().map(Measurement::label).collect())
+  }
+
+  #[gpui::test]
+  fn spacing_click_pins_and_right_click_unpins(cx: &mut TestAppContext) {
+    let (view, cx) = open(RulerMode::Spacing, cx);
+    let none = Modifiers::none();
+    // device (50, 50): 150 px to the column, rows 21..=99 below the black row
+    cx.simulate_click(at(25., 25.), none);
+    assert_eq!(labels(&view, cx), ["150 × 79"]);
+
+    // far from both lines
+    cx.simulate_mouse_down(at(90., 45.), MouseButton::Right, none);
+    assert_eq!(labels(&view, cx).len(), 1);
+    // on the horizontal line
+    cx.simulate_mouse_down(at(40., 25.2), MouseButton::Right, none);
+    assert!(labels(&view, cx).is_empty());
+  }
+
+  #[gpui::test]
+  fn bounds_pin_on_release_only_with_area(cx: &mut TestAppContext) {
+    let (view, cx) = open(RulerMode::Bounds, cx);
+    let none = Modifiers::none();
+    cx.simulate_mouse_down(at(2., 2.), MouseButton::Left, none);
+    assert!(labels(&view, cx).is_empty());
+    cx.simulate_mouse_move(at(7., 4.5), MouseButton::Left, none);
+    cx.simulate_mouse_up(at(7., 4.5), MouseButton::Left, none);
+    assert_eq!(labels(&view, cx), ["10 × 5"]);
+
+    // a click without dragging
+    cx.simulate_click(at(9., 9.), none);
+    assert_eq!(labels(&view, cx).len(), 1);
+  }
+
+  #[gpui::test]
+  fn keys_remove_pins_and_switch_modes(cx: &mut TestAppContext) {
+    let (view, cx) = open(RulerMode::Horizontal, cx);
+    let none = Modifiers::none();
+    for x in [2., 4., 6.] {
+      cx.simulate_click(at(x, 8.), none);
+    }
+    assert_eq!(labels(&view, cx), ["150", "150", "150"]);
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(labels(&view, cx).len(), 2);
+    cx.simulate_keystrokes("delete");
+    assert!(labels(&view, cx).is_empty());
+
+    // switching mode drops a running drag, so its release pins nothing
+    cx.simulate_keystrokes("1");
+    cx.simulate_mouse_down(at(2., 2.), MouseButton::Left, none);
+    cx.simulate_keystrokes("2");
+    assert_eq!(
+      cx.read(|cx| cx.global::<RulerState>().mode),
+      RulerMode::Spacing
+    );
+    cx.simulate_mouse_up(at(7., 7.), MouseButton::Left, none);
+    assert!(labels(&view, cx).is_empty());
   }
 }
