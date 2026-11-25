@@ -4,6 +4,7 @@ use gpui_kit::App;
 
 pub(crate) mod colorpicker;
 pub(crate) mod drive_password;
+pub(crate) mod live;
 pub(crate) mod lock;
 pub(crate) mod notifications;
 mod polkit;

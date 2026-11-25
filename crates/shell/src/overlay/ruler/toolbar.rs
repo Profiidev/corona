@@ -16,7 +16,7 @@ use rust_i18n::t;
 
 use crate::overlay::{
   ruler::{mode::RulerMode, overlay::Overlay, state::RulerState},
-  screenshot::save::is_empty,
+  screenshot::{save::is_empty, toolbar::live_button},
 };
 
 /// The mode buttons with a pill sliding to the active one, and the tolerance
@@ -35,10 +35,17 @@ impl RulerToolbar {
     }
   }
 
+  /// Where the toolbar was painted last
+  pub fn bounds(&self) -> Bounds<Pixels> {
+    self.toolbar_bounds.get()
+  }
+
+  /// `live`: the screen keeps moving, its button freezes it
   pub fn render(
     &mut self,
     mode: RulerMode,
     tolerance: u8,
+    live: bool,
     duration: Duration,
     window: &mut Window,
     cx: &mut Context<Overlay>,
@@ -121,7 +128,9 @@ impl RulerToolbar {
                 .font_family(mono)
                 .child(t!("app.ruler.tolerance", value = tolerance).to_string()),
             ),
-          ),
+          )
+          .child(div().w(px(1.)).my_1().bg(theme.border))
+          .child(live_button("ruler-live", live, RulerState::toggle_live)),
       )
   }
 }

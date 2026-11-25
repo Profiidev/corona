@@ -11,7 +11,7 @@ use anyhow::Result;
 pub use image;
 
 pub use convert::RgbaImageExt;
-pub use live::{Frames, capture_window};
+pub use live::{Frames, OutputFrames, capture_output, capture_window};
 pub use shm::shm_dmabuf;
 pub use view::{FrameView, LiveCapture};
 pub use wayland::{Capturer, Frame};

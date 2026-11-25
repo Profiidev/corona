@@ -1126,6 +1126,9 @@ app:
         saving:
           en: Saving
           de: Speichern
+        color_picker:
+          en: Color picker
+          de: Farbwähler
         ruler:
           en: Screen ruler
           de: Bildschirmlineal
@@ -1136,6 +1139,13 @@ app:
         description:
           en: Keep the screen moving instead of freezing it. F switches while open.
           de: Den Bildschirm weiterlaufen lassen statt ihn einzufrieren. F wechselt im geöffneten Zustand.
+      live_fps:
+        title:
+          en: Live frame rate
+          de: Live-Bildrate
+        description:
+          en: Most captures a second in live mode; 0 follows the monitor's refresh rate.
+          de: Höchstens so viele Aufnahmen pro Sekunde im Live-Modus; 0 folgt der Bildwiederholrate des Monitors.
       directory:
         title:
           en: Directory

@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use corona_capture::{RgbaImageExt, image::RgbaImage};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  AnyElement, Context, CursorStyle, FocusHandle, Hsla, InteractiveElement, IntoElement,
-  KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
-  Point, Render, RenderImage, ScrollEvent, Styled, Window,
+  AnyElement, App, Bounds, Context, CursorStyle, FocusHandle, Hsla, InteractiveElement,
+  IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+  ParentElement, Pixels, Point, Render, RenderImage, ScrollEvent, Styled, Window,
   component::{ActiveTheme, tag::Tag},
-  div, img, px,
+  div, img,
+  prelude::FluentBuilder,
+  px,
 };
 
+use crate::overlay::live::{LiveFeed, LiveView, Rect, Tracked, tracker};
 use crate::overlay::ruler::{
   measure::{Measurement, Span},
   mode::RulerMode,
@@ -25,6 +28,8 @@ const HIT_SLACK: f32 = 6.;
 const CAP: f32 = 10.;
 const LABEL_OFFSET: f32 = 12.;
 const BOX_FILL_ALPHA: f32 = 0.12;
+/// How far (device px) live lines sit beside the scanned row and column
+const BESIDE: f32 = 2.;
 
 /// The device pixel under logical `v` on an axis `len` device pixels long
 fn device_pixel(v: Pixels, scale: f32, len: u32) -> u32 {
@@ -47,9 +52,15 @@ fn scroll_steps(scrolled: &mut f32, delta: f32, line: f32) -> i32 {
 
 pub struct Overlay {
   output: String,
+  /// The frozen capture, or the clean image of the live screen
   image: RgbaImage,
   scale: f32,
-  picture: Arc<RenderImage>,
+  /// The frozen capture shown, none while live
+  picture: Option<Arc<RenderImage>>,
+  stale: Vec<Arc<RenderImage>>,
+  fps: u32,
+  feed: LiveFeed,
+  painted: Tracked,
   cursor: Option<Point<Pixels>>,
   /// The device pixel corner a bounds drag started at
   drag_from: Option<(u32, u32)>,
@@ -66,11 +77,16 @@ impl Overlay {
     image: RgbaImage,
     scale: f32,
     cursor: Option<Point<Pixels>>,
+    fps: u32,
     cx: &mut Context<'_, Self>,
   ) -> Self {
     Self {
+      feed: LiveFeed::new(output.clone()),
       output,
-      picture: image.to_gpui(),
+      picture: (image.width() > 0).then(|| image.to_gpui()),
+      stale: Vec::new(),
+      fps,
+      painted: Tracked::default(),
       image,
       scale,
       cursor,
@@ -112,6 +128,8 @@ impl Overlay {
     let cursor = self.cursor?;
     match state.mode {
       RulerMode::Bounds => Measurement::bounds(self.drag_from?, self.corner(cursor)),
+      // live and nothing captured yet
+      _ if self.image.width() == 0 || self.image.height() == 0 => None,
       mode => Some(Measurement::spacing(
         &self.image,
         self.pixel(cursor),
@@ -133,6 +151,30 @@ impl Overlay {
       RulerState::refresh_all(cx);
     }
     cx.notify();
+  }
+
+  /// Streams the live screen, or freezes on a capture taken without the drawings
+  pub fn set_live(&mut self, live: bool, cx: &mut Context<Self>) {
+    if live == self.feed.live() {
+      return;
+    }
+    if live {
+      self.stale.extend(self.picture.take());
+      LiveFeed::start(self, self.fps, true, cx);
+      cx.notify();
+      return;
+    }
+    cx.spawn(async move |this, cx| {
+      let frozen = LiveFeed::freeze(this.clone(), cx).await;
+      let _ = this.update(cx, |v, cx| {
+        match frozen {
+          Ok(()) => v.picture = Some(v.image.to_gpui()),
+          Err(e) => tracing::warn!("ruler freeze failed: {e:#}"),
+        }
+        cx.notify();
+      });
+    })
+    .detach();
   }
 
   fn on_press(&mut self, e: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -184,6 +226,7 @@ impl Overlay {
     let key = e.keystroke.key.as_str();
     match key {
       "escape" => RulerState::close(Some(window), cx),
+      "f" => RulerState::toggle_live(cx),
       "backspace" => {
         self.pins.pop();
         cx.notify();
@@ -201,14 +244,27 @@ impl Overlay {
     }
   }
 
-  fn measurement(&self, m: &Measurement, accent: Hsla, cx: &Context<Self>) -> AnyElement {
+  /// `beside`: lines and caps keep off the row and column through `m.at`
+  fn measurement(
+    &self,
+    m: &Measurement,
+    accent: Hsla,
+    beside: bool,
+    cx: &Context<Self>,
+  ) -> AnyElement {
     let at = |v: u32| px(v as f32 / self.scale);
     let from = |s: Span| at(s.start);
     let len = |s: Span| at(s.end + 1) - at(s.start);
-    let one = px(1.);
-    let cap = px(CAP);
+    let painted = &self.painted;
     let rect = |x: Pixels, y: Pixels, w: Pixels, h: Pixels| {
-      div().absolute().left(x).top(y).w(w).h(h).bg(accent)
+      div()
+        .absolute()
+        .left(x)
+        .top(y)
+        .w(w)
+        .h(h)
+        .bg(accent)
+        .child(tracker(painted))
     };
 
     let mut root = div().absolute().inset_0();
@@ -225,23 +281,18 @@ impl Overlay {
           .bg(Hsla {
             a: BOX_FILL_ALPHA,
             ..accent
-          }),
+          })
+          .child(tracker(painted)),
       );
       (from(h) + len(h), from(v) + len(v))
     } else {
       let (x, y) = (at(m.at.0), at(m.at.1));
-      if let Some(h) = m.h {
-        root = root
-          .child(rect(from(h), y, len(h), one))
-          .child(rect(from(h), y - cap / 2., one, cap))
-          .child(rect(from(h) + len(h) - one, y - cap / 2., one, cap));
-      }
-      if let Some(v) = m.v {
-        root = root
-          .child(rect(x, from(v), one, len(v)))
-          .child(rect(x - cap / 2., from(v), cap, one))
-          .child(rect(x - cap / 2., from(v) + len(v) - one, cap, one));
-      }
+      let lines = lines(m, self.scale, beside);
+      root = root.children(
+        lines
+          .iter()
+          .map(|b| rect(b.origin.x, b.origin.y, b.size.width, b.size.height)),
+      );
       (x, y)
     };
 
@@ -256,29 +307,134 @@ impl Overlay {
               .rounded_full()
               .font_family(cx.theme().mono_font_family.clone())
               .child(m.label()),
-          ),
+          )
+          .child(tracker(painted)),
       )
       .into_any_element()
   }
 }
 
+/// The logical rects drawing the lines and caps of the unboxed `m` at `scale`; `beside`
+/// moves them off the row and column through `m.at`, with a gap where they cross them
+fn lines(m: &Measurement, scale: f32, beside: bool) -> Vec<Bounds<Pixels>> {
+  let at = |v: u32| px(v as f32 / scale);
+  let from = |s: Span| at(s.start);
+  let len = |s: Span| at(s.end + 1) - at(s.start);
+  let (one, cap) = (px(1.), px(CAP));
+  let r = |x: Pixels, y: Pixels, w: Pixels, h: Pixels| {
+    Bounds::new(
+      gpui_kit::point(x, y),
+      gpui_kit::size(w.max(px(0.)), h.max(px(0.))),
+    )
+  };
+  let (x, y) = (at(m.at.0), at(m.at.1));
+  let mut out = Vec::new();
+  if !beside {
+    if let Some(h) = m.h {
+      out.push(r(from(h), y, len(h), one));
+      out.push(r(from(h), y - cap / 2., one, cap));
+      out.push(r(from(h) + len(h) - one, y - cap / 2., one, cap));
+    }
+    if let Some(v) = m.v {
+      out.push(r(x, from(v), one, len(v)));
+      out.push(r(x - cap / 2., from(v), cap, one));
+      out.push(r(x - cap / 2., from(v) + len(v) - one, cap, one));
+    }
+    return out;
+  }
+
+  let off = px(BESIDE / scale);
+  if let Some(h) = m.h {
+    let (start, end, row) = (from(h), from(h) + len(h), y + off);
+    // the line, split around the scanned column
+    out.push(r(start, row, x - off - start, one));
+    out.push(r(x + off, row, end - x - off, one));
+    out.push(r(start, row, one, cap / 2.));
+    out.push(r(end - one, row, one, cap / 2.));
+  }
+  if let Some(v) = m.v {
+    let (start, end, col) = (from(v), from(v) + len(v), x + off);
+    out.push(r(col, start, one, y - off - start));
+    out.push(r(col, y + off, one, end - y - off));
+    out.push(r(col, start, cap / 2., one));
+    out.push(r(col, end - one, cap / 2., one));
+  }
+  out.retain(|b| b.size.width > px(0.) && b.size.height > px(0.));
+  out
+}
+
+impl LiveView for Overlay {
+  fn feed(&mut self) -> &mut LiveFeed {
+    &mut self.feed
+  }
+
+  fn image(&mut self) -> &mut RgbaImage {
+    &mut self.image
+  }
+
+  fn wanted(&self, cx: &App) -> Vec<Rect> {
+    let Some(state) = cx.try_global::<RulerState>() else {
+      return Vec::new();
+    };
+    let (Some(cursor), true) = (self.cursor, state.hovered_monitor == self.output) else {
+      return Vec::new();
+    };
+    if self.image.width() == 0 || self.image.height() == 0 {
+      return Vec::new();
+    }
+    let (x, y) = self.pixel(cursor);
+    let (h, v) = state.mode.axes();
+    let mut rects = Vec::new();
+    if h {
+      rects.push(Rect::new(0, y, u32::MAX, 1));
+    }
+    if v {
+      rects.push(Rect::new(x, 0, 1, u32::MAX));
+    }
+    rects
+  }
+
+  fn sampled(&mut self, cx: &mut Context<Self>) {
+    cx.notify();
+  }
+}
+
 impl Render for Overlay {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    for picture in self.stale.drain(..) {
+      let _ = window.drop_image(picture);
+    }
     let Some(state) = cx.try_global::<RulerState>() else {
       return div().size_full();
     };
     let (mode, tolerance) = (state.mode, state.tolerance);
+    let streaming = self.feed.live();
+    let painted: Vec<Bounds<Pixels>> = mem::take(&mut *self.painted.borrow_mut());
+    if streaming {
+      let scale = self.scale;
+      let mut drawn: Vec<Rect> = painted.iter().map(|b| Rect::covering(*b, scale)).collect();
+      if self.hovered(cx) {
+        drawn.push(Rect::covering(self.toolbar.bounds(), scale));
+      }
+      self.feed.drawn(drawn);
+    }
+    let shown = !streaming || (self.feed.ready && !self.feed.hidden);
     let accent = cx.theme().primary;
-    let live = self.live(cx);
-    let measurements: Vec<AnyElement> = (self.pins.iter().chain(live.as_ref()))
-      .map(|m| self.measurement(m, accent, cx))
-      .collect();
-    let toolbar = if self.hovered(cx) {
+    // live lines sit beside the scanned row and column, frozen ones on them
+    let beside = streaming;
+    let live = self.live(cx).filter(|_| shown);
+    let measurements: Vec<AnyElement> = match shown {
+      true => (self.pins.iter().chain(live.as_ref()))
+        .map(|m| self.measurement(m, accent, beside, cx))
+        .collect(),
+      false => Vec::new(),
+    };
+    let toolbar = if shown && self.hovered(cx) {
       let duration = animation_duration(SLIDE_ANIMATION, cx);
       Some(
         self
           .toolbar
-          .render(mode, tolerance, duration, window, cx)
+          .render(mode, tolerance, streaming, duration, window, cx)
           .into_any_element(),
       )
     } else {
@@ -299,7 +455,7 @@ impl Render for Overlay {
         MouseButton::Right,
         cx.listener(|this, e: &MouseDownEvent, _, cx| this.unpin_at(e.position, cx)),
       )
-      .child(img(self.picture.clone()).size_full())
+      .when_some(self.picture.clone(), |d, p| d.child(img(p).size_full()))
       .children(measurements)
       .children(toolbar)
   }
@@ -332,6 +488,34 @@ mod tests {
   }
 
   #[test]
+  fn lines_beside_keep_off_the_scanned_pixels() {
+    let m = Measurement {
+      at: (50, 40),
+      h: Some(Span { start: 10, end: 89 }),
+      v: Some(Span { start: 5, end: 79 }),
+      boxed: false,
+    };
+    let scale = 2.;
+    let device = |b: &Bounds<Pixels>| Rect::covering(*b, scale);
+    let row = Rect::new(0, 40, 1000, 1);
+    let col = Rect::new(50, 0, 1, 1000);
+    let overlaps =
+      |a: Rect, b: Rect| a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    let beside = lines(&m, scale, true);
+    assert_eq!(beside.len(), 8);
+    for b in &beside {
+      let d = device(b);
+      assert!(!overlaps(d, row) && !overlaps(d, col), "{d:?}");
+    }
+    // the normal layout draws right on them
+    assert!(
+      lines(&m, scale, false)
+        .iter()
+        .any(|b| overlaps(device(b), row))
+    );
+  }
+
+  #[test]
   fn scrolling_steps_by_whole_lines() {
     let mut scrolled = 0.;
     // half a line up: nothing yet
@@ -353,7 +537,8 @@ mod tests {
       100,
       |x, y| if x == 150 || y == 20 { BLACK } else { WHITE },
     );
-    let (view, vcx) = cx.add_window_view(|_, cx| Overlay::new("DP-1".into(), image, 2., None, cx));
+    let (view, vcx) =
+      cx.add_window_view(|_, cx| Overlay::new("DP-1".into(), image, 2., None, 60, cx));
     vcx.update(|window, cx| window.focus(&view.read(cx).focus.clone(), cx));
     (view, vcx)
   }

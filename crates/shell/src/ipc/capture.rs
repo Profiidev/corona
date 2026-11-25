@@ -28,6 +28,19 @@ pub struct ScreenshotStart {
   pub live: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct ColorPickerStart {
+  #[serde(default)]
+  pub live: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct RulerStart {
+  pub mode: RulerMode,
+  #[serde(default)]
+  pub live: bool,
+}
+
 pub struct Screenshot;
 
 impl IpcCommand for Screenshot {
@@ -48,11 +61,12 @@ pub struct ColorPicker;
 impl IpcCommand for ColorPicker {
   const COMMAND: &'static str = "colorpicker:start";
 
-  type Payload = ();
+  type Payload = ColorPickerStart;
   type Response = ();
 
-  fn handle(_: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    ColorPickerState::capture(cx);
+  fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response> {
+    let live = payload.live || cx.config().color_picker.live;
+    ColorPickerState::capture(live, cx);
     Ok(())
   }
 }
@@ -62,11 +76,12 @@ pub struct Ruler;
 impl IpcCommand for Ruler {
   const COMMAND: &'static str = "ruler:start";
 
-  type Payload = RulerMode;
+  type Payload = RulerStart;
   type Response = ();
 
   fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    RulerState::start(payload, std::time::Duration::ZERO, cx);
+    let live = payload.live || cx.config().ruler.live;
+    RulerState::start(payload.mode, std::time::Duration::ZERO, live, cx);
     Ok(())
   }
 }

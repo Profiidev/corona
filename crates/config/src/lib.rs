@@ -55,6 +55,7 @@ pub struct Config {
   pub osd: OsdConfig,
   pub lockscreen: LockscreenConfig,
   pub screenshot: ScreenshotConfig,
+  pub color_picker: ColorPickerConfig,
   pub ruler: RulerConfig,
   pub window_switcher: WindowSwitcherConfig,
   pub launcher: LauncherConfig,
@@ -87,6 +88,7 @@ impl Default for Config {
       osd: OsdConfig::default(),
       lockscreen: LockscreenConfig::default(),
       screenshot: ScreenshotConfig::default(),
+      color_picker: ColorPickerConfig::default(),
       ruler: RulerConfig::default(),
       window_switcher: WindowSwitcherConfig::default(),
       launcher: LauncherConfig::default(),
@@ -428,12 +430,29 @@ pub struct RulerConfig {
   /// How much a color channel (0-255) may differ from the one under the cursor
   /// before the screen ruler sees an edge
   pub tolerance: u8,
+  /// Measure the live screen instead of a frozen capture
+  pub live: bool,
+  /// Live capture rate cap; unset: the monitor's refresh rate
+  pub live_fps: Option<u32>,
 }
 
 impl Default for RulerConfig {
   fn default() -> Self {
-    Self { tolerance: 30 }
+    Self {
+      tolerance: 30,
+      live: false,
+      live_fps: None,
+    }
   }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(default)]
+pub struct ColorPickerConfig {
+  /// Pick from the live screen instead of a frozen capture
+  pub live: bool,
+  /// Live capture rate cap; unset: the monitor's refresh rate
+  pub live_fps: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

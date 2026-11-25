@@ -1,21 +1,26 @@
 use anyhow::{Result, bail};
 use corona_capture::{capture_all, image::RgbaImage};
 use corona_compositor::CompositorExt;
+use corona_config::ConfigProvider;
 use corona_utils::display::display_uuid;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, ClipboardItem, Global, Pixels, Point, Window, base::Root,
-  point, px,
+  AnyWindowHandle, App, AppContext, ClipboardItem, Entity, Global, Pixels, Point, Window, point, px,
 };
 use tracing::{error, warn};
 
-use crate::overlay::colorpicker::overlay::Overlay;
-use corona_surface::overlay::{OverlayState, fullscreen_options};
+use crate::overlay::{
+  colorpicker::overlay::Overlay,
+  live::{LiveFeed, fps},
+};
+use corona_surface::overlay::{OverlayState, root, transparent_fullscreen_options};
 
 const NAMESPACE: &str = "corona_colorpicker";
 
 pub struct ColorPickerState {
   overlays: Vec<AnyWindowHandle>,
+  views: Vec<Entity<Overlay>>,
   pub hovered_monitor: String,
+  pub live: bool,
 }
 
 impl Global for ColorPickerState {}
@@ -27,13 +32,16 @@ impl OverlayState for ColorPickerState {
 }
 
 impl ColorPickerState {
-  pub fn capture(cx: &mut App) {
+  /// Opens the picker over a frozen capture, or over the live screen when `live`
+  pub fn capture(live: bool, cx: &mut App) {
     if cx.has_global::<Self>() {
       return;
     }
     cx.set_global(ColorPickerState {
       overlays: Vec::new(),
+      views: Vec::new(),
       hovered_monitor: cx.compositor().active_monitor(cx).name.clone(),
+      live,
     });
 
     let names: Vec<String> = cx
@@ -43,6 +51,18 @@ impl ColorPickerState {
       .filter(|m| !m.disabled)
       .map(|m| m.name.clone())
       .collect();
+
+    if live {
+      let blank = names
+        .into_iter()
+        .map(|n| (n, RgbaImage::new(0, 0)))
+        .collect();
+      if let Err(e) = Self::open(blank, cx) {
+        error!("color picker overlay failed: {e:#}");
+        Self::close(None, cx);
+      }
+      return;
+    }
 
     cx.spawn(async move |cx| {
       let frozen = cx
@@ -65,9 +85,11 @@ impl ColorPickerState {
     .detach();
   }
 
+  /// One overlay per monitor; empty images stream their monitor live
   fn open(frozen: Vec<(String, RgbaImage)>, cx: &mut App) -> Result<()> {
     let displays = cx.displays();
     let monitors = cx.compositor().list_monitors(cx).to_vec();
+    let cap = cx.config().color_picker.live_fps;
     let cursor = cx
       .compositor()
       .cursor_position()
@@ -85,24 +107,42 @@ impl ColorPickerState {
 
       let scale = monitor.scale.max(0.1);
       let origin = (monitor.x, monitor.y);
-      let local = cursor.and_then(|c| cursor_on(c, origin, image.dimensions(), scale));
+      let live = image.width() == 0;
+      let size = match live {
+        true => (monitor.width, monitor.height),
+        false => image.dimensions(),
+      };
+      let local = cursor.and_then(|c| cursor_on(c, origin, size, scale));
       if local.is_some()
         && let Some(state) = Self::get(cx)
       {
         state.hovered_monitor = name.clone();
       }
 
-      let handle = cx.open_window(fullscreen_options(NAMESPACE, display.id()), |window, cx| {
-        let view = cx.new(|cx| Overlay::new(name, image, scale, local, cx));
-        let focus = view.read(cx).focus.clone();
-        window.focus(&focus, cx);
-        cx.new(|cx| Root::new(view, window, cx))
-      })?;
+      let fps = fps(monitor.refresh_rate, cap);
+      let mut view = None;
+      let handle = cx.open_window(
+        transparent_fullscreen_options(NAMESPACE, display.id()),
+        |window, cx| {
+          let overlay = cx.new(|cx| {
+            let mut overlay = Overlay::new(name, image, scale, local, fps, cx);
+            if live {
+              LiveFeed::start(&mut overlay, fps, false, cx);
+            }
+            overlay
+          });
+          let focus = overlay.read(cx).focus.clone();
+          window.focus(&focus, cx);
+          view = Some(overlay.clone());
+          root(overlay, window, cx)
+        },
+      )?;
 
       let Some(state) = Self::get(cx) else {
         bail!("ColorPickerState was removed while opening overlay");
       };
       state.overlays.push(handle.into());
+      state.views.extend(view);
     }
 
     if Self::get(cx).is_none_or(|s| s.overlays.is_empty()) {
@@ -114,6 +154,22 @@ impl ColorPickerState {
   pub fn pick(hex: String, window: &mut Window, cx: &mut App) {
     cx.write_to_clipboard(ClipboardItem::new_string(hex));
     Self::close(Some(window), cx);
+  }
+
+  /// Switches every overlay between the live screen and a frozen capture
+  pub fn toggle_live(cx: &mut App) {
+    let Some(state) = Self::get(cx) else {
+      return;
+    };
+    state.live = !state.live;
+    let (live, views) = (state.live, state.views.clone());
+    // called from a key or click handler of one of the views, which is being updated
+    cx.defer(move |cx| {
+      for view in views {
+        view.update(cx, |v, cx| v.set_live(live, cx));
+      }
+      Self::refresh_all(cx);
+    });
   }
 }
 

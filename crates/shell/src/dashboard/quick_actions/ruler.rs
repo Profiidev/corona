@@ -1,6 +1,7 @@
 //! The dashboard's screen ruler tile
 
 use corona_components::animation::animation_duration;
+use corona_config::ConfigProvider;
 use corona_surface::{
   dashboard::{QuickAction, Tile},
   panel::{PANEL_OPEN_SPEED, PanelState},
@@ -28,7 +29,8 @@ impl QuickAction for RulerLauncher {
         PanelState::close("control_center", cx).ok();
         // the frames are frozen once the control center has slid away
         let delay = animation_duration(PANEL_OPEN_SPEED, cx);
-        RulerState::start(RulerMode::default(), delay, cx);
+        let live = cx.config().ruler.live;
+        RulerState::start(RulerMode::default(), delay, live, cx);
       })),
     }
   }
