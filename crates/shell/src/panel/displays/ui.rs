@@ -536,11 +536,17 @@ impl DisplaysPanel {
       return;
     };
     self.error.clear();
-    for i in l.items.iter().filter(|i| (i.rect.x, i.rect.y) != i.base) {
+    let rects: Vec<Rect> = l.items.iter().map(|i| i.rect).collect();
+    let (dx, dy) = layout::origin_offset(&rects);
+    for i in &l.items {
+      let position = (i.rect.x - dx, i.rect.y - dy);
+      if position == i.base {
+        continue;
+      }
       let change = MonitorChange::Set {
         mode: None,
         scale: None,
-        position: Some((i.rect.x, i.rect.y)),
+        position: Some(position),
       };
       if let Err(e) = Compositor::configure_monitor(&i.name, change, cx) {
         self.error.set(Err(e));

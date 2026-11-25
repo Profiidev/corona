@@ -62,6 +62,19 @@ pub(crate) fn unreachable(rects: &[Rect]) -> Vec<usize> {
   (0..rects.len()).filter(|&i| !seen[i]).collect()
 }
 
+/// Offset to subtract from every rect so one monitor sits at 0x0: the
+/// bounding-box corner when a monitor is there, else the leftmost (then topmost)
+pub(crate) fn origin_offset(rects: &[Rect]) -> (i32, i32) {
+  let corner = (
+    rects.iter().map(|r| r.x).min().unwrap_or(0),
+    rects.iter().map(|r| r.y).min().unwrap_or(0),
+  );
+  if rects.iter().any(|r| (r.x, r.y) == corner) {
+    return corner;
+  }
+  rects.iter().map(|r| (r.x, r.y)).min().unwrap_or((0, 0))
+}
+
 /// How layout space maps onto the map widget
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct View {
@@ -217,5 +230,28 @@ mod tests {
     assert_eq!(drag(&me, (0, 0), 0., 300., 0.1, &[other]), (0, 3000));
     // bottom aligns with the other's bottom: y = 800 - 500
     assert_eq!(drag(&me, (0, 0), 0., 33., 0.1, &[other]).1, 300);
+  }
+  #[test]
+  fn origin_offset_prefers_a_monitor_at_the_corner() {
+    assert_eq!(origin_offset(&[]), (0, 0));
+    assert_eq!(
+      origin_offset(&[r(0, 0, 100, 100), r(100, 0, 100, 100)]),
+      (0, 0)
+    );
+    // corner (-100, 50) is a monitor: everything ends up non-negative
+    assert_eq!(
+      origin_offset(&[r(-100, 50, 100, 100), r(0, 80, 100, 100)]),
+      (-100, 50)
+    );
+    // corner (0, 0) is empty: leftmost monitor anchors, the other goes negative
+    assert_eq!(
+      origin_offset(&[r(0, 200, 100, 100), r(100, 0, 100, 100)]),
+      (0, 200)
+    );
+    // leftmost tie broken by topmost
+    assert_eq!(
+      origin_offset(&[r(0, 500, 10, 10), r(0, 300, 10, 10), r(50, 0, 10, 10)]),
+      (0, 300)
+    );
   }
 }
