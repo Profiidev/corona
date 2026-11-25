@@ -4,16 +4,27 @@
 //! The overlay is part of its own capture: pixels under its own drawings keep their last
 //! clean value.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use anyhow::{Context as _, Result};
-use corona_capture::{capture_all, capture_output, image::RgbaImage};
+use corona_capture::{RgbaImageExt, capture_all, capture_output, image::RgbaImage};
 use futures::StreamExt;
 use gpui_kit::{
-  App, AppContext, Bounds, Context, IntoElement, Pixels, Styled, Task, WeakEntity, canvas,
+  App, AppContext, Bounds, Context, Dmabuf, IntoElement, Pixels, Styled, Task, WeakEntity, canvas,
 };
 
 use crate::overlay::screenshot::state::FREEZE_SETTLE;
+
+/// `image` for [`corona_capture::FrameView`], drawn from RAM; none when empty
+pub(crate) fn picture(image: &RgbaImage) -> Option<Arc<Dmabuf>> {
+  if image.width() == 0 || image.height() == 0 {
+    return None;
+  }
+  image
+    .to_shm()
+    .inspect_err(|e| tracing::warn!("frozen picture: {e:#}"))
+    .ok()
+}
 
 /// How many renders' drawings stay masked, frames lag behind renders
 const MASK_HISTORY: usize = 4;

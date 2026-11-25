@@ -1,13 +1,13 @@
 use std::{mem, sync::Arc};
 
 use corona_capture::{
-  RgbaImageExt,
+  FrameView, RgbaImageExt,
   image::{Rgba, RgbaImage},
 };
 use gpui_kit::{
-  App, Bounds, Context, CursorStyle, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-  MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Point, Render, RenderImage,
-  Size, Styled, Window,
+  App, Bounds, Context, CursorStyle, Dmabuf, FocusHandle, InteractiveElement, IntoElement,
+  KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Point, Render,
+  RenderImage, Size, Styled, Window,
   base::h_flex,
   component::{ActiveTheme, ThemeStyled, tag::Tag},
   div, img, point,
@@ -17,7 +17,7 @@ use gpui_kit::{
 
 use crate::overlay::{
   colorpicker::state::ColorPickerState,
-  live::{LiveFeed, LiveView, Rect, Tracked, tracker},
+  live::{LiveFeed, LiveView, Rect, Tracked, picture, tracker},
   screenshot::toolbar::live_button,
 };
 use corona_surface::overlay::OverlayState;
@@ -40,7 +40,7 @@ pub struct Overlay {
   image: RgbaImage,
   scale: f32,
   /// The frozen capture shown, none while live
-  picture: Option<Arc<RenderImage>>,
+  picture: Option<Arc<Dmabuf>>,
   cursor: Option<Point<Pixels>>,
   zoom: Option<Zoom>,
   stale: Vec<Arc<RenderImage>>,
@@ -88,7 +88,7 @@ impl Overlay {
     Self {
       feed: LiveFeed::new(output.clone()),
       output,
-      picture: (image.width() > 0).then(|| image.to_gpui()),
+      picture: picture(&image),
       image,
       scale,
       cursor,
@@ -159,7 +159,7 @@ impl Overlay {
       return;
     }
     if live {
-      self.stale.extend(self.picture.take());
+      self.picture = None;
       LiveFeed::start(self, self.fps, true, cx);
       cx.notify();
       return;
@@ -168,7 +168,7 @@ impl Overlay {
       let frozen = LiveFeed::freeze(this.clone(), cx).await;
       let _ = this.update(cx, |v, cx| {
         match frozen {
-          Ok(()) => v.picture = Some(v.image.to_gpui()),
+          Ok(()) => v.picture = picture(&v.image),
           Err(e) => tracing::warn!("color picker freeze failed: {e:#}"),
         }
         cx.notify();
@@ -328,7 +328,9 @@ impl Render for Overlay {
         MouseButton::Right,
         cx.listener(|_, _: &MouseDownEvent, window, cx| ColorPickerState::close(Some(window), cx)),
       )
-      .when_some(self.picture.clone(), |d, p| d.child(img(p).size_full()))
+      .when_some(self.picture.clone(), |d, p| {
+        d.child(FrameView::new(p).size_full())
+      })
       .when(shown, |d| {
         d.when_some(self.magnifier(area, cx), |d, m| d.child(m))
           .when_some(self.toolbar(cx), |d, t| d.child(t))

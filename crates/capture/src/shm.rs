@@ -4,8 +4,9 @@ use anyhow::Result;
 use gpui_kit::{Dmabuf, DmabufPlane};
 use rustix::fs::{MemfdFlags, memfd_create};
 
-/// Opaque BGRA `pixels` in a memfd, for [`crate::FrameView`] to paint
-pub fn shm_dmabuf(width: u32, height: u32, pixels: &[u8]) -> Result<Arc<Dmabuf>> {
+/// BGRA `pixels` in a memfd, for [`crate::FrameView`] to paint from RAM, never VRAM.
+/// `opaque` ignores the alpha byte.
+pub fn shm_dmabuf(width: u32, height: u32, pixels: &[u8], opaque: bool) -> Result<Arc<Dmabuf>> {
   anyhow::ensure!(
     pixels.len() == width as usize * height as usize * 4,
     "{} bytes is not {width}x{height} BGRA",
@@ -22,7 +23,7 @@ pub fn shm_dmabuf(width: u32, height: u32, pixels: &[u8]) -> Result<Arc<Dmabuf>>
       stride: width * 4,
     }],
     modifier: None,
-    opaque: true,
+    opaque,
   }))
 }
 
@@ -32,7 +33,7 @@ mod tests {
 
   #[test]
   fn size_must_match() {
-    assert!(shm_dmabuf(2, 2, &[0; 16]).is_ok());
-    assert!(shm_dmabuf(2, 2, &[0; 15]).is_err());
+    assert!(shm_dmabuf(2, 2, &[0; 16], true).is_ok());
+    assert!(shm_dmabuf(2, 2, &[0; 15], true).is_err());
   }
 }

@@ -1,18 +1,18 @@
 use std::{mem, sync::Arc};
 
-use corona_capture::{RgbaImageExt, image::RgbaImage};
+use corona_capture::{FrameView, image::RgbaImage};
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  AnyElement, App, Bounds, Context, CursorStyle, FocusHandle, Hsla, InteractiveElement,
+  AnyElement, App, Bounds, Context, CursorStyle, Dmabuf, FocusHandle, Hsla, InteractiveElement,
   IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-  ParentElement, Pixels, Point, Render, RenderImage, ScrollEvent, Styled, Window,
+  ParentElement, Pixels, Point, Render, ScrollEvent, Styled, Window,
   component::{ActiveTheme, tag::Tag},
-  div, img,
+  div,
   prelude::FluentBuilder,
   px,
 };
 
-use crate::overlay::live::{LiveFeed, LiveView, Rect, Tracked, tracker};
+use crate::overlay::live::{LiveFeed, LiveView, Rect, Tracked, picture, tracker};
 use crate::overlay::ruler::{
   measure::{Measurement, Span},
   mode::RulerMode,
@@ -56,8 +56,7 @@ pub struct Overlay {
   image: RgbaImage,
   scale: f32,
   /// The frozen capture shown, none while live
-  picture: Option<Arc<RenderImage>>,
-  stale: Vec<Arc<RenderImage>>,
+  picture: Option<Arc<Dmabuf>>,
   fps: u32,
   feed: LiveFeed,
   painted: Tracked,
@@ -83,8 +82,7 @@ impl Overlay {
     Self {
       feed: LiveFeed::new(output.clone()),
       output,
-      picture: (image.width() > 0).then(|| image.to_gpui()),
-      stale: Vec::new(),
+      picture: picture(&image),
       fps,
       painted: Tracked::default(),
       image,
@@ -159,7 +157,7 @@ impl Overlay {
       return;
     }
     if live {
-      self.stale.extend(self.picture.take());
+      self.picture = None;
       LiveFeed::start(self, self.fps, true, cx);
       cx.notify();
       return;
@@ -168,7 +166,7 @@ impl Overlay {
       let frozen = LiveFeed::freeze(this.clone(), cx).await;
       let _ = this.update(cx, |v, cx| {
         match frozen {
-          Ok(()) => v.picture = Some(v.image.to_gpui()),
+          Ok(()) => v.picture = picture(&v.image),
           Err(e) => tracing::warn!("ruler freeze failed: {e:#}"),
         }
         cx.notify();
@@ -401,9 +399,6 @@ impl LiveView for Overlay {
 
 impl Render for Overlay {
   fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    for picture in self.stale.drain(..) {
-      let _ = window.drop_image(picture);
-    }
     let Some(state) = cx.try_global::<RulerState>() else {
       return div().size_full();
     };
@@ -455,7 +450,9 @@ impl Render for Overlay {
         MouseButton::Right,
         cx.listener(|this, e: &MouseDownEvent, _, cx| this.unpin_at(e.position, cx)),
       )
-      .when_some(self.picture.clone(), |d, p| d.child(img(p).size_full()))
+      .when_some(self.picture.clone(), |d, p| {
+        d.child(FrameView::new(p).size_full())
+      })
       .children(measurements)
       .children(toolbar)
   }

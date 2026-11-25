@@ -1,0 +1,356 @@
+--- a/crates/gpui_linux/src/linux/wayland.rs
++++ b/crates/gpui_linux/src/linux/wayland.rs
+@@ -4,6 +4,7 @@
+ mod display;
+ mod popup;
+ mod serial;
++mod shm_surfaces;
+ mod window;
+ 
+ /// Contains Types for configuring layer_shell surfaces.
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -38,7 +38,7 @@
+     Connection, Dispatch, DispatchError, Proxy, QueueHandle, delegate_noop,
+     protocol::{
+         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+-        wl_shm_pool, wl_surface, wl_touch,
++        wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface, wl_touch,
+     },
+ };
+ use wayland_protocols::ext::background_effect::v1::client::{
+@@ -63,6 +63,9 @@
+ use wayland_protocols::wp::text_input::zv3::client::{
+     zwp_text_input_manager_v3, zwp_text_input_v3,
+ };
++use wayland_protocols::wp::alpha_modifier::v1::client::{
++    wp_alpha_modifier_surface_v1, wp_alpha_modifier_v1,
++};
+ use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
+ use wayland_protocols::xdg::decoration::zv1::client::{
+@@ -264,6 +267,8 @@
+     pub shm: wl_shm::WlShm,
+     pub seat: wl_seat::WlSeat,
+     pub viewporter: Option<wp_viewporter::WpViewporter>,
++    pub subcompositor: Option<wl_subcompositor::WlSubcompositor>,
++    pub alpha_modifier: Option<wp_alpha_modifier_v1::WpAlphaModifierV1>,
+     pub fractional_scale_manager:
+         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+@@ -319,6 +324,8 @@
+                 .bind(&qh, 1..=6, ())
+                 .context("Wayland compositor does not provide xdg_wm_base")?,
+             viewporter: globals.bind(&qh, 1..=1, ()).ok(),
++            subcompositor: globals.bind(&qh, 1..=1, ()).ok(),
++            alpha_modifier: globals.bind(&qh, 1..=1, ()).ok(),
+             fractional_scale_manager: globals.bind(&qh, 1..=1, ()).ok(),
+             decoration_manager: globals.bind(&qh, 1..=1, ()).ok(),
+             layer_shell: globals.bind(&qh, 1..=5, ()).ok(),
+@@ -1784,6 +1791,10 @@
+ delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
+ delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
+ delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
++delegate_noop!(WaylandClientStatePtr: ignore wl_subcompositor::WlSubcompositor);
++delegate_noop!(WaylandClientStatePtr: ignore wl_subsurface::WlSubsurface);
++delegate_noop!(WaylandClientStatePtr: ignore wp_alpha_modifier_v1::WpAlphaModifierV1);
++delegate_noop!(WaylandClientStatePtr: ignore wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1);
+ 
+ impl Dispatch<WlCallback, ObjectId> for WaylandClientStatePtr {
+     fn event(
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -35,7 +35,9 @@
+ use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
+ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
+ 
+-use crate::linux::wayland::{display::WaylandDisplay, serial::SerialKind};
++use crate::linux::wayland::{
++    display::WaylandDisplay, serial::SerialKind, shm_surfaces::ShmSurfaces,
++};
+ use crate::linux::{Globals, Output, PendingActivation, WaylandClientStatePtr, get_window};
+ use gpui::{
+     AnyWindowHandle, Bounds, Capslock, Corners, Decorations, DevicePixels, ExternalDragPayload,
+@@ -125,6 +127,7 @@
+     /// Taken when the window is dropped. Its GPU objects use the Wayland connection, so they
+     /// mustn't outlive the window, which a display mode switch relies on.
+     renderer: Option<WgpuRenderer>,
++    shm_surfaces: ShmSurfaces,
+     bounds: Bounds<Pixels>,
+     scale: f32,
+     input_handler: Option<PlatformInputHandler>,
+@@ -691,6 +694,7 @@
+             outputs: HashMap::default(),
+             display: None,
+             renderer: Some(renderer),
++            shm_surfaces: ShmSurfaces::default(),
+             bounds,
+             scale: 1.0,
+             input_handler: None,
+@@ -2174,6 +2178,9 @@
+             let callback = state.surface.frame(&state.globals.qh, state.surface.id());
+             state.pending_frame_callback = Some(callback);
+         }
++        state
++            .shm_surfaces
++            .sync(scene, &state.surface, &state.globals, state.scale);
+         if renderer.draw(scene) {
+             state.presentation = PresentationState::Presented;
+             self.0.frame_loop.set(FrameLoop::AwaitingCallback);
+--- /dev/null
++++ b/crates/gpui_linux/src/linux/wayland/shm_surfaces.rs
+@@ -0,0 +1,254 @@
++//! Plain memory (shm) surfaces of a scene, shown as subsurfaces below the
++//! window instead of being uploaded to the GPU. The renderer erases the
++//! window where they are, so what is painted after them still draws on top.
++
++use std::{
++    os::fd::AsFd,
++    sync::{Arc, Weak},
++};
++
++use collections::FxHashMap;
++use gpui::{Dmabuf, PaintSurface, Scene};
++use wayland_client::protocol::{wl_buffer, wl_shm, wl_subsurface, wl_surface};
++use wayland_protocols::wp::alpha_modifier::v1::client::wp_alpha_modifier_surface_v1;
++use wayland_protocols::wp::viewporter::client::wp_viewport;
++
++use crate::linux::Globals;
++
++#[derive(Default)]
++pub(crate) struct ShmSurfaces {
++    /// Keyed by the `Arc<Dmabuf>` address.
++    buffers: FxHashMap<usize, Buffer>,
++    /// One per shm surface of the last scene, bottom first.
++    layers: Vec<Layer>,
++}
++
++struct Buffer {
++    /// Dead once the scene no longer holds the dmabuf, which also guards against
++    /// a new dmabuf reusing the address.
++    source: Weak<Dmabuf>,
++    wl: wl_buffer::WlBuffer,
++}
++
++struct Layer {
++    surface: wl_surface::WlSurface,
++    subsurface: wl_subsurface::WlSubsurface,
++    viewport: wp_viewport::WpViewport,
++    alpha: Option<wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1>,
++    /// The buffer key and placement last committed, to skip unchanged frames.
++    shown: Option<Shown>,
++}
++
++#[derive(Clone, Copy, PartialEq)]
++struct Shown {
++    buffer: usize,
++    position: (i32, i32),
++    size: (i32, i32),
++    source: [f64; 4],
++    alpha: u32,
++}
++
++impl ShmSurfaces {
++    /// Matches the subsurfaces to the scene's shm surfaces. Subsurfaces are
++    /// synchronized, so the state lands with the window's next commit.
++    pub(crate) fn sync(
++        &mut self,
++        scene: &Scene,
++        parent: &wl_surface::WlSurface,
++        globals: &Globals,
++        scale: f32,
++    ) {
++        let (Some(subcompositor), Some(viewporter)) = (&globals.subcompositor, &globals.viewporter)
++        else {
++            // without them shm surfaces are not drawn at all
++            return;
++        };
++        let shm = scene
++            .surfaces
++            .iter()
++            .filter(|surface| surface.dmabuf.modifier.is_none());
++
++        let mut count = 0;
++        for surface in shm {
++            if self.layers.len() == count {
++                let wl = globals.compositor.create_surface(&globals.qh, ());
++                // input goes to the window above
++                let region = globals.compositor.create_region(&globals.qh, ());
++                wl.set_input_region(Some(&region));
++                region.destroy();
++                self.layers.push(Layer {
++                    subsurface: subcompositor.get_subsurface(&wl, parent, &globals.qh, ()),
++                    viewport: viewporter.get_viewport(&wl, &globals.qh, ()),
++                    alpha: globals
++                        .alpha_modifier
++                        .as_ref()
++                        .map(|m| m.get_surface(&wl, &globals.qh, ())),
++                    surface: wl,
++                    shown: None,
++                });
++            }
++            let below = match count {
++                0 => parent.clone(),
++                i => self.layers[i - 1].surface.clone(),
++            };
++            let key = self.buffer(surface, globals);
++            let layer = &mut self.layers[count];
++            count += 1;
++            match count {
++                1 => layer.subsurface.place_below(&below),
++                _ => layer.subsurface.place_above(&below),
++            }
++            let Some(key) = key else {
++                layer.hide();
++                continue;
++            };
++            let Some(shown) = placement(surface, key, scale) else {
++                layer.hide();
++                continue;
++            };
++            if layer.shown == Some(shown) {
++                continue;
++            }
++            let [x, y, w, h] = shown.source;
++            layer.viewport.set_source(x, y, w, h);
++            layer.viewport.set_destination(shown.size.0, shown.size.1);
++            layer.subsurface.set_position(shown.position.0, shown.position.1);
++            if let Some(alpha) = &layer.alpha {
++                alpha.set_multiplier(shown.alpha);
++            }
++            if layer.shown.is_none_or(|s| s.buffer != key) {
++                layer.surface.attach(Some(&self.buffers[&key].wl), 0, 0);
++                layer.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
++            }
++            layer.surface.commit();
++            layer.shown = Some(shown);
++        }
++        for layer in self.layers.drain(count..) {
++            layer.destroy();
++        }
++
++        let attached: Vec<usize> = self
++            .layers
++            .iter()
++            .filter_map(|l| l.shown.map(|s| s.buffer))
++            .collect();
++        self.buffers.retain(|key, buffer| {
++            let keep = buffer.source.strong_count() > 0 || attached.contains(key);
++            if !keep {
++                buffer.wl.destroy();
++            }
++            keep
++        });
++    }
++
++    /// The key of the `wl_buffer` showing `surface`, made on first use
++    fn buffer(&mut self, surface: &PaintSurface, globals: &Globals) -> Option<usize> {
++        let dmabuf = &surface.dmabuf;
++        let key = Arc::as_ptr(dmabuf) as usize;
++        if let Some(buffer) = self.buffers.get(&key)
++            && buffer.source.strong_count() > 0
++        {
++            return Some(key);
++        }
++        if let Some(old) = self.buffers.remove(&key) {
++            old.wl.destroy();
++        }
++        let plane = dmabuf.planes.first()?;
++        if dmabuf.width == 0 || dmabuf.height == 0 {
++            return None;
++        }
++        let size = plane.offset as usize + plane.stride as usize * dmabuf.height as usize;
++        let (Ok(size), Ok(offset), Ok(width), Ok(height), Ok(stride)) = (
++            i32::try_from(size),
++            i32::try_from(plane.offset),
++            i32::try_from(dmabuf.width),
++            i32::try_from(dmabuf.height),
++            i32::try_from(plane.stride),
++        ) else {
++            log::warn!("shm surface too big");
++            return None;
++        };
++        let format = match dmabuf.opaque {
++            true => wl_shm::Format::Xrgb8888,
++            false => wl_shm::Format::Argb8888,
++        };
++        let pool = globals
++            .shm
++            .create_pool(plane.fd.as_fd(), size, &globals.qh, ());
++        let wl = pool.create_buffer(offset, width, height, stride, format, &globals.qh, ());
++        // the buffer keeps the pool's memory
++        pool.destroy();
++        self.buffers.insert(
++            key,
++            Buffer {
++                source: Arc::downgrade(dmabuf),
++                wl,
++            },
++        );
++        Some(key)
++    }
++}
++
++/// Where `surface` shows, in the window's logical coordinates, cropped to its
++/// content mask; `None` when nothing of it is visible
++fn placement(surface: &PaintSurface, buffer: usize, scale: f32) -> Option<Shown> {
++    let bounds = surface.bounds;
++    let visible = bounds.intersect(&surface.content_mask.bounds);
++    let (bw, bh) = (bounds.size.width.0, bounds.size.height.0);
++    if visible.size.width.0 <= 0. || visible.size.height.0 <= 0. || bw <= 0. || bh <= 0. {
++        return None;
++    }
++    let left = (visible.origin.x.0 / scale).round() as i32;
++    let top = (visible.origin.y.0 / scale).round() as i32;
++    let right = ((visible.origin.x.0 + visible.size.width.0) / scale).round() as i32;
++    let bottom = ((visible.origin.y.0 + visible.size.height.0) / scale).round() as i32;
++    let (w, h) = (right - left, bottom - top);
++    if w <= 0 || h <= 0 {
++        return None;
++    }
++    let (fx, fy) = (
++        f64::from(surface.dmabuf.width) / f64::from(bw),
++        f64::from(surface.dmabuf.height) / f64::from(bh),
++    );
++    Some(Shown {
++        buffer,
++        position: (left, top),
++        size: (w, h),
++        source: [
++            f64::from(visible.origin.x.0 - bounds.origin.x.0) * fx,
++            f64::from(visible.origin.y.0 - bounds.origin.y.0) * fy,
++            f64::from(visible.size.width.0) * fx,
++            f64::from(visible.size.height.0) * fy,
++        ],
++        alpha: (f64::from(surface.opacity.clamp(0., 1.)) * f64::from(u32::MAX)) as u32,
++    })
++}
++
++impl Layer {
++    fn hide(&mut self) {
++        if self.shown.take().is_some() {
++            self.surface.attach(None, 0, 0);
++            self.surface.commit();
++        }
++    }
++
++    fn destroy(self) {
++        if let Some(alpha) = self.alpha {
++            alpha.destroy();
++        }
++        self.viewport.destroy();
++        self.subsurface.destroy();
++        self.surface.destroy();
++    }
++}
++
++impl Drop for ShmSurfaces {
++    fn drop(&mut self) {
++        for layer in self.layers.drain(..) {
++            layer.destroy();
++        }
++        for (_, buffer) in self.buffers.drain() {
++            buffer.wl.destroy();
++        }
++    }
++}
