@@ -2396,7 +2396,6 @@ dependencies = [
  "image",
  "serde_json",
  "smol",
- "specta",
  "tempfile",
  "tracing",
  "uuid",

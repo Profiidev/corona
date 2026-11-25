@@ -96,7 +96,7 @@ impl View {
   }
 
   /// Map position and size of `r`
-  pub fn to_map(&self, r: &Rect) -> (f32, f32, f32, f32) {
+  pub fn to_map(self, r: &Rect) -> (f32, f32, f32, f32) {
     (
       self.off_x + (r.x as f32 - self.world_x) * self.k,
       self.off_y + (r.y as f32 - self.world_y) * self.k,

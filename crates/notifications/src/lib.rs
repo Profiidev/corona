@@ -1,5 +1,8 @@
 use std::{collections::HashMap, sync::atomic::AtomicU32, time::Duration};
 
+// only turns on cpal's pipewire backend for rodio
+use cpal as _;
+
 use anyhow::{Context, Result};
 use corona_config::{APP_NAME, ConfigProvider, observe_section};
 use corona_utils::Buses;
