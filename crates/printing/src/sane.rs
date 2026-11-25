@@ -44,6 +44,10 @@ pub fn parse_list(out: &str) -> Vec<Scanner> {
     if device.starts_with("airscan:") || device.starts_with("escl:") {
       continue;
     }
+    // webcams and digital cameras, SANE's v4l and gphoto2 backends
+    if device.starts_with("v4l:") || device.starts_with("gphoto2:") {
+      continue;
+    }
     let mut name = name.trim().to_string();
     if list.iter().any(|s| s.name == name) {
       name = format!("{name} ({device})");
@@ -278,10 +282,11 @@ mod tests {
   use super::*;
 
   #[test]
-  fn lists_all_but_escl() {
+  fn lists_all_but_escl_and_cameras() {
     let list = parse_list(
       "xerox_mfp:tcp 192.168.1.50\tSamsung CLX-3180 Series\n\
        airscan:e0:Brother\tBrother MFC\n\
+       v4l:/dev/video0\tNoname Integrated Camera: Integrated C\n\
        xerox_mfp:libusb:001:004\tSamsung CLX-3180 Series\n",
     );
     let names: Vec<_> = list.iter().map(|s| s.name.as_str()).collect();
