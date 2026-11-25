@@ -1,8 +1,10 @@
 //! The `screenshot:start`, `colorpicker:start` and `ruler:start` IPC commands
 
 use anyhow::Result;
+use corona_config::ConfigProvider;
 use corona_ipc::{IpcCommand, IpcExt};
 use gpui_kit::App;
+use serde::{Deserialize, Serialize};
 
 use crate::overlay::{
   colorpicker::state::ColorPickerState, ruler::state::RulerState,
@@ -18,16 +20,25 @@ pub(crate) fn register(cx: &mut App) {
     .register::<Ruler>();
 }
 
+/// What to open; `live` forces the live screen, else the config decides
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct ScreenshotStart {
+  pub mode: Mode,
+  #[serde(default)]
+  pub live: bool,
+}
+
 pub struct Screenshot;
 
 impl IpcCommand for Screenshot {
   const COMMAND: &'static str = "screenshot:start";
 
-  type Payload = Mode;
+  type Payload = ScreenshotStart;
   type Response = ();
 
   fn handle(payload: Self::Payload, cx: &mut App) -> Result<Self::Response> {
-    ScreenshotState::capture(payload, cx);
+    let live = payload.live || cx.config().screenshot.live;
+    ScreenshotState::capture(payload.mode, live, cx);
     Ok(())
   }
 }

@@ -1129,6 +1129,13 @@ app:
         ruler:
           en: Screen ruler
           de: Bildschirmlineal
+      live:
+        title:
+          en: Live screen
+          de: Live-Bildschirm
+        description:
+          en: Keep the screen moving instead of freezing it. F switches while open.
+          de: Den Bildschirm weiterlaufen lassen statt ihn einzufrieren. F wechselt im geöffneten Zustand.
       directory:
         title:
           en: Directory

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use corona_components::settings_fields::{number, optional_text, text};
+use corona_components::settings_fields::{number, optional_text, switch, text};
 use corona_settings::{SettingsExt, group, item, page, settings_page};
 use gpui_kit::{App, Axis, assets::IconName, component::setting::SettingPage};
 use rust_i18n::t;
@@ -52,6 +52,11 @@ fn screenshot() -> SettingPage {
             ),
           )
           .layout(Axis::Vertical),
+          item(
+            t!("app.settings.screenshot.live.title"),
+            t!("app.settings.screenshot.live.description"),
+            switch(|c| c.screenshot.live, |c, v| c.screenshot.live = v),
+          ),
         ],
       ),
       group(

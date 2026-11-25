@@ -3,7 +3,9 @@
 use clap::Subcommand;
 use corona_ipc::IpcCommandSend;
 
-use corona_shell::ipc::capture::{ColorPicker, Mode, Ruler, RulerMode, Screenshot};
+use corona_shell::ipc::capture::{
+  ColorPicker, Mode, Ruler, RulerMode, Screenshot, ScreenshotStart,
+};
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -12,6 +14,9 @@ pub enum Commands {
     /// selection, monitor or window
     #[arg(default_value = "selection", ignore_case = true)]
     mode: Mode,
+    /// Keep the screen live instead of freezing it, whatever the config says
+    #[arg(long)]
+    live: bool,
   },
   /// Pick a color from the screen and copy its hex code
   ColorPicker,
@@ -26,8 +31,8 @@ pub enum Commands {
 impl Commands {
   pub fn run(self) {
     match self {
-      Commands::Screenshot { mode } => {
-        if let Err(e) = Screenshot::send(mode) {
+      Commands::Screenshot { mode, live } => {
+        if let Err(e) = Screenshot::send(ScreenshotStart { mode, live }) {
           tracing::error!("Failed to start screenshot: {}", e);
         }
       }

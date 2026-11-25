@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use corona_capture::{Frame, capture_all};
@@ -6,12 +6,12 @@ use corona_components::animation::bounds::BoundsAnimation;
 use corona_compositor::{Compositor, CompositorExt};
 use corona_utils::display::display_uuid;
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, Bounds, Global, Pixels, Point, Size, base::Root, point, px,
+  AnyWindowHandle, App, AppContext, Bounds, Dmabuf, Global, Pixels, Point, Size, point, px,
 };
 use tracing::{error, warn};
 
 use crate::overlay::screenshot::{mode::Mode, overlay::Overlay};
-use corona_surface::overlay::{OverlayState, fullscreen_options};
+use corona_surface::overlay::{OverlayState, root, transparent_fullscreen_options};
 
 const NAMESPACE: &str = "corona_screenshot";
 
@@ -20,6 +20,10 @@ pub(crate) const LAUNCHER_POLL: Duration = Duration::from_millis(10);
 const LAUNCHER_TIMEOUT: Duration = Duration::from_millis(500);
 /// The launcher state clears before the compositor unmaps its layer: give it a couple of frames
 pub(crate) const LAUNCHER_SETTLE: Duration = Duration::from_millis(40);
+/// How long hidden overlays take to leave the screen before a capture of the live screen.
+// shortcut: a guess, gpui exposes no presentation feedback; wait for a frame callback if
+// a live capture ever shows the overlay
+pub(crate) const FREEZE_SETTLE: Duration = Duration::from_millis(40);
 
 /// Whether to stop waiting for the launcher to close
 pub(crate) fn launcher_wait_over(open: bool, waited: Duration) -> bool {
@@ -28,7 +32,15 @@ pub(crate) fn launcher_wait_over(open: bool, waited: Duration) -> bool {
 
 pub struct ScreenshotState {
   overlays: Vec<AnyWindowHandle>,
+  /// The monitors the overlays cover
+  names: Vec<String>,
+  /// The frozen captures, empty while live
   pub screenshots: HashMap<String, Frame>,
+  /// What the overlays show of the frozen captures
+  pub pictures: HashMap<String, Arc<Dmabuf>>,
+  pub live: bool,
+  /// The overlays draw nothing, a capture of the live screen is being taken
+  pub hidden: bool,
   pub geometry: HashMap<String, MonitorGeometry>,
   pub mode: Mode,
   pub hovered_monitor: String,
@@ -140,7 +152,8 @@ impl ScreenshotState {
     }
   }
 
-  pub fn capture(mode: Mode, cx: &mut App) {
+  /// Opens the overlays over a frozen capture, or over the live screen when `live`
+  pub fn capture(mode: Mode, live: bool, cx: &mut App) {
     if cx.has_global::<Self>() {
       return;
     }
@@ -150,7 +163,11 @@ impl ScreenshotState {
 
     cx.set_global(ScreenshotState {
       overlays: Vec::new(),
+      names: Vec::new(),
       screenshots: HashMap::new(),
+      pictures: HashMap::new(),
+      live,
+      hidden: false,
       geometry: HashMap::new(),
       mode,
       hovered_monitor: cx.compositor().active_monitor(cx).name.clone(),
@@ -170,6 +187,15 @@ impl ScreenshotState {
       .map(|m| m.name.clone())
       .collect();
 
+    if live {
+      let blank = names.into_iter().map(|n| (n, None)).collect();
+      if let Err(e) = Self::open(blank, cx) {
+        error!("screenshot overlay failed: {e:#}");
+        Self::close(None, cx);
+      }
+      return;
+    }
+
     // started from the launcher: its surface must be unmapped before the frames are taken
     let from_launcher = corona_launcher::ui::is_open(cx);
 
@@ -185,7 +211,8 @@ impl ScreenshotState {
       let frozen = cx
         .background_executor()
         .spawn(async move { capture_all(names) })
-        .await;
+        .await
+        .map(|f| f.into_iter().map(|(n, f)| (n, Some(f))).collect());
 
       cx.update(|cx| {
         if let Err(e) = frozen.and_then(|f| Self::open(f, cx)) {
@@ -197,7 +224,8 @@ impl ScreenshotState {
     .detach();
   }
 
-  fn open(frozen: Vec<(String, Frame)>, cx: &mut App) -> Result<()> {
+  /// One overlay per monitor; without a frame it shows the live screen
+  fn open(frozen: Vec<(String, Option<Frame>)>, cx: &mut App) -> Result<()> {
     let displays = cx.displays();
     let monitors = cx.compositor().list_monitors(cx).to_vec();
     let all_windows = cx.compositor().list_windows(cx).to_vec();
@@ -242,12 +270,13 @@ impl ScreenshotState {
         .collect::<Vec<_>>();
 
       let scale = monitor.scale.max(0.1);
+      let (width, height) = match &image {
+        Some(frame) => (frame.width(), frame.height()),
+        None => (monitor.width, monitor.height),
+      };
       let geometry = MonitorGeometry {
         origin: point(px(monitor.x as f32), px(monitor.y as f32)),
-        size: Size::new(
-          px(image.width() as f32 / scale),
-          px(image.height() as f32 / scale),
-        ),
+        size: Size::new(px(width as f32 / scale), px(height as f32 / scale)),
         scale,
       };
 
@@ -272,20 +301,26 @@ impl ScreenshotState {
         })
         .collect::<Vec<_>>();
 
-      let picture = image.surface.clone();
-      let handle = cx.open_window(fullscreen_options(NAMESPACE, display.id()), |window, cx| {
-        let view = cx.new(|cx| Overlay::new(name.clone(), picture, geometry, visible, cx));
-        let focus = view.read(cx).focus.clone();
-        window.focus(&focus, cx);
-        cx.new(|cx| Root::new(view, window, cx))
-      })?;
+      let handle = cx.open_window(
+        transparent_fullscreen_options(NAMESPACE, display.id()),
+        |window, cx| {
+          let view = cx.new(|cx| Overlay::new(name.clone(), geometry, visible, cx));
+          let focus = view.read(cx).focus.clone();
+          window.focus(&focus, cx);
+          root(view, window, cx)
+        },
+      )?;
 
       let Some(state) = Self::get(cx) else {
         bail!("ScreenshotState was removed while opening overlay");
       };
       state.overlays.push(handle.into());
+      state.names.push(name.clone());
       state.windows.extend(global_windows);
-      state.screenshots.insert(name.clone(), image);
+      if let Some(frame) = image {
+        state.pictures.insert(name.clone(), frame.surface.clone());
+        state.screenshots.insert(name.clone(), frame);
+      }
       state.geometry.insert(name, geometry);
     }
 
@@ -344,6 +379,64 @@ impl ScreenshotState {
     }
     state.keyboard = true;
     Self::refresh_all(cx);
+  }
+
+  /// Hides the overlays and captures the live screen under them
+  pub async fn capture_hidden(cx: &mut gpui_kit::AsyncApp) -> Result<HashMap<String, Frame>> {
+    let names = cx.update(|cx| {
+      let state = Self::get(cx)?;
+      state.hidden = true;
+      let names = state.names.clone();
+      Self::refresh_all(cx);
+      Some(names)
+    });
+    let names = names.ok_or_else(|| anyhow::anyhow!("screenshot overlay closed"))?;
+    cx.background_executor().timer(FREEZE_SETTLE).await;
+    let frames = cx
+      .background_executor()
+      .spawn(async move { capture_all(names) })
+      .await;
+    cx.update(|cx| {
+      if let Some(state) = Self::get(cx) {
+        state.hidden = false;
+      }
+    });
+    Ok(frames?.into_iter().collect())
+  }
+
+  /// Switches between the live screen and a frozen capture of it
+  pub fn toggle_live(cx: &mut App) {
+    let Some(state) = Self::get(cx).filter(|s| !s.finishing && !s.hidden) else {
+      return;
+    };
+    if !state.live {
+      state.screenshots.clear();
+      state.pictures.clear();
+      state.live = true;
+      Self::refresh_all(cx);
+      return;
+    }
+    cx.spawn(async move |cx| {
+      let frames = Self::capture_hidden(cx).await;
+      cx.update(|cx| {
+        let Some(state) = Self::get(cx) else {
+          return;
+        };
+        match frames {
+          Ok(frames) => {
+            state.pictures = frames
+              .iter()
+              .map(|(n, f)| (n.clone(), f.surface.clone()))
+              .collect();
+            state.screenshots = frames;
+            state.live = false;
+          }
+          Err(e) => error!("screenshot freeze failed: {e:#}"),
+        }
+        Self::refresh_all(cx);
+      });
+    })
+    .detach();
   }
 
   pub fn clear_drag(cx: &mut App) {

@@ -1,9 +1,9 @@
-use std::{mem, sync::Arc, time::Duration};
+use std::{mem, time::Duration};
 
 use corona_capture::FrameView;
 use corona_components::animation::animation_duration;
 use gpui_kit::{
-  App, Bounds, Context, CursorStyle, DispatchPhase, Dmabuf, Edges, Entity, FocusHandle, Hsla,
+  App, Bounds, Context, CursorStyle, DispatchPhase, Edges, Entity, FocusHandle, Hsla,
   InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
   MouseUpEvent, ParentElement, Pixels, Point, Render, Size, Styled, Window, canvas,
   component::{ActiveTheme, tag::Tag},
@@ -37,7 +37,6 @@ fn snap(b: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
 pub struct Overlay {
   output: String,
   geometry: MonitorGeometry,
-  picture: Arc<Dmabuf>,
   windows: Vec<Bounds<Pixels>>,
   cursor: Option<Point<Pixels>>,
   pub focus: FocusHandle,
@@ -47,7 +46,6 @@ pub struct Overlay {
 impl Overlay {
   pub fn new(
     output: String,
-    picture: Arc<Dmabuf>,
     geometry: MonitorGeometry,
     windows: Vec<Bounds<Pixels>>,
     cx: &mut Context<'_, Self>,
@@ -55,7 +53,6 @@ impl Overlay {
     Self {
       output,
       geometry,
-      picture,
       windows,
       cursor: None,
       focus: cx.focus_handle(),
@@ -207,6 +204,11 @@ impl Render for Overlay {
     let Some(state) = cx.try_global::<ScreenshotState>() else {
       return div().size_full();
     };
+    if state.hidden {
+      // the live screen is being captured, without the overlay
+      return div().track_focus(&self.focus).size_full();
+    }
+    let picture = state.pictures.get(&self.output).cloned();
     let cursor = match state.mode {
       Mode::Selection => CursorStyle::Crosshair,
       Mode::Monitor | Mode::Window => CursorStyle::PointingHand,
@@ -219,7 +221,7 @@ impl Render for Overlay {
       pill_duration
     };
     let target = state.target();
-    let mode = state.mode;
+    let (mode, live) = (state.mode, state.live);
 
     let Some(state) = ScreenshotState::get(cx) else {
       return div().size_full();
@@ -267,6 +269,7 @@ impl Render for Overlay {
           "s" => ScreenshotState::set_mode(Mode::Selection, cx),
           "m" => ScreenshotState::set_mode(Mode::Monitor, cx),
           "w" => ScreenshotState::set_mode(Mode::Window, cx),
+          "f" => ScreenshotState::toggle_live(cx),
           "enter"
             if let Some(state) = ScreenshotState::get(cx)
               && state.mode != Mode::Selection
@@ -307,7 +310,9 @@ impl Render for Overlay {
           }
         }),
       )
-      .child(FrameView::new(self.picture.clone()).absolute().size_full())
+      .when_some(picture, |d, p| {
+        d.child(FrameView::new(p).absolute().size_full())
+      })
       .child(Self::pointer_events(cx.entity()))
       .when_none(&highlight_area, |d| {
         d.child(strip(px(0.), px(0.), vp.width, vp.height))
@@ -335,7 +340,7 @@ impl Render for Overlay {
           )
       })
       .when_some(self.size_badge(cx), |d, badge| d.child(badge))
-      .child(self.toolbar.render(mode, pill_duration, window, cx))
+      .child(self.toolbar.render(mode, live, pill_duration, window, cx))
   }
 }
 

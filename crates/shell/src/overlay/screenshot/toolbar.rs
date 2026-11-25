@@ -4,13 +4,15 @@ use corona_components::animation::bounds::BoundsAnimation;
 use gpui_kit::{
   Bounds, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Styled,
   Window,
+  assets::IconName,
   base::{ElementExt, h_flex},
   component::{
-    ActiveTheme, ThemeStyled,
+    ActiveTheme, Selectable, ThemeStyled,
     button::{Button, ButtonCustomVariant, ButtonVariant, ButtonVariants},
   },
   div, point, px,
 };
+use rust_i18n::t;
 
 use crate::overlay::screenshot::{
   mode::Mode, overlay::Overlay, save::is_empty, state::ScreenshotState,
@@ -31,9 +33,11 @@ impl ScreenshotToolbar {
     }
   }
 
+  /// `live`: the screen keeps moving, its button freezes it
   pub fn render(
     &mut self,
     mode: Mode,
+    live: bool,
     duration: Duration,
     window: &mut Window,
     cx: &mut Context<Overlay>,
@@ -106,7 +110,28 @@ impl ScreenshotToolbar {
                   cx.notify();
                 })),
             )
-          })),
+          }))
+          .child(div().w(px(1.)).my_1().bg(theme.border))
+          .child(
+            Button::new("screenshot-live")
+              .ghost()
+              .rounded_full()
+              .cursor_pointer()
+              .selected(live)
+              .icon(match live {
+                true => IconName::Play,
+                false => IconName::Snowflake,
+              })
+              .label(match live {
+                true => t!("app.screenshot.live"),
+                false => t!("app.screenshot.frozen"),
+              })
+              .tooltip(t!("app.screenshot.live_hint"))
+              .on_click(cx.listener(|_, _, _, cx| {
+                ScreenshotState::toggle_live(cx);
+                cx.notify();
+              })),
+          ),
       )
   }
 }

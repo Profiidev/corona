@@ -98,6 +98,11 @@ pub fn fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions 
   }
 }
 
+/// Like [`fullscreen_options`], but transparent: pair it with [`root`]
+pub fn transparent_fullscreen_options(namespace: &str, display: DisplayId) -> WindowOptions {
+  layer_options(fullscreen_layer(namespace), Some(display), Size::default())
+}
+
 /// A transparent fullscreen overlay on the focused monitor, or the primary display, showing the
 /// view `build` makes; `tweak` adjusts its layer-shell options
 pub fn open_on_focused<V: Render>(

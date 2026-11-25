@@ -396,6 +396,8 @@ pub struct ScreenshotConfig {
   pub directory: Option<PathBuf>,
   /// strftime pattern
   pub filename_pattern: String,
+  /// Keep the screen live while selecting instead of freezing it
+  pub live: bool,
 }
 
 impl ScreenshotConfig {
@@ -415,6 +417,7 @@ impl Default for ScreenshotConfig {
     Self {
       directory: None,
       filename_pattern: "screenshot-%Y-%m-%d-%H%M%S-%3f.png".to_string(),
+      live: false,
     }
   }
 }

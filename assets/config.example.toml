@@ -150,6 +150,8 @@ blur = 3.0
 # directory = "~/Pictures/Screenshots"
 # strftime pattern.
 filename_pattern = "screenshot-%Y-%m-%d-%H%M%S-%3f.png"
+# Keep the screen live while selecting instead of freezing it.
+live = false
 
 [ruler]
 # How much a color channel (0-255) may differ before the screen ruler sees an edge.
