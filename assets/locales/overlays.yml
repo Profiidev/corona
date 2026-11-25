@@ -39,6 +39,15 @@ app:
     window_hint:
       en: Window under the cursor (W)
       de: Fenster unter dem Zeiger (W)
+    live:
+      en: Live
+      de: Live
+    frozen:
+      en: Frozen
+      de: Eingefroren
+    live_hint:
+      en: Switch between the live and a frozen screen (F)
+      de: Zwischen Live- und eingefrorenem Bildschirm wechseln (F)
   ruler:
     bounds:
       en: Bounds

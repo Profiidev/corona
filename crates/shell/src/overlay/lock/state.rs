@@ -454,7 +454,8 @@ impl LockState {
           origin: point(px(0.), px(0.)),
           size: Size::new(px(640.), px(480.)),
         })),
-        window_background: WindowBackgroundAppearance::Opaque,
+        // the background is a subsurface showing through the window
+        window_background: WindowBackgroundAppearance::Transparent,
         window_decorations: Some(WindowDecorations::Client),
         inactive_frame_interval: None,
         app_id: Some(APP_NAME.to_string()),
@@ -534,7 +535,7 @@ fn open_screens<T, W: Copy>(
 /// `frame` sharp, and blurred by `sigma` for behind the lock
 fn background(frame: &Frame, sigma: f32) -> Result<Background> {
   let image = frame.read_all()?;
-  let sharp = image.to_gpui();
+  let sharp = image.to_shm()?;
   if sigma <= 0. {
     return Ok(Background {
       blurred: sharp.clone(),
@@ -549,7 +550,7 @@ fn background(frame: &Frame, sigma: f32) -> Result<Background> {
   );
   Ok(Background {
     sharp,
-    blurred: imageops::fast_blur(&small, sigma).to_gpui(),
+    blurred: imageops::fast_blur(&small, sigma).to_shm()?,
   })
 }
 

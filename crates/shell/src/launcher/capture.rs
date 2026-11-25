@@ -13,7 +13,9 @@ use corona_launcher::{
 use gpui_kit::{App, SharedString, assets::IconName};
 use rust_i18n::t;
 
-use crate::ipc::capture::{ColorPicker, Mode, Ruler, RulerMode, Screenshot};
+use crate::ipc::capture::{
+  ColorPicker, ColorPickerStart, Mode, Ruler, RulerMode, RulerStart, Screenshot, ScreenshotStart,
+};
 
 /// Screenshot, color picker, screen ruler and the saved screenshots
 pub(crate) fn register(cx: &mut App) {
@@ -47,7 +49,7 @@ pub(crate) fn register(cx: &mut App) {
         .into_iter()
         .map(|(id, title, mode)| {
           Action::sync(id, title, move |_, _, cx| {
-            Screenshot::handle(mode, cx)?;
+            Screenshot::handle(ScreenshotStart { mode, live: false }, cx)?;
             Ok(Outcome::close())
           })
         })
@@ -67,7 +69,7 @@ pub(crate) fn register(cx: &mut App) {
           "pick",
           t!("app.launcher.tools.color_picker"),
           |_, _, cx| {
-            ColorPicker::handle((), cx)?;
+            ColorPicker::handle(ColorPickerStart::default(), cx)?;
             Ok(Outcome::close())
           },
         )]
@@ -92,7 +94,7 @@ pub(crate) fn register(cx: &mut App) {
         .into_iter()
         .map(|mode| {
           Action::sync(mode.id(), mode.label(), move |_, _, cx| {
-            Ruler::handle(mode, cx)?;
+            Ruler::handle(RulerStart { mode, live: false }, cx)?;
             Ok(Outcome::close())
           })
         })

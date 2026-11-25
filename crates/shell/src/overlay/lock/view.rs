@@ -6,13 +6,13 @@ use std::{
 };
 
 use corona_auth::AuthExt;
+use corona_capture::FrameView;
 use corona_components::animation::animation_duration;
 use corona_components::auth_screen::{AuthScreen, Purpose};
 use gpui_kit::{
-  AnyWindowHandle, App, AppContext, BoxShadow, Context, Div, Entity, FocusHandle,
-  InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Render, RenderImage, Size,
-  Styled, Window, black, component::ActiveTheme, div, ease_out_quint, img, prelude::FluentBuilder,
-  px, relative,
+  AnyWindowHandle, App, AppContext, BoxShadow, Context, Div, Dmabuf, Entity, FocusHandle,
+  InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Render, Size, Styled,
+  Window, black, component::ActiveTheme, div, ease_out_quint, prelude::FluentBuilder, px, relative,
 };
 
 use crate::overlay::lock::{state::LockState, user};
@@ -25,8 +25,8 @@ pub(super) const ZOOM_SPEED: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
 pub struct Background {
-  pub sharp: Arc<RenderImage>,
-  pub blurred: Arc<RenderImage>,
+  pub sharp: Arc<Dmabuf>,
+  pub blurred: Arc<Dmabuf>,
 }
 
 /// What a lock window shows over its screen
@@ -92,7 +92,7 @@ impl Lock {
 fn screen(background: Background, progress: f32, size: Size<Pixels>) -> Div {
   let scale = 1. - (1. - ZOOM) * progress;
   let inset = relative((1. - scale) / 2.);
-  let image = |image: Arc<RenderImage>| img(image).absolute().size_full();
+  let image = |image: Arc<Dmabuf>| FrameView::new(image).absolute().size_full();
   // a gaussian from the screen edge across the gap and a bit into the zoomed
   // screen, hiding where it meets the blur behind
   let feather = size.width.max(size.height) * ((1. - scale) / 2. * FEATHER);
@@ -126,7 +126,14 @@ fn screen(background: Background, progress: f32, size: Size<Pixels>) -> Div {
         .w(relative(scale))
         .h(relative(scale))
         .child(image(background.blurred))
-        .child(image(background.sharp).opacity(1. - progress)),
+        // a canvas ignores its own opacity, a div passes it down
+        .child(
+          div()
+            .absolute()
+            .size_full()
+            .opacity(1. - progress)
+            .child(image(background.sharp)),
+        ),
     )
     .child(vignette)
     .child(

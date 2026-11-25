@@ -113,6 +113,7 @@ pub fn commit_selection(area: Bounds<Pixels>, cx: &mut App) {
     return;
   }
   state.finishing = true;
+  let live = state.live;
   let screenshots = std::mem::take(&mut state.screenshots);
   let geometry = state.geometry.clone();
   ScreenshotState::refresh_all(cx);
@@ -120,9 +121,13 @@ pub fn commit_selection(area: Bounds<Pixels>, cx: &mut App) {
   // The readback and encoding happen off the UI thread. The overlays close after the
   // clipboard write, without a focused window Wayland ignores it.
   cx.spawn(async move |cx| {
+    let screenshots = match live {
+      true => ScreenshotState::capture_hidden(cx).await,
+      false => Ok(screenshots),
+    };
     let png = cx
       .background_executor()
-      .spawn(async move { compose(&geometry, &screenshots, area)?.to_png() })
+      .spawn(async move { compose(&geometry, &screenshots?, area)?.to_png() })
       .await;
     cx.update(|cx| {
       match png {
@@ -162,6 +167,7 @@ mod tests {
     let config = ScreenshotConfig {
       directory: Some(dir.path().join("nested")),
       filename_pattern: "shot.png".into(),
+      ..Default::default()
     };
     let path = save(b"png", &config).unwrap();
     assert_eq!(path, dir.path().join("nested/shot.png"));
@@ -174,6 +180,7 @@ mod tests {
     let config = ScreenshotConfig {
       directory: Some(dir.path().into()),
       filename_pattern: "%".into(),
+      ..Default::default()
     };
     assert!(save(b"png", &config).is_err());
   }

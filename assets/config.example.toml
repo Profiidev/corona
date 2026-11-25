@@ -150,10 +150,22 @@ blur = 3.0
 # directory = "~/Pictures/Screenshots"
 # strftime pattern.
 filename_pattern = "screenshot-%Y-%m-%d-%H%M%S-%3f.png"
+# Keep the screen live while selecting instead of freezing it.
+live = false
+
+[color_picker]
+# Pick from the live screen instead of a frozen capture.
+live = false
+# Live capture rate cap; the monitor's refresh rate when unset.
+# live_fps = 30
 
 [ruler]
 # How much a color channel (0-255) may differ before the screen ruler sees an edge.
 tolerance = 30
+# Measure the live screen instead of a frozen capture.
+live = false
+# Live capture rate cap; the monitor's refresh rate when unset.
+# live_fps = 30
 
 [window_switcher]
 # Only what is on the focused monitor, even without --current-monitor.

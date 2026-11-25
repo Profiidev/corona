@@ -1,0 +1,190 @@
+--- a/crates/gpui_wgpu/src/shaders.wgsl
++++ b/crates/gpui_wgpu/src/shaders.wgsl
+@@ -1354,3 +1354,14 @@
+     let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
+     return blend_color(vec4<f32>(sample.rgb, alpha), saturate(0.5 - distance));
+ }
++
++// Erases the window below a shm surface, which the platform shows as a
++// subsurface underneath; the output alpha is how much to erase.
++@fragment
++fn fs_surface_hole(input: SurfaceVarying) -> @location(0) vec4<f32> {
++    if (any(input.clip_distances < vec4<f32>(0.0))) {
++        return vec4<f32>(0.0);
++    }
++    let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
++    return vec4<f32>(0.0, 0.0, 0.0, saturate(0.5 - distance));
++}
+--- a/crates/gpui_wgpu/src/wgpu_renderer.rs
++++ b/crates/gpui_wgpu/src/wgpu_renderer.rs
+@@ -139,6 +139,8 @@
+     poly_sprites: wgpu::RenderPipeline,
+     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+     surfaces: wgpu::RenderPipeline,
++    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
++    surface_holes: wgpu::RenderPipeline,
+ }
+ 
+ /// One frame allocation of instance data, ready to bind.
+@@ -202,6 +204,9 @@
+     /// Keyed by the `Arc<Dmabuf>` address.
+     #[cfg(target_os = "linux")]
+     dmabufs: FxHashMap<usize, ImportedDmabuf>,
++    /// Bound in place of a texture for shm surfaces, which only erase.
++    #[cfg(target_os = "linux")]
++    hole_view: Option<wgpu::TextureView>,
+ }
+ 
+ #[cfg(target_os = "linux")]
+@@ -956,7 +961,31 @@
+             &layouts.surfaces,
+             None,
+             wgpu::PrimitiveTopology::TriangleStrip,
+-            &[Some(color_target)],
++            &[Some(color_target.clone())],
++            1,
++            &shader_module,
++        );
++
++        let erase = wgpu::BlendComponent {
++            src_factor: wgpu::BlendFactor::Zero,
++            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
++            operation: wgpu::BlendOperation::Add,
++        };
++        let surface_holes = create_pipeline(
++            "surface_holes",
++            "vs_surface",
++            "fs_surface_hole",
++            &layouts.globals,
++            &layouts.surfaces,
++            None,
++            wgpu::PrimitiveTopology::TriangleStrip,
++            &[Some(wgpu::ColorTargetState {
++                blend: Some(wgpu::BlendState {
++                    color: erase,
++                    alpha: erase,
++                }),
++                ..color_target
++            })],
+             1,
+             &shader_module,
+         );
+@@ -971,6 +1000,7 @@
+             subpixel_sprites,
+             poly_sprites,
+             surfaces,
++            surface_holes,
+         }
+     }
+ 
+@@ -1386,6 +1416,8 @@
+                 path_msaa_view: None,
+                 #[cfg(target_os = "linux")]
+                 dmabufs: FxHashMap::default(),
++                #[cfg(target_os = "linux")]
++                hole_view: None,
+             },
+             atlas,
+             path_globals_offset,
+@@ -1792,7 +1824,8 @@
+     }
+ 
+     #[cfg(target_os = "linux")]
+-    fn prepare_surfaces(&mut self, scene: &Scene) -> Vec<Option<wgpu::BindGroup>> {
++    /// Each surface's bind group, and whether it is a shm surface to erase a hole for
++    fn prepare_surfaces(&mut self, scene: &Scene) -> Vec<Option<(wgpu::BindGroup, bool)>> {
+         use wgpu::util::DeviceExt as _;
+ 
+         let resources = &mut self.resources;
+@@ -1805,17 +1838,45 @@
+             .iter()
+             .map(|surface| {
+                 let dmabuf = &surface.dmabuf;
+-                let imported = resources
+-                    .dmabufs
+-                    .entry(Arc::as_ptr(dmabuf) as usize)
+-                    .or_insert_with(|| ImportedDmabuf {
+-                        source: Arc::downgrade(dmabuf),
+-                        view: crate::dmabuf::texture(&resources.device, &resources.queue, dmabuf)
++                // shm memory is shown by the platform as a subsurface, never uploaded
++                let hole = dmabuf.modifier.is_none();
++                let view = if hole {
++                    &*resources.hole_view.get_or_insert_with(|| {
++                        resources
++                            .device
++                            .create_texture(&wgpu::TextureDescriptor {
++                                label: Some("surface_hole"),
++                                size: wgpu::Extent3d {
++                                    width: 1,
++                                    height: 1,
++                                    depth_or_array_layers: 1,
++                                },
++                                mip_level_count: 1,
++                                sample_count: 1,
++                                dimension: wgpu::TextureDimension::D2,
++                                format: wgpu::TextureFormat::Bgra8Unorm,
++                                usage: wgpu::TextureUsages::TEXTURE_BINDING,
++                                view_formats: &[],
++                            })
++                            .create_view(&Default::default())
++                    })
++                } else {
++                    let imported = resources
++                        .dmabufs
++                        .entry(Arc::as_ptr(dmabuf) as usize)
++                        .or_insert_with(|| ImportedDmabuf {
++                            source: Arc::downgrade(dmabuf),
++                            view: crate::dmabuf::texture(
++                                &resources.device,
++                                &resources.queue,
++                                dmabuf,
++                            )
+                             .inspect_err(|e| warn!("failed to import dmabuf: {e:#}"))
+                             .ok()
+                             .map(|texture| texture.create_view(&Default::default())),
+-                    });
+-                let view = imported.view.as_ref()?;
++                        });
++                    imported.view.as_ref()?
++                };
+ 
+                 let params = SurfaceParams {
+                     bounds: surface.bounds.into(),
+@@ -1836,7 +1897,7 @@
+                         contents: bytemuck::bytes_of(&params),
+                         usage: wgpu::BufferUsages::UNIFORM,
+                     });
+-                Some(
++                Some((
+                     resources
+                         .device
+                         .create_bind_group(&wgpu::BindGroupDescriptor {
+@@ -1859,7 +1920,8 @@
+                                 },
+                             ],
+                         }),
+-                )
++                    hole,
++                ))
+             })
+             .collect()
+     }
+@@ -1867,12 +1929,15 @@
+     #[cfg(target_os = "linux")]
+     fn draw_surfaces(
+         &self,
+-        bind_groups: &[Option<wgpu::BindGroup>],
++        bind_groups: &[Option<(wgpu::BindGroup, bool)>],
+         pass: &mut wgpu::RenderPass<'_>,
+     ) {
+         let resources = self.resources();
+-        for bind_group in bind_groups.iter().flatten() {
+-            pass.set_pipeline(&resources.pipelines.surfaces);
++        for (bind_group, hole) in bind_groups.iter().flatten() {
++            pass.set_pipeline(match hole {
++                true => &resources.pipelines.surface_holes,
++                false => &resources.pipelines.surfaces,
++            });
+             pass.set_bind_group(0, &resources.globals_bind_group, &[]);
+             pass.set_bind_group(1, bind_group, &[]);
+             pass.draw(0..4, 0..1);

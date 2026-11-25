@@ -202,6 +202,37 @@ impl Capturer {
     frame
   }
 
+  /// A capture source for the output named `output`.
+  pub(crate) fn output_source(&mut self, output: &str) -> Result<ExtImageCaptureSourceV1> {
+    let wl_output = self
+      .state
+      .outputs
+      .iter()
+      .find(|(_, n)| n.as_deref() == Some(output))
+      .ok_or_else(|| anyhow!("no output {output}"))?;
+    Ok(self.sources.create_source(&wl_output.0, &self.qh, ()))
+  }
+
+  /// Like [`Self::alloc`], but the frame can be read with [`Frame::read`]
+  /// right after each copy: a dmabuf is imported into the GPU once here.
+  pub(crate) fn alloc_readable(&mut self) -> Result<(Frame, WlBuffer)> {
+    let (mut frame, buffer) = self.alloc()?;
+    if frame.surface.modifier.is_none() {
+      return Ok((frame, buffer));
+    }
+    match crate::gpu::import(&frame.surface) {
+      Ok(texture) => {
+        frame.backing = Backing::Gpu(texture);
+        Ok((frame, buffer))
+      }
+      Err(e) => {
+        tracing::warn!("dmabuf import failed, using shm: {e:#}");
+        buffer.destroy();
+        self.alloc_shm()
+      }
+    }
+  }
+
   /// A capture source for the compositor's window `id`.
   pub(crate) fn window_source(&mut self, id: &str) -> Result<ExtImageCaptureSourceV1> {
     let sources = self

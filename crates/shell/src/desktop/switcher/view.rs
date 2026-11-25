@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
-use corona_capture::LiveCapture;
-use corona_components::assets::image_source;
+use corona_capture::{FrameView, LiveCapture};
 use corona_components::components::window_icon::WindowIcon;
 use corona_compositor::{CompositorExt, types};
 use corona_config::ConfigProvider;
 use gpui_kit::{
   App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyBinding,
-  KeyDownEvent, ModifiersChangedEvent, MouseButton, ObjectFit, ParentElement, Render,
-  StatefulInteractiveElement, Styled, StyledImage, Subscription, Window, black,
-  component::ActiveTheme, div, img, prelude::FluentBuilder, px,
+  KeyDownEvent, ModifiersChangedEvent, MouseButton, ParentElement, Render,
+  StatefulInteractiveElement, Styled, Subscription, Window, black, component::ActiveTheme, div,
+  prelude::FluentBuilder, px,
 };
 use tracing::error;
 
@@ -221,6 +220,7 @@ impl Switcher {
     &self,
     workspace: &types::Workspace,
     windows: Vec<&types::Window>,
+    scale: f32,
     cx: &mut Context<Self>,
   ) -> impl IntoElement + use<> {
     let card_height = cx.config().window_switcher.card_height;
@@ -258,6 +258,17 @@ impl Switcher {
     let inset = INSET + BORDER;
     let k = (card_height - inset * 2.) / (bottom - top).max(1) as f32;
     let width = (right - left) as f32 * k + inset * 2.;
+
+    // inside the border, in device pixels, from RAM
+    let device = |v: f32| (v * scale).round() as u32;
+    let wallpaper = corona_surface::overlay::wallpaper::thumbnail(
+      cx,
+      (
+        device(width - BORDER * 2.),
+        device(card_height - BORDER * 2.),
+      ),
+      device(theme.radius.as_f32()),
+    );
 
     let window_mode = self.mode == Mode::Window;
     let tiles = windows.into_iter().map(|w| {
@@ -348,19 +359,15 @@ impl Switcher {
             true => theme.colors.primary,
             false => gpui_kit::transparent_black(),
           })
-          .when_some(
-            cx.config().wallpaper.path.as_deref().map(image_source),
-            |d, source| {
-              d.child(
-                img(source)
-                  .absolute()
-                  .inset_0()
-                  .size_full()
-                  .rounded(theme.radius)
-                  .object_fit(ObjectFit::Cover),
-              )
-            },
-          )
+          .when_some(wallpaper, |d, wallpaper| {
+            d.child(
+              FrameView::new(wallpaper)
+                .absolute()
+                .inset_0()
+                .size_full()
+                .rounded(theme.radius),
+            )
+          })
           .when(!window_mode, |d| {
             let id = workspace.id.clone();
             d.cursor_pointer()
@@ -372,7 +379,7 @@ impl Switcher {
 }
 
 impl Render for Switcher {
-  fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+  fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
     let compositor = cx.compositor();
     let windows = compositor.list_windows(cx);
     let shown = |w: &&types::Window| self.previews.contains_key(&w.address);
@@ -407,7 +414,7 @@ impl Render for Switcher {
 
     let cards: Vec<_> = workspaces
       .iter()
-      .map(|(ws, on)| self.workspace(ws, on.iter().collect(), cx))
+      .map(|(ws, on)| self.workspace(ws, on.iter().collect(), window.scale_factor(), cx))
       .collect();
     let theme = cx.theme();
     let config = cx.config();

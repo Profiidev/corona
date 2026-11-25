@@ -110,8 +110,7 @@ fn modes(listed: &[String]) -> Vec<types::Mode> {
     .iter()
     .filter_map(|m| types::Mode::parse(m))
     .collect();
-  modes
-    .sort_by(|a, b| (b.width, b.height, b.millihertz()).cmp(&(a.width, a.height, a.millihertz())));
+  modes.sort_by_key(|m| std::cmp::Reverse((m.width, m.height, m.millihertz())));
   modes.dedup_by_key(|m| (m.width, m.height, m.millihertz()));
   modes
 }

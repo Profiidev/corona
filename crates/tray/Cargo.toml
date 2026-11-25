@@ -9,7 +9,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-specta.workspace = true
 uuid.workspace = true
 corona_desktop.workspace = true
 corona_utils.workspace = true

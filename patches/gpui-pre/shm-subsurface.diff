@@ -1,0 +1,28 @@
+--- a/crates/gpui/src/scene.rs
++++ b/crates/gpui/src/scene.rs
+@@ -775,11 +775,14 @@
+     pub corner_radii: Corners<ScaledPixels>,
+     #[cfg(target_os = "linux")]
+     pub dmabuf: std::sync::Arc<Dmabuf>,
++    /// The element opacity it was painted with.
++    #[cfg(target_os = "linux")]
++    pub opacity: f32,
+ }
+ 
+ /// A 32 bits per pixel image in `ARGB8888` or `XRGB8888` (BGRA/BGRX words),
+ /// either a dmabuf the renderer imports without a copy, or plain linear memory
+-/// (a memfd) it uploads.
++/// (a memfd) the platform shows as a subsurface below the window, never in VRAM.
+ #[cfg(target_os = "linux")]
+ #[derive(Debug)]
+ pub struct Dmabuf {
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -5444,6 +5444,7 @@
+             content_mask,
+             corner_radii: corner_radii.scale(scale_factor),
+             dmabuf,
++            opacity: self.element_opacity(),
+         });
+     }
+ 
