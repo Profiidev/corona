@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  module::{dbus::DbusGrant, launcher::Launcher, secrets::Secrets},
+  module::{dashboard::Dashboard, dbus::DbusGrant, launcher::Launcher, secrets::Secrets},
   plugin::{
     catalog::is_relative_file,
     settings::{self, Setting, SettingKind},
@@ -33,6 +33,12 @@ pub struct PluginManifest {
   pub panels: BTreeMap<String, PanelFile>,
   /// Launcher commands by name, id `<id>:<name>`; their handlers live in the service
   pub commands: BTreeMap<String, CommandFile>,
+  /// Dashboard tiles by name, id `<id>:<name>`; the service sets their state
+  pub quick_actions: BTreeMap<String, QuickActionFile>,
+  /// Dashboard sliders by name, id `<id>:<name>`; the service sets their value
+  pub sliders: BTreeMap<String, SliderFile>,
+  /// Dashboard cards by name, id `<id>:<name>`
+  pub cards: BTreeMap<String, CardFile>,
   /// The service's script, relative to the plugin directory
   pub service: Option<String>,
   pub settings: Vec<Setting>,
@@ -76,6 +82,9 @@ impl PluginManifest {
       widgets: file.widgets,
       panels: file.panels,
       commands: file.commands,
+      quick_actions: file.quick_actions,
+      sliders: file.sliders,
+      cards: file.cards,
       service: file.service,
       settings: file.settings,
       dev: false,
@@ -143,6 +152,20 @@ pub struct ManifestFile {
   /// them through `corona/launcher`, which needs `corona = ["launcher"]`.
   #[serde(default, deserialize_with = "flat_keys")]
   pub commands: BTreeMap<String, CommandFile>,
+  /// Control center dashboard tiles by name, listed as `<id>:<name>` in
+  /// `control_center.quick_actions`. The service sets their state and answers clicks
+  /// through `corona/dashboard`, which needs `corona = ["dashboard"]`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub quick_actions: BTreeMap<String, QuickActionFile>,
+  /// Control center dashboard sliders by name, listed as `<id>:<name>` in
+  /// `control_center.sliders`. The service sets their value and follows them through
+  /// `corona/dashboard`, which needs `corona = ["dashboard"]`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub sliders: BTreeMap<String, SliderFile>,
+  /// Control center dashboard cards by name, views listed as `<id>:<name>` in
+  /// `control_center.cards`.
+  #[serde(default, deserialize_with = "flat_keys")]
+  pub cards: BTreeMap<String, CardFile>,
   /// A script that runs in the background while the plugin is enabled,
   /// relative to the plugin directory, e.g. `service.js`. It default-exports
   /// `async function main(cx)` and answers `call` from `corona/plugin` and
@@ -177,6 +200,7 @@ impl ManifestFile {
     );
     let views = self.widgets.values().map(|w| &w.view);
     let views = views.chain(self.panels.values().map(|p| &p.view));
+    let views = views.chain(self.cards.values().map(|c| &c.view));
     for script in views.chain(&self.service) {
       ensure!(
         is_relative_file(script),
@@ -192,6 +216,7 @@ impl ManifestFile {
       }
     }
     self.check_commands()?;
+    self.check_dashboard()?;
     for host in self.capabilities.hosts() {
       let Some(key) = setting_key(host) else {
         ensure!(
@@ -220,6 +245,37 @@ impl ManifestFile {
 }
 
 impl ManifestFile {
+  fn check_dashboard(&self) -> Result<()> {
+    for (key, card) in &self.cards {
+      ensure!(
+        !card.name.trim().is_empty(),
+        "card `{key}`: the name is empty"
+      );
+    }
+    if self.quick_actions.is_empty() && self.sliders.is_empty() {
+      return Ok(());
+    }
+    ensure!(
+      self.service.is_some(),
+      "`[quick_actions]` and `[sliders]` are run by the service, which is not set"
+    );
+    ensure!(
+      self.capabilities.corona.contains(Dashboard::NAME),
+      "`[quick_actions]` and `[sliders]` need `corona = [\"dashboard\"]`"
+    );
+    for (key, tile) in &self.quick_actions {
+      check_item(&tile.name, &tile.icon).with_context(|| format!("quick action `{key}`"))?;
+    }
+    for (key, slider) in &self.sliders {
+      check_item(&slider.name, &slider.icon).with_context(|| format!("slider `{key}`"))?;
+      slider
+        .range()
+        .check()
+        .with_context(|| format!("slider `{key}`"))?;
+    }
+    Ok(())
+  }
+
   fn check_commands(&self) -> Result<()> {
     if self.commands.is_empty() {
       return Ok(());
@@ -383,6 +439,101 @@ pub struct PanelFile {
   pub width: f32,
   #[serde(default = "panel_height")]
   pub height: f32,
+}
+
+/// A dashboard tile, the state of which the service sets
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QuickActionFile {
+  /// The tile's title until the service sets one, and its name in the settings app.
+  pub name: String,
+  /// A bundled icon's kebab-case name, like `lightbulb`.
+  pub icon: String,
+}
+
+/// A dashboard slider, the value of which the service sets
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SliderFile {
+  /// The slider's name in the settings app, and its title until the service sets one.
+  pub name: String,
+  /// A bundled icon's kebab-case name, like `volume-2`.
+  pub icon: String,
+  /// The lowest value, with `max`; without a range the value goes from 0 to 1 and shows
+  /// as a percent.
+  #[serde(default)]
+  pub min: Option<f64>,
+  /// The highest value, with `min`.
+  #[serde(default)]
+  pub max: Option<f64>,
+  /// What the value snaps to; a hundredth of the range when unset.
+  #[serde(default)]
+  pub step: Option<f64>,
+  /// Shown after the value, like `°C`; needs `min` and `max`.
+  #[serde(default)]
+  pub unit: Option<String>,
+  /// While dragging, the service hears of the value at most this often, in
+  /// milliseconds, and of the last one on release; every move when unset.
+  #[serde(default)]
+  pub throttle_ms: Option<u32>,
+}
+
+impl SliderFile {
+  pub fn range(&self) -> SliderRange {
+    SliderRange {
+      min: self.min,
+      max: self.max,
+      step: self.step,
+      unit: self.unit.clone(),
+    }
+  }
+}
+
+/// A slider's range as written, in the manifest or by the service
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SliderRange {
+  pub min: Option<f64>,
+  pub max: Option<f64>,
+  pub step: Option<f64>,
+  pub unit: Option<String>,
+}
+
+impl SliderRange {
+  pub fn check(&self) -> Result<()> {
+    match (self.min, self.max) {
+      (Some(min), Some(max)) => ensure!(
+        min.is_finite() && max.is_finite() && min < max,
+        "`min` must be below `max`"
+      ),
+      (None, None) => ensure!(self.unit.is_none(), "`unit` needs `min` and `max`"),
+      _ => anyhow::bail!("`min` and `max` go together"),
+    }
+    if let Some(step) = self.step {
+      ensure!(step.is_finite() && step > 0., "`step` must be above 0");
+    }
+    Ok(())
+  }
+}
+
+/// A dashboard card: a view, like a widget's
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CardFile {
+  /// The script of the view, relative to the plugin directory.
+  pub view: String,
+  /// The card's name in the settings app.
+  pub name: String,
+  /// What `options()` of `corona/surface` returns in the view, like a bar widget's
+  /// options.
+  #[serde(default)]
+  pub props: Option<Map<String, Value>>,
+}
+
+/// A tile's or slider's name and icon are what it shows without its service
+fn check_item(name: &str, icon: &str) -> Result<()> {
+  ensure!(!name.trim().is_empty(), "the name is empty");
+  ensure!(icon_by_name(icon).is_some(), "unknown icon `{icon}`");
+  Ok(())
 }
 
 /// The largest panel width or height a plugin may ask for
@@ -1012,7 +1163,7 @@ mod tests {
   use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV};
   use serde_json::{Map, json};
 
-  use super::{ManifestFile, PluginManifest, expand};
+  use super::{ManifestFile, PluginManifest, QuickActionFile, SliderRange, expand};
 
   fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
     toml::from_str(toml)
@@ -1720,5 +1871,142 @@ scope = {{ prefix = "rp", label = "Projects" }}
     let no_grant = with("service = \"s.js\"\n[commands.x]\ntitle = \"X\"");
     assert!(no_grant.unwrap().check().is_err());
     assert!(with("[commands.x]\ntitle = \"X\"\nbogus = 1").is_err());
+  }
+
+  const DASHBOARD: &str = "service = \"s.js\"\n[capabilities]\ncorona = [\"dashboard\"]\n";
+
+  #[test]
+  fn dashboard_items() {
+    let file = with(&format!(
+      r#"{DASHBOARD}
+[quick_actions.lamp]
+name = "Lamp"
+icon = "lightbulb"
+[sliders.heat]
+name = "Heat"
+icon = "thermometer"
+min = 10
+max = 30
+step = 0.5
+unit = "°C"
+throttle_ms = 100
+[sliders.level]
+name = "Level"
+icon = "sun"
+[cards.status]
+view = "card.ts"
+name = "Status"
+props = {{ room = "kitchen", n = 2 }}
+"#
+    ))
+    .unwrap();
+    file.check().unwrap();
+    assert_eq!(
+      file.quick_actions["lamp"],
+      QuickActionFile {
+        name: "Lamp".into(),
+        icon: "lightbulb".into(),
+      }
+    );
+    let heat = &file.sliders["heat"];
+    assert_eq!(
+      (heat.min, heat.max, heat.step),
+      (Some(10.), Some(30.), Some(0.5))
+    );
+    assert_eq!(
+      (heat.unit.as_deref(), heat.throttle_ms),
+      (Some("°C"), Some(100))
+    );
+    assert_eq!(
+      heat.range(),
+      SliderRange {
+        min: Some(10.),
+        max: Some(30.),
+        step: Some(0.5),
+        unit: Some("°C".into()),
+      }
+    );
+    assert_eq!(file.sliders["level"].range(), SliderRange::default());
+    let card = &file.cards["status"];
+    assert_eq!(
+      (card.view.as_str(), card.name.as_str()),
+      ("card.ts", "Status")
+    );
+    assert_eq!(
+      serde_json::Value::Object(card.props.clone().unwrap()),
+      serde_json::json!({ "room": "kitchen", "n": 2 })
+    );
+
+    let manifest = PluginManifest::new(file, "/p".into(), Path::new("/d"), None);
+    assert_eq!(manifest.quick_actions.len(), 1);
+    assert_eq!(manifest.sliders.len(), 2);
+    assert_eq!(manifest.cards.len(), 1);
+  }
+
+  #[test]
+  fn dashboard_items_are_checked() {
+    let error = |rest: &str| -> String {
+      match with(rest) {
+        Ok(file) => format!("{:#}", file.check().unwrap_err()),
+        Err(e) => e.to_string(),
+      }
+    };
+    let tile = |body: &str| error(&format!("{DASHBOARD}[quick_actions.t]\n{body}"));
+    let slider = |body: &str| error(&format!("{DASHBOARD}[sliders.s]\n{body}"));
+    assert!(tile("name = \" \"\nicon = \"sun\"").contains("quick action `t`: the name is empty"));
+    assert!(tile("name = \"T\"\nicon = \"nope\"").contains("unknown icon `nope`"));
+    assert!(tile("name = \"T\"").contains("missing field `icon`"));
+    assert!(tile("name = \"T\"\nicon = \"sun\"\nbogus = 1").contains("unknown field `bogus`"));
+    assert!(slider("name = \"S\"\nicon = \"nope\"").contains("slider `s`: unknown icon `nope`"));
+    assert!(
+      slider("name = \"S\"\nicon = \"sun\"\nmin = 2\nmax = 1")
+        .contains("`min` must be below `max`")
+    );
+    assert!(
+      slider("name = \"S\"\nicon = \"sun\"\nmin = 2").contains("`min` and `max` go together")
+    );
+    assert!(slider("name = \"S\"\nicon = \"sun\"\nunit = \"%\"").contains("`unit` needs"));
+    assert!(
+      slider("name = \"S\"\nicon = \"sun\"\nmin = 0\nmax = 1\nstep = 0")
+        .contains("`step` must be above 0")
+    );
+    // keys are one name
+    assert!(
+      error(&format!(
+        "{DASHBOARD}[quick_actions.\"a:b\"]\nname = \"T\"\nicon = \"sun\""
+      ))
+      .contains("invalid name `a:b`")
+    );
+
+    let card = |body: &str| error(&format!("[cards.c]\n{body}"));
+    assert!(
+      card("view = \"../c.ts\"\nname = \"C\"")
+        .contains("is not a file inside the plugin directory")
+    );
+    assert!(card("view = \"c.ts\"\nname = \"\"").contains("card `c`: the name is empty"));
+    assert!(card("view = \"c.ts\"").contains("missing field `name`"));
+  }
+
+  #[test]
+  fn dashboard_items_need_a_service_and_the_grant() {
+    let tile = "[quick_actions.t]\nname = \"T\"\nicon = \"sun\"";
+    let slider = "[sliders.s]\nname = \"S\"\nicon = \"sun\"";
+    for item in [tile, slider] {
+      let no_service = with(&format!("[capabilities]\ncorona = [\"dashboard\"]\n{item}")).unwrap();
+      assert!(format!("{:#}", no_service.check().unwrap_err()).contains("which is not set"));
+      let no_grant = with(&format!("service = \"s.js\"\n{item}")).unwrap();
+      assert!(
+        format!("{:#}", no_grant.check().unwrap_err()).contains("need `corona = [\"dashboard\"]`")
+      );
+      with(&format!("{DASHBOARD}{item}"))
+        .unwrap()
+        .check()
+        .unwrap();
+    }
+    // a card is a view: it needs neither
+    with("[cards.c]\nview = \"c.ts\"\nname = \"C\"")
+      .unwrap()
+      .check()
+      .unwrap();
   }
 }

@@ -61,6 +61,8 @@ pub enum Entry<'a> {
   /// With this instance's options from the bar config
   Widget(&'a str, Option<&'a serde_json::Value>),
   Panel(&'a str),
+  /// A dashboard card, with its `props` from the manifest
+  Card(&'a str),
 }
 
 /// What a runtime gets beyond its plugin's grants
@@ -235,6 +237,7 @@ impl ScriptManager {
     let view = match entry {
       Entry::Widget(name, _) => manifest.widgets.get(name).map(|w| &w.view),
       Entry::Panel(name) => manifest.panels.get(name).map(|p| &p.view),
+      Entry::Card(name) => manifest.cards.get(name).map(|c| &c.view),
     }
     .with_context(|| format!("plugin `{id}` has no {entry:?}"))?;
 
@@ -247,6 +250,9 @@ impl ScriptManager {
       options: match entry {
         Entry::Widget(_, options) => options.cloned(),
         Entry::Panel(_) => None,
+        Entry::Card(name) => (manifest.cards.get(name))
+          .and_then(|c| c.props.clone())
+          .map(serde_json::Value::Object),
       },
       service: false,
     };
@@ -1578,8 +1584,9 @@ export default class Main extends View {
   }
 
   /// Every corona module's name in `capabilities.corona` that corona_script registers
-  const ALL_MODULES: [&str; 19] = [
+  const ALL_MODULES: [&str; 20] = [
     "secrets",
+    "dashboard",
     "auth",
     "bluetooth",
     "brightness",

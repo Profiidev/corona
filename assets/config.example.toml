@@ -297,7 +297,8 @@ sidebar = [
   "calendar",
   "media"
 ]
-# Tiles on the dashboard, in order. Also available: "power_profile", "nightlight".
+# Tiles on the dashboard, in order. Also available: "power_profile", "nightlight", "ruler".
+# Plugins add their own as "<plugin>:<key>", like "demo:ping", for this list and the two below.
 quick_actions = [
   "wifi",
   "bluetooth",

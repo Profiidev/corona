@@ -52,10 +52,17 @@ mod tests {
       "settings",
       "capabilities",
       "service",
+      "quick_actions",
+      "sliders",
+      "cards",
     ] {
       assert!(property(&plugin, &["properties", key]).is_object(), "{key}");
     }
     for (def, key) in [
+      ("QuickActionFile", "icon"),
+      ("SliderFile", "throttle_ms"),
+      ("SliderFile", "unit"),
+      ("CardFile", "props"),
       ("CapabilitiesFile", "dbus"),
       ("ProcessGrantFile", "env"),
       ("NetworkGrantFile", "unix"),
