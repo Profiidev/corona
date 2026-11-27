@@ -6,12 +6,15 @@ use std::{
   rc::Rc,
 };
 
+use corona_components::components::card::{CardExt, ErrorCard};
 use corona_surface::{
   bar::{BarExt, BarState, WidgetData},
+  dashboard::{CardEntry, DashboardExt},
   panel::{PanelData, PanelState},
 };
 use gpui_kit::{
-  App, AppContext, IntoElement, ParentElement, Render, Styled, Window, div, prelude::FluentBuilder,
+  AnyView, App, AppContext, IntoElement, ParentElement, Render, SharedString, Styled, Window, div,
+  prelude::FluentBuilder,
 };
 use rust_i18n::t;
 
@@ -31,6 +34,8 @@ struct Registration {
   widgets: Vec<String>,
   panels: Vec<String>,
   commands: bool,
+  /// Has tiles, sliders or cards on the dashboard
+  dashboard: bool,
   _service: Option<Service>,
 }
 
@@ -180,6 +185,9 @@ fn sync(registered: &mut Registered, cx: &mut App) -> bool {
     if old.commands {
       crate::launcher::remove(id, cx);
     }
+    if old.dashboard {
+      crate::dashboard::remove_all(id, cx);
+    }
     // dropping `old` stops its service, failing what waits for it
     false
   });
@@ -205,8 +213,11 @@ fn register(manifest: &PluginManifest, signature: String, cx: &mut App) -> Regis
     widgets: Vec::new(),
     panels: Vec::new(),
     commands: false,
+    dashboard: false,
     _service: None,
   };
+  // before the service starts, which sets the manifest's tiles and sliders
+  register_dashboard(manifest, &mut registered, cx);
   if manifest.service.is_some() {
     match ScriptManager::start_service(&manifest.id, cx) {
       Ok(service) => registered._service = Some(service),
@@ -265,6 +276,52 @@ fn register(manifest: &PluginManifest, signature: String, cx: &mut App) -> Regis
     registered.panels.push(name);
   }
   registered
+}
+
+/// Puts the plugin's tiles, sliders and cards on the dashboard's choices
+fn register_dashboard(manifest: &PluginManifest, registered: &mut Registration, cx: &mut App) {
+  let (tiles, sliders, cards) = (&manifest.quick_actions, &manifest.sliders, &manifest.cards);
+  if tiles.is_empty() && sliders.is_empty() && cards.is_empty() {
+    return;
+  }
+  registered.dashboard = true;
+  let entity = ScriptManager::hub(&manifest.id, cx).dashboard.clone();
+  crate::dashboard::register(&entity, manifest, cx);
+  for (key, card) in cards {
+    let (id, key, name) = (manifest.id.clone(), key.clone(), card.name.clone());
+    let open = Rc::new({
+      let (id, key) = (id.clone(), key.clone());
+      move |window: &mut Window, cx: &mut App| -> AnyView {
+        match ScriptManager::load(&id, Entry::Card(&key), window, cx) {
+          Ok(script) => cx.new(|_| PluginCard(Ok(script))).into(),
+          Err(e) => {
+            tracing::error!("plugin card `{id}:{key}`: {e:#}");
+            cx.new(|_| PluginCard(Err(format!("{e:#}").into()))).into()
+          }
+        }
+      }
+    });
+    cx.dashboard_mut().card_entry(CardEntry {
+      id: crate::dashboard::item_id(&id, &key),
+      title: Rc::new(move |_| name.clone().into()),
+      open,
+    });
+  }
+}
+
+/// A plugin's dashboard card: its view on a card, or why it did not load
+struct PluginCard(Result<Script, SharedString>);
+
+impl Render for PluginCard {
+  fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
+    match &self.0 {
+      Ok(script) => div().flex_1().min_w_0().p_2().card(cx).child(script.view()),
+      Err(e) => div()
+        .flex_1()
+        .min_w_0()
+        .child(ErrorCard::new("plugin-card-error", e.to_string())),
+    }
+  }
 }
 
 /// Keeps a plugin's script, and so its watcher and subscriptions, alive as
@@ -513,6 +570,186 @@ export default async function main() {
       cx.update(|cx| cx.global::<Registry>().find("com.cmd:go", cx))
         .is_none()
     );
+  }
+
+  #[gpui::test]
+  fn a_running_plugin_puts_its_items_on_the_dashboard(cx: &mut TestAppContext) {
+    use corona_surface::dashboard::DashboardExt;
+
+    setup(cx);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths {
+      state: tmp.path().join("state"),
+      local: tmp.path().join("local"),
+    };
+    let dir = paths.local.join("dash");
+    fs::create_dir_all(&dir).unwrap();
+    let capabilities = "corona = [\"dashboard\"]\n";
+    fs::write(
+      dir.join("plugin.toml"),
+      format!(
+        r#"id = "com.dash"
+name = "Dash"
+api = 2
+service = "service.js"
+[capabilities]
+{capabilities}
+[quick_actions.lamp]
+name = "Lamp"
+icon = "lightbulb"
+[sliders.heat]
+name = "Heat"
+icon = "thermometer"
+[cards.status]
+view = "card.js"
+name = "Status"
+props = {{ room = "kitchen" }}
+[cards.broken]
+view = "missing.js"
+name = "Broken"
+"#
+      ),
+    )
+    .unwrap();
+    fs::write(
+      dir.join("service.js"),
+      r#"
+import { addTile, onToggle, setTile } from "corona/dashboard";
+export default async function main() {
+  setTile("lamp", { status: "Off" });
+  addTile("extra", { title: "Extra", icon: "bell" });
+  onToggle((key) => setTile("lamp", { status: "toggled " + key }));
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+      dir.join("card.js"),
+      r#"
+import { View, div } from "corona/kit";
+import { options } from "corona/surface";
+import { setState } from "corona/plugin";
+
+export default class Card extends View {
+  render(_cx) {
+    setState("props", options());
+    return div().w_10().h_4();
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    cx.update(|cx| {
+      corona_surface::init(cx).unwrap();
+      crate::register_modules(cx.script_mut());
+      let mut config = Config::default();
+      config.plugins.enabled = vec!["com.dash".into()];
+      config.plugins.approved.insert(
+        "com.dash".into(),
+        corona_config::plugins::Approval {
+          source: "local".into(),
+          capabilities: capabilities.into(),
+        },
+      );
+      config.plugins.source.clear();
+      cx.set_global(config);
+      cx.set_global(ScriptManager::new(paths.clone()));
+      PluginManager::init(paths.clone(), cx);
+      init(cx);
+    });
+    cx.run_until_parked();
+
+    let ids = |cx: &mut TestAppContext| -> (Vec<String>, Vec<String>, Vec<String>) {
+      cx.update(|cx| {
+        let registry = cx.dashboard();
+        let own = |id: &SharedString| id.starts_with("com.dash:").then(|| id.to_string());
+        (
+          registry
+            .quick_actions()
+            .iter()
+            .filter_map(|a| own(&a.id))
+            .collect(),
+          registry
+            .sliders()
+            .iter()
+            .filter_map(|s| own(&s.id))
+            .collect(),
+          registry.cards().iter().filter_map(|c| own(&c.id)).collect(),
+        )
+      })
+    };
+    let (_, sliders, cards) = ids(cx);
+    assert_eq!(sliders, ["com.dash:heat"]);
+    assert_eq!(cards, ["com.dash:broken", "com.dash:status"]);
+
+    // the service starts on the executor, then adds its tile and sets the lamp
+    for _ in 0..50 {
+      if ids(cx).0.len() == 2 {
+        break;
+      }
+      cx.executor().advance_clock(Duration::from_millis(100));
+      cx.run_until_parked();
+      std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(ids(cx).0, ["com.dash:lamp", "com.dash:extra"]);
+    let lamp = cx.update(|cx| {
+      cx.dashboard().quick_actions()[..]
+        .iter()
+        .find(|a| a.id == "com.dash:lamp")
+        .cloned()
+        .unwrap()
+    });
+    let toggle = cx.update(|cx| {
+      let tile = (lamp.tile)(cx);
+      assert_eq!(tile.status, "Off");
+      tile.toggle.expect("the service set it")
+    });
+    cx.update(|cx| toggle(cx));
+    cx.run_until_parked();
+    assert_eq!(cx.update(|cx| (lamp.tile)(cx).status), "toggled lamp");
+
+    // cards are views, with the manifest's props as options; a broken one shows why
+    let card = |id: &str, cx: &mut TestAppContext| {
+      cx.update(|cx| {
+        (cx.dashboard().cards().iter())
+          .find(|c| c.id == id)
+          .unwrap()
+          .open
+          .clone()
+      })
+    };
+    let (status, broken) = (card("com.dash:status", cx), card("com.dash:broken", cx));
+    let window = cx.add_empty_window();
+    window.update(|window, cx| {
+      assert!(
+        status(window, cx)
+          .downcast::<PluginCard>()
+          .unwrap()
+          .read(cx)
+          .0
+          .is_ok()
+      );
+      assert!(
+        broken(window, cx)
+          .downcast::<PluginCard>()
+          .unwrap()
+          .read(cx)
+          .0
+          .is_err()
+      );
+    });
+    // the card's view renders in a window
+    let status_view = window.update(|window, cx| status(window, cx));
+    let (_, vcx) = cx.add_window_view(move |_, _| Row(Some(status_view), Rc::default()));
+    vcx.run_until_parked();
+    let props = cx.update(|cx| ScriptManager::hub("com.dash", cx).state("props", cx));
+    assert_eq!(props, serde_json::json!({ "room": "kitchen" }));
+
+    // disabled: gone again, the service's own tile too
+    cx.update(|cx| cx.global_mut::<Config>().plugins.enabled.clear());
+    cx.run_until_parked();
+    assert_eq!(ids(cx), (vec![], vec![], vec![]));
   }
 
   /// Lays `view` out in a bar-sized row, like a bar does, and measures it

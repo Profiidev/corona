@@ -2,7 +2,7 @@ use corona_components::components::throttled_slider::{Moved, ThrottledSlider};
 use corona_config::ConfigProvider;
 
 use gpui_kit::{
-  App, AppContext, Context, Div, Entity, ParentElement, Styled, Subscription, Window,
+  App, AppContext, Context, Div, Entity, ParentElement, SharedString, Styled, Subscription, Window,
   assets::IconName,
   base::slider::SliderState,
   component::{
@@ -14,19 +14,16 @@ use gpui_kit::{
   prelude::FluentBuilder,
 };
 
-use crate::{
-  control_center::ControlCenter,
-  dashboard::{Changed, DashboardExt, DashboardPanel, DashboardRegistry, SliderEntry},
-};
+use crate::dashboard::{Changed, DashboardExt, DashboardPanel, DashboardRegistry, SliderEntry};
 
 /// A slider's state on the open dashboard
-struct Row {
-  id: &'static str,
-  slider: Entity<ThrottledSlider>,
+pub(super) struct Row {
+  id: SharedString,
+  pub(super) slider: Entity<ThrottledSlider>,
 }
 
 pub(super) struct Sliders {
-  rows: Vec<Row>,
+  pub(super) rows: Vec<Row>,
   _subscriptions: Vec<Subscription>,
 }
 
@@ -35,22 +32,29 @@ fn entry<'a>(cx: &'a App, id: &str) -> Option<&'a SliderEntry> {
 }
 
 impl Sliders {
+  pub fn empty() -> Self {
+    Self {
+      rows: Vec::new(),
+      _subscriptions: Vec::new(),
+    }
+  }
+
   /// A row for every registered slider, `changed` resyncs them
   pub fn new(changed: &Changed, cx: &mut Context<DashboardPanel>) -> Self {
     let entries: Vec<_> = (cx.dashboard().sliders().iter())
-      .map(|s| (s.id, s.observe))
+      .map(|s| (s.id.clone(), s.throttle, s.step, s.observe.clone()))
       .collect();
     let mut rows = Vec::new();
     let mut subscriptions = Vec::new();
-    for (id, observe) in entries {
-      let throttle = entry(cx, id).and_then(|e| e.throttle);
+    for (id, throttle, step, observe) in entries {
       let slider = cx.new(|cx| {
-        let state = SliderState::new().min(0.).max(1.).step(0.01);
+        let state = SliderState::new().min(0.).max(1.).step(step);
         ThrottledSlider::new(state, throttle, cx)
       });
+      let sid = id.clone();
       subscriptions.push(cx.subscribe(&slider, move |_, _, Moved(value), cx| {
-        if let (Some(value), Some(entry)) = (value, entry(cx, id)) {
-          (entry.set)(*value, cx);
+        if let (Some(value), Some(set)) = (value, entry(cx, &sid).map(|e| e.set.clone())) {
+          set(*value, cx);
         }
         cx.notify();
       }));
@@ -66,7 +70,7 @@ impl Sliders {
   /// Moves the sliders to the backends' values, all but ones being dragged
   pub fn sync(&mut self, window: &mut Window, cx: &mut Context<DashboardPanel>) {
     for row in &self.rows {
-      let Some(value) = entry(cx, row.id).and_then(|e| (e.value)(cx)) else {
+      let Some(value) = entry(cx, &row.id).and_then(|e| (e.value)(cx)) else {
         continue;
       };
       row.slider.update(cx, |slider, cx| {
@@ -81,7 +85,7 @@ impl Sliders {
     let (entries, _) = DashboardRegistry::pick(
       cx.dashboard().sliders(),
       &cx.config().control_center.sliders,
-      |s| s.id,
+      |s| &s.id,
     );
     let rows: Vec<_> = (entries.into_iter())
       .filter_map(|entry| {
@@ -89,7 +93,7 @@ impl Sliders {
         let value = (entry.value)(cx)?;
         // a drag shows where it is, not where the backend got to
         let shown = row.slider.read(cx).shown(value, cx);
-        Some(self.row(entry, row, shown * 100., cx))
+        Some(self.row(entry, row, (entry.label)(shown, cx), cx))
       })
       .collect();
 
@@ -105,13 +109,13 @@ impl Sliders {
       .children(rows)
   }
 
-  fn row(&self, entry: &SliderEntry, row: &Row, percent: f32, cx: &App) -> Div {
+  fn row(&self, entry: &SliderEntry, row: &Row, label: SharedString, cx: &App) -> Div {
     let icon = Button::new(format!("dashboard-{}-icon", entry.id))
       .cursor_pointer()
       .icon((entry.icon)(cx));
     let icon = match (entry.muted)(cx) {
       Some(muted) => {
-        let toggle = entry.toggle_mute;
+        let toggle = entry.toggle_mute.clone();
         icon
           .cursor_pointer()
           .when(muted, |b| b.with_variant(ButtonVariant::Danger))
@@ -133,20 +137,21 @@ impl Sliders {
       )
       .child(
         div()
-          .w_10()
+          .min_w_10()
+          .whitespace_nowrap()
           .flex()
           .justify_end()
           .text_sm()
           .text_color(cx.theme().muted_foreground)
-          .child(format!("{percent:.0}%")),
+          .child(label),
       )
-      .when_some(entry.page, |d, page| {
+      .when_some(entry.secondary.clone(), |d, secondary| {
         d.child(
           Button::new(format!("dashboard-open-{}", entry.id))
             .icon(IconName::ChevronRight)
             .ghost()
             .cursor_pointer()
-            .on_click(move |_, window, cx| ControlCenter::navigate_id(page, window, cx)),
+            .on_click(move |_, window, cx| super::run_secondary(&secondary, window, cx)),
         )
       })
   }

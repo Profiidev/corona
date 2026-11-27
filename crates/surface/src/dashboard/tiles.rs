@@ -1,11 +1,8 @@
 use corona_components::assets::toggle_mode;
 use corona_config::ConfigProvider;
 
-use crate::{
-  control_center::ControlCenter,
-  dashboard::{
-    DashboardExt, DashboardPanel, DashboardRegistry, QuickAction, QuickActionEntry, Tile, on_off,
-  },
+use crate::dashboard::{
+  DashboardExt, DashboardPanel, DashboardRegistry, QuickAction, QuickActionEntry, Tile, on_off,
 };
 use gpui_kit::{
   App, ClickEvent, Div, ElementId, InteractiveElement, MouseButton, ParentElement, SharedString,
@@ -51,13 +48,13 @@ pub(super) fn tiles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
   let (actions, _) = DashboardRegistry::pick(
     registry.quick_actions(),
     &cx.config().control_center.quick_actions,
-    |a| a.id,
+    |a| &a.id,
   );
   if actions.is_empty() {
     return None;
   }
   let tiles: Vec<_> = (actions.into_iter())
-    .map(|action| tile(action, (action.tile)(cx)))
+    .map(|action| tile(action, (action.title)(cx), (action.tile)(cx)))
     .collect();
 
   let mut rows = div().flex().flex_col().gap(px(6.));
@@ -73,8 +70,8 @@ pub(super) fn tiles(cx: &mut gpui_kit::Context<DashboardPanel>) -> Option<Div> {
   Some(rows)
 }
 
-fn tile(action: &QuickActionEntry, tile: Tile) -> Button {
-  let page = action.page;
+fn tile(action: &QuickActionEntry, title: SharedString, tile: Tile) -> Button {
+  let secondary = action.secondary.clone();
   let enabled = tile.toggle.is_some();
 
   Button::new(ElementId::Name(format!("toggle-{}", action.id).into()))
@@ -96,16 +93,16 @@ fn tile(action: &QuickActionEntry, tile: Tile) -> Button {
         .flex()
         .flex_col()
         .min_w_0()
-        .child(div().text_sm().truncate().child((action.title)()))
+        .child(div().text_sm().truncate().child(title))
         .child(div().text_xs().opacity(0.7).truncate().child(tile.status)),
     )
     .when_some(tile.toggle, |b, toggle| {
       b.cursor_pointer()
         .on_click(move |_: &ClickEvent, _, cx| toggle(cx))
     })
-    .when_some(page, |b, page| {
+    .when_some(secondary, |b, secondary| {
       b.on_mouse_down(MouseButton::Right, move |_, window: &mut Window, cx| {
-        ControlCenter::navigate_id(page, window, cx)
+        super::run_secondary(&secondary, window, cx)
       })
     })
 }

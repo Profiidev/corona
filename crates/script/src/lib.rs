@@ -23,6 +23,7 @@ const PLUGIN_TYPES_FILENAME: &str = "corona.d.ts";
 
 pub mod cli;
 pub mod commands;
+mod dashboard;
 pub mod hooks;
 mod host;
 mod integrations;

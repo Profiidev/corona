@@ -4,6 +4,7 @@
 
 use corona_js::ScriptRegistry;
 
+pub mod dashboard;
 pub mod dbus;
 pub mod i18n;
 pub mod launcher;
@@ -16,6 +17,7 @@ pub mod surface;
 pub fn register(registry: &mut ScriptRegistry) {
   registry.register::<secrets::Secrets>();
   registry.register::<launcher::Launcher>();
+  registry.register::<dashboard::Dashboard>();
   crate::integrations::register(registry);
 }
 

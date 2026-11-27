@@ -141,6 +141,34 @@ fn osd(cx: &App) -> SettingPage {
   )
 }
 
+/// The dashboard's tiles on offer, plugins' too, by id with their titles
+fn quick_action_choices(cx: &App) -> Vec<Choice> {
+  (cx.dashboard().quick_actions().iter())
+    .map(|a| Choice {
+      value: a.id.to_string(),
+      label: (a.title)(cx).to_string(),
+    })
+    .collect()
+}
+
+fn slider_choices(cx: &App) -> Vec<Choice> {
+  (cx.dashboard().sliders().iter())
+    .map(|s| Choice {
+      value: s.id.to_string(),
+      label: (s.title)(cx).to_string(),
+    })
+    .collect()
+}
+
+fn card_choices(cx: &App) -> Vec<Choice> {
+  (cx.dashboard().cards().iter())
+    .map(|c| Choice {
+      value: c.id.to_string(),
+      label: (c.title)(cx).to_string(),
+    })
+    .collect()
+}
+
 fn control_center(cx: &App) -> SettingPage {
   // the items other crates add, like the clock's formats, come first
   let mut items = shared_items(ControlCenterSettings::ID, "control_center", cx);
@@ -176,14 +204,7 @@ fn control_center(cx: &App) -> SettingPage {
         key: "control_center.quick_actions",
         title: || t!("app.settings.control_center.quick_actions.title"),
         description: || t!("app.settings.control_center.quick_actions.description"),
-        options: |cx| {
-          (cx.dashboard().quick_actions().iter())
-            .map(|a| Choice {
-              value: a.id.into(),
-              label: (a.title)().into(),
-            })
-            .collect()
-        },
+        options: quick_action_choices,
         get: |c| c.control_center.quick_actions.clone(),
         set: |c, v| c.control_center.quick_actions = v,
       },
@@ -193,14 +214,7 @@ fn control_center(cx: &App) -> SettingPage {
         key: "control_center.sliders",
         title: || t!("app.settings.control_center.sliders.title"),
         description: || t!("app.settings.control_center.sliders.description"),
-        options: |cx| {
-          (cx.dashboard().sliders().iter())
-            .map(|s| Choice {
-              value: s.id.into(),
-              label: (s.title)().into(),
-            })
-            .collect()
-        },
+        options: slider_choices,
         get: |c| c.control_center.sliders.clone(),
         set: |c, v| c.control_center.sliders = v,
       },
@@ -208,14 +222,7 @@ fn control_center(cx: &App) -> SettingPage {
         key: "control_center.cards",
         title: || t!("app.settings.control_center.cards.title"),
         description: || t!("app.settings.control_center.cards.description"),
-        options: |cx| {
-          (cx.dashboard().cards().iter())
-            .map(|c| Choice {
-              value: c.id.into(),
-              label: (c.title)().into(),
-            })
-            .collect()
-        },
+        options: card_choices,
         get: |c| c.control_center.cards.clone(),
         set: |c, v| c.control_center.cards = v,
       },
@@ -239,4 +246,60 @@ fn system(cx: &App) -> SettingPage {
     IconName::Cpu,
     shared_groups(SystemSettings::ID, cx),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use std::rc::Rc;
+
+  use corona_surface::dashboard::{CardEntry, QuickActionEntry, SliderEntry, Tile, percent};
+  use gpui_kit::{self as gpui, TestAppContext, assets::IconName};
+
+  use super::*;
+
+  #[gpui::test]
+  fn the_dashboard_lists_offer_what_is_registered(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+      assert!(quick_action_choices(cx).is_empty());
+      cx.dashboard_mut()
+        .quick_action_entry(QuickActionEntry {
+          id: "p:lamp".into(),
+          title: Rc::new(|_| "Lamp".into()),
+          tile: Rc::new(|_| Tile {
+            icon: IconName::Sun,
+            status: "".into(),
+            active: false,
+            toggle: None,
+          }),
+          secondary: None,
+          observe: Rc::new(|_, _| vec![]),
+        })
+        .slider_entry(SliderEntry {
+          id: "p:heat".into(),
+          title: Rc::new(|_| "Heat".into()),
+          throttle: None,
+          step: 0.01,
+          icon: Rc::new(|_| IconName::Sun),
+          value: Rc::new(|_| None),
+          label: Rc::new(|v, _| percent(v)),
+          set: Rc::new(|_, _| {}),
+          muted: Rc::new(|_| None),
+          toggle_mute: Rc::new(|_| {}),
+          secondary: None,
+          observe: Rc::new(|_, _| vec![]),
+        })
+        .card_entry(CardEntry {
+          id: "p:card".into(),
+          title: Rc::new(|_| "Card".into()),
+          open: Rc::new(|_, _| unreachable!()),
+        });
+      let pairs = |choices: Vec<Choice>| -> Vec<(String, String)> {
+        choices.into_iter().map(|c| (c.value, c.label)).collect()
+      };
+      let pair = |a: &str, b: &str| vec![(a.to_string(), b.to_string())];
+      assert_eq!(pairs(quick_action_choices(cx)), pair("p:lamp", "Lamp"));
+      assert_eq!(pairs(slider_choices(cx)), pair("p:heat", "Heat"));
+      assert_eq!(pairs(card_choices(cx)), pair("p:card", "Card"));
+    });
+  }
 }

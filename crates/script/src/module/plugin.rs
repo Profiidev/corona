@@ -112,6 +112,8 @@ pub struct Hub {
   pub actions: Entity<Actions>,
   /// What the launcher asks the service and shows of it
   pub launcher: Port,
+  /// The plugin's dashboard tiles and sliders, and what the service set them to
+  pub dashboard: Entity<crate::dashboard::PluginDashboard>,
 }
 
 impl Hub {
@@ -122,6 +124,7 @@ impl Hub {
       settings: Settings::new(id, settings, cx),
       actions: cx.new(|_| Actions),
       launcher: Port::new(id),
+      dashboard: crate::dashboard::new_entity(id, cx),
     }
   }
 
@@ -157,6 +160,11 @@ impl Hub {
         Err(anyhow!("the service did not answer in time"))
       },
     ))
+  }
+
+  #[cfg(test)]
+  pub fn state(&self, key: &str, cx: &App) -> Value {
+    self.state.read(cx).get(key).cloned().unwrap_or_default()
   }
 
   pub fn push_action(&self, action: ActionEvent, cx: &mut App) {

@@ -777,12 +777,15 @@ fn signatures(active: &HashMap<String, Found>) -> BTreeMap<String, String> {
 fn signature(found: &Found) -> String {
   let m = &found.manifest;
   format!(
-    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+    "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
     m.dir.display(),
     m.version,
     m.widgets,
     m.panels,
     m.commands,
+    m.quick_actions,
+    m.sliders,
+    m.cards,
     m.service,
     m.capabilities,
     m.modules,
