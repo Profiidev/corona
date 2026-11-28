@@ -3,6 +3,10 @@ name: Update Cargo Hash
 on:
   pull_request:
 
+concurrency:
+  group: cargo-hash-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   update-cargo-hash:
     name: Update Cargo Hash
