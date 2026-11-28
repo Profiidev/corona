@@ -73,6 +73,9 @@ pub struct PluginStatus {
   /// Running, from the source it is listed from
   pub running: bool,
   pub update_available: bool,
+  /// Written for a newer plugin API than corona runs: not installed or
+  /// updated until corona catches up
+  pub needs_newer_corona: bool,
 }
 
 impl PluginManager {
@@ -250,8 +253,10 @@ impl PluginManager {
         let installed = installed_dir
           .as_ref()
           .is_none_or(|dir| dir.join(crate::PLUGIN_MANIFEST_FILENAME).is_file());
+        let needs_newer_corona = entry.needs_newer_corona();
         let update_available = enabled
           && installed
+          && !needs_newer_corona
           && installed_dir
             .as_ref()
             .is_some_and(|dir| !matches_catalog(dir, entry));
@@ -268,6 +273,7 @@ impl PluginManager {
           installed,
           running,
           update_available,
+          needs_newer_corona,
         });
       }
     }
@@ -848,7 +854,7 @@ mod tests {
   use gpui_kit::{self as gpui, TestAppContext};
 
   use super::*;
-  use crate::plugin::git::fixture::Remote;
+  use crate::plugin::{git::fixture::Remote, manifest::PLUGIN_API};
   use corona_config::plugins::PluginsConfig;
 
   fn plugins_config(cx: &App) -> PluginsConfig {
@@ -863,7 +869,7 @@ mod tests {
 
   fn row(id: &str, version: &str) -> String {
     format!(
-      "[[plugin]]\nid = \"{id}\"\nname = \"{id}\"\nversion = \"{version}\"\nicon = \"icon.txt\"\n"
+      "[[plugin]]\nid = \"{id}\"\nname = \"{id}\"\nversion = \"{version}\"\napi = {PLUGIN_API}\nicon = \"icon.txt\"\n"
     )
   }
 
@@ -1226,6 +1232,45 @@ mod tests {
         .clone()
     });
     assert_eq!(version.as_deref(), Some("2"));
+  }
+
+  #[gpui::test]
+  fn holds_an_update_needing_a_newer_api(cx: &mut TestAppContext) {
+    let env = env(cx, git_user);
+    cx.update(|cx| PluginManager::enable("com.a", PluginManager::approve, cx));
+    cx.run_until_parked();
+    let newer = PLUGIN_API + 1;
+    env
+      .remote
+      .write(
+        "catalog.toml",
+        &row("com.a", "2").replace(&format!("api = {PLUGIN_API}"), &format!("api = {newer}")),
+      )
+      .write(
+        "com.a/plugin.toml",
+        &manifest("com.a", "2").replace(&format!("api = {PLUGIN_API}"), &format!("api = {newer}")),
+      );
+    env.remote.commit();
+
+    cx.update(PluginManager::refresh_catalogs);
+    cx.run_until_parked();
+    let list = cx.update(|cx| PluginManager::list(cx));
+    assert!(list[0].needs_newer_corona && !list[0].update_available);
+
+    cx.update(|cx| PluginManager::update_source("git", cx));
+    cx.run_until_parked();
+    // no error, the old copy keeps running
+    assert!(cx.update(|cx| cx.global::<PluginManager>().plugin_error("com.a").is_none()));
+    assert!(cx.update(|cx| cx.global::<PluginManager>().source_error("git").is_none()));
+    let version = cx.update(|cx| {
+      cx.global::<PluginManager>().active()["com.a"]
+        .manifest
+        .version
+        .clone()
+    });
+    assert_eq!(version.as_deref(), Some("1"));
+    let list = cx.update(|cx| PluginManager::list(cx));
+    assert!(list[0].running && list[0].needs_newer_corona && !list[0].update_available);
   }
 
   #[gpui::test]

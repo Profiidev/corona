@@ -18,6 +18,7 @@ use crate::{
   plugin::{
     catalog::{self, CatalogEntry, is_relative_file},
     git,
+    manifest::PLUGIN_API,
     materialize::{matches_catalog, materialize},
     paths::{Paths, expand_user, path_is_inside, remove_tree_under},
   },
@@ -67,6 +68,9 @@ pub struct UpdateReport {
   pub exported: Vec<String>,
   /// Plugins that could not be, with why; their old copies stay
   pub failed: Vec<(String, String)>,
+  /// Plugins needing a newer plugin API than corona runs; their old copies
+  /// stay and they are tried again on every update
+  pub held: Vec<String>,
   pub catalog: Option<SourceCatalog>,
 }
 
@@ -196,6 +200,12 @@ impl Worker {
     let Some(entry) = catalog.entries.iter().find(|e| e.id == id) else {
       return Ok(false);
     };
+    if entry.needs_newer_corona() {
+      bail!(
+        "`{id}` needs plugin API {}, corona runs {PLUGIN_API}",
+        entry.api
+      );
+    }
     if let (SourceKind::Git, Some(revision)) = (source.kind, &catalog.revision) {
       self.locks.with(&source.name, || {
         materialize(&self.paths, &source.name, revision, entry)
@@ -316,6 +326,16 @@ impl Worker {
       if skip_matching && matches_catalog(&root.join(entry.subdir()), entry) {
         continue;
       }
+      if entry.needs_newer_corona() {
+        tracing::info!(
+          "plugin `{}` from `{}` needs plugin API {}, corona runs {PLUGIN_API}: keeping the installed copy",
+          entry.id,
+          source.name,
+          entry.api
+        );
+        report.held.push(entry.id.clone());
+        continue;
+      }
       let manifest = format!("{}/{PLUGIN_MANIFEST_FILENAME}", entry.subdir());
       let result = if git::has_path(&repo, rev, &manifest) {
         materialize(&self.paths, &source.name, rev, entry)
@@ -422,8 +442,12 @@ mod tests {
   }
 
   fn row(id: &str, version: &str, path: &str) -> String {
+    row_api(id, version, path, PLUGIN_API)
+  }
+
+  fn row_api(id: &str, version: &str, path: &str, api: u32) -> String {
     format!(
-      "[[plugin]]\nid = \"{id}\"\nname = \"N\"\nversion = \"{version}\"\npath = \"{path}\"\nicon = \"icon.txt\"\n"
+      "[[plugin]]\nid = \"{id}\"\nname = \"N\"\nversion = \"{version}\"\napi = {api}\npath = \"{path}\"\nicon = \"icon.txt\"\n"
     )
   }
 
@@ -714,6 +738,80 @@ mod tests {
       ..git
     };
     assert!(worker.update(&path, &enabled).is_err());
+  }
+
+  #[test]
+  fn update_holds_plugins_needing_a_newer_api() {
+    let Setup {
+      worker,
+      remote,
+      _tmp,
+      ..
+    } = setup();
+    let git = git_source("git", &remote);
+    let enabled = vec!["com.a".to_string(), "com.b".to_string()];
+    worker.install(std::slice::from_ref(&git), "com.a").unwrap();
+    worker.install(std::slice::from_ref(&git), "com.b").unwrap();
+    let repo = worker.paths.repo("git");
+
+    // com.a moves to a newer plugin API, com.b gets a plain update
+    let newer = PLUGIN_API + 1;
+    remote
+      .write(
+        "catalog.toml",
+        &(row_api("com.a", "2", "a", newer) + &row("com.b", "2", "b")),
+      )
+      .write(
+        "a/plugin.toml",
+        &format!("id = \"com.a\"\nname = \"N\"\napi = {newer}\nversion = \"2\"\n"),
+      )
+      .write("b/plugin.toml", &manifest("com.b", "2"));
+    let new_head = remote.commit();
+
+    let report = worker.update(&git, &enabled).unwrap();
+    assert!(report.changed);
+    assert_eq!(report.exported, ["com.b"]);
+    assert_eq!(report.held, ["com.a"]);
+    assert!(report.failed.is_empty());
+    // held is no failure: the revision is applied for the other plugins
+    assert_eq!(git::head(&repo).unwrap(), new_head);
+    assert_eq!(version(&worker.paths.materialized("git").join("a")), "1");
+    assert_eq!(version(&worker.paths.materialized("git").join("b")), "2");
+
+    // nothing new upstream: still tried on every update, so a newer corona exports it
+    let report = worker.update(&git, &enabled).unwrap();
+    assert!(!report.changed && report.exported.is_empty());
+    assert_eq!(report.held, ["com.a"]);
+
+    // heal leaves the held plugin alone too
+    fs::remove_dir_all(worker.paths.materialized("git").join("a")).unwrap();
+    let report = worker.heal(&git, &enabled).unwrap();
+    assert_eq!(report.held, ["com.a"]);
+    assert!(report.exported.is_empty() && report.failed.is_empty());
+
+    // and it is not installed fresh
+    let error = worker
+      .install(std::slice::from_ref(&git), "com.a")
+      .unwrap_err()
+      .to_string();
+    assert!(
+      error.contains(&format!("needs plugin API {newer}")),
+      "{error}"
+    );
+    assert!(!worker.paths.materialized("git").join("a").exists());
+
+    // published for this API again: installs
+    remote
+      .write(
+        "catalog.toml",
+        &(row("com.a", "3", "a") + &row("com.b", "2", "b")),
+      )
+      .write("a/plugin.toml", &manifest("com.a", "3"));
+    remote.commit();
+    let report = worker.update(&git, &enabled).unwrap();
+    assert_eq!(report.exported, ["com.a", "com.b"]);
+    assert!(report.held.is_empty());
+    assert_eq!(version(&worker.paths.materialized("git").join("a")), "3");
   }
 
   #[test]

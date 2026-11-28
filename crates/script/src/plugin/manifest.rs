@@ -117,8 +117,19 @@ fn user_values(
   values
 }
 
-/// The plugin API corona runs: 2 is the rquickjs runtime (`corona_js`), 1 was gpui-shell's
+/// The newest plugin API corona runs: 2 is the rquickjs runtime (`corona_js`),
+/// 1 was gpui-shell's.
+///
+/// Bump it with every change a plugin can depend on: a new `plugin.toml` field
+/// or table, a new `corona/*` module, or a new or changed function, element or
+/// type in the JS API. A plugin then declares the new API in its `plugin.toml`
+/// and catalog row, and an older corona keeps its installed copy instead of
+/// failing to load the update. See "Plugin API versioning" in the README.
 pub const PLUGIN_API: u32 = 2;
+
+/// The oldest plugin API corona still loads. Raise it only when a change breaks
+/// plugins written for older APIs.
+pub const MIN_PLUGIN_API: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -194,8 +205,8 @@ impl ManifestFile {
   /// `${setting:<key>}` host needs a text setting `key`
   fn check(&self) -> Result<()> {
     ensure!(
-      self.api == PLUGIN_API,
-      "written for plugin API {}, corona runs API {PLUGIN_API}",
+      (MIN_PLUGIN_API..=PLUGIN_API).contains(&self.api),
+      "written for plugin API {}, corona loads API {MIN_PLUGIN_API} to {PLUGIN_API}",
       self.api
     );
     let views = self.widgets.values().map(|w| &w.view);
@@ -1163,7 +1174,7 @@ mod tests {
   use corona_js::{Capabilities, ExecuteGrant, HOST_ONLY_ENV};
   use serde_json::{Map, json};
 
-  use super::{ManifestFile, PluginManifest, QuickActionFile, SliderRange, expand};
+  use super::{ManifestFile, PLUGIN_API, PluginManifest, QuickActionFile, SliderRange, expand};
 
   fn parse(toml: &str) -> Result<ManifestFile, toml::de::Error> {
     toml::from_str(toml)
@@ -1303,12 +1314,21 @@ default = false
   }
 
   #[test]
-  fn only_this_plugin_api_loads() {
+  fn only_supported_plugin_apis_load() {
     assert!(with("").unwrap().check().is_ok());
     // gpui-shell's plugins name none
     let old = parse("id = \"a\"\nname = \"A\"").unwrap();
     let error = old.check().unwrap_err().to_string();
-    assert!(error.contains("plugin API 1, corona runs API 2"), "{error}");
+    assert!(
+      error.contains("plugin API 1, corona loads API 2 to 2"),
+      "{error}"
+    );
+    let newer = parse(&format!(
+      "id = \"a\"\nname = \"A\"\napi = {}",
+      PLUGIN_API + 1
+    ))
+    .unwrap();
+    assert!(newer.check().is_err());
   }
 
   #[test]

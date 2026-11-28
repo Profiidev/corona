@@ -11,7 +11,10 @@ use serde::Deserialize;
 
 use crate::{
   PLUGIN_MANIFEST_FILENAME,
-  plugin::{git, manifest::ManifestFile},
+  plugin::{
+    git,
+    manifest::{ManifestFile, PLUGIN_API},
+  },
 };
 
 pub const CATALOG_FILENAME: &str = "catalog.toml";
@@ -27,8 +30,9 @@ pub struct CatalogFile {
 }
 
 /// One plugin a source offers
+/// Unknown fields are ignored, so a field added later does not hide the row
+/// from an older corona.
 #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CatalogEntry {
   /// The id in the plugin's `plugin.toml`.
   pub id: String,
@@ -36,6 +40,9 @@ pub struct CatalogEntry {
   /// The version in the plugin's `plugin.toml`; an installed copy of another
   /// version shows an update.
   pub version: String,
+  /// The `api` in the plugin's `plugin.toml`. A plugin needing a newer API
+  /// than corona runs is not installed or updated until corona catches up.
+  pub api: u32,
   /// One line about what it does.
   #[serde(default)]
   pub description: Option<String>,
@@ -57,6 +64,12 @@ pub struct CatalogEntry {
 impl CatalogEntry {
   pub fn subdir(&self) -> &str {
     self.path.as_deref().unwrap_or(&self.id)
+  }
+
+  /// Written for a newer plugin API than this corona runs: held at the
+  /// installed copy until corona catches up
+  pub fn needs_newer_corona(&self) -> bool {
+    self.api > PLUGIN_API
   }
 
   fn validate(&self) -> Result<()> {
@@ -83,6 +96,7 @@ impl CatalogEntry {
       id: manifest.id,
       name: manifest.name,
       version: manifest.version.unwrap_or_default(),
+      api: manifest.api,
       description: manifest.description,
       author: None,
       icon: None,
@@ -197,6 +211,7 @@ mod tests {
 id = "com.a"
 name = "A"
 version = "1.0.0"
+api = 2
 tags = ["x"]
 icon = "icon.png"
 
@@ -204,17 +219,20 @@ icon = "icon.png"
 id = "com.b"
 name = "B"
 version = "2.0.0"
+api = 2
 path = "b"
 
 [[plugin]]
 id = "../escape"
 name = "Bad"
 version = "1.0.0"
+api = 2
 
 [[plugin]]
 id = "com.c"
 name = "C"
 version = "1.0.0"
+api = 2
 path = "../c"
 
 [[plugin]]
@@ -225,19 +243,35 @@ name = "No version"
 id = "com.e"
 name = "E"
 version = "1"
+api = 2
 readme = "../../etc/passwd"
 
 [[plugin]]
 id = "com.a"
 name = "Again"
 version = "9"
+api = 2
+
+[[plugin]]
+id = "com.f"
+name = "No api"
+version = "1"
+
+[[plugin]]
+id = "com.g"
+name = "G"
+version = "1"
+api = 3
+added_later = "ignored"
 "#;
 
   #[test]
   fn parses_rows_and_skips_bad_ones() {
     let entries = parse_catalog("s", CATALOG).unwrap();
     let ids: Vec<_> = entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["com.a", "com.b"]);
+    // no api: skipped; an unknown field: kept for a newer catalog
+    assert_eq!(ids, ["com.a", "com.b", "com.g"]);
+    assert_eq!(entries[2].api, 3);
     assert_eq!(entries[0].subdir(), "com.a");
     assert_eq!(entries[0].name, "A");
     assert_eq!(entries[0].tags, ["x"]);
@@ -279,7 +313,7 @@ version = "9"
     fs::write(tmp.path().join("two/README.md"), "# Two").unwrap();
     fs::write(
       tmp.path().join(CATALOG_FILENAME),
-      "[[plugin]]\nid = \"com.one\"\nname = \"Old\"\nversion = \"0\"\nicon = \"i.png\"\nreadme = \"docs.md\"",
+      "[[plugin]]\nid = \"com.one\"\nname = \"Old\"\nversion = \"0\"\napi = 2\nicon = \"i.png\"\nreadme = \"docs.md\"",
     )
     .unwrap();
     write("broken", "id =");
@@ -289,6 +323,7 @@ version = "9"
     assert_eq!(entries[0].id, "com.one");
     assert_eq!(entries[0].subdir(), "one");
     assert_eq!(entries[0].description.as_deref(), Some("d"));
+    assert_eq!(entries[0].api, 2);
     // the manifest's name and version, the catalog's files
     assert_eq!(
       (entries[0].name.as_str(), entries[0].version.as_str()),
@@ -305,7 +340,7 @@ version = "9"
     let remote = Remote::new();
     remote.write(
       CATALOG_FILENAME,
-      "[[plugin]]\nid = \"a\"\nname = \"A\"\nversion = \"1\"\n",
+      "[[plugin]]\nid = \"a\"\nname = \"A\"\nversion = \"1\"\napi = 2\n",
     );
     let first = remote.commit();
     let tmp = tempfile::tempdir().unwrap();
@@ -319,7 +354,7 @@ version = "9"
 
     remote.write(
       CATALOG_FILENAME,
-      "[[plugin]]\nid = \"a\"\nname = \"A\"\nversion = \"2\"\n",
+      "[[plugin]]\nid = \"a\"\nname = \"A\"\nversion = \"2\"\napi = 2\n",
     );
     let second = remote.commit();
     git::fetch(&repo).unwrap();
