@@ -84,8 +84,9 @@ mod tests {
     let entry = property(&catalog, &["$defs", "CatalogEntry"]);
     assert_eq!(
       entry["required"],
-      serde_json::json!(["id", "name", "version"])
+      serde_json::json!(["id", "name", "version", "api"])
     );
-    assert_eq!(entry["additionalProperties"], false);
+    // a field added later must not hide the row from an older corona
+    assert!(entry.get("additionalProperties").is_none());
   }
 }

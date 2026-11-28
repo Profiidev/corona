@@ -99,6 +99,7 @@ mod tests {
       id: id.into(),
       name: id.into(),
       version: version.into(),
+      api: 2,
       description: None,
       author: None,
       icon: None,

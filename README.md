@@ -112,3 +112,17 @@ Update the version in the following files:
 - `justfile`
 - `crates/reqwest/Cargo.toml`
 - `crates/capture/Cargo.toml`
+
+### Plugin API versioning
+
+`PLUGIN_API` in `crates/script/src/plugin/manifest.rs` is the newest plugin API corona runs. `MIN_PLUGIN_API` is the oldest it still loads. A plugin declares its API as `api` in `plugin.toml`, and a git source repeats it in every `catalog.toml` row.
+
+Bump `PLUGIN_API` in the same change as anything a plugin can depend on:
+
+- a new `plugin.toml` field or table
+- a new `corona/*` module
+- a new or changed function, element or type in the JS API
+
+Raise `MIN_PLUGIN_API` only when a change breaks plugins written for older APIs.
+
+Why it matters: corona reads the catalog `api` before it installs or updates a plugin. A plugin whose row needs a newer API than the local corona runs is held at its installed copy. The settings app tags it "Needs newer corona", and it updates on the first update after corona catches up. If a change ships without a bump, plugins that use the change still say the old API. Older coronas then install them, and loading fails.

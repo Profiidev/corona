@@ -394,6 +394,14 @@ fn plugin_row(row: &PluginStatus, cx: &mut App) -> Div {
         })
         .child(row.source.clone()),
     );
+  if row.needs_newer_corona {
+    title = title.child(
+      Tag::new()
+        .small()
+        .with_variant(TagVariant::Warning)
+        .child(t!("app.settings.plugins.needs_newer_corona")),
+    );
+  }
   if row.update_available {
     title = title.child(
       Tag::new()
@@ -479,6 +487,8 @@ fn plugin_row(row: &PluginStatus, cx: &mut App) -> Div {
       false => Switch::new(format!("plugin-enabled-{id}"))
         .cursor_pointer()
         .checked(row.enabled)
+        // nothing to install until corona runs its plugin API
+        .disabled(row.needs_newer_corona && !row.installed)
         .on_click(move |checked: &bool, window, cx| match checked {
           true => PluginManager::enable(&enable_id, ask(name.clone(), window), cx),
           false => PluginManager::disable(&enable_id, cx),

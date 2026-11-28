@@ -1304,6 +1304,9 @@ app:
       update_available:
         en: Update available
         de: Update verfügbar
+      needs_newer_corona:
+        en: Needs newer corona
+        de: Benötigt neueres corona
       dev_override:
         en: Overrides installed
         de: Überschreibt installierte
