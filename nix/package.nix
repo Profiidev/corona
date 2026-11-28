@@ -44,13 +44,13 @@ in
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "corona";
-  version = "0.1.8";
+  version = "0.1.9";
 
   __structuredAttrs = true;
 
   src = ./..;
 
-  cargoHash = "sha256-sOMwCn9JnewETCwsxGr+PhbehTTaF/QFOOn3suIZJD4=";
+  cargoHash = "sha256-Qcf73WB1t+QByUInUAIKJMfU83LeOAa+jwL33uTiauA=";
 
   cargoBuildFlags = [
     "--package"
